@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -281,9 +282,6 @@ public class ControllerClient implements Closeable {
    *                have 2 second sleeps between them.  So a timeout should be chosen that is larger, and a multiple of
    *                2 seconds preferablly.
    * @return the response from the controller.  Either a successful one, or a failed one with more information.
-   * @throws InterruptedException
-   * @throws TimeoutException
-   * @throws ExecutionException
    */
   public ControllerResponse sendEmptyPushAndWait(String storeName, String pushJobId, long storeSize, long timeOut) {
     // Check Store existence
@@ -292,31 +290,29 @@ public class ControllerClient implements Closeable {
       return versionCreationResponse;
     }
     String topicName = Version.composeKafkaTopic(storeName, versionCreationResponse.getVersion());
-
-
-    ExecutorService executor = Executors.newSingleThreadExecutor();
-
     try {
-      ControllerResponse response = (ControllerResponse) executor.invokeAll(Arrays.asList(() -> {
-        JobStatusQueryResponse jobStatusQueryResponse;
-        while (true) {
-          jobStatusQueryResponse = retryableRequest(3, client -> this.queryJobStatus(topicName));
-          if (jobStatusQueryResponse.isError()) {
-            return jobStatusQueryResponse;
-          }
-          ExecutionStatus executionStatus = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());
-          if (executionStatus.isTerminal()) {
-            break;
-          }
+      long startTime = System.currentTimeMillis();
+      long endTime = startTime + timeOut;
+      JobStatusQueryResponse jobStatusQueryResponse;
+      while (true) {
+        jobStatusQueryResponse = retryableRequest(3, client -> this.queryJobStatus(topicName));
+        if (jobStatusQueryResponse.isError()) {
+          return jobStatusQueryResponse;
         }
-        return jobStatusQueryResponse;
-      }), timeOut, TimeUnit.MILLISECONDS).get(0).get(timeOut, TimeUnit.MILLISECONDS);
-
-      return response;
-    } catch(Exception e) {
-      throw new VeniceException("Could not send empty push with Exception:", e);
-    } finally {
-      executor.shutdown();
+        ExecutionStatus executionStatus = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());
+        if (executionStatus.isTerminal()) {
+          return jobStatusQueryResponse;
+        }
+        if (System.currentTimeMillis() > endTime) {
+          throw new VeniceException(
+              "sendEmptyPushAndWait did not succeed in the allotted time (" + timeOut + " ms). Last status: " + jobStatusQueryResponse.toString());
+        }
+        Thread.sleep(1 * Time.MS_PER_SECOND);
+      }
+    } catch (VeniceException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new VeniceException("Caught Exception while trying to send empty push.", e);
     }
   }
 

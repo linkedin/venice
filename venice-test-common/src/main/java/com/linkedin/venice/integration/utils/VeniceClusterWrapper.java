@@ -31,6 +31,7 @@ import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.lazy.LazyResettable;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.File;
@@ -65,6 +66,7 @@ import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.*;
 import static com.linkedin.venice.utils.ByteUtils.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
+import static com.linkedin.venice.utils.TestUtils.*;
 
 
 /**
@@ -96,6 +98,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   private final Map<Integer, VeniceControllerWrapper> veniceControllerWrappers;
   private final Map<Integer, VeniceServerWrapper> veniceServerWrappers;
   private final Map<Integer, VeniceRouterWrapper> veniceRouterWrappers;
+  private final LazyResettable<ControllerClient> controllerClient = LazyResettable.of(
+      this::getControllerClient, ControllerClient::close);
   private final boolean sslToStorageNodes;
   private final boolean sslToKafka;
 
@@ -378,12 +382,13 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   @Override
   protected void internalStop() throws Exception {
-    veniceRouterWrappers.values().forEach(IOUtils::closeQuietly);
-    veniceServerWrappers.values().forEach(IOUtils::closeQuietly);
-    veniceControllerWrappers.values().forEach(IOUtils::closeQuietly);
+    controllerClient.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    veniceRouterWrappers.values().forEach(Utils::closeQuietlyWithErrorLogged);
+    veniceServerWrappers.values().forEach(Utils::closeQuietlyWithErrorLogged);
+    veniceControllerWrappers.values().forEach(Utils::closeQuietlyWithErrorLogged);
     if (standalone) {
-      IOUtils.closeQuietly(kafkaBrokerWrapper);
-      IOUtils.closeQuietly(zkServerWrapper);
+      Utils.closeQuietlyWithErrorLogged(kafkaBrokerWrapper);
+      Utils.closeQuietlyWithErrorLogged(zkServerWrapper);
     }
 
     if (veniceClusterProcess != null) {
@@ -563,20 +568,25 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       return port;
     } catch (Exception e) {
       throw new VeniceException("Can not stop leader controller.", e);
+    } finally {
+      controllerClient.reset();
     }
   }
 
   public synchronized void stopVeniceController(int port) {
     stopVeniceComponent(veniceControllerWrappers, port);
+    controllerClient.reset();
   }
 
   public synchronized void restartVeniceController(int port) {
     restartVeniceComponent(veniceControllerWrappers, port);
+    controllerClient.reset();
   }
 
   public synchronized void removeVeniceController(int port) {
     stopVeniceController(port);
     IOUtils.closeQuietly(veniceControllerWrappers.remove(port));
+    controllerClient.reset();
   }
 
   public synchronized void stopVeniceRouter(int port) {
@@ -678,9 +688,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   }
 
   public void useControllerClient(Consumer<ControllerClient> controllerClientConsumer) {
-    try (ControllerClient controllerClient = getControllerClient()) {
-      controllerClientConsumer.accept(controllerClient);
-    }
+    controllerClientConsumer.accept(controllerClient.get());
   }
 
   /**
@@ -730,85 +738,68 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     String storeOwner = Utils.getUniqueString("store-owner");
     long storeSize =  1024;
 
-    try (ControllerClient controllerClient = getControllerClient()) {
-      // Create new store
-      NewStoreResponse newStoreResponse = controllerClient.createNewStore(storeName, storeOwner, keySchema, valueSchema);
-      if (newStoreResponse.isError()) {
-        throw new VeniceException(newStoreResponse.getError());
-      }
-      // Create new version
-      VersionCreationResponse newVersion =
-          controllerClient.requestTopicForWrites(storeName, storeSize, Version.PushType.BATCH,
-              Version.guidBasedDummyPushId(), sendStartOfPush, false, false, Optional.empty(),
-              Optional.empty(), Optional.empty(), false, -1);
-      if (newVersion.isError()) {
-        throw new VeniceException(newVersion.getError());
-      }
-      return newVersion;
-    }
+    // Create new store
+    NewStoreResponse newStoreResponse = assertCommand(
+        controllerClient.get().createNewStore(storeName, storeOwner, keySchema, valueSchema));
+    // Create new version
+    return assertCommand(controllerClient.get().requestTopicForWrites(
+        storeName,
+        storeSize,
+        Version.PushType.BATCH,
+        Version.guidBasedDummyPushId(),
+        sendStartOfPush,
+        false,
+        false,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        false,
+        -1));
   }
 
   public NewStoreResponse getNewStore(String storeName) {
     return getNewStore(storeName, "\"string\"", "\"string\"");
   }
   public NewStoreResponse getNewStore(String storeName, String keySchema, String valueSchema) {
-    try (ControllerClient controllerClient = getControllerClient()) {
-      NewStoreResponse response = controllerClient.createNewStore(storeName, getClass().getName(), keySchema, valueSchema);
-      if (response.isError()) {
-        throw new VeniceException(response.getError());
-      }
-      return response;
-    }
+    return assertCommand(
+        controllerClient.get().createNewStore(storeName, getClass().getName(), keySchema, valueSchema));
   }
 
   public VersionCreationResponse getNewVersion(String storeName, int dataSize) {
     return getNewVersion(storeName, dataSize, true);
   }
     public VersionCreationResponse getNewVersion(String storeName, int dataSize, boolean sendStartOfPush) {
-    try (ControllerClient controllerClient = getControllerClient()) {
-      VersionCreationResponse newVersion =
-          controllerClient.requestTopicForWrites(
-              storeName,
-              dataSize,
-              Version.PushType.BATCH,
-              Version.guidBasedDummyPushId(),
-              sendStartOfPush,
-              // This function is expected to be called by tests that bypass the push job and write data directly,
-              // therefore, it's safe to assume that it'll be written in arbitrary order, rather than sorted...
-              false,
-              false,
-              Optional.empty(),
-              Optional.empty(),
-              Optional.empty(),
-              false,
-              -1);
-      if (newVersion.isError()) {
-        throw new VeniceException(newVersion.getError());
-      }
-      return newVersion;
-    }
+    return assertCommand(controllerClient.get().requestTopicForWrites(
+        storeName,
+        dataSize,
+        Version.PushType.BATCH,
+        Version.guidBasedDummyPushId(),
+        sendStartOfPush,
+        // This function is expected to be called by tests that bypass the push job and write data directly,
+        // therefore, it's safe to assume that it'll be written in arbitrary order, rather than sorted...
+        false,
+        false,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        false,
+        -1));
   }
 
   public ControllerResponse updateStore(String storeName, UpdateStoreQueryParams params) {
-    try (ControllerClient controllerClient = getControllerClient()) {
-      ControllerResponse response = controllerClient.updateStore(storeName, params);
-      if (response.isError()) {
-        throw new VeniceException(response.getError());
-      }
-      return response;
-    }
+    return assertCommand(controllerClient.get().updateStore(storeName, params));
   }
 
   public static final String DEFAULT_KEY_SCHEMA = "\"int\"";
   public static final String DEFAULT_VALUE_SCHEMA = "\"int\"";
 
-  public String createStore(int keyCount) throws Exception {
+  public String createStore(int keyCount) {
     int nextVersionId = 1;
     return createStore(IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, nextVersionId)));
   }
 
   // Pass the dictionary and the training samples as well
-  public String createStoreWithZstdDictionary(int keyCount) throws Exception {
+  public String createStoreWithZstdDictionary(int keyCount) {
 
     return createStore(DEFAULT_KEY_SCHEMA, "\"string\"",
         IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i + "val")),
@@ -824,89 +815,76 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         );
   }
 
-  public String createStore(Stream<Map.Entry> batchData) throws Exception {
-
+  public String createStore(Stream<Map.Entry> batchData) {
     return createStore(DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, batchData, CompressionStrategy.NO_OP, null);
   }
 
-  public String createStore(int keyCount, GenericRecord record) throws Exception {
+  public String createStore(int keyCount, GenericRecord record) {
     return createStore(DEFAULT_KEY_SCHEMA, record.getSchema().toString(),
         IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, record)), CompressionStrategy.NO_OP, null);
   }
 
-  public String createStore(String keySchema, String valueSchema, Stream<Map.Entry> batchData) throws Exception{
+  public String createStore(String keySchema, String valueSchema, Stream<Map.Entry> batchData) {
     return createStore(keySchema, valueSchema, batchData, CompressionStrategy.NO_OP, null);
   }
 
   public String createStore(String keySchema, String valueSchema, Stream<Map.Entry> batchData,
-      CompressionStrategy compressionStrategy, Function<String,ByteBuffer> compressionDictionaryGenerator) throws Exception {
-    try (ControllerClient client = getControllerClient()) {
-      String storeName = Utils.getUniqueString("store");
-      TestUtils.assertCommand(client.createNewStore(
-          storeName,
-          getClass().getName(),
-          keySchema,
-          valueSchema));
-      if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT && compressionDictionaryGenerator != null) {
-        updateStore(storeName,new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
-      } else if (compressionStrategy == CompressionStrategy.GZIP){
-        updateStore(storeName, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.GZIP));
-      }
-      createVersion(storeName, keySchema, valueSchema, batchData, compressionStrategy, compressionDictionaryGenerator);
-      return storeName;
+      CompressionStrategy compressionStrategy, Function<String,ByteBuffer> compressionDictionaryGenerator) {
+    String storeName = Utils.getUniqueString("store");
+    assertCommand(controllerClient.get().createNewStore(
+        storeName,
+        getClass().getName(),
+        keySchema,
+        valueSchema));
+    if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT && compressionDictionaryGenerator != null) {
+      updateStore(storeName,new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
+    } else if (compressionStrategy == CompressionStrategy.GZIP){
+      updateStore(storeName, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.GZIP));
     }
+    createVersion(storeName, keySchema, valueSchema, batchData, compressionStrategy, compressionDictionaryGenerator);
+    return storeName;
   }
 
-  public int createVersion(String storeName, int keyCount) throws Exception {
-    try (ControllerClient client = getControllerClient()) {
-      StoreResponse response = client.getStore(storeName);
-      if (response.isError()) {
-        throw new VeniceException(response.getError());
-      }
-      int nextVersionId = response.getStore().getLargestUsedVersionNumber() + 1;
-      return createVersion(storeName, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, nextVersionId)));
-    }
+  public int createVersion(String storeName, int keyCount) {
+    StoreResponse response = assertCommand(controllerClient.get().getStore(storeName));
+    int nextVersionId = response.getStore().getLargestUsedVersionNumber() + 1;
+    return createVersion(storeName, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, nextVersionId)));
   }
 
-  public int createVersion(String storeName, Stream<Map.Entry> batchData) throws Exception {
+  public int createVersion(String storeName, Stream<Map.Entry> batchData) {
     return createVersion(storeName, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, batchData);
   }
 
-  public int createVersion(String storeName, String keySchema, String valueSchema, Stream<Map.Entry> batchData)
-      throws Exception {
+  public int createVersion(String storeName, String keySchema, String valueSchema, Stream<Map.Entry> batchData) {
     return createVersion(storeName, keySchema, valueSchema, batchData, CompressionStrategy.NO_OP, null);
   }
 
   public int createVersion(String storeName, String keySchema, String valueSchema, Stream<Map.Entry> batchData,
-      CompressionStrategy compressionStrategy, Function<String,ByteBuffer> compressionDictionaryGenerator) throws Exception {
-    try (ControllerClient client = getControllerClient()) {
-      VersionCreationResponse response = TestUtils.assertCommand(client.requestTopicForWrites(
-          storeName,
-          1024, // estimate of the version size in bytes
-          Version.PushType.BATCH,
-          Version.guidBasedDummyPushId(),
-          compressionStrategy == CompressionStrategy.NO_OP,
-          false,
-          false,
-          Optional.empty(),
-          Optional.empty(),
-          Optional.empty(),
-          false,
-          -1));
+      CompressionStrategy compressionStrategy, Function<String,ByteBuffer> compressionDictionaryGenerator) {
+    VersionCreationResponse response = assertCommand(controllerClient.get().requestTopicForWrites(
+        storeName,
+        1024, // estimate of the version size in bytes
+        Version.PushType.BATCH,
+        Version.guidBasedDummyPushId(),
+        compressionStrategy == CompressionStrategy.NO_OP,
+        false,
+        false,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        false,
+        -1));
 
-      TestUtils.writeBatchData(response, keySchema, valueSchema, batchData, HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID,
-          compressionStrategy, compressionDictionaryGenerator);
+    writeBatchData(response, keySchema, valueSchema, batchData, HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID,
+        compressionStrategy, compressionDictionaryGenerator);
 
-      int versionId = response.getVersion();
-      waitVersion(storeName, versionId, client);
-      return versionId;
-    }
+    int versionId = response.getVersion();
+    waitVersion(storeName, versionId, controllerClient.get());
+    return versionId;
   }
 
   public void waitVersion(String storeName, int versionId) {
-    try (ControllerClient client = getControllerClient()) {
-      waitVersion(storeName, versionId, client);
-    }
+    waitVersion(storeName, versionId, controllerClient.get());
   }
 
   public void waitVersion(String storeName, int versionId, ControllerClient client) {

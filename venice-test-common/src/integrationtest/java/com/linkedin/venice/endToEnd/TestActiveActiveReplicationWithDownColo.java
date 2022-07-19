@@ -82,8 +82,6 @@ public class TestActiveActiveReplicationWithDownColo {
     controllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
 
     controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
-    int parentKafkaPort = Utils.getFreePort();
-    controllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME, "localhost:" + parentKafkaPort);
     multiColoMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
             NUMBER_OF_CHILD_DATACENTERS,
@@ -97,8 +95,7 @@ public class TestActiveActiveReplicationWithDownColo {
             Optional.of(controllerProps),
             Optional.of(new VeniceProperties(serverProperties)),
             false,
-            false,
-            Optional.of(parentKafkaPort));
+            false);
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
   }
@@ -129,7 +126,7 @@ public class TestActiveActiveReplicationWithDownColo {
         Collectors.joining(","));
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
       parentControllerClient.createNewStore(storeName, "owner", INT_SCHEMA, STRING_SCHEMA);
-      ActiveActiveReplicationForHybridTest.updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false));
+      TestUtils.updateStoreToHybrid(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false));
 
       // Empty push to create a version
       parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);

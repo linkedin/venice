@@ -22,12 +22,9 @@ import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.SslUtils;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -43,11 +40,12 @@ import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.controller.SchemaConstants.*;
+import static com.linkedin.venice.utils.TestUtils.*;
 import static org.testng.Assert.*;
 
 public class VeniceParentHelixAdminTest {
   private static final Logger LOGGER = LogManager.getLogger(VeniceParentHelixAdminTest.class);
-  private static final long DEFAULT_TEST_TIMEOUT = 30000;
+  private static final long DEFAULT_TEST_TIMEOUT = 60000;
   VeniceClusterWrapper venice;
   ZkServerWrapper zkServerWrapper;
 
@@ -62,8 +60,8 @@ public class VeniceParentHelixAdminTest {
 
   @AfterClass
   public void cleanUp() {
-    venice.close();
-    zkServerWrapper.close();
+    Utils.closeQuietlyWithErrorLogged(venice);
+    Utils.closeQuietlyWithErrorLogged(zkServerWrapper);
   }
 
   @Test(timeOut = DEFAULT_TEST_TIMEOUT)
@@ -83,7 +81,7 @@ public class VeniceParentHelixAdminTest {
       assertFalse(response.isError(), "Failed to perform empty push on test store");
       // The empty push should eventually complete and have its version topic truncated by job status polling invoked by
       // the TerminalStateTopicCheckerForParentController.
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true,
+      waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true,
           () -> assertTrue(parentController.getVeniceAdmin().isTopicTruncated(response.getKafkaTopic())));
     }
   }
@@ -92,79 +90,104 @@ public class VeniceParentHelixAdminTest {
   public void testAddVersion() {
     Properties properties = new Properties();
     properties.setProperty(REPLICATION_METADATA_VERSION_ID, String.valueOf(1));
-    try (VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceParentController(venice.getClusterName(), zkServerWrapper.getAddress(), venice.getKafka(),
-        new VeniceControllerWrapper[]{venice.getLeaderVeniceController()}, new VeniceProperties(properties), false)) {
-      String parentControllerUrl = parentControllerWrapper.getControllerUrl();
-      String childControllerUrl = venice.getLeaderVeniceController().getControllerUrl();
+    try (VeniceControllerWrapper parentControllerWrapper =
+        ServiceFactory.getVeniceParentController(
+            venice.getClusterName(),
+            zkServerWrapper.getAddress(),
+            venice.getKafka(),
+            new VeniceControllerWrapper[]{venice.getLeaderVeniceController()},
+            new VeniceProperties(properties),
+            false);
+        ControllerClient parentControllerClient = new ControllerClient(
+            venice.getClusterName(), parentControllerWrapper.getControllerUrl())) {
       // Adding store
       String storeName = Utils.getUniqueString("test_store");
       String owner = "test_owner";
       String keySchemaStr = "\"long\"";
       Schema valueSchema = generateSchema(false);
-      try (ControllerClient parentControllerClient = new ControllerClient(venice.getClusterName(), parentControllerUrl);
-          ControllerClient childControllerClient = new ControllerClient(venice.getClusterName(), childControllerUrl)) {
-        TestUtils.assertCommand(parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString()),
+      venice.useControllerClient(childControllerClient -> {
+        assertCommand(parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString()),
             "Failed to create store:" + storeName);
 
         // Configure the store to hybrid
         UpdateStoreQueryParams params =
             new UpdateStoreQueryParams().setHybridRewindSeconds(600).setHybridOffsetLagThreshold(10000)
                 .setLeaderFollowerModel(true).setNativeReplicationEnabled(true).setActiveActiveReplicationEnabled(true);
-        ControllerResponse parentControllerResponse = parentControllerClient.updateStore(storeName, params);
-        Assert.assertFalse(parentControllerResponse.isError());
-        HybridStoreConfig hybridStoreConfig =
-            parentControllerClient.getStore(storeName).getStore().getHybridStoreConfig();
+        assertCommand(parentControllerClient.updateStore(storeName, params));
+        HybridStoreConfig hybridStoreConfig = assertCommand(parentControllerClient.getStore(storeName))
+            .getStore().getHybridStoreConfig();
         Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 600);
         Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 10000);
         // Check the store config in Child Colo
-        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-          StoreResponse storeResponseFromChild = childControllerClient.getStore(storeName);
+        waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+          StoreResponse storeResponseFromChild = assertCommand(childControllerClient.getStore(storeName));
           Assert.assertNotNull(storeResponseFromChild.getStore());
           Assert.assertNotNull(storeResponseFromChild.getStore().getHybridStoreConfig());
           Assert.assertEquals(storeResponseFromChild.getStore().getHybridStoreConfig().getRewindTimeInSeconds(), 600);
         });
 
         // Test add version without rewind time override
-        parentControllerResponse = parentControllerClient.requestTopicForWrites(storeName, 1000, Version.PushType.BATCH,
-            Version.numberBasedDummyPushId(1), true, true, false, Optional.empty(), Optional.empty(), Optional.of("dc-1"),
-            false, -1);
-        Assert.assertFalse(parentControllerResponse.isError());
+        assertCommand(parentControllerClient.requestTopicForWrites(
+            storeName,
+            1000,
+            Version.PushType.BATCH,
+            Version.numberBasedDummyPushId(1),
+            true,
+            true,
+            false,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of("dc-1"),
+            false,
+            -1));
         // Check version-level rewind time config
-        Optional<Version> versionFromParent = parentControllerClient.getStore(storeName).getStore().getVersion(1);
+        Optional<Version> versionFromParent = assertCommand(parentControllerClient.getStore(storeName))
+            .getStore().getVersion(1);
         assertTrue(versionFromParent.isPresent() && versionFromParent.get().getHybridStoreConfig().getRewindTimeInSeconds() == 600);
         // Validate version-level rewind time config in child
-        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-          Optional<Version> versionFromChild = childControllerClient.getStore(storeName).getStore().getVersion(1);
+        waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+          Optional<Version> versionFromChild = assertCommand(childControllerClient.getStore(storeName))
+              .getStore().getVersion(1);
           assertTrue(versionFromChild.isPresent() && versionFromChild.get().getHybridStoreConfig().getRewindTimeInSeconds() == 600);
         });
 
         // Need to kill the current version since it is not allowed to have multiple ongoing versions.
-        parentControllerResponse = parentControllerClient.killOfflinePushJob(Version.composeKafkaTopic(storeName, 1));
-        Assert.assertFalse(parentControllerResponse.isError(), parentControllerResponse.getError());
+        assertCommand(parentControllerClient.killOfflinePushJob(Version.composeKafkaTopic(storeName, 1)));
         // Test add version with rewind time override
-        parentControllerResponse = parentControllerClient.requestTopicForWrites(storeName, 1000, Version.PushType.BATCH,
-            Version.numberBasedDummyPushId(2), true, true, false, Optional.empty(), Optional.empty(), Optional.empty(),
-            false, 1000);
-        Assert.assertFalse(parentControllerResponse.isError(), parentControllerResponse.getError());
+        assertCommand(parentControllerClient.requestTopicForWrites(
+            storeName,
+            1000,
+            Version.PushType.BATCH,
+            Version.numberBasedDummyPushId(2),
+            true,
+            true,
+            false,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            false,
+            1000));
 
         // Check version-level config
-        versionFromParent = parentControllerClient.getStore(storeName).getStore().getVersion(2);
+        versionFromParent = assertCommand(parentControllerClient.getStore(storeName))
+            .getStore().getVersion(2);
         assertTrue(versionFromParent.isPresent() && versionFromParent.get().getHybridStoreConfig().getRewindTimeInSeconds() == 1000);
         assertEquals(versionFromParent.get().getReplicationMetadataVersionId(), 1);
 
         // Validate version-level config in child
-        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-          Optional<Version> versionFromChild = childControllerClient.getStore(storeName).getStore().getVersion(2);
+        waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+          Optional<Version> versionFromChild = assertCommand(childControllerClient.getStore(storeName))
+              .getStore().getVersion(2);
           assertTrue(versionFromChild.isPresent() && versionFromChild.get().getHybridStoreConfig().getRewindTimeInSeconds() == 1000);
           assertEquals(versionFromChild.get().getReplicationMetadataVersionId(), 1);
         });
 
         // Check store level config
-        StoreResponse storeResponseFromChild = childControllerClient.getStore(storeName);
+        StoreResponse storeResponseFromChild = assertCommand(childControllerClient.getStore(storeName));
         Assert.assertNotNull(storeResponseFromChild.getStore());
         Assert.assertNotNull(storeResponseFromChild.getStore().getHybridStoreConfig());
         Assert.assertEquals(storeResponseFromChild.getStore().getHybridStoreConfig().getRewindTimeInSeconds(), 600);
-      }
+      });
     }
   }
 
@@ -193,7 +216,7 @@ public class VeniceParentHelixAdminTest {
 
       // The empty push should eventually complete and have its version topic truncated by job status polling invoked by
       // the TerminalStateTopicCheckerForParentController.
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true,
+      waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true,
           () -> assertTrue(parentController.getVeniceAdmin().isTopicTruncated(response.getKafkaTopic())));
       assertFalse(parentControllerClient.disableAndDeleteStore(storeName).isError(), "Delete store shouldn't fail");
 
@@ -207,8 +230,8 @@ public class VeniceParentHelixAdminTest {
       assertFalse(versionCreationResponseForMetaSystemStore.isError(),
           "New version creation for meta system store: " + metaSystemStoreName + " should success, but got error: "
               + versionCreationResponseForMetaSystemStore.getError());
-      TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponseForMetaSystemStore.getKafkaTopic(),
-          parentControllerClient, 30, TimeUnit.SECONDS, Optional.of(LOGGER));
+      waitForNonDeterministicPushCompletion(versionCreationResponseForMetaSystemStore.getKafkaTopic(),
+          parentControllerClient, 30, TimeUnit.SECONDS);
 
       // Delete the store and try re-creation.
       assertFalse(parentControllerClient.disableAndDeleteStore(storeName).isError(), "Delete store shouldn't fail");
@@ -232,24 +255,24 @@ public class VeniceParentHelixAdminTest {
       String proxyUser = "test_user";
       Schema valueSchema = generateSchema(false);
       try (ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), controllerUrl)) {
-        controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
+        assertCommand(controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString()));
 
         // Configure the store to hybrid
         UpdateStoreQueryParams params = new UpdateStoreQueryParams()
             .setHybridRewindSeconds(600)
             .setHybridOffsetLagThreshold(10000);
-        ControllerResponse controllerResponse = controllerClient.updateStore(storeName, params);
-        Assert.assertFalse(controllerResponse.isError());
-        HybridStoreConfig hybridStoreConfig = controllerClient.getStore(storeName).getStore().getHybridStoreConfig();
+        assertCommand(controllerClient.updateStore(storeName, params));
+        HybridStoreConfig hybridStoreConfig = assertCommand(controllerClient.getStore(storeName))
+            .getStore().getHybridStoreConfig();
         Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 600);
         Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 10000);
 
         // Try to update the hybrid store with different hybrid configs
         params = new UpdateStoreQueryParams()
             .setHybridRewindSeconds(172800);
-        controllerResponse = controllerClient.updateStore(storeName, params);
-        Assert.assertFalse(controllerResponse.isError());
-        hybridStoreConfig = controllerClient.getStore(storeName).getStore().getHybridStoreConfig();
+        assertCommand(controllerClient.updateStore(storeName, params));
+        hybridStoreConfig = assertCommand(controllerClient.getStore(storeName))
+            .getStore().getHybridStoreConfig();
         Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 172800);
         Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 10000);
 
@@ -257,8 +280,9 @@ public class VeniceParentHelixAdminTest {
         params = new UpdateStoreQueryParams();
         params.setRegularVersionETLEnabled(true);
         params.setFutureVersionETLEnabled(true);
-        controllerResponse = controllerClient.updateStore(storeName, params);
-        ETLStoreConfig etlStoreConfig = controllerClient.getStore(storeName).getStore().getEtlStoreConfig();
+        ControllerResponse controllerResponse = controllerClient.updateStore(storeName, params);
+        ETLStoreConfig etlStoreConfig = assertCommand(controllerClient.getStore(storeName))
+            .getStore().getEtlStoreConfig();
         Assert.assertFalse(etlStoreConfig.isRegularVersionETLEnabled());
         Assert.assertFalse(etlStoreConfig.isFutureVersionETLEnabled());
         Assert.assertTrue(controllerResponse.getError().contains("Cannot enable ETL for this store "
@@ -269,7 +293,7 @@ public class VeniceParentHelixAdminTest {
         params.setRegularVersionETLEnabled(true).setEtledProxyUserAccount("");
         params.setFutureVersionETLEnabled(true).setEtledProxyUserAccount("");
         controllerResponse = controllerClient.updateStore(storeName, params);
-        etlStoreConfig = controllerClient.getStore(storeName).getStore().getEtlStoreConfig();
+        etlStoreConfig = assertCommand(controllerClient.getStore(storeName)).getStore().getEtlStoreConfig();
         Assert.assertFalse(etlStoreConfig.isRegularVersionETLEnabled());
         Assert.assertFalse(etlStoreConfig.isFutureVersionETLEnabled());
         Assert.assertTrue(controllerResponse.getError().contains("Cannot enable ETL for this store "
@@ -280,7 +304,7 @@ public class VeniceParentHelixAdminTest {
         params.setRegularVersionETLEnabled(true).setEtledProxyUserAccount(proxyUser);
         params.setFutureVersionETLEnabled(true).setEtledProxyUserAccount(proxyUser);
         controllerClient.updateStore(storeName, params);
-        etlStoreConfig = controllerClient.getStore(storeName).getStore().getEtlStoreConfig();
+        etlStoreConfig = assertCommand(controllerClient.getStore(storeName)).getStore().getEtlStoreConfig();
         Assert.assertTrue(etlStoreConfig.isRegularVersionETLEnabled());
         Assert.assertTrue(etlStoreConfig.isFutureVersionETLEnabled());
 
@@ -289,7 +313,7 @@ public class VeniceParentHelixAdminTest {
         params.setRegularVersionETLEnabled(false);
         params.setFutureVersionETLEnabled(false);
         controllerClient.updateStore(storeName, params);
-        etlStoreConfig = controllerClient.getStore(storeName).getStore().getEtlStoreConfig();
+        etlStoreConfig = assertCommand(controllerClient.getStore(storeName)).getStore().getEtlStoreConfig();
         Assert.assertFalse(etlStoreConfig.isRegularVersionETLEnabled());
         Assert.assertFalse(etlStoreConfig.isFutureVersionETLEnabled());
 
@@ -298,7 +322,7 @@ public class VeniceParentHelixAdminTest {
         params.setRegularVersionETLEnabled(true);
         params.setFutureVersionETLEnabled(true);
         controllerClient.updateStore(storeName, params);
-        etlStoreConfig = controllerClient.getStore(storeName).getStore().getEtlStoreConfig();
+        etlStoreConfig = assertCommand(controllerClient.getStore(storeName)).getStore().getEtlStoreConfig();
         Assert.assertTrue(etlStoreConfig.isRegularVersionETLEnabled());
         Assert.assertTrue(etlStoreConfig.isFutureVersionETLEnabled());
       }
@@ -369,7 +393,7 @@ public class VeniceParentHelixAdminTest {
     Assert.assertEquals(storeResponseFromParentController.getStore().getBackupVersionRetentionMs(), backupVersionRetentionMs);
     Assert.assertEquals(storeResponseFromParentController.getStore().getReadQuotaInCU(), 10000);
     // Verify the update in Child Controller
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+    waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       StoreResponse storeResponseFromChildController = childControllerClient.getStore(storeName);
       Assert.assertFalse(storeResponseFromChildController.isError(), "Error in store response from Child Controller: " + storeResponseFromChildController.getError());
       Assert.assertEquals(storeResponseFromChildController.getStore().getBackupVersionRetentionMs(), backupVersionRetentionMs);

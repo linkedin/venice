@@ -844,10 +844,10 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
       Assert.assertFalse(parentControllerClient.emptyPush(storeName, "push-1", 1024000L).isError());
       // Store version topic v1 should be truncated after polling for completion by parent controller.
       TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(storeName, 1),
-          parentControllerClient, 10, TimeUnit.SECONDS, Optional.empty());
+          parentControllerClient, 10, TimeUnit.SECONDS);
       Assert.assertFalse(parentControllerClient.emptyPush(storeName, "push-2", 1024000L).isError());
       TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(storeName, 2),
-          controllerClient, 10, TimeUnit.SECONDS, Optional.empty());
+          controllerClient, 10, TimeUnit.SECONDS);
       Assert.assertFalse(parentControllerClient.deleteOldVersion(storeName, 1).isError());
       MultiStoreTopicsResponse parentMultiStoreTopicResponse = parentControllerClient.getDeletableStoreTopics();
       Assert.assertFalse(parentMultiStoreTopicResponse.isError());

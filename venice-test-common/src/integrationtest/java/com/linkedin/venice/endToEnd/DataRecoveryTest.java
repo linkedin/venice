@@ -73,9 +73,6 @@ public class DataRecoveryTest {
     controllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
 
     controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
-    int parentKafkaPort = Utils.getFreePort();
-    controllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME,
-        "localhost:" + parentKafkaPort);
     controllerProps.put(ALLOW_CLUSTER_WIPE, "true");
     controllerProps.put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, "1000");
     controllerProps.put(MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE, "0");
@@ -83,7 +80,7 @@ public class DataRecoveryTest {
     multiColoMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(NUMBER_OF_CHILD_DATACENTERS, NUMBER_OF_CLUSTERS, 1,
             1, 2, 1, 2, Optional.of(new VeniceProperties(controllerProps)), Optional.of(controllerProps),
-            Optional.of(new VeniceProperties(serverProperties)), false, false, Optional.of(parentKafkaPort));
+            Optional.of(new VeniceProperties(serverProperties)), false, false);
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
     clusterName = CLUSTER_NAMES[0];
@@ -121,7 +118,7 @@ public class DataRecoveryTest {
       Assert.assertFalse(
           parentControllerClient.emptyPush(storeName, "empty-push-" + System.currentTimeMillis(), 1000).isError());
       TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(storeName, 1), parentControllerClient,
-          30, TimeUnit.SECONDS, Optional.empty());
+          30, TimeUnit.SECONDS);
       ReadyForDataRecoveryResponse response =
           parentControllerClient.isStoreVersionReadyForDataRecovery("dc-0", "dc-1", storeName, 1, Optional.empty());
       Assert.assertFalse(response.isError());
@@ -172,7 +169,7 @@ public class DataRecoveryTest {
           IntStream.range(0, 10).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))),
           HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
       TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponse.getKafkaTopic(), parentControllerClient,
-          60, TimeUnit.SECONDS, Optional.empty());
+          60, TimeUnit.SECONDS);
       // Prepare dc-1 for data recovery
       Assert.assertFalse(
           parentControllerClient.prepareDataRecovery("dc-0", "dc-1", storeName, 1, Optional.empty()).isError());
@@ -185,7 +182,7 @@ public class DataRecoveryTest {
       Assert.assertFalse(
           parentControllerClient.dataRecovery("dc-0", "dc-1", storeName, 1, false, true, Optional.empty()).isError());
       TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponse.getKafkaTopic(), parentControllerClient,
-          60, TimeUnit.SECONDS, Optional.empty());
+          60, TimeUnit.SECONDS);
       try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName)
               .setVeniceURL(childDatacenters.get(1).getClusters().get(clusterName).getRandomRouterURL()))) {
@@ -224,7 +221,7 @@ public class DataRecoveryTest {
           parentControllerClient.emptyPush(storeName, "empty-push-" + System.currentTimeMillis(), 1000).isError());
       String versionTopic = Version.composeKafkaTopic(storeName, 1);
       TestUtils.waitForNonDeterministicPushCompletion(versionTopic, parentControllerClient,
-          60, TimeUnit.SECONDS, Optional.empty());
+          60, TimeUnit.SECONDS);
 
       Map<String, String> samzaConfig = new HashMap<>();
       String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
@@ -255,7 +252,7 @@ public class DataRecoveryTest {
       Assert.assertFalse(
           parentControllerClient.dataRecovery("dc-0", "dc-1", storeName, 1, false, true, Optional.empty()).isError());
       TestUtils.waitForNonDeterministicPushCompletion(versionTopic, parentControllerClient,
-          60, TimeUnit.SECONDS, Optional.empty());
+          60, TimeUnit.SECONDS);
 
       try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName)

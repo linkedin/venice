@@ -188,17 +188,19 @@ public class DaVinciClientTest {
       // Test automatic new version ingestion
       for (int i = 0; i < 2; ++i) {
         // Test per-version partitioning parameters
-        try (ControllerClient controllerClient = cluster.getControllerClient()) {
+        int partitionCount = i + 1;
+        String iString = String.valueOf(i);
+        cluster.useControllerClient(controllerClient -> {
           ControllerResponse response = controllerClient.updateStore(
               storeName1,
               new UpdateStoreQueryParams()
                   .setPartitionerClass(ConstantVenicePartitioner.class.getName())
-                  .setPartitionCount(i + 1)
+                  .setPartitionCount(partitionCount)
                   .setPartitionerParams(
-                      Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(i))
+                      Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, iString)
                   ));
           assertFalse(response.isError(), response.getError());
-        }
+        });
 
         Integer expectedValue = cluster.createVersion(storeName1, KEY_COUNT);
         TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
@@ -229,10 +231,10 @@ public class DaVinciClientTest {
     }
 
     // Test bootstrap-time junk removal
-    try (ControllerClient controllerClient = cluster.getControllerClient()) {
+    cluster.useControllerClient(controllerClient -> {
       ControllerResponse response = controllerClient.disableAndDeleteStore(storeName3);
       assertFalse(response.isError(), response.getError());
-    }
+    });
 
     // Test managed clients & data cleanup
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
@@ -712,18 +714,13 @@ public class DaVinciClientTest {
     }
 
     // Update the store to use non-default partitioner
-    try (ControllerClient client = cluster.getControllerClient()) {
-      ControllerResponse response = client.updateStore(
-          storeName,
-          new UpdateStoreQueryParams()
-              .setPartitionerClass(ConstantVenicePartitioner.class.getName())
-              .setPartitionerParams(
-                  Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(2))
-              )
-      );
-      assertFalse(response.isError(), response.getError());
-      cluster.createVersion(storeName, KEY_COUNT);
-    }
+    cluster.useControllerClient(controllerClient -> TestUtils.assertCommand(controllerClient.updateStore(
+        storeName,
+        new UpdateStoreQueryParams()
+            .setPartitionerClass(ConstantVenicePartitioner.class.getName())
+            .setPartitionerParams(
+                Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(2))))));
+    cluster.createVersion(storeName, KEY_COUNT);
     daVinciConfig.setNonLocalAccessPolicy(NonLocalAccessPolicy.QUERY_VENICE);
     try (DaVinciClient<Integer, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig)) {
       client.subscribe(Collections.singleton(0)).get();
@@ -861,7 +858,7 @@ public class DaVinciClientTest {
         .setHybridRewindSeconds(10)
         .setHybridOffsetLagThreshold(10);
     paramsConsumer.accept(params);
-    try (ControllerClient client = cluster.getControllerClient()) {
+    cluster.useControllerClient(client -> {
       client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
       TestUtils.createMetaSystemStore(client, storeName, Optional.of(logger));
       client.updateStore(storeName, params);
@@ -875,7 +872,7 @@ public class DaVinciClientTest {
       } finally {
         producer.stop();
       }
-    }
+    });
   }
 
   private void generateHybridData(String storeName, List<Pair<Object, Object>> dataToWrite) {

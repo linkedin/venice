@@ -9,7 +9,6 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -36,7 +35,6 @@ import org.testng.annotations.Test;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
@@ -81,7 +79,6 @@ public class TestActiveActiveReplicationForIncPush {
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
     controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
-    int parentKafkaPort = Utils.getFreePort();
 
     multiColoMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
@@ -96,8 +93,7 @@ public class TestActiveActiveReplicationForIncPush {
             Optional.of(controllerProps),
             Optional.of(new VeniceProperties(serverProperties)),
             false,
-            false,
-            Optional.of(parentKafkaPort));
+            false);
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
 

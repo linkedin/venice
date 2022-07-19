@@ -19,7 +19,6 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.util.HashMap;
-import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 @Test(singleThreaded = true)
@@ -72,7 +71,7 @@ public class TestRestartController {
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
     // After stopping origin leader, the new leader could handle the push status report correctly.
-    TestUtils.waitForNonDeterministicPushCompletion(topicName, controllerClient, OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS, Optional.empty());
+    TestUtils.waitForNonDeterministicPushCompletion(topicName, controllerClient, OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS);
     VersionCreationResponse responseV2 = createNewVersionWithRetry(storeName, dataSize);
     Assert.assertFalse(responseV2.isError());
     Assert.assertEquals(responseV2.getVersion(), versionNum + 1);
@@ -98,7 +97,7 @@ public class TestRestartController {
     // Finish the push and verify that it completes under the newly elected controller.
     veniceWriter = cluster.getVeniceWriter(topicNameV2);
     veniceWriter.broadcastEndOfPush(new HashMap<>());
-    TestUtils.waitForNonDeterministicPushCompletion(topicNameV2, controllerClient, OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS, Optional.empty());
+    TestUtils.waitForNonDeterministicPushCompletion(topicNameV2, controllerClient, OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS);
 
     // Check it one more time for good measure with a third and final push
     VersionCreationResponse responseV3 = createNewVersionWithRetry(storeName, dataSize);
@@ -112,7 +111,7 @@ public class TestRestartController {
     // Broadcast end of push and verify it completes
     veniceWriter = cluster.getVeniceWriter(topicNameV3);
     veniceWriter.broadcastEndOfPush(new HashMap<>());
-    TestUtils.waitForNonDeterministicPushCompletion(topicNameV3, controllerClient, OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS, Optional.empty());
+    TestUtils.waitForNonDeterministicPushCompletion(topicNameV3, controllerClient, OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS);
 
   }
 
@@ -140,7 +139,7 @@ public class TestRestartController {
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
     // After stopping origin leader, the new leader could handle the push status report correctly.
-    TestUtils.waitForNonDeterministicPushCompletion(topicName, controllerClient, OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS, Optional.empty());
+    TestUtils.waitForNonDeterministicPushCompletion(topicName, controllerClient, OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS);
     VeniceControllerWrapper controllerWrapper = cluster.getLeaderVeniceController();
     double duration = controllerWrapper.getMetricRepository().getMetric("." + storeName + "--successful_push_duration_sec_gauge.Gauge").value();
 

@@ -521,7 +521,7 @@ public class ServiceFactory {
     return getService(VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
         VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(numberOfColos, numberOfClustersInEachColo, numberOfParentControllers,
             numberOfControllers, numberOfServers, numberOfRouters, replicationFactor, parentControllerProps,
-            childControllerProperties, serverProps, multiD2, false, Optional.empty()));
+            childControllerProperties, serverProps, multiD2, false));
   }
 
   public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(int numberOfColos,
@@ -531,18 +531,7 @@ public class ServiceFactory {
     return getService(VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
         VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(numberOfColos, numberOfClustersInEachColo, numberOfParentControllers,
             numberOfControllers, numberOfServers, numberOfRouters, replicationFactor, parentControllerProps,
-            childControllerProperties, serverProps, multiD2, forkServer, Optional.empty()));
-  }
-
-  public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(int numberOfColos,
-      int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers, int numberOfRouters,
-      int replicationFactor, Optional<VeniceProperties> parentControllerProps,
-      Optional<Properties> childControllerProperties, Optional<VeniceProperties> serverProps, boolean multiD2,
-      boolean forkServer, Optional<Integer> parentKafkaPort) {
-    return getService(VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
-        VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(numberOfColos, numberOfClustersInEachColo, numberOfParentControllers,
-            numberOfControllers, numberOfServers, numberOfRouters, replicationFactor, parentControllerProps,
-            childControllerProperties, serverProps, multiD2, forkServer, parentKafkaPort));
+            childControllerProperties, serverProps, multiD2, forkServer));
   }
 
   public static HelixAsAServiceWrapper getHelixController(String zkAddress) {

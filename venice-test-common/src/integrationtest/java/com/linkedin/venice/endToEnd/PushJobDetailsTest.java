@@ -30,7 +30,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -56,7 +55,6 @@ public class PushJobDetailsTest {
   private VeniceClusterWrapper venice;
   private VeniceControllerWrapper parentController;
   private ZkServerWrapper zkWrapper;
-  private ControllerClient controllerClient;
   private ControllerClient parentControllerClient;
   private Properties controllerProperties;
   private Schema recordSchema;
@@ -80,11 +78,10 @@ public class PushJobDetailsTest {
     parentController = ServiceFactory.getVeniceParentController(venice.getClusterName(), zkWrapper.getAddress(),
         venice.getKafka(), new VeniceControllerWrapper[]{venice.getLeaderVeniceController()},
         new VeniceProperties(controllerProperties), false);
-    controllerClient = venice.getControllerClient();
     parentControllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
-    TestUtils.waitForNonDeterministicPushCompletion(
+    venice.useControllerClient(controllerClient -> TestUtils.waitForNonDeterministicPushCompletion(
         Version.composeKafkaTopic(VeniceSystemStoreUtils.getPushJobDetailsStoreName(), 1), controllerClient,
-        2, TimeUnit.MINUTES, Optional.of(logger));
+        2, TimeUnit.MINUTES));
     File inputDir = getTempDataDirectory();
     inputDirPath = "file://" + inputDir.getAbsolutePath();
     recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
@@ -97,7 +94,6 @@ public class PushJobDetailsTest {
 
   @AfterClass
   public void cleanUp() {
-    Utils.closeQuietlyWithErrorLogged(controllerClient);
     Utils.closeQuietlyWithErrorLogged(parentControllerClient);
     Utils.closeQuietlyWithErrorLogged(parentController);
     Utils.closeQuietlyWithErrorLogged(venice);
