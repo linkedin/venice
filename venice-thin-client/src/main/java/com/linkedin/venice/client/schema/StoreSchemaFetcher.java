@@ -22,9 +22,9 @@ public interface StoreSchemaFetcher extends Closeable {
   Schema getLatestValueSchema();
 
   /**
-   * Returns the latest available UPDATE (write compute) schema of the store.
+   * Returns the latest available WRITE OPERATION (write compute) schema of the store.
    */
-  Schema getLatestUpdateSchema();
+  Schema getLatestWriteOperationSchema();
 
   /**
    * Returns the Venice store name this class is associated with.
