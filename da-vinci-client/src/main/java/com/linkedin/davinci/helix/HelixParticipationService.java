@@ -1,6 +1,7 @@
 package com.linkedin.davinci.helix;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.DefaultIngestionBackend;
 import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
@@ -134,20 +135,19 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     helixManager = new SafeHelixManager(
         HelixManagerFactory.getZKHelixManager(clusterName, this.participantName, InstanceType.PARTICIPANT, zkAddress));
 
-    leaderFollowerHelixStateTransitionThreadPool = initHelixStateTransitionThreadPool(
-        veniceConfigLoader.getVeniceServerConfig().getMaxLeaderFollowerStateTransitionThreadNumber(),
-        "Venice-L/F-state-transition", metricsRepository,
-        "Venice_L/F_ST_thread_pool");
+    VeniceServerConfig config = veniceConfigLoader.getVeniceServerConfig();
+    leaderFollowerHelixStateTransitionThreadPool =
+        initHelixStateTransitionThreadPool(config.getMaxLeaderFollowerStateTransitionThreadNumber(),
+            "Venice-L/F-state-transition", metricsRepository, "Venice_L/F_ST_thread_pool");
 
-    if (veniceConfigLoader.getVeniceServerConfig()
-        .getLeaderFollowerThreadPoolStrategy()
+    if (config.getLeaderFollowerThreadPoolStrategy()
         .equals(LeaderFollowerPartitionStateModelFactory.LeaderFollowerThreadPoolStrategy.DUAL_POOL_STRATEGY)) {
       leaderFollowerParticipantModelFactory =
           new LeaderFollowerPartitionStateModelDualPoolFactory(ingestionBackend, veniceConfigLoader,
-              leaderFollowerHelixStateTransitionThreadPool, initHelixStateTransitionThreadPool(
-              veniceConfigLoader.getVeniceServerConfig().getMaxFutureVersionLeaderFollowerStateTransitionThreadNumber(),
-              "venice-L/F-state-transition-future-version", metricsRepository,
-              "Venice_L/F_ST_thread_pool_future_version"), helixReadOnlyStoreRepository,
+              leaderFollowerHelixStateTransitionThreadPool,
+              initHelixStateTransitionThreadPool(config.getMaxFutureVersionLeaderFollowerStateTransitionThreadNumber(),
+                  "venice-L/F-state-transition-future-version", metricsRepository,
+                  "Venice_L/F_ST_thread_pool_future_version"), helixReadOnlyStoreRepository,
               partitionPushStatusAccessorFuture, instance.getNodeId());
     } else {
       leaderFollowerParticipantModelFactory =
@@ -155,6 +155,9 @@ public class HelixParticipationService extends AbstractVeniceService implements 
               leaderFollowerHelixStateTransitionThreadPool, helixReadOnlyStoreRepository,
               partitionPushStatusAccessorFuture, instance.getNodeId());
     }
+    logger.info("LeaderFollower threadPool info: strategy = {}, max future state transition thread = {}",
+        config.getLeaderFollowerThreadPoolStrategy(),
+        config.getMaxFutureVersionLeaderFollowerStateTransitionThreadNumber());
 
     helixManager.getStateMachineEngine().registerStateModelFactory(LeaderStandbySMD.name, leaderFollowerParticipantModelFactory);
     //TODO Now Helix instance config only support host and port. After talking to Helix team, they will add
