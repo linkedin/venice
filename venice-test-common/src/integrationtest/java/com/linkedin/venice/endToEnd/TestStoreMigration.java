@@ -238,7 +238,7 @@ public class TestStoreMigration {
           "New version creation for meta system store: " + metaSystemStoreName
               + " should success, but got error: " + versionCreationResponseForMetaSystemStore.getError());
       TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponseForMetaSystemStore.getKafkaTopic(),
-          srcParentControllerClient, 30, TimeUnit.SECONDS, Optional.empty());
+          srcParentControllerClient, 30, TimeUnit.SECONDS);
 
       String srcD2ServiceName = "venice-" + srcClusterName.substring(srcClusterName.length() - 1);
       D2Client d2Client = D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress());
@@ -292,7 +292,7 @@ public class TestStoreMigration {
           "New version creation for da vinci push status system store: " + daVinciPushStatusSystemStoreName
               + " should success, but got error: " + versionCreationResponseForDaVinciPushStatusSystemStore.getError());
       TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponseForDaVinciPushStatusSystemStore.getKafkaTopic(),
-          srcParentControllerClient, 30, TimeUnit.SECONDS, Optional.empty());
+          srcParentControllerClient, 30, TimeUnit.SECONDS);
     }
 
     VeniceProperties backendConfig = DaVinciTestContext.getDaVinciPropertyBuilder(multiClusterWrapper.getZkServerWrapper()

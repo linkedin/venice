@@ -30,6 +30,7 @@ import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
+import org.testng.asserts.Assertion;
 
 import static com.linkedin.venice.kafka.TopicManager.*;
 import static com.linkedin.venice.meta.Version.*;
@@ -93,7 +94,8 @@ public class TestTopicRequestOnHybridDelete {
       try {
         venice.getNewStore(storeName);
         Assert.fail("Must not be able to create a store that already exists");
-      } catch (VeniceException e){
+      } catch (AssertionError e) {
+        Assert.assertTrue(e.getMessage().contains("already exists"));
         //expected
       }
 

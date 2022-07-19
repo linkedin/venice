@@ -9,11 +9,11 @@ import java.util.function.Supplier;
 
 public class LazyResettableImpl<C> implements LazyResettable<C> {
   private final Supplier<C> supplier;
-  private Lazy<C> lazy;
+  protected Lazy<C> lazy;
 
   public LazyResettableImpl(Supplier<C> supplier) {
     this.supplier = supplier;
-    reset();
+    this.lazy = Lazy.of(supplier);
   }
 
   @Override

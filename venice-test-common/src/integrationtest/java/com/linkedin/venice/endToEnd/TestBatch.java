@@ -16,7 +16,6 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.read.RequestType;
@@ -37,7 +36,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -881,7 +879,7 @@ public abstract class TestBatch {
         VersionCreationResponse versionCreationResponse = controllerClient.emptyPush(
             VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), storeName, 10000);
         TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponse.getKafkaTopic(), controllerClient, 10000,
-            TimeUnit.SECONDS, Optional.empty());
+            TimeUnit.SECONDS);
       }
     }
 

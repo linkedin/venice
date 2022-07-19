@@ -100,8 +100,8 @@ public class TestStaleDataVisibility {
     try (ControllerClient controllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
       String pushStatusStoreVersionName = Version.composeKafkaTopic(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName), 1);
       String metaStoreVersionName = Version.composeKafkaTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), 1);
-      TestUtils.waitForNonDeterministicPushCompletion(pushStatusStoreVersionName, controllerClient, 1, TimeUnit.MINUTES, Optional.empty());
-      TestUtils.waitForNonDeterministicPushCompletion(metaStoreVersionName, controllerClient, 1, TimeUnit.MINUTES, Optional.empty());
+      TestUtils.waitForNonDeterministicPushCompletion(pushStatusStoreVersionName, controllerClient, 1, TimeUnit.MINUTES);
+      TestUtils.waitForNonDeterministicPushCompletion(metaStoreVersionName, controllerClient, 1, TimeUnit.MINUTES);
     }
 
     try (VenicePushJob job = new VenicePushJob("Test push job", props)) {

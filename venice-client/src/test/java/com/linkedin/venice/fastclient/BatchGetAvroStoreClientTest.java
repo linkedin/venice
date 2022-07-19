@@ -309,7 +309,7 @@ public class BatchGetAvroStoreClientTest {
           "New version creation for meta system store failed with error: "
               + metaSystemStoreVersionCreationResponse.getError());
       TestUtils.waitForNonDeterministicPushCompletion(metaSystemStoreVersionCreationResponse.getKafkaTopic(),
-          controllerClient, 30, TimeUnit.SECONDS, Optional.empty());
+          controllerClient, 30, TimeUnit.SECONDS);
       daVinciBackendConfig = new PropertyBuilder()
           .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
           .put(PERSISTENCE_TYPE, ROCKS_DB)

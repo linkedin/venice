@@ -48,7 +48,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -120,7 +119,7 @@ public class MetaSystemStoreTest {
     assertFalse(versionCreationResponse.isError(),
         "New version creation should success, but got error: " + versionCreationResponse.getError());
     TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponse.getKafkaTopic(), controllerClient, 10,
-        TimeUnit.SECONDS, Optional.of(LOGGER));
+        TimeUnit.SECONDS);
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(regularVeniceStoreName);
     // Query meta system store
     AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> storeClient = ClientFactory.getAndStartSpecificAvroClient(
@@ -192,7 +191,7 @@ public class MetaSystemStoreTest {
     assertFalse(versionCreationResponse.isError(),
         "New version creation should success, but got error: " + versionCreationResponse.getError());
     TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponse.getKafkaTopic(), controllerClient, 10000,
-        TimeUnit.SECONDS, Optional.of(LOGGER));
+        TimeUnit.SECONDS);
     // Query replica status
     StoreMetaKey replicaStatusKeyForV2P0 =
         MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(new HashMap<String, String>() {{
@@ -214,7 +213,7 @@ public class MetaSystemStoreTest {
     assertFalse(versionCreationResponse.isError(),
         "New version creation should success, but got error: " + versionCreationResponse.getError());
     TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponse.getKafkaTopic(), controllerClient, 10,
-        TimeUnit.SECONDS, Optional.of(LOGGER));
+        TimeUnit.SECONDS);
     // Query replica status
     StoreMetaKey replicaStatusKeyForV3P0 =
         MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(new HashMap<String, String>() {{
@@ -308,7 +307,7 @@ public class MetaSystemStoreTest {
         controllerClient.emptyPush(metaSystemStoreName, "test_meta_system_store_push2", 10000);
     TestUtils.waitForNonDeterministicPushCompletion(
         Version.composeKafkaTopic(metaSystemStoreName, metaSystemStoreNewVersionResponse.getVersion()),
-        controllerClient, 30, TimeUnit.SECONDS, Optional.of(LOGGER));
+        controllerClient, 30, TimeUnit.SECONDS);
     D2Client d2Client = null;
     NativeMetadataRepository nativeMetadataRepository = null;
     try {
@@ -371,7 +370,7 @@ public class MetaSystemStoreTest {
           controllerClient.emptyPush(metaSystemStoreName, "test_meta_system_store_push2", 10000);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(metaSystemStoreName, metaSystemStoreNewVersionResponse.getVersion()),
-          controllerClient, 30, TimeUnit.SECONDS, Optional.of(LOGGER));
+          controllerClient, 30, TimeUnit.SECONDS);
       // Remove the older version.
       assertFalse(controllerClient.deleteOldVersion(metaSystemStoreName, 1).isError());
       // A new version push should still be detected and ingested by the DaVinci client
@@ -465,7 +464,7 @@ public class MetaSystemStoreTest {
           "Unexpected new store creation failure");
       String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
       TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(metaSystemStoreName, 1),
-          parentControllerClient, 30, TimeUnit.SECONDS, Optional.empty());
+          parentControllerClient, 30, TimeUnit.SECONDS);
     }
   }
 
@@ -518,7 +517,7 @@ public class MetaSystemStoreTest {
         controllerClient.emptyPush(regularVeniceStoreName, "new_push", 10000);
     assertFalse(versionCreationResponse.isError());
     TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponse.getKafkaTopic(), controllerClient, 10,
-        TimeUnit.SECONDS, Optional.of(LOGGER));
+        TimeUnit.SECONDS);
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       assertTrue(nativeMetadataRepository.getStore(regularVeniceStoreName)
           .getVersion(versionCreationResponse.getVersion())
@@ -546,7 +545,7 @@ public class MetaSystemStoreTest {
     if (ExecutionStatus.NOT_CREATED.toString().equals(metaSystemStoreStatus)) {
       assertFalse(controllerClient.emptyPush(metaSystemStoreName, "test_meta_system_store_push", 10000).isError());
       TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(metaSystemStoreName, 1),
-          controllerClient, 30, TimeUnit.SECONDS, Optional.of(LOGGER));
+          controllerClient, 30, TimeUnit.SECONDS);
     } else if (!ExecutionStatus.COMPLETED.toString().equals(metaSystemStoreStatus)) {
       fail("Unexpected meta system store status: " + metaSystemStoreStatus);
     }

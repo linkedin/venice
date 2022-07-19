@@ -42,14 +42,14 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       Optional<VeniceProperties> serverProperties) {
     return generateService(numberOfColos, numberOfClustersInEachColo, numberOfParentControllers, numberOfControllers,
         numberOfServers, numberOfRouters, replicationFactor, parentControllerProperties, Optional.empty(),
-        serverProperties, false, false, Optional.empty());
+        serverProperties, false, false);
   }
 
   static ServiceProvider<VeniceTwoLayerMultiColoMultiClusterWrapper> generateService(int numberOfColos,
       int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers,
       int numberOfRouters, int replicationFactor, Optional<VeniceProperties> parentControllerPropertiesOverride,
       Optional<Properties> childControllerPropertiesOverride, Optional<VeniceProperties> serverProperties, boolean multiD2,
-      boolean forkServer, Optional<Integer> parentKafkaPort) {
+      boolean forkServer) {
     String parentColoName = VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
     final List<VeniceControllerWrapper> parentControllers = new ArrayList<>(numberOfParentControllers);
     final List<VeniceMultiClusterWrapper> multiClusters = new ArrayList<>(numberOfColos);
@@ -67,9 +67,14 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
 
     try {
       zkServer = ServiceFactory.getZkServer();
-      parentKafka = parentKafkaPort.isPresent() ? ServiceFactory.getKafkaBroker(zkServer, parentKafkaPort.get())
-          : ServiceFactory.getKafkaBroker(zkServer);
+      parentKafka = ServiceFactory.getKafkaBroker(zkServer);
       allKafkaBrokers.add(parentKafka);
+
+      Properties parentControllerProps = parentControllerPropertiesOverride.isPresent()
+          ? parentControllerPropertiesOverride.get().getPropertiesCopy() : new Properties();
+      /** Enable participant system store by default in a two-layer multi-colo set-up */
+      parentControllerProps.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
+      parentControllerPropertiesOverride = Optional.of(new VeniceProperties(parentControllerProps));
 
       String clusterToD2 = "";
       String[] clusterNames = new String[numberOfClustersInEachColo];

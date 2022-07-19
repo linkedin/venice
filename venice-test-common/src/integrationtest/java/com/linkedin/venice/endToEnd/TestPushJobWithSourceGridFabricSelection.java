@@ -33,7 +33,6 @@ import org.testng.annotations.Test;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
@@ -68,8 +67,6 @@ public class TestPushJobWithSourceGridFabricSelection {
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
     controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
-    int parentKafkaPort = Utils.getFreePort();
-    controllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME, "localhost:" + parentKafkaPort);
 
     multiColoMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
@@ -84,8 +81,7 @@ public class TestPushJobWithSourceGridFabricSelection {
             Optional.of(controllerProps),
             Optional.of(new VeniceProperties(serverProperties)),
             false,
-            false,
-            Optional.of(parentKafkaPort));
+            false);
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
   }

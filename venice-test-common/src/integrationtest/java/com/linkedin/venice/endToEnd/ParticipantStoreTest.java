@@ -86,7 +86,7 @@ public class ParticipantStoreTest {
     controllerClient = venice.getControllerClient();
     parentControllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
     TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(participantMessageStoreName, 1),
-        controllerClient, 2, TimeUnit.MINUTES, Optional.of(logger));
+        controllerClient, 2, TimeUnit.MINUTES);
   }
 
   @AfterClass
@@ -229,7 +229,7 @@ public class ParticipantStoreTest {
     Assert.assertFalse(newVersionResponse.isError(), "Controller error: " + newVersionResponse.getError());
     parentControllerClient.writeEndOfPush(storeName, newVersionResponse.getVersion());
     TestUtils.waitForNonDeterministicPushCompletion(newVersionResponse.getKafkaTopic(),
-        parentControllerClient, 30, TimeUnit.SECONDS, Optional.empty());
+        parentControllerClient, 30, TimeUnit.SECONDS);
     parentControllerClient.deleteOldVersion(storeName, Version.parseVersionFromKafkaTopicName(topicNameForOnlineVersion));
     verifyKillMessageInParticipantStore(topicNameForOnlineVersion, true);
   }

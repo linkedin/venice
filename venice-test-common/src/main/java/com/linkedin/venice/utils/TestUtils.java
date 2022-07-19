@@ -24,8 +24,11 @@ import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixInstanceConverter;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
@@ -164,6 +167,21 @@ public class TestUtils {
     }
   }
 
+  public static ControllerResponse updateStoreToHybrid(String storeName, ControllerClient parentControllerClient,
+      Optional<Boolean> enableNativeReplication, Optional<Boolean> enableActiveActiveReplication,
+      Optional<Boolean> enableChunking) {
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+        .setHybridRewindSeconds(25L)
+        .setHybridOffsetLagThreshold(1L)
+        .setLeaderFollowerModel(true);
+
+    enableNativeReplication.ifPresent(params::setNativeReplicationEnabled);
+    enableActiveActiveReplication.ifPresent(params::setActiveActiveReplicationEnabled);
+    enableChunking.ifPresent(params::setChunkingEnabled);
+
+    return assertCommand(parentControllerClient.updateStore(storeName, params));
+  }
+
   public interface NonDeterministicAssertion {
     void execute() throws Exception;
   }
@@ -232,13 +250,13 @@ public class TestUtils {
   }
 
   public static VersionCreationResponse createVersionWithBatchData(ControllerClient controllerClient, String storeName,
-      String keySchema, String valueSchema, Stream<Map.Entry> batchData) throws Exception {
+      String keySchema, String valueSchema, Stream<Map.Entry> batchData) {
     return createVersionWithBatchData(controllerClient, storeName, keySchema, valueSchema, batchData,
         HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
   }
 
   public static VersionCreationResponse createVersionWithBatchData(ControllerClient controllerClient, String storeName,
-      String keySchema, String valueSchema, Stream<Map.Entry> batchData, int valueSchemaId) throws Exception {
+      String keySchema, String valueSchema, Stream<Map.Entry> batchData, int valueSchemaId) {
     VersionCreationResponse response = TestUtils.assertCommand(controllerClient.requestTopicForWrites(
         storeName,
         1024,
@@ -257,13 +275,13 @@ public class TestUtils {
   }
 
   public static void writeBatchData(VersionCreationResponse response, String keySchema, String valueSchema,
-      Stream<Map.Entry> batchData, int valueSchemaId) throws Exception {
+      Stream<Map.Entry> batchData, int valueSchemaId) {
     writeBatchData(response, keySchema, valueSchema, batchData, valueSchemaId, CompressionStrategy.NO_OP,
         null);
   }
   public static void writeBatchData(VersionCreationResponse response, String keySchema, String valueSchema,
       Stream<Map.Entry> batchData, int valueSchemaId, CompressionStrategy compressionStrategy,
-      Function<String,ByteBuffer> compressionDictionaryGenerator) throws Exception {
+      Function<String,ByteBuffer> compressionDictionaryGenerator) {
     Properties props = new Properties();
     props.put(KAFKA_BOOTSTRAP_SERVERS, response.getKafkaBootstrapServers());
     props.setProperty(PARTITIONER_CLASS, response.getPartitionerClass());
@@ -289,7 +307,7 @@ public class TestUtils {
   }
 
   private static void writeCompressed(VeniceWriterFactory writerFactory, String keySchema, String valueSchema, int valueSchemaId, String kafkaTopic, int partitionCount, VenicePartitioner venicePartitioner,
-      Stream<Map.Entry> batchData, CompressionStrategy compressionStrategy, ByteBuffer compressionDictionary) throws Exception {
+      Stream<Map.Entry> batchData, CompressionStrategy compressionStrategy, ByteBuffer compressionDictionary) {
     VeniceCompressor compressor = null;
     if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
       compressor = new ZstdWithDictCompressor(compressionDictionary.array(), 0);
@@ -317,11 +335,20 @@ public class TestUtils {
         future.get();
       }
       writer.broadcastEndOfPush(Collections.emptyMap());
+    } catch (InterruptedException|ExecutionException|IOException e) {
+      throw new VeniceException(e);
     }
   }
 
-  private static void writeUncompressed(VeniceWriterFactory writerFactory, String keySchema, String valueSchema, int valueSchemaId, String kafkaTopic, int partitionCount, VenicePartitioner venicePartitioner,
-      Stream<Map.Entry> batchData) throws Exception {
+  private static void writeUncompressed(
+      VeniceWriterFactory writerFactory,
+      String keySchema,
+      String valueSchema,
+      int valueSchemaId,
+      String kafkaTopic,
+      int partitionCount,
+      VenicePartitioner venicePartitioner,
+      Stream<Map.Entry> batchData) {
 
     try (VeniceWriter<Object, Object, byte[]> writer = writerFactory.createVeniceWriter(kafkaTopic, new VeniceAvroKafkaSerializer(keySchema),
         new VeniceAvroKafkaSerializer(valueSchema),
@@ -337,6 +364,8 @@ public class TestUtils {
         future.get();
       }
       writer.broadcastEndOfPush(Collections.emptyMap());
+    } catch (InterruptedException|ExecutionException e) {
+      throw new VeniceException(e);
     }
   }
 
@@ -344,23 +373,19 @@ public class TestUtils {
    * Wait for the push job for a store version or topic to be completed. The polling will fast fail if the push is
    * found to be in ERROR state.
    */
-  public static void waitForNonDeterministicPushCompletion(String topicName, ControllerClient controllerClient,
-      long timeout, TimeUnit timeoutUnit, Optional<Logger> logger) {
-    waitForNonDeterministicCompletion(timeout, timeoutUnit, () -> {
-      String emptyPushStatus = controllerClient.queryJobStatus(topicName, Optional.empty()).getStatus();
-      boolean ignoreError = false;
-      try {
-        assertNotEquals(emptyPushStatus, ExecutionStatus.ERROR.toString(), "Unexpected push failure");
-        ignoreError = true;
-        assertEquals(emptyPushStatus, ExecutionStatus.COMPLETED.toString(), "Push is yet to complete");
-        return true;
-      } catch (AssertionError | VerifyError e) {
-        if (ignoreError) {
-          logger.ifPresent(value -> value.info(e.getMessage()));
-          return false;
-        }
-        throw e;
+  public static void waitForNonDeterministicPushCompletion(
+      String topicName,
+      ControllerClient controllerClient,
+      long timeout,
+      TimeUnit timeoutUnit) {
+    waitForNonDeterministicAssertion(timeout, timeoutUnit, () -> {
+      JobStatusQueryResponse jobStatusQueryResponse = assertCommand(
+          controllerClient.queryJobStatus(topicName, Optional.empty()));
+      ExecutionStatus executionStatus = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());
+      if (executionStatus == ExecutionStatus.ERROR) {
+        throw new VeniceException("Unexpected push failure: " + jobStatusQueryResponse.toString());
       }
+      assertEquals(executionStatus, ExecutionStatus.COMPLETED, "Push is yet to complete: " + jobStatusQueryResponse.toString());
     });
   }
 
@@ -774,7 +799,7 @@ public class TestUtils {
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
     VersionCreationResponse response = controllerClient.emptyPush(metaSystemStoreName, "testEmptyPush", 1234321);
     Assert.assertFalse(response.isError());
-    TestUtils.waitForNonDeterministicPushCompletion(response.getKafkaTopic(), controllerClient, 1, TimeUnit.MINUTES, logger);
+    TestUtils.waitForNonDeterministicPushCompletion(response.getKafkaTopic(), controllerClient, 1, TimeUnit.MINUTES);
     logger.ifPresent(value -> value.info("System store " + metaSystemStoreName + " is created."));
   }
 

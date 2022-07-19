@@ -33,7 +33,6 @@ import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -79,7 +78,7 @@ public class DaVinciClientBasedMetadataTest {
       assertFalse(metaSystemStoreVersionCreationResponse.isError(),
           "New version creation for meta system store failed with error: " + metaSystemStoreVersionCreationResponse.getError());
       TestUtils.waitForNonDeterministicPushCompletion(metaSystemStoreVersionCreationResponse.getKafkaTopic(), controllerClient, 30,
-          TimeUnit.SECONDS, Optional.empty());
+          TimeUnit.SECONDS);
       daVinciBackendConfig = new PropertyBuilder()
           .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
           .put(PERSISTENCE_TYPE, ROCKS_DB)

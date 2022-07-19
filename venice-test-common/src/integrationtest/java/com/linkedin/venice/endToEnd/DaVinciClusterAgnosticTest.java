@@ -93,7 +93,7 @@ public class DaVinciClusterAgnosticTest {
         // Verify the participant store is up and running in child colo
         String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(cluster);
         TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(participantStoreName, 1),
-            controllerClient, 1, TimeUnit.MINUTES, Optional.empty());
+            controllerClient, 1, TimeUnit.MINUTES);
       }
     }
   }
@@ -129,7 +129,7 @@ public class DaVinciClusterAgnosticTest {
                 IntStream.range(0, initialKeyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, value)));
         // Verify the data can be ingested by classic Venice before proceeding.
         TestUtils.waitForNonDeterministicPushCompletion(response.getKafkaTopic(), parentControllerClient, 30,
-            TimeUnit.SECONDS, Optional.empty());
+            TimeUnit.SECONDS);
         makeSureSystemStoresAreOnline(parentControllerClient, storeName);
         multiClusterVenice.getClusters().get(cluster).refreshAllRouterMetaData();
       }
@@ -163,7 +163,7 @@ public class DaVinciClusterAgnosticTest {
         VersionCreationResponse versionCreationResponse = TestUtils.createVersionWithBatchData(parentControllerClient, stores.get(0), INT_KEY_SCHEMA, INT_VALUE_SCHEMA,
             IntStream.range(0, initialKeyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, newValue)));
         TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponse.getKafkaTopic(),
-            parentControllerClient, 60, TimeUnit.SECONDS, Optional.empty());
+            parentControllerClient, 60, TimeUnit.SECONDS);
       }
       TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
         for (int k = 0; k < initialKeyCount; k++) {
@@ -184,7 +184,7 @@ public class DaVinciClusterAgnosticTest {
             migratedStoreName, INT_KEY_SCHEMA, INT_VALUE_SCHEMA,
             IntStream.range(0, initialKeyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, newMigratedStoreValue)));
         TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponse.getKafkaTopic(),
-            parentControllerClient, 60, TimeUnit.SECONDS, Optional.empty());
+            parentControllerClient, 60, TimeUnit.SECONDS);
       }
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         for (int k = 0; k < initialKeyCount; k++) {
@@ -239,7 +239,7 @@ public class DaVinciClusterAgnosticTest {
               IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, record1)), 1);
       // Verify the data can be ingested by classic Venice before proceeding.
       TestUtils.waitForNonDeterministicPushCompletion(response.getKafkaTopic(), parentControllerClient, 30,
-          TimeUnit.SECONDS, Optional.empty());
+          TimeUnit.SECONDS);
       makeSureSystemStoresAreOnline(parentControllerClient, storeName);
       multiClusterVenice.getClusters().get(cluster).refreshAllRouterMetaData();
 
@@ -285,9 +285,9 @@ public class DaVinciClusterAgnosticTest {
   private void makeSureSystemStoresAreOnline(ControllerClient controllerClient, String storeName) {
     String metaSystemStoreTopic = Version.composeKafkaTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), 1);
     TestUtils.waitForNonDeterministicPushCompletion(metaSystemStoreTopic, controllerClient,
-        30, TimeUnit.SECONDS, Optional.empty());
+        30, TimeUnit.SECONDS);
     String daVinciPushStatusStore = Version.composeKafkaTopic(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName), 1);
     TestUtils.waitForNonDeterministicPushCompletion(daVinciPushStatusStore, controllerClient,
-        30, TimeUnit.SECONDS, Optional.empty());
+        30, TimeUnit.SECONDS);
   }
 }

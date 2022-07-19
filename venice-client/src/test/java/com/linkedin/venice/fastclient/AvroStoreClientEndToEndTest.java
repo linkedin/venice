@@ -144,7 +144,7 @@ public class AvroStoreClientEndToEndTest {
       assertFalse(metaSystemStoreVersionCreationResponse.isError(),
           "New version creation for meta system store failed with error: " + metaSystemStoreVersionCreationResponse.getError());
       TestUtils.waitForNonDeterministicPushCompletion(metaSystemStoreVersionCreationResponse.getKafkaTopic(), controllerClient, 30,
-          TimeUnit.SECONDS, Optional.empty());
+          TimeUnit.SECONDS);
       daVinciBackendConfig = new PropertyBuilder()
           .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
           .put(PERSISTENCE_TYPE, ROCKS_DB)

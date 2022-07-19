@@ -97,12 +97,17 @@ public class LeaderFollowerThreadPoolTest {
    * 5.  Create another version and push data.
    * 6.  Assert that the second version cannot be completed and expect a Venice Error.
    */
-  @Test(timeOut = 120 * Time.MS_PER_SECOND, expectedExceptions = VeniceException.class)
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testLeaderFollowerSingleThreadPool() throws Exception {
     commonTestProcedures(false);
 
     // Start a new version push and expect it to fail with exception.
-    String topicNameV2 = createVersionAndPushData(storeName, dataSize);
+    try {
+      createVersionAndPushData(storeName, dataSize);
+      Assert.fail("new version creation should have failed.");
+    } catch (AssertionError e) {
+      Assert.assertTrue(e.getMessage().contains("does not have enough replicas"));
+    }
   }
 
   private void commonTestProcedures(boolean isDualPoolEnabled) throws InterruptedException {

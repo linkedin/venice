@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils.lazy;
 
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 
@@ -25,5 +26,14 @@ public interface LazyResettable<C> extends Lazy<C> {
    */
   static <C> LazyResettable<C> of(Supplier<C> supplier) {
     return new LazyResettableImpl(supplier);
+  }
+
+  /**
+   * @param supplier to initialize the wrapped value
+   * @param tearDown to run on thw wrapped value during reset, if it has already been initialized
+   * @return an instance of {@link Lazy} which will execute the {@param supplier} if needed
+   */
+  static <C> LazyResettable<C> of(Supplier<C> supplier, Consumer<C> tearDown) {
+    return new LazyResettableWithTearDown<>(supplier, tearDown);
   }
 }

@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import com.linkedin.davinci.kafka.consumer.StoreIngestionTaskBackdoor;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -128,17 +129,12 @@ public class TestWriteCompute {
 
         //disable the purging of transientRecord buffer using reflection.
         if (writeComputeFromCache) {
+          String topicName = Version.composeKafkaTopic(storeName, 1);
           for (VeniceServerWrapper veniceServerWrapper : veniceClusterWrapper.getVeniceServers()) {
-            try {
-              VeniceServer veniceServer = veniceServerWrapper.getVeniceServer();
-              StoreIngestionTask ingestionTask = veniceServer.getKafkaStoreIngestionService().getStoreIngestionTask(Version.composeKafkaTopic(storeName, 1));
-              Field purgeTransientRecordBufferField =
-                  ingestionTask.getClass().getSuperclass().getDeclaredField("purgeTransientRecordBuffer");
-              purgeTransientRecordBufferField.setAccessible(true);
-              purgeTransientRecordBufferField.setBoolean(ingestionTask, false);
-            } catch (Exception e) {
-              throw e;
-            }
+            StoreIngestionTaskBackdoor.setPurgeTransientRecordBuffer(
+                veniceServerWrapper,
+                topicName,
+                false);
           }
         }
 

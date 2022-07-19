@@ -899,10 +899,10 @@ public class TestHybrid {
         .setPartitionCount(partitionCount)
         .setLeaderFollowerModel(true);
     String storeName = Utils.getUniqueString("store");
-    try (ControllerClient client = cluster.getControllerClient()) {
+    cluster.useControllerClient(client -> {
       client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
       client.updateStore(storeName, params);
-    }
+    });
     cluster.createVersion(storeName, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i)));
     try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
@@ -1463,10 +1463,10 @@ public class TestHybrid {
           .setPartitionCount(partitionCount)
           .setLeaderFollowerModel(true);
       String storeName = Utils.getUniqueString("store");
-      try (ControllerClient client = cluster.getControllerClient()) {
+      cluster.useControllerClient(client -> {
         client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
         client.updateStore(storeName, params);
-      }
+      });
       // Create store version 1 by writing keyCount * 1 records.
       cluster.createVersion(storeName, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i)));
       try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(

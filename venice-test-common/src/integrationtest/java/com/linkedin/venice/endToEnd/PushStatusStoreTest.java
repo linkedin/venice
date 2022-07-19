@@ -9,10 +9,8 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.IncrementalPushVersionsResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -29,23 +27,17 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
-import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.File;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -56,8 +48,6 @@ import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.common.PushStatusStoreUtils.*;
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
-import static com.linkedin.venice.meta.IngestionMode.*;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
 
@@ -134,7 +124,7 @@ public class PushStatusStoreTest {
         "New version creation for Da Vinci push status system store: " + daVinciPushStatusSystemStoreName + " should success, but got error: "
             + versionCreationResponseForDaVinciPushStatusSystemStore.getError());
     TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponseForDaVinciPushStatusSystemStore.getKafkaTopic(),
-        controllerClient, 30, TimeUnit.SECONDS, Optional.empty());
+        controllerClient, 30, TimeUnit.SECONDS);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT * 2)
@@ -322,7 +312,7 @@ public class PushStatusStoreTest {
       String daVinciPushStatusSystemStoreName =
           VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(userStoreName);
       TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(daVinciPushStatusSystemStoreName, 1),
-          parentControllerClient, 30, TimeUnit.SECONDS, Optional.empty());
+          parentControllerClient, 30, TimeUnit.SECONDS);
       Store daVinciPushStatusSystemStore = parentController.getVeniceAdmin().getStore(cluster.getClusterName(), daVinciPushStatusSystemStoreName);
       assertEquals(daVinciPushStatusSystemStore.getLargestUsedVersionNumber(), 1);
 
@@ -335,7 +325,7 @@ public class PushStatusStoreTest {
             .getNumber();
         parentController.getVeniceAdmin().writeEndOfPush(cluster.getClusterName(), daVinciPushStatusSystemStoreName, newVersion, true);
         TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(daVinciPushStatusSystemStoreName, newVersion),
-            parentControllerClient, 30, TimeUnit.SECONDS, Optional.empty());
+            parentControllerClient, 30, TimeUnit.SECONDS);
       }
       daVinciPushStatusSystemStore = parentController.getVeniceAdmin().getStore(cluster.getClusterName(), daVinciPushStatusSystemStoreName);
       final int systemStoreCurrVersionBeforeBeingDeleted = daVinciPushStatusSystemStore.getLargestUsedVersionNumber();
@@ -357,7 +347,7 @@ public class PushStatusStoreTest {
       assertEquals(daVinciPushStatusSystemStore.getLargestUsedVersionNumber(), systemStoreCurrVersionBeforeBeingDeleted + 1);
 
       TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(daVinciPushStatusSystemStoreName, systemStoreCurrVersionBeforeBeingDeleted + 1),
-          parentControllerClient, 30, TimeUnit.SECONDS, Optional.empty());
+          parentControllerClient, 30, TimeUnit.SECONDS);
     }
   }
 
