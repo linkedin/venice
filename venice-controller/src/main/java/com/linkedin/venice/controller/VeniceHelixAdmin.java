@@ -6190,7 +6190,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
       try {
         StoragePersonaRepository repository = resources.getStoragePersonaRepository();
-        logger.info("Create Storage Persona reached in child controller");
         repository.addPersona(name, quotaNumber, storesToEnforce, owners);
       } catch (Exception e) {
         logger.error("Failed to execute CreateStoragePersonaOperation.", e);
@@ -6204,4 +6203,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     StoragePersonaRepository repository = getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
     return repository.getPersona(name);
   }
+
+  @Override
+  public void deleteStoragePersona(String clusterName, String name) {
+      checkControllerLeadershipFor(clusterName);
+      HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+      try {
+        StoragePersonaRepository repository = resources.getStoragePersonaRepository();
+        repository.deletePersona(name);
+      } catch (Exception e) {
+        logger.error("Failed to execute DeleteStoragePersonaOperation.", e);
+        throw e;
+      }
+  }
+
 }

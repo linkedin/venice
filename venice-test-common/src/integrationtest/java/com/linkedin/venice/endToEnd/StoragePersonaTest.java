@@ -1,6 +1,5 @@
 package com.linkedin.venice.endToEnd;
 
-import bsh.util.Util;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -144,6 +143,8 @@ public class StoragePersonaTest {
 
     response = controllerClient.createStoragePersona(persona.getName(), 200, new HashSet<>(), persona.getOwners());
     Assert.assertTrue(response.isError());
+    // Check to make sure the old persona wasn't affected
+    Assert.assertEquals(controllerClient.getStoragePersona(persona.getName()).getStoragePersona(), persona);
     throw new VeniceException(response.getError());
   }
 
@@ -155,6 +156,7 @@ public class StoragePersonaTest {
         controllerClient.createStoragePersona(persona.getName(), persona.getQuotaNumber(), persona.getStoresToEnforce(),
             persona.getOwners());
     Assert.assertTrue(response.isError());
+    Assert.assertNull(controllerClient.getStoragePersona(persona.getName()).getStoragePersona());
     throw new VeniceException(response.getError());
   }
 
@@ -168,14 +170,17 @@ public class StoragePersonaTest {
         controllerClient.createStoragePersona(persona.getName(), persona.getQuotaNumber(), persona.getStoresToEnforce(),
             persona.getOwners());
     Assert.assertTrue(response.isError());
+    Assert.assertNull(controllerClient.getStoragePersona(persona.getName()).getStoragePersona());
     throw new VeniceException(response.getError());
   }
 
   @Test(expectedExceptions = {VeniceException.class}, expectedExceptionsMessageRegExp = ".*" + ownersDoesNotExistRegex)
   public void testCreatePersonaNoOwners() {
+    String personaName = "testPersonaNoOwners";
     ControllerResponse response =
-        controllerClient.createStoragePersona("testPersonaNoOwners", 200, new HashSet<>(), new HashSet<>());
+        controllerClient.createStoragePersona(personaName, 200, new HashSet<>(), new HashSet<>());
     Assert.assertTrue(response.isError());
+    Assert.assertNull(controllerClient.getStoragePersona(personaName).getStoragePersona());
     throw new VeniceException(response.getError());
   }
 
@@ -195,4 +200,39 @@ public class StoragePersonaTest {
         () -> Assert.assertEquals(controllerClient.getStoragePersona(persona2.getName()).getStoragePersona(),
             persona2));
   }
+
+  @Test
+  public void testDeletePersona() {
+    StoragePersona persona = createDefaultPersona();
+    controllerClient.createStoragePersona(persona.getName(), persona.getQuotaNumber(), persona.getStoresToEnforce(),
+        persona.getOwners());
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS,
+        () -> Assert.assertEquals(controllerClient.getStoragePersona(persona.getName()).getStoragePersona(), persona));
+    ControllerResponse response = controllerClient.deleteStoragePersona(persona.getName());
+    if (response.isError()) throw new VeniceException(response.getError());
+    Assert.assertFalse(response.isError());
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> Assert.assertNull(controllerClient.getStoragePersona(persona.getName()).getStoragePersona()));
+  }
+
+  @Test
+  public void testDeletePersonaDoesNotExist() {
+    String personaName = Utils.getUniqueString("testPersonaName");
+    ControllerResponse response = controllerClient.deleteStoragePersona(personaName);
+    Assert.assertFalse(response.isError());
+    Assert.assertNull(controllerClient.getStoragePersona(personaName).getStoragePersona());
+  }
+
+  @Test
+  public void testDeletePersonaReUseName() {
+    StoragePersona persona = createDefaultPersona();
+    controllerClient.createStoragePersona(persona.getName(), persona.getQuotaNumber(), persona.getStoresToEnforce(),
+        persona.getOwners());
+    controllerClient.deleteStoragePersona(persona.getName());
+    StoragePersona persona1 = createDefaultPersona();
+    persona1.setName(persona.getName());
+    controllerClient.createStoragePersona(persona1.getName(), persona1.getQuotaNumber(), persona1.getStoresToEnforce(), persona1.getOwners());
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> Assert.assertEquals(controllerClient.getStoragePersona(persona1.getName()).getStoragePersona(), persona1));
+  }
+
+
 }
