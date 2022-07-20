@@ -747,4 +747,6 @@ public interface Admin extends AutoCloseable, Closeable {
 
     StoragePersona getStoragePersona(String clusterName, String name);
 
+    void deleteStoragePersona(String clusterName, String name);
+
 }

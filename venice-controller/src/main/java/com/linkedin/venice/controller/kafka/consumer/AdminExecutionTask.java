@@ -14,6 +14,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureNativeReplic
 import com.linkedin.venice.controller.kafka.protocol.admin.CreateStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
@@ -239,6 +240,9 @@ public class AdminExecutionTask implements Callable<Void> {
           break;
         case CREATE_STORAGE_PERSONA:
           handleCreateStoragePersona((CreateStoragePersona) adminOperation.payloadUnion);
+          break;
+        case DELETE_STORAGE_PERSONA:
+          handleDeleteStoragePersona((DeleteStoragePersona) adminOperation.payloadUnion);
           break;
         default:
           throw new VeniceException("Unknown admin operation type: " + adminOperation.operationType);
@@ -652,6 +656,12 @@ public class AdminExecutionTask implements Callable<Void> {
     Set<String> storesToEnforce = message.getStoresToEnforce().stream().map(s -> s.toString()).collect(Collectors.toSet());
     Set<String> owners = message.getOwners().stream().map(s -> s.toString()).collect(Collectors.toSet());
     admin.createStoragePersona(clusterName, personaName, quotaNumber, storesToEnforce, owners);
+  }
+
+  private void handleDeleteStoragePersona(DeleteStoragePersona message) {
+    String clusterName = message.getClusterName().toString();
+    String personaName = message.getName().toString();
+    admin.deleteStoragePersona(clusterName, personaName);
   }
 
 }

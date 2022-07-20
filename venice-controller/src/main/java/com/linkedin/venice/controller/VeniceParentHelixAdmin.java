@@ -32,6 +32,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureNativeReplic
 import com.linkedin.venice.controller.kafka.protocol.admin.CreateStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
@@ -3852,8 +3853,21 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public StoragePersona getStoragePersona(String clusterName, String name) {
-    logger.info("Get Storage Persona reached in Parent Controller");
     return getVeniceHelixAdmin().getStoragePersona(clusterName, name);
+  }
+
+  @Override
+  public void deleteStoragePersona(String clusterName, String name) {
+    getVeniceHelixAdmin().checkControllerLeadershipFor(clusterName);
+    DeleteStoragePersona deleteStoragePersona = (DeleteStoragePersona) AdminMessageType.DELETE_STORAGE_PERSONA.getNewInstance();
+    deleteStoragePersona.setClusterName(clusterName);
+    deleteStoragePersona.setName(name);
+
+    AdminOperation message = new AdminOperation();
+    message.operationType = AdminMessageType.DELETE_STORAGE_PERSONA.getValue();
+    message.payloadUnion = deleteStoragePersona;
+
+    sendAdminMessageAndWaitForConsumed(clusterName, null, message);
   }
 
 }

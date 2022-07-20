@@ -8,6 +8,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureNativeReplic
 import com.linkedin.venice.controller.kafka.protocol.admin.CreateStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
@@ -58,7 +59,8 @@ public enum AdminMessageType {
   CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER(22, true),
   META_SYSTEM_STORE_AUTO_CREATION_VALIDATION(23, false),
   PUSH_STATUS_SYSTEM_STORE_AUTO_CREATION_VALIDATION(24, false),
-  CREATE_STORAGE_PERSONA(25, false);
+  CREATE_STORAGE_PERSONA(25, false),
+  DELETE_STORAGE_PERSONA(26, false);
 
   private final int value;
   private final boolean batchUpdate;
@@ -96,6 +98,7 @@ public enum AdminMessageType {
       case META_SYSTEM_STORE_AUTO_CREATION_VALIDATION: return new MetaSystemStoreAutoCreationValidation();
       case PUSH_STATUS_SYSTEM_STORE_AUTO_CREATION_VALIDATION: return new PushStatusSystemStoreAutoCreationValidation();
       case CREATE_STORAGE_PERSONA: return new CreateStoragePersona();
+      case DELETE_STORAGE_PERSONA: return new DeleteStoragePersona();
       default: throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }
   }

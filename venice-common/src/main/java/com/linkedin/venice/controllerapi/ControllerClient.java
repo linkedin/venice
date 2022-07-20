@@ -1063,6 +1063,12 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.GET_STORAGE_PERSONA, params, StoragePersonaResponse.class);
   }
 
+  public ControllerResponse deleteStoragePersona(String name) {
+    QueryParams params = newParams()
+        .add(NAME, name);
+    return request(ControllerRoute.DELETE_STORAGE_PERSONA, params, ControllerResponse.class);
+  }
+
   /***
    * Add all global parameters in this method. Always use a form of this method to generate
    * a new list of NameValuePair objects for making HTTP requests.

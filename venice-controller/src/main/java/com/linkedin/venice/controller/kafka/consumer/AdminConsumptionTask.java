@@ -112,7 +112,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private static final int MAX_DUPLICATE_MESSAGE_LOGS = 20;
   private static final long CONSUMPTION_LAG_UPDATE_INTERVAL_IN_MS = TimeUnit.MINUTES.toMillis(5);
   public static int IGNORED_CURRENT_VERSION = -1;
-  private static final String STORAGE_PERSONA_MAP_KEY = "STORAGE_PERSONA"; /** Used by the storage persona in the admin operations map */
+
+  /** Used by the storage persona in the admin operations map because the persona operations are not associated with
+   * any particular store */
+  private static final String STORAGE_PERSONA_MAP_KEY = "STORAGE_PERSONA";
 
 
   private final Logger logger;
@@ -698,6 +701,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     String storeName;
     switch (AdminMessageType.valueOf(adminOperation)) {
       case CREATE_STORAGE_PERSONA:
+      case DELETE_STORAGE_PERSONA:
         return STORAGE_PERSONA_MAP_KEY;
       case KILL_OFFLINE_PUSH_JOB:
         KillOfflinePushJob message = (KillOfflinePushJob) adminOperation.payloadUnion;

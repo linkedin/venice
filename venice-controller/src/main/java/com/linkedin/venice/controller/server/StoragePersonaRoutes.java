@@ -10,6 +10,8 @@ import com.linkedin.venice.utils.Utils;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import javax.naming.ldap.Control;
+import javax.print.attribute.standard.MediaSize;
 import spark.Request;
 import spark.Route;
 
@@ -60,6 +62,22 @@ public class StoragePersonaRoutes extends AbstractRoute {
           veniceResponse.setStoragePersona(persona);
         } catch (Exception e) {
           veniceResponse.setError("Failed when getting persona " + personaName + ". Exception type: " + e.getClass().toString() + ". Detailed message = " + e.getMessage());
+        }
+      }
+    };
+  }
+
+  public Route deleteStoragePersona(Admin admin) {
+    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
+      @Override
+      public void internalHandle(Request request, ControllerResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, DELETE_STORAGE_PERSONA.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String personaName = request.queryParams(NAME);
+        try {
+          admin.deleteStoragePersona(clusterName, personaName);
+        } catch (Exception e) {
+          veniceResponse.setError("Failed when deleting persona " + personaName + ".  Exception type: " + e.getClass().toString() + ".  Detailed message = " + e.getMessage());
         }
       }
     };
