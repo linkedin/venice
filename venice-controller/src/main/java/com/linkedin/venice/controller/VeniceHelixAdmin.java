@@ -3660,7 +3660,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             Store updatedStore = operation.update(store);
             repository.updateStore(updatedStore);
         } catch (Exception e) {
-            logger.error("Failed to execute StoreMetadataOperation.", e);
+            logger.error("Failed to execute StoreMetadataOperation for store " + storeName + " in cluster " + clusterName, e);
             throw e;
         }
     }
