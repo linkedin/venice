@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -79,35 +80,38 @@ public class TestFabricBuildout {
     String storeName = Utils.getUniqueString("store");
 
     // Test the admin channel
-    VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
-    ControllerClient parentControllerClient = ControllerClient.constructClusterControllerClient(clusterName, parentController.getControllerUrl());
+    String parentControllerUrls = parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(
+        Collectors.joining(","));
 
-    ControllerClient dc0Client = ControllerClient.constructClusterControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
-    // Create a test store only in dc0 colo
-    NewStoreResponse newStoreResponse = dc0Client.retryableRequest(3, c -> c.createNewStore(storeName,
-        "", "\"string\"", TestPushUtils.USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT));
-    Assert.assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
-    // Enable read compute to test superset schema registration.
-    Assert.assertFalse(dc0Client.updateStore(storeName, new UpdateStoreQueryParams().setReadComputationEnabled(true)).isError());
-    Assert.assertFalse(dc0Client.addValueSchema(storeName, TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT).isError());
-    checkStoreConfig(dc0Client, storeName);
-    // Mimic source fabric store-level execution id
-    Assert.assertFalse(dc0Client.updateAdminTopicMetadata(2L, Optional.of(storeName), Optional.empty(), Optional.empty()).isError());
+    try (ControllerClient parentControllerClient = ControllerClient.constructClusterControllerClient(clusterName, parentControllerUrls);
+        ControllerClient dc0Client = ControllerClient.constructClusterControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString())) {
+      // Create a test store only in dc0 colo
+      NewStoreResponse newStoreResponse = dc0Client.retryableRequest(3,
+          c -> c.createNewStore(storeName, "", "\"string\"", TestPushUtils.USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT));
+      Assert.assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+      // Enable read compute to test superset schema registration.
+      Assert.assertFalse(
+          dc0Client.updateStore(storeName, new UpdateStoreQueryParams().setReadComputationEnabled(true)).isError());
+      Assert.assertFalse(dc0Client.addValueSchema(storeName, TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT).isError());
+      checkStoreConfig(dc0Client, storeName);
+      // Mimic source fabric store-level execution id
+      Assert.assertFalse(
+          dc0Client.updateAdminTopicMetadata(2L, Optional.of(storeName), Optional.empty(), Optional.empty()).isError());
 
-    // Call metadata copy over to copy dc0's store configs to dc1
-    parentControllerClient.copyOverStoreMetadata("dc-0","dc-1", storeName);
-    ControllerClient dc1Client = ControllerClient.constructClusterControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
-    checkStoreConfig(dc1Client, storeName);
-    AdminTopicMetadataResponse response = dc1Client.getAdminTopicMetadata(Optional.of(storeName));
-    Assert.assertFalse(response.isError());
-    Assert.assertEquals(response.getExecutionId(), 2L);
+      // Call metadata copy over to copy dc0's store configs to dc1
+      parentControllerClient.copyOverStoreMetadata("dc-0", "dc-1", storeName);
+      ControllerClient dc1Client = ControllerClient.constructClusterControllerClient(clusterName,
+          childDatacenters.get(1).getControllerConnectString());
+      checkStoreConfig(dc1Client, storeName);
+      AdminTopicMetadataResponse response = dc1Client.getAdminTopicMetadata(Optional.of(storeName));
+      Assert.assertFalse(response.isError());
+      Assert.assertEquals(response.getExecutionId(), 2L);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testStartFabricBuildout() throws Exception {
     String clusterName = CLUSTER_NAMES[0];
-    VeniceControllerWrapper parentController = parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
     try (ControllerClient childControllerClient0 = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
         ControllerClient childControllerClient1 = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
       String testStoreName1 = Utils.getUniqueString("test-store");
@@ -131,7 +135,7 @@ public class TestFabricBuildout {
       Assert.assertFalse(versionCreationResponse.isError());
       checkStoreConfigAndCurrentVersion(childControllerClient1, testStoreName1, 1);
 
-      String[] args = {"--start-fabric-buildout", "--url", parentController.getControllerUrl(),
+      String[] args = {"--start-fabric-buildout", "--url", parentControllers.get(0).getControllerUrl(),
           "--cluster", clusterName,
           "--source-fabric", "dc-0",
           "--dest-fabric", "dc-1"};
@@ -145,8 +149,9 @@ public class TestFabricBuildout {
   @Test(timeOut = TEST_TIMEOUT)
   public void testCompareStore() {
     String clusterName = CLUSTER_NAMES[0];
-    VeniceControllerWrapper parentController = parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
-    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
+    String parentControllerUrls = parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(
+        Collectors.joining(","));
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls);
         ControllerClient childControllerClient0 = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
         ControllerClient childControllerClient1 = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
       String testStoreName = Utils.getUniqueString("test-store");

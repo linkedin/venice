@@ -91,13 +91,13 @@ public class TestStaleDataVisibility {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
+    String parentControllerUrls = parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(
+        Collectors.joining(","));
 
     // create a store via parent controller url
-    Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
+    Properties props = defaultH2VProps(parentControllerUrls, inputDirPath, storeName);
     createStoreForJob(clusterName, recordSchema, props).close();
-    try (ControllerClient controllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
+    try (ControllerClient controllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
       String pushStatusStoreVersionName = Version.composeKafkaTopic(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName), 1);
       String metaStoreVersionName = Version.composeKafkaTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), 1);
       TestUtils.waitForNonDeterministicPushCompletion(pushStatusStoreVersionName, controllerClient, 1, TimeUnit.MINUTES, Optional.empty());
@@ -108,10 +108,10 @@ public class TestStaleDataVisibility {
       job.run();
     }
 
-    try (ControllerClient controllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
+    try (ControllerClient controllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
 
       // the store should not be appearing in the stale data audit
-      ClusterStaleDataAuditResponse emptyResponse = controllerClient.getClusterStaleStores(clusterName, parentController.getControllerUrl());
+      ClusterStaleDataAuditResponse emptyResponse = controllerClient.getClusterStaleStores(clusterName, parentControllerUrls);
       Assert.assertFalse(emptyResponse.isError());
       Assert.assertFalse(emptyResponse.getAuditMap().containsKey(storeName));
 
@@ -123,13 +123,13 @@ public class TestStaleDataVisibility {
       }
 
       // store should now appear as stale
-      ClusterStaleDataAuditResponse response = controllerClient.getClusterStaleStores(clusterName, parentController.getControllerUrl());
+      ClusterStaleDataAuditResponse response = controllerClient.getClusterStaleStores(clusterName, parentControllerUrls);
       Assert.assertFalse(response.isError());
       Assert.assertEquals(response.getAuditMap().get(storeName).getStaleRegions().size(), 1);
       Assert.assertEquals(response.getAuditMap().get(storeName).getHealthyRegions().size(), 1);
 
       //test store health check
-      StoreHealthAuditResponse healthResponse = controllerClient.listStorePushInfo(clusterName, parentController.getControllerUrl(), storeName);
+      StoreHealthAuditResponse healthResponse = controllerClient.listStorePushInfo(clusterName, parentControllerUrls, storeName);
       Assert.assertTrue(response.getAuditMap().containsKey(healthResponse.getStoreName()));
       Map<String, StoreInfo> auditMapEntry = response.getAuditMap().get(healthResponse.getStoreName()).getStaleRegions();
       for (Map.Entry<String, StoreInfo> entry : auditMapEntry.entrySet())

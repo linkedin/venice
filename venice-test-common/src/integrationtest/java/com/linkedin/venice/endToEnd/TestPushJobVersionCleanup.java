@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.testng.Assert;
@@ -72,9 +74,9 @@ public class TestPushJobVersionCleanup {
     Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, 50);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
-    Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
+    String parentControllerUrls = parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(
+        Collectors.joining(","));
+    Properties props = defaultH2VProps(parentControllerUrls, inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
     String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
     String valueSchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
@@ -86,22 +88,22 @@ public class TestPushJobVersionCleanup {
     VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
     VeniceServer server = childDataCenter.getClusters().get(clusterName).getVeniceServers().get(0).getVeniceServer();
 
-    /**
-     * Run 3 push jobs sequentially and at the end verify the first version is cleaned up properly without any
-     * ingestion_failure metrics being reported.
-     */
-    for (int i = 1; i <= 3; i++) {
-      int expectedVersionNumber = i;
-      try (VenicePushJob job = new VenicePushJob("Test push job " + expectedVersionNumber, props)) {
-        job.run();
-      }
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        for (int version : parentController.getVeniceAdmin()
-            .getCurrentVersionsForMultiColos(clusterName, storeName)
-            .values()) {
-          Assert.assertEquals(version, expectedVersionNumber);
+    try (ControllerClient parentControllerClient = ControllerClient.constructClusterControllerClient(clusterName, parentControllerUrls)) {
+      /**
+       * Run 3 push jobs sequentially and at the end verify the first version is cleaned up properly without any
+       * ingestion_failure metrics being reported.
+       */
+      for (int i = 1; i <= 3; i++) {
+        int expectedVersionNumber = i;
+        try (VenicePushJob job = new VenicePushJob("Test push job " + expectedVersionNumber, props)) {
+          job.run();
         }
-      });
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          for (int version : parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions().values()) {
+            Assert.assertEquals(version, expectedVersionNumber);
+          }
+        });
+      }
     }
 
     //There should not be any ingestion_failure.

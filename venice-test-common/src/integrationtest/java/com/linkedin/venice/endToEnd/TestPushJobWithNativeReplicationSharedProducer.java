@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.commons.io.FileUtils;
@@ -111,15 +112,15 @@ public class TestPushJobWithNativeReplicationSharedProducer {
 
     String clusterName = CLUSTER_NAMES[0];
     File inputDir = getTempDataDirectory();
-    VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
+    String parentControllerUrls = parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(
+        Collectors.joining(","));
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
 
     try {
       for (int i = 0; i < storeCount; i++) {
         String storeName = Utils.getUniqueString("store");
         storeNames[i] = storeName;
-        Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
+        Properties props = defaultH2VProps(parentControllerUrls, inputDirPath, storeName);
         storeProps[i] = props;
         props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
@@ -175,28 +176,28 @@ public class TestPushJobWithNativeReplicationSharedProducer {
         }
       }
 
-      for (int i = 0; i < storeCount; i++) {
-        String storeName = storeNames[i];
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-          // Current version should become 1
-          for (int version : parentController.getVeniceAdmin()
-              .getCurrentVersionsForMultiColos(clusterName, storeName)
-              .values()) {
-            Assert.assertEquals(version, 1);
-          }
-
-          //Verify the data in the second child fabric which consumes remotely
-          VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
-          String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
-          try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
-              ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
-            for (int j = 1; j <= recordCount; ++j) {
-              String expected = "test_name_" + j;
-              String actual = client.get(Integer.toString(j)).get().toString();
-              Assert.assertEquals(actual, expected);
+      try (ControllerClient parentControllerClient = ControllerClient.constructClusterControllerClient(clusterName, parentControllerUrls)) {
+        for (int i = 0; i < storeCount; i++) {
+          String storeName = storeNames[i];
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+            // Current version should become 1
+            for (int version : parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions().values()) {
+              Assert.assertEquals(version, 1);
             }
-          }
-        });
+
+            //Verify the data in the second child fabric which consumes remotely
+            VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
+            String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
+            try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
+                ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+              for (int j = 1; j <= recordCount; ++j) {
+                String expected = "test_name_" + j;
+                String actual = client.get(Integer.toString(j)).get().toString();
+                Assert.assertEquals(actual, expected);
+              }
+            }
+          });
+        }
       }
     } finally {
       for (int i = 0; i < storeCount; i++) {

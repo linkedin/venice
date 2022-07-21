@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
@@ -117,9 +118,9 @@ public class TestPushJobWithEmergencySourceRegionSelection {
     Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
-    Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
+    String parentControllerUrls = parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(
+        Collectors.joining(","));
+    Properties props = defaultH2VProps(parentControllerUrls, inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
     String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
     String valueSchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
@@ -161,25 +162,26 @@ public class TestPushJobWithEmergencySourceRegionSelection {
       //Verify the kafka URL being returned to the push job is the same as dc-2 kafka url.
       Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
     }
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      // Current version should become 1
-      for (int version : parentController.getVeniceAdmin()
-          .getCurrentVersionsForMultiColos(clusterName, storeName)
-          .values()) {
-        Assert.assertEquals(version, 1);
-      }
-
-      // Verify the data in the second child fabric which consumes remotely
-      VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(1);
-      String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
-      try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
-          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
-        for (int i = 1; i <= recordCount; ++i) {
-          String expected = "test_name_" + i;
-          String actual = client.get(Integer.toString(i)).get().toString();
-          Assert.assertEquals(actual, expected);
+    try (ControllerClient parentControllerClient = ControllerClient.constructClusterControllerClient(clusterName,
+        parentControllerUrls)) {
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        // Current version should become 1
+        for (int version : parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions().values()) {
+          Assert.assertEquals(version, 1);
         }
-      }
-    });
+
+        // Verify the data in the second child fabric which consumes remotely
+        VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(1);
+        String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
+        try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+          for (int i = 1; i <= recordCount; ++i) {
+            String expected = "test_name_" + i;
+            String actual = client.get(Integer.toString(i)).get().toString();
+            Assert.assertEquals(actual, expected);
+          }
+        }
+      });
+    }
   }
 }
