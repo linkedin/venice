@@ -16,7 +16,6 @@ import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
@@ -48,16 +47,13 @@ public class VeniceController {
   private final Optional<ICProvider> icProvider;
   private final static String CONTROLLER_SERVICE_NAME = "venice-controller";
 
-  // This constructor is being used in integration test
+  /**
+   * This constructor is being used in integration test.
+   *
+   * @see #VeniceController(List, MetricsRepository, List, Optional, Optional, D2Client, Optional, Optional)
+   */
   public VeniceController(List<VeniceProperties> propertiesList, List<D2Server> d2ServerList, Optional<AuthorizerService> authorizerService, D2Client d2Client) {
     this(propertiesList, TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME), d2ServerList, Optional.empty(), authorizerService, d2Client, Optional.empty());
-  }
-
-  public VeniceController(VeniceProperties props, MetricsRepository metricsRepository, List<D2Server> d2ServerList,
-      Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService,
-      D2Client d2Client,  Optional<ClientConfig> routerClientConfig) {
-    this(Collections.singletonList(props), metricsRepository, d2ServerList, accessController,
-        authorizerService, d2Client, routerClientConfig);
   }
 
   public VeniceController(List<VeniceProperties> propertiesList, MetricsRepository metricsRepository, List<D2Server> d2ServerList,
@@ -67,6 +63,26 @@ public class VeniceController {
         routerClientConfig, Optional.empty());
   }
 
+  /**
+   * Allocates a new {@code VeniceController} object.
+   *
+   * @param propertiesList
+   *        config properties coming from {@link com.linkedin.venice.ConfigKeys}.
+   * @param metricsRepository
+   *        a metric repository to emit metrics.
+   * @param d2ServerList
+   *        a list of {@code D2Server} for service discovery announcement. Can be empty.
+   * @param accessController
+   *        an optional {@link DynamicAccessController} for auth/auth. Deprecated, use authorizerService instead.
+   * @param authorizerService
+   *        an optional {@link AuthorizerService} for auth/auth.
+   * @param d2Client
+   *        a {@link D2Client} used for interacting with child controllers.
+   * @param routerClientConfig
+   *        an optional {@link ClientConfig} used for reading schema from routers.
+   * @param icProvider
+   *        an {@link ICProvider} used for injecting custom tracing functionality.
+   */
   public VeniceController(List<VeniceProperties> propertiesList, MetricsRepository metricsRepository, List<D2Server> d2ServerList,
       Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService, D2Client d2Client,
       Optional<ClientConfig> routerClientConfig, Optional<ICProvider> icProvider
@@ -142,6 +158,9 @@ public class VeniceController {
     }
   }
 
+  /**
+   * Causes venice controller and its associated services to begin execution.
+   */
   public void start() {
     logger.info(
         "Starting controller: " + multiClusterConfigs.getControllerName() + " for clusters: " + multiClusterConfigs
@@ -161,8 +180,10 @@ public class VeniceController {
     logger.info("Controller is started.");
   }
 
-
-  public void stop(){
+  /**
+   * Causes venice controller and its associated services to stop executing.
+   */
+  public void stop() {
     // stop d2 service first
     d2ServerList.forEach( d2Server -> {
       d2Server.notifyShutdown();
@@ -176,6 +197,9 @@ public class VeniceController {
     Utils.closeQuietlyWithErrorLogged(controllerService);
   }
 
+  /**
+   * @return the Venice controller service.
+   */
   public VeniceControllerService getVeniceControllerService() {
     return controllerService;
   }
