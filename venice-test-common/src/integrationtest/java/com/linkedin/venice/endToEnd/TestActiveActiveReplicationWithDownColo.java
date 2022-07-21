@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
@@ -124,9 +125,9 @@ public class TestActiveActiveReplicationWithDownColo {
     // Create a store in all colos with A/A and hybrid enabled
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("test-store");
-    VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
-    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
+    String parentControllerUrls = parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(
+        Collectors.joining(","));
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
       parentControllerClient.createNewStore(storeName, "owner", INT_SCHEMA, STRING_SCHEMA);
       ActiveActiveReplicationForHybridTest.updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false));
 
@@ -159,7 +160,7 @@ public class TestActiveActiveReplicationWithDownColo {
     producerInDC1.start();
 
     // Build another one which will write some batch data (don't verify latest protocol, the test set up isn't quite set up for it in parent colos, so we'll skip
-    SystemProducer batchProducer = new VeniceSystemProducer(parentController.getZkAddress(), "VeniceParentController", storeName,
+    SystemProducer batchProducer = new VeniceSystemProducer(multiColoMultiClusterWrapper.getZkServerWrapper().getAddress(), "VeniceParentController", storeName,
         Version.PushType.BATCH, Utils.getUniqueString("venice-push-id"), "dc-0", false, null, Optional.empty(),
         Optional.empty());
     batchProducer.start();
@@ -208,7 +209,7 @@ public class TestActiveActiveReplicationWithDownColo {
     multiColoMultiClusterWrapper.getClusters().get(NUMBER_OF_CHILD_DATACENTERS - 1).getKafkaBrokerWrapper().close();
 
     // Execute a new push by writing some rows and sending an endOfPushMessage
-      try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
+      try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
         for (int rowIncrement = 0; rowIncrement < RECORDS_TO_POPULATE; rowIncrement++) {
           String value1 = "value" + rowIncrement;
           OutgoingMessageEnvelope envelope1 = new OutgoingMessageEnvelope(new SystemStream("venice", storeName), rowIncrement, value1);

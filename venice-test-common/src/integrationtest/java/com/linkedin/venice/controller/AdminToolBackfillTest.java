@@ -20,6 +20,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -72,9 +73,10 @@ public class AdminToolBackfillTest {
     String clusterName = multiColoMultiClusterWrapper.getClusters().get(0).getClusterNames()[0];
     String testStoreName = Utils.getUniqueString("test-store");
 
-    VeniceControllerWrapper parentController = parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
+    String parentControllerUrls = parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(
+        Collectors.joining(","));
     ControllerClient parentControllerClient =
-        ControllerClient.constructClusterControllerClient(clusterName, parentController.getControllerUrl());
+        ControllerClient.constructClusterControllerClient(clusterName, parentControllerUrls);
     ControllerClient dc0Client =
         ControllerClient.constructClusterControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     ControllerClient dc1Client =
@@ -161,9 +163,10 @@ public class AdminToolBackfillTest {
     String clusterName = multiColoMultiClusterWrapper.getClusters().get(0).getClusterNames()[0];
     String testStoreName = Utils.getUniqueString("test-store");
 
-    VeniceControllerWrapper parentController = parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
+    String parentControllerUrls = parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(
+        Collectors.joining(","));
     ControllerClient parentControllerClient =
-        ControllerClient.constructClusterControllerClient(clusterName, parentController.getControllerUrl());
+        ControllerClient.constructClusterControllerClient(clusterName, parentControllerUrls);
     ControllerClient dc0Client =
         ControllerClient.constructClusterControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     ControllerClient dc1Client =
