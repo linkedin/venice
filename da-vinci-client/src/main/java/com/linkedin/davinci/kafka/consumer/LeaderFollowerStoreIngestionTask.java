@@ -52,6 +52,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -1988,9 +1989,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
           String sourceKafkaURL = getSourceKafkaUrlForOffsetLagMeasurement(pcs);
           // Consumer might not existed after the consumption state is created, but before attaching the corresponding consumer.
-          Optional<Long> offsetLagOptional = getPartitionOffsetLag(sourceKafkaURL, currentLeaderTopic, pcs.getUserPartition());
+          OptionalLong offsetLagOptional = getPartitionOffsetLag(sourceKafkaURL, currentLeaderTopic, pcs.getUserPartition());
           if (offsetLagOptional.isPresent()) {
-            return offsetLagOptional.get();
+            return offsetLagOptional.getAsLong();
           }
           // Fall back to use the old way
           return (cachedKafkaMetadataGetter.getOffset(getTopicManager(nativeReplicationSourceVersionTopicKafkaURL), currentLeaderTopic, pcs.getPartition()) - 1)
@@ -2000,19 +2001,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return minZeroLag(replicationLag);
   }
 
-  protected Optional<Long> getPartitionOffsetLag(String kafkaSourceAddress, String topic, int partition) {
+  protected OptionalLong getPartitionOffsetLag(String kafkaSourceAddress, String topic, int partition) {
     if (serverConfig.isSharedConsumerPoolEnabled()) {
-      Optional<Long> offsetLagOptional = aggKafkaConsumerService.getOffsetLagFor(kafkaSourceAddress,
-            kafkaVersionTopic, topic, partition);
-      return offsetLagOptional;
+      return aggKafkaConsumerService.getOffsetLagFor(kafkaSourceAddress, kafkaVersionTopic, topic, partition);
     } else {
       KafkaConsumerWrapper dedicatedKafkaConsumer = kafkaUrlToDedicatedConsumerMap.get(localKafkaServer);
       if (dedicatedKafkaConsumer != null) {
-        Optional<Long> offsetLagOptional = dedicatedKafkaConsumer.getOffsetLag(kafkaVersionTopic, partition);
-        return offsetLagOptional;
+        return dedicatedKafkaConsumer.getOffsetLag(kafkaVersionTopic, partition);
       }
     }
-    return Optional.empty();
+    return OptionalLong.empty();
   }
 
   @Override
@@ -2057,9 +2055,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
           final String kafkaSourceAddress = getSourceKafkaUrlForOffsetLagMeasurement(pcs);
           // Consumer might not existed after the consumption state is created, but before attaching the corresponding consumer.
-          Optional<Long> offsetLagOptional = getPartitionOffsetLag(kafkaSourceAddress, currentLeaderTopic, pcs.getPartition());
+          OptionalLong offsetLagOptional = getPartitionOffsetLag(kafkaSourceAddress, currentLeaderTopic, pcs.getPartition());
           if (offsetLagOptional.isPresent()) {
-            return offsetLagOptional.get();
+            return offsetLagOptional.getAsLong();
           }
 
           // Fall back to calculate offset lag in the original approach
@@ -2123,9 +2121,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         //the lag is (latest VT offset - consumed VT offset)
         .mapToLong((pcs) -> {
           // Consumer might not existed after the consumption state is created, but before attaching the corresponding consumer.
-          Optional<Long> offsetLagOptional = getPartitionOffsetLag(localKafkaServer, kafkaVersionTopic, pcs.getPartition());
+          OptionalLong offsetLagOptional = getPartitionOffsetLag(localKafkaServer, kafkaVersionTopic, pcs.getPartition());
           if (offsetLagOptional.isPresent()) {
-            return offsetLagOptional.get();
+            return offsetLagOptional.getAsLong();
           }
           // Fall back to calculate offset lag in the old way
           return (cachedKafkaMetadataGetter.getOffset(getTopicManager(localKafkaServer), kafkaVersionTopic, pcs.getPartition()) - 1)

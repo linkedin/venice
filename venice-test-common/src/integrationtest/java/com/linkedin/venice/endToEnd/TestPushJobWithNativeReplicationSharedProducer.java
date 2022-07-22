@@ -212,8 +212,9 @@ public class TestPushJobWithNativeReplicationSharedProducer {
         }
       }
       for (int i = 0; i < storeCount; i++) {
-        Assert.assertFalse(deleteStoreResponses[i].isError(),
-            "Failed to delete the test store: " + deleteStoreResponses[i].getError());
+        if (null != parentControllerClients[i]) {
+          Assert.assertFalse(deleteStoreResponses[i].isError(), "Failed to delete the test store: " + deleteStoreResponses[i].getError());
+        }
       }
       FileUtils.deleteDirectory(inputDir);
     }

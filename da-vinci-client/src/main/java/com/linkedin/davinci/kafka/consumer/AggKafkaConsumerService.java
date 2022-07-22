@@ -12,6 +12,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Properties;
 import java.util.Set;
 import org.apache.kafka.clients.CommonClientConfigs;
@@ -222,15 +223,15 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     }
   }
 
-  public Optional<Long> getOffsetLagFor(final String kafkaURL, String versionTopic, String topic, int partition) {
+  public OptionalLong getOffsetLagFor(final String kafkaURL, String versionTopic, String topic, int partition) {
     Optional<KafkaConsumerService> consumerService = getKafkaConsumerService(kafkaURL);
     if (!consumerService.isPresent()) {
-      return Optional.empty();
+      return OptionalLong.empty();
     }
 
     Optional<KafkaConsumerWrapper> consumer = consumerService.get().getConsumerAssignedToVersionTopic(versionTopic);
     if (!consumer.isPresent()) {
-      return Optional.empty();
+      return OptionalLong.empty();
     }
     return consumer.get().getOffsetLag(topic, partition);
   }

@@ -435,7 +435,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
     offsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart = serverProperties.getInt(
         OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART, 2);
-    enableKafkaConsumerOffsetCollection = serverProperties.getBoolean(SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED, false);
+    enableKafkaConsumerOffsetCollection = serverProperties.getBoolean(SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED, true);
     dedicatedDrainerQueueEnabled = serverProperties.getBoolean(SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED, false);
     debugLoggingEnabled = serverProperties.getBoolean(SERVER_DEBUG_LOGGING_ENABLED, false);
     numSchemaFastClassWarmup = serverProperties.getInt(SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP,10);

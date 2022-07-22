@@ -13,7 +13,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -440,12 +440,7 @@ abstract class SharedKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public Optional<Long> getLatestOffset(String topic, int partition) {
-    return delegate.getLatestOffset(topic, partition);
-  }
-
-  @Override
-  public Optional<Long> getOffsetLag(String topic, int partition) {
+  public OptionalLong getOffsetLag(String topic, int partition) {
     return delegate.getOffsetLag(topic, partition);
   }
 }

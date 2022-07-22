@@ -7,7 +7,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.OptionalLong;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.Metric;
@@ -34,15 +34,15 @@ public class TopicPartitionsOffsetsTrackerTest {
 
     @Test
     public void testNoUpdateWithRecords() {
-        Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_1, PARTITION_ID), Optional.empty());
-        Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_2, PARTITION_ID), Optional.empty());
+        Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_1, PARTITION_ID), OptionalLong.empty());
+        Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_2, PARTITION_ID), OptionalLong.empty());
         Assert.assertTrue(topicPartitionsOffsetsTracker.getResultsStats().isEmpty());
 
-        Assert.assertEquals(topicPartitionsOffsetsTracker.getOffsetLag(TOPIC_1, PARTITION_ID), Optional.empty());
-        Assert.assertEquals(topicPartitionsOffsetsTracker.getOffsetLag(TOPIC_2, PARTITION_ID), Optional.empty());
+        Assert.assertEquals(topicPartitionsOffsetsTracker.getOffsetLag(TOPIC_1, PARTITION_ID), OptionalLong.empty());
+        Assert.assertEquals(topicPartitionsOffsetsTracker.getOffsetLag(TOPIC_2, PARTITION_ID), OptionalLong.empty());
         Assert.assertEquals(topicPartitionsOffsetsTracker.getResultsStats().size(), 1);
         Assert.assertEquals(
-                topicPartitionsOffsetsTracker.getResultsStats().get(TopicPartitionsOffsetsTracker.RESULT_TYPE.NO_OFFSET_LAG).intValue(),
+                topicPartitionsOffsetsTracker.getResultsStats().get(TopicPartitionsOffsetsTracker.ResultType.NO_OFFSET_LAG).intValue(),
                 2
         );
     }
@@ -99,34 +99,34 @@ public class TopicPartitionsOffsetsTrackerTest {
 
         topicPartitionsOffsetsTracker.updateEndOffsets(mockRecords, mockMetrics);
 
-        Assert.assertEquals(topicPartitionsOffsetsTracker.getOffsetLag(TOPIC_1, PARTITION_ID), Optional.of(firstPartitionLag));
+        Assert.assertEquals(topicPartitionsOffsetsTracker.getOffsetLag(TOPIC_1, PARTITION_ID), OptionalLong.of(firstPartitionLag));
         Assert.assertEquals(topicPartitionsOffsetsTracker.getResultsStats().size(), 1);
         Assert.assertEquals(
-                topicPartitionsOffsetsTracker.getResultsStats().get(TopicPartitionsOffsetsTracker.RESULT_TYPE.VALID_OFFSET_LAG).intValue(),
+                topicPartitionsOffsetsTracker.getResultsStats().get(TopicPartitionsOffsetsTracker.ResultType.VALID_OFFSET_LAG).intValue(),
                 1
         );
 
-        Assert.assertEquals(topicPartitionsOffsetsTracker.getOffsetLag(TOPIC_2, PARTITION_ID), Optional.of(secondPartitionLag));
+        Assert.assertEquals(topicPartitionsOffsetsTracker.getOffsetLag(TOPIC_2, PARTITION_ID), OptionalLong.of(secondPartitionLag));
         Assert.assertEquals(topicPartitionsOffsetsTracker.getResultsStats().size(), 1);
         Assert.assertEquals(
-                topicPartitionsOffsetsTracker.getResultsStats().get(TopicPartitionsOffsetsTracker.RESULT_TYPE.VALID_OFFSET_LAG).intValue(),
+                topicPartitionsOffsetsTracker.getResultsStats().get(TopicPartitionsOffsetsTracker.ResultType.VALID_OFFSET_LAG).intValue(),
                 2
         );
 
         // End offset == current offset + lag
-        Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_1, PARTITION_ID), Optional.of(firstOffset + firstPartitionLag));
-        Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_2, PARTITION_ID), Optional.of(secondOffset + secondPartitionLag));
+        Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_1, PARTITION_ID), OptionalLong.of(firstOffset + firstPartitionLag));
+        Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_2, PARTITION_ID), OptionalLong.of(secondOffset + secondPartitionLag));
 
         topicPartitionsOffsetsTracker.removeTrackedOffsets(new TopicPartition(TOPIC_1, PARTITION_ID));
-        Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_1, PARTITION_ID), Optional.empty());
-        Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_2, PARTITION_ID), Optional.of(secondOffset + secondPartitionLag));
+        Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_1, PARTITION_ID), OptionalLong.empty());
+        Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_2, PARTITION_ID), OptionalLong.of(secondOffset + secondPartitionLag));
 
         topicPartitionsOffsetsTracker.clearAllOffsetState();
-        Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_1, PARTITION_ID), Optional.empty());
-        Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_2, PARTITION_ID), Optional.empty());
+        Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_1, PARTITION_ID), OptionalLong.empty());
+        Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_2, PARTITION_ID), OptionalLong.empty());
         Assert.assertEquals(topicPartitionsOffsetsTracker.getResultsStats().size(), 1);
         Assert.assertEquals(
-                topicPartitionsOffsetsTracker.getResultsStats().get(TopicPartitionsOffsetsTracker.RESULT_TYPE.VALID_OFFSET_LAG).intValue(),
+                topicPartitionsOffsetsTracker.getResultsStats().get(TopicPartitionsOffsetsTracker.ResultType.VALID_OFFSET_LAG).intValue(),
                 2
         );
     }
