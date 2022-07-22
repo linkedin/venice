@@ -7,7 +7,7 @@ import java.io.Closeable;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
@@ -58,10 +58,6 @@ public interface KafkaConsumerWrapper extends AutoCloseable, Closeable {
 
   Set<TopicPartition> getAssignment();
 
-  default Optional<Long> getLatestOffset(String topic, int partition) {
-    return Optional.empty();
-  }
-
   /**
    * Get consuming offset lag for a topic partition
    * @param topic
@@ -69,7 +65,7 @@ public interface KafkaConsumerWrapper extends AutoCloseable, Closeable {
    * @return Nothing if there is no offset lag or no valid lag for the topic partition tracked by the consumer instance.
    *         Something if there is a valid (positive or zero) offset lag for the topic partition
    */
-  default Optional<Long> getOffsetLag(String topic, int partition) {
-    return Optional.empty();
+  default OptionalLong getOffsetLag(String topic, int partition) {
+    return OptionalLong.empty();
   }
 }

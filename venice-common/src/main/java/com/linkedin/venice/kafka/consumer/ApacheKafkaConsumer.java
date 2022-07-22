@@ -15,6 +15,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Properties;
 import java.util.Set;
 import org.apache.kafka.clients.consumer.Consumer;
@@ -254,14 +255,9 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public Optional<Long> getLatestOffset(String topic, int partition) {
-    return topicPartitionsOffsetsTracker.isPresent() ?
-            topicPartitionsOffsetsTracker.get().getEndOffset(topic, partition) : Optional.empty();
-  }
-
-  @Override
-  public Optional<Long> getOffsetLag(String topic, int partition) {
-    return topicPartitionsOffsetsTracker.isPresent() ?
-            topicPartitionsOffsetsTracker.get().getOffsetLag(topic, partition) : Optional.empty();
+  public OptionalLong getOffsetLag(String topic, int partition) {
+    return topicPartitionsOffsetsTracker.isPresent()
+        ? topicPartitionsOffsetsTracker.get().getOffsetLag(topic, partition)
+        : OptionalLong.empty();
   }
 }

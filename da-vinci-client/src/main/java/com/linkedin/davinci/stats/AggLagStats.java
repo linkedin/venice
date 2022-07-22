@@ -7,7 +7,8 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.HashMap;
+import it.unimi.dsi.fastutil.ints.Int2LongMap;
+import it.unimi.dsi.fastutil.ints.Int2LongOpenHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -16,19 +17,20 @@ public class AggLagStats extends AbstractVeniceStats {
 
   private final StoreIngestionService storeIngestionService;
   private final Map<Integer, String> kafkaClusterIdToAliasMap;
+  private final Int2LongMap aggRegionHybridOffsetLagTotalMap;
 
   private long aggBatchReplicationLagFuture;
   private long aggBatchLeaderOffsetLagFuture;
   private long aggBatchFollowerOffsetLagFuture;
   private long aggHybridLeaderOffsetLagTotal;
   private long aggHybridFollowerOffsetLagTotal;
-  private Map<Integer, Long> aggRegionHybridOffsetLagTotalMap;
   private long lastLagUpdateTsMs = 0;
 
   public AggLagStats(StoreIngestionService storeIngestionService, MetricsRepository metricsRepository) {
     super(metricsRepository, "AggLagStats");
     this.storeIngestionService = storeIngestionService;
     this.kafkaClusterIdToAliasMap = storeIngestionService.getVeniceConfigLoader().getVeniceServerConfig().getKafkaClusterIdToAliasMap();
+    this.aggRegionHybridOffsetLagTotalMap = new Int2LongOpenHashMap(kafkaClusterIdToAliasMap.size());
     for (Map.Entry<Integer, String> entry : kafkaClusterIdToAliasMap.entrySet()) {
       String regionNamePrefix = RegionUtils.getRegionSpecificMetricPrefix(storeIngestionService.getVeniceConfigLoader().getVeniceServerConfig().getRegionName(), entry.getValue());
       registerSensor(regionNamePrefix + "_rt_lag", new Gauge(() -> getAggRegionHybridOffsetLagTotal(entry.getKey())));
@@ -52,10 +54,7 @@ public class AggLagStats extends AbstractVeniceStats {
     aggBatchFollowerOffsetLagFuture = 0;
     aggHybridLeaderOffsetLagTotal = 0;
     aggHybridFollowerOffsetLagTotal = 0;
-    aggRegionHybridOffsetLagTotalMap = new HashMap<>();
-    for (int regionId : kafkaClusterIdToAliasMap.keySet()) {
-      aggRegionHybridOffsetLagTotalMap.put(regionId, 0L);
-    }
+    aggRegionHybridOffsetLagTotalMap.clear();
 
     storeIngestionService.traverseAllIngestionTasksAndApply((ingestionTask) -> {
       if (ingestionTask.isFutureVersion()) {

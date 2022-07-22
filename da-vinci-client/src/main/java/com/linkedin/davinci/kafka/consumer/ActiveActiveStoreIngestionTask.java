@@ -45,6 +45,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -945,9 +946,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             return 0;
           }
           // Consumer might not existed after the consumption state is created, but before attaching the corresponding consumer.
-          Optional<Long> offsetLagOptional = getPartitionOffsetLag(kafkaSourceAddress, currentLeaderTopic, pcs.getUserPartition());
+          OptionalLong offsetLagOptional = getPartitionOffsetLag(kafkaSourceAddress, currentLeaderTopic, pcs.getUserPartition());
           if (offsetLagOptional.isPresent()) {
-            return offsetLagOptional.get();
+            return offsetLagOptional.getAsLong();
           }
 
           // Fall back to calculate offset lag in the old way
