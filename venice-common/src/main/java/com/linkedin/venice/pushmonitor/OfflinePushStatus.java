@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -158,21 +159,27 @@ public class OfflinePushStatus {
 
   private void updateStatusDetails() {
     PushStatusDecider decider = PushStatusDecider.getDecider(strategy);
-    Long finishedPartitions = getPartitionStatuses().stream()
-        // For all partitions, look at their replicas
-        .map(partitionStatus -> partitionStatus.getReplicaStatuses().stream()
-            // Find the finished replicas
-            .filter(replicaStatus -> replicaStatus.getCurrentStatus().isTerminal())
-            // Count how many finished replicas each partition has
-            .count()).map(Long::intValue)
-        // Determine if partition is considered complete or not
-        .map(finishedReplicaInPartition -> decider.hasEnoughReplicasForOnePartition(finishedReplicaInPartition,
-            replicationFactor))
-        // Compute the sum of finished partitions
-        .filter(partitionIsFinished -> partitionIsFinished).count();
-
+    Set<Integer> incompletePartitions = new HashSet<>();
+    int finishedPartitions = 0;
+    for (PartitionStatus partitionStatus : getPartitionStatuses()) {
+      int finishedReplicaInPartition = 0;
+      for (ReplicaStatus replicaStatus: partitionStatus.getReplicaStatuses()) {
+        if (replicaStatus.getCurrentStatus().isTerminal()) {
+          finishedReplicaInPartition++;
+        }
+      }
+      if (decider.hasEnoughReplicasForOnePartition(finishedReplicaInPartition, replicationFactor)) {
+        finishedPartitions++;
+      } else {
+        incompletePartitions.add(partitionStatus.getPartitionId());
+      }
+    }
     if (finishedPartitions > 0) {
-      setStatusDetails(finishedPartitions + "/" + numberOfPartition + " partitions completed.");
+      String message = finishedPartitions + "/" + numberOfPartition + " partitions completed.";
+      if (incompletePartitions.size() > 0 && incompletePartitions.size() <= 5) {
+        message += ". Following partitions still not complete " + incompletePartitions;
+      }
+      setStatusDetails(message);
     }
   }
 
