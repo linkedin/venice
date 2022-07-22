@@ -4311,6 +4311,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<String> erroredInstance = Optional.empty();
         String storeName = version.getStoreName();
         int completedPartitions = 0;
+        Set<Integer> incompletePartition = new HashSet<>();
         for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
             Map<CharSequence, Integer> instances = pushStatusStoreReader.get().getPartitionStatus(storeName, version.getNumber(), partitionId, incrementalPushVersion);
             boolean allInstancesCompleted = true;
@@ -4335,6 +4336,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
             if (allInstancesCompleted) {
                 completedPartitions++;
+            } else {
+              incompletePartition.add(partitionId);
             }
         }
         Optional<String> statusDetail;
@@ -4344,6 +4347,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
         if (erroredInstance.isPresent()) {
             details += "Found a failed instance in Da Vinci, it is " + erroredInstance;
+        }
+        int incompleteSize = incompletePartition.size();
+        if (incompleteSize > 0 && incompleteSize <= 5) {
+          details += ". Following partitions still not complete " + incompletePartition;
         }
         if (details.length() != 0) {
             statusDetail = Optional.of(details);
