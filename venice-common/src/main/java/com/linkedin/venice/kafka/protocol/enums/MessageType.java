@@ -8,8 +8,8 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 
 import com.linkedin.venice.kafka.protocol.Update;
-import java.util.HashMap;
-import java.util.Map;
+import com.linkedin.venice.utils.EnumUtils;
+import com.linkedin.venice.utils.VeniceEnumValue;
 
 /**
  * A simple enum to map the values of
@@ -18,19 +18,18 @@ import java.util.Map;
  * N.B.: We maintain this enum manually because Avro's auto-generated enums do
  *       not support evolution (i.e.: adding values) properly.
  */
-public enum MessageType {
+public enum MessageType implements VeniceEnumValue {
   PUT(0, (byte) 0),
   DELETE(1, (byte) 0),
   CONTROL_MESSAGE(2, (byte) 2),
   UPDATE(3, (byte) 4);
 
-
-  private static final Map<Integer, MessageType> MESSAGE_TYPE_MAP = getMessageTypeMap();
+  private static final MessageType[] TYPES_ARRAY = EnumUtils.getEnumValuesArray(MessageType.class);
 
   private final int value;
   private final byte keyHeaderByte;
 
-  private MessageType(int value, byte keyHeaderByte) {
+  MessageType(int value, byte keyHeaderByte) {
     this.value = (byte) value;
     this.keyHeaderByte = keyHeaderByte;
   }
@@ -70,20 +69,12 @@ public enum MessageType {
     }
   }
 
-  private static Map<Integer, MessageType> getMessageTypeMap() {
-    Map<Integer, MessageType> intToTypeMap = new HashMap<>();
-    for (MessageType type : MessageType.values()) {
-      intToTypeMap.put(type.value, type);
-    }
-    return intToTypeMap;
-  }
-
   public static MessageType valueOf(int value) {
-    MessageType type = MESSAGE_TYPE_MAP.get(value);
-    if (type == null) {
+    try {
+      return TYPES_ARRAY[value];
+    } catch (IndexOutOfBoundsException e) {
       throw new VeniceMessageException("Invalid message type: " + value);
     }
-    return type;
   }
 
   public static MessageType valueOf(KafkaMessageEnvelope kafkaMessageEnvelope) {

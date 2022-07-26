@@ -219,11 +219,6 @@ class IngestionNotificationDispatcher {
             notifier.endOfIncrementalPushReceived(topic, pcs.getUserPartition(), pcs.getLatestProcessedLocalVersionTopicOffset(), version));
   }
 
-  void reportStartOfBufferReplayReceived(PartitionConsumptionState pcs) {
-    report(pcs, ExecutionStatus.START_OF_BUFFER_REPLAY_RECEIVED,
-        notifier -> notifier.startOfBufferReplayReceived(topic, pcs.getUserPartition(), pcs.getLatestProcessedLocalVersionTopicOffset()));
-  }
-
   void reportTopicSwitchReceived(PartitionConsumptionState pcs) {
     report(pcs, ExecutionStatus.TOPIC_SWITCH_RECEIVED,
         notifier -> notifier.topicSwitchReceived(topic, pcs.getUserPartition(), pcs.getLatestProcessedLocalVersionTopicOffset()));

@@ -120,6 +120,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   private final boolean isNativeReplicationEnabled;
   private final String nativeReplicationSourceVersionTopicKafkaURL;
+  private final Set<String> nativeReplicationSourceVersionTopicKafkaURLSingletonSet;
 
   private final VeniceWriterFactory veniceWriterFactory;
 
@@ -210,6 +211,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             + dataRecoveryCompletionTimeLagThresholdInMs);
       }
     }
+    this.nativeReplicationSourceVersionTopicKafkaURLSingletonSet =
+        Collections.unmodifiableSet(Collections.singleton(nativeReplicationSourceVersionTopicKafkaURL));
     logger.info("Native replication source version topic kafka url set to: "
         + nativeReplicationSourceVersionTopicKafkaURL + " for topic: " + getVersionTopic());
 
@@ -753,16 +756,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           throw new VeniceException("Expect RT Kafka URL when leader topic is a real-time topic. Got: " + partitionConsumptionState);
         }
       } else {
-        return Collections.singleton(nativeReplicationSourceVersionTopicKafkaURL);
+        return nativeReplicationSourceVersionTopicKafkaURLSingletonSet;
       }
     }
-    return Collections.singleton(localKafkaServer);
+    return localKafkaServerSingletonSet;
   }
 
   @Override
   protected Set<String> getRealTimeDataSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState) {
     if (!isNativeReplicationEnabled) {
-      return Collections.singleton(localKafkaServer);
+      return localKafkaServerSingletonSet;
     }
     TopicSwitch topicSwitch = partitionConsumptionState.getTopicSwitch();
     if (topicSwitch == null || topicSwitch.sourceKafkaServers == null || topicSwitch.sourceKafkaServers.isEmpty()) {

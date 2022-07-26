@@ -3,7 +3,6 @@ package com.linkedin.venice.kafka;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcher;
@@ -17,7 +16,6 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
-import java.io.IOException;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
@@ -32,7 +30,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.common.PartitionInfo;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.errors.InvalidReplicationFactorException;
 import org.apache.kafka.common.errors.TopicExistsException;
@@ -674,7 +671,7 @@ public class TopicManager implements Closeable {
    * @return true if the topic exists neither in ZK nor in the brokers
    *         false if the topic exists fully or partially
    */
-  public synchronized boolean isTopicFullyDeleted(String topic, boolean closeAndRecreateConsumer) {
+  private synchronized boolean isTopicFullyDeleted(String topic, boolean closeAndRecreateConsumer) {
     if (containsTopic(topic)) {
       logger.info("containsTopicInKafkaZK() returned true, meaning that the ZK path still exists for topic: " + topic);
       return false;
@@ -715,47 +712,10 @@ public class TopicManager implements Closeable {
   }
 
   /**
-   * Here this function will only check whether the topic exists in Kafka Zookeeper or not.
-   * If stronger check against Kafka broker is required, the caller should call {@link #containsTopicAndAllPartitionsAreOnline(String)}
-   * before invoking this function. The reason of not checking topic existence by {@link #containsTopicAndAllPartitionsAreOnline(String)}
-   * by default since this function will validate whether every topic partition has ISR, which could
-   * fail {@link #getPartitionLatestOffset(String, int)} since some transient non-ISR could happen randomly.
-   */
-  public long getPartitionLatestOffset(String topic, int partition) throws TopicDoesNotExistException {
-    return partitionOffsetFetcher.getPartitionLatestOffset(topic, partition);
-  }
-
-  /**
-   * Get offsets for all the partitions with a specific timestamp.
-   * This function will always return the next offset to consume, which could be:
-   * 1. Any existing offset in the current topic partition.
-   * 2. A future offset returned by {@link #getPartitionLatestOffset}: the last record offset + 1.
-   */
-  public Map<Integer, Long> getTopicOffsetsByTime(String topic, long timestamp) {
-    return partitionOffsetFetcher.getTopicOffsetsByTime(topic, timestamp);
-  }
-
-  /**
    * Get offsets for only one partition with a specific timestamp.
    */
   public long getPartitionOffsetByTime(String topic, int partition, long timestamp) {
     return partitionOffsetFetcher.getPartitionOffsetByTime(topic, partition, timestamp);
-  }
-
-  /**
-   * Get offsets for only one partition with a specific timestamp with retry.
-   */
-  public long getPartitionOffsetByTimeWithRetry(String topic, int partition, long timestamp, int maxAttempt, Duration delay) {
-    return partitionOffsetFetcher.getPartitionOffsetByTimeWithRetry(topic, partition, timestamp, maxAttempt, delay);
-  }
-
-  /**
-   * Kafka's get offset by time API returns null if the requested time is before the first record OR after
-   * the last record.  This method queries the time of the last message and compares it to the requested
-   * timestamp in order to return either offset 0 or the last offset.
-   */
-  protected long getOffsetByTimeIfOutOfRange(TopicPartition topicPartition, long timestamp) {
-    return partitionOffsetFetcher.getOffsetByTimeIfOutOfRange(topicPartition, timestamp);
   }
 
   /**
@@ -790,7 +750,7 @@ public class TopicManager implements Closeable {
   }
 
   @Override
-  public synchronized void close() throws IOException {
+  public synchronized void close() {
     Utils.closeQuietlyWithErrorLogged(partitionOffsetFetcher);
     kafkaReadOnlyAdmin.ifPresent(Utils::closeQuietlyWithErrorLogged);
     kafkaWriteOnlyAdmin.ifPresent(Utils::closeQuietlyWithErrorLogged);

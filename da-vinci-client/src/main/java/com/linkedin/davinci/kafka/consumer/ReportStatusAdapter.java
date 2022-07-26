@@ -106,12 +106,6 @@ public class ReportStatusAdapter {
         () -> notificationDispatcher.reportEndOfPushReceived(partitionConsumptionState));
   }
 
-  public void reportStartOfBufferReplayReceived(PartitionConsumptionState partitionConsumptionState) {
-    report(partitionConsumptionState, SubPartitionStatus.START_OF_BUFFER_REPLAY_RECEIVED,
-        () -> notificationDispatcher.reportStartOfBufferReplayReceived(partitionConsumptionState));
-  }
-
-
   public void reportProgress(PartitionConsumptionState partitionConsumptionState) {
     report(partitionConsumptionState, SubPartitionStatus.PROGRESS,
         () -> notificationDispatcher.reportProgress(partitionConsumptionState));

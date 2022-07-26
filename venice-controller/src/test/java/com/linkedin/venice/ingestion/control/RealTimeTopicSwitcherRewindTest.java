@@ -48,7 +48,6 @@ public class RealTimeTopicSwitcherRewindTest {
     when(topicReplicator.getTopicManager()).thenReturn(topicManager);
     when(topicReplicator.getVeniceWriterFactory()).thenReturn(veniceWriterFactory);
     when(topicReplicator.getTimer()).thenReturn(mockTime);
-    when(topicManager.getTopicOffsetsByTime(anyString(), anyLong())).thenReturn(startingOffsets);
     when(topicManager.containsTopicAndAllPartitionsAreOnline(anyString())).thenReturn(true);
     when(veniceWriterFactory.createBasicVeniceWriter(
         anyString(),

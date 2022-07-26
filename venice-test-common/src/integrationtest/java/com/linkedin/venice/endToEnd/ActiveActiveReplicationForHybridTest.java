@@ -23,8 +23,10 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
@@ -676,9 +678,12 @@ public class ActiveActiveReplicationForHybridTest {
   public static void verifyDCConfigAARepl(ControllerClient controllerClient, String storeName, boolean isHybrid, boolean currentStatus, boolean expectedStatus) {
     waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
       StoreResponse storeResponse = assertCommand(controllerClient.getStore(storeName));
-      assertEquals(storeResponse.getStore().isActiveActiveReplicationEnabled(), expectedStatus, "The active active replication config does not match.");
+      StoreInfo storeInfo = storeResponse.getStore();
+      assertEquals(storeInfo.isActiveActiveReplicationEnabled(), expectedStatus, "The active active replication config does not match.");
       if (isHybrid && (currentStatus != expectedStatus)) {
-        DataReplicationPolicy policy = storeResponse.getStore().getHybridStoreConfig().getDataReplicationPolicy();
+        HybridStoreConfig hybridStoreConfig = storeInfo.getHybridStoreConfig();
+        assertNotNull(hybridStoreConfig);
+        DataReplicationPolicy policy = hybridStoreConfig.getDataReplicationPolicy();
         assertEquals(policy, DataReplicationPolicy.NON_AGGREGATE, "The active active replication policy does not match.");
       }
     });

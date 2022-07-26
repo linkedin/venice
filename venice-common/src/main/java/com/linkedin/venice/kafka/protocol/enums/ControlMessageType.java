@@ -2,10 +2,11 @@ package com.linkedin.venice.kafka.protocol.enums;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
 import com.linkedin.venice.kafka.protocol.*;
 
-import java.util.HashMap;
-import java.util.Map;
+import com.linkedin.venice.utils.EnumUtils;
+import com.linkedin.venice.utils.VeniceEnumValue;
 
 /**
  * A simple enum to map the values of
@@ -14,19 +15,19 @@ import java.util.Map;
  * N.B.: We maintain this enum manually because Avro's auto-generated enums do
  *       not support evolution (i.e.: adding values) properly.
  */
-public enum ControlMessageType {
+public enum ControlMessageType implements VeniceEnumValue {
   START_OF_PUSH(0),
   END_OF_PUSH(1),
   START_OF_SEGMENT(2),
   END_OF_SEGMENT(3),
-  START_OF_BUFFER_REPLAY(4),
+  @Deprecated START_OF_BUFFER_REPLAY(4),
   START_OF_INCREMENTAL_PUSH(5),
   END_OF_INCREMENTAL_PUSH(6),
   TOPIC_SWITCH(7);
 
   /** The value is the byte used on the wire format */
   private final int value;
-  private static final Map<Integer, ControlMessageType> MESSAGE_TYPE_MAP = getMessageTypeMap();
+  private static final ControlMessageType[] TYPES_ARRAY = EnumUtils.getEnumValuesArray(ControlMessageType.class);
 
   ControlMessageType(int value) {
     this.value = value;
@@ -55,7 +56,8 @@ public enum ControlMessageType {
       case END_OF_PUSH: return new EndOfPush();
       case START_OF_SEGMENT: return new StartOfSegment();
       case END_OF_SEGMENT: return new EndOfSegment();
-      case START_OF_BUFFER_REPLAY: return new StartOfBufferReplay();
+      case START_OF_BUFFER_REPLAY:
+        throw new UnsupportedMessageTypeException("SOBR is a legacy mechanism that should never be used anymore.");
       case START_OF_INCREMENTAL_PUSH: return new StartOfIncrementalPush();
       case END_OF_INCREMENTAL_PUSH: return new EndOfIncrementalPush();
       case TOPIC_SWITCH: return new TopicSwitch();
@@ -64,20 +66,12 @@ public enum ControlMessageType {
     }
   }
 
-  private static Map<Integer, ControlMessageType> getMessageTypeMap() {
-    Map<Integer, ControlMessageType> intToTypeMap = new HashMap<>();
-    for (ControlMessageType type : ControlMessageType.values()) {
-      intToTypeMap.put(type.value, type);
-    }
-    return intToTypeMap;
-  }
-
   public static ControlMessageType valueOf(int value) {
-    ControlMessageType type = MESSAGE_TYPE_MAP.get(value);
-    if (type == null) {
+    try {
+      return TYPES_ARRAY[value];
+    } catch (IndexOutOfBoundsException e) {
       throw new VeniceMessageException("Invalid control message type: " + value);
     }
-    return type;
   }
 
   public static ControlMessageType valueOf(ControlMessage controlMessage) {

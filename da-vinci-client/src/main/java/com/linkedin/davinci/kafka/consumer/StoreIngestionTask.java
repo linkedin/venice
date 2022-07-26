@@ -41,7 +41,6 @@ import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
-import com.linkedin.venice.kafka.protocol.StartOfBufferReplay;
 import com.linkedin.venice.kafka.protocol.StartOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.StartOfPush;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
@@ -70,11 +69,9 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
-import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
-import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -353,6 +350,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final AmplificationAdapter amplificationAdapter;
 
   protected final String localKafkaServer;
+  protected final Set<String> localKafkaServerSingletonSet;
   private int valueSchemaId = -1;
 
   protected final boolean isDaVinciClient;
@@ -499,6 +497,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     );
     this.cacheBackend = cacheBackend;
     this.localKafkaServer = this.kafkaProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+    this.localKafkaServerSingletonSet = Collections.unmodifiableSet(Collections.singleton(localKafkaServer));
     this.isDaVinciClient = builder.isDaVinciClient();
     this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
     this.offsetLagDeltaRelaxEnabled = serverConfig.getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart() > 0;
@@ -1892,7 +1891,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected Set<String> getRealTimeDataSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState) {
-    return Collections.singleton(localKafkaServer);
+    return localKafkaServerSingletonSet;
   }
 
   public Optional<PartitionConsumptionState> getPartitionConsumptionState(int partitionId) {
@@ -2252,32 +2251,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     storeIngestionStats.recordChecksumVerificationFailure(storeName);
   }
 
-  /**
-   * @return the total lag for all subscribed partitions between the real-time buffer topic and this consumption task.
-   */
-  public long getRealTimeBufferOffsetLag() {
-    if (!hybridStoreConfig.isPresent()) {
-      return StatsErrorCode.METRIC_ONLY_AVAILABLE_FOR_HYBRID_STORES.code;
-    }
-
-    Optional<StoreVersionState> svs = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
-    if (!svs.isPresent()) {
-      return StatsErrorCode.STORE_VERSION_STATE_UNAVAILABLE.code;
-    }
-
-    if (partitionConsumptionStateMap.isEmpty()) {
-      return StatsErrorCode.NO_SUBSCRIBED_PARTITION.code;
-    }
-
-    long offsetLag = partitionConsumptionStateMap.values().stream()
-        .filter(pcs -> pcs.isEndOfPushReceived() &&
-            pcs.getOffsetRecord().getStartOfBufferReplayDestinationOffset().isPresent())
-        .mapToLong(pcs -> measureHybridOffsetLag(pcs, false))
-        .sum();
-
-    return minZeroLag(offsetLag);
-  }
-
   public abstract long getBatchReplicationLag();
 
   public abstract long getLeaderOffsetLag();
@@ -2301,14 +2274,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public abstract void updateLeaderTopicOnFollower(PartitionConsumptionState partitionConsumptionState);
 
-  public long getOffsetLagThreshold() {
-    if (!hybridStoreConfig.isPresent()) {
-      return StatsErrorCode.METRIC_ONLY_AVAILABLE_FOR_HYBRID_STORES.code;
-    }
-
-    return hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
-  }
-
   /**
    * Because of timing considerations, it is possible that some lag metrics could compute negative
    * values. Negative lag does not make sense so the intent is to ease interpretation by applying a
@@ -2321,22 +2286,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     } else {
       return value;
     }
-  }
-
-  /**
-   * Indicate the number of partitions that haven't received SOBR yet. This method is for Hybrid store
-   */
-  public long getNumOfPartitionsNotReceiveSOBR() {
-    if (!hybridStoreConfig.isPresent()) {
-      return StatsErrorCode.METRIC_ONLY_AVAILABLE_FOR_HYBRID_STORES.code;
-    }
-
-    if (partitionConsumptionStateMap.isEmpty()) {
-      return StatsErrorCode.NO_SUBSCRIBED_PARTITION.code;
-    }
-
-    return partitionConsumptionStateMap.values().stream()
-        .filter(pcs -> !pcs.getOffsetRecord().getStartOfBufferReplayDestinationOffset().isPresent()).count();
   }
 
   public boolean isHybridMode() {
@@ -2448,35 +2397,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private void processStartOfBufferReplay(ControlMessage controlMessage, long offset, PartitionConsumptionState partitionConsumptionState) {
-    Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
-    if (storeVersionState.isPresent()) {
-      // Update StoreVersionState, if necessary
-      StartOfBufferReplay startOfBufferReplay = (StartOfBufferReplay) controlMessage.controlMessageUnion;
-      if (null == storeVersionState.get().startOfBufferReplay) {
-        // First time we receive a SOBR
-        storeVersionState.get().startOfBufferReplay = startOfBufferReplay;
-        storageMetadataService.put(kafkaVersionTopic, storeVersionState.get());
-      } else if (!CollectionUtils.listEquals(storeVersionState.get().startOfBufferReplay.sourceOffsets, startOfBufferReplay.sourceOffsets)) {
-        // Something very wrong is going on ): ...
-        throw new VeniceException("Unexpected: received multiple " + ControlMessageType.START_OF_BUFFER_REPLAY.name() +
-            " control messages with inconsistent 'startOfBufferReplay.offsets' fields within the same topic!" +
-            "\nPrevious SOBR: " + storeVersionState.get().startOfBufferReplay.sourceOffsets +
-            "\nIncoming SOBR: " + startOfBufferReplay.sourceOffsets);
-      }
-
-      partitionConsumptionState.getOffsetRecord().setStartOfBufferReplayDestinationOffset(offset);
-      reportStatusAdapter.reportStartOfBufferReplayReceived(partitionConsumptionState);
-    } else {
-      // TODO: If there are cases where this can legitimately happen, then we need a less stringent reaction here...
-      throw new VeniceException("Unexpected: received some " + ControlMessageType.START_OF_BUFFER_REPLAY.name() +
-          " control message in a topic where we have not yet received a " +
-          ControlMessageType.START_OF_PUSH.name() + " control message.");
-    }
-  }
-
-  protected void processStartOfIncrementalPush(ControlMessage startOfIncrementalPush, int partition, long upstreamOffset,
-      PartitionConsumptionState partitionConsumptionState) {
+  protected void processStartOfIncrementalPush(
+      ControlMessage startOfIncrementalPush, PartitionConsumptionState partitionConsumptionState) {
     CharSequence startVersion = ((StartOfIncrementalPush) startOfIncrementalPush.controlMessageUnion).version;
     IncrementalPush newIncrementalPush = new IncrementalPush();
     newIncrementalPush.version = startVersion;
@@ -2530,10 +2452,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          */
         break;
       case START_OF_BUFFER_REPLAY:
-        processStartOfBufferReplay(controlMessage, offset, partitionConsumptionState);
-       break;
+        throw new UnsupportedMessageTypeException(type + " is a legacy mechanism that should never happen anymore.");
       case START_OF_INCREMENTAL_PUSH:
-        processStartOfIncrementalPush(controlMessage, partition, offset, partitionConsumptionState);
+        processStartOfIncrementalPush(controlMessage, partitionConsumptionState);
         break;
       case END_OF_INCREMENTAL_PUSH:
         processEndOfIncrementalPush(controlMessage, partitionConsumptionState);

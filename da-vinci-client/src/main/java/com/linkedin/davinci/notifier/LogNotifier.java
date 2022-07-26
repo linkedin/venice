@@ -36,11 +36,6 @@ public class LogNotifier implements VeniceNotifier {
   }
 
   @Override
-  public void startOfBufferReplayReceived(String kafkaTopic, int partitionId, long offset, String message) {
-    logger.info(logMessage("Received START_OF_BUFFER_REPLAY", kafkaTopic, partitionId, offset, message));
-  }
-
-  @Override
   public void topicSwitchReceived(String kafkaTopic, int partitionId, long offset, String message) {
     logger.info(logMessage("Received TOPIC_SWITCH", kafkaTopic, partitionId, offset, message));
   }

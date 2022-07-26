@@ -50,16 +50,6 @@ public interface VeniceNotifier extends Closeable {
   default void endOfPushReceived(String kafkaTopic, int partitionId, long offset, String message) {}
 
   /**
-   * The {@link ControlMessageType#START_OF_BUFFER_REPLAY} control message was consumed.
-   * <p>
-   * This is only emitted for Hybrid Stores using Online/Offline model, after the report of
-   * {@link #endOfPushReceived(String, int, long)} and before {@link #completed(String, int, long)}.
-   */
-  default void startOfBufferReplayReceived(String kafkaTopic, int partitionId, long offset) {
-    startOfBufferReplayReceived(kafkaTopic, partitionId, offset, "");
-  }
-
-  /**
    * The {@link ControlMessageType#TOPIC_SWITCH} control message was consumed.
    * <p>
    * This is only emitted for Hybrid Stores using Leader/Follower model, after the report of
@@ -68,8 +58,6 @@ public interface VeniceNotifier extends Closeable {
   default void topicSwitchReceived(String kafkaTopic, int partitionId, long offset) {
     topicSwitchReceived(kafkaTopic, partitionId, offset, "");
   }
-
-  default void startOfBufferReplayReceived(String kafkaTopic, int partitionId, long offset, String message) {}
 
   default void topicSwitchReceived(String kafkaTopic, int partitionId, long offset, String message) {}
 
