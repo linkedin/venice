@@ -46,11 +46,6 @@ public class RelayNotifier implements VeniceNotifier {
   }
 
   @Override
-  public void startOfBufferReplayReceived(String kafkaTopic, int partitionId, long offset, String message) {
-    targetNotifier.startOfBufferReplayReceived(kafkaTopic, partitionId, offset, message);
-  }
-
-  @Override
   public void startOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String incrementalPushVersion) {
     targetNotifier.startOfIncrementalPushReceived(kafkaTopic, partitionId, offset, incrementalPushVersion);
   }

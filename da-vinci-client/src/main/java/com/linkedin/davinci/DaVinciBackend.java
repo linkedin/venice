@@ -555,13 +555,6 @@ public class DaVinciBackend implements Closeable {
     }
 
     @Override
-    public void startOfBufferReplayReceived(String kafkaTopic, int partitionId, long offset, String message) {
-      ingestionReportExecutor.submit(() -> {
-        reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.START_OF_BUFFER_REPLAY_RECEIVED);
-      });
-    }
-
-    @Override
     public void startOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String incrementalPushVersion) {
       ingestionReportExecutor.submit(() -> {
         VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);

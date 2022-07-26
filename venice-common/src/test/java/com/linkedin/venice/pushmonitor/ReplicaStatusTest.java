@@ -44,12 +44,7 @@ public class ReplicaStatusTest {
 
   @Test
   public void testUpdateStatusFromEndOfPushReceived() {
-    testStatusesUpdate(END_OF_PUSH_RECEIVED, STARTED, ERROR, COMPLETED, START_OF_BUFFER_REPLAY_RECEIVED, TOPIC_SWITCH_RECEIVED);
-  }
-
-  @Test
-  public void testUpdateStatusFromStartOfBufferReplayReceived() {
-    testStatusesUpdate(START_OF_BUFFER_REPLAY_RECEIVED, STARTED, ERROR, PROGRESS, COMPLETED);
+    testStatusesUpdate(END_OF_PUSH_RECEIVED, STARTED, ERROR, COMPLETED, TOPIC_SWITCH_RECEIVED);
   }
 
   @Test

@@ -188,7 +188,6 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     private final Map<Integer, String> kafkaClusterIdToAliasMap;
 
     private StoreIngestionTask ingestionTask;
-    private long rtTopicOffsetLagOverThreshold = 0;
     private int ingestionTaskPushTimeoutGauge = 0;
 
     private final Rate recordsConsumedRate;
@@ -354,37 +353,6 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
 
     private boolean hasActiveIngestionTask() {
       return ingestionTask != null && ingestionTask.isRunning();
-    }
-
-    public long getRtTopicOffsetLag() {
-      if (!hasActiveIngestionTask()) {
-        /**
-         * Once a versioned stat is created on a host, it cannot be unregistered because a specific version doesn't
-         * exist on the host; however, we can't guarantee every single store version will have a replica on the host.
-         * In this case, ingestion task will not be created, which is not an error.
-         */
-        return 0;
-      }
-      else if (!ingestionTask.isHybridMode()) {
-        rtTopicOffsetLagOverThreshold = METRIC_ONLY_AVAILABLE_FOR_HYBRID_STORES.code;
-        return METRIC_ONLY_AVAILABLE_FOR_HYBRID_STORES.code;
-      } else {
-        // Hybrid store and store ingestion is initialized.
-        long rtTopicOffsetLag = ingestionTask.getRealTimeBufferOffsetLag();
-        rtTopicOffsetLagOverThreshold = Math.max(0, rtTopicOffsetLag - ingestionTask.getOffsetLagThreshold());
-        return rtTopicOffsetLag;
-      }
-    }
-
-    public long getNumberOfPartitionsNotReceiveSOBR() {
-      if (!hasActiveIngestionTask()) {
-        return INACTIVE_STORE_INGESTION_TASK.code;
-      }
-      return ingestionTask.getNumOfPartitionsNotReceiveSOBR();
-    }
-
-    public long getRtTopicOffsetLagOverThreshold() {
-      return rtTopicOffsetLagOverThreshold;
     }
 
     // To prevent this metric being too noisy and align with the PreNotificationCheck of reportError, this metric should
@@ -743,15 +711,6 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     // Only register these stats if the store is hybrid.
     @Override
     protected void registerConditionalStats() {
-      registerSensor("rt_topic_offset_lag", new IngestionStatsGauge(this, () ->
-          (double) getStats().getRtTopicOffsetLag(), 0));
-
-      registerSensor("rt_topic_offset_lag_over_threshold", new IngestionStatsGauge(this, () ->
-          (double) getStats().getRtTopicOffsetLagOverThreshold(), 0));
-
-      registerSensor("number_of_partitions_not_receive_SOBR", new IngestionStatsGauge(this, () ->
-          (double) getStats().getNumberOfPartitionsNotReceiveSOBR(), 0));
-
       registerSensor(LEADER_STALLED_HYBRID_INGESTION_METRIC_NAME,
           new IngestionStatsGauge(this, () -> getStats().getLeaderStalledHybridIngestion(), 0));
 

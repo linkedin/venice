@@ -64,7 +64,6 @@ public class OffsetRecord {
     emptyPartitionState.producerStates = new HashMap<>();
     emptyPartitionState.endOfPush = false;
     emptyPartitionState.lastUpdate = 0;
-    emptyPartitionState.startOfBufferReplayDestinationOffset = null;
     emptyPartitionState.databaseInfo = new HashMap<>();
     emptyPartitionState.previousStatuses = new HashMap<>();
     emptyPartitionState.leaderOffset = DEFAULT_UPSTREAM_OFFSET;
@@ -150,14 +149,6 @@ public class OffsetRecord {
 
   public synchronized ProducerPartitionState getProducerPartitionState(GUID producerGuid) {
     return getProducerPartitionStateMap().get(guidToUtf8(producerGuid));
-  }
-
-  public void setStartOfBufferReplayDestinationOffset(long startOfBufferReplayDestinationOffset) {
-    this.partitionState.startOfBufferReplayDestinationOffset = startOfBufferReplayDestinationOffset;
-  }
-
-  public Optional<Long> getStartOfBufferReplayDestinationOffset() {
-    return Optional.ofNullable(partitionState.startOfBufferReplayDestinationOffset);
   }
 
   public void setDatabaseInfo(Map<String, String> databaseInfo) {

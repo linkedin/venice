@@ -43,7 +43,7 @@ public enum ExecutionStatus {
   END_OF_PUSH_RECEIVED(true, true, true, false, 4),
 
   /** Tasks belonging to a Hybrid Store emits this instead when it consumes a SOBR message */
-  START_OF_BUFFER_REPLAY_RECEIVED(false, true, true, false, 5),
+  @Deprecated START_OF_BUFFER_REPLAY_RECEIVED(false, true, true, false, 5),
 
   /** Tasks belonging to a Hybrid Store emits this instead when it consumes a TS message */
   TOPIC_SWITCH_RECEIVED(false, true, true, false, 6),

@@ -1845,12 +1845,6 @@ public class StoreIngestionTaskTest {
   public void testDelayedTransitionToOnlineInHybridMode(boolean isActiveActiveReplicationEnabled) throws Exception {
     final long MESSAGES_BEFORE_EOP = 100;
     final long MESSAGES_AFTER_EOP = 100;
-
-    // This does not entirely make sense, but we can do better when we have a real integration test which includes buffer replay
-    // TODO: We now have a real integration test which includes buffer replay, maybe fix up this test?
-    final long TOTAL_MESSAGES_PER_PARTITION = (MESSAGES_BEFORE_EOP + MESSAGES_AFTER_EOP) / ALL_PARTITIONS.size();
-    when(mockTopicManager.getPartitionLatestOffset(anyString(), anyInt())).thenReturn(TOTAL_MESSAGES_PER_PARTITION);
-
     mockStorageMetadataService = new InMemoryStorageMetadataService();
     hybridStoreConfig = Optional.of(new HybridStoreConfigImpl(10, 20,
         HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE,

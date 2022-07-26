@@ -1,6 +1,5 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
@@ -44,8 +43,6 @@ public class KafkaInputFormat implements InputFormat<BytesWritable, KafkaInputMa
       Map<TopicPartition, Long> partitionOffsetMap = new HashMap<>(latestOffsets.size());
       latestOffsets.forEach((partitionId, latestOffset) -> partitionOffsetMap.put(new TopicPartition(topic, partitionId), latestOffset));
       return partitionOffsetMap;
-    } catch (IOException e) {
-      throw new VeniceException("Failed to close TopicManager", e);
     }
   }
 

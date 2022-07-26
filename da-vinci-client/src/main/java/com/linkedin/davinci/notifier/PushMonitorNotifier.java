@@ -61,11 +61,6 @@ public class PushMonitorNotifier implements VeniceNotifier {
   }
 
   @Override
-  public void startOfBufferReplayReceived(String topic, int partitionId, long offset, String message) {
-    accessor.updateReplicaStatus(topic, partitionId, instanceId, START_OF_BUFFER_REPLAY_RECEIVED, offset, "");
-  }
-
-  @Override
   public void topicSwitchReceived(String topic, int partitionId, long offset, String message) {
     accessor.updateReplicaStatus(topic, partitionId, instanceId, TOPIC_SWITCH_RECEIVED, offset, "");
   }

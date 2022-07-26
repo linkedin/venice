@@ -2,7 +2,6 @@ package com.linkedin.venice.kafka.partitionoffset;
 
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -43,44 +42,11 @@ public class InstrumentedPartitionOffsetFetcher implements PartitionOffsetFetche
   }
 
   @Override
-  public long getPartitionLatestOffset(String topic, int partition) {
-    final long startTimeMs = time.getMilliseconds();
-    long res = partitionOffsetFetcher.getPartitionLatestOffset(topic, partition);
-    stats.recordLatency(
-        PartitionOffsetFetcherStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_PARTITION_LATEST_OFFSET,
-        Utils.calculateDurationMs(time, startTimeMs)
-    );
-    return res;
-  }
-
-  @Override
   public long getPartitionLatestOffsetAndRetry(String topic, int partition, int retries) {
     final long startTimeMs = time.getMilliseconds();
     long res = partitionOffsetFetcher.getPartitionLatestOffsetAndRetry(topic, partition, retries);
     stats.recordLatency(
         PartitionOffsetFetcherStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_PARTITION_LATEST_OFFSET_WITH_RETRY,
-        Utils.calculateDurationMs(time, startTimeMs)
-    );
-    return res;
-  }
-
-  @Override
-  public long getPartitionOffsetByTimeWithRetry(String topic, int partition, long timestamp, int maxAttempt, Duration delay) {
-    final long startTimeMs = time.getMilliseconds();
-    final long res = partitionOffsetFetcher.getPartitionOffsetByTimeWithRetry(topic, partition, timestamp, maxAttempt, delay);
-    stats.recordLatency(
-            PartitionOffsetFetcherStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_TOPIC_OFFSETS_BY_TIME_WITH_RETRY,
-            Utils.calculateDurationMs(time, startTimeMs)
-    );
-    return res;
-  }
-
-  @Override
-  public Map<Integer, Long> getTopicOffsetsByTime(String topic, long timestamp) {
-    final long startTimeMs = time.getMilliseconds();
-    Map<Integer, Long> res = partitionOffsetFetcher.getTopicOffsetsByTime(topic, timestamp);
-    stats.recordLatency(
-        PartitionOffsetFetcherStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_TOPIC_OFFSETS_BY_TIME,
         Utils.calculateDurationMs(time, startTimeMs)
     );
     return res;

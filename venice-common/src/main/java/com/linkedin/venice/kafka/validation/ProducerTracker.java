@@ -636,7 +636,7 @@ public class ProducerTracker {
      * N.B.: This used to show up as {@link DataFaultType#MISSING} data. This new fault type was
      *       introduced in order to disambiguate these two cases, because in some cases, the upstream
      *       code may want to be more lenient with this specific type of failure (such as when a {@link
-     *       ControlMessageType#START_OF_BUFFER_REPLAY} was received).
+     *       ControlMessageType#TOPIC_SWITCH} was received).
      */
     UNREGISTERED_PRODUCER(msg -> new ImproperlyStartedSegmentException(msg));
 
