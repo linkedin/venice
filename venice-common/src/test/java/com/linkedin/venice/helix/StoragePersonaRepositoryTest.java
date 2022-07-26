@@ -134,6 +134,21 @@ public class StoragePersonaRepositoryTest {
     personaRepository.validatePersona(persona1);
   }
 
+  @Test(expectedExceptions =  {VeniceException.class}, expectedExceptionsMessageRegExp = storesFailedRegex)
+  public void testValidateStoreAlreadyContainedByPersona() {
+    long totalQuota = 100;
+    String storeName = setUpTestStoreAndAddToRepo(totalQuota).getName();
+    StoragePersona persona = createDefaultPersona();
+    persona.getStoresToEnforce().add(storeName);
+    addPersonaToRepository(persona);
+    Assert.assertEquals(personaRepository.getPersona(persona.getName()).getStoresToEnforce().size(), 1);
+    Assert.assertEquals(personaRepository.getPersonaContainingStore(storeName), persona.getName());
+
+    StoragePersona persona2 = createDefaultPersona();
+    persona2.getStoresToEnforce().add(storeName);
+    personaRepository.validatePersona(persona2);
+  }
+
   @Test
   public void testAddPersonaThenMutate() {
     long quota = 100;
@@ -171,22 +186,6 @@ public class StoragePersonaRepositoryTest {
     Assert.assertEquals(personaRepository.getPersona(defaultPersona.getName()).getStoresToEnforce().size(), 1);
   }
 
-
-  @Test(expectedExceptions =  {VeniceException.class}, expectedExceptionsMessageRegExp = storesFailedRegex)
-  public void testValidateStoreAlreadyContainedByPersona() {
-    long totalQuota = 100;
-    String storeName = setUpTestStoreAndAddToRepo(totalQuota).getName();
-    StoragePersona persona = createDefaultPersona();
-    persona.getStoresToEnforce().add(storeName);
-    addPersonaToRepository(persona);
-    Assert.assertEquals(personaRepository.getPersona(persona.getName()).getStoresToEnforce().size(), 1);
-    Assert.assertEquals(personaRepository.getPersonaContainingStore(storeName), persona.getName());
-
-    StoragePersona persona2 = createDefaultPersona();
-    persona2.getStoresToEnforce().add(storeName);
-    personaRepository.validatePersona(persona2);
-  }
-
   @Test
   public void testUpdateQuotaSuccess() {
     long totalQuota = 1000;
@@ -211,13 +210,13 @@ public class StoragePersonaRepositoryTest {
     Assert.assertEquals(persona.getStoresToEnforce().size(), 2);
     addPersonaToRepository(persona);
     Assert.assertEquals(personaRepository.getPersona(persona.getName()), persona);
-    personaRepository.updatePersona(persona.getName(), new UpdateStoragePersonaQueryParams().setQuota(totalQuota));
+    personaRepository.validatePersonaUpdate(persona.getName(), new UpdateStoragePersonaQueryParams().setQuota(totalQuota));
   }
 
   @Test(expectedExceptions = {VeniceException.class}, expectedExceptionsMessageRegExp = personaDoesNotExistRegex)
   public void testUpdateQuotaFailedDoesNotExist() {
     long totalQuota = 1000;
-    personaRepository.updatePersona("testPersona",
+    personaRepository.validatePersonaUpdate("testPersona",
         new UpdateStoragePersonaQueryParams().setQuota(totalQuota * 2));
   }
 
@@ -227,7 +226,7 @@ public class StoragePersonaRepositoryTest {
     Set<String> storeSet = new HashSet<>();
     storeSet.add(setUpTestStoreAndAddToRepo(totalQuota).getName());
     storeSet.add(setUpTestStoreAndAddToRepo(totalQuota).getName());
-    personaRepository.updatePersona("testPersona",
+    personaRepository.validatePersonaUpdate("testPersona",
         new UpdateStoragePersonaQueryParams().setStoresToEnforce(storeSet));
   }
 
@@ -237,7 +236,7 @@ public class StoragePersonaRepositoryTest {
     Set<String> storeSet = new HashSet<>();
     storeSet.add(setUpTestStoreAndAddToRepo(totalQuota).getName());
     storeSet.add(setUpTestStoreAndAddToRepo(totalQuota).getName());
-    personaRepository.updatePersona("testPersona",
+    personaRepository.validatePersonaUpdate("testPersona",
         new UpdateStoragePersonaQueryParams().setStoresToEnforce(storeSet).setQuota(totalQuota * 2));
   }
 
@@ -272,7 +271,7 @@ public class StoragePersonaRepositoryTest {
     addPersonaToRepository(persona);
     Assert.assertEquals(personaRepository.getPersona(persona.getName()), persona);
     stores.add("testFailStore");
-    personaRepository.updatePersona(persona.getName(),
+    personaRepository.validatePersonaUpdate(persona.getName(),
         new UpdateStoragePersonaQueryParams().setStoresToEnforce(new HashSet<>(stores)));
   }
 
@@ -287,7 +286,7 @@ public class StoragePersonaRepositoryTest {
     addPersonaToRepository(persona);
     Assert.assertEquals(personaRepository.getPersona(persona.getName()), persona);
     stores.add(setUpTestStoreAndAddToRepo(totalQuota).getName());
-    personaRepository.updatePersona(persona.getName(),
+    personaRepository.validatePersonaUpdate(persona.getName(),
         new UpdateStoragePersonaQueryParams().setStoresToEnforce(new HashSet<>(stores)));
     persona.setStoresToEnforce(new HashSet<>(stores));
   }
@@ -351,7 +350,7 @@ public class StoragePersonaRepositoryTest {
     StoragePersona persona2 = createDefaultPersona();
     addPersonaToRepository(persona2);
 
-    personaRepository.updatePersona(persona2.getName(),
+    personaRepository.validatePersonaUpdate(persona2.getName(),
         new UpdateStoragePersonaQueryParams().setStoresToEnforce(persona.getStoresToEnforce()));
   }
 

@@ -2,6 +2,7 @@ package com.linkedin.venice.endToEnd;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -12,7 +13,9 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -72,7 +75,7 @@ public class StoragePersonaTest {
     return new StoragePersona(testPersonaName, quota, testStoreNames, testOwnerNames);
   }
 
-  private Store setUpTestStoreAndAddToRepo(ControllerClient controllerClient, long quota) {
+  private Store setUpTestStoreAndAddToRepo(long quota) {
     Store testStore = TestUtils.createTestStore(Utils.getUniqueString("testStore"), "testStoreOwner", 100);
     controllerClient.createNewStore(testStore.getName(), testStore.getOwner(), STRING_SCHEMA, STRING_SCHEMA);
     controllerClient.updateStore(testStore.getName(), new UpdateStoreQueryParams().setStorageQuotaInByte(quota));
@@ -92,11 +95,11 @@ public class StoragePersonaTest {
   @Test
   public void testCreatePersonaNonEmptyStores() {
     StoragePersona persona = createDefaultPersona();
-    String testStoreName1 = setUpTestStoreAndAddToRepo(controllerClient, 100).getName();
+    String testStoreName1 = setUpTestStoreAndAddToRepo(100).getName();
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS,
         () -> Assert.assertNotNull(controllerClient.getStore(testStoreName1)));
     persona.getStoresToEnforce().add(testStoreName1);
-    String testStoreName2 = setUpTestStoreAndAddToRepo(controllerClient, 200).getName();
+    String testStoreName2 = setUpTestStoreAndAddToRepo(200).getName();
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS,
         () -> Assert.assertNotNull(controllerClient.getStore(testStoreName2)));
     persona.getStoresToEnforce().add(testStoreName2);
@@ -163,7 +166,7 @@ public class StoragePersonaTest {
   @Test(expectedExceptions = {VeniceException.class}, expectedExceptionsMessageRegExp = ".*" + quotaFailedRegex)
   public void testCreatePersonaInvalidQuota() {
     StoragePersona persona = createDefaultPersona();
-    String testStoreName = setUpTestStoreAndAddToRepo(controllerClient, 100).getName();
+    String testStoreName = setUpTestStoreAndAddToRepo(100).getName();
     persona.getStoresToEnforce().add(testStoreName);
     persona.setQuotaNumber(50);
     ControllerResponse response =
@@ -234,5 +237,66 @@ public class StoragePersonaTest {
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> Assert.assertEquals(controllerClient.getStoragePersona(persona1.getName()).getStoragePersona(), persona1));
   }
 
+  @Test
+  public void testUpdatePersonaSuccess() {
+    long totalQuota = 1000;
+    StoragePersona persona = createDefaultPersona();
+    persona.setQuotaNumber(totalQuota * 3);
+    List<String> stores = new ArrayList<>();
+    stores.add(setUpTestStoreAndAddToRepo(totalQuota).getName());
+    persona.getStoresToEnforce().add(stores.get(0));
+    controllerClient.createStoragePersona(persona.getName(), persona.getQuotaNumber(), persona.getStoresToEnforce(), persona.getOwners());
+    stores.add(setUpTestStoreAndAddToRepo(totalQuota * 2).getName());
+    persona.setStoresToEnforce(new HashSet<>(stores));
+    controllerClient.updateStoragePersona(persona.getName(),
+        new UpdateStoragePersonaQueryParams().setStoresToEnforce(new HashSet<>(stores)));
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () ->
+      Assert.assertEquals(controllerClient.getStoragePersona(persona.getName()).getStoragePersona(), persona));
+  }
+
+  @Test(expectedExceptions = {VeniceException.class}, expectedExceptionsMessageRegExp = ".*" + quotaFailedRegex)
+  public void testUpdatePersonaFailedQuota() {
+    long totalQuota = 1000;
+    StoragePersona persona = createDefaultPersona();
+    persona.setQuotaNumber(totalQuota);
+    List<String> stores = new ArrayList<>();
+    stores.add(setUpTestStoreAndAddToRepo(totalQuota).getName());
+    persona.getStoresToEnforce().add(stores.get(0));
+    controllerClient.createStoragePersona(persona.getName(), persona.getQuotaNumber(), persona.getStoresToEnforce(), persona.getOwners());
+    stores.add(setUpTestStoreAndAddToRepo(totalQuota * 2).getName());
+    ControllerResponse response = controllerClient.updateStoragePersona(persona.getName(),
+        new UpdateStoragePersonaQueryParams().setStoresToEnforce(new HashSet<>(stores)));
+    Assert.assertTrue(response.isError());
+    throw(new VeniceException(response.getError()));
+  }
+
+  @Test(expectedExceptions = {VeniceException.class}, expectedExceptionsMessageRegExp = ".*" + personaDoesNotExistRegex)
+  public void testUpdatePersonaFailedDoesNotExist() {
+    long totalQuota = 1000;
+    StoragePersona persona = createDefaultPersona();
+    persona.setQuotaNumber(totalQuota);
+    List<String> stores = new ArrayList<>();
+    stores.add(setUpTestStoreAndAddToRepo(totalQuota).getName());
+    stores.add(setUpTestStoreAndAddToRepo(totalQuota * 2).getName());
+    persona.setStoresToEnforce(new HashSet<>(stores));
+    ControllerResponse response = controllerClient.updateStoragePersona(persona.getName(),
+        new UpdateStoragePersonaQueryParams().setStoresToEnforce(new HashSet<>(stores)));
+    Assert.assertTrue(response.isError());
+    throw(new VeniceException(response.getError()));
+  }
+
+  @Test
+  public void testUpdatePersonaFailedNonBlock() {
+    ControllerResponse response = controllerClient.updateStoragePersona("failedPersona",
+          new UpdateStoragePersonaQueryParams().setStoresToEnforce(new HashSet<>()));
+    Assert.assertTrue(response.isError());
+    StoragePersona persona2 = createDefaultPersona();
+    response = controllerClient.createStoragePersona(persona2.getName(), persona2.getQuotaNumber(),
+        persona2.getStoresToEnforce(), persona2.getOwners());
+    Assert.assertFalse(response.isError());
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS,
+        () -> Assert.assertEquals(controllerClient.getStoragePersona(persona2.getName()).getStoragePersona(),
+            persona2));
+  }
 
 }

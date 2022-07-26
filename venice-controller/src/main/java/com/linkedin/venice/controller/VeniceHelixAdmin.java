@@ -37,6 +37,7 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
+import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;
@@ -6215,6 +6216,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         logger.error("Failed to execute DeleteStoragePersonaOperation.", e);
         throw e;
       }
+  }
+
+  @Override
+  public void updateStoragePersona(String clusterName, String name, UpdateStoragePersonaQueryParams queryParams) {
+    checkControllerLeadershipFor(clusterName);
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+    try {
+      StoragePersonaRepository repository = resources.getStoragePersonaRepository();
+      repository.updatePersona(name, queryParams);
+    } catch (Exception e) {
+      logger.error("Failed to execute UpdateStoragePersonaOperation.", e);
+      throw e;
+    }
   }
 
 }
