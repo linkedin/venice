@@ -65,7 +65,7 @@ public class PushTimeoutTest {
         Optional.empty(),
         mock(StorageEngineBackedCompressorFactory.class));
 
-    leaderFollowerStoreIngestionTask.subscribePartition(versionTopic, 0);
+    leaderFollowerStoreIngestionTask.subscribePartition(versionTopic, 0, Optional.empty());
     leaderFollowerStoreIngestionTask.run();
 
     // Verify that push timeout happens
@@ -133,7 +133,7 @@ public class PushTimeoutTest {
         Optional.empty(),
         mock(StorageEngineBackedCompressorFactory.class));
 
-    leaderFollowerStoreIngestionTask.subscribePartition(versionTopic, 0);
+    leaderFollowerStoreIngestionTask.subscribePartition(versionTopic, 0, Optional.empty());
     /**
      * Since the mock consumer would show 0 subscription, the ingestion task will close after a few iteration.
      */

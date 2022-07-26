@@ -2,7 +2,6 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.HttpConstants.*;
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
 import static com.linkedin.venice.kafka.TopicManager.*;
@@ -13,7 +12,6 @@ import static org.testng.Assert.*;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -62,7 +60,6 @@ import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -91,8 +88,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.io.IOUtils;
-import org.apache.helix.HelixAdmin;
-import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
@@ -428,8 +423,9 @@ public class TestHybrid {
         TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, true, () -> {
           // Make sure Helix knows the instance is shutdown
           Map<String, String> storeStatus = controllerClient.listStoresStatuses().getStoreStatusMap();
-          Assert.assertTrue(
-              storeStatus.get(storeName).equals(StoreStatus.UNDER_REPLICATED.toString()),
+          assertEquals(
+              StoreStatus.UNDER_REPLICATED.toString(),
+              storeStatus.get(storeName),
               "Should be UNDER_REPLICATED");
 
           Map<String, String> instanceStatus = controllerClient.listInstancesStatuses().getInstancesStatusMap();
@@ -437,7 +433,7 @@ public class TestHybrid {
               instanceStatus.entrySet()
                   .stream()
                   .filter(entry -> entry.getKey().contains(Integer.toString(port)))
-                  .map(entry -> entry.getValue())
+                  .map(Map.Entry::getValue)
                   .allMatch(s -> s.equals(InstanceStatus.DISCONNECTED.toString())),
               "Storage Node on port " + port + " should be DISCONNECTED");
         });
@@ -447,8 +443,9 @@ public class TestHybrid {
         TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, true, () -> {
           // Make sure Helix knows the instance has recovered
           Map<String, String> storeStatus = controllerClient.listStoresStatuses().getStoreStatusMap();
-          Assert.assertTrue(
-              storeStatus.get(storeName).equals(StoreStatus.FULLLY_REPLICATED.toString()),
+          assertEquals(
+              StoreStatus.FULLLY_REPLICATED.toString(),
+              storeStatus.get(storeName),
               "Should be FULLLY_REPLICATED");
         });
       }
@@ -466,8 +463,8 @@ public class TestHybrid {
     assertEquals(value.length(), STREAMING_RECORD_SIZE);
 
     String expectedChar = Integer.toString(index).substring(0, 1);
-    for (int j = 0; j < value.length(); j++) {
-      assertEquals(value.substring(j, j + 1), expectedChar);
+    for (int i = 0; i < value.length(); i++) {
+      assertEquals(value.substring(i, i + 1), expectedChar);
     }
   }
 
@@ -638,9 +635,7 @@ public class TestHybrid {
             Assert.assertNull(client.get(Integer.toString(41)).get(), "This record should not be found");
           });
         } finally {
-          if (null != veniceStreamProducer) {
-            veniceStreamProducer.stop();
-          }
+          veniceStreamProducer.stop();
         }
       } finally {
         if (null != veniceBatchProducer) {
@@ -671,6 +666,9 @@ public class TestHybrid {
           .setLeaderFollowerModel(true);
       admin.updateStore(clusterName, storeName1, storeSettings);
       admin.updateStore(clusterName, storeName2, storeSettings);
+      veniceClusterWrapper.getVeniceRouters().get(0).refresh();
+      Assert.assertTrue(admin.getStore(clusterName, storeName1).isLeaderFollowerModelEnabled());
+      Assert.assertTrue(admin.getStore(clusterName, storeName2).isLeaderFollowerModelEnabled());
       Assert.assertFalse(admin.getStore(clusterName, storeName1).containsVersion(1));
       Assert.assertEquals(admin.getStore(clusterName, storeName1).getCurrentVersion(), 0);
       Assert.assertFalse(admin.getStore(clusterName, storeName2).containsVersion(1));
@@ -1462,138 +1460,100 @@ public class TestHybrid {
   }
 
   @Test(timeOut = 120
-      * Time.MS_PER_SECOND, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testHybridWithAmplificationFactor(boolean useCustomizedView, boolean useIngestionIsolation)
-      throws Exception {
-    final Properties extraProperties = new Properties();
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
-    final int partitionCount = 2;
+      * Time.MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testHybridWithAmplificationFactor(boolean enableIngestionIsolation) throws Exception {
+    final int partitionCount = 1;
     final int keyCount = 20;
-    VeniceClusterWrapper cluster = null;
-    boolean usedSharedCluster = false;
-    try {
-      if (useCustomizedView) {
-        cluster = ServiceFactory.getVeniceCluster(1, 0, 0, 1, 100, false, false, extraProperties);
-        Properties routerProperties = new Properties();
-        routerProperties.put(ConfigKeys.HELIX_OFFLINE_PUSH_ENABLED, true);
-        cluster.addVeniceRouter(routerProperties);
-        Properties serverProperties = new Properties();
-        serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
-        if (useIngestionIsolation) {
-          TestUtils.addIngestionIsolationToProperties(serverProperties);
-        }
-        // add two servers for enough SNs
-        cluster.addVeniceServer(new Properties(), serverProperties);
-        cluster.addVeniceServer(new Properties(), serverProperties);
-        // Build customized state config and update to Zookeeper
-        /* TODO: Consider if this is needed, since the {@link VeniceHelixAdmin} already calls this also... */
-        HelixAdmin admin = null;
-        try {
-          admin = new ZKHelixAdmin(cluster.getZk().getAddress());
-          HelixUtils.setupCustomizedStateConfig(admin, cluster.getClusterName());
-        } finally {
-          if (admin != null) {
-            admin.close();
+    final int replicationFactor = 2;
+    final int amplificationFactor = 5;
+    final boolean leaderFollowerEnabled = true;
+    // VeniceClusterWrapper cluster = enableIngestionIsolation ? ingestionIsolationEnabledSharedVenice : sharedVenice;
+    VeniceClusterWrapper cluster = ingestionIsolationEnabledSharedVenice;
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(partitionCount)
+        .setReplicationFactor(replicationFactor)
+        .setAmplificationFactor(amplificationFactor)
+        .setLeaderFollowerModel(leaderFollowerEnabled);
+    String storeName = Utils.getUniqueString("store");
+
+    try (ControllerClient controllerClient =
+        new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs())) {
+      TestUtils.assertCommand(controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA));
+      TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
+        Assert.assertEquals(
+            storeResponse.getStore().getReplicationFactor(),
+            replicationFactor,
+            "Replication factor has not been set to the expected value of '" + replicationFactor + "'.");
+        Assert.assertEquals(
+            storeResponse.getStore().getPartitionerConfig().getAmplificationFactor(),
+            amplificationFactor,
+            "Amplification factor has not been set to the expected value of '" + amplificationFactor + "'.");
+        Assert.assertTrue(
+            storeResponse.getStore().isLeaderFollowerModelEnabled(),
+            "Leader/Follower has not been set to the expected value of '" + true + "'.");
+      });
+
+      cluster.createVersion(
+          storeName,
+          STRING_SCHEMA,
+          STRING_SCHEMA,
+          IntStream.range(0, keyCount)
+              .mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))));
+
+      try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+          for (int i = 0; i < keyCount; i++) {
+            assertEquals(client.get(String.valueOf(i)).get().toString(), String.valueOf(i));
           }
-        }
-      } else {
-        usedSharedCluster = true;
-        cluster = useIngestionIsolation ? ingestionIsolationEnabledSharedVenice : sharedVenice;
-      }
-
-      final int replicationFactor = 2;
-      final int amplificationFactor = 5;
-      final boolean leaderFollowerEnabled = true;
-      UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(partitionCount)
-          .setReplicationFactor(replicationFactor)
-          .setAmplificationFactor(amplificationFactor)
-          .setLeaderFollowerModel(leaderFollowerEnabled);
-      String storeName = Utils.getUniqueString("store");
-
-      try (ControllerClient controllerClient =
-          new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs())) {
-        TestUtils.assertCommand(controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA));
-        TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-          StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
-          Assert.assertEquals(
-              storeResponse.getStore().getReplicationFactor(),
-              replicationFactor,
-              "Replication factor has not been set to the expected value of '" + replicationFactor + "'.");
-          Assert.assertEquals(
-              storeResponse.getStore().getPartitionerConfig().getAmplificationFactor(),
-              amplificationFactor,
-              "Amplification factor has not been set to the expected value of '" + amplificationFactor + "'.");
-          Assert.assertTrue(
-              storeResponse.getStore().isLeaderFollowerModelEnabled(),
-              "Leader/Follower has not been set to the expected value of '" + true + "'.");
         });
 
+        // Update Amp Factor and turn store into a hybrid store
+        params = new UpdateStoreQueryParams().setAmplificationFactor(3)
+            // set hybridRewindSecond to a big number so following versions won't ignore old records in RT
+            .setHybridRewindSeconds(2000000)
+            .setHybridOffsetLagThreshold(10);
+
+        TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
+
+        // Create a new version with updated amplification factor
         cluster.createVersion(
             storeName,
             STRING_SCHEMA,
             STRING_SCHEMA,
             IntStream.range(0, keyCount)
                 .mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))));
-
-        try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
-            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
-          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-            for (int i = 0; i < keyCount; i++) {
-              assertEquals(client.get(String.valueOf(i)).get().toString(), String.valueOf(i));
-            }
-          });
-
-          // Update Amp Factor and turn store into a hybrid store
-          params = new UpdateStoreQueryParams().setAmplificationFactor(3)
-              // set hybridRewindSecond to a big number so following versions won't ignore old records in RT
-              .setHybridRewindSeconds(2000000)
-              .setHybridOffsetLagThreshold(10);
-
-          TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
-
-          // Create a new version with updated amplification factor
-          cluster.createVersion(
-              storeName,
-              STRING_SCHEMA,
-              STRING_SCHEMA,
-              IntStream.range(0, keyCount)
-                  .mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))));
-          TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
-            for (Integer i = 0; i < keyCount; i++) {
-              assertEquals(client.get(String.valueOf(i)).get().toString(), String.valueOf(i));
-            }
-          });
-
-          SystemProducer producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
-          for (int i = 0; i < keyCount; i++) {
-            TestPushUtils.sendCustomSizeStreamingRecord(producer, storeName, i, STREAMING_RECORD_SIZE);
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+          for (Integer i = 0; i < keyCount; i++) {
+            assertEquals(client.get(String.valueOf(i)).get().toString(), String.valueOf(i));
           }
-          producer.stop();
-          TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
-            for (int i = 0; i < keyCount; i++) {
-              checkLargeRecord(client, i);
-            }
-          });
-          params = new UpdateStoreQueryParams().setAmplificationFactor(5);
-          TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
-          // Create a new version with updated amplification factor
-          cluster.createVersion(
-              storeName,
-              STRING_SCHEMA,
-              STRING_SCHEMA,
-              IntStream.range(0, keyCount)
-                  .mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))));
-          TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
-            for (int i = 0; i < keyCount; i++) {
-              checkLargeRecord(client, i);
-            }
-          });
+        });
+
+        SystemProducer producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
+        for (int i = 0; i < keyCount; i++) {
+          TestPushUtils.sendCustomSizeStreamingRecord(producer, storeName, i, STREAMING_RECORD_SIZE);
         }
-      }
-    } finally {
-      if (!usedSharedCluster) {
-        Utils.closeQuietlyWithErrorLogged(cluster);
+        producer.stop();
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+          for (int i = 0; i < keyCount; i++) {
+            checkLargeRecord(client, i);
+          }
+        });
+        params = new UpdateStoreQueryParams().setAmplificationFactor(5);
+        TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
+        // Create a new version with updated amplification factor
+        cluster.createVersion(
+            storeName,
+            STRING_SCHEMA,
+            STRING_SCHEMA,
+            IntStream.range(0, keyCount)
+                .mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))));
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+          for (int i = 0; i < keyCount; i++) {
+            checkLargeRecord(client, i);
+          }
+        });
       }
     }
   }
@@ -1771,27 +1731,39 @@ public class TestHybrid {
       boolean enabledIngestionIsolation,
       boolean enablePartitionWiseSharedConsumer) {
     Properties extraProperties = new Properties();
-    extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
-    extraProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
-    extraProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
-    extraProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
+    extraProperties.setProperty(DEFAULT_MAX_NUMBER_OF_PARTITIONS, "5");
+    VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 0, 0, 2, 1000000, false, false, extraProperties);
+
+    // Add Venice Router
+    Properties routerProperties = new Properties();
+    // TODO: Enable this config to be true globally as it has been rolled out fully in production.
+    // routerProperties.put(ConfigKeys.HELIX_OFFLINE_PUSH_ENABLED, true);
+    cluster.addVeniceRouter(routerProperties);
+
+    // Add Venice Server
+    Properties serverProperties = new Properties();
+    serverProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
+    serverProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
+    serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
+    serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
+    serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
+
+    serverProperties.setProperty(SSL_TO_KAFKA, "false");
+    serverProperties.setProperty(SERVER_SHARED_CONSUMER_POOL_ENABLED, "true");
+    serverProperties.setProperty(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, "3");
+    serverProperties.setProperty(SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED, "true");
+
     if (enabledIngestionIsolation) {
-      TestUtils.addIngestionIsolationToProperties(extraProperties);
+      TestUtils.addIngestionIsolationToProperties(serverProperties);
     }
     if (enablePartitionWiseSharedConsumer) {
-      extraProperties.setProperty(DEFAULT_MAX_NUMBER_OF_PARTITIONS, "4");
-      extraProperties.setProperty(
+      serverProperties.setProperty(DEFAULT_MAX_NUMBER_OF_PARTITIONS, "4");
+      serverProperties.setProperty(
           SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY,
           KafkaConsumerService.ConsumerAssignmentStrategy.PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY.name());
     }
-    VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 1, 2, 1000000, false, false, extraProperties);
-    Properties serverPropertiesWithSharedConsumer = new Properties();
-    serverPropertiesWithSharedConsumer.setProperty(SSL_TO_KAFKA, "false");
-    extraProperties.setProperty(SERVER_SHARED_CONSUMER_POOL_ENABLED, "true");
-    extraProperties.setProperty(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, "3");
-    extraProperties.setProperty(SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED, "true");
-    cluster.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);
+    cluster.addVeniceServer(new Properties(), serverProperties);
+    cluster.addVeniceServer(new Properties(), serverProperties);
 
     return cluster;
   }

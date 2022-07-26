@@ -851,7 +851,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
      * Once we switch into RT topic consumption, only leaderSubPartition should be acting as LEADER role.
      * Hence, before processing TopicSwitch message, we need to force downgrade other subPartitions into FOLLOWER.
      */
-    if (isLeader(partitionConsumptionState) && !amplificationAdapter.isLeaderSubPartition(partition)) {
+    if (isLeader(partitionConsumptionState) && !amplificationFactorAdapter.isLeaderSubPartition(partition)) {
       logger.info("SubPartition: " + partitionConsumptionState.getPartition() + " is demoted from LEADER to STANDBY.");
       String currentLeaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
       consumerUnSubscribe(currentLeaderTopic, partitionConsumptionState);
@@ -873,7 +873,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
 
     TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
-    reportStatusAdapter.reportTopicSwitchReceived(partitionConsumptionState);
+    statusReportAdapter.reportTopicSwitchReceived(partitionConsumptionState);
 
     // Calculate the start offset based on start timestamp
     final String newSourceTopicName = topicSwitch.sourceTopicName.toString();
@@ -1122,7 +1122,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         .stream()
         .filter(LeaderFollowerStoreIngestionTask.LEADER_OFFSET_LAG_FILTER)
         // Leader consumption upstream RT offset is only available in leader subPartition
-        .filter(pcs -> amplificationAdapter.isLeaderSubPartition(pcs.getPartition()))
+        .filter(pcs -> amplificationFactorAdapter.isLeaderSubPartition(pcs.getPartition()))
         // the lag is (latest fabric RT offset - consumed fabric RT offset)
         .mapToLong((pcs) -> {
           String currentLeaderTopic = pcs.getOffsetRecord().getLeaderTopic();

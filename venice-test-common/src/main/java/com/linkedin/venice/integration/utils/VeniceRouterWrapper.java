@@ -30,11 +30,9 @@ import org.apache.commons.lang.StringUtils;
  */
 public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware {
   public static final String SERVICE_NAME = "VeniceRouter";
-  public static final String MAX_RESPONSE_SIZE = "32000000";
-
+  private final VeniceProperties properties;
+  private final String zkAddress;
   private RouterServer service;
-  private VeniceProperties properties;
-  private String zkAddress;
 
   VeniceRouterWrapper(
       String serviceName,
@@ -87,10 +85,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
       String d2 = D2TestUtils.getD2ServiceName(clusterToD2, clusterName);
 
       VeniceProperties routerProperties = builder.build();
-      boolean https = false;
-      if (routerProperties.getBoolean(ROUTER_HTTP2_INBOUND_ENABLED, false)) {
-        https = true;
-      }
+      boolean https = routerProperties.getBoolean(ROUTER_HTTP2_INBOUND_ENABLED, false);
       List<D2Server> d2Servers;
       if (!D2TestUtils.DEFAULT_TEST_SERVICE_NAME.equals(d2)) {
         D2TestUtils.setupD2Config(zkAddress, https, d2, d2, false);

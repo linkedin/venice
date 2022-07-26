@@ -35,7 +35,7 @@ import org.apache.logging.log4j.Logger;
  *    accordingly.
  * 4: Report replica status changes if the above actions affect them.
  *      TODO: Consider whether this is tech debt and if we could/should decouple status reporting from this class.
- *            This would allow us to stop passing in the {@link #reportStatusAdapter} which in turn may allow us
+ *            This would allow us to stop passing in the {@link #statusReportAdapter} which in turn may allow us
  *            to stop mutating the entries in {@link #partitionConsumptionStateMap} (in which case, we could pass
  *            a map where the values are a read-only interface implemented by {@link PartitionConsumptionState}
  *            and thus preventing mutations of this state from here).
@@ -65,7 +65,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
   private final Set<Integer> pausedPartitions;
   private final boolean isHybridQuotaEnabledInServer;
   private final boolean isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled;
-  private final ReportStatusAdapter reportStatusAdapter;
+  private final StatusReportAdapter statusReportAdapter;
   private final TopicPartitionConsumerFunction pausePartition;
   private final TopicPartitionConsumerFunction resumePartition;
 
@@ -97,7 +97,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       Map<Integer, PartitionConsumptionState> partitionConsumptionStateMap,
       boolean isHybridQuotaEnabledInServer,
       boolean isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled,
-      ReportStatusAdapter reportStatusAdapter,
+      StatusReportAdapter statusReportAdapter,
       TopicPartitionConsumerFunction pausePartition,
       TopicPartitionConsumerFunction resumePartition) {
     this.partitionConsumptionStateMap = partitionConsumptionStateMap;
@@ -116,7 +116,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     this.isHybridQuotaEnabledInServer = isHybridQuotaEnabledInServer;
     this.isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled =
         isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled;
-    this.reportStatusAdapter = reportStatusAdapter;
+    this.statusReportAdapter = statusReportAdapter;
     this.pausePartition = pausePartition;
     this.resumePartition = resumePartition;
     setStoreQuota(store);
@@ -148,7 +148,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
    */
   private void reportStoreQuotaNotViolated() {
     for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {
-      reportStatusAdapter.reportQuotaNotViolated(partitionConsumptionState);
+      statusReportAdapter.reportQuotaNotViolated(partitionConsumptionState);
     }
   }
 
@@ -255,7 +255,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
      * we check if the partition is in paused partitions to decide whether to resume it, we may never resume it.
      */
     if (isStorageQuotaExceeded(storagePartitionDiskUsage)) {
-      reportStatusAdapter.reportQuotaViolated(pcs);
+      statusReportAdapter.reportQuotaViolated(pcs);
 
       /**
        * If the version is already online but the completion has not been reported, we directly
@@ -263,7 +263,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
        * Otherwise, it could induce error replicas during rebalance for online version.
        */
       if (isVersionOnline() && !pcs.isCompletionReported()) {
-        reportStatusAdapter.reportCompleted(pcs);
+        statusReportAdapter.reportCompleted(pcs);
       }
 
       /**
@@ -287,7 +287,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       /**
        *  Paused partitions could be resumed
        */
-      reportStatusAdapter.reportQuotaNotViolated(pcs);
+      statusReportAdapter.reportQuotaNotViolated(pcs);
       if (isPartitionPausedIngestion(partition)) {
         resumePartition(partition, consumingTopic);
         logger.info("Quota available for store " + storeName + " partition " + partition + ", resumed this partition.");

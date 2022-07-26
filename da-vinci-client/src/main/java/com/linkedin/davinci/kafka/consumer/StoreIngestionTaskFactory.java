@@ -190,14 +190,6 @@ public class StoreIngestionTaskFactory {
       return set(() -> this.storageMetadataService = storageMetadataService);
     }
 
-    public Queue<VeniceNotifier> getOnlineOfflineNotifiers() {
-      return onlineOfflineNotifiers;
-    }
-
-    public Builder setOnlineOfflineNotifiersQueue(Queue<VeniceNotifier> onlineOfflineNotifiers) {
-      return set(() -> this.onlineOfflineNotifiers = onlineOfflineNotifiers);
-    }
-
     public Queue<VeniceNotifier> getLeaderFollowerNotifiers() {
       return leaderFollowerNotifiers;
     }

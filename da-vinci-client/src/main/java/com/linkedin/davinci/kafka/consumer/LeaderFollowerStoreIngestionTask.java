@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.*;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.*;
 import static com.linkedin.venice.writer.VeniceWriter.*;
@@ -263,7 +264,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       int partitionId,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
     throwIfNotRunning();
-    amplificationAdapter.promoteToLeader(topic, partitionId, checker);
+    amplificationFactorAdapter.execute(
+        partitionId,
+        subPartition -> consumerActionsQueue
+            .add(new ConsumerAction(STANDBY_TO_LEADER, topic, subPartition, nextSeqNum(), checker)));
   }
 
   @Override
@@ -272,7 +276,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       int partitionId,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
     throwIfNotRunning();
-    amplificationAdapter.demoteToStandby(topic, partitionId, checker);
+    amplificationFactorAdapter.execute(
+        partitionId,
+        subPartition -> consumerActionsQueue
+            .add(new ConsumerAction(LEADER_TO_STANDBY, topic, subPartition, nextSeqNum(), checker)));
   }
 
   @Override
@@ -478,7 +485,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              */
             restoreProducerStatesForLeaderConsumption(partition);
 
-            if (!amplificationAdapter.isLeaderSubPartition(partition)
+            if (!amplificationFactorAdapter.isLeaderSubPartition(partition)
                 && partitionConsumptionState.isEndOfPushReceived()) {
               logger.info(
                   "Stop promoting non-leaderSubPartition: " + partition + " of store: " + storeName + " to leader.");
@@ -548,7 +555,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 localKafkaServer);
           }
 
-          if (!amplificationAdapter.isLeaderSubPartition(partition)
+          if (!amplificationFactorAdapter.isLeaderSubPartition(partition)
               && partitionConsumptionState.isEndOfPushReceived()) {
             consumerUnSubscribe(currentLeaderTopic, partitionConsumptionState);
             partitionConsumptionState.setConsumeRemotely(false);
@@ -693,8 +700,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PartitionConsumptionState partitionConsumptionState,
       TopicSwitch topicSwitch) {
     if (partitionConsumptionState.getLeaderFollowerState() != LEADER) {
-      throw new VeniceException(
-          String.format("Expect state %s but got %s", LEADER, partitionConsumptionState.toString()));
+      throw new VeniceException(String.format("Expect state %s but got %s", LEADER, partitionConsumptionState));
     }
     if (topicSwitch.sourceKafkaServers.size() != 1) {
       throw new VeniceException(
@@ -789,7 +795,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     } catch (Exception e) {
       logger.error(errorMsg, e);
       versionedDIVStats.recordLeaderProducerFailure(storeName, versionNumber);
-      reportStatusAdapter.reportError(Collections.singletonList(partitionConsumptionState), errorMsg, e);
+      statusReportAdapter.reportError(Collections.singletonList(partitionConsumptionState), errorMsg, e);
       throw new VeniceException(errorMsg, e);
     }
   }
@@ -915,7 +921,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (!isDataRecoveryCompleted) {
       long latestConsumedProducerTimestamp =
           partitionConsumptionState.getOffsetRecord().getLatestProducerProcessingTimeInMs();
-      if (amplificationAdapter != null) {
+      if (amplificationFactorAdapter != null) {
         latestConsumedProducerTimestamp = getLatestConsumedProducerTimestampWithSubPartition(
             latestConsumedProducerTimestamp,
             partitionConsumptionState);
@@ -953,7 +959,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     if (isDataRecoveryCompleted) {
       partitionConsumptionState.setDataRecoveryCompleted(true);
-      reportStatusAdapter.reportDataRecoveryCompleted(partitionConsumptionState);
+      statusReportAdapter.reportDataRecoveryCompleted(partitionConsumptionState);
     }
   }
 
@@ -987,7 +993,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * Once we switch into RT topic consumption, only leaderSubPartition should be acting as LEADER role.
      * Hence, before processing TopicSwitch message, we need to force downgrade other subPartitions into FOLLOWER.
      */
-    if (isLeader(partitionConsumptionState) && !amplificationAdapter.isLeaderSubPartition(partition)) {
+    if (isLeader(partitionConsumptionState) && !amplificationFactorAdapter.isLeaderSubPartition(partition)) {
       logger.info("SubPartition: " + partitionConsumptionState.getPartition() + " is demoted from LEADER to STANDBY.");
       String currentLeaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
       consumerUnSubscribe(currentLeaderTopic, partitionConsumptionState);
@@ -1021,7 +1027,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           "More than one Kafka server urls in TopicSwitch control message, " + "TopicSwitch.sourceKafkaServers: "
               + kafkaServerUrls);
     }
-    reportStatusAdapter.reportTopicSwitchReceived(partitionConsumptionState);
+    statusReportAdapter.reportTopicSwitchReceived(partitionConsumptionState);
     String sourceKafkaURL = kafkaServerUrls.get(0).toString();
 
     // Venice servers calculate the start offset based on start timestamp
@@ -1365,7 +1371,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           logger.error(logMsg);
           versionedDIVStats.recordPotentiallyLossyLeaderOffsetRewind(storeName, versionNumber);
           VeniceException e = new VeniceException(logMsg);
-          reportStatusAdapter.reportError(Collections.singletonList(partitionConsumptionState), logMsg, e);
+          statusReportAdapter.reportError(Collections.singletonList(partitionConsumptionState), logMsg, e);
           throw e;
         } else {
           logMsg += Utils.NEW_LINE_CHAR;
@@ -1528,7 +1534,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (pcs.isEndOfPushReceived() && !pcs.isLatchReleased()) {
       if (cachedKafkaMetadataGetter.getOffset(getTopicManager(localKafkaServer), kafkaVersionTopic, partition)
           - 1 <= pcs.getLatestProcessedLocalVersionTopicOffset()) {
-        reportStatusAdapter.reportCatchUpVersionTopicOffsetLag(pcs);
+        statusReportAdapter.reportCatchUpVersionTopicOffsetLag(pcs);
 
         /**
          * Relax to report completion
@@ -1552,8 +1558,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * the rebalance.
          */
         if (isCurrentVersion.getAsBoolean()) {
-          amplificationAdapter.lagHasCaughtUp(pcs.getUserPartition());
-          reportStatusAdapter.reportCompleted(pcs, true);
+          amplificationFactorAdapter
+              .executePartitionConsumptionState(pcs.getUserPartition(), PartitionConsumptionState::lagHasCaughtUp);
+          statusReportAdapter.reportCompleted(pcs, true);
         }
       }
     }

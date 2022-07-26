@@ -93,8 +93,7 @@ import org.apache.logging.log4j.Logger;
  * tasks for fault tolerance purpose.
  */
 public class IsolatedIngestionServer extends AbstractVeniceService {
-  private static final Logger logger = LogManager.getLogger(IsolatedIngestionServer.class);
-
+  private static final Logger logger = LogManager.getLogger();
   private final RedundantExceptionFilter redundantExceptionFilter =
       new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(10));
   private final ServerBootstrap bootstrap;
@@ -374,9 +373,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
       int partitionId = report.partitionId;
       long offset = report.offset;
 
+      // Collect offsetRecord array and store version state after consumption stops.
       if (ingestionReportType.equals(IngestionReportType.COMPLETED)) {
-        logger.info(
-            "Ingestion completed for topic: " + topicName + ", partition id: " + partitionId + ", offset: " + offset);
         // Set offset record in ingestion report.
         report.offsetRecordArray = getStoreIngestionService().getPartitionOffsetRecords(topicName, partitionId);
 
@@ -389,19 +387,24 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
           throw new VeniceException("StoreVersionState does not exist for topic: " + topicName);
         }
         // Fetch LeaderState from LeaderSubPartition of the user partition.
-        LeaderFollowerStateType leaderState = getStoreIngestionService()
-            .getLeaderStateFromPartitionConsumptionState(report.topicName.toString(), report.partitionId);
+        LeaderFollowerStateType leaderState =
+            getStoreIngestionService().getLeaderStateFromPartitionConsumptionState(topicName, partitionId);
         logger.info(
-            "Sending back leader state: " + leaderState + " for topic: " + report.topicName + ", partition: "
-                + report.partitionId + " to main process.");
-        // Report leaderState for user partition.
+            "Ingestion completed for topic: {}, partition: {}, offset: {}, leaderState: {}.",
+            topicName,
+            partitionId,
+            offset,
+            leaderState);
         report.leaderFollowerState = leaderState.getValue();
       } else {
-        logger
-            .error("Ingestion error for topic: " + topicName + ", partition id: " + partitionId + " " + report.message);
+        logger.error(
+            "Ingestion error for topic: {}, partition: {}, error message: {}",
+            topicName,
+            partitionId,
+            report.message);
       }
 
-      setPartitionToBeUnsubscribed(report.topicName.toString(), report.partitionId);
+      setPartitionToBeUnsubscribed(topicName, partitionId);
 
       Future<?> executionFuture = submitStopConsumptionAndCloseStorageTask(report);
       statusReportingExecutor.execute(() -> {
@@ -472,8 +475,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
       VeniceStoreVersionConfig storeConfig = getConfigLoader().getStoreConfig(topicName);
       // Make sure partition is not consuming so we can safely close the rocksdb partition
       long startTimeInMs = System.currentTimeMillis();
-      getStoreIngestionService()
-          .stopConsumptionAndWait(storeConfig, report.partitionId, 1, stopConsumptionWaitRetriesNum);
+      getStoreIngestionService().stopConsumptionAndWait(storeConfig, partitionId, 1, stopConsumptionWaitRetriesNum);
       // Close all RocksDB sub-Partitions in Ingestion Service.
       getStorageService().closeStorePartition(storeConfig, partitionId);
       logger.info(
