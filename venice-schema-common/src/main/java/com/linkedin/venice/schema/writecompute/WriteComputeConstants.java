@@ -15,15 +15,14 @@ public class WriteComputeConstants {
     // Utility class
   }
 
-  //Instantiate some constants here so that they could be reused.
-  static final String WRITE_COMPUTE_RECORD_SCHEMA_SUFFIX = "WriteOpRecord";
+  public static final String WRITE_COMPUTE_RECORD_SCHEMA_SUFFIX = "WriteOpRecord";
 
-  //List operations
+  // List operations
   public static final String LIST_OPS_NAME = "ListOps";
   public static final String SET_UNION = "setUnion";
   public static final String SET_DIFF = "setDiff";
 
-  //Map operations
+  // Map operations
   public static final String MAP_OPS_NAME = "MapOps";
   public static final String MAP_UNION = "mapUnion";
   public static final String MAP_DIFF = "mapDiff";
