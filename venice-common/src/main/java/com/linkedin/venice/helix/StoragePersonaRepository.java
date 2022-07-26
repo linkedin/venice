@@ -113,9 +113,6 @@ public class StoragePersonaRepository {
   public void updatePersona(String personaName, UpdateStoragePersonaQueryParams params) {
     try (AutoCloseableLock ignore = AutoCloseableSingleLock.of(personaLock)) {
       StoragePersona persona = getPersona(personaName);
-      if (persona == null) {
-        throw new VeniceException("Update failed: persona with name " + personaName + " does not exist in this cluster");
-      }
       params.applyParams(persona);
       updatePersona(persona);
     }
@@ -124,10 +121,6 @@ public class StoragePersonaRepository {
   private void updatePersona(StoragePersona persona) {
     try (AutoCloseableLock ignore = AutoCloseableSingleLock.of(personaLock)) {
       StoragePersona oldPersona = getPersona(persona.getName());
-      validatePersona(persona);
-      if (oldPersona == null) {
-        throw new VeniceException("Update failed: persona with name " + persona.getName() + " does not exist in this cluster");
-      }
       if (oldPersona.equals(persona)) {
         return;
       }
@@ -195,6 +188,15 @@ public class StoragePersonaRepository {
 
   public void validatePersona(String personaName, long quota, Set<String> storesToEnforce, Set<String> owners) {
     validatePersona(new StoragePersona(personaName, quota, storesToEnforce, owners));
+  }
+
+  public void validatePersonaUpdate(String personaName, UpdateStoragePersonaQueryParams params) {
+    StoragePersona persona = getPersona(personaName);
+    if (persona == null) {
+      throw new VeniceException("Update failed: persona with name " + personaName + " does not exist in this cluster");
+    }
+    params.applyParams(persona);
+    validatePersona(persona);
   }
 
   public void validatePersona(StoragePersona persona) {

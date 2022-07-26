@@ -52,6 +52,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.SupersetSchemaCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
@@ -77,6 +78,7 @@ import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
+import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
@@ -3867,6 +3869,26 @@ public class VeniceParentHelixAdmin implements Admin {
     message.operationType = AdminMessageType.DELETE_STORAGE_PERSONA.getValue();
     message.payloadUnion = deleteStoragePersona;
 
+    sendAdminMessageAndWaitForConsumed(clusterName, null, message);
+  }
+
+  @Override
+  public void updateStoragePersona(String clusterName, String name, UpdateStoragePersonaQueryParams queryParams) {
+    getVeniceHelixAdmin().checkControllerLeadershipFor(clusterName);
+    UpdateStoragePersona updateStoragePersona =
+        (UpdateStoragePersona) AdminMessageType.UPDATE_STORAGE_PERSONA.getNewInstance();
+    updateStoragePersona.setClusterName(clusterName);
+    updateStoragePersona.setName(name);
+    updateStoragePersona.setQuotaNumber(queryParams.getQuota().orElse(null));
+    updateStoragePersona.setStoresToEnforce(queryParams.getStoresToEnforceAsList().orElse(null));
+    updateStoragePersona.setOwners(queryParams.getOwnersAsList().orElse(null));
+    AdminOperation message = new AdminOperation();
+    message.operationType = AdminMessageType.UPDATE_STORAGE_PERSONA.getValue();
+    message.payloadUnion = updateStoragePersona;
+
+    StoragePersonaRepository repository =
+        getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
+    repository.validatePersonaUpdate(name, queryParams);
     sendAdminMessageAndWaitForConsumed(clusterName, null, message);
   }
 

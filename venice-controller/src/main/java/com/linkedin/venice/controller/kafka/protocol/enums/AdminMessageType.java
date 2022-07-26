@@ -25,10 +25,12 @@ import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.SupersetSchemaCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.kafka.protocol.Update;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -60,7 +62,8 @@ public enum AdminMessageType {
   META_SYSTEM_STORE_AUTO_CREATION_VALIDATION(23, false),
   PUSH_STATUS_SYSTEM_STORE_AUTO_CREATION_VALIDATION(24, false),
   CREATE_STORAGE_PERSONA(25, false),
-  DELETE_STORAGE_PERSONA(26, false);
+  DELETE_STORAGE_PERSONA(26, false),
+  UPDATE_STORAGE_PERSONA(27, false);
 
   private final int value;
   private final boolean batchUpdate;
@@ -99,6 +102,7 @@ public enum AdminMessageType {
       case PUSH_STATUS_SYSTEM_STORE_AUTO_CREATION_VALIDATION: return new PushStatusSystemStoreAutoCreationValidation();
       case CREATE_STORAGE_PERSONA: return new CreateStoragePersona();
       case DELETE_STORAGE_PERSONA: return new DeleteStoragePersona();
+      case UPDATE_STORAGE_PERSONA: return new UpdateStoragePersona();
       default: throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }
   }

@@ -10,8 +10,6 @@ import com.linkedin.venice.utils.Utils;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import javax.naming.ldap.Control;
-import javax.print.attribute.standard.MediaSize;
 import spark.Request;
 import spark.Route;
 
@@ -78,6 +76,25 @@ public class StoragePersonaRoutes extends AbstractRoute {
           admin.deleteStoragePersona(clusterName, personaName);
         } catch (Exception e) {
           veniceResponse.setError("Failed when deleting persona " + personaName + ".  Exception type: " + e.getClass().toString() + ".  Detailed message = " + e.getMessage());
+          veniceResponse.setError(
+              "Failed when deleting persona " + personaName + ".  Exception type: " + e.getClass().toString() + ".  Detailed message = " + e.getMessage());
+        }
+      }
+    };
+  }
+
+  public Route updateStoragePersona(Admin admin) {
+    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
+      @Override
+      public void internalHandle(Request request, ControllerResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, UPDATE_STORAGE_PERSONA.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String personaName = request.queryParams(NAME);
+        Map<String, String> params = Utils.extractQueryParamsFromRequest(request.queryMap().toMap(), veniceResponse);
+        try {
+          admin.updateStoragePersona(clusterName, personaName, new UpdateStoragePersonaQueryParams(params));
+        } catch (Exception e) {
+          veniceResponse.setError("Failed when updating persona " + personaName + ".  Exception type: " + e.getClass().toString() + ".  Detailed message = " + e.getMessage());
         }
       }
     };

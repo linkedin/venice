@@ -3,6 +3,8 @@ package com.linkedin.venice.controllerapi;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.utils.ObjectMapperFactory;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -14,22 +16,28 @@ public class UpdateStoragePersonaQueryParams extends QueryParams {
 
   private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
 
-  public UpdateStoragePersonaQueryParams(Map<String, String> initialParams) { super(initialParams); }
+  public UpdateStoragePersonaQueryParams(Map<String, String> initialParams) {
+    super(initialParams);
+  }
 
   public UpdateStoragePersonaQueryParams() {
     super();
   }
 
-  public Optional<Set<String>> getOwners() {
-    return getStringSet(PERSONA_OWNERS);
+  public Optional<String> getName() {
+    return getString(NAME);
   }
 
   public UpdateStoragePersonaQueryParams setName(String name) {
     return (UpdateStoragePersonaQueryParams) add(NAME, name);
   }
 
-  public Optional<String> getName() {
-    return getString(NAME);
+  public Optional<Set<String>> getOwners() {
+    return getStringSet(PERSONA_OWNERS);
+  }
+
+  public Optional<List<CharSequence>> getOwnersAsList() {
+    return getSetAsList(PERSONA_OWNERS);
   }
 
   public UpdateStoragePersonaQueryParams setOwners(Set<String> owners) {
@@ -38,6 +46,10 @@ public class UpdateStoragePersonaQueryParams extends QueryParams {
 
   public Optional<Set<String>> getStoresToEnforce() {
     return getStringSet(PERSONA_STORES);
+  }
+
+  public Optional<List<CharSequence>> getStoresToEnforceAsList() {
+    return getSetAsList(PERSONA_STORES);
   }
 
   public UpdateStoragePersonaQueryParams setStoresToEnforce(Set<String> stores) {
@@ -62,5 +74,11 @@ public class UpdateStoragePersonaQueryParams extends QueryParams {
     return (UpdateStoragePersonaQueryParams) add(name, value);
   }
 
-
+  private Optional<List<CharSequence>> getSetAsList(String param) {
+    Optional<Set<String>> stringSet = getStringSet(param);
+    if (stringSet.isPresent()) {
+      return Optional.of(new ArrayList<>(stringSet.get()));
+    }
+    return Optional.empty();
+  }
 }

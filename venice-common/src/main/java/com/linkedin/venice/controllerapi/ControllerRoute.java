@@ -137,7 +137,8 @@ public enum ControllerRoute {
   DELETE_KAFKA_TOPIC("/delete_kafka_topic", HttpMethod.POST, Arrays.asList(CLUSTER, TOPIC)),
   CREATE_STORAGE_PERSONA("/create_storage_persona", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, PERSONA_QUOTA, PERSONA_STORES, PERSONA_OWNERS)),
   GET_STORAGE_PERSONA("/get_storage_persona", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
-  DELETE_STORAGE_PERSONA("/delete_storage_persona", HttpMethod.POST, Arrays.asList(CLUSTER, NAME));
+  DELETE_STORAGE_PERSONA("/delete_storage_persona", HttpMethod.POST, Arrays.asList(CLUSTER, NAME)),
+  UPDATE_STORAGE_PERSONA("/update_storage_persona", HttpMethod.POST, Arrays.asList(CLUSTER, NAME), PERSONA_QUOTA, PERSONA_STORES, PERSONA_OWNERS);
 
   private final String path;
   private final HttpMethod httpMethod;

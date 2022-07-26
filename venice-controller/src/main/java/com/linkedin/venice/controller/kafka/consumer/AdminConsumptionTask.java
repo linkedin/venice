@@ -702,6 +702,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     switch (AdminMessageType.valueOf(adminOperation)) {
       case CREATE_STORAGE_PERSONA:
       case DELETE_STORAGE_PERSONA:
+      case UPDATE_STORAGE_PERSONA:
         return STORAGE_PERSONA_MAP_KEY;
       case KILL_OFFLINE_PUSH_JOB:
         KillOfflinePushJob message = (KillOfflinePushJob) adminOperation.payloadUnion;

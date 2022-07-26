@@ -31,10 +31,12 @@ import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.SupersetSchemaCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
+import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
@@ -243,6 +245,9 @@ public class AdminExecutionTask implements Callable<Void> {
           break;
         case DELETE_STORAGE_PERSONA:
           handleDeleteStoragePersona((DeleteStoragePersona) adminOperation.payloadUnion);
+          break;
+        case UPDATE_STORAGE_PERSONA:
+          handleUpdateStoragePersona((UpdateStoragePersona) adminOperation.payloadUnion);
           break;
         default:
           throw new VeniceException("Unknown admin operation type: " + adminOperation.operationType);
@@ -662,6 +667,22 @@ public class AdminExecutionTask implements Callable<Void> {
     String clusterName = message.getClusterName().toString();
     String personaName = message.getName().toString();
     admin.deleteStoragePersona(clusterName, personaName);
+  }
+
+  private void handleUpdateStoragePersona(UpdateStoragePersona message) {
+    String clusterName = message.getClusterName().toString();
+    String personaName = message.getName().toString();
+    UpdateStoragePersonaQueryParams queryParams = new UpdateStoragePersonaQueryParams();
+    if (message.getQuotaNumber() != null) {
+      queryParams.setQuota(message.getQuotaNumber());
+    }
+    if (message.getStoresToEnforce() != null) {
+      queryParams.setStoresToEnforce(new HashSet<>(message.getStoresToEnforce().stream().map(s -> s.toString()).collect(Collectors.toSet())));
+    }
+    if (message.getOwners() != null) {
+      queryParams.setOwners(new HashSet<>(message.getOwners().stream().map(s -> s.toString()).collect(Collectors.toSet())));
+    }
+    admin.updateStoragePersona(clusterName, personaName, queryParams);
   }
 
 }
