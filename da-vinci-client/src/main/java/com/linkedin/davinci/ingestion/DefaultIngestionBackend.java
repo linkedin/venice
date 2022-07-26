@@ -120,11 +120,6 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
   }
 
   @Override
-  public void addOnlineOfflineIngestionNotifier(VeniceNotifier ingestionListener) {
-    getStoreIngestionService().addOnlineOfflineModelNotifier(ingestionListener);
-  }
-
-  @Override
   public void addLeaderFollowerIngestionNotifier(VeniceNotifier ingestionListener) {
     getStoreIngestionService().addLeaderFollowerModelNotifier(ingestionListener);
   }

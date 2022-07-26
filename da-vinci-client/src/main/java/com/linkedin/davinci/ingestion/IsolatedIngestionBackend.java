@@ -219,16 +219,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
   public void addIngestionNotifier(VeniceNotifier ingestionListener) {
     if (ingestionListener != null) {
       super.addIngestionNotifier(ingestionListener);
-      mainIngestionMonitorService.addOnlineOfflineIngestionNotifier(getIsolatedIngestionNotifier(ingestionListener));
       mainIngestionMonitorService.addLeaderFollowerIngestionNotifier(getIsolatedIngestionNotifier(ingestionListener));
-    }
-  }
-
-  @Override
-  public void addOnlineOfflineIngestionNotifier(VeniceNotifier ingestionListener) {
-    if (ingestionListener != null) {
-      super.addOnlineOfflineIngestionNotifier(ingestionListener);
-      mainIngestionMonitorService.addOnlineOfflineIngestionNotifier(getIsolatedIngestionNotifier(ingestionListener));
     }
   }
 

@@ -16,8 +16,6 @@ public interface VeniceIngestionBackend extends IngestionBackendBase {
       int partition,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker);
 
-  void addOnlineOfflineIngestionNotifier(VeniceNotifier ingestionListener);
-
   void addLeaderFollowerIngestionNotifier(VeniceNotifier ingestionListener);
 
   // addPushStatusNotifier adds ingestion listener which reports ingestion status for different push monitors.

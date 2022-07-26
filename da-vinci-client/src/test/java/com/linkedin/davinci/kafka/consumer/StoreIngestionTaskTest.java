@@ -158,9 +158,7 @@ import org.testng.annotations.Test;
 
 
 /**
- * Unit tests for the KafkaPerStoreConsumptionTask.
- *
- * Be ware that most of the test cases in this suite depend on {@link StoreIngestionTaskTest#TEST_TIMEOUT_MS}
+ * Beware that most of the test cases in this suite depend on {@link StoreIngestionTaskTest#TEST_TIMEOUT_MS}
  * Adjust it based on environment if timeout failure occurs.
  */
 @Test(singleThreaded = true)
@@ -567,7 +565,7 @@ public class StoreIngestionTaskTest {
     Future testSubscribeTaskFuture = null;
     try {
       for (int partition: partitions) {
-        storeIngestionTaskUnderTest.subscribePartition(topic, partition);
+        storeIngestionTaskUnderTest.subscribePartition(topic, partition, Optional.empty());
       }
 
       beforeStartingConsumption.run();
@@ -766,7 +764,6 @@ public class StoreIngestionTaskTest {
         .setKafkaClientFactory(mockFactory)
         .setStorageEngineRepository(mockStorageEngineRepository)
         .setStorageMetadataService(offsetManager)
-        .setOnlineOfflineNotifiersQueue(onlineOfflineNotifiers)
         .setLeaderFollowerNotifiersQueue(leaderFollowerNotifiers)
         .setBandwidthThrottler(mockBandwidthThrottler)
         .setRecordsThrottler(mockRecordsThrottler)
@@ -1836,7 +1833,8 @@ public class StoreIngestionTaskTest {
             relevantPartitions.stream()
                 .forEach(partition -> storeIngestionTaskUnderTest.unSubscribePartition(topic, partition));
             relevantPartitions.stream()
-                .forEach(partition -> storeIngestionTaskUnderTest.subscribePartition(topic, partition));
+                .forEach(
+                    partition -> storeIngestionTaskUnderTest.subscribePartition(topic, partition, Optional.empty()));
           } else {
             logger.info(
                 "TopicPartition: " + topicPartitionOffsetRecordPair.getFirst() + ", Offset: "
@@ -2689,6 +2687,9 @@ public class StoreIngestionTaskTest {
     doReturn(mockOffsetRecordLagCaughtUp).when(mockPcsBufferReplayStartedLagCaughtUp).getOffsetRecord();
     doReturn(5L).when(mockTopicManager).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
     doReturn(5L).when(mockTopicManagerRemoteKafka).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
+    doReturn(0).when(mockPcsBufferReplayStartedLagCaughtUp).getPartition();
+    doReturn(0).when(mockPcsBufferReplayStartedLagCaughtUp).getUserPartition();
+    storeIngestionTaskUnderTest.setPartitionConsumptionState(0, mockPcsBufferReplayStartedLagCaughtUp);
     Assert.assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedLagCaughtUp));
 
     // Remote replication lag has not caught up but host has caught up to lag in local VT, so DaVinci replica will be
@@ -2814,6 +2815,9 @@ public class StoreIngestionTaskTest {
     doReturn(5L).when(mockTopicManager).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
     doReturn(150L).when(mockTopicManagerRemoteKafka).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
     doReturn(150L).when(aggKafkaConsumerService).getLatestOffsetFor(anyString(), anyString(), anyString(), anyInt());
+    doReturn(0).when(mockPcsMultipleSourceKafkaServers).getPartition();
+    doReturn(0).when(mockPcsMultipleSourceKafkaServers).getUserPartition();
+    storeIngestionTaskUnderTest.setPartitionConsumptionState(0, mockPcsMultipleSourceKafkaServers);
     Assert.assertEquals(storeIngestionTaskUnderTest.isReadyToServe(mockPcsMultipleSourceKafkaServers), isDaVinciClient);
   }
 
@@ -2872,8 +2876,7 @@ public class StoreIngestionTaskTest {
     doReturn(mockOffsetRecord).when(mockPcs).getOffsetRecord();
     doReturn(PARTITION_FOO).when(mockPcs).getUserPartition();
     doReturn(PARTITION_FOO).when(mockPcs).getPartition();
-    storeIngestionTaskUnderTest.getReportStatusAdapter().preparePartitionStatusCleanup(PARTITION_FOO);
-    storeIngestionTaskUnderTest.getReportStatusAdapter().initializePartitionStatus(PARTITION_FOO);
+    storeIngestionTaskUnderTest.getStatusReportAdapter().initializePartitionReportStatus(PARTITION_FOO);
     storeIngestionTaskUnderTest.processTopicSwitch(controlMessage, PARTITION_FOO, 10, mockPcs);
 
     verify(mockTopicManagerRemoteKafka, isDaVinciClient ? never() : times(1))

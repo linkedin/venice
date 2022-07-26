@@ -48,30 +48,29 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
   public void channelRead0(ChannelHandlerContext ctx, FullHttpRequest msg) {
     // Decode ingestion report from incoming http request content.
     IngestionTaskReport report = deserializeIngestionActionRequest(IngestionAction.REPORT, readHttpRequestContent(msg));
-    IngestionReportType ingestionReportType = IngestionReportType.valueOf(report.reportType);
+    IngestionReportType reportType = IngestionReportType.valueOf(report.reportType);
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
     long offset = report.offset;
     logger.info(
-        "Received ingestion report " + ingestionReportType.name() + " for topic: " + topicName + ", partition: "
-            + partitionId + " from ingestion service.");
-    // TODO: Use more flexible pull model to sync storage metadata from child process to main process.
+        "Received ingestion report {} for topic: {}, partition: {} from ingestion service. ",
+        reportType.name(),
+        topicName,
+        partitionId);
     updateLocalStorageMetadata(report);
     // Relay the notification to parent service's listener.
-    switch (ingestionReportType) {
+    switch (reportType) {
       case COMPLETED:
         mainIngestionMonitorService.removeVersionPartitionFromIngestionMap(topicName, partitionId);
         // Set LeaderState passed from child process to cache.
         LeaderFollowerStateType leaderFollowerStateType = LeaderFollowerStateType.valueOf(report.leaderFollowerState);
         notifierHelper(
-            topicName,
             notifier -> notifier
                 .completed(topicName, partitionId, report.offset, "", Optional.of(leaderFollowerStateType)));
         break;
       case ERROR:
         mainIngestionMonitorService.removeVersionPartitionFromIngestionMap(topicName, partitionId);
         notifierHelper(
-            topicName,
             notifier -> notifier.error(
                 topicName,
                 partitionId,
@@ -79,28 +78,28 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
                 new VeniceException(report.message.toString())));
         break;
       case STARTED:
-        notifierHelper(topicName, notifier -> notifier.started(topicName, partitionId));
+        notifierHelper(notifier -> notifier.started(topicName, partitionId));
         break;
       case RESTARTED:
-        notifierHelper(topicName, notifier -> notifier.restarted(topicName, partitionId, offset));
+        notifierHelper(notifier -> notifier.restarted(topicName, partitionId, offset));
         break;
       case PROGRESS:
-        notifierHelper(topicName, notifier -> notifier.progress(topicName, partitionId, offset));
+        notifierHelper(notifier -> notifier.progress(topicName, partitionId, offset));
         break;
       case END_OF_PUSH_RECEIVED:
-        notifierHelper(topicName, notifier -> notifier.endOfPushReceived(topicName, partitionId, offset));
+        notifierHelper(notifier -> notifier.endOfPushReceived(topicName, partitionId, offset));
         break;
       case START_OF_INCREMENTAL_PUSH_RECEIVED:
-        notifierHelper(topicName, notifier -> notifier.startOfIncrementalPushReceived(topicName, partitionId, offset));
+        notifierHelper(notifier -> notifier.startOfIncrementalPushReceived(topicName, partitionId, offset));
         break;
       case END_OF_INCREMENTAL_PUSH_RECEIVED:
-        notifierHelper(topicName, notifier -> notifier.endOfIncrementalPushReceived(topicName, partitionId, offset));
+        notifierHelper(notifier -> notifier.endOfIncrementalPushReceived(topicName, partitionId, offset));
         break;
       case TOPIC_SWITCH_RECEIVED:
-        notifierHelper(topicName, notifier -> notifier.topicSwitchReceived(topicName, partitionId, offset));
+        notifierHelper(notifier -> notifier.topicSwitchReceived(topicName, partitionId, offset));
         break;
       default:
-        logger.warn("Received unsupported ingestion report:\n" + report.toString() + "\n it will be ignored for now.");
+        logger.warn("Received unsupported ingestion report: {} it will be ignored for now.", report);
     }
     ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, getDummyContent()));
   }
@@ -115,13 +114,9 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
     ctx.close();
   }
 
-  private void notifierHelper(String topicName, Consumer<VeniceNotifier> lambda) {
+  private void notifierHelper(Consumer<VeniceNotifier> lambda) {
     mainIngestionMonitorService.getPushStatusNotifierList().forEach(lambda);
-    if (mainIngestionMonitorService.isTopicInLeaderFollowerMode(topicName)) {
-      mainIngestionMonitorService.getLeaderFollowerIngestionNotifier().forEach(lambda);
-    } else {
-      mainIngestionMonitorService.getOnlineOfflineIngestionNotifier().forEach(lambda);
-    }
+    mainIngestionMonitorService.getLeaderFollowerIngestionNotifier().forEach(lambda);
   }
 
   private void updateLocalStorageMetadata(IngestionTaskReport report) {
@@ -137,7 +132,7 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
         StoreVersionState storeVersionState =
             IsolatedIngestionUtils.deserializeStoreVersionState(topicName, report.storeVersionState.array());
         mainIngestionMonitorService.getStorageMetadataService().putStoreVersionState(topicName, storeVersionState);
-        logger.info("Updated storeVersionState for topic: " + topicName + " " + storeVersionState.toString());
+        logger.info("Updated storeVersionState for topic: {} {}", topicName, storeVersionState.toString());
       }
     }
   }

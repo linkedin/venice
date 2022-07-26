@@ -70,7 +70,6 @@ import com.linkedin.venice.writer.SharedKafkaProducerService;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -454,7 +453,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setKafkaClientFactory(veniceConsumerFactory)
         .setStorageEngineRepository(storageEngineRepository)
         .setStorageMetadataService(storageMetadataService)
-        .setOnlineOfflineNotifiersQueue(onlineOfflineNotifiers)
         .setLeaderFollowerNotifiersQueue(leaderFollowerNotifiers)
         .setBandwidthThrottler(bandwidthThrottler)
         .setRecordsThrottler(recordsThrottler)
@@ -912,11 +910,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   @Override
-  public void addOnlineOfflineModelNotifier(VeniceNotifier notifier) {
-    onlineOfflineNotifiers.add(notifier);
-  }
-
-  @Override
   public void addLeaderFollowerModelNotifier(VeniceNotifier notifier) {
     leaderFollowerNotifiers.add(notifier);
   }
@@ -1096,7 +1089,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   /**
-   * updatePartitionOffsetRecords updates all sub-partitions latest offset records fetched from isolated ingestion process
+   * This method updates all sub-partitions' latest offset records fetched from isolated ingestion process
    * in main process, so main process's in-memory storage metadata service could be aware of the latest updates and will
    * not re-start the ingestion from scratch.
    */
@@ -1113,25 +1106,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   /**
    * This method should only be called when the forked ingestion process is handing over ingestion task to main process.
    * It will collect the user partition's latest offsetRecords from partition consumption states.
-   * In theory, PCS should be available in this situation as we haven't unsubscribe from topic. If it is not available,
+   * In theory, PCS should be available in this situation as we haven't unsubscribed from topic. If it is not available,
    * we will throw exception as this is not as expected.
    */
   public List<ByteBuffer> getPartitionOffsetRecords(String topicName, int partition) {
-    int amplificationFactor = PartitionUtils.getAmplificationFactor(metadataRepo, topicName);
-    List<ByteBuffer> offsetRecordArray = new ArrayList<>();
-    for (int subPartition: PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
-      if (getStoreIngestionTask(topicName) != null
-          && getStoreIngestionTask(topicName).getPartitionConsumptionState(subPartition).isPresent()) {
-        OffsetRecord offsetRecord =
-            getStoreIngestionTask(topicName).getPartitionConsumptionState(subPartition).get().getOffsetRecord();
-        offsetRecordArray.add(ByteBuffer.wrap(offsetRecord.toBytes()));
-      } else {
-        throw new VeniceException(
-            "StoreIngestionTask or PartitionConsumptionState does not exist for topic: " + topicName + ", partition: "
-                + subPartition);
-      }
-    }
-    return offsetRecordArray;
+    return getStoreIngestionTask(topicName).getStatusReportAdapter().getOffsetRecordArray(partition);
   }
 
   public ReadOnlyStoreRepository getMetadataRepo() {

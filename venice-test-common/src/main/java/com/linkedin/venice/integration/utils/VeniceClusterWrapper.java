@@ -986,7 +986,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       Assert.assertEquals(
           storeResponse.getStore().getCurrentVersion(),
           versionId,
-          "The current version does not have the expected value of '" + versionId + "'.");
+          "The current version of store " + storeName + " does not have the expected value of '" + versionId + "'.");
     });
     refreshAllRouterMetaData();
   }

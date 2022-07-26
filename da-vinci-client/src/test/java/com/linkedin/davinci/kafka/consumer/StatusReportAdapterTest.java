@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayDeque;
@@ -24,8 +25,8 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class ReportStatusAdapterTest {
-  private static final Logger logger = LogManager.getLogger(ReportStatusAdapterTest.class);
+public class StatusReportAdapterTest {
+  private static final Logger logger = LogManager.getLogger(StatusReportAdapterTest.class);
   private final List<ExecutionStatus> recordStatusList = new ArrayList<>();
   private final Random random = new Random();
 
@@ -33,21 +34,20 @@ public class ReportStatusAdapterTest {
   public void testStatusReportWithAmpFactor() {
     recordStatusList.clear();
     String topic = "test_v1";
-    int amplificationFactor = 100;
+    int amplificationFactor = 3;
     VeniceNotifier notifier = getNotifier();
     Queue<VeniceNotifier> notifiers = new ArrayDeque<>();
     notifiers.add(notifier);
     IngestionNotificationDispatcher dispatcher = new IngestionNotificationDispatcher(notifiers, topic, () -> true);
     ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap =
         generateMockedPcsMap(amplificationFactor);
-    ReportStatusAdapter reportStatusAdapter = new ReportStatusAdapter(
+    AmplificationFactorAdapter amplificationFactorAdapter = mock(AmplificationFactorAdapter.class);
+    when(amplificationFactorAdapter.getAmplificationFactor()).thenReturn(amplificationFactor);
+    StatusReportAdapter statusReportAdapter = new StatusReportAdapter(
         dispatcher,
-        topic,
-        amplificationFactor,
-        IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME,
-        partitionConsumptionStateMap);
-    reportStatusAdapter.preparePartitionStatusCleanup(0);
-    reportStatusAdapter.initializePartitionStatus(0);
+        amplificationFactorAdapter,
+        IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
+    statusReportAdapter.initializePartitionReportStatus(0);
 
     ExecutorService executorService = Executors.newFixedThreadPool(amplificationFactor);
     List<Callable<Void>> callableList = new ArrayList<>();
@@ -57,37 +57,42 @@ public class ReportStatusAdapterTest {
     executionStatusList.add(ExecutionStatus.COMPLETED);
     for (int i = 0; i < amplificationFactor; i++) {
       callableList
-          .add(getReportCallable(reportStatusAdapter, partitionConsumptionStateMap.get(i), executionStatusList));
+          .add(getReportCallable(statusReportAdapter, partitionConsumptionStateMap.get(i), executionStatusList));
     }
     try {
       executorService.invokeAll(callableList, 10, TimeUnit.SECONDS);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     }
-    Assert.assertEquals(recordStatusList, executionStatusList);
+    Assert.assertEquals(recordStatusList, executionStatusList, "Reported status " + recordStatusList);
   }
 
   private ConcurrentMap<Integer, PartitionConsumptionState> generateMockedPcsMap(int ampFactor) {
     ConcurrentMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    OffsetRecord mockedOffsetRecord = mock(OffsetRecord.class);
+    byte[] dummyByteArray = new byte[0];
+    when(mockedOffsetRecord.toBytes()).thenReturn(dummyByteArray);
     for (int i = 0; i < ampFactor; i++) {
       PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
       // Mock pcs APIs
       Mockito.doReturn(i).when(pcs).getPartition();
       Mockito.doReturn(0).when(pcs).getUserPartition();
       Mockito.doReturn(true).when(pcs).isComplete();
+      Mockito.doReturn(mockedOffsetRecord).when(pcs).getOffsetRecord();
       pcsMap.put(i, pcs);
     }
     return pcsMap;
   }
 
   private Callable<Void> getReportCallable(
-      ReportStatusAdapter adapter,
+      StatusReportAdapter adapter,
       PartitionConsumptionState pcs,
       List<ExecutionStatus> executionStatusList) {
     return () -> {
       try {
         for (ExecutionStatus executionStatus: executionStatusList) {
           Thread.sleep(random.nextInt(100));
+          logger.info("Sending report status: " + executionStatus + " to partition " + pcs.getPartition());
           switch (executionStatus) {
             case STARTED:
               adapter.reportStarted(pcs);

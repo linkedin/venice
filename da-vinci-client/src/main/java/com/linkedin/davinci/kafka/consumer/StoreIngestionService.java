@@ -88,13 +88,6 @@ public interface StoreIngestionService extends MetadataRetriever {
   void addCommonNotifier(VeniceNotifier notifier);
 
   /**
-   * The notifier added here is only used in Online/Offline consumption task.
-   *
-   * @param notifier
-   */
-  void addOnlineOfflineModelNotifier(VeniceNotifier notifier);
-
-  /**
    * The notifier added here is only used in Leader/Follower consumption task.
    *
    * @param notifier
