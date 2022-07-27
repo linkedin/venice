@@ -38,12 +38,14 @@ import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.ReadyForDataRecoveryResponse;
 import com.linkedin.venice.controllerapi.RoutersClusterConfigResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.controllerapi.StoragePersonaResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonResponse;
 import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
+import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
@@ -455,6 +457,18 @@ public class AdminTool {
         case END_FABRIC_BUILDOUT:
           endFabricBuildout(cmd);
           break;
+        case NEW_STORAGE_PERSONA:
+          createNewStoragePersona(cmd);
+          break;
+        case GET_STORAGE_PERSONA:
+          getStoragePersona(cmd);
+          break;
+        case DELETE_STORAGE_PERSONA:
+          deleteStoragePersona(cmd);
+          break;
+        case UPDATE_STORAGE_PERSONA:
+          updateStoragePersona(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c : Command.values()){
@@ -756,7 +770,6 @@ public class AdminTool {
     genericParam(cmd, param, s -> Utils.parseIntFromString(s, param.toString()), setter, argSet);
   }
 
-
   private static void longParam(CommandLine cmd, Arg param, Consumer<Long> setter, Set<Arg> argSet) {
     genericParam(cmd, param, s -> Utils.parseLongFromString(s, param.toString()), setter, argSet);
   }
@@ -767,6 +780,10 @@ public class AdminTool {
 
   private static void stringMapParam(CommandLine cmd, Arg param, Consumer<Map<String, String>> setter, Set<Arg> argSet) {
     genericParam(cmd, param, s -> Utils.parseCommaSeparatedStringMapFromString(s, param.toString()), setter, argSet);
+  }
+
+  private static void stringSetParam(CommandLine cmd, Arg param, Consumer<Set<String>> setter, Set<Arg> argSet) {
+    genericParam(cmd, param, s -> Utils.parseCommaSeparatedStringToSet(s), setter, argSet);
   }
 
   private static <TYPE> void genericParam(CommandLine cmd, Arg param, Function<String, TYPE> parser, Consumer<TYPE> setter,
@@ -2299,6 +2316,45 @@ public class AdminTool {
     } catch (Exception e) {
       System.err.println("Command failed. Exception: " + e);
     }
+  }
+
+  private static void createNewStoragePersona(CommandLine cmd) {
+    String personaName = getRequiredArgument(cmd, Arg.STORAGE_PERSONA);
+    long quota = Utils.parseLongFromString(getRequiredArgument(cmd, Arg.STORAGE_QUOTA), Arg.STORAGE_QUOTA.name());
+    Set<String> storesToEnforce = Utils.parseCommaSeparatedStringToSet(getRequiredArgument(cmd, Arg.STORE));
+    Set<String> owners = Utils.parseCommaSeparatedStringToSet(getRequiredArgument(cmd, Arg.OWNER));
+
+    ControllerResponse response = controllerClient.createStoragePersona(personaName, quota, storesToEnforce, owners);
+    printObject(response);
+  }
+
+  private static void getStoragePersona(CommandLine cmd) {
+    String personaName = getRequiredArgument(cmd, Arg.STORAGE_PERSONA);
+    StoragePersonaResponse response = controllerClient.getStoragePersona(personaName);
+    printObject(response);
+  }
+
+  private static void deleteStoragePersona(CommandLine cmd) {
+    String personaName = getRequiredArgument(cmd, Arg.STORAGE_PERSONA);
+    ControllerResponse response = controllerClient.deleteStoragePersona(personaName);
+    printObject(response);
+  }
+
+  private static void updateStoragePersona(CommandLine cmd) {
+    String personaName = getRequiredArgument(cmd, Arg.STORAGE_PERSONA);
+    UpdateStoragePersonaQueryParams queryParams = getUpdateStoragePersonaQueryParams(cmd);
+    ControllerResponse response = controllerClient.updateStoragePersona(personaName, queryParams);
+    printObject(response);
+  }
+
+  private static UpdateStoragePersonaQueryParams getUpdateStoragePersonaQueryParams(CommandLine cmd) {
+    Set<Arg> argSet = new HashSet<>(Arrays.asList(Command.UPDATE_STORAGE_PERSONA.getOptionalArgs()));
+
+    UpdateStoragePersonaQueryParams params = new UpdateStoragePersonaQueryParams();
+    longParam(cmd, Arg.STORAGE_QUOTA, p -> params.setQuota(p), argSet);
+    stringSetParam(cmd, Arg.STORE, p -> params.setStoresToEnforce(p), argSet);
+    stringSetParam(cmd, Arg.OWNER, p -> params.setOwners(p), argSet);
+    return params;
   }
 
   private static Map<String, ControllerClient> getAndCheckChildControllerClientMap(String clusterName, String srcFabric,

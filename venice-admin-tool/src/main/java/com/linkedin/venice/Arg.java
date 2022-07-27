@@ -34,7 +34,7 @@ public enum Arg {
   AMPLIFICATION_FACTOR("amplification-factor", "af", true, "Amplification factor for store"),
   READABILITY("readability", "rb", true, "store's readability"),
   WRITEABILITY("writeability", "wb", true, "store's writeability"),
-  STORAGE_QUOTA("storage-quota", "sq", true, "maximum capacity a store version could have"),
+  STORAGE_QUOTA("storage-quota", "sq", true, "maximum capacity a store version or storage persona could have"),
   DISABLE_META_STORE("disable-meta-store", "dms", false, "disable meta system store. This command sets storeMetaSystemStoreEnabled flag to false but does not delete any resources associated with the meta store. Please use this option with caution"),
   DISABLE_DAVINCI_PUSH_STATUS_STORE("disable-davinci-push-status-store", "ddvc", false, "disable davinci push status store. This command sets daVinciPushStatusStoreEnabled flag to false but does not delete any resources associated with the push status store. Please use this option with caution"),
   HYBRID_STORE_DISK_QUOTA_ENABLED("hybrid-store-disk-quota-enabled", "hsq", true, "whether or not enable disk quota for a hybrid store"),
@@ -121,7 +121,9 @@ public enum Arg {
   CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED(ConfigKeys.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED, "atc", true, "whether child controller consumes admin topic"),
   SYSTEM_STORE_TYPE("system-store-type", "sst", true, "Type of system store to backfill. Supported types are davinci_push_status_store and meta_store"),
   RETRY("retry", "r", false, "Retry this operation"),
-  DISABLE_LOG("disable-log", "dl", false, "Disable logs from internal classes. Only print command output on console");
+  DISABLE_LOG("disable-log", "dl", false, "Disable logs from internal classes. Only print command output on console"),
+  STORAGE_PERSONA("storage-persona", "sp", true, "Name of Storage Persona");
+
 
   private final String argName;
   private final String first;

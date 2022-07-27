@@ -16,4 +16,13 @@ public class StoragePersona extends Persona {
     super(storagePersona);
   }
 
+  @Override
+  public String toString() {
+    return StoragePersona.class.getSimpleName() + "(\n" +
+        "name: " + name + ",\n" +
+        "quotaNumber: " + quotaNumber + ",\n" +
+        "storesToEnforce: " + storesToEnforce.toString() + ",\n" +
+        "owners: " + owners.toString() + ")";
+  }
+
 }
