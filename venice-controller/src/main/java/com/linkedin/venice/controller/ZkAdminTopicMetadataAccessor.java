@@ -33,6 +33,9 @@ public class ZkAdminTopicMetadataAccessor extends AdminTopicMetadataAccessor {
     zkMapAccessor = new ZkBaseDataAccessor<>(zkClient);
   }
 
+  /**
+   * @see AdminTopicMetadataAccessor#updateMetadata(String, Map)
+   */
   @Override
   public void updateMetadata(String clusterName, Map<String, Long> metadata) {
     String path = getAdminTopicMetadataNodePath(clusterName);
@@ -40,6 +43,9 @@ public class ZkAdminTopicMetadataAccessor extends AdminTopicMetadataAccessor {
     LOGGER.info("Persisted admin topic metadata map for cluster: " + clusterName + ", map: " + metadata);
   }
 
+  /**
+   * @see AdminTopicMetadataAccessor#getMetadata(String)
+   */
   @Override
   public Map<String, Long> getMetadata(String clusterName) {
     int retry = ZK_UPDATE_RETRY;
@@ -61,7 +67,7 @@ public class ZkAdminTopicMetadataAccessor extends AdminTopicMetadataAccessor {
         + " from Zk with: " + path);
   }
 
-  public static String getAdminTopicMetadataNodePath(String clusterName) {
+  static String getAdminTopicMetadataNodePath(String clusterName) {
     return HelixUtils.getHelixClusterZkPath(clusterName) + ADMIN_TOPIC_METADATA_NODE;
   }
 }

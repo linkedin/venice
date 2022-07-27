@@ -51,6 +51,9 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
     this.helixAdminClient = helixAdminClient;
   }
 
+  /**
+   * @see StateModelFactory#createNewStateModel(String, String) createNewStateModel
+   */
   @Override
   public VeniceControllerStateModel createNewStateModel(String resourceName, String partitionName) {
     String veniceClusterName =
@@ -70,10 +73,17 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
     return model;
   }
 
+  /**
+   * @return {@code VeniceControllerStateModel} for the input cluster, or
+   *         {@code null} if the input cluster's model is not created by the factory.
+   */
   public VeniceControllerStateModel getModel(String veniceClusterName) {
     return clusterToStateModelsMap.get(veniceClusterName);
   }
 
+  /**
+   * @return all {@code VeniceControllerStateModel} created by the factory.
+   */
   public Collection<VeniceControllerStateModel> getAllModels(){
     return clusterToStateModelsMap.values();
   }

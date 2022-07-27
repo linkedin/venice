@@ -102,6 +102,9 @@ public class VeniceControllerService extends AbstractVeniceService {
     }
   }
 
+  /**
+   * Causes {@code VeniceControllerService} to begin execution.
+   */
   @Override
   public boolean startInner() {
     for (String clusterName : multiClusterConfigs.getClusters()) {
@@ -114,6 +117,9 @@ public class VeniceControllerService extends AbstractVeniceService {
     return true;
   }
 
+  /**
+   * Causes {@code VeniceControllerService} to stop executing.
+   */
   @Override
   public void stopInner() {
     for (String clusterName : multiClusterConfigs.getClusters()) {
@@ -134,6 +140,9 @@ public class VeniceControllerService extends AbstractVeniceService {
     logger.info("Stopped Venice controller.");
   }
 
+  /**
+   * @return a reference to the HelixAdmin object.
+   */
   public Admin getVeniceHelixAdmin() {
     return admin;
   }

@@ -13,7 +13,7 @@ public interface ExecutionIdAccessor {
   Long getLastSucceededExecutionId(String clusterName);
 
   /**
-   * Update the the id of the last succeed operation in the given cluster.
+   * Update the id of the last succeed operation in the given cluster.
    */
   void updateLastSucceededExecutionId(String clusterName, Long lastSucceedExecutionId);
 
@@ -23,7 +23,7 @@ public interface ExecutionIdAccessor {
   Map<String, Long> getLastSucceededExecutionIdMap(String clusterName);
 
   /**
-   * Update the the execution id map that contains the last succeeded operation in the given cluster for each store.
+   * Update the execution id map that contains the last succeeded operation in the given cluster for each store.
    */
   void updateLastSucceededExecutionIdMap(String clusterName, String storeName, Long lastSucceededExecutionId);
 
