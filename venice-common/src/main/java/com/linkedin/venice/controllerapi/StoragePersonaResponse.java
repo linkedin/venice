@@ -11,4 +11,11 @@ public class StoragePersonaResponse extends ControllerResponse {
 
   public void setStoragePersona(StoragePersona storagePersona) { this.storagePersona = storagePersona; }
 
+  @Override
+  public String toString() {
+    return StoragePersonaResponse.class.getSimpleName() + "(\n"
+        + storagePersona.toString() + ",\n"
+        + super.toString() + ")";
+  }
+
 }

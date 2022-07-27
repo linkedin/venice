@@ -215,7 +215,11 @@ public enum Command {
   CHECK_FABRIC_BUILDOUT_STATUS("check-fabric-buildout-status", "Check the status of cluster building in destination fabric",
       new Arg[] {URL, CLUSTER, SOURCE_FABRIC, DEST_FABRIC}),
   END_FABRIC_BUILDOUT("end-fabric-buildout", "End the building of a cluster in destination fabric",
-      new Arg[] {URL, CLUSTER, SOURCE_FABRIC, DEST_FABRIC});
+      new Arg[] {URL, CLUSTER, SOURCE_FABRIC, DEST_FABRIC}),
+  NEW_STORAGE_PERSONA("new-storage-persona", "Creates a new storage persona.", new Arg[] {URL, CLUSTER, STORAGE_PERSONA, STORAGE_QUOTA, STORE, OWNER}),
+  GET_STORAGE_PERSONA("get-storage-persona", "Gets info on an existing storage persona by name", new Arg[] {URL, CLUSTER, STORAGE_PERSONA}),
+  DELETE_STORAGE_PERSONA("delete-storage-persona", "Deletes an existing storage persona", new Arg[] {URL, CLUSTER, STORAGE_PERSONA}),
+  UPDATE_STORAGE_PERSONA("update-storage-persona", "Updates an existing storage persona", new Arg[] {URL, CLUSTER, STORAGE_PERSONA}, new Arg[]{STORAGE_QUOTA, STORE, OWNER});
 
   private final String commandName;
   private final String description;
