@@ -170,7 +170,7 @@ public class TestWriteComputeSchemaConverter {
   @Test
   public void testAdapterCanParseRecordSchema() {
     //test parsing record
-    Schema recordWriteSchema = writeComputeSchemaConverter.convert(recordSchemaStr).getTypes().get(0);
+    Schema recordWriteSchema = writeComputeSchemaConverter.convert(recordSchemaStr);
     Assert.assertEquals(recordWriteSchema.getType(), RECORD);
     Assert.assertEquals(recordWriteSchema.getFields().size(), 3);
     Assert.assertEquals(recordWriteSchema.getField("age").schema().getType(), UNION);
@@ -178,7 +178,7 @@ public class TestWriteComputeSchemaConverter {
     Assert.assertEquals(recordWriteSchema.getField("id").schema().getTypes().get(1), Schema.create(STRING));
 
     //test parsing record of arrays
-    Schema recordOfArraysWriteSchema = writeComputeSchemaConverter.convert(Schema.parse(recordOfArraySchemaStr)).getTypes().get(0);
+    Schema recordOfArraysWriteSchema = writeComputeSchemaConverter.convert(Schema.parse(recordOfArraySchemaStr));
     Schema intArrayFieldWriteSchema = recordOfArraysWriteSchema.getField("intArray").schema();
     Assert.assertEquals(intArrayFieldWriteSchema.getTypes().get(1).getNamespace(), "avro.example");
 
@@ -189,7 +189,7 @@ public class TestWriteComputeSchemaConverter {
   @Test
   public void testAdapterCanParseRecordSchemaWithUnion() {
     //test parsing a schema with a union type that contains 1 collection
-    Schema recordWriteSchema = writeComputeSchemaConverter.convert(recordOfUnionWithCollectionStr).getTypes().get(0);
+    Schema recordWriteSchema = writeComputeSchemaConverter.convert(recordOfUnionWithCollectionStr);
     Assert.assertEquals(recordWriteSchema.getType(), RECORD);
     Assert.assertEquals(recordWriteSchema.getFields().size(), 2);
     Assert.assertEquals(recordWriteSchema.getField("intArray").schema().getType(), UNION);
@@ -212,7 +212,7 @@ public class TestWriteComputeSchemaConverter {
   public void testAdapterCanParseNullableField() {
     //test parsing nullable array field. The parser is supposed to dig into the union and
     //parse the array
-    Schema nullableRecordWriteSchema = writeComputeSchemaConverter.convert(recordOfNullableArrayStr).getTypes().get(0);
+    Schema nullableRecordWriteSchema = writeComputeSchemaConverter.convert(recordOfNullableArrayStr);
     Assert.assertEquals(nullableRecordWriteSchema.getType(), RECORD);
 
     //Check the elements inside the union

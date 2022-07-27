@@ -57,7 +57,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.system.store.MetaStoreWriter.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
@@ -441,90 +440,6 @@ public abstract class TestBatch {
       }
     }, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true), false);
   }
-
-  /**
-   * Test IncrementalPush jobs with write compute enabled with non-record types.
-   * Write compute for h2v jobs currently only supports delete for record types.
-   * If write compute is enabled for non-record types, then this will be treated
-   * as a regular incremental push.
-   * @throws Exception
-   */
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testIncrementalPushWithWriteComputeEnabledNRT() throws Exception {
-    String storeName = testBatchStoreWithDerivedSchema(inputDir -> {
-      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
-      return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
-    }, properties -> {
-    }, (avroClient, vsonClient, metricsRepository) -> {
-      for (int i = 1; i <= 100; i++) {
-        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
-      }
-    }, new UpdateStoreQueryParams().setWriteComputationEnabled(true)
-        .setLeaderFollowerModel(true)
-        .setIncrementalPushEnabled(true)
-        .setChunkingEnabled(true)
-        .setPartitionCount(3));
-
-    testBatchStore(inputDir -> {
-      Schema recordSchema = writeSimpleAvroFileWithUserSchema2(inputDir);
-      return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
-    }, properties -> {
-      properties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
-      properties.setProperty(ENABLE_WRITE_COMPUTE, "true");
-      properties.setProperty(INCREMENTAL_PUSH, "true");
-    }, (avroClient, vsonClient, metricsRepository) -> {
-      for (int i = 51; i <= 150; i++) {
-        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + (i * 2));
-      }
-    }, storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true)
-        .setLeaderFollowerModel(true)
-        .setIncrementalPushEnabled(true)
-        .setPartitionCount(3), false);
-  }
-
-  /**
-   * Test IncrementalPush jobs with write compute enabled with record types.
-   * Testing write compute path for deleting records.
-   * @throws Exception
-   */
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testIncrementalPushWithWriteComputeEnabledDelete() throws Exception {
-    String storeName = testBatchStoreWithDerivedSchema(inputDir -> {
-      Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir, false);
-      return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
-    }, properties -> {
-    }, (avroClient, vsonClient, metricsRepository) -> {
-      for (int i = 1; i <= 100; i++) {
-        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(),
-            "{\"firstName\": \"first_name_" + i + "\", \"lastName\": \"last_name_" + i + "\"}");
-      }
-    }, new UpdateStoreQueryParams().setWriteComputationEnabled(true)
-        .setLeaderFollowerModel(true)
-        .setIncrementalPushEnabled(true)
-        .setPartitionCount(3));
-
-    testBatchStore(inputDir -> {
-      Schema recordSchema = writeSimpleAvroFileWithDelRecord(inputDir, true);
-      return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
-    }, properties -> {
-      properties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
-      properties.setProperty(ENABLE_WRITE_COMPUTE, "true");
-      properties.setProperty(INCREMENTAL_PUSH, "true");
-    }, (avroClient, vsonClient, metricsRepository) -> {
-      for (int i = 1; i <= 50; i++) {
-        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(),
-            "{\"firstName\": \"first_name_" + i + "\", \"lastName\": \"last_name_" + i + "\"}");
-      }
-      for (int i = 51; i <= 150; i++) {
-        Assert.assertNull(avroClient.get(Integer.toString(i)).get());
-      }
-    }, storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true)
-        .setLeaderFollowerModel(true)
-        .setIncrementalPushEnabled(true)
-        .setPartitionCount(3), false);
-  }
-
-
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testIncrementalPushWritesToRealTimeTopicWithPolicy() throws Exception {

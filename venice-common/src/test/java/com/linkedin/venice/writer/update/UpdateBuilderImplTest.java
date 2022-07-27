@@ -5,7 +5,6 @@ import com.linkedin.ddsstorage.io.IOUtils;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,7 +22,7 @@ public class UpdateBuilderImplTest {
 
   private static final Logger logger = LogManager.getLogger(UpdateBuilderImplTest.class);
   private static final Schema VALUE_SCHEMA = AvroCompatibilityHelper.parse(loadFileAsString("TestWriteComputeBuilder.avsc"));
-  private static final Schema UPDATE_SCHEMA = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(VALUE_SCHEMA).getTypes().get(0);
+  private static final Schema UPDATE_SCHEMA = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(VALUE_SCHEMA);
 
   @Test
   public void testUpdateWholeField() {

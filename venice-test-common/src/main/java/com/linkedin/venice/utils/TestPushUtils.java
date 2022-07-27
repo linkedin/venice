@@ -10,7 +10,6 @@ import com.linkedin.venice.etl.ETLUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
@@ -18,7 +17,6 @@ import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.writer.VeniceWriter;
-
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 
 import java.io.File;
@@ -179,47 +177,6 @@ public class TestPushUtils {
       "       { \"name\": \"name\", \"type\": " + NESTED_SCHEMA_STRING + " }  " +
       "  ] " +
       " } ";
-
-  /**
-   * This is the derived schema of NESTED_SCHEMA_STRING
-   */
-  public static final String DERIVED_NESTED_SCHEMA_STRING = "[ {\n" +
-      "  \"namespace\" : \"example.avro\",\n" +
-      "  \"type\" : \"record\",\n" +
-      "  \"name\" : \"nameRecordWriteOpRecord\",\n" +
-      "  \"fields\" : [ {\n" +
-      "    \"name\" : \"firstName\",\n" +
-      "    \"type\" : [ {\n" +
-      "      \"type\" : \"record\",\n" +
-      "      \"name\" : \"NoOp\",\n" +
-      "      \"fields\" : [ ]\n" +
-      "    }, \"string\" ],\n" +
-      "    \"default\" : { }\n" +
-      "  }, {\n" +
-      "    \"name\" : \"lastName\",\n" +
-      "    \"type\" : [ \"NoOp\", \"string\" ],\n" +
-      "    \"default\" : { }\n" +
-      "  } ]\n" +
-      "}, {\n" +
-      "  \"type\" : \"record\",\n" +
-      "  \"name\" : \"DelOp\",\n" +
-      "  \"namespace\" : \"example.avro\",\n" +
-      "  \"fields\" : [ ]\n" +
-      "} ]";
-
-  /**
-   * This is a record schema with a nested derived schema of NESTED_SCHEMA_STRING
-   */
-  public static final String DERIVED_STRING_RECORD_SCHEMA_STRING = "{" +
-      "  \"namespace\" : \"example.avro\",  " +
-      "  \"type\": \"record\",   " +
-      "  \"name\": \"StringToRecord\",     " +
-      "  \"fields\": [           " +
-      "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"\"},  " +
-      "       { \"name\": \"name\", \"type\": " + DERIVED_NESTED_SCHEMA_STRING + " }  " +
-      "  ] " +
-      " } ";
-
 
   public static final String STRING_SCHEMA = "\"string\"";
 
@@ -555,32 +512,6 @@ public class TestPushUtils {
       }
     });
   }
-
-  /**
-   * This file overrides half of the values in {@link #writeSimpleAvroFileWithStringToRecordSchema(File, boolean)}
-   * with the delete record schema. The delete record schema is from the writeComputeSchema.
-   * It's designed to test the delete write compute path for incremental push only.
-   */
-  public static Schema writeSimpleAvroFileWithDelRecord(File parentDir, boolean fileNameWithAvroSuffix)
-      throws IOException {
-    String fileName;
-    if (fileNameWithAvroSuffix) {
-      fileName = "simple_string2record.avro";
-    } else {
-      fileName = "simple_string2record";
-    }
-    return writeAvroFile(parentDir, fileName, DERIVED_STRING_RECORD_SCHEMA_STRING, (recordSchema, writer) -> {
-      Schema delSchema = Schema.parse(DERIVED_NESTED_SCHEMA_STRING).getTypes().get(1);
-      for (int i = 51; i <= 150; ++i) {
-        GenericRecord s2r = new GenericData.Record(recordSchema);
-        s2r.put("id", String.valueOf(i));
-        GenericRecord nameRecord = new GenericData.Record(delSchema);
-        s2r.put("name", nameRecord);
-        writer.append(s2r);
-      }
-    });
-  }
-
 
   /**
    * This file overrides half of the value in {@link #writeSimpleAvroFileWithUserSchema(File)}
@@ -999,7 +930,7 @@ public class TestPushUtils {
 
     if (addDerivedSchemaToStore) {
       // Generate write compute schema
-      Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convert(valueSchemaStr);
+      Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(AvroCompatibilityHelper.parse(valueSchemaStr));
       SchemaResponse derivedValueSchemaResponse = controllerClient.retryableRequest(5,
           c -> c.addDerivedSchema(props.getProperty(VENICE_STORE_NAME_PROP), +1,
               writeComputeSchema.toString()));

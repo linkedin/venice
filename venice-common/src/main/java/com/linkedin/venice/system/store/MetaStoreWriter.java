@@ -158,7 +158,7 @@ public class MetaStoreWriter implements Closeable {
       // Construct an update
       StoreMetaValueWriteOpRecord writeOpRecord = new StoreMetaValueWriteOpRecord();
       writeOpRecord.timestamp = System.currentTimeMillis();
-      List<Integer> list = new ArrayList<>();
+      List<Integer> list = new ArrayList<>(1);
       list.add(valueSchemaId);
       storeValueSchemaIdsWrittenPerStoreVersionListOps listOps = new storeValueSchemaIdsWrittenPerStoreVersionListOps();
       listOps.setUnion = list;
