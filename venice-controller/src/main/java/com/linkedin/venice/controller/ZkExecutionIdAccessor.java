@@ -20,7 +20,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class ZkExecutionIdAccessor implements ExecutionIdAccessor {
-  public static final String EXECUTION_ID_DIR = "/executionids";
+  private static final String EXECUTION_ID_DIR = "/executionids";
   private static final int ZK_RETRY_COUNT = 3;
   private static final Logger logger = LogManager.getLogger(ZkExecutionIdAccessor.class);
   private final ZkClient zkclient;
@@ -40,24 +40,36 @@ public class ZkExecutionIdAccessor implements ExecutionIdAccessor {
     zkClient.setZkSerializer(adapterSerializer);
   }
 
+  /**
+   * @see ExecutionIdAccessor#getLastSucceededExecutionId(String)
+   */
   @Override
   public Long getLastSucceededExecutionId(String clusterName) {
     String path = getLastSucceededExecutionIdPath(clusterName);
     return getExecutionIdFromZk(path);
   }
 
+  /**
+   * @see ExecutionIdAccessor#updateLastSucceededExecutionId(String, Long)
+   */
   @Override
   public void updateLastSucceededExecutionId(String clusterName, Long lastSucceedExecutionId) {
     String path = getLastSucceededExecutionIdPath(clusterName);
     updateExecutionToZk(path, lastSucceedExecutionId);
   }
 
+  /**
+   * @see ExecutionIdAccessor#getLastSucceededExecutionIdMap(String)
+   */
   @Override
   public synchronized Map<String, Long> getLastSucceededExecutionIdMap(String clusterName) {
     String path = getLastSucceededExecutionIdMapPath(clusterName);
     return getExecutionIdMapFromZk(path);
   }
 
+  /**
+   * @see ExecutionIdAccessor#updateLastSucceededExecutionIdMap(String, String, Long)
+   */
   @Override
   public synchronized void updateLastSucceededExecutionIdMap(String clusterName, String storeName,
       Long lastSucceededExecutionId) {
@@ -65,12 +77,18 @@ public class ZkExecutionIdAccessor implements ExecutionIdAccessor {
     updateExecutionIdMapToZk(path, storeName, lastSucceededExecutionId);
   }
 
+  /**
+   * @see ExecutionIdAccessor#getLastGeneratedExecutionId(String)
+   */
   @Override
   public Long getLastGeneratedExecutionId(String clusterName) {
     String path = getLastGeneratedExecutionIdPath(clusterName);
     return getExecutionIdFromZk(path);
   }
 
+  /**
+   * @see ExecutionIdAccessor#updateLastGeneratedExecutionId(String, Long)
+   */
   @Override
   public void updateLastGeneratedExecutionId(String clusterName, Long lastGeneratedExecutionId) {
     String path = getLastGeneratedExecutionIdPath(clusterName);
@@ -80,7 +98,6 @@ public class ZkExecutionIdAccessor implements ExecutionIdAccessor {
   /**
    * Using AtomicLong here only as a workaround to get next execution id from
    * {@link HelixUtils#compareAndUpdate(ZkBaseDataAccessor, String, int, DataUpdater)}
-   * :(
    *
    * @throws ZkDataAccessException will be thrown if it fails to update the data
    */
@@ -168,15 +185,15 @@ public class ZkExecutionIdAccessor implements ExecutionIdAccessor {
         "After retry " + ZK_RETRY_COUNT + " times, could not update the execution id to ZK in: " + path);
   }
 
-  public static String getLastSucceededExecutionIdPath(String clusterName) {
+  private static String getLastSucceededExecutionIdPath(String clusterName) {
     return HelixUtils.getHelixClusterZkPath(clusterName) + EXECUTION_ID_DIR + "/lastSucceedExecutionId";
   }
 
-  public static String getLastSucceededExecutionIdMapPath(String clusterName) {
+  private static String getLastSucceededExecutionIdMapPath(String clusterName) {
     return HelixUtils.getHelixClusterZkPath(clusterName) + EXECUTION_ID_DIR + "/succeededPerStore";
   }
 
-  public static String getLastGeneratedExecutionIdPath(String clusterName) {
+  private static String getLastGeneratedExecutionIdPath(String clusterName) {
     return HelixUtils.getHelixClusterZkPath(clusterName) + EXECUTION_ID_DIR + "/lastGeneratedExecutionId";
   }
 }

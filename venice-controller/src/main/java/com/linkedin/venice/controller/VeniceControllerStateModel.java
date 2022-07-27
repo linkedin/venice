@@ -33,7 +33,7 @@ import org.apache.logging.log4j.Logger;
  */
 @StateModelInfo(initialState = HelixState.OFFLINE_STATE, states = {HelixState.LEADER_STATE, HelixState.STANDBY_STATE})
 public class VeniceControllerStateModel extends StateModel {
-  public static final String PARTITION_SUFFIX = "_0";
+  private static final String PARTITION_SUFFIX = "_0";
   private static final Logger logger = LogManager.getLogger(VeniceControllerStateModel.class);
 
   private final ZkClient zkClient;
@@ -69,6 +69,11 @@ public class VeniceControllerStateModel extends StateModel {
     this.helixAdminClient = helixAdminClient;
   }
 
+  /**
+   * Test if current state is {@link HelixState#LEADER_STATE}.
+   * @return  <code>true</code> if current state is {@link HelixState#LEADER_STATE};
+   *          <code>false</code> otherwise.
+   */
   public boolean isLeader() {
     synchronized (_currentState) {
       return getCurrentState().equals(HelixState.LEADER_STATE);
@@ -110,6 +115,9 @@ public class VeniceControllerStateModel extends StateModel {
     void execute() throws Exception;
   }
 
+  /**
+   * A callback for Helix state transition from {@link HelixState#STANDBY_STATE} to {@link HelixState#LEADER_STATE}.
+   */
   @Transition(to = HelixState.LEADER_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeLeaderFromStandby(Message message, NotificationContext context) {
     executeStateTransition(message, () -> {
@@ -174,6 +182,9 @@ public class VeniceControllerStateModel extends StateModel {
     clusterResources.startLeakedPushStatusCleanUpService();
   }
 
+  /**
+   * A callback for Helix state transition from {@link HelixState#LEADER_STATE} to {@link HelixState#STANDBY_STATE}.
+   */
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.LEADER_STATE)
   public void onBecomeStandbyFromLeader(Message message, NotificationContext context) {
     executeStateTransition(message, () -> {
@@ -185,6 +196,9 @@ public class VeniceControllerStateModel extends StateModel {
     });
   }
 
+  /**
+   * A callback for Helix state transition from {@link HelixState#STANDBY_STATE} to {@link HelixState#OFFLINE_STATE}.
+   */
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeOfflineFromStandby(Message message, NotificationContext context) {
     executeStateTransition(message, () -> {
@@ -193,6 +207,9 @@ public class VeniceControllerStateModel extends StateModel {
     });
   }
 
+  /**
+   * A callback for Helix state transition from {@link HelixState#OFFLINE_STATE} to {@link HelixState#STANDBY_STATE}.
+   */
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.OFFLINE_STATE)
   public void onBecomeStandbyFromOffline(Message message, NotificationContext context) {
     executeStateTransition(message, () -> {
@@ -202,6 +219,9 @@ public class VeniceControllerStateModel extends StateModel {
     });
   }
 
+  /**
+   * A callback for Helix state transition from {@link HelixState#OFFLINE_STATE} to {@link HelixState#DROPPED_STATE}.
+   */
   @Transition(to = HelixState.DROPPED_STATE, from = HelixState.OFFLINE_STATE)
   public void onBecomeDroppedFromOffline(Message message, NotificationContext context) {
     executeStateTransition(message, () -> {
@@ -209,6 +229,9 @@ public class VeniceControllerStateModel extends StateModel {
     });
   }
 
+  /**
+   * A callback for Helix state transition from {@link HelixState#ERROR_STATE} to {@link HelixState#DROPPED_STATE}.
+   */
   @Transition(to = HelixState.DROPPED_STATE, from = HelixState.ERROR_STATE)
   public void onBecomeDroppedFromError(Message message, NotificationContext context) {
     executeStateTransition(message, () -> {
@@ -216,6 +239,9 @@ public class VeniceControllerStateModel extends StateModel {
     });
   }
 
+  /**
+   * A callback for Helix state transition from {@link HelixState#ERROR_STATE} to {@link HelixState#OFFLINE_STATE}.
+   */
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.ERROR_STATE)
   public void onBecomingOfflineFromError(Message message, NotificationContext context) {
     executeStateTransition(message, () -> {
@@ -223,6 +249,9 @@ public class VeniceControllerStateModel extends StateModel {
     });
   }
 
+  /**
+   * Called when error occurs in state transition.
+   */
   @Override
   public void rollbackOnError(Message message, NotificationContext context, StateTransitionError error) {
     String controllerName = message.getTgtName();
@@ -230,6 +259,9 @@ public class VeniceControllerStateModel extends StateModel {
     reset();
   }
 
+  /**
+   * Called when the state model is reset.
+   */
   @Override
   public synchronized void reset() {
     if (clusterResources != null) {
@@ -258,6 +290,11 @@ public class VeniceControllerStateModel extends StateModel {
     }
   }
 
+  /**
+   * Get the regular Venice cluster name after removing the suffix {@code PARTITION_SUFFIX}.
+   * @param partitionName controller partition name.
+   * @return Venice cluster name.
+   */
   protected static String getVeniceClusterNameFromPartitionName(String partitionName) {
     //Exclude the partition id.
     if (!partitionName.endsWith(PARTITION_SUFFIX)) {
@@ -266,19 +303,27 @@ public class VeniceControllerStateModel extends StateModel {
     return partitionName.substring(0, partitionName.lastIndexOf('_'));
   }
 
+  /**
+   * Get the controller partition name. The suffix {@code PARTITION_SUFFIX} is used after the regular cluster name.
+   * @param veniceClusterName Venice cluster name.
+   * @return partition name for the input Venice cluster.
+   */
   protected static String getPartitionNameFromVeniceClusterName(String veniceClusterName) {
     return veniceClusterName + PARTITION_SUFFIX;
   }
 
-  public Optional<HelixVeniceClusterResources> getResources() {
-    if (clusterResources == null) {
-      return Optional.empty();
-    } else {
-      return Optional.of(clusterResources);
-    }
+  /**
+   * @return an {@code Optional} describing the Venice cluster aggregated resources, if non-null,
+   * otherwise returns an empty {@code Optional}.
+   */
+  protected Optional<HelixVeniceClusterResources> getResources() {
+    return Optional.ofNullable(clusterResources);
   }
 
-  public String getClusterName() {
+  /**
+   * @return the name of the Venice cluster that the model manages.
+   */
+  protected String getClusterName() {
     return clusterName;
   }
 }

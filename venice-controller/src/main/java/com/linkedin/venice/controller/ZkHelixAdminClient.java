@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.HelixAdmin;
-import org.apache.helix.HelixException;
 import org.apache.helix.cloud.constants.CloudProvider;
 import org.apache.helix.controller.rebalancer.DelayedAutoRebalancer;
 import org.apache.helix.controller.rebalancer.strategy.AutoRebalanceStrategy;
@@ -68,16 +67,25 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         .setCloudProvider(CloudProvider.AZURE);
   }
 
+  /**
+   * @see HelixAdminClient#isVeniceControllerClusterCreated()
+   */
   @Override
   public boolean isVeniceControllerClusterCreated() {
     return helixAdmin.getClusters().contains(controllerClusterName);
   }
 
+  /**
+   * @see HelixAdminClient#isVeniceStorageClusterCreated(String)
+   */
   @Override
   public boolean isVeniceStorageClusterCreated(String clusterName) {
      return helixAdmin.getClusters().contains(clusterName);
   }
 
+  /**
+   * @see HelixAdminClient#createVeniceControllerCluster(boolean)
+   */
   @Override
   public void createVeniceControllerCluster(boolean isControllerInAzureFabric) {
     boolean success = RetryUtils.executeWithMaxAttempt(
@@ -106,6 +114,9 @@ public class ZkHelixAdminClient implements HelixAdminClient {
     }
   }
 
+  /**
+   * @see HelixAdminClient#createVeniceStorageCluster(String, Map, boolean)
+   */
   @Override
   public void createVeniceStorageCluster(String clusterName, Map<String, String> helixClusterProperties,
       boolean isControllerInAzureFabric) {
@@ -131,11 +142,17 @@ public class ZkHelixAdminClient implements HelixAdminClient {
     }
   }
 
+  /**
+   * @see HelixAdminClient#isVeniceStorageClusterInControllerCluster(String)
+   */
   @Override
   public boolean isVeniceStorageClusterInControllerCluster(String clusterName) {
     return helixAdmin.getResourcesInCluster(controllerClusterName).contains(clusterName);
   }
 
+  /**
+   * @see HelixAdminClient#addVeniceStorageClusterToControllerCluster(String)
+   */
   @Override
   public void addVeniceStorageClusterToControllerCluster(String clusterName) {
     try {
@@ -155,11 +172,17 @@ public class ZkHelixAdminClient implements HelixAdminClient {
     }
   }
 
+  /**
+   * @see HelixAdminClient#isClusterInGrandCluster(String)
+   */
   @Override
   public boolean isClusterInGrandCluster(String clusterName) {
     return helixAdmin.getResourcesInCluster(haasSuperClusterName).contains(clusterName);
   }
 
+  /**
+   * @see HelixAdminClient#addClusterToGrandCluster(String)
+   */
   @Override
   public void addClusterToGrandCluster(String clusterName) {
     try {
@@ -172,6 +195,9 @@ public class ZkHelixAdminClient implements HelixAdminClient {
     }
   }
 
+  /**
+   * @see HelixAdminClient#updateClusterConfigs(String, Map)
+   */
   @Override
   public void updateClusterConfigs(String clusterName, Map<String, String> helixClusterProperties) {
     HelixConfigScope configScope = new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).
@@ -179,17 +205,26 @@ public class ZkHelixAdminClient implements HelixAdminClient {
     helixAdmin.setConfig(configScope, helixClusterProperties);
   }
 
+  /**
+   * @see HelixAdminClient#enablePartition(boolean, String, String, String, List)
+   */
   @Override
   public void enablePartition(boolean enabled, String clusterName, String instanceName,
       String resourceName, List<String> partitionNames) {
     helixAdmin.enablePartition(enabled, clusterName, instanceName, resourceName, partitionNames);
   }
 
+  /**
+   * @see HelixAdminClient#getInstancesInCluster(String)
+   */
   @Override
   public List<String> getInstancesInCluster(String clusterName) {
     return helixAdmin.getInstancesInCluster(clusterName);
   }
 
+  /**
+   * @see HelixAdminClient#createVeniceStorageClusterResources(String, String, int, int, boolean)
+   */
   @Override
   public void createVeniceStorageClusterResources(String clusterName, String kafkaTopic , int numberOfPartition ,
       int replicationFactor, boolean isLeaderFollowerStateModel) {
@@ -216,22 +251,34 @@ public class ZkHelixAdminClient implements HelixAdminClient {
     }
   }
 
+  /**
+   * @see HelixAdminClient#dropResource(String, String)
+   */
   @Override
   public void dropResource(String clusterName, String resourceName) {
     helixAdmin.dropResource(clusterName, resourceName);
   }
 
+  /**
+   * @see HelixAdminClient#dropStorageInstance(String, String)
+   */
   @Override
   public void dropStorageInstance(String clusterName, String instanceName) {
     InstanceConfig instanceConfig = helixAdmin.getInstanceConfig(clusterName, instanceName);
     helixAdmin.dropInstance(clusterName, instanceConfig);
   }
 
+  /**
+   * @see HelixAdminClient#resetPartition(String, String, String, List)
+   */
   @Override
   public void resetPartition(String clusterName, String instanceName, String resourceName, List<String> partitionNames) {
     helixAdmin.resetPartition(clusterName, instanceName, resourceName, partitionNames);
   }
 
+  /**
+   * @see HelixAdminClient#close()
+   */
   @Override
   public void close() {
     helixAdmin.close();
