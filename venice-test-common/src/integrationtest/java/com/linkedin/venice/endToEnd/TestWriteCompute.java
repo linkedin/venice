@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTaskBackdoor;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -14,17 +15,14 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
-import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
-import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
-import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -38,7 +36,6 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
 
@@ -105,7 +102,9 @@ public class TestWriteCompute {
         SchemaResponse schemaResponse = controllerClient.addValueSchema(storeName, NESTED_SCHEMA_STRING_V2);
 
         // Add derived schema associated to v2
-        Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convert(NESTED_SCHEMA_STRING_V2).getTypes().get(0);
+        Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(
+            AvroCompatibilityHelper.parse(NESTED_SCHEMA_STRING_V2)
+        );
         controllerClient.addDerivedSchema(storeName, schemaResponse.getId(), writeComputeSchema.toString());
 
         // H2V push
@@ -274,7 +273,7 @@ public class TestWriteCompute {
   /**
    * Blocking, waits for new version to go online
    */
-  private static void runH2V(Properties h2vProperties, int expectedVersionNumber, ControllerClient controllerClient) throws Exception {
+  private static void runH2V(Properties h2vProperties, int expectedVersionNumber, ControllerClient controllerClient) {
     String jobName = Utils.getUniqueString("write-compute-job-" + expectedVersionNumber);
     try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
       job.run();

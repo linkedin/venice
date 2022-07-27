@@ -16,48 +16,48 @@ public class WriteComputeSchemaValidator {
     // Utility class
   }
 
-  public static void validate(Schema originalSchema, Schema writeComputeSchema) {
-    if (originalSchema.getType() != RECORD) {
+  public static void validate(Schema valueSchema, Schema writeComputeSchema) {
+    if (valueSchema.getType() != RECORD) {
       throw new InvalidWriteComputeException("write compute is only supported for generic record");
     }
 
-    boolean isValidSchema = validateSchema(originalSchema, writeComputeSchema);
+    boolean isValidSchema = validateSchema(valueSchema, writeComputeSchema);
     if (!isValidSchema) {
-      throw new InvalidWriteComputeException(originalSchema, writeComputeSchema);
+      throw new InvalidWriteComputeException(valueSchema, writeComputeSchema);
     }
   }
 
-  private static boolean validateSchema(Schema originalSchema, Schema writeComputeSchema) {
-    return validateSchema(originalSchema, writeComputeSchema, false);
+  private static boolean validateSchema(Schema valueSchema, Schema writeComputeSchema) {
+    return validateSchema(valueSchema, writeComputeSchema, false);
   }
 
-  private static boolean validateSchema(Schema originalSchema, Schema writeComputeSchema, boolean isNestedField) {
-    switch (originalSchema.getType()) {
+  private static boolean validateSchema(Schema valueSchema, Schema writeComputeSchema, boolean isNestedField) {
+    switch (valueSchema.getType()) {
       case RECORD:
-        return validateRecord(originalSchema, writeComputeSchema, isNestedField);
+        return validateRecord(valueSchema, writeComputeSchema, isNestedField);
       case ARRAY:
       case MAP:
-        return validateCollectionSchema(originalSchema, writeComputeSchema);
+        return validateCollectionSchema(valueSchema, writeComputeSchema);
       case UNION:
-        return validateUnion(originalSchema, writeComputeSchema);
+        return validateUnion(valueSchema, writeComputeSchema);
       default:
-        return originalSchema.equals(writeComputeSchema);
+        return valueSchema.equals(writeComputeSchema);
     }
   }
 
-  private static boolean validateRecord(Schema originalSchema, Schema writeComputeSchema, boolean isNestedField) {
+  private static boolean validateRecord(Schema valueSchema, Schema writeComputeSchema, boolean isNestedField) {
     if (isNestedField) {
-      return originalSchema.equals(writeComputeSchema);
+      return valueSchema.equals(writeComputeSchema);
     }
     if (writeComputeSchema.getType() != RECORD) {
       //If writeComputeSchema is a union type and contains DelOp, recurse on initial record
       if (writeComputeSchema.getType() == UNION && writeComputeSchema.getTypes().get(1).getName().equals(DEL_RECORD_OP.name)) {
-        return validateSchema(originalSchema, writeComputeSchema.getTypes().get(0));
+        return validateSchema(valueSchema, writeComputeSchema.getTypes().get(0));
       }
       return false;
     }
 
-    for (Schema.Field field : originalSchema.getFields()) {
+    for (Schema.Field field : valueSchema.getFields()) {
       Schema writeComputeFieldSchema = writeComputeSchema.getField(field.name()).schema();
       if (writeComputeFieldSchema == null) {
         return false;

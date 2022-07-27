@@ -808,10 +808,4 @@
       "default": {}
     }
   ]
-},
-{
-"type": "record",
-"name": "DelOp",
-"namespace": "com.linkedin.venice.systemstore.schemas",
-"fields": []
 }

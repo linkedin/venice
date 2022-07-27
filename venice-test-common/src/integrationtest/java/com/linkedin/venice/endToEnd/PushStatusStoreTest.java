@@ -53,7 +53,7 @@ import static org.testng.Assert.*;
 
 
 public class PushStatusStoreTest {
-  private static final int TEST_TIMEOUT = 60_000; // ms
+  private static final int TEST_TIMEOUT_MS = 60_000;
   private static final int NUMBER_OF_SERVERS = 2;
   private static final int PARTITION_COUNT = 2;
   private static final int REPLICATION_FACTOR = 2;
@@ -127,7 +127,7 @@ public class PushStatusStoreTest {
         controllerClient, 30, TimeUnit.SECONDS);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT * 2)
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT_MS * 2)
   public void testKafkaPushJob(boolean isIsolated) throws Exception {
     Properties h2vProperties = getH2VProperties();
     // setup initial version
@@ -142,7 +142,7 @@ public class PushStatusStoreTest {
         storeName, cluster.getZk().getAddress(), new DaVinciConfig(), extraBackendConfigMap)) {
       daVinciClient.subscribeAll().get();
       runH2V(h2vProperties, 2, cluster);
-      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
         assertEquals(reader.getPartitionStatus(storeName, 2, 0, Optional.empty()).size(), 1);
       });
     }
@@ -160,7 +160,7 @@ public class PushStatusStoreTest {
     });
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT_MS)
   public void testIncrementalPush() throws Exception {
     VeniceProperties backendConfig = getBackendConfigBuilder().build();
     Properties h2vProperties = getH2VProperties();
@@ -174,7 +174,7 @@ public class PushStatusStoreTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT_MS)
   public void testIncrementalPushStatusStoredInPushStatusStore() throws Exception {
     Properties h2vProperties = getH2VProperties();
     runH2V(h2vProperties, 1, cluster);
@@ -207,7 +207,7 @@ public class PushStatusStoreTest {
   }
 
   /* The following test is targeted at verifying the behavior of controller when queryJobStatus is invoked for inc-push */
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT_MS)
   public void testIncrementalPushStatusReadingFromPushStatusStoreInController() throws Exception {
     Properties h2vProperties = getH2VProperties();
     runH2V(h2vProperties, 1, cluster);
@@ -271,7 +271,7 @@ public class PushStatusStoreTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT_MS)
   public void testAutomaticPurge() throws Exception {
     VeniceProperties backendConfig = getBackendConfigBuilder().build();
     Properties h2vProperties = getH2VProperties();
@@ -279,18 +279,18 @@ public class PushStatusStoreTest {
     runH2V(h2vProperties, 1, cluster);
     try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig)) {
       daVinciClient.subscribeAll().get();
-      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
         assertEquals(reader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 1);
       });
       runH2V(h2vProperties, 2, cluster);
       runH2V(h2vProperties, 3, cluster);
-      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
         assertEquals(reader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 0);
       });
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT_MS)
   public void testParentControllerAutoMaterializeDaVinciPushStatusSystemStore() {
     try (ControllerClient parentControllerClient = new ControllerClient(cluster.getClusterName(),
         parentController.getControllerUrl())) {

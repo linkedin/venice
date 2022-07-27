@@ -61,10 +61,10 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
       // Sanity check to make sure the store is not already created in another cluster.
       try {
         Pair<String, String> clusterNameAndD2 = admin.discoverCluster(systemStoreName);
-        String cluster = clusterNameAndD2.getFirst();
-        if (!cluster.equals(intendedCluster)) {
+        String currSystemStoreCluster = clusterNameAndD2.getFirst();
+        if (!currSystemStoreCluster.equals(intendedCluster)) {
           LOGGER.warn("The system store for '" + protocolDefinition.name() + "' already exists in cluster '"
-              + cluster + "', which is inconsistent with the config '" + CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME
+              + currSystemStoreCluster + "', which is inconsistent with the config '" + CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME
               + "' which specifies that it should be in cluster '" + intendedCluster
               + "'. Will abort the initialization routine.");
           return;
@@ -78,12 +78,12 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
            * At this point, this branch of the if should always be exercised since cluster discovery thinks
            * this store does not exist.
            */
-          Schema firstVallueSchema = protocolSchemaMap.get(1);
-          if (null == firstVallueSchema) {
+          Schema firstValueSchema = protocolSchemaMap.get(1);
+          if (null == firstValueSchema) {
             throw new VeniceException("Invalid protocol definition: '" + protocolDefinition.name() + "' does not have a version 1");
           }
           String firstKeySchemaStr = keySchema.isPresent() ? keySchema.get().toString() : DEFAULT_KEY_SCHEMA_STR;
-          String firstValueSchemaStr = firstVallueSchema.toString();
+          String firstValueSchemaStr = firstValueSchema.toString();
           admin.createStore(clusterToInit, systemStoreName, VeniceConstants.SYSTEM_STORE_OWNER, firstKeySchemaStr,
               firstValueSchemaStr, true);
           // Update the default store config
@@ -123,53 +123,53 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
       Map<Integer, Schema> knownSchemaMap = new HashMap<>();
       schemaEntries.forEach(schemaEntry -> knownSchemaMap.put(schemaEntry.getId(), schemaEntry.getSchema()));
 
-      for (int schemaVersion = 1; schemaVersion <= protocolDefinition.getCurrentProtocolVersion(); schemaVersion++) {
-        Schema schemaInLocalResources = protocolSchemaMap.get(schemaVersion);
+      for (int valueSchemaVersion = 1; valueSchemaVersion <= protocolDefinition.getCurrentProtocolVersion(); valueSchemaVersion++) {
+        Schema schemaInLocalResources = protocolSchemaMap.get(valueSchemaVersion);
         if (null == schemaInLocalResources) {
           throw new VeniceException(
-              "Invalid protocol definition: '" + protocolDefinition.name() + "' does not have a version " + schemaVersion + " even though that is inferior to the current version ("
+              "Invalid protocol definition: '" + protocolDefinition.name() + "' does not have a version " + valueSchemaVersion + " even though that is inferior to the current version ("
                   + protocolDefinition.getCurrentProtocolVersion() + ").");
         }
 
-        Schema knownSchema = knownSchemaMap.get(schemaVersion);
+        Schema knownSchema = knownSchemaMap.get(valueSchemaVersion);
 
         if (null == knownSchema) {
           try {
-            admin.addValueSchema(clusterToInit, systemStoreName, schemaInLocalResources.toString(), schemaVersion,
+            admin.addValueSchema(clusterToInit, systemStoreName, schemaInLocalResources.toString(), valueSchemaVersion,
                 DirectionalSchemaCompatibilityType.NONE, false);
           } catch (Exception e) {
             LOGGER.error(
-                "Caught Exception when attempting to register '" + protocolDefinition.name() + "' schema version '" + schemaVersion + "'. Will bubble up.");
+                "Caught Exception when attempting to register '" + protocolDefinition.name() + "' schema version '" + valueSchemaVersion + "'. Will bubble up.");
             throw e;
           }
-          LOGGER.info("Added new schema v" + schemaVersion + " to '" + systemStoreName + "'.");
+          LOGGER.info("Added new schema v" + valueSchemaVersion + " to '" + systemStoreName + "'.");
         } else {
           if (knownSchema.equals(schemaInLocalResources)) {
-            LOGGER.info("Schema v" + schemaVersion + " in '" + systemStoreName
+            LOGGER.info("Schema v" + valueSchemaVersion + " in '" + systemStoreName
                 + "' is already registered and consistent with the local definition.");
           } else {
-            LOGGER.warn("Schema v" + schemaVersion + " in '" + systemStoreName
+            LOGGER.warn("Schema v" + valueSchemaVersion + " in '" + systemStoreName
                 + "' is already registered but it is INCONSISTENT with the local definition.\n" + "Already registered: "
                 + knownSchema.toString(true) + "\n" + "Local definition: " + schemaInLocalResources.toString(true));
           }
         }
         if (autoRegisterDerivedComputeSchema) {
-          // Check and register derived compute schema
-          String derivedSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(schemaInLocalResources).toString();
-          Pair<Integer, Integer> derivedSchemaInfo = admin.getDerivedSchemaId(clusterToInit, systemStoreName, derivedSchema);
+          // Check and register Write Compute schema
+          String writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(schemaInLocalResources).toString();
+          Pair<Integer, Integer> derivedSchemaInfo = admin.getDerivedSchemaId(clusterToInit, systemStoreName, writeComputeSchema);
           if (derivedSchemaInfo.getFirst() == SchemaData.INVALID_VALUE_SCHEMA_ID) {
             /**
              * The derived schema doesn't exist right now, try to register it.
              */
             try {
-              admin.addDerivedSchema(clusterToInit, systemStoreName, schemaVersion, derivedSchema);
+              admin.addDerivedSchema(clusterToInit, systemStoreName, valueSchemaVersion, writeComputeSchema);
             } catch (Exception e) {
               LOGGER.error("Caught Exception when attempting to register the derived compute schema for '" + protocolDefinition.name()
-                  + "' schema version '" + schemaVersion + "'. Will bubble up.");
+                  + "' schema version '" + valueSchemaVersion + "'. Will bubble up.");
               throw e;
             }
             LOGGER.info(
-                "Added the derived compute schema for the new schema v" + schemaVersion + " to '" + systemStoreName + "'.");
+                "Added the derived compute schema for the new schema v" + valueSchemaVersion + " to '" + systemStoreName + "'.");
           }
         }
       }

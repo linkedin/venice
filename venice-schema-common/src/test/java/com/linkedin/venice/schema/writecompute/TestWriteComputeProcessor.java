@@ -135,36 +135,36 @@ public class TestWriteComputeProcessor {
     WriteComputeHandlerV2 writeComputeHandler = new WriteComputeHandlerV2(new CollectionTimestampMergeRecordHelper());
 
     GenericData.Record mapUpdateRecord = new GenericData.Record(mapWriteComputeSchema.getTypes().get(0));
-    Map map = new HashMap();
+    Map<Integer, Integer> map = new HashMap<>();
     map.put(2, 2);
     map.put(3, 3);
     mapUpdateRecord.put(MAP_UNION, map);
-    mapUpdateRecord.put(MAP_DIFF, Arrays.asList(4));
+    mapUpdateRecord.put(MAP_DIFF, Collections.singletonList(4));
 
-    Map originalMap = new HashMap();
+    Map<Integer, Integer> originalMap = new HashMap<>();
     originalMap.put(1, 1);
     originalMap.put(4, 4);
 
     Object result = writeComputeHandler.updateMap(originalMap, mapUpdateRecord);
     Assert.assertTrue(result instanceof Map);
-    Assert.assertEquals(((Map) result).get(1), 1);
-    Assert.assertEquals(((Map) result).get(2), 2);
-    Assert.assertEquals(((Map) result).get(3), 3);
-    Assert.assertFalse( ((Map) result).containsKey(4));
+    Assert.assertEquals(((Map<?, ?>) result).get(1), 1);
+    Assert.assertEquals(((Map<?, ?>) result).get(2), 2);
+    Assert.assertEquals(((Map<?, ?>) result).get(3), 3);
+    Assert.assertFalse( ((Map<?, ?>) result).containsKey(4));
 
     //test passing a "null" as the original value
     result = writeComputeHandler.updateMap(null, mapUpdateRecord);
-    Assert.assertEquals(((Map) result).get(2), 2);
-    Assert.assertEquals(((Map) result).get(3), 3);
+    Assert.assertEquals(((Map<?, ?>) result).get(2), 2);
+    Assert.assertEquals(((Map<?, ?>) result).get(3), 3);
 
     //test replacing original map entirely
-    Map updatedMap = new HashMap();
+    Map<Integer, Integer> updatedMap = new HashMap<>();
     updatedMap.put(5, 5);
 
     result = writeComputeHandler.updateMap(originalMap, updatedMap);
-    Assert.assertEquals(((Map) result).get(5), 5);
-    Assert.assertFalse( ((Map) result).containsKey(1));
-    Assert.assertFalse( ((Map) result).containsKey(4));
+    Assert.assertEquals(((Map<?, ?>) result).get(5), 5);
+    Assert.assertFalse( ((Map<?, ?>) result).containsKey(1));
+    Assert.assertFalse( ((Map<?, ?>) result).containsKey(4));
   }
 
   @Test
@@ -188,11 +188,11 @@ public class TestWriteComputeProcessor {
     originalRecord.put("hasNext", true);
 
     //construct write compute operation record
-    Schema noOpSchema = recordWriteComputeSchema.getTypes().get(0).getField("hits").schema().getTypes().get(0);
+    Schema noOpSchema = recordWriteComputeSchema.getField("hits").schema().getTypes().get(0);
     GenericData.Record noOpRecord = new GenericData.Record(noOpSchema);
 
     //update "hasNext" to false
-    GenericData.Record recordUpdateRecord = new GenericData.Record(recordWriteComputeSchema.getTypes().get(0));
+    GenericData.Record recordUpdateRecord = new GenericData.Record(recordWriteComputeSchema);
     recordUpdateRecord.put("hits", noOpRecord);
     recordUpdateRecord.put("hasNext", true);
 
@@ -233,9 +233,9 @@ public class TestWriteComputeProcessor {
 
     //construct an empty write compute schema. WC adapter is supposed to construct the
     //original value by using default values.
-    GenericData.Record writeComputeRecord = new GenericData.Record(writeComputeSchema.getTypes().get(0));
+    GenericData.Record writeComputeRecord = new GenericData.Record(writeComputeSchema);
 
-    Schema noOpSchema = writeComputeSchema.getTypes().get(0).getField("nullableArray").schema().getTypes().get(0);
+    Schema noOpSchema = writeComputeSchema.getField("nullableArray").schema().getTypes().get(0);
     GenericData.Record noOpRecord = new GenericData.Record(noOpSchema);
 
     writeComputeRecord.put("nullableArray", noOpRecord);
@@ -253,7 +253,7 @@ public class TestWriteComputeProcessor {
 
     //use a array operation to update the nullable field
     GenericData.Record listOpsRecord =
-        new GenericData.Record(writeComputeSchema.getTypes().get(0).getField("nullableArray").schema().getTypes().get(2));
+        new GenericData.Record(writeComputeSchema.getField("nullableArray").schema().getTypes().get(2));
     listOpsRecord.put(SET_UNION, Arrays.asList(1, 2));
     listOpsRecord.put(SET_DIFF, Collections.emptyList());
     writeComputeRecord.put("nullableArray", listOpsRecord);
@@ -262,25 +262,6 @@ public class TestWriteComputeProcessor {
     GenericArray array = (GenericArray) result.get("nullableArray");
     Assert.assertEquals(array.size(), 2);
     Assert.assertTrue(array.contains(1) && array.contains(2));
-  }
-
-  @Test
-  public void testCanDeleteFullRecord() {
-    Schema recordSchema = AvroCompatibilityHelper.parse(simpleRecordSchemaStr);
-    Schema recordWriteComputeSchema = writeComputeSchemaConverter.convert(recordSchema);
-    WriteComputeProcessor writeComputeProcessor = new WriteComputeProcessor(new CollectionTimestampMergeRecordHelper());
-
-    //construct original record
-    GenericData.Record originalRecord = new GenericData.Record(recordSchema);
-    originalRecord.put("field1", 0);
-    originalRecord.put("field2", 1);
-
-    //construct write compute operation record
-    Schema deleteSchema = recordWriteComputeSchema.getTypes().get(1);
-    GenericData.Record deleteRecord = new GenericData.Record(deleteSchema);
-
-    Object result = writeComputeProcessor.updateRecord(recordSchema, recordWriteComputeSchema, originalRecord, deleteRecord);
-    Assert.assertNull(result);
   }
 
   @Test
@@ -293,8 +274,7 @@ public class TestWriteComputeProcessor {
     GenericData.Record nestedRecord = new GenericData.Record(nestedRecordSchema);
     nestedRecord.put("intField", 1);
 
-    Schema writeComputeRecordSchema = recordWriteComputeUnionSchema.getTypes().get(0);
-    GenericData.Record writeComputeRecord = new GenericData.Record(writeComputeRecordSchema);
+    GenericData.Record writeComputeRecord = new GenericData.Record(recordWriteComputeUnionSchema);
     writeComputeRecord.put("nestedRecord", nestedRecord);
 
     GenericData.Record result = (GenericData.Record) writeComputeProcessor.updateRecord(

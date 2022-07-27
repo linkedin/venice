@@ -462,7 +462,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           commonConfig.getRefreshAttemptsForZkReconnect(), commonConfig.getRefreshIntervalForZkReconnectInMs());
       metaStoreWriter = new MetaStoreWriter(topicManagerRepository.getTopicManager(), veniceWriterFactory, zkSharedSchemaRepository);
 
-      clusterToLiveClusterConfigRepo = new VeniceConcurrentHashMap();
+      clusterToLiveClusterConfigRepo = new VeniceConcurrentHashMap<>();
       dataRecoveryManager = new DataRecoveryManager(this, d2Client, icProvider);
 
       List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
@@ -3925,7 +3925,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         schemaRepository.addDerivedSchema(storeName, derivedSchemaStr, valueSchemaId);
 
         return new DerivedSchemaEntry(valueSchemaId,
-            schemaRepository.getDerivedSchemaId(storeName, derivedSchemaStr).getSecond(), derivedSchemaStr );
+            schemaRepository.getDerivedSchemaId(storeName, derivedSchemaStr).getSecond(), derivedSchemaStr);
     }
 
     @Override
