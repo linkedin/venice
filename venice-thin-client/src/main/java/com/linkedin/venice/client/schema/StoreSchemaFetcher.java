@@ -2,6 +2,7 @@ package com.linkedin.venice.client.schema;
 
 import java.io.Closeable;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 
 
 /**
@@ -22,9 +23,10 @@ public interface StoreSchemaFetcher extends Closeable {
   Schema getLatestValueSchema();
 
   /**
-   * Returns the latest available WRITE OPERATION (write compute) schema of the store.
+   * Returns the latest available Update (write compute) schema of the store. The returned schema is used to construct
+   * a {@link GenericRecord} that partially update a record value.
    */
-  Schema getLatestWriteOperationSchema();
+  Schema getLatestUpdateSchema();
 
   /**
    * Returns the Venice store name this class is associated with.
