@@ -15,7 +15,6 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
-import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
@@ -320,7 +319,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
 
     if (mergeConflictResult.isUpdateIgnored()) {
-      storeIngestionStats.recodUpdateIgnoredDCR();
+      storeIngestionStats.recordUpdateIgnoredDCR();
       aggVersionedStorageIngestionStats.recordUpdateIgnoredDCR(storeName, versionNumber);
     } else {
       validatePostOperationResultsAndRecord(mergeConflictResult, offsetSumPreOperation, recordTimestampsPreOperation);
@@ -435,7 +434,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     // finally produce and update the transient record map.
     if (updatedValueBytes == null) {
-      storeIngestionStats.recorTombstoneCreatedDCR();
+      storeIngestionStats.recordTombstoneCreatedDCR();
       aggVersionedStorageIngestionStats.recordTombStoneCreationDCR(storeName, versionNumber);
       partitionConsumptionState.setTransientRecord(kafkaUrl, consumerRecord.offset(), key, valueSchemaId, replicationMetadataRecord);
       Delete deletePayload = new Delete();

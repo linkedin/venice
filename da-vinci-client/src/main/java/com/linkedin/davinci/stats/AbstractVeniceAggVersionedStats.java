@@ -6,10 +6,12 @@ import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.stats.StatsSupplier;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
@@ -49,6 +51,12 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
     });
   }
 
+  protected void recordVersionedAndTotalStat(String storeName, int version, Consumer<STATS> function) {
+    VeniceVersionedStats<STATS, STATS_REPORTER> stats = getVersionedStats(storeName);
+    Utils.computeIfNotNull(stats.getTotalStats(), function);
+    Utils.computeIfNotNull(stats.getStats(version), function);
+  }
+
   protected STATS getTotalStats(String storeName) {
     return getVersionedStats(storeName).getTotalStats();
   }
@@ -62,21 +70,18 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
   }
 
   private VeniceVersionedStats<STATS, STATS_REPORTER> getVersionedStats(String storeName) {
-    if (!aggStats.containsKey(storeName)) {
-      addStore(storeName);
+    VeniceVersionedStats<STATS, STATS_REPORTER> stats = aggStats.get(storeName);
+    if (stats == null) {
+      stats = addStore(storeName);
       Store store = metadataRepository.getStoreOrThrow(storeName);
       updateStatsVersionInfo(store.getName(), store.getVersions(), store.getCurrentVersion());
     }
-    return aggStats.get(storeName);
+    return stats;
   }
 
-  private synchronized void addStore(String storeName) {
-    if (!aggStats.containsKey(storeName)) {
-      aggStats.put(storeName, new VeniceVersionedStats<>(metricsRepository, storeName, statsInitiator, reporterSupplier));
-    } else {
-      logger.warn("VersionedStats has already been created. Something might be wrong. "
-          + "Store: " + storeName);
-    }
+  private VeniceVersionedStats<STATS, STATS_REPORTER> addStore(String storeName) {
+    return aggStats.computeIfAbsent(storeName, s ->
+        new VeniceVersionedStats<>(metricsRepository, storeName, statsInitiator, reporterSupplier));
   }
 
   protected void updateStatsVersionInfo(String storeName, List<Version> existingVersions, int newCurrentVersion) {
@@ -102,9 +107,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
       int versionNum = version.getNumber();
 
       //add this version to stats if it is absent
-      if (!versionedDIVStats.containsVersion(versionNum)) {
-        versionedDIVStats.addVersion(versionNum);
-      }
+      versionedDIVStats.addVersion(versionNum);
 
       VersionStatus status = version.getStatus();
       if (status == VersionStatus.STARTED || status == VersionStatus.PUSHED) {
@@ -149,11 +152,9 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
 
   @Override
   public void handleStoreDeleted(String storeName) {
-    if (!aggStats.containsKey(storeName)) {
-      logger.warn("Trying to delete stats but store: " + storeName + "is not in the metric list. Something might be wrong.");
+    if (aggStats.remove(storeName) == null) {
+      logger.debug("Trying to delete stats but store '{}' is not in the metric list.", storeName);
     }
-
-    //aggStats.remove(storeName); //TODO: sdwu to make a more permanent solution
   }
 
   @Override

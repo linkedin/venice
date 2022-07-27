@@ -7,7 +7,6 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.utils.RegionUtils;
-import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -15,7 +14,8 @@ import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Rate;
-import java.util.HashMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import java.util.Map;
 import java.util.function.DoubleSupplier;
 import org.apache.logging.log4j.LogManager;
@@ -85,83 +85,60 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
   }
 
   public void recordRecordsConsumed(String storeName, int version, int count) {
-    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordRecordsConsumed(count));
-    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordRecordsConsumed(count));
+    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordRecordsConsumed(count));
   }
 
   public void recordBytesConsumed(String storeName, int version, long bytes) {
-    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordBytesConsumed(bytes));
-    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordBytesConsumed(bytes));
+    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordBytesConsumed(bytes));
   }
 
-  public void recordLeaderRecordsConsumed(String storeName, int version, int count) {
-    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordLeaderRecordsConsumed(count));
-    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordLeaderRecordsConsumed(count));
+  public void recordLeaderConsumed(String storeName, int version, long bytes, int recordCount) {
+    recordVersionedAndTotalStat(storeName, version, stat -> {
+      stat.recordLeaderBytesConsumed(bytes);
+      stat.recordLeaderRecordsConsumed(recordCount);
+    });
   }
 
-  public void recordLeaderBytesConsumed(String storeName, int version, long bytes) {
-    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordLeaderBytesConsumed(bytes));
-    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordLeaderBytesConsumed(bytes));
+  public void recordFollowerConsumed(String storeName, int version, long bytes, int recordCount) {
+    recordVersionedAndTotalStat(storeName, version, stat -> {
+      stat.recordFollowerBytesConsumed(bytes);
+      stat.recordFollowerRecordsConsumed(recordCount);
+    });
   }
 
-  public void recordFollowerRecordsConsumed(String storeName, int version, int count) {
-    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordFollowerRecordsConsumed(count));
-    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordFollowerRecordsConsumed(count));
+  public void recordLeaderProduced(String storeName, int version, long bytesProduced, int recordCount) {
+    recordVersionedAndTotalStat(storeName, version, stat -> {
+      stat.recordLeaderBytesProduced(bytesProduced);
+      stat.recordLeaderRecordsProduced(recordCount);
+    });
   }
 
-  public void recordFollowerBytesConsumed(String storeName, int version, long bytes) {
-    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordFollowerBytesConsumed(bytes));
-    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordFollowerBytesConsumed(bytes));
-  }
-
-  public void recordLeaderRecordsProduced(String storeName, int version, int count) {
-    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordLeaderRecordsProduced(count));
-    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordLeaderRecordsProduced(count));
-  }
-
-  public void recordLeaderBytesProduced(String storeName, int version, long bytes) {
-    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordLeaderBytesProduced(bytes));
-    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordLeaderBytesProduced(bytes));
-  }
-
-  public void recordRegionHybridBytesConsumed(String storeName, int version, long bytes, int regionId) {
-    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordRegionHybridBytesConsumed(regionId, bytes));
-    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordRegionHybridBytesConsumed(regionId, bytes));
-  }
-
-  public void recordRegionHybridRecordsConsumed(String storeName, int version, int count, int regionId) {
-    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordRegionHybridRecordsConsumed(regionId, count));
-    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordRegionHybridRecordsConsumed(regionId, count));
-  }
-
-  public void recordRegionHybridAvgConsumedOffset(String storeName, int version, long offset, int regionId) {
-    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordRegionHybridAvgConsumedOffset(regionId, offset));
-    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordRegionHybridAvgConsumedOffset(regionId, offset));
+  public void recordRegionHybridConsumption(String storeName, int version, int regionId, long bytesConsumed, long offsetConsumed) {
+    recordVersionedAndTotalStat(storeName, version, stat -> {
+      stat.recordRegionHybridBytesConsumed(regionId, bytesConsumed);
+      stat.recordRegionHybridRecordsConsumed(regionId, 1);
+      stat.recordRegionHybridAvgConsumedOffset(regionId, offsetConsumed);
+    });
   }
 
   public void recordUpdateIgnoredDCR(String storeName, int version) {
-    Utils.computeIfNotNull(getTotalStats(storeName), StorageIngestionStats::recordUpdateIgnoredDCR);
-    Utils.computeIfNotNull(getStats(storeName, version), StorageIngestionStats::recordUpdateIgnoredDCR);
+    recordVersionedAndTotalStat(storeName, version, StorageIngestionStats::recordUpdateIgnoredDCR);
   }
 
   public void recordTotalDCR(String storeName, int version) {
-    Utils.computeIfNotNull(getTotalStats(storeName), StorageIngestionStats::recordTotalDCR);
-    Utils.computeIfNotNull(getStats(storeName, version), StorageIngestionStats::recordTotalDCR);
+    recordVersionedAndTotalStat(storeName, version, StorageIngestionStats::recordTotalDCR);
   }
 
   public void recordTimestampRegressionDCRError(String storeName, int version) {
-    Utils.computeIfNotNull(getTotalStats(storeName), StorageIngestionStats::recordTimestampRegressionDCRError);
-    Utils.computeIfNotNull(getStats(storeName, version), StorageIngestionStats::recordTimestampRegressionDCRError);
+    recordVersionedAndTotalStat(storeName, version, StorageIngestionStats::recordTimestampRegressionDCRError);
   }
 
   public void recordOffsetRegressionDCRError(String storeName, int version) {
-    Utils.computeIfNotNull(getTotalStats(storeName), StorageIngestionStats::recordOffsetRegressionDCRError);
-    Utils.computeIfNotNull(getStats(storeName, version), StorageIngestionStats::recordOffsetRegressionDCRError);
+    recordVersionedAndTotalStat(storeName, version, StorageIngestionStats::recordOffsetRegressionDCRError);
   }
 
   public void recordTombStoneCreationDCR(String storeName, int version) {
-    Utils.computeIfNotNull(getTotalStats(storeName), StorageIngestionStats::recordTombStoneCreationDCR);
-    Utils.computeIfNotNull(getStats(storeName, version), StorageIngestionStats::recordTombStoneCreationDCR);
+    recordVersionedAndTotalStat(storeName, version, StorageIngestionStats::recordTombStoneCreationDCR);
   }
 
   public void setIngestionTaskPushTimeoutGauge(String storeName, int version) {
@@ -173,13 +150,11 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
   }
 
   public void recordStalePartitionsWithoutIngestionTask(String storeName, int version) {
-    Utils.computeIfNotNull(getTotalStats(storeName), StorageIngestionStats::recordStalePartitionsWithoutIngestionTask);
-    Utils.computeIfNotNull(getStats(storeName, version), StorageIngestionStats::recordStalePartitionsWithoutIngestionTask);
+    recordVersionedAndTotalStat(storeName, version, StorageIngestionStats::recordStalePartitionsWithoutIngestionTask);
   }
 
   public void recordSubscribePrepLatency(String storeName, int version, double value) {
-    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordSubscribePrepLatency(value));
-    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordSubscribePrepLatency(value));
+    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordSubscribePrepLatency(value));
   }
 
   static class StorageIngestionStats {
@@ -204,9 +179,9 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     private final Rate offsetRegressionDCRRate;
     private final Rate tombstoneCreationDCRRate;
 
-    private final Map<Integer, Rate> regionIdToHybridBytesConsumedRateMap;
-    private final Map<Integer, Rate> regionIdToHybridRecordsConsumedRateMap;
-    private final Map<Integer, Avg> regionIdToHybridAvgConsumedOffsetMap;
+    private final Int2ObjectMap<Rate> regionIdToHybridBytesConsumedRateMap;
+    private final Int2ObjectMap<Rate> regionIdToHybridRecordsConsumedRateMap;
+    private final Int2ObjectMap<Avg> regionIdToHybridAvgConsumedOffsetMap;
     private final Count stalePartitionsWithoutIngestionTaskCount;
     private final Avg subscribePrepLatencyAvg;
     private final Avg subscribeGetConsumerLatencyAvg;
@@ -223,9 +198,9 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     private final Sensor followerBytesConsumedSensor;
     private final Sensor leaderRecordsProducedSensor;
     private final Sensor leaderBytesProducedSensor;
-    private final Map<Integer, Sensor> regionIdToHybridBytesConsumedSensorMap;
-    private final Map<Integer, Sensor> regionIdToHybridRecordsConsumedSensorMap;
-    private final Map<Integer, Sensor> regionIdToHybridAvgConsumedOffsetSensorMap;
+    private final Int2ObjectMap<Sensor> regionIdToHybridBytesConsumedSensorMap;
+    private final Int2ObjectMap<Sensor> regionIdToHybridRecordsConsumedSensorMap;
+    private final Int2ObjectMap<Sensor> regionIdToHybridAvgConsumedOffsetSensorMap;
     private final Sensor stalePartitionsWithoutIngestionTaskSensor;
     private final Sensor subscribePrepLatencySensor;
     /**
@@ -241,35 +216,36 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     public StorageIngestionStats(VeniceServerConfig serverConfig)  {
       kafkaClusterIdToAliasMap = serverConfig.getKafkaClusterIdToAliasMap();
 
-      regionIdToHybridBytesConsumedRateMap = new HashMap<>();
-      regionIdToHybridBytesConsumedSensorMap = new HashMap<>();
-      regionIdToHybridRecordsConsumedRateMap = new HashMap<>();
-      regionIdToHybridRecordsConsumedSensorMap = new HashMap<>();
-      regionIdToHybridAvgConsumedOffsetMap = new HashMap<>();
-      regionIdToHybridAvgConsumedOffsetSensorMap = new HashMap<>();
+      regionIdToHybridBytesConsumedRateMap = new Int2ObjectArrayMap<>(kafkaClusterIdToAliasMap.size());
+      regionIdToHybridBytesConsumedSensorMap = new Int2ObjectArrayMap<>(kafkaClusterIdToAliasMap.size());
+      regionIdToHybridRecordsConsumedRateMap = new Int2ObjectArrayMap<>(kafkaClusterIdToAliasMap.size());
+      regionIdToHybridRecordsConsumedSensorMap = new Int2ObjectArrayMap<>(kafkaClusterIdToAliasMap.size());
+      regionIdToHybridAvgConsumedOffsetMap = new Int2ObjectArrayMap<>(kafkaClusterIdToAliasMap.size());
+      regionIdToHybridAvgConsumedOffsetSensorMap = new Int2ObjectArrayMap<>(kafkaClusterIdToAliasMap.size());
 
       for (Map.Entry<Integer, String> entry : kafkaClusterIdToAliasMap.entrySet()) {
+        int regionId = entry.getKey();
         String regionNamePrefix = RegionUtils.getRegionSpecificMetricPrefix(serverConfig.getRegionName(), entry.getValue());
         Rate regionHybridBytesConsumedRate = new Rate();
         String regionHybridBytesConsumedMetricName = regionNamePrefix + "_rt_bytes_consumed";
         Sensor regionHybridBytesConsumedSensor = localMetricRepository.sensor(regionHybridBytesConsumedMetricName);
         regionHybridBytesConsumedSensor.add(regionHybridBytesConsumedMetricName + regionHybridBytesConsumedRate.getClass().getSimpleName(), regionHybridBytesConsumedRate);
-        regionIdToHybridBytesConsumedRateMap.put(entry.getKey(),  regionHybridBytesConsumedRate);
-        regionIdToHybridBytesConsumedSensorMap.put(entry.getKey(),  regionHybridBytesConsumedSensor);
+        regionIdToHybridBytesConsumedRateMap.put(regionId, regionHybridBytesConsumedRate);
+        regionIdToHybridBytesConsumedSensorMap.put(regionId, regionHybridBytesConsumedSensor);
 
         Rate regionHybridRecordsConsumedRate = new Rate();
         String regionHybridRecordsConsumedMetricName = regionNamePrefix + "_rt_records_consumed";
         Sensor regionHybridRecordsConsumedSensor = localMetricRepository.sensor(regionHybridRecordsConsumedMetricName);
         regionHybridRecordsConsumedSensor.add(regionHybridRecordsConsumedMetricName + regionHybridRecordsConsumedRate.getClass().getSimpleName(), regionHybridRecordsConsumedRate);
-        regionIdToHybridRecordsConsumedRateMap.put(entry.getKey(), regionHybridRecordsConsumedRate);
-        regionIdToHybridRecordsConsumedSensorMap.put(entry.getKey(), regionHybridRecordsConsumedSensor);
+        regionIdToHybridRecordsConsumedRateMap.put(regionId, regionHybridRecordsConsumedRate);
+        regionIdToHybridRecordsConsumedSensorMap.put(regionId, regionHybridRecordsConsumedSensor);
 
         Avg regionHybridAvgConsumedOffset = new Avg();
         String regionHybridAvgConsumedOffsetMetricName = regionNamePrefix + "_rt_consumed_offset";
         Sensor regionHybridAvgConsumedOffsetSensor = localMetricRepository.sensor(regionHybridAvgConsumedOffsetMetricName);
         regionHybridAvgConsumedOffsetSensor.add(regionHybridAvgConsumedOffsetMetricName + regionHybridAvgConsumedOffset.getClass().getSimpleName(), regionHybridAvgConsumedOffset);
-        regionIdToHybridAvgConsumedOffsetMap.put(entry.getKey(), regionHybridAvgConsumedOffset);
-        regionIdToHybridAvgConsumedOffsetSensorMap.put(entry.getKey(), regionHybridAvgConsumedOffsetSensor);
+        regionIdToHybridAvgConsumedOffsetMap.put(regionId, regionHybridAvgConsumedOffset);
+        regionIdToHybridAvgConsumedOffsetSensorMap.put(regionId, regionHybridAvgConsumedOffsetSensor);
       }
 
       recordsConsumedRate = new Rate();
@@ -726,15 +702,16 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
         registerSensor(OFFSET_REGRESSION_DCR_ERROR, new IngestionStatsGauge(this, () -> getStats().getOffsetRegressionDCRRate(), 0));
 
         for (Map.Entry<Integer, String> entry : getStats().ingestionTask.getServerConfig().getKafkaClusterIdToAliasMap().entrySet()) {
+          int regionId = entry.getKey();
           String regionNamePrefix = RegionUtils.getRegionSpecificMetricPrefix(getStats().ingestionTask.getServerConfig().getRegionName(), entry.getValue());
           registerSensor(regionNamePrefix + "_rt_lag",
-              new IngestionStatsGauge(this, () -> (double) getStats().getRegionHybridOffsetLag(entry.getKey()), 0));
+              new IngestionStatsGauge(this, () -> (double) getStats().getRegionHybridOffsetLag(regionId), 0));
           registerSensor(regionNamePrefix + "_rt_bytes_consumed",
-              new IngestionStatsGauge(this, () -> getStats().getRegionHybridBytesConsumed(entry.getKey()), 0));
+              new IngestionStatsGauge(this, () -> getStats().getRegionHybridBytesConsumed(regionId), 0));
           registerSensor(regionNamePrefix + "_rt_records_consumed",
-              new IngestionStatsGauge(this, () -> getStats().getRegionHybridRecordsConsumed(entry.getKey()), 0));
+              new IngestionStatsGauge(this, () -> getStats().getRegionHybridRecordsConsumed(regionId), 0));
           registerSensor(regionNamePrefix + "_rt_consumed_offset",
-              new IngestionStatsGauge(this, () -> getStats().getRegionHybridAvgConsumedOffset(entry.getKey()), 0));
+              new IngestionStatsGauge(this, () -> getStats().getRegionHybridAvgConsumedOffset(regionId), 0));
         }
       }
     }

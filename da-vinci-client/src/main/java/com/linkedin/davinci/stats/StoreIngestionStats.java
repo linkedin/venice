@@ -362,11 +362,11 @@ public class StoreIngestionStats extends AbstractVeniceStats {
     leaderIngestionReplicationMetadataCacheHitCount.record();
   }
 
-  public void recodUpdateIgnoredDCR() {
+  public void recordUpdateIgnoredDCR() {
     updateIgnoredDCRSensor.record();
   }
 
-  public void recorTombstoneCreatedDCR() {
+  public void recordTombstoneCreatedDCR() {
     tombstoneCreationDCRSensor.record();
   }
 
@@ -387,14 +387,16 @@ public class StoreIngestionStats extends AbstractVeniceStats {
   }
 
   public void recordTotalRegionHybridBytesConsumed(int regionId, long bytes) {
-    if (totalRegionHybridBytesConsumedMap.containsKey(regionId)) {
-      totalRegionHybridBytesConsumedMap.get(regionId).record(bytes);
+    Sensor sensor = totalRegionHybridBytesConsumedMap.get(regionId);
+    if (sensor != null) {
+      sensor.record(bytes);
     }
   }
 
-  public void recordTotalRegionHybridRecordsConsumed(int regionId, int count) {
-    if (totalRegionHybridRecordsConsumedMap.containsKey(regionId)) {
-      totalRegionHybridRecordsConsumedMap.get(regionId).record(count);
+  public void recordTotalRegionHybridRecordConsumed(int regionId) {
+    Sensor sensor = totalRegionHybridBytesConsumedMap.get(regionId);
+    if (sensor != null) {
+      sensor.record(1);
     }
   }
 
