@@ -2,10 +2,10 @@ package com.linkedin.davinci.stats;
 
 import com.linkedin.venice.stats.StatsSupplier;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import it.unimi.dsi.fastutil.ints.IntSet;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -15,7 +15,7 @@ public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceSt
   private static final Logger logger = LogManager.getLogger(VeniceVersionedStats.class);
 
   private final String storeName;
-  private final Map<Integer, STATS> versionedStats;
+  private final Int2ObjectMap<STATS> versionedStats;
   private final VeniceVersionedStatsReporter<STATS, STATS_REPORTER> reporters;
 
   private final Supplier<STATS> statsInitiator;
@@ -24,7 +24,7 @@ public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceSt
   public VeniceVersionedStats(MetricsRepository metricsRepository, String storeName,
       Supplier<STATS>statsInitiator,  StatsSupplier<STATS_REPORTER> reporterSupplier) {
     this.storeName = storeName;
-    this.versionedStats = new HashMap<>();
+    this.versionedStats = new Int2ObjectOpenHashMap<>();
     this.reporters = new VeniceVersionedStatsReporter<>(metricsRepository, storeName, reporterSupplier);
     this.statsInitiator = statsInitiator;
 
@@ -67,39 +67,31 @@ public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceSt
     /**
      * return a deep copy of all version numbers
      */
-  public synchronized Set<Integer> getAllVersionNumbers() {
-    Set<Integer> versionNums = new HashSet<>();
-    versionedStats.keySet().forEach(key -> versionNums.add(key));
-    return versionNums;
+  public synchronized IntSet getAllVersionNumbers() {
+    return new IntOpenHashSet(versionedStats.keySet());
   }
 
   protected STATS getStats(int version) {
-    if (!versionedStats.containsKey(version)) {
+    STATS stats = versionedStats.get(version);
+    if (stats == null) {
       logger.warn("Stats has not been created while trying to set it as current version. "
           + "Store: " + storeName + " version: " + version);
-      addVersion(version);
+      stats = addVersion(version);
     }
-
-    return versionedStats.get(version);
+    return stats;
   }
 
-  public boolean containsVersion(int version) {
-    return versionedStats.containsKey(version);
-  }
-
-  public synchronized void addVersion(int version) {
-    if (!versionedStats.containsKey(version)) {
-      versionedStats.put(version, statsInitiator.get());
-    } else {
-      logger.warn("Stats has already been created. "
-          + "Store: " + storeName + " version: " + version);
+  public synchronized STATS addVersion(int version) {
+    STATS stats = versionedStats.get(version);
+    if (stats == null) {
+      stats = statsInitiator.get();
+      versionedStats.put(version, stats);
     }
+    return stats;
   }
 
   public synchronized void removeVersion(int version) {
-    if (versionedStats.containsKey(version)) {
-      versionedStats.remove(version);
-    } else {
+    if (versionedStats.remove(version) == null) {
       logger.warn("Stats has already been removed. Something might be wrong. "
           + "Store: " + storeName + " version: " + version);
     }

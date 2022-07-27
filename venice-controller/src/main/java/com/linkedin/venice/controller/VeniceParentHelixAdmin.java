@@ -182,7 +182,6 @@ import org.apache.http.HttpStatus;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import scala.Char;
 
 import static com.linkedin.venice.controller.VeniceHelixAdmin.*;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;

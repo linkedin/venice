@@ -175,10 +175,7 @@ public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestio
 
   public void recordTotalRegionHybridBytesConsumed(int regionId, long bytes) {
     totalStats.recordTotalRegionHybridBytesConsumed(regionId, bytes);
-  }
-
-  public void recordTotalRegionHybridRecordsConsumed(int regionId, int count) {
-    totalStats.recordTotalRegionHybridRecordsConsumed(regionId, count);
+    totalStats.recordTotalRegionHybridRecordConsumed(regionId);
   }
 
   public void recordTotalLeaderBytesProduced(long bytes) {
@@ -194,12 +191,12 @@ public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestio
     getStoreStats(storeName).recordChecksumVerificationFailure();
   }
 
-  public void recodUpdateIgnoredDCR() {
-    totalStats.recodUpdateIgnoredDCR();
+  public void recordUpdateIgnoredDCR() {
+    totalStats.recordUpdateIgnoredDCR();
   }
 
-  public void recorTombstoneCreatedDCR() {
-    totalStats.recorTombstoneCreatedDCR();
+  public void recordTombstoneCreatedDCR() {
+    totalStats.recordTombstoneCreatedDCR();
   }
 
   public void recordOffsetRegressionDCRError() {

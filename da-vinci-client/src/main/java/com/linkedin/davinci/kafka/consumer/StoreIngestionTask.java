@@ -209,7 +209,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final AggVersionedStorageIngestionStats versionedStorageIngestionStats;
   protected final BooleanSupplier isCurrentVersion;
   protected final Optional<HybridStoreConfig> hybridStoreConfig;
-  protected final Optional<ProducerTracker.DIVErrorMetricCallback> divErrorMetricCallback;
+  protected final ProducerTracker.DIVErrorMetricCallback divErrorMetricCallback;
 
   protected final long readCycleDelayMs;
   protected final long emptyPollSleepMs;
@@ -417,7 +417,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.isIncrementalPushEnabled = version.isUseVersionLevelIncrementalPushEnabled() ? version.isIncrementalPushEnabled() : store.isIncrementalPushEnabled();
     this.incrementalPushPolicy = version.getIncrementalPushPolicy();
 
-    this.divErrorMetricCallback = Optional.of(e -> versionedDIVStats.recordException(storeName, versionNumber, e));
+    this.divErrorMetricCallback = e -> versionedDIVStats.recordException(storeName, versionNumber, e);
 
     this.diskUsage = builder.getDiskUsage();
 
@@ -2504,8 +2504,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     int sizeOfPersistedData = 0;
     try {
       // Assumes the timestamp on the ConsumerRecord is the broker's timestamp when it received the message.
-      recordWriterStats(kafkaValue.producerMetadata.messageTimestamp, consumerRecord.timestamp(),
-          System.currentTimeMillis(), partitionConsumptionState);
+      long consumerTimestampMs = System.currentTimeMillis();
+      long producerBrokerLatencyMs = Math.max(consumerRecord.timestamp() - kafkaValue.producerMetadata.messageTimestamp, 0);
+      long brokerConsumerLatencyMs = Math.max(consumerTimestampMs - consumerRecord.timestamp(), 0);
+      long producerConsumerLatencyMs = Math.max(consumerTimestampMs - kafkaValue.producerMetadata.messageTimestamp, 0);
+      recordWriterStats(
+          producerBrokerLatencyMs, brokerConsumerLatencyMs, producerConsumerLatencyMs, partitionConsumptionState);
       boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
       /**
        * DIV check will happen for every single message in drainer queues.
@@ -2535,7 +2539,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         sizeOfPersistedData = processKafkaDataMessage(consumerRecord, partitionConsumptionState, leaderProducedRecordContext);
       }
     } catch (DuplicateDataException e) {
-      divErrorMetricCallback.get().execute(e);
+      divErrorMetricCallback.execute(e);
       if (logger.isDebugEnabled()) {
         logger.debug(consumerTaskId + " : Skipping a duplicate record at offset: " + consumerRecord.offset());
       }
@@ -2575,15 +2579,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return sizeOfPersistedData;
   }
 
-  protected void recordWriterStats(long producerTimestampMs, long brokerTimestampMs, long consumerTimestampMs,
+  protected void recordWriterStats(
+      long producerBrokerLatencyMs,
+      long brokerConsumerLatencyMs,
+      long producerConsumerLatencyMs,
       PartitionConsumptionState partitionConsumptionState) {
-    long producerBrokerLatencyMs = Math.max(brokerTimestampMs - producerTimestampMs, 0);
-    long brokerConsumerLatencyMs = Math.max(consumerTimestampMs - brokerTimestampMs, 0);
-    long producerConsumerLatencyMs = Math.max(consumerTimestampMs - producerTimestampMs, 0);
-    versionedDIVStats.recordProducerBrokerLatencyMs(storeName, versionNumber, producerBrokerLatencyMs);
-    versionedDIVStats.recordBrokerConsumerLatencyMs(storeName, versionNumber, brokerConsumerLatencyMs);
-    versionedDIVStats.recordProducerConsumerLatencyMs(storeName, versionNumber,
-        producerConsumerLatencyMs);
+    versionedDIVStats.recordLatencies(storeName, versionNumber, producerBrokerLatencyMs, brokerConsumerLatencyMs, producerConsumerLatencyMs);
   }
 
   /**
@@ -2615,7 +2616,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       validator.validateMessage(consumerRecord, endOfPushReceived, tolerateMissingMsgs);
       return;
     } catch (FatalDataValidationException fatalException) {
-      divErrorMetricCallback.get().execute(fatalException);
+      divErrorMetricCallback.execute(fatalException);
       /**
        * If DIV errors happens after EOP is received, we will not error out the replica.
        */

@@ -206,8 +206,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
   }
 
   private void recordProducerStats(int producedRecordSize, int producedRecordNum) {
-    versionedStorageIngestionStats.recordLeaderBytesProduced(ingestionTask.getStoreName(), ingestionTask.versionNumber, producedRecordSize);
-    versionedStorageIngestionStats.recordLeaderRecordsProduced(ingestionTask.getStoreName(), ingestionTask.versionNumber, producedRecordNum);
+    versionedStorageIngestionStats.recordLeaderProduced(ingestionTask.getStoreName(), ingestionTask.versionNumber, producedRecordSize, producedRecordNum);
     storeIngestionStats.recordTotalLeaderBytesProduced(producedRecordSize);
     storeIngestionStats.recordTotalLeaderRecordsProduced(producedRecordNum);
   }

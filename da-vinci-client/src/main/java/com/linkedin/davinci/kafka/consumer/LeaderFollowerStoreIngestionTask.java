@@ -1573,51 +1573,45 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected void recordWriterStats(long producerTimestampMs, long brokerTimestampMs, long consumerTimestampMs,
+  protected void recordWriterStats(
+      long producerBrokerLatencyMs,
+      long brokerConsumerLatencyMs,
+      long producerConsumerLatencyMs,
       PartitionConsumptionState partitionConsumptionState) {
     if (isNativeReplicationEnabled) {
       // Emit latency metrics separately for leaders and followers
-      long producerBrokerLatencyMs = Math.max(brokerTimestampMs - producerTimestampMs, 0);
-      long brokerConsumerLatencyMs = Math.max(consumerTimestampMs - brokerTimestampMs, 0);
-      long producerConsumerLatencyMs = Math.max(consumerTimestampMs - producerTimestampMs, 0);
       boolean isLeader = partitionConsumptionState.getLeaderFollowerState().equals(LEADER);
       if (isLeader) {
-        versionedDIVStats.recordProducerSourceBrokerLatencyMs(storeName, versionNumber, producerBrokerLatencyMs);
-        versionedDIVStats.recordSourceBrokerLeaderConsumerLatencyMs(storeName, versionNumber, brokerConsumerLatencyMs);
-        versionedDIVStats.recordProducerLeaderConsumerLatencyMs(storeName, versionNumber, producerConsumerLatencyMs);
+        versionedDIVStats.recordLeaderLatencies(
+            storeName, versionNumber, producerBrokerLatencyMs, brokerConsumerLatencyMs, producerConsumerLatencyMs);
       } else {
-        versionedDIVStats.recordProducerLocalBrokerLatencyMs(storeName, versionNumber, producerBrokerLatencyMs);
-        versionedDIVStats.recordLocalBrokerFollowerConsumerLatencyMs(storeName, versionNumber, brokerConsumerLatencyMs);
-        versionedDIVStats.recordProducerFollowerConsumerLatencyMs(storeName, versionNumber, producerConsumerLatencyMs);
-      }
+        versionedDIVStats.recordFollowerLatencies(
+            storeName, versionNumber, producerBrokerLatencyMs, brokerConsumerLatencyMs, producerConsumerLatencyMs);
+     }
     } else {
-      super.recordWriterStats(producerTimestampMs, brokerTimestampMs, consumerTimestampMs, partitionConsumptionState);
+      super.recordWriterStats(
+          producerBrokerLatencyMs, brokerConsumerLatencyMs, producerConsumerLatencyMs, partitionConsumptionState);
     }
   }
 
   @Override
   protected void recordProcessedRecordStats(PartitionConsumptionState partitionConsumptionState, int processedRecordSize, int processedRecordNum) {
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
-      versionedStorageIngestionStats.recordLeaderBytesConsumed(storeName, versionNumber, processedRecordSize);
-      versionedStorageIngestionStats.recordLeaderRecordsConsumed(storeName, versionNumber, processedRecordNum);
+      versionedStorageIngestionStats.recordLeaderConsumed(storeName, versionNumber, processedRecordSize, processedRecordNum);
       storeIngestionStats.recordTotalLeaderBytesConsumed(processedRecordSize);
       storeIngestionStats.recordTotalLeaderRecordsConsumed(processedRecordNum);
     } else {
-      versionedStorageIngestionStats.recordFollowerBytesConsumed(storeName, versionNumber, processedRecordSize);
-      versionedStorageIngestionStats.recordFollowerRecordsConsumed(storeName, versionNumber, processedRecordNum);
+      versionedStorageIngestionStats.recordFollowerConsumed(storeName, versionNumber, processedRecordSize, processedRecordNum);
       storeIngestionStats.recordTotalFollowerBytesConsumed(processedRecordSize);
       storeIngestionStats.recordTotalFollowerRecordsConsumed(processedRecordNum);
     }
   }
 
   private void recordFabricHybridConsumptionStats(String kafkaUrl, int producedRecordSize, int partitionId, long upstreamOffset) {
-    if (kafkaClusterUrlToIdMap.containsKey(kafkaUrl)) {
-      int regionId = kafkaClusterUrlToIdMap.get(kafkaUrl);
-      versionedStorageIngestionStats.recordRegionHybridBytesConsumed(storeName, versionNumber, producedRecordSize, regionId);
-      versionedStorageIngestionStats.recordRegionHybridRecordsConsumed(storeName, versionNumber, 1, regionId);
-      versionedStorageIngestionStats.recordRegionHybridAvgConsumedOffset(storeName, versionNumber, upstreamOffset, regionId);
+    Integer regionId = kafkaClusterUrlToIdMap.get(kafkaUrl);
+    if (regionId != null) {
+      versionedStorageIngestionStats.recordRegionHybridConsumption(storeName, versionNumber, regionId, producedRecordSize, upstreamOffset);
       storeIngestionStats.recordTotalRegionHybridBytesConsumed(regionId, producedRecordSize);
-      storeIngestionStats.recordTotalRegionHybridRecordsConsumed(regionId, 1);
     }
   }
 
@@ -1722,7 +1716,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * override the DIV info for messages from RT; as a result, both leaders and followers will persisted duplicated
          * messages to disk, and potentially rewind a k/v pair to an old value.
          */
-        divErrorMetricCallback.get().execute(e);
+        divErrorMetricCallback.execute(e);
         if (logger.isDebugEnabled()) {
           logger.debug(consumerTaskId + " : Skipping a duplicate record at offset: " + consumerRecord.offset());
         }
