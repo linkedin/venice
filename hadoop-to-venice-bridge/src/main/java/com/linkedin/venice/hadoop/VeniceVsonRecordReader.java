@@ -188,7 +188,7 @@ public class VeniceVsonRecordReader extends AbstractVeniceRecordReader<BytesWrit
         return hasNext;
       } catch (IOException e) {
         throw new VeniceException(
-            "Encountered exception reading Vson data. Check if " + "the file exists and the data is in Vson format.",
+            "Encountered exception reading Vson data. Check if the file exists and the data is in Vson format.",
             e);
       }
     }

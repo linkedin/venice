@@ -105,8 +105,7 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
     this.heartbeatStartTime = Instant.now();
     LOGGER.info(
         String.format(
-            "Start sending liveness heartbeats for [store=%s, version=%s] with initial delay %d ms and "
-                + "interval %d ms...",
+            "Start sending liveness heartbeats for [store=%s, version=%s] with initial delay %d ms and interval %d ms...",
             this.storeName,
             this.storeVersion,
             this.initialDelay.toMillis(),

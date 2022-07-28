@@ -25,9 +25,19 @@ public class MRJobCounterHelper {
   private static final String DUPLICATE_KEY_WITH_DISTINCT_VALUE = "duplicate key with distinct value";
 
   private static final String MR_JOB_STATUS = "MapReduce job status";
+  /** Info Counters */
   private static final String REDUCER_JOB_CLOSED_COUNT = "Reducer job closed count";
   private static final String MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT =
       "Mapper spray all partitions triggered count";
+  private static final String MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED = "Mapper num records successfully processed";
+  private static final String MAPPER_ZSTD_DICT_TRAIN_SUCCESS = "Mapper Zstd dict train success";
+  /** Error Counters */
+  private static final String MAPPER_ERROR_DATA_MODIFIED_DURING_PUSH_JOB =
+      "Mapper Error: Data modified during push job";
+  private static final String MAPPER_INVALID_INPUT_IDX = "Mapper invalid input index";
+  private static final String MAPPER_INVALID_INPUT_FILE = "Mapper invalid input file";
+  private static final String MAPPER_SCHEMA_INCONSISTENCY_FAILURE = "Mapper schema inconsistency failure";
+  private static final String MAPPER_ZSTD_DICT_TRAIN_FAILURE = "Mapper Zstd dict train failure";
 
   private static final String COUNTER_GROUP_KAFKA_INPUT_FORMAT = "KafkaInputFormat";
   private static final String COUNTER_PUT_OR_DELETE_RECORDS = "put or delete records";
@@ -67,6 +77,27 @@ public class MRJobCounterHelper {
 
   static final GroupAndCounterNames TOTAL_PUT_OR_DELETE_COUNT_GROUP_COUNTER_NAME =
       new GroupAndCounterNames(COUNTER_GROUP_KAFKA_INPUT_FORMAT, COUNTER_PUT_OR_DELETE_RECORDS);
+
+  static final GroupAndCounterNames MAPPER_ERROR_DATA_MODIFIED_DURING_PUSH_JOB_GROUP_COUNTER_NAME =
+      new GroupAndCounterNames(MR_JOB_STATUS, MAPPER_ERROR_DATA_MODIFIED_DURING_PUSH_JOB);
+
+  static final GroupAndCounterNames MAPPER_INVALID_INPUT_IDX_GROUP_COUNTER_NAME =
+      new GroupAndCounterNames(MR_JOB_STATUS, MAPPER_INVALID_INPUT_IDX);
+
+  static final GroupAndCounterNames MAPPER_INVALID_INPUT_FILE_GROUP_COUNTER_NAME =
+      new GroupAndCounterNames(MR_JOB_STATUS, MAPPER_INVALID_INPUT_FILE);
+
+  static final GroupAndCounterNames MAPPER_SCHEMA_INCONSISTENCY_FAILURE_GROUP_COUNTER_NAME =
+      new GroupAndCounterNames(MR_JOB_STATUS, MAPPER_SCHEMA_INCONSISTENCY_FAILURE);
+
+  static final GroupAndCounterNames MAPPER_ZSTD_DICT_TRAIN_SUCCESS_GROUP_COUNTER_NAME =
+      new GroupAndCounterNames(MR_JOB_STATUS, MAPPER_ZSTD_DICT_TRAIN_SUCCESS);
+
+  static final GroupAndCounterNames MAPPER_ZSTD_DICT_TRAIN_FAILURE_GROUP_COUNTER_NAME =
+      new GroupAndCounterNames(MR_JOB_STATUS, MAPPER_ZSTD_DICT_TRAIN_FAILURE);
+
+  static final GroupAndCounterNames MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME =
+      new GroupAndCounterNames(MR_JOB_STATUS, MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED);
 
   private MRJobCounterHelper() {
     // Util class
@@ -206,6 +237,62 @@ public class MRJobCounterHelper {
       return;
     }
     reporter.incrCounter(groupAndCounterNames.getGroupName(), groupAndCounterNames.getCounterName(), amount);
+  }
+
+  static void incrMapperErrorDataModifiedDuringPushJobCount(Reporter reporter, long amount) {
+    incrAmountWithGroupCounterName(reporter, MAPPER_ERROR_DATA_MODIFIED_DURING_PUSH_JOB_GROUP_COUNTER_NAME, amount);
+  }
+
+  static long getMapperErrorDataModifiedDuringPushJobCount(Counters counters) {
+    return getCountFromCounters(counters, MAPPER_ERROR_DATA_MODIFIED_DURING_PUSH_JOB_GROUP_COUNTER_NAME);
+  }
+
+  static void incrMapperInvalidInputIdxCount(Reporter reporter, long amount) {
+    incrAmountWithGroupCounterName(reporter, MAPPER_INVALID_INPUT_IDX_GROUP_COUNTER_NAME, amount);
+  }
+
+  static long getMapperInvalidInputIdxCount(Counters counters) {
+    return getCountFromCounters(counters, MAPPER_INVALID_INPUT_IDX_GROUP_COUNTER_NAME);
+  }
+
+  static void incrMapperInvalidInputFileCount(Reporter reporter, long amount) {
+    incrAmountWithGroupCounterName(reporter, MAPPER_INVALID_INPUT_FILE_GROUP_COUNTER_NAME, amount);
+  }
+
+  static long getMapperInvalidInputFileCount(Counters counters) {
+    return getCountFromCounters(counters, MAPPER_INVALID_INPUT_FILE_GROUP_COUNTER_NAME);
+  }
+
+  static void incrMapperSchemaInconsistencyFailureCount(Reporter reporter, long amount) {
+    incrAmountWithGroupCounterName(reporter, MAPPER_SCHEMA_INCONSISTENCY_FAILURE_GROUP_COUNTER_NAME, amount);
+  }
+
+  static long getMapperSchemaInconsistencyFailureCount(Counters counters) {
+    return getCountFromCounters(counters, MAPPER_SCHEMA_INCONSISTENCY_FAILURE_GROUP_COUNTER_NAME);
+  }
+
+  static void incrMapperZstdDictTrainSuccessCount(Reporter reporter, long amount) {
+    incrAmountWithGroupCounterName(reporter, MAPPER_ZSTD_DICT_TRAIN_SUCCESS_GROUP_COUNTER_NAME, amount);
+  }
+
+  static long getMapperZstdDictTrainSuccessCount(Counters counters) {
+    return getCountFromCounters(counters, MAPPER_ZSTD_DICT_TRAIN_SUCCESS_GROUP_COUNTER_NAME);
+  }
+
+  static void incrMapperZstdDictTrainFailureCount(Reporter reporter, long amount) {
+    incrAmountWithGroupCounterName(reporter, MAPPER_ZSTD_DICT_TRAIN_FAILURE_GROUP_COUNTER_NAME, amount);
+  }
+
+  static long getMapperZstdDictTrainFailureCount(Counters counters) {
+    return getCountFromCounters(counters, MAPPER_ZSTD_DICT_TRAIN_FAILURE_GROUP_COUNTER_NAME);
+  }
+
+  static void incrMapperNumRecordsSuccessfullyProcessedCount(Reporter reporter, long amount) {
+    incrAmountWithGroupCounterName(reporter, MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME, amount);
+  }
+
+  static long getMapperNumRecordsSuccessfullyProcessedCount(Counters counters) {
+    return getCountFromCounters(counters, MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME);
   }
 
   /**
