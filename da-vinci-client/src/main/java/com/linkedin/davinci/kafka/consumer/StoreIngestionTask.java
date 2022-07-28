@@ -486,6 +486,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.subPartitionCount = storeVersionPartitionCount * amplificationFactor;
     this.reportStatusAdapter = new ReportStatusAdapter(
         new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion),
+        kafkaVersionTopic,
         amplificationFactor,
         incrementalPushPolicy,
         partitionConsumptionStateMap

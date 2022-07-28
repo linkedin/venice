@@ -24,9 +24,11 @@ import org.apache.logging.log4j.Logger;
 public class ReportStatusAdapter {
   private static final Logger logger = LogManager.getLogger(ReportStatusAdapter.class);
   private final int amplificationFactor;
+  private final String topicName;
   private final IncrementalPushPolicy incrementalPushPolicy;
   private final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
   private final IngestionNotificationDispatcher notificationDispatcher;
+
   /*
    * A user partition to status cleanup flag map, indicating whether we need to clean up partition report status when
    * a sub-partition of the specified user partition is subscribed.
@@ -51,11 +53,13 @@ public class ReportStatusAdapter {
 
   public ReportStatusAdapter(
       IngestionNotificationDispatcher notificationDispatcher,
+      String topicName,
       int amplificationFactor,
       IncrementalPushPolicy incrementalPushPolicy,
       ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap
   ) {
     this.notificationDispatcher = notificationDispatcher;
+    this.topicName = topicName;
     this.amplificationFactor = amplificationFactor;
     this.partitionConsumptionStateMap = partitionConsumptionStateMap;
     this.incrementalPushPolicy = incrementalPushPolicy;
@@ -155,6 +159,7 @@ public class ReportStatusAdapter {
       SubPartitionStatus subPartitionStatus,
       Optional<String> version,
       Runnable report) {
+    boolean logStatus = !subPartitionStatus.equals(SubPartitionStatus.PROGRESS);
     /*
      * Below we compose the version aware subPartition status name, so amplification factor can work properly with
      * multiple incremental pushes.
@@ -189,16 +194,19 @@ public class ReportStatusAdapter {
         subPartitionStatusRecordFlag.set(true);
         statusRecordCount = statusRecordCounter.incrementAndGet();
       } else {
-        logger.info("Reported status " + versionAwareSubPartitionStatus + " already recorded for subPartition: " + partitionConsumptionState.getPartition());
         statusRecordCount = statusRecordCounter.get();
       }
     }
-    logger.info("Received status report: " + versionAwareSubPartitionStatus + " from subPartition: "
-        + partitionConsumptionState.getPartition() + ", current report count is " + statusRecordCount + "/" + amplificationFactor);
+    if (logStatus) {
+      logger.info("Received status report: {} from subPartition: {} of topic {}, current report count is {}/{}.",
+          versionAwareSubPartitionStatus, partitionConsumptionState.getPartition(), topicName ,statusRecordCount, amplificationFactor);
+    }
     if (statusRecordCount == amplificationFactor) {
       // This is safeguard to make sure we only report once for each partition status.
       if (statusReportMap.get(userPartition).get(versionAwareSubPartitionStatus).compareAndSet(false, true)) {
-        logger.info("Reporting status " + versionAwareSubPartitionStatus + " for user partition: " + userPartition);
+        if (logStatus) {
+          logger.info("Reporting status {} for partition {} of topic {}.", versionAwareSubPartitionStatus, userPartition, topicName);
+        }
         report.run();
         if (subPartitionStatus.equals(SubPartitionStatus.COMPLETED)) {
           for (int subPartition : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {

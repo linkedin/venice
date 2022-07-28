@@ -38,7 +38,7 @@ public class ReportStatusAdapterTest {
     notifiers.add(notifier);
     IngestionNotificationDispatcher dispatcher = new IngestionNotificationDispatcher(notifiers, topic, () -> true);
     ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap = generateMockedPcsMap(amplificationFactor);
-    ReportStatusAdapter reportStatusAdapter = new ReportStatusAdapter(dispatcher, amplificationFactor,
+    ReportStatusAdapter reportStatusAdapter = new ReportStatusAdapter(dispatcher, topic, amplificationFactor,
         IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME, partitionConsumptionStateMap);
     reportStatusAdapter.preparePartitionStatusCleanup(0);
     reportStatusAdapter.initializePartitionStatus(0);
