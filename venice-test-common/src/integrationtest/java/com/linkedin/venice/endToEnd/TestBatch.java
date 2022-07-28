@@ -16,6 +16,7 @@ import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.PushJobSchemaInfo;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
@@ -207,8 +208,9 @@ public abstract class TestBatch {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testCompressingRecord() throws Exception {
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testCompressingRecord(boolean compressionMetricCollectionEnabled, boolean useMapperToBuildDict)
+      throws Exception {
     H2VValidator validator = (avroClient, vsonClient, metricsRepository) -> {
       // test single get
       for (int i = 1; i <= 100; i++) {
@@ -239,6 +241,8 @@ public abstract class TestBatch {
        */
       properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
       properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
+      properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
+      properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, String.valueOf(useMapperToBuildDict));
     }, validator, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.GZIP));
 
     // Re-push with Kafka Input
@@ -271,6 +275,10 @@ public abstract class TestBatch {
     }, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
   }
 
+  /**
+   * This validator adds Non deterministic wait and retry for the first get to succeed. Idea behind this is that when there are no
+   * store previous versions to fall back on (this is the first version), routers might take sometime to retrieve the dictionary.
+   */
   static H2VValidator getSimpleFileWithUserSchemaValidatorForZstd() {
     return (avroClient, vsonClient, metricsRepository) -> {
       // Wait for the first get to succeed. After the first one, the following gets must succeed without retry.
@@ -320,8 +328,10 @@ public abstract class TestBatch {
         new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testZstdCompressingAvroRecordWhenFallbackAvailable() throws Exception {
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testZstdCompressingAvroRecordWhenFallbackAvailable(
+      boolean compressionMetricCollectionEnabled,
+      boolean useMapperToBuildDict) throws Exception {
     // Running a batch push first.
     String storeName = testBatchStore(inputDir -> {
       Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
@@ -332,6 +342,8 @@ public abstract class TestBatch {
        */
       properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
       properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
+      properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
+      properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, String.valueOf(useMapperToBuildDict));
     }, getSimpleFileWithUserSchemaValidatorForZstd());
 
     // Then, enabling dictionary compression. After some time has passed, dictionary would have been downloaded and the
@@ -345,6 +357,8 @@ public abstract class TestBatch {
        */
       properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
       properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
+      properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
+      properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, String.valueOf(useMapperToBuildDict));
     }, (avroClient, vsonClient, metricsRepository) -> {
       // Sleeping to allow dictionary download before version switch.
       Utils.sleep(1000);
@@ -423,8 +437,10 @@ public abstract class TestBatch {
     }, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true), false);
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testIncrementalPushWithCompression() throws Exception {
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testIncrementalPushWithCompression(
+      boolean compressionMetricCollectionEnabled,
+      boolean useMapperToBuildDict) throws Exception {
     String storeName = testBatchStore(inputDir -> {
       Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
       return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
@@ -434,6 +450,8 @@ public abstract class TestBatch {
        */
       properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
       properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
+      properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
+      properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, String.valueOf(useMapperToBuildDict));
     },
         getSimpleFileWithUserSchemaValidatorForZstd(),
         new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT)
@@ -447,6 +465,8 @@ public abstract class TestBatch {
       return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
     }, properties -> {
       properties.setProperty(INCREMENTAL_PUSH, "true");
+      properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
+      properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, String.valueOf(useMapperToBuildDict));
     }, (avroClient, vsonClient, metricsRepository) -> {
       for (int i = 51; i <= 150; i++) {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + (i * 2));
@@ -1306,9 +1326,10 @@ public abstract class TestBatch {
       Assert.assertEquals(job.getInputDirectory(), inputDirPath);
       String schema =
           "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"age\",\"type\":\"int\"}]}";
-      Assert.assertEquals(job.getFileSchemaString(), schema);
-      Assert.assertEquals(job.getKeySchemaString(), STRING_SCHEMA);
-      Assert.assertEquals(job.getValueSchemaString(), STRING_SCHEMA);
+      PushJobSchemaInfo pushJobSchemaInfo = job.getVeniceSchemaInfo();
+      Assert.assertEquals(pushJobSchemaInfo.getFileSchemaString(), schema);
+      Assert.assertEquals(pushJobSchemaInfo.getKeySchemaString(), STRING_SCHEMA);
+      Assert.assertEquals(pushJobSchemaInfo.getValueSchemaString(), STRING_SCHEMA);
       Assert.assertEquals(job.getInputFileDataSize(), 3872);
 
       veniceCluster.refreshAllRouterMetaData();

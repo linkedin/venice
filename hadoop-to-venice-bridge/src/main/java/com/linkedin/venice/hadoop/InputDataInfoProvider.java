@@ -13,32 +13,43 @@ public interface InputDataInfoProvider extends Closeable {
    * A POJO that contains input data information (schema information and input data file size)
    */
   class InputDataInfo {
-    private final VenicePushJob.SchemaInfo schemaInfo;
+    private final PushJobSchemaInfo pushJobSchemaInfo;
     private final long inputFileDataSizeInBytes;
+    private final int numInputFiles;
     private final boolean hasRecords;
     private final long inputModificationTime;
 
     InputDataInfo(
-        VenicePushJob.SchemaInfo schemaInfo,
+        PushJobSchemaInfo pushJobSchemaInfo,
         long inputFileDataSizeInBytes,
+        int numInputFiles,
         boolean hasRecords,
         long inputModificationTime) {
       if (inputFileDataSizeInBytes <= 0) {
         throw new IllegalArgumentException(
             "The input data file size is expected to be positive. Got: " + inputFileDataSizeInBytes);
       }
-      this.schemaInfo = schemaInfo;
+      if (numInputFiles <= 0) {
+        throw new IllegalArgumentException(
+            "The Number of Input files is expected to be positive. Got: " + numInputFiles);
+      }
+      this.pushJobSchemaInfo = pushJobSchemaInfo;
       this.inputFileDataSizeInBytes = inputFileDataSizeInBytes;
+      this.numInputFiles = numInputFiles;
       this.hasRecords = hasRecords;
       this.inputModificationTime = inputModificationTime;
     }
 
-    public VenicePushJob.SchemaInfo getSchemaInfo() {
-      return schemaInfo;
+    public PushJobSchemaInfo getSchemaInfo() {
+      return pushJobSchemaInfo;
     }
 
     public long getInputFileDataSizeInBytes() {
       return inputFileDataSizeInBytes;
+    }
+
+    public int getNumInputFiles() {
+      return numInputFiles;
     }
 
     public boolean hasRecords() {

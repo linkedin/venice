@@ -235,7 +235,7 @@ public class TestHybrid {
    *
    * TODO: This test needs to be refactored in order to leverage {@link com.linkedin.venice.utils.MockTime},
    *       which would allow the test to run faster and more deterministically.
-  
+   *
    * @param multiDivStream if false, rewind will happen in the middle of a DIV Segment, which was originally broken.
    *                       if true, two independent DIV Segments will be placed before and after the start of buffer replay.
    *
