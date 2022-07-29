@@ -17,13 +17,18 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.httpclient.HttpStatus;
 
 
-public class RetriableStoreClient<K, V> extends StatTrackingStoreClient<K, V> {
+/**
+ * TODO: make retry work for compute request.
+ */
+public class RetriableStoreClient<K, V> extends DelegatingStoreClient<K, V> {
+  private final StatTrackingStoreClient statStoreclient;
   private final boolean retryOnAllErrors;
   private final long retryBackOffInMs;
   private final int retryCount;
 
-  public RetriableStoreClient(InternalAvroStoreClient<K, V> innerStoreClient, ClientConfig clientConfig) {
-    super(innerStoreClient, clientConfig);
+  public RetriableStoreClient(StatTrackingStoreClient<K, V> innerStoreClient, ClientConfig clientConfig) {
+    super(innerStoreClient);
+    this.statStoreclient = innerStoreClient;
     retryOnAllErrors = clientConfig.isRetryOnAllErrorsEnabled();
     retryBackOffInMs = clientConfig.getRetryBackOffInMs();
     retryCount = clientConfig.getRetryCount();
@@ -51,17 +56,6 @@ public class RetriableStoreClient<K, V> extends StatTrackingStoreClient<K, V> {
   }
    */
 
-  @Override
-  public CompletableFuture<Map<K, GenericRecord>> compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys,
-      Schema resultSchema, Optional<ClientStats> stats, long preRequestTimeInNS) throws VeniceClientException {
-    CompletableFuture<Map<K, GenericRecord>> innerFuture = super.compute(computeRequestWrapper, keys, resultSchema,
-        stats, preRequestTimeInNS);
-    Supplier<CompletableFuture<Map<K, GenericRecord>>> supplier = () ->  super.compute(computeRequestWrapper, keys, resultSchema,
-        stats, preRequestTimeInNS);
-
-    return retryOnError(innerFuture, supplier, RequestType.COMPUTE);
-  }
-
   /**
    *  Adding retry logic on router error as this method returning the completion stage value.
    */
@@ -83,7 +77,7 @@ public class RetriableStoreClient<K, V> extends StatTrackingStoreClient<K, V> {
         while (!retryFuture.isDone() && attempt < retryCount
             && isRetriableException(retryThrowable)) {
           attempt++;
-          recordRetryCount(requestType);
+          statStoreclient.recordRetryCount(requestType);
           if (retryBackOffInMs > 0) {
             try {
               Thread.sleep(retryBackOffInMs);

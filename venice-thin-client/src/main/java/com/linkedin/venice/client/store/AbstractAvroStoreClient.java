@@ -55,6 +55,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -438,80 +439,6 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     }
   }
 
-  @Override
-  public CompletableFuture<Map<K, V>> batchGet(final Set<K> keys, final Optional<ClientStats> stats, final long preRequestTimeInNS) throws VeniceClientException {
-    if (keys.isEmpty()) {
-      return COMPLETABLE_FUTURE_FOR_EMPTY_KEY_IN_BATCH_GET;
-    }
-    List<K> keyList = new ArrayList<>(keys);
-    LongAdder decompressionTime = new LongAdder();
-    byte[] multiGetBody = serializeMultiGetRequest(keyList);
-    CompletableFuture<Map<K, V>> valueFuture = new CompletableFuture();
-    final Map<String, String> headerMap = new HashMap<>(MULTI_GET_HEADER_MAP);
-    headerMap.put(VENICE_KEY_COUNT, Integer.toString(keyList.size()));
-
-    requestSubmissionWithStatsHandling(
-        stats,
-        preRequestTimeInNS,
-        true,
-        () -> transportClient.post(getStorageRequestPath(), headerMap, multiGetBody),
-        (response, throwable, responseDeserializationComplete) -> {
-          try {
-            if (null != throwable) {
-              // Error response, such as 400 or 5xx will be handled here.
-              valueFuture.completeExceptionally(throwable);
-            } else if (null == response) {
-              // Even all the keys don't exist in Venice, multi-get should receive empty result instead of 'null'
-              valueFuture.completeExceptionally(new VeniceClientException("TransportClient should not return null for multi-get request"));
-            } else if (!response.isSchemaIdValid()) {
-              valueFuture.completeExceptionally(new VeniceClientException("No valid schema id received for multi-get request!"));
-            } else {
-              long preResponseEnvelopeDeserialization = System.nanoTime();
-              CompressionStrategy compressionStrategy = response.getCompressionStrategy();
-              RecordDeserializer<MultiGetResponseRecordV1> deserializer = getMultiGetResponseRecordDeserializer(response.getSchemaId());
-              Iterable<MultiGetResponseRecordV1> records = deserializer.deserializeObjects(new ByteBufferOptimizedBinaryDecoder(response.getBody()));
-              /**
-               * We cache the deserializers by schema ID in order to avoid the unnecessary lookup in
-               * {@link SerializerDeserializerFactory}, which introduces small performance issue with
-               * {@link Schema#hashCode} in avro-1.4, which is doing hash code calculation every time.
-               *
-               * It is possible that multiple deserializer threads could try to access the cache,
-               * so we use {@link VeniceConcurrentHashMap}.
-               */
-              Map<Integer, RecordDeserializer<V>> deserializerCache = new VeniceConcurrentHashMap<>();
-              batchGetDeserializer.deserialize(valueFuture, records, keyList, (resultMap, record) -> {
-                int keyIndex = record.keyIndex;
-                if (keyIndex >= keyList.size() || keyIndex < 0) {
-                  valueFuture.completeExceptionally(new VeniceClientException("Key index: " + keyIndex + " doesn't have a corresponding key"));
-                  return;
-                }
-                RecordDeserializer<V> dataDeserializer = deserializerCache.computeIfAbsent(record.schemaId, id -> getDataRecordDeserializer(id));
-                long decompressionStartTime = System.nanoTime();
-                ByteBuffer data = decompressRecord(compressionStrategy, record.value);
-                decompressionTime.add(System.nanoTime() - decompressionStartTime);
-                K key = keyList.get(keyIndex);
-                resultMap.put(key, tryToDeserialize(dataDeserializer, data, record.schemaId, key));
-              }, responseDeserializationComplete, stats, preResponseEnvelopeDeserialization);
-            }
-          } catch (Exception e) {
-            if (! valueFuture.isDone()) {
-              valueFuture.completeExceptionally(e);
-            } else {
-              // Defensive code
-              logger.error("Received exception after completing the `valueFuture` for batch-get request", e);
-              throw e;
-            }
-          }
-          return null;
-        });
-
-    stats.ifPresent((clientStats) -> valueFuture.thenRun(() ->
-      clientStats.recordResponseDecompressionTime(LatencyUtils.convertLatencyFromNSToMS(decompressionTime.sum()))
-    ));
-
-    return valueFuture;
-  }
-
   private <T> T tryToDeserialize(RecordDeserializer<T> dataDeserializer, ByteBuffer data, int writerSchemaId,
       K key) {
     return tryToDeserializeWithVerboseLogging(dataDeserializer, data, writerSchemaId, key, getKeySerializerWithoutRetry(), getSchemaReader(), logger);
@@ -642,89 +569,6 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     RecordSerializer keySerializer = getKeySerializerWithoutRetry();
     keyList.stream().forEach(key -> serializedKeyList.add(ByteBuffer.wrap(keySerializer.serialize(key, reusedEncoder, reusedOutputStream))));
     return computeRequestClientKeySerializer.serializeObjects(serializedKeyList, ByteBuffer.wrap(serializedComputeRequest), reusedEncoder, reusedOutputStream);
-  }
-
-  /**
-   * This function is only being used by {@link AvroComputeRequestBuilderV3#execute(Set)}.
-   *
-   * @param computeRequestWrapper
-   * @param keys
-   * @param resultSchema
-   * @param stats
-   * @param preRequestTimeInNS
-   * @return
-   */
-  @Override
-  public CompletableFuture<Map<K, GenericRecord>> compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys,
-      Schema resultSchema, Optional<ClientStats> stats, final long preRequestTimeInNS) {
-    if (keys.isEmpty()) {
-      return COMPLETABLE_FUTURE_FOR_EMPTY_KEY_IN_COMPUTE;
-    }
-    List<K> keyList = new ArrayList<>(keys);
-    RecordSerializer.ReusableObjects reusableObjects = AvroSerializer.REUSE.get();
-    byte[] serializedComputeRequest = computeRequestWrapper.serialize(
-        reusableObjects.getBinaryEncoder(), reusableObjects.getByteArrayOutputStream());
-    byte[] serializedFullComputeRequest = serializeComputeRequest(keyList, serializedComputeRequest);
-    CompletableFuture<Map<K, GenericRecord>> valueFuture = new CompletableFuture();
-
-    final Map<String, String> headerMap = (computeRequestWrapper.getComputeRequestVersion() == COMPUTE_REQUEST_VERSION_V2)
-        ? new HashMap<>(COMPUTE_HEADER_MAP_V2)
-        : new HashMap<>(COMPUTE_HEADER_MAP_V3);
-    int schemaId = getSchemaReader().getValueSchemaId(computeRequestWrapper.getValueSchema());
-    headerMap.put(VENICE_KEY_COUNT, Integer.toString(keyList.size()));
-    headerMap.put(VENICE_COMPUTE_VALUE_SCHEMA_ID, Integer.toString(schemaId));
-
-    requestSubmissionWithStatsHandling(
-        stats,
-        preRequestTimeInNS,
-        true,
-        () -> transportClient.post(getComputeRequestPath(), headerMap, serializedFullComputeRequest),
-        (clientResponse, throwable, responseDeserializationComplete) -> {
-          try {
-            if (null != throwable) {
-              // Error response, such as 400 or 5xx will be handled here.
-              valueFuture.completeExceptionally(throwable);
-            } else if (null == clientResponse) {
-              // Even all the keys don't exist in Venice, compute should receive empty result instead of 'null'
-              valueFuture.completeExceptionally(new VeniceClientException("TransportClient should not return null for compute request"));
-            } else if (!clientResponse.isSchemaIdValid()) {
-              valueFuture.completeExceptionally(new VeniceClientException("No valid schema id received for compute request!"));
-            } else {
-              int responseSchemaId = clientResponse.getSchemaId();
-              long preResponseEnvelopeDeserialization = System.nanoTime();
-
-              RecordDeserializer<ComputeResponseRecordV1> deserializer = getComputeResponseRecordDeserializer(responseSchemaId);
-              Iterable<ComputeResponseRecordV1> records = deserializer.deserializeObjects(new ByteBufferOptimizedBinaryDecoder(clientResponse.getBody()));
-              RecordDeserializer<GenericRecord> dataDeserializer = getComputeResultRecordDeserializer(resultSchema);
-
-              computeDeserializer.deserialize(valueFuture, records, keyList, (resultMap, envelope) -> {
-                int keyIdx = envelope.keyIndex;
-                if (keyIdx >= keyList.size() || keyIdx < 0) {
-                  throw new VeniceClientException("Key index: " + keyIdx + " doesn't have a corresponding key");
-                }
-                K key = keyList.get(keyIdx);
-                GenericRecord value = tryToDeserialize(dataDeserializer, envelope.value, -1, key);
-                /**
-                 * Wrap up the returned {@link GenericRecord} to throw exception when retrieving some failed
-                 * computation.
-                 */
-                resultMap.put(key, ComputeGenericRecord.wrap(value));
-              }, responseDeserializationComplete, stats, preResponseEnvelopeDeserialization);
-            }
-          } catch (Exception e) {
-            if (! valueFuture.isDone()) {
-              valueFuture.completeExceptionally(e);
-            } else {
-              // Defensive code
-              logger.error("Received exception after completing the `valueFuture` for compute request", e);
-              throw e;
-            }
-          }
-
-          return null;
-        });
-
-    return valueFuture;
   }
 
   @Override
@@ -882,9 +726,13 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     private List<CompletableFuture<Void>> deserializationFutures = new ArrayList<>();
     // Track which key is present in the response
     private final BitSet receivedKeySet;
+    private final AtomicInteger successfulKeyCnt = new AtomicInteger(0);
     private int duplicateEntryCnt = 0;
     private Optional<StreamingFooterRecordV1> streamingFooterRecord = Optional.empty();
     private Optional<TrackingStreamingCallback> trackingStreamingCallback = Optional.empty();
+    private final long preSubmitTimeInNS;
+    private final Optional<ClientStats> clientStats;
+    private final LongAdder deserializationTimeInNS = new LongAdder();
 
     private List<CompletableFuture<Void>> callbackFutures = new ArrayList<>();
 
@@ -896,8 +744,12 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         Function<ENVELOPE, StreamingFooterRecordV1> streamingFooterRecordDeserializer) {
       this.keyList = keyList;
       this.callback = callback;
+      this.preSubmitTimeInNS = System.nanoTime();
       if (callback instanceof TrackingStreamingCallback) {
         trackingStreamingCallback = Optional.of((TrackingStreamingCallback)callback);
+        this.clientStats = Optional.of(trackingStreamingCallback.get().getStats());
+      } else {
+        this.clientStats = Optional.empty();
       }
       this.envelopeDeserializerFunc = envelopeDeserializerFunc;
       this.recordDeserializerFunc = recordDeserializerFunc;
@@ -908,6 +760,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
 
     @Override
     public void onHeaderReceived(Map<String, String> headers) {
+      clientStats.ifPresent(stats -> stats.recordRequestSubmissionToResponseHandlingTime(LatencyUtils.getLatencyInMS(preSubmitTimeInNS)));
       isStreamingResponse = headers.containsKey(HttpConstants.VENICE_STREAMING_RESPONSE);
       String schemaIdHeader = headers.get(HttpConstants.VENICE_SCHEMA_ID);
       if (null != schemaIdHeader) {
@@ -980,7 +833,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
              * whether the value is an empty byte array or not, and essentially the deserialization function should
              * return null in this situation.
              */
+            long preRecordDeserializationInNS = System.nanoTime();
             value = recordDeserializerFunc.deserialize(record, compressionStrategy);
+            deserializationTimeInNS.add(System.nanoTime() - preRecordDeserializationInNS);
             /**
              * If key index is not 0, it is unexpected to receive non-null value.
              */
@@ -990,6 +845,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
           }
           trackingStreamingCallback.ifPresent( t -> t.onRecordDeserialized());
           resultMap.put(key, value);
+          if (value != null) {
+            successfulKeyCnt.incrementAndGet();
+          }
         }
         if (resultMap.isEmpty()) {
           return;
@@ -1043,14 +901,19 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
                       if (!receivedKeySet.get(i)) {
                         callback.onRecordReceived(keyList.get(i), null);
                         trackingStreamingCallback.ifPresent(t -> t.onRecordDeserialized());
+                        /**
+                         * To match the streaming response, we will mark the non-existing keys as received as well.
+                         */
+                        receivedKeySet.set(i);
                       }
                     }
                   }
                 }
             callback.onCompletion(completedException);
             final Optional<Exception> finalCompletedException = completedException;
-            trackingStreamingCallback.ifPresent(t -> t.onDeserializationCompletion(finalCompletedException, receivedKeySet.cardinality(),
+            trackingStreamingCallback.ifPresent(t -> t.onDeserializationCompletion(finalCompletedException, successfulKeyCnt.get(),
                 duplicateEntryCnt));
+            clientStats.ifPresent(stats -> stats.recordResponseDeserializationTime(LatencyUtils.convertLatencyFromNSToMS(deserializationTimeInNS.sum())));
               }
           );
     }
@@ -1071,8 +934,14 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       // empty key set
       return;
     }
+    Optional<ClientStats> clientStats = Optional.empty();
+    if (callback instanceof TrackingStreamingCallback) {
+      clientStats = Optional.of(((TrackingStreamingCallback<K, V>) callback).getStats());
+    }
     List<K> keyList = new ArrayList<>(keys);
+    long preRequestSerializationNS = System.nanoTime();
     byte[] multiGetBody = serializeMultiGetRequest(keyList);
+    clientStats.ifPresent(stats -> stats.recordRequestSerializationTime(LatencyUtils.getLatencyInMS(preRequestSerializationNS)));
     Map<Integer, RecordDeserializer<V>> deserializerCache = new VeniceConcurrentHashMap<>();
 
     final Map<String, String> headerMap = new HashMap<>(MULTI_GET_HEADER_MAP_FOR_STREAMING);
@@ -1117,6 +986,11 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       // empty key set
       return;
     }
+    Optional<ClientStats> clientStats = Optional.empty();
+    if (callback instanceof TrackingStreamingCallback) {
+      clientStats = Optional.of(((TrackingStreamingCallback<K, V>) callback).getStats());
+    }
+    long preRequestSerializationNS = System.nanoTime();
     List<K> keyList = new ArrayList<>(keys);
     boolean reuseObjects = (reusedEncoder != null && reusedOutputStream != null);
     byte[] serializedComputeRequest = reuseObjects
@@ -1125,6 +999,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     byte[] serializedFullComputeRequest = reuseObjects
         ? serializeComputeRequest(keyList, serializedComputeRequest, reusedEncoder, reusedOutputStream)
         : serializeComputeRequest(keyList, serializedComputeRequest);
+    clientStats.ifPresent(stats -> stats.recordRequestSerializationTime(LatencyUtils.getLatencyInMS(preRequestSerializationNS)));
 
     final Map<String, String> headerMap = (computeRequestWrapper.getComputeRequestVersion() == COMPUTE_REQUEST_VERSION_V2)
         ? new HashMap<>(COMPUTE_HEADER_MAP_FOR_STREAMING_V2)
@@ -1149,7 +1024,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
                 // Safeguard to handle empty value, which indicates non-existing key.
                 return null;
               }
-              return computeResultRecordDeserializer.deserialize(envelope.value);
+              return ComputeGenericRecord.wrap(computeResultRecordDeserializer.deserialize(envelope.value));
             },
             envelope -> envelope.keyIndex,
             envelope -> streamingFooterRecordDeserializer.deserialize(envelope.value)

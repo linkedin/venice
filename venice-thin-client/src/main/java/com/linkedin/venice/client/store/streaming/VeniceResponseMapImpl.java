@@ -29,4 +29,9 @@ public class VeniceResponseMapImpl<K, V> extends HashMap<K, V> implements Venice
   public Set<K> getNonExistingKeys() {
     return nonExistingKeys;
   }
+
+  @Override
+  public int getTotalEntryCount() {
+    return size() + nonExistingKeys.size();
+  }
 }

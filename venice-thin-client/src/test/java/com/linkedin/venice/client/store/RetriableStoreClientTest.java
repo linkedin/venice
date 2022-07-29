@@ -18,11 +18,11 @@ import org.testng.annotations.Test;
 import static org.mockito.Mockito.*;
 
 public class RetriableStoreClientTest {
-  private InternalAvroStoreClient<String, Object> mockStoreClient;
+  private StatTrackingStoreClient<String, Object> mockStoreClient;
 
   @BeforeTest
   public void setUp() {
-    mockStoreClient = mock(InternalAvroStoreClient.class);
+    mockStoreClient = mock(StatTrackingStoreClient.class);
 
     String storeName = Utils.getUniqueString("store");
     doReturn(storeName).when(mockStoreClient).getStoreName();
@@ -75,7 +75,7 @@ public class RetriableStoreClientTest {
       return null;
     });
 
-    doReturn(mockInnerFuture).doReturn(mockInnerFuture1).when(mockStoreClient).get(any(), any(), anyLong());
+    doReturn(mockInnerFuture).doReturn(mockInnerFuture1).when(mockStoreClient).get(any());
 
     RetriableStoreClient<String, Object> retriableStoreClient = new RetriableStoreClient<>(mockStoreClient,
         ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName()));
@@ -109,8 +109,7 @@ public class RetriableStoreClientTest {
 
 
     // Verify retry count and retry backoff can be configured
-    doReturn(mockInnerFuture).doReturn(mockInnerFuture).doReturn(mockInnerFuture1).when(mockStoreClient).get(any(),
-        any(), anyLong());
+    doReturn(mockInnerFuture).doReturn(mockInnerFuture).doReturn(mockInnerFuture1).when(mockStoreClient).get(any());
     RetriableStoreClient<String, Object> retriableStoreClient = new RetriableStoreClient<>(mockStoreClient,
         ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName())
             .setRetryCount(3)
@@ -141,7 +140,7 @@ public class RetriableStoreClientTest {
 
     });
 
-    doReturn(mockInnerFuture).when(mockStoreClient).batchGet(any(), any(), anyLong());
+    doReturn(mockInnerFuture).when(mockStoreClient).batchGet(any());
 
     RetriableStoreClient<String, Object> retriableStoreClient = new RetriableStoreClient<>(mockStoreClient,
         ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName()));
@@ -181,7 +180,7 @@ public class RetriableStoreClientTest {
       return value;
     });
 
-    doReturn(mockInnerFuture).doReturn(mockInnerFuture1).when(mockStoreClient).batchGet(any(), any(), anyLong());
+    doReturn(mockInnerFuture).doReturn(mockInnerFuture1).when(mockStoreClient).batchGet(any());
 
     RetriableStoreClient<String, Object> retriableStoreClient = new RetriableStoreClient<>(mockStoreClient,
         ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName()));
@@ -192,7 +191,7 @@ public class RetriableStoreClientTest {
   public void testGetWithException() throws InterruptedException {
     CompletableFuture<Object> mockInnerFuture = new CompletableFuture();
     mockInnerFuture.completeExceptionally(new VeniceClientHttpException("Inner mock exception", HttpResponseStatus.BAD_REQUEST.code()));
-    doReturn(mockInnerFuture).when(mockStoreClient).get(any(), any(), anyLong());
+    doReturn(mockInnerFuture).when(mockStoreClient).get(any());
 
     RetriableStoreClient<String, Object> retriableStoreClient = new RetriableStoreClient<>(mockStoreClient,
         ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName()));

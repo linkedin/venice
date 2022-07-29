@@ -1,11 +1,12 @@
 package com.linkedin.venice.client.store;
 
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.transport.TransportClientStreamingCallback;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.RequestType;
@@ -14,6 +15,7 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -89,10 +91,44 @@ public class AbstractAvroStoreClientTest {
   private static final List<Float> cosineSimilarityParam = Arrays.asList(0.3f, 0.4f);
   private static final List<Float> hadamardProductParam = Arrays.asList(0.5f, 0.6f);
 
+  private class ParameterizedComputeTransportClient extends TransportClient {
+    private final Map<String, String> headerMap;
+    private final Optional<byte[]> responseBody;
+    private final Optional<VeniceClientException> completedException;
+
+    public ParameterizedComputeTransportClient(Optional<byte[]> responseBody, Optional<VeniceClientException> completedException) {
+      this.responseBody = responseBody;
+      this.completedException = completedException;
+      this.headerMap = new HashMap<>();
+      this.headerMap.put(HttpConstants.VENICE_SCHEMA_ID, Integer.toString(ReadAvroProtocolDefinition.COMPUTE_RESPONSE_V1.getProtocolVersion()));
+    }
+    @Override
+    public CompletableFuture<TransportClientResponse> get(String requestPath, Map<String, String> headers) {
+      return null;
+    }
+
+    @Override
+    public CompletableFuture<TransportClientResponse> post(String requestPath, Map<String, String> headers,
+    byte[] requestBody) {
+      return null;
+    }
+
+    @Override
+    public void streamPost(String requestPath, Map<String, String> headers, byte[] requestBody,
+    TransportClientStreamingCallback callback, int keyCount) {
+      Map<String, String> headerMap = new HashMap<>();
+      headerMap.put(HttpConstants.VENICE_SCHEMA_ID, Integer.toString(ReadAvroProtocolDefinition.COMPUTE_RESPONSE_V1.getProtocolVersion()));
+      callback.onHeaderReceived(headerMap);
+      responseBody.ifPresent(body -> callback.onDataReceived(ByteBuffer.wrap(body)));
+      callback.onCompletion(completedException);
+    }
+
+    @Override
+    public void close() throws IOException {}
+  };
+
   @Test
   public void testCompute() throws ExecutionException, InterruptedException {
-    TransportClient mockTransportClient = mock(TransportClient.class);
-
     // Mock a transport client response
     String resultSchemaStr = "{" +
         "  \"type\": \"record\",        " +
@@ -135,15 +171,10 @@ public class AbstractAvroStoreClientTest {
     responseRecordV1List.add(record2);
 
     RecordSerializer<ComputeResponseRecordV1> computeResponseSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.SCHEMA$);
-
     byte[] serializedResponse = computeResponseSerializer.serializeObjects(responseRecordV1List);
 
-    TransportClientResponse clientResponse = new TransportClientResponse(
-        ReadAvroProtocolDefinition.COMPUTE_RESPONSE_V1.getProtocolVersion(), CompressionStrategy.NO_OP, serializedResponse);
-    CompletableFuture<TransportClientResponse> transportFuture = new CompletableFuture<>();
-    transportFuture.complete(clientResponse);
+    TransportClient mockTransportClient = new ParameterizedComputeTransportClient(Optional.of(serializedResponse), Optional.empty());
 
-    doReturn(transportFuture).when(mockTransportClient).post(any(), any(), any());
     String storeName = "test_store";
     SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(mockTransportClient, storeName,
         true, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
@@ -175,8 +206,6 @@ public class AbstractAvroStoreClientTest {
 
   @Test
   public void testComputeFailure() throws ExecutionException, InterruptedException {
-    TransportClient mockTransportClient = mock(TransportClient.class);
-
     // Mock a transport client response
     String resultSchemaStr = "{" +
         "  \"type\": \"record\",        " +
@@ -208,13 +237,7 @@ public class AbstractAvroStoreClientTest {
     RecordSerializer<ComputeResponseRecordV1> computeResponseSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.SCHEMA$);
 
     byte[] serializedResponse = computeResponseSerializer.serializeObjects(responseRecordV1List);
-
-    TransportClientResponse clientResponse = new TransportClientResponse(
-        ReadAvroProtocolDefinition.COMPUTE_RESPONSE_V1.getProtocolVersion(), CompressionStrategy.NO_OP, serializedResponse);
-    CompletableFuture<TransportClientResponse> transportFuture = new CompletableFuture<>();
-    transportFuture.complete(clientResponse);
-
-    doReturn(transportFuture).when(mockTransportClient).post(any(), any(), any());
+    TransportClient mockTransportClient = new ParameterizedComputeTransportClient(Optional.of(serializedResponse), Optional.empty());
     String storeName = "test_store";
     SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(mockTransportClient, storeName,
         true, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
@@ -257,11 +280,8 @@ public class AbstractAvroStoreClientTest {
 
   @Test (timeOut = 3000, expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*mock_exception.*")
   public void testComputeReceiveNon200Response() throws ExecutionException, InterruptedException {
-    TransportClient mockTransportClient = mock(TransportClient.class);
-    CompletableFuture<TransportClientResponse> transportFuture = new CompletableFuture<>();
-    transportFuture.completeExceptionally(new VeniceClientException("mock_exception"));
+    TransportClient mockTransportClient = new ParameterizedComputeTransportClient(Optional.empty(), Optional.of(new VeniceClientException("mock_exception")));
 
-    doReturn(transportFuture).when(mockTransportClient).post(any(), any(), any());
     String storeName = "test_store";
     SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(mockTransportClient, storeName,
         true, AbstractAvroStoreClient.getDefaultDeserializationExecutor());

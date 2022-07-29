@@ -24,4 +24,9 @@ public interface VeniceResponseMap<K, V> extends Map<K, V> {
    */
   Set<K> getNonExistingKeys();
 
+  /**
+   * Return the total number of entries, including non-existing keys.
+   */
+  int getTotalEntryCount();
+
 }

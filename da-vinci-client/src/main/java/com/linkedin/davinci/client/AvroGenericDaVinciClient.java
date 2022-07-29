@@ -333,62 +333,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return new AvroComputeRequestBuilderV4<>(getLatestValueSchema(), this, stats, streamingStats);
   }
 
-  @Override
-  public CompletableFuture<Map<K, GenericRecord>> compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys,
-      Schema resultSchema, Optional<ClientStats> stats, long preRequestTimeInNS) throws VeniceClientException {
-    throwIfNotReady();
-    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
-      VersionBackend versionBackend = versionRef.get();
-      if (null == versionBackend){
-        if (isVeniceQueryAllowed()){
-          return veniceClient.compute(computeRequestWrapper, keys, resultSchema, stats, preRequestTimeInNS);
-        }
-        storeBackend.getStats().recordBadRequest();
-        throw new VeniceClientException("Da Vinci client is not subscribed, storeName=" + getStoreName());
-      }
-
-      Map<K, GenericRecord> result = new HashMap<>(keys.size());
-      Set<K> missingKeys = new HashSet<>();
-
-      ReusableObjects reusableObjects = threadLocalReusableObjects.get();
-
-      Schema valueSchema = computeRequestWrapper.getValueSchema();
-      GenericRecord reuseValueRecord = reusableObjects.reuseValueRecordMap.computeIfAbsent(valueSchema, k -> new GenericData.Record(valueSchema));
-
-      Map<String, Object> globalContext = new HashMap<>();
-      Schema computeResultSchema = getComputeResultSchema(computeRequestWrapper);
-      for (K key : keys) {
-        byte[] keyBytes = keySerializer.serialize(key, reusableObjects.binaryEncoder, reusableObjects.byteArrayOutputStream);
-        int partition = versionBackend.getPartition(keyBytes);
-
-        if (isPartitionReadyToServe(versionBackend, partition)) {
-          GenericRecord computeResultValue =
-              versionBackend.compute(partition, keyBytes, getGenericRecordChunkingAdapter(), reusableObjects.binaryDecoder,
-                  reusableObjects.rawValue, reuseValueRecord, globalContext, computeRequestWrapper, computeResultSchema);
-
-          if (null != computeResultValue) {
-            result.put(key, computeResultValue);
-          }
-        } else if (isVeniceQueryAllowed()){
-          missingKeys.add(key);
-        } else if (!isPartitionSubscribed(versionBackend, partition)){
-          storeBackend.getStats().recordBadRequest();
-          throw new NonLocalAccessException(versionBackend.toString(), partition);
-        }
-      }
-
-      if (missingKeys.isEmpty()){
-        return CompletableFuture.completedFuture(result);
-      }
-
-      return veniceClient.compute(computeRequestWrapper, missingKeys, resultSchema, stats, preRequestTimeInNS)
-          .thenApply(veniceResult -> {
-            result.putAll(veniceResult);
-            return result;
-          });
-    }
-  }
-
   private Schema getComputeResultSchema(ComputeRequestWrapper computeRequestWrapper){
     // try to get the result schema from the cache
     CharSequence computeResultSchemaStr = computeRequestWrapper.getResultSchemaStr();

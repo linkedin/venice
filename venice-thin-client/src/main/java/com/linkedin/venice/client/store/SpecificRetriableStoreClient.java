@@ -8,7 +8,7 @@ import org.apache.avro.specific.SpecificRecord;
  */
 public class SpecificRetriableStoreClient<K, V extends SpecificRecord>
     extends RetriableStoreClient<K, V> implements AvroSpecificStoreClient<K, V> {
-  public SpecificRetriableStoreClient(InternalAvroStoreClient<K, V> innerStoreClient, ClientConfig clientConfig) {
+  public SpecificRetriableStoreClient(SpecificStatTrackingStoreClient<K, V> innerStoreClient, ClientConfig clientConfig) {
     super(innerStoreClient, clientConfig);
   }
 }

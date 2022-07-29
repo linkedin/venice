@@ -2,6 +2,7 @@ package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
+import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.TrackingStreamingCallback;
@@ -49,157 +50,9 @@ import static org.mockito.Mockito.*;
 
 public class StatTrackingStoreClientTest {
   private InternalAvroStoreClient<String, Object> mockStoreClient;
+  private String storeName;
   private String metricPrefix;
 
-  @BeforeTest
-  public void setUp() {
-    mockStoreClient = mock(InternalAvroStoreClient.class);
-
-    String storeName = Utils.getUniqueString("store");
-    doReturn(storeName).when(mockStoreClient).getStoreName();
-    metricPrefix = "." + storeName;
-  }
-
-
-  @Test
-  public void testGet() throws ExecutionException, InterruptedException {
-    CompletableFuture<Object> mockInnerFuture = new CompletableFuture();
-    Object mockReturnObject = mock(Object.class);
-    mockInnerFuture.complete(mockReturnObject);
-    mockInnerFuture = mockInnerFuture.handle((value, throwable) -> {
-      try {
-        Thread.sleep(50);
-      } catch (InterruptedException e) {
-        e.printStackTrace();
-      }
-      return value;
-    });
-
-    doReturn(mockInnerFuture).when(mockStoreClient).get(any(), any(), anyLong());
-
-    MetricsRepository repository = new MetricsRepository();
-
-    StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(mockStoreClient,
-        ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName()).setMetricsRepository(repository));
-    statTrackingStoreClient.get("key").get();
-
-    Map<String, ? extends Metric> metrics = repository.metrics();
-    Metric requestMetric = metrics.get(metricPrefix + "--request.OccurrenceRate");
-    Metric healthyRequestMetric = metrics.get(metricPrefix + "--healthy_request.OccurrenceRate");
-    Metric unhealthyRequestMetric = metrics.get(metricPrefix + "--unhealthy_request.OccurrenceRate");
-
-    Assert.assertTrue(requestMetric.value() > 0.0);
-    Assert.assertTrue(healthyRequestMetric.value() > 0.0);
-    Assert.assertEquals(unhealthyRequestMetric.value(), 0.0);
-  }
-
-  @Test
-  public void testMultiGet() throws ExecutionException, InterruptedException {
-    CompletableFuture<Object> mockInnerFuture = new CompletableFuture();
-    Map<String, String> result = new HashMap<>();
-    Set<String> keySet = new HashSet<>();
-    String keyPrefix = "key_";
-    for (int i = 0; i < 5; ++i) {
-      result.put(keyPrefix + i, "value_" + i);
-    }
-    for (int i = 0; i < 10; ++i) {
-      keySet.add(keyPrefix + i);
-    }
-    mockInnerFuture.complete(result);
-    mockInnerFuture = mockInnerFuture.handle((value, throwable) -> {
-      try {
-        Thread.sleep(50);
-      } catch (InterruptedException e) {
-        e.printStackTrace();
-      }
-      return value;
-
-    });
-    doReturn(mockInnerFuture).when(mockStoreClient).batchGet(any(), any(), anyLong());
-
-    MetricsRepository repository = new MetricsRepository();
-
-    StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(mockStoreClient,
-        ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName()).setMetricsRepository(repository));
-    statTrackingStoreClient.batchGet(keySet).get();
-
-    Map<String, ? extends Metric> metrics = repository.metrics();
-    Metric requestMetric = metrics.get(metricPrefix + "--multiget_request.OccurrenceRate");
-    Metric healthyRequestMetric = metrics.get(metricPrefix + "--multiget_healthy_request.OccurrenceRate");
-    Metric unhealthyRequestMetric = metrics.get(metricPrefix + "--multiget_unhealthy_request.OccurrenceRate");
-    Metric keyCountMetric = metrics.get(metricPrefix + "--multiget_request_key_count.Avg");
-    Metric successKeyCountMetric = metrics.get(metricPrefix + "--multiget_success_request_key_count.Avg");
-    Metric successKeyRatioMetric = metrics.get(metricPrefix + "--multiget_success_request_key_ratio.SimpleRatioStat");
-
-    Assert.assertTrue(requestMetric.value() > 0.0);
-    Assert.assertTrue(healthyRequestMetric.value() > 0.0);
-    Assert.assertEquals(unhealthyRequestMetric.value(), 0.0);
-    Assert.assertEquals(keyCountMetric.value(), 10.0);
-    Assert.assertEquals(successKeyCountMetric.value(), 5.0);
-    Assert.assertTrue(successKeyRatioMetric.value() > 0, "Success Key Ratio should be positive");
-  }
-
-
-
-  @Test
-  public void testGetWithException() throws InterruptedException {
-    CompletableFuture<Object> mockInnerFuture = new CompletableFuture();
-    mockInnerFuture.completeExceptionally(new VeniceClientHttpException("Inner mock exception", HttpResponseStatus.BAD_REQUEST.code()));
-    doReturn(mockInnerFuture).when(mockStoreClient).get(any(), any(), anyLong());
-
-    MetricsRepository repository = new MetricsRepository();
-
-    StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(mockStoreClient,
-        ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName()).setMetricsRepository(repository));
-    try {
-      statTrackingStoreClient.get("key").get();
-      Assert.fail("ExecutionException should be thrown");
-    } catch (ExecutionException e) {
-      // expected
-    }
-
-    Map<String, ? extends Metric> metrics = repository.metrics();
-    Metric requestMetric = metrics.get(metricPrefix + "--request.OccurrenceRate");
-    Metric healthyRequestMetric = metrics.get(metricPrefix + "--healthy_request.OccurrenceRate");
-    Metric unhealthyRequestMetric = metrics.get(metricPrefix + "--unhealthy_request.OccurrenceRate");
-    Metric http400RequestMetric = metrics.get(metricPrefix + "--http_400_request.OccurrenceRate");
-
-    Assert.assertTrue(requestMetric.value() > 0.0);
-    Assert.assertEquals(healthyRequestMetric.value(), 0.0);
-    Assert.assertTrue(unhealthyRequestMetric.value() > 0.0);
-    Assert.assertTrue(http400RequestMetric.value() > 0.0);
-  }
-
-  @Test
-  public void testMultiGetWithException() throws InterruptedException {
-    CompletableFuture<Object> mockInnerFuture = new CompletableFuture();
-    mockInnerFuture.completeExceptionally(new VeniceClientHttpException("Inner mock exception", HttpResponseStatus.BAD_REQUEST.code()));
-    doReturn(mockInnerFuture).when(mockStoreClient).batchGet(any(), any(), anyLong());
-
-    MetricsRepository repository = new MetricsRepository();
-
-    StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(mockStoreClient,
-        ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName()).setMetricsRepository(repository));
-    Set<String> keySet = new HashSet<>();
-    keySet.add("key");
-    try {
-      statTrackingStoreClient.batchGet(keySet).get();
-      Assert.fail("ExecutionException should be thrown");
-    } catch (ExecutionException e) {
-      // expected
-    }
-
-    Map<String, ? extends Metric> metrics = repository.metrics();
-    Metric requestMetric = metrics.get(metricPrefix + "--multiget_request.OccurrenceRate");
-    Metric healthyRequestMetric = metrics.get(metricPrefix + "--multiget_healthy_request.OccurrenceRate");
-    Metric unhealthyRequestMetric = metrics.get(metricPrefix + "--multiget_unhealthy_request.OccurrenceRate");
-    Metric http400RequestMetric = metrics.get(metricPrefix + "--multiget_http_400_request.OccurrenceRate");
-
-    Assert.assertTrue(requestMetric.value() > 0.0);
-    Assert.assertEquals(healthyRequestMetric.value(), 0.0);
-    Assert.assertTrue(unhealthyRequestMetric.value() > 0.0);
-    Assert.assertTrue(http400RequestMetric.value() > 0.0);
-  }
 
   private static class SimpleStoreClient<K, V> extends AbstractAvroStoreClient<K, V> {
 
@@ -248,9 +101,229 @@ public class StatTrackingStoreClientTest {
     keys.add("key2");
   }
 
+  private static class StoreClientForMultiGetStreamTest<K, V> extends SimpleStoreClient<K, V> {
+    private final Map<K, V> resultMap;
+    private final boolean fullResponse;
+    public StoreClientForMultiGetStreamTest(TransportClient transportClient, String storeName,
+        boolean needSchemaReader, Executor deserializationExecutor, Map<K, V> resultMap, boolean fullResponse) {
+      super(transportClient, storeName, needSchemaReader, deserializationExecutor);
+      this.resultMap = resultMap;
+      this.fullResponse = fullResponse;
+    }
+
+    @Override
+    public void streamingBatchGet(final Set<K> keys, StreamingCallback<K, V> callback) {
+      if (callback instanceof TrackingStreamingCallback) {
+        TrackingStreamingCallback<K ,V> trackingStreamingCallback = (TrackingStreamingCallback)callback;
+        Utils.sleep(5);
+        if (fullResponse) {
+
+          keys.forEach(k -> {
+            if (resultMap.containsKey(k)) {
+              trackingStreamingCallback.onRecordReceived(k, resultMap.get(k));
+            } else {
+              trackingStreamingCallback.onRecordReceived(k, null);
+            }
+          });
+        } else {
+          if (keys.size() > 1) {
+            // Only return one result
+            trackingStreamingCallback.onRecordReceived(keys.iterator().next(), null);
+          }
+        }
+        trackingStreamingCallback.onDeserializationCompletion(Optional.empty(), 10, 5);
+        trackingStreamingCallback.onCompletion(Optional.empty());
+      }
+    }
+  }
+
+  private static class StoreClientForMultiGetStreamTestWithException<K, V> extends SimpleStoreClient<K, V> {
+    private final VeniceClientException veniceException;
+    public StoreClientForMultiGetStreamTestWithException(TransportClient transportClient, String storeName,
+        boolean needSchemaReader, Executor deserializationExecutor, VeniceClientException veniceException) {
+      super(transportClient, storeName, needSchemaReader, deserializationExecutor);
+      this.veniceException = veniceException;
+    }
+
+    @Override
+    public void streamingBatchGet(final Set<K> keys, StreamingCallback<K, V> callback) {
+      if (callback instanceof TrackingStreamingCallback) {
+        TrackingStreamingCallback<K ,V> trackingStreamingCallback = (TrackingStreamingCallback)callback;
+        Utils.sleep(5);
+        trackingStreamingCallback.onDeserializationCompletion(Optional.of(veniceException), 10, 5);
+        trackingStreamingCallback.onCompletion(Optional.of(veniceException));
+      }
+    }
+  }
+
   private static final List<Float> dotProductParam = Arrays.asList(0.1f, 0.2f);
 
+  @BeforeTest
+  public void setUp() {
+    mockStoreClient = mock(InternalAvroStoreClient.class);
+
+    storeName = Utils.getUniqueString("store");
+    doReturn(storeName).when(mockStoreClient).getStoreName();
+    metricPrefix = "." + storeName;
+  }
+
+
   @Test
+  public void testGet() throws ExecutionException, InterruptedException {
+    CompletableFuture<Object> mockInnerFuture = new CompletableFuture();
+    Object mockReturnObject = mock(Object.class);
+    mockInnerFuture.complete(mockReturnObject);
+    mockInnerFuture = mockInnerFuture.handle((value, throwable) -> {
+      try {
+        Thread.sleep(50);
+      } catch (InterruptedException e) {
+        e.printStackTrace();
+      }
+      return value;
+    });
+
+    doReturn(mockInnerFuture).when(mockStoreClient).get(any(), any(), anyLong());
+
+    MetricsRepository repository = new MetricsRepository();
+
+    StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(mockStoreClient,
+        ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName()).setMetricsRepository(repository));
+    statTrackingStoreClient.get("key").get();
+
+    Map<String, ? extends Metric> metrics = repository.metrics();
+    Metric requestMetric = metrics.get(metricPrefix + "--request.OccurrenceRate");
+    Metric healthyRequestMetric = metrics.get(metricPrefix + "--healthy_request.OccurrenceRate");
+    Metric unhealthyRequestMetric = metrics.get(metricPrefix + "--unhealthy_request.OccurrenceRate");
+
+    Assert.assertTrue(requestMetric.value() > 0.0);
+    Assert.assertTrue(healthyRequestMetric.value() > 0.0);
+    Assert.assertEquals(unhealthyRequestMetric.value(), 0.0);
+  }
+
+  @Test
+  public void testMultiGet() throws ExecutionException, InterruptedException {
+    Map<String, String> result = new HashMap<>();
+    Set<String> keySet = new HashSet<>();
+    String keyPrefix = "key_";
+    for (int i = 0; i < 5; ++i) {
+      result.put(keyPrefix + i, "value_" + i);
+    }
+    for (int i = 0; i < 10; ++i) {
+      keySet.add(keyPrefix + i);
+    }
+
+    MetricsRepository repository = new MetricsRepository();
+
+    InternalAvroStoreClient innerClient = new StoreClientForMultiGetStreamTest(mock(TransportClient.class),
+        storeName, true, AbstractAvroStoreClient.getDefaultDeserializationExecutor(), result, true);
+
+    StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(innerClient,
+        ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
+    Map<String, Object> batchGetResult = statTrackingStoreClient.batchGet(keySet).get();
+
+    Assert.assertEquals(batchGetResult, result);
+
+    Map<String, ? extends Metric> metrics = repository.metrics();
+    Metric requestMetric = metrics.get(metricPrefix + "--multiget_streaming_request.OccurrenceRate");
+    Metric healthyRequestMetric = metrics.get(metricPrefix + "--multiget_streaming_healthy_request.OccurrenceRate");
+    Metric unhealthyRequestMetric = metrics.get(metricPrefix + "--multiget_streaming_unhealthy_request.OccurrenceRate");
+    Metric keyCountMetric = metrics.get(metricPrefix + "--multiget_streaming_request_key_count.Avg");
+    Metric successKeyCountMetric = metrics.get(metricPrefix + "--multiget_streaming_success_request_key_count.Avg");
+    Metric successKeyRatioMetric = metrics.get(metricPrefix + "--multiget_streaming_success_request_key_ratio.SimpleRatioStat");
+
+    Assert.assertTrue(requestMetric.value() > 0.0);
+    Assert.assertTrue(healthyRequestMetric.value() > 0.0);
+    Assert.assertEquals(unhealthyRequestMetric.value(), 0.0);
+    Assert.assertEquals(keyCountMetric.value(), 10.0);
+    Assert.assertEquals(successKeyCountMetric.value(),  10.0);
+    Assert.assertTrue(successKeyRatioMetric.value() > 0, "Success Key Ratio should be positive");
+  }
+
+  @Test (expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*Received partial response.*")
+  public void testMultiGetWithPartialResponse() throws ExecutionException, InterruptedException {
+    Set<String> keySet = new HashSet<>();
+    String keyPrefix = "key_";
+    for (int i = 0; i < 10; ++i) {
+      keySet.add(keyPrefix + i);
+    }
+
+    MetricsRepository repository = new MetricsRepository();
+
+    InternalAvroStoreClient innerClient =
+        new StoreClientForMultiGetStreamTest(mock(TransportClient.class), storeName, true,
+            AbstractAvroStoreClient.getDefaultDeserializationExecutor(), Collections.emptyMap(), false);
+
+    StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(innerClient,
+        ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
+    statTrackingStoreClient.batchGet(keySet).get();
+  }
+
+  @Test
+  public void testGetWithException() throws InterruptedException {
+    CompletableFuture<Object> mockInnerFuture = new CompletableFuture();
+    mockInnerFuture.completeExceptionally(new VeniceClientHttpException("Inner mock exception", HttpResponseStatus.BAD_REQUEST.code()));
+    doReturn(mockInnerFuture).when(mockStoreClient).get(any(), any(), anyLong());
+
+    MetricsRepository repository = new MetricsRepository();
+
+    StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(mockStoreClient,
+        ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName()).setMetricsRepository(repository));
+    try {
+      statTrackingStoreClient.get("key").get();
+      Assert.fail("ExecutionException should be thrown");
+    } catch (ExecutionException e) {
+      // expected
+    }
+
+    Map<String, ? extends Metric> metrics = repository.metrics();
+    Metric requestMetric = metrics.get(metricPrefix + "--request.OccurrenceRate");
+    Metric healthyRequestMetric = metrics.get(metricPrefix + "--healthy_request.OccurrenceRate");
+    Metric unhealthyRequestMetric = metrics.get(metricPrefix + "--unhealthy_request.OccurrenceRate");
+    Metric http400RequestMetric = metrics.get(metricPrefix + "--http_400_request.OccurrenceRate");
+
+    Assert.assertTrue(requestMetric.value() > 0.0);
+    Assert.assertEquals(healthyRequestMetric.value(), 0.0);
+    Assert.assertTrue(unhealthyRequestMetric.value() > 0.0);
+    Assert.assertTrue(http400RequestMetric.value() > 0.0);
+  }
+
+  @Test
+  public void testMultiGetWithException() throws InterruptedException {
+    CompletableFuture<Object> mockInnerFuture = new CompletableFuture();
+    mockInnerFuture.completeExceptionally(new VeniceClientHttpException("Inner mock exception", HttpResponseStatus.BAD_REQUEST.code()));
+    doReturn(mockInnerFuture).when(mockStoreClient).batchGet(any());
+
+    MetricsRepository repository = new MetricsRepository();
+
+    InternalAvroStoreClient innerClient = new StoreClientForMultiGetStreamTestWithException(mock(TransportClient.class),
+        storeName, true, AbstractAvroStoreClient.getDefaultDeserializationExecutor(), new VeniceClientHttpException(500));
+
+    StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(innerClient,
+        ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
+
+    Set<String> keySet = new HashSet<>();
+    keySet.add("key");
+    try {
+      statTrackingStoreClient.batchGet(keySet).get();
+      Assert.fail("ExecutionException should be thrown");
+    } catch (ExecutionException e) {
+      // expected
+    }
+
+    Map<String, ? extends Metric> metrics = repository.metrics();
+    Metric requestMetric = metrics.get(metricPrefix + "--multiget_streaming_request.OccurrenceRate");
+    Metric healthyRequestMetric = metrics.get(metricPrefix + "--multiget_streaming_healthy_request.OccurrenceRate");
+    Metric unhealthyRequestMetric = metrics.get(metricPrefix + "--multiget_streaming_unhealthy_request.OccurrenceRate");
+    Metric http500RequestMetric = metrics.get(metricPrefix + "--multiget_streaming_http_500_request.OccurrenceRate");
+
+    Assert.assertTrue(requestMetric.value() > 0.0);
+    Assert.assertEquals(healthyRequestMetric.value(), 0.0);
+    Assert.assertTrue(unhealthyRequestMetric.value() > 0.0);
+    Assert.assertTrue(http500RequestMetric.value() > 0.0);
+  }
+
+
+  @Test (enabled = false)
   public void testCompute() throws ExecutionException, InterruptedException {
     TransportClient mockTransportClient = mock(TransportClient.class);
 
@@ -349,26 +422,9 @@ public class StatTrackingStoreClientTest {
 
   @Test
   public void multiGetStreamTest() {
-    class StoreClientForMultiGetStreamTest<K, V> extends SimpleStoreClient<K, V> {
-
-      public StoreClientForMultiGetStreamTest(TransportClient transportClient, String storeName,
-          boolean needSchemaReader, Executor deserializationExecutor) {
-        super(transportClient, storeName, needSchemaReader, deserializationExecutor);
-      }
-
-      @Override
-      public void streamingBatchGet(final Set<K> keys, StreamingCallback<K, V> callback) {
-        if (callback instanceof TrackingStreamingCallback) {
-          TrackingStreamingCallback<K ,V> trackingStreamingCallback = (TrackingStreamingCallback)callback;
-          Utils.sleep(5);
-          trackingStreamingCallback.onDeserializationCompletion(Optional.empty(), 10, 5);
-        }
-      }
-    }
-
     String storeName = Utils.getUniqueString("test_store");
     InternalAvroStoreClient innerClient = new StoreClientForMultiGetStreamTest(mock(TransportClient.class),
-        storeName, false, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
+        storeName, true, AbstractAvroStoreClient.getDefaultDeserializationExecutor(), Collections.emptyMap(), true);
     MetricsRepository repository = new MetricsRepository();
     StatTrackingStoreClient<String, GenericRecord> statTrackingStoreClient = new StatTrackingStoreClient<>(
         innerClient, ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
@@ -401,28 +457,10 @@ public class StatTrackingStoreClientTest {
     Assert.assertTrue(duplicateKeyMetric.value() > 0.0);
   }
 
+
   @Test
   public void multiGetStreamTestWithException() {
-    class StoreClientForMultiGetStreamTest<K, V> extends SimpleStoreClient<K, V> {
-      private final VeniceClientException veniceException;
-      public StoreClientForMultiGetStreamTest(TransportClient transportClient, String storeName,
-          boolean needSchemaReader, Executor deserializationExecutor, VeniceClientException veniceException) {
-        super(transportClient, storeName, needSchemaReader, deserializationExecutor);
-        this.veniceException = veniceException;
-      }
-
-      @Override
-      public void streamingBatchGet(final Set<K> keys, StreamingCallback<K, V> callback) {
-        if (callback instanceof TrackingStreamingCallback) {
-          TrackingStreamingCallback<K ,V> trackingStreamingCallback = (TrackingStreamingCallback)callback;
-          Utils.sleep(5);
-          trackingStreamingCallback.onDeserializationCompletion(Optional.of(veniceException), 10, 5);
-        }
-      }
-    }
-
-    String storeName = Utils.getUniqueString("test_store");
-    InternalAvroStoreClient innerClient = new StoreClientForMultiGetStreamTest(mock(TransportClient.class),
+    InternalAvroStoreClient innerClient = new StoreClientForMultiGetStreamTestWithException(mock(TransportClient.class),
         storeName, false, AbstractAvroStoreClient.getDefaultDeserializationExecutor(), new VeniceClientHttpException(500));
     MetricsRepository repository = new MetricsRepository();
     StatTrackingStoreClient<String, GenericRecord> statTrackingStoreClient = new StatTrackingStoreClient<>(
@@ -443,12 +481,11 @@ public class StatTrackingStoreClientTest {
       }
     });
     Map<String, ? extends Metric> metrics = repository.metrics();
-    String storeMetricPrefix = "." + storeName;
-    Metric requestMetric = metrics.get(storeMetricPrefix + "--multiget_streaming_request.OccurrenceRate");
-    Metric healthyRequestMetric = metrics.get(storeMetricPrefix + "--multiget_streaming_healthy_request.OccurrenceRate");
-    Metric unhealthyRequestMetric = metrics.get(storeMetricPrefix + "--multiget_streaming_unhealthy_request.OccurrenceRate");
-    Metric duplicateKeyMetric = metrics.get(storeMetricPrefix + "--multiget_streaming_success_request_duplicate_key_count.Rate");
-    Metric responseWith500 = metrics.get(storeMetricPrefix + "--multiget_streaming_http_500_request.OccurrenceRate");
+    Metric requestMetric = metrics.get(metricPrefix + "--multiget_streaming_request.OccurrenceRate");
+    Metric healthyRequestMetric = metrics.get(metricPrefix + "--multiget_streaming_healthy_request.OccurrenceRate");
+    Metric unhealthyRequestMetric = metrics.get(metricPrefix + "--multiget_streaming_unhealthy_request.OccurrenceRate");
+    Metric duplicateKeyMetric = metrics.get(metricPrefix + "--multiget_streaming_success_request_duplicate_key_count.Rate");
+    Metric responseWith500 = metrics.get(metricPrefix + "--multiget_streaming_http_500_request.OccurrenceRate");
 
     Assert.assertTrue(requestMetric.value() > 0.0);
     Assert.assertEquals(healthyRequestMetric.value(),  0.0);
@@ -569,5 +606,4 @@ public class StatTrackingStoreClientTest {
     Assert.assertTrue(timedOutRequestMetric.value() > 0);
     Assert.assertTrue(timedOutRequestResultRatioMetric.value() > 0);
   }
-
 }

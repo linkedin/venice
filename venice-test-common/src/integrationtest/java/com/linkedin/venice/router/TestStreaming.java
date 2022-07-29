@@ -30,6 +30,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -177,13 +178,12 @@ public class TestStreaming {
     Utils.closeQuietlyWithErrorLogged(compressorFactory);
   }
 
-  private Properties getRouterProperties(boolean enableStreaming, boolean enableNettyClient, boolean enableClientCompression, boolean routerH2Enabled) {
+  private Properties getRouterProperties(boolean enableNettyClient, boolean enableClientCompression, boolean routerH2Enabled) {
     // To trigger long-tail retry
     Properties routerProperties = new Properties();
     routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 1);
     routerProperties.put(ConfigKeys.ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, MAX_KEY_LIMIT); // 10 keys at most in a batch-get request
     routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-:100");
-    routerProperties.put(ConfigKeys.ROUTER_STREAMING_ENABLED, Boolean.toString(enableStreaming));
     routerProperties.put(ConfigKeys.ROUTER_STORAGE_NODE_CLIENT_TYPE, enableNettyClient ? NETTY_4_CLIENT.name() : APACHE_HTTP_ASYNC_CLIENT.name());
     routerProperties.put(ConfigKeys.ROUTER_CLIENT_DECOMPRESSION_ENABLED, Boolean.toString(enableClientCompression));
     routerProperties.put(ConfigKeys.ROUTER_HTTP2_INBOUND_ENABLED, Boolean.toString(routerH2Enabled));
@@ -191,19 +191,14 @@ public class TestStreaming {
     return routerProperties;
   }
 
-  @DataProvider (name = "testReadStreamingDataProvider")
-  private Object[][] testReadStreamingDataProvider() {
-    return new Object[][] {{true, true}, {true, false},{false, true},{false, false}};
-  }
-
-  @Test(timeOut = 300 * 1000, dataProvider = "testReadStreamingDataProvider")
-  public void testReadStreaming(boolean enableStreaming, boolean enableRouterHttp2) throws Exception {
+  @Test(timeOut = 300 * 1000, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testReadStreaming(boolean enableRouterHttp2) throws Exception {
     // Start a new router every time with the right config
     // With Apache HAC on Router with client compression enabled
-    VeniceRouterWrapper veniceRouterWrapperWithHttpAsyncClient = veniceCluster.addVeniceRouter(getRouterProperties(enableStreaming, false, true, enableRouterHttp2));
+    VeniceRouterWrapper veniceRouterWrapperWithHttpAsyncClient = veniceCluster.addVeniceRouter(getRouterProperties(false, true, enableRouterHttp2));
     MetricsRepository routerMetricsRepositoryWithHttpAsyncClient = veniceRouterWrapperWithHttpAsyncClient.getMetricsRepository();
     // With Netty Client on Router with client compression disabled
-    VeniceRouterWrapper veniceRouterWrapperWithNettyClient = veniceCluster.addVeniceRouter(getRouterProperties(enableStreaming, true, false, enableRouterHttp2));
+    VeniceRouterWrapper veniceRouterWrapperWithNettyClient = veniceCluster.addVeniceRouter(getRouterProperties(true, false, enableRouterHttp2));
     D2Client d2Client = null;
     AvroGenericStoreClient d2StoreClient = null;
     try {
@@ -330,15 +325,13 @@ public class TestStreaming {
       //Verify some router metrics
       for (MetricsRepository routerMetricsRepository : Arrays.asList(routerMetricsRepositoryWithHttpAsyncClient)) { //, routerMetricsRepositoryWithNettyClient)) {
         Map<String, ? extends Metric> routerMetrics = routerMetricsRepository.metrics();
-        if (enableStreaming) {
-          // The following metrics are only available when Router is running in Streaming mode.
-          Assert.assertTrue(routerMetrics.get(metricPrefix + "--multiget_streaming_request.OccurrenceRate").value() > 0);
-          Assert.assertTrue(routerMetrics.get(metricPrefix + "--multiget_streaming_latency.99thPercentile").value() > 0);
-          Assert.assertTrue(routerMetrics.get(metricPrefix + "--multiget_streaming_fanout_request_count.Avg").value() > 0);
-          Assert.assertTrue(routerMetrics.get(metricPrefix + "--compute_streaming_request.OccurrenceRate").value() > 0);
-          Assert.assertTrue(routerMetrics.get(metricPrefix + "--compute_streaming_latency.99thPercentile").value() > 0);
-          Assert.assertTrue(routerMetrics.get(metricPrefix + "--compute_streaming_fanout_request_count.Avg").value() > 0);
-        }
+        // The following metrics are only available when Router is running in Streaming mode.
+        Assert.assertTrue(routerMetrics.get(metricPrefix + "--multiget_streaming_request.OccurrenceRate").value() > 0);
+        Assert.assertTrue(routerMetrics.get(metricPrefix + "--multiget_streaming_latency.99thPercentile").value() > 0);
+        Assert.assertTrue(routerMetrics.get(metricPrefix + "--multiget_streaming_fanout_request_count.Avg").value() > 0);
+        Assert.assertTrue(routerMetrics.get(metricPrefix + "--compute_streaming_request.OccurrenceRate").value() > 0);
+        Assert.assertTrue(routerMetrics.get(metricPrefix + "--compute_streaming_latency.99thPercentile").value() > 0);
+        Assert.assertTrue(routerMetrics.get(metricPrefix + "--compute_streaming_fanout_request_count.Avg").value() > 0);
       }
     } finally {
       Utils.closeQuietlyWithErrorLogged(veniceRouterWrapperWithHttpAsyncClient);

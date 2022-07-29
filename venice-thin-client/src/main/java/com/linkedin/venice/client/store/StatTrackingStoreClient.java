@@ -24,6 +24,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import org.apache.avro.Schema;
@@ -90,12 +92,21 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
 
   @Override
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
-    long startTimeInNS = System.nanoTime();
-    CompletableFuture<Map<K, V>> innerFuture = super.batchGet(keys, Optional.of(multiGetStats), startTimeInNS);
-    multiGetStats.recordRequestKeyCount(keys.size());
-    CompletableFuture<Map<K, V>> statFuture = innerFuture.handle(
-        (BiFunction<? super Map<K, V>, Throwable, ? extends Map<K, V>>) getStatCallback(multiGetStats, startTimeInNS));
-    return AppTimeOutTrackingCompletableFuture.track(statFuture, multiGetStats);
+    CompletableFuture<Map<K, V>> resultFuture = new CompletableFuture<>();
+    CompletableFuture<VeniceResponseMap<K, V>> streamingResultFuture = streamingBatchGet(keys);
+
+    streamingResultFuture.whenComplete((response, throwable) -> {
+      if (throwable != null) {
+        resultFuture.completeExceptionally(throwable);
+      } else if (!response.isFullResponse()) {
+        resultFuture.completeExceptionally(new VeniceClientException("Received partial response, returned entry count: "
+            + response.getTotalEntryCount() + ", and key count: " + keys.size()));
+      } else {
+        resultFuture.complete(response);
+      }
+    });
+    // We intentionally use stats for batch-get streaming since blocking impl of batch-get is deprecated.
+    return AppTimeOutTrackingCompletableFuture.track(resultFuture, multiGetStreamingStats);
   }
 
 
@@ -126,7 +137,8 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
         if (exception.isPresent()) {
           resultFuture.completeExceptionally(exception.get());
         } else {
-          resultFuture.complete(new VeniceResponseMapImpl(resultMap, nonExistingKeyList, true));
+          boolean isFullResponse = (resultMap.size() + nonExistingKeyList.size() == keys.size());
+          resultFuture.complete(new VeniceResponseMapImpl(resultMap, nonExistingKeyList, isFullResponse));
         }
       }
     });
@@ -163,6 +175,11 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     }
 
     @Override
+    public ClientStats getStats() {
+      return stats;
+    }
+
+    @Override
     public void onRecordDeserialized() {
       int currentKeyCnt = receivedKeyCnt.incrementAndGet();
       /**
@@ -187,9 +204,9 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     }
 
     @Override
-    public void onDeserializationCompletion(Optional<VeniceClientException> veniceException, int resultCnt,
+    public void onDeserializationCompletion(Optional<VeniceClientException> veniceException, int successKeyCnt,
         int duplicateEntryCnt) {
-      handleMetricTrackingForStreamingCallback(stats, preRequestTimeInNS, veniceException, resultCnt, duplicateEntryCnt);
+      handleMetricTrackingForStreamingCallback(stats, preRequestTimeInNS, veniceException, successKeyCnt, duplicateEntryCnt);
     }
   }
 
@@ -197,7 +214,8 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   public void streamingBatchGet(Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
     long preRequestTimeInNS = System.nanoTime();
     multiGetStreamingStats.recordRequestKeyCount(keys.size());
-    super.streamingBatchGet(keys, new StatTrackingStreamingCallback<>(callback, multiGetStreamingStats, keys.size(), preRequestTimeInNS));
+    super.streamingBatchGet(keys,
+        new StatTrackingStreamingCallback<>(callback, multiGetStreamingStats, keys.size(), preRequestTimeInNS));
   }
 
   @Override
@@ -220,7 +238,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   }
 
   private static void handleMetricTrackingForStreamingCallback(ClientStats clientStats, long startTimeInNS,
-      Optional<VeniceClientException> veniceException, int resultCnt, int duplicateEntryCnt) {
+      Optional<VeniceClientException> veniceException, int successKeyCnt, int duplicateEntryCnt) {
     double latency = LatencyUtils.getLatencyInMS(startTimeInNS);
     if (veniceException.isPresent()) {
       clientStats.recordUnhealthyRequest();
@@ -237,7 +255,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     } else {
       emitRequestHealthyMetrics(clientStats, latency);
     }
-    clientStats.recordSuccessRequestKeyCount(resultCnt);
+    clientStats.recordSuccessRequestKeyCount(successKeyCnt);
     clientStats.recordSuccessDuplicateRequestKeyCount(duplicateEntryCnt);
   }
 
@@ -251,18 +269,6 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
      * will be invoked when serving 'compute' request.
      */
     return super.compute(Optional.of(computeStats), Optional.of(computeStreamingStats), this, startTimeInNS);
-  }
-
-
-  @Override
-  public CompletableFuture<Map<K, GenericRecord>> compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys,
-      Schema resultSchema, Optional<ClientStats> stats, final long preRequestTimeInNS) throws VeniceClientException {
-    CompletableFuture<Map<K, GenericRecord>> innerFuture = super.compute(computeRequestWrapper, keys, resultSchema,
-        stats, preRequestTimeInNS);
-    computeStats.recordRequestKeyCount(keys.size());
-    CompletableFuture<Map<K, GenericRecord>> statFuture = innerFuture.handle(
-        (BiFunction<? super Map<K, GenericRecord>, Throwable, ? extends Map<K, GenericRecord>>) getStatCallback(computeStats, preRequestTimeInNS));
-    return statFuture;
   }
 
   private static void emitRequestHealthyMetrics(ClientStats clientStats, double latency) {

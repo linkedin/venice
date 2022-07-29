@@ -34,14 +34,11 @@ public class ClientFactory {
       }
     }
 
-    AvroGenericStoreClient<K, V> client;
+    StatTrackingStoreClient<K, V> client = new StatTrackingStoreClient<>(internalClient, clientConfig);;
 
     if (clientConfig.isRetryOnRouterErrorEnabled() || clientConfig.isRetryOnAllErrorsEnabled()) {
-      client = new RetriableStoreClient<>(internalClient, clientConfig);
-    } else {
-      client = new StatTrackingStoreClient<>(internalClient, clientConfig);
+      return new RetriableStoreClient<>(client, clientConfig);
     }
-
     return client;
   }
 
@@ -55,13 +52,11 @@ public class ClientFactory {
     TransportClient transportClient = getTransportClient(clientConfig);
     InternalAvroStoreClient<K, V> avroClient = new AvroSpecificStoreClientImpl<>(transportClient, clientConfig);
 
-    AvroSpecificStoreClient<K, V> client;
+    SpecificStatTrackingStoreClient<K, V> client = new SpecificStatTrackingStoreClient<>(avroClient, clientConfig);
 
     if (clientConfig.isRetryOnRouterErrorEnabled() || clientConfig.isRetryOnAllErrorsEnabled()) {
-      client = new SpecificRetriableStoreClient<>(avroClient, clientConfig);
-    } else {
-      client = new SpecificStatTrackingStoreClient<>(avroClient, clientConfig);
-    }
+      return new SpecificRetriableStoreClient<>(client, clientConfig);
+   }
 
     return client;
   }

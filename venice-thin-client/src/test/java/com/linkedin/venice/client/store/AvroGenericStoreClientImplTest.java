@@ -515,7 +515,7 @@ public class AvroGenericStoreClientImplTest {
       Assert.assertEquals(result.get("key1").toString(), "value1");
       Assert.assertEquals(result.get("key3").toString(), "value3");
 
-      testMetric(entry.getValue(), RequestType.MULTI_GET);
+      TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> testMetric(entry.getValue(), RequestType.MULTI_GET_STREAMING));
     }
   }
 

@@ -1,6 +1,7 @@
 package com.linkedin.venice.client.store.streaming;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.stats.ClientStats;
 import java.util.Optional;
 
 
@@ -23,11 +24,13 @@ public abstract class TrackingStreamingCallback<K, V> extends StreamingCallback<
   /**
    * This will be invoked when Venice Client deserialization is done.
    * @param veniceException
-   * @param resultCnt
+   * @param successKeyCnt, this param indicates the total number of existing keys
    * @param duplicateEntryCnt
    */
   public abstract void onDeserializationCompletion(Optional<VeniceClientException> veniceException,
-      int resultCnt, int duplicateEntryCnt);
+      int successKeyCnt, int duplicateEntryCnt);
+
+  public abstract ClientStats getStats();
 
   @Override
   public void onRecordReceived(K key, V value) {
