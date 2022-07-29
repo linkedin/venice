@@ -20,15 +20,10 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.utils.TestStoragePersonaUtils.*;
+
 
 public class StoragePersonaRepositoryTest {
-
-  private final static String quotaFailedRegex = "Invalid persona quota: total store quota exceeds persona quota";
-  private final static String storesFailedRegex = "Invalid store\\(s\\) provided: not all stores exist within the cluster, "
-      + "one store is already managed by a persona, one store is a system store";
-  private final static String personaDoesNotExistRegex = "Update failed: persona with name .* does not exist in this cluster";
-  private final static String ownersDoesNotExistRegex = "Invalid owner\\(s\\) provided";
-
 
   public HelixReadWriteStoreRepository storeRepository;
   private StoragePersonaRepository personaRepository;
@@ -62,15 +57,6 @@ public class StoragePersonaRepositoryTest {
   private void addPersonaToRepository(StoragePersona persona) {
     personaRepository.addPersona(persona.getName(), persona.getQuotaNumber(),
         persona.getStoresToEnforce(), persona.getOwners());
-  }
-
-  private StoragePersona createDefaultPersona() {
-    long quota = 100;
-    String testPersonaName = Utils.getUniqueString("testPersona");
-    Set<String> testStoreNames = new HashSet<>();
-    Set<String> testOwnerNames = new HashSet<>();
-    testOwnerNames.add("testOwner");
-    return new StoragePersona(testPersonaName, quota, testStoreNames, testOwnerNames);
   }
 
   @Test
