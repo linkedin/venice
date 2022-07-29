@@ -12,8 +12,10 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.AutoCloseableSingleLock;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -171,14 +173,26 @@ public class StoragePersonaRepository {
     return storeNamePersonaMap.get(storeName);
   }
 
-  private boolean isStoreSetValid(StoragePersona persona) {
-    return persona.getStoresToEnforce().stream().allMatch(s -> storeRepository.hasStore(s) &&
+  private boolean isStoreSetValid(StoragePersona persona, Optional<Store> additionalStore) {
+    Set<String> setToValidate = new HashSet<>();
+    if (additionalStore.isPresent()) setToValidate.add(additionalStore.get().getName());
+    setToValidate.addAll(persona.getStoresToEnforce());
+    return setToValidate.stream().allMatch(s -> storeRepository.hasStore(s) &&
         !VeniceSystemStoreUtils.isSystemStore(s) &&
         (storeNamePersonaMap.get(s) == null || storeNamePersonaMap.get(s).equals(persona.getName())));
   }
 
-  private boolean isQuotaValid(StoragePersona persona) {
-    long totalStorage = getPersonaStores(persona).stream().mapToLong(Store::getStorageQuotaInByte).sum();
+  private boolean isQuotaValid(StoragePersona persona, Optional<Store> additionalStore) {
+    long totalStorage;
+    Set<Store> stores = new HashSet<>();
+    if (additionalStore.isPresent()) stores.add(additionalStore.get());
+    Set<String> storeNames = stores.stream().map(Store::getName).collect(Collectors.toSet());
+    /** If the store is currently being updated, use the updated version of the store, not the
+     * stale version from the store repository. */
+    Set<Store> personaStores = getPersonaStores(persona).stream()
+        .filter(s -> !storeNames.contains(s.getName())).collect(Collectors.toSet());
+    stores.addAll(personaStores);
+    totalStorage = stores.stream().mapToLong(Store::getStorageQuotaInByte).sum();
     return totalStorage <= persona.getQuotaNumber();
   }
 
@@ -200,13 +214,30 @@ public class StoragePersonaRepository {
   }
 
   public void validatePersona(StoragePersona persona) {
-    if (!isStoreSetValid(persona)) {
-      throw new VeniceException("Invalid store(s) provided: not all stores exist within the cluster, "
-          + "one store is already managed by a persona, one store is a system store");
-    } else if (!isQuotaValid(persona)) {
+   validateAddUpdatedStore(persona, Optional.empty());
+  }
+
+  public void validateAddUpdatedStore(StoragePersona persona, Optional<Store> store) {
+    if (!isStoreSetValid(persona, store)) {
+      throw new VeniceException("Invalid store(s) provided: either not all stores exist within the cluster, "
+          + "one store is already managed by a persona, or one store is a system store");
+    } else if (!isQuotaValid(persona, store)) {
       throw new VeniceException("Invalid persona quota: total store quota exceeds persona quota");
     } else if (!isOwnersValid(persona)) {
       throw new VeniceException("Invalid owner(s) provided");
+    }
+  }
+
+  /**
+   * This operation assumes that stores which are added to the persona are not contained within any store, but does
+   * not do any validity checks.
+   */
+  public void addStoresToPersona(String personaName, List<String> storeNames) {
+    try (AutoCloseableLock ignore = AutoCloseableSingleLock.of(personaLock)) {
+      StoragePersona persona = getPersona(personaName);
+      Set<String> stores = persona.getStoresToEnforce();
+      stores.addAll(storeNames);
+      updatePersona(persona.getName(), new UpdateStoragePersonaQueryParams().setStoresToEnforce(stores));
     }
   }
 

@@ -3203,6 +3203,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<String> nativeReplicationSourceFabric = params.getNativeReplicationSourceFabric();
         Optional<Boolean> activeActiveReplicationEnabled = params.getActiveActiveReplicationEnabled();
         Optional<Boolean> applyTargetVersionFilterForIncPush = params.applyTargetVersionFilterForIncPush();
+        Optional<String> personaName = params.getStoragePersona();
 
         final Optional<HybridStoreConfig> newHybridStoreConfig;
         if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent()
@@ -3490,6 +3491,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (params.disableDavinciPushStatusStore().isPresent() && params.disableDavinciPushStatusStore().get()) {
               disableDavinciPushStatusStore(clusterName, storeName);
             }
+
+            if (personaName.isPresent()) {
+              StoragePersonaRepository repository = getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
+              repository.addStoresToPersona(personaName.get(), Arrays.asList(storeName));
+            }
+
             logger.info("Finished updating store: " + storeName + " in cluster: " + clusterName);
         } catch (VeniceException e) {
             logger.error("Caught exception during update to store '" + storeName + "' in cluster: '" + clusterName
