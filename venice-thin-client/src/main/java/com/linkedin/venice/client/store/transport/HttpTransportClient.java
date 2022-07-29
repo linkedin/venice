@@ -7,7 +7,10 @@ import com.linkedin.venice.schema.SchemaData;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.io.IOUtils;
@@ -60,10 +63,33 @@ public class HttpTransportClient extends TransportClient {
     return valueFuture;
   }
 
+  /**
+   * Leverage non-streaming post to achieve feature parity.
+   */
   @Override
   public void streamPost(String requestPath, Map<String, String> headers, byte[] requestBody,
       TransportClientStreamingCallback callback, int keyCount) {
-    throw new VeniceClientException("streamPost is not supported");
+    try {
+      CompletableFuture<TransportClientResponse> responseFuture = post(requestPath, headers, requestBody);
+      responseFuture.whenComplete((response, throwable) -> {
+        if (throwable != null) {
+          callback.onCompletion(Optional.of(new VeniceClientException(throwable)));
+        } else {
+          // Compose the header map
+          Map<String, String> responseHeaderMap = new HashMap<>();
+          if (response.isSchemaIdValid()) {
+            responseHeaderMap.put(HttpConstants.VENICE_SCHEMA_ID, Integer.toString(response.getSchemaId()));
+          }
+          responseHeaderMap.put(HttpConstants.VENICE_COMPRESSION_STRATEGY, Integer.toString(response.getCompressionStrategy().getValue()));
+          callback.onHeaderReceived(responseHeaderMap);
+
+          callback.onDataReceived(ByteBuffer.wrap(response.getBody()));
+          callback.onCompletion(Optional.empty());
+        }
+      });
+    } catch (Exception e) {
+      callback.onCompletion(Optional.of(new VeniceClientException(e)));
+    }
   }
 
   private String getHttpRequestUrl(String requestPath) {

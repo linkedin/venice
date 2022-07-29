@@ -60,12 +60,6 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   }
 
   @Override
-  public CompletableFuture<Map<K, GenericRecord>> compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys,
-      Schema resultSchema, Optional<ClientStats> stats, long preRequestTimeInNS) throws VeniceClientException {
-    return innerStoreClient.compute(computeRequestWrapper, keys, resultSchema, stats, preRequestTimeInNS);
-  }
-
-  @Override
   public void compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys, Schema resultSchema,
       StreamingCallback<K, GenericRecord> callback, final long preRequestTimeInNS) throws VeniceClientException {
     innerStoreClient.compute(computeRequestWrapper, keys, resultSchema, callback, preRequestTimeInNS);
@@ -86,11 +80,6 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   @Override
   public void streamingBatchGet(Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
     innerStoreClient.streamingBatchGet(keys, callback);
-  }
-
-  @Override
-  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys, Optional<ClientStats> stats, long preRequestTimeInNS) throws VeniceClientException {
-    return innerStoreClient.batchGet(keys, stats, preRequestTimeInNS);
   }
 
   @Override

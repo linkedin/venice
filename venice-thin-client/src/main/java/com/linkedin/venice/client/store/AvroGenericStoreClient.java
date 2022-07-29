@@ -49,7 +49,10 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
    * @return
    * @throws VeniceClientException
    */
-  CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException;
+  default CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
+    throw new VeniceClientException("Please use CachingVeniceStoreClientFactory#getAndStartAvroGenericStoreClient() " +
+        "or VeniceGenericStoreClientFactory#createInstance() to generate a Venice avro generic client");
+  }
 
   /**
    * Get the values associated with the given keys and return them in a map of keys to values.
@@ -59,13 +62,10 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
    * This function will return the available response instead of throwing a {@link java.util.concurrent.TimeoutException}.
    * It means this function could return either full response or partial response.
    *
-   * This experimental feature is subject to backwards-incompatible changes in the future.
-   *
    * @param keys
    * @return
    * @throws VeniceClientException
    */
-  @Experimental
   default CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(Set<K> keys) throws VeniceClientException {
     throw new VeniceClientException("Please use CachingVeniceStoreClientFactory#getAndStartAvroGenericStoreClient() " +
         "or VeniceGenericStoreClientFactory#createInstance() to generate a Venice avro generic client");
@@ -76,13 +76,10 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
    * Streaming interface for {@link #batchGet(Set)}.
    * You can find more info in {@link StreamingCallback}.
    *
-   * This experimental feature is subject to backwards-incompatible changes in the future.
-   *
    * @param keys
    * @param callback
    * @throws VeniceClientException
    */
-  @Experimental
   default void streamingBatchGet(final Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
     throw new VeniceClientException("Please use CachingVeniceStoreClientFactory#getAndStartAvroGenericStoreClient() " +
         "or VeniceGenericStoreClientFactory#createInstance() to generate a Venice avro generic client");

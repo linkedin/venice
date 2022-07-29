@@ -33,19 +33,11 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
   }
 
   @Override
-  public CompletableFuture<Map<K, V>> batchGet(final Set<K> keys) throws VeniceClientException {
-    return batchGet(keys, Optional.empty(), 0);
-  }
-
-  @Override
   public ComputeRequestBuilder<K> compute() throws VeniceClientException {
     return compute(Optional.empty(), Optional.empty(), 0);
   }
 
   public abstract CompletableFuture<V> get(final K key, final Optional<ClientStats> stats,
-      final long preRequestTimeInNS) throws VeniceClientException;
-
-  public abstract CompletableFuture<Map<K, V>> batchGet(final Set<K> keys, final Optional<ClientStats> stats,
       final long preRequestTimeInNS) throws VeniceClientException;
 
   public abstract CompletableFuture<byte[]> getRaw(final String requestPath, final Optional<ClientStats> stats,

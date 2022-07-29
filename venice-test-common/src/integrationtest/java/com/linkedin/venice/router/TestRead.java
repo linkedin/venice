@@ -309,7 +309,7 @@ public abstract class TestRead {
     // Check retry requests
     Assert.assertTrue(getAggregateRouterMetricValue(".total--retry_count.LambdaStat") > 0,
         "After " + rounds + " reads, there should be some single-get retry requests");
-    Assert.assertTrue(getAggregateRouterMetricValue(".total--multiget_retry_count.LambdaStat") > 0,
+    Assert.assertTrue(getAggregateRouterMetricValue(".total--multiget_streaming_retry_count.LambdaStat") > 0,
         "After " + rounds + " reads, there should be some batch-get retry requests");
 
     // Check Router connection pool metrics
@@ -337,10 +337,10 @@ public abstract class TestRead {
     }
 
     Assert.assertTrue(getAggregateRouterMetricValue(".localhost--response_waiting_time.50thPercentile") > 0);
-    Assert.assertTrue(getAggregateRouterMetricValue(".localhost--multiget_response_waiting_time.50thPercentile") > 0);
+    Assert.assertTrue(getAggregateRouterMetricValue(".localhost--multiget_streaming_response_waiting_time.50thPercentile") > 0);
 
     Assert.assertTrue(getAggregateRouterMetricValue(".localhost--request.Count") > 0);
-    Assert.assertTrue(getAggregateRouterMetricValue(".localhost--multiget_request.Count") > 0);
+    Assert.assertTrue(getAggregateRouterMetricValue(".localhost--multiget_streaming_request.Count") > 0);
 
     // Each round:
     // 1. We do MAX_KEY_LIMIT * 2 because we do a batch get and a batch compute
@@ -441,7 +441,6 @@ public abstract class TestRead {
     for (int i = 0; i < MAX_KEY_LIMIT; ++i) {
       keySet.add(keyPrefix + i);
     }
-    int quotaExceptionsCountForSingleGetsOnly = quotaExceptionsCount;
     long startTimeForBatchGet = System.currentTimeMillis();
     int quotaExceptionsCountForBatchGet = 0;
     for (int i = 0; i < numberOfRequests; i++) {
@@ -459,9 +458,9 @@ public abstract class TestRead {
         "There were no quota exceptions at all for batch gets! "
             + "(Test too slow? " + runTimeForBatchGetMs + " ms for " + numberOfRequests + " requests)");
 
-    int throttledRequestsForBatchGetAfterQueries = (int) getAggregateRouterMetricValue(".total--multiget_throttled_request.Count");
+    int throttledRequestsForBatchGetAfterQueries = (int) getAggregateRouterMetricValue(".total--multiget_streaming_throttled_request.Count");
     Assert.assertEquals(throttledRequestsForBatchGetAfterQueries, quotaExceptionsCountForBatchGet,
-        "The throttled_request metric is inconsistent with the number of quota exceptions received by the client! (quotaExceptionsCountForSingleGetsOnly = " + quotaExceptionsCountForSingleGetsOnly + ")");
+        "The throttled_request metric is inconsistent with the number of quota exceptions received by the client!");
 
     double throttledRequestLatencyForBatchGetAfterQueries = getAggregateRouterMetricValue(".total--multiget_throttled_request_latency.Max");
     /** TODO Re-enable this assertion once we stop throwing batch get quota exceptions from {@link com.linkedin.venice.router.api.VeniceDelegateMode} */

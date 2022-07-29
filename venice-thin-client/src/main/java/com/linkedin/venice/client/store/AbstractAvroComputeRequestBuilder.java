@@ -286,17 +286,23 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
 
   @Override
   public CompletableFuture<Map<K, GenericRecord>> execute(Set<K> keys) throws VeniceClientException {
-    long preRequestTimeInNS = time.nanoseconds();
-    Pair<Schema,String> resultSchema = getResultSchema();
-    // Generate ComputeRequestWrapper object
-    ComputeRequestWrapper computeRequestWrapper = generateComputeRequest(resultSchema.getSecond());
+    CompletableFuture<Map<K, GenericRecord>> resultFuture = new CompletableFuture<>();
+    CompletableFuture<VeniceResponseMap<K, GenericRecord>> streamResultFuture = streamingExecute(keys);
+    streamResultFuture.whenComplete((response, throwable) -> {
+      if (throwable != null) {
+        resultFuture.completeExceptionally(throwable);
+      } else if (!response.isFullResponse()) {
+        resultFuture.completeExceptionally(new VeniceClientException("Received partial response, returned entry count: "
+            + response.getTotalEntryCount() + ", and key count: " + keys.size()));
+      } else {
+        resultFuture.complete(response);
+      }
+    });
 
-    CompletableFuture<Map<K, GenericRecord>> computeFuture = storeClient.compute(computeRequestWrapper, keys,
-        resultSchema.getFirst(), stats, preRequestTimeInNS);
-    if (stats.isPresent()) {
-      return AppTimeOutTrackingCompletableFuture.track(computeFuture, stats.get());
+    if (streamingStats.isPresent()) {
+      return AppTimeOutTrackingCompletableFuture.track(resultFuture, streamingStats.get());
     }
-    return computeFuture;
+    return resultFuture;
   }
 
 
@@ -327,7 +333,8 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
         if (exception.isPresent()) {
           resultFuture.completeExceptionally(exception.get());
         } else {
-          resultFuture.complete(new VeniceResponseMapImpl(resultMap, nonExistingKeyList, true));
+          boolean isFullResponse = resultMap.size() + nonExistingKeyList.size() == keys.size();
+          resultFuture.complete(new VeniceResponseMapImpl(resultMap, nonExistingKeyList, isFullResponse));
         }
       }
     });

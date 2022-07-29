@@ -492,12 +492,6 @@ public class RouterServer extends AbstractVeniceService {
         }
       }
     };
-    // Log to indicate whether Streaming is enabled in Router or not
-    if (config.isStreamingEnabled()) {
-      logger.info("Streaming is enabled in Router");
-    } else {
-      logger.info("Streaming is disabled in Router");
-    }
 
     responseAggregator = new VeniceResponseAggregator(routerStats);
     /**
@@ -644,9 +638,7 @@ public class RouterServer extends AbstractVeniceService {
   }
 
   private void addStreamingHandler(ChannelPipeline pipeline) {
-    if (config.isStreamingEnabled()) {
-      pipeline.addLast("VeniceChunkedWriteHandler", new VeniceChunkedWriteHandler());
-    }
+    pipeline.addLast("VeniceChunkedWriteHandler", new VeniceChunkedWriteHandler());
   }
 
   private void addOptionalChannelHandlersToPipeline(ChannelPipeline pipeline) {

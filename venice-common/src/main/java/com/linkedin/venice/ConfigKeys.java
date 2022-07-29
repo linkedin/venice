@@ -943,8 +943,6 @@ public class ConfigKeys {
 
   public static final String ROUTER_CLIENT_DECOMPRESSION_ENABLED = "router.client.decompression.enabled";
 
-  public static final String ROUTER_STREAMING_ENABLED = "router.streaming.enabled";
-
   /**
    * Whether to enable fast-avro in router;
    */

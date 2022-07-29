@@ -74,7 +74,7 @@ public class AvroComputeRequestBuilderTest {
     ArgumentCaptor<ComputeRequestWrapper> computeRequestCaptor = ArgumentCaptor.forClass(ComputeRequestWrapper.class);
     ArgumentCaptor<Set> keysCaptor = ArgumentCaptor.forClass(Set.class);
     ArgumentCaptor<Schema> resultSchemaCaptor = ArgumentCaptor.forClass(Schema.class);
-    ArgumentCaptor<Optional> statsCaptor = ArgumentCaptor.forClass(Optional.class);
+    ArgumentCaptor<StreamingCallback> callbackCaptor = ArgumentCaptor.forClass(StreamingCallback.class);
     ArgumentCaptor<Long> preRequestTimeCaptor = ArgumentCaptor.forClass(Long.class);
     Time mockTime = Mockito.mock(Time.class);
     long preRequestTimeInNS = 1234;
@@ -91,13 +91,12 @@ public class AvroComputeRequestBuilderTest {
         .cosineSimilarity("float_array_field2", cosineSimilarityParam, "float_array_field2_cosine_similarity_result")
         .cosineSimilarity("float_array_field2", cosineSimilarityParam, "float_array_field2_another_cosine_similarity_result")
         .execute(keys);
-
     verify(mockClient).compute(computeRequestCaptor.capture(), keysCaptor.capture(), resultSchemaCaptor.capture(),
-        statsCaptor.capture(), preRequestTimeCaptor.capture());
+        callbackCaptor.capture(), preRequestTimeCaptor.capture());
     String expectedSchema = "{\"type\":\"record\",\"name\":\"testStore_VeniceComputeResult\",\"doc\":\"\",\"fields\":[{\"name\":\"float_field\",\"type\":\"float\",\"doc\":\"\"},{\"name\":\"record_field\",\"type\":{\"type\":\"record\",\"name\":\"Record1\",\"fields\":[{\"name\":\"nested_field1\",\"type\":\"double\",\"doc\":\"doc for nested field\"}]},\"doc\":\"\",\"namespace\":\"com.linkedin.test\"},{\"name\":\"int_field\",\"type\":\"int\",\"doc\":\"\",\"default\":0},{\"name\":\"float_array_field1_dot_product_result\",\"type\":[\"null\",\"float\"],\"doc\":\"\",\"default\":null},{\"name\":\"float_array_field2_dot_product_result\",\"type\":[\"null\",\"float\"],\"doc\":\"\",\"default\":null},{\"name\":\"float_array_field2_another_dot_product_result\",\"type\":[\"null\",\"float\"],\"doc\":\"\",\"default\":null},{\"name\":\"float_array_field1_cosine_similarity_result\",\"type\":[\"null\",\"float\"],\"doc\":\"\",\"default\":null},{\"name\":\"float_array_field2_cosine_similarity_result\",\"type\":[\"null\",\"float\"],\"doc\":\"\",\"default\":null},{\"name\":\"float_array_field2_another_cosine_similarity_result\",\"type\":[\"null\",\"float\"],\"doc\":\"\",\"default\":null},{\"name\":\"__veniceComputationError__\",\"type\":{\"type\":\"map\",\"values\":\"string\"},\"doc\":\"\"}]}";
     Assert.assertEquals(resultSchemaCaptor.getValue().toString(), expectedSchema);
     Assert.assertEquals(keysCaptor.getValue(), keys);
-    Assert.assertFalse(statsCaptor.getValue().isPresent());
+    Assert.assertNotNull(callbackCaptor.getValue());
     Assert.assertEquals(preRequestTimeCaptor.getValue().longValue(), preRequestTimeInNS);
     ComputeRequestWrapper capturedComputeRequest = computeRequestCaptor.getValue();
     Assert.assertNotNull(capturedComputeRequest);
@@ -183,12 +182,12 @@ public class AvroComputeRequestBuilderTest {
         .execute(keys);
 
     verify(mockClient2).compute(computeRequestCaptor.capture(), keysCaptor.capture(), resultSchemaCaptor.capture(),
-        statsCaptor.capture(), preRequestTimeCaptor.capture());
+        callbackCaptor.capture(), preRequestTimeCaptor.capture());
 
     expectedSchema = "{\"type\":\"record\",\"name\":\"testStore_VeniceComputeResult\",\"doc\":\"\",\"fields\":[{\"name\":\"int_field\",\"type\":\"int\",\"doc\":\"\",\"default\":0},{\"name\":\"float_array_field1_dot_product_result\",\"type\":[\"null\",\"float\"],\"doc\":\"\",\"default\":null},{\"name\":\"float_array_field2_cosine_similarity_result\",\"type\":[\"null\",\"float\"],\"doc\":\"\",\"default\":null},{\"name\":\"float_array_field1_hadamard_product_result\",\"type\":[\"null\",{\"type\":\"array\",\"items\":\"float\"}],\"doc\":\"\",\"default\":null},{\"name\":\"__veniceComputationError__\",\"type\":{\"type\":\"map\",\"values\":\"string\"},\"doc\":\"\"}]}";
     Assert.assertEquals(resultSchemaCaptor.getValue().toString(), expectedSchema);
     Assert.assertEquals(keysCaptor.getValue(), keys);
-    Assert.assertFalse(statsCaptor.getValue().isPresent());
+    Assert.assertNotNull(callbackCaptor.getValue());
     Assert.assertEquals(preRequestTimeCaptor.getValue().longValue(), preRequestTimeInNS);
     capturedComputeRequest = computeRequestCaptor.getValue();
     Assert.assertNotNull(capturedComputeRequest);

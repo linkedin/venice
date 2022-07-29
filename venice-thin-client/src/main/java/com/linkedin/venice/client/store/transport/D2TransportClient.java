@@ -23,6 +23,7 @@ import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.schema.SchemaData;
@@ -211,7 +212,20 @@ public class D2TransportClient extends TransportClient {
            * The following onDeserializationCompletion invocation shouldn't need to be protected since
            * either 'onSuccess' or 'onError' can be invoked, but not both.
            */
-          callback.onCompletion(Optional.of(new VeniceClientException(e)));
+          if (e instanceof StreamException) {
+            StreamException streamException = (StreamException)e;
+            callback.onCompletion(
+                Optional.of(
+                    new VeniceClientHttpException(
+                        streamException.getResponse().toString(),
+                        streamException.getResponse().getStatus()
+                    )
+                )
+            );
+            ((StreamException)e).getResponse().getStatus();
+          } else {
+            callback.onCompletion(Optional.of(new VeniceClientException(e)));
+          }
         }
       });
     } catch (Throwable t) {

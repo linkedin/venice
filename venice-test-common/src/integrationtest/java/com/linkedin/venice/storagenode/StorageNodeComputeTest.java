@@ -280,7 +280,7 @@ public class StorageNodeComputeTest {
     Assert.assertTrue(MetricsUtils.getSum("." + storeName + "--compute_hadamard_product_count.Total", veniceCluster.getVeniceServers()) >= rounds * keyCount);
 
     // Check retry requests
-    Assert.assertTrue(MetricsUtils.getSum(".total--compute_retry_count.LambdaStat", veniceCluster.getVeniceRouters()) > 0,
+    Assert.assertTrue(MetricsUtils.getSum(".total--compute_streaming_retry_count.LambdaStat", veniceCluster.getVeniceRouters()) > 0,
         "After " + rounds + " reads, there should be some compute retry requests");
   }
 

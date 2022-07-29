@@ -24,9 +24,6 @@ public interface AvroGenericReadComputeStoreClient<K,V> extends AvroGenericStore
  ComputeRequestBuilder<K> compute(final Optional<ClientStats> stats, final Optional<ClientStats> streamingStats,
      final long preRequestTimeInNS) throws VeniceClientException;
 
- CompletableFuture<Map<K, GenericRecord>> compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys,
-     Schema resultSchema, Optional<ClientStats> stats, final long preRequestTimeInNS) throws VeniceClientException;
-
  void compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys, Schema resultSchema,
      StreamingCallback<K, GenericRecord> callback, final long preRequestTimeInNS) throws VeniceClientException;
 
