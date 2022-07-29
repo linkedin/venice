@@ -507,6 +507,14 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getString(REGIONS_FILTER);
   }
 
+  public UpdateStoreQueryParams setStoragePersona(String personaName) {
+    return putString(PERSONA_NAME, personaName);
+  }
+
+  public Optional<String> getStoragePersona() {
+    return getString(PERSONA_NAME);
+  }
+
   //***************** above this line are getters and setters *****************
   private UpdateStoreQueryParams putInteger(String name, int value) {
     return (UpdateStoreQueryParams) add(name, value);

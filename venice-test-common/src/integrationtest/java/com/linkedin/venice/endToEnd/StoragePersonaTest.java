@@ -17,25 +17,18 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.utils.TestStoragePersonaUtils.*;
+
 import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
 public class StoragePersonaTest {
-
-  private final static String quotaFailedRegex = "Invalid persona quota: total store quota exceeds persona quota";
-  private final static String storesFailedRegex =
-      "Invalid store\\(s\\) provided: not all stores exist within the cluster, "
-          + "one store is already managed by a persona, one store is a system store";
-  private final static String personaDoesNotExistRegex =
-      "Update failed: persona with name .* does not exist in this cluster";
-  private final static String ownersDoesNotExistRegex = "Invalid owner\\(s\\) provided";
 
   private VeniceClusterWrapper venice;
   private ZkServerWrapper parentZk;
@@ -64,15 +57,6 @@ public class StoragePersonaTest {
     Utils.closeQuietlyWithErrorLogged(parentController);
     Utils.closeQuietlyWithErrorLogged(parentZk);
     Utils.closeQuietlyWithErrorLogged(venice);
-  }
-
-  private StoragePersona createDefaultPersona() {
-    long quota = 100;
-    String testPersonaName = Utils.getUniqueString("testPersona");
-    Set<String> testStoreNames = new HashSet<>();
-    Set<String> testOwnerNames = new HashSet<>();
-    testOwnerNames.add("testOwner");
-    return new StoragePersona(testPersonaName, quota, testStoreNames, testOwnerNames);
   }
 
   private Store setUpTestStoreAndAddToRepo(long quota) {
