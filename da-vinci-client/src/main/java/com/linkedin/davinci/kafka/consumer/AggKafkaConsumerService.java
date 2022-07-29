@@ -11,8 +11,6 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Optional;
-import java.util.OptionalLong;
 import java.util.Properties;
 import java.util.Set;
 import org.apache.kafka.clients.CommonClientConfigs;
@@ -39,7 +37,6 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final TopicExistenceChecker topicExistenceChecker;
   private final boolean liveConfigBasedKafkaThrottlingEnabled;
   private final KafkaConsumerService.ConsumerAssignmentStrategy sharedConsumerAssignmentStrategy;
-
   private final Map<String, KafkaConsumerService> kafkaServerToConsumerServiceMap = new VeniceConcurrentHashMap<>();
   private final Map<String, String> kafkaClusterUrlToAliasMap;
 
@@ -63,7 +60,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   }
 
   @Override
-  public boolean startInner() throws Exception {
+  public boolean startInner() {
     return true;
   }
 
@@ -75,10 +72,11 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   }
 
   /**
-   * Get {@link KafkaConsumerService} for a specific Kafka bootstrap url.
+   * @return the {@link KafkaConsumerService} for a specific Kafka bootstrap url,
+   *         or null if there isn't any.
    */
-  public Optional<KafkaConsumerService> getKafkaConsumerService(final String kafkaURL) {
-    return Optional.ofNullable(kafkaServerToConsumerServiceMap.get(kafkaURL));
+  public KafkaConsumerService getKafkaConsumerService(final String kafkaURL) {
+    return kafkaServerToConsumerServiceMap.get(kafkaURL);
   }
 
   /**
@@ -120,28 +118,29 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     }
   }
 
-  public Optional<KafkaConsumerWrapper> assignConsumerFor(final String kafkaURL, StoreIngestionTask ingestionTask) {
-    Optional<KafkaConsumerService> consumerService = getKafkaConsumerService(kafkaURL);
-    if (!consumerService.isPresent()) {
-      return Optional.empty();
+  /**
+   * Assigns one of the pre-allocated consumers to the provided {@link StoreIngestionTask}.
+   *
+   * @return the consumer which was assigned,
+   *         or null if the {@param kafkaURL} is invalid
+   */
+  public KafkaConsumerWrapper assignConsumerFor(final String kafkaURL, StoreIngestionTask ingestionTask) {
+    KafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
+    if (consumerService == null) {
+      return null;
     }
-    KafkaConsumerWrapper selectedConsumer = consumerService.get().assignConsumerFor(ingestionTask);
-    consumerService.get().attach(selectedConsumer, ingestionTask.getVersionTopic(), ingestionTask);
-    return Optional.of(selectedConsumer);
+    KafkaConsumerWrapper selectedConsumer = consumerService.assignConsumerFor(ingestionTask);
+    consumerService.attach(selectedConsumer, ingestionTask.getVersionTopic(), ingestionTask);
+    return selectedConsumer;
   }
 
   public boolean hasConsumerAssignedFor(final String kafkaURL, String versionTopic, String topic, int partition) {
-    Optional<KafkaConsumerService> consumerService = getKafkaConsumerService(kafkaURL);
-    if (!consumerService.isPresent()) {
+    KafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
+    if (consumerService == null) {
       return false;
     }
-    Optional<KafkaConsumerWrapper> consumer = consumerService.get().getConsumerAssignedToVersionTopic(versionTopic);
-    if (consumer.isPresent()) {
-      if (consumer.get().hasSubscription(topic, partition)) {
-          return true;
-      }
-    }
-    return false;
+    KafkaConsumerWrapper consumer = consumerService.getConsumerAssignedToVersionTopic(versionTopic);
+    return consumer != null && consumer.hasSubscription(topic, partition);
   }
 
   public boolean hasConsumerAssignedFor(String versionTopic, String topic, int partition) {
@@ -154,10 +153,11 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   }
 
   public boolean hasAnyConsumerAssignedFor(String versionTopic, Set<String> topics) {
+    KafkaConsumerWrapper consumer;
     for (KafkaConsumerService consumerService : kafkaServerToConsumerServiceMap.values()) {
-      Optional<KafkaConsumerWrapper> consumer = consumerService.getConsumerAssignedToVersionTopic(versionTopic);
-      if (consumer.isPresent()) {
-        if (consumer.get().hasSubscribedAnyTopic(topics)) {
+      consumer = consumerService.getConsumerAssignedToVersionTopic(versionTopic);
+      if (consumer != null) {
+        if (consumer.hasSubscribedAnyTopic(topics)) {
           return true;
         }
       }
@@ -166,22 +166,22 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   }
 
   public void resetOffsetFor(String versionTopic, String topic, int partition) {
+    KafkaConsumerWrapper consumer;
     for (KafkaConsumerService consumerService : kafkaServerToConsumerServiceMap.values()) {
-      Optional<KafkaConsumerWrapper> consumer = consumerService.getConsumerAssignedToVersionTopic(versionTopic);
-      if (consumer.isPresent()) {
-        consumer.get().resetOffset(topic, partition);
+      consumer = consumerService.getConsumerAssignedToVersionTopic(versionTopic);
+      if (consumer != null) {
+        consumer.resetOffset(topic, partition);
       }
     }
   }
 
   public void unsubscribeConsumerFor(final String kafkaURL, String versionTopic, String topic, int partition) {
-    Optional<KafkaConsumerService> consumerService = getKafkaConsumerService(kafkaURL);
-    if (!consumerService.isPresent()) {
-      return;
-    }
-    Optional<KafkaConsumerWrapper> consumer = consumerService.get().getConsumerAssignedToVersionTopic(versionTopic);
-    if (consumer.isPresent()) {
-      consumer.get().unSubscribe(topic, partition);
+    KafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
+    if (consumerService != null) {
+      KafkaConsumerWrapper consumer = consumerService.getConsumerAssignedToVersionTopic(versionTopic);
+      if (consumer != null) {
+        consumer.unSubscribe(topic, partition);
+      }
     }
   }
 
@@ -192,10 +192,11 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   }
 
   public void batchUnsubscribeConsumerFor(String versionTopic, Set<TopicPartition> topicPartitionSet) {
+    KafkaConsumerWrapper consumer;
     for (KafkaConsumerService consumerService : kafkaServerToConsumerServiceMap.values()) {
-      Optional<KafkaConsumerWrapper> consumer = consumerService.getConsumerAssignedToVersionTopic(versionTopic);
-      if (consumer.isPresent()) {
-        consumer.get().batchUnsubscribe(topicPartitionSet);
+      consumer = consumerService.getConsumerAssignedToVersionTopic(versionTopic);
+      if (consumer != null) {
+        consumer.batchUnsubscribe(topicPartitionSet);
       }
     }
   }
@@ -203,43 +204,39 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   public void subscribeConsumerFor(final String kafkaURL, StoreIngestionTask storeIngestionTask,
       String topic, int partition, long lastOffset) {
     String versionTopic = storeIngestionTask.getVersionTopic();
-    Optional<KafkaConsumerService> consumerService = getKafkaConsumerService(kafkaURL);
-    if (!consumerService.isPresent()) {
+    KafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
+    if (consumerService == null) {
       throw new VeniceException("Kafka consumer service must exist for version topic: " + versionTopic
           + " in Kafka cluster: " + kafkaURL);
     }
 
-    Optional<KafkaConsumerWrapper> consumer = consumerService.get().getConsumerAssignedToVersionTopic(versionTopic);
-    if (!consumer.isPresent()) {
+    KafkaConsumerWrapper consumer = consumerService.getConsumerAssignedToVersionTopic(versionTopic);
+    if (consumer == null) {
       consumer = this.assignConsumerFor(kafkaURL, storeIngestionTask);
     }
 
-    if (consumer.isPresent()) {
-      consumerService.get().attach(consumer.get(), topic, storeIngestionTask);
-      consumer.get().subscribe(topic, partition, lastOffset);
+    if (consumer != null) {
+      consumerService.attach(consumer, topic, storeIngestionTask);
+      consumer.subscribe(topic, partition, lastOffset);
     } else {
       throw new VeniceException("Shared consumer must exist for version topic: " + versionTopic + " in Kafka cluster: "
           + kafkaURL);
     }
   }
 
-  public OptionalLong getOffsetLagFor(final String kafkaURL, String versionTopic, String topic, int partition) {
-    Optional<KafkaConsumerService> consumerService = getKafkaConsumerService(kafkaURL);
-    if (!consumerService.isPresent()) {
-      return OptionalLong.empty();
-    }
+  public long getOffsetLagFor(final String kafkaURL, String versionTopic, String topic, int partition) {
+    KafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
+    return consumerService == null ? -1 : consumerService.getOffsetLagFor(versionTopic, topic, partition);
+  }
 
-    Optional<KafkaConsumerWrapper> consumer = consumerService.get().getConsumerAssignedToVersionTopic(versionTopic);
-    if (!consumer.isPresent()) {
-      return OptionalLong.empty();
-    }
-    return consumer.get().getOffsetLag(topic, partition);
+  public long getLatestOffsetFor(final String kafkaURL, String versionTopic, String topic, int partition) {
+    KafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
+    return consumerService == null ? -1 : consumerService.getLatestOffsetFor(versionTopic, topic, partition);
   }
 
   /**
-   * {@link #unsubscribeAll(String)} will be called when an ingestion task is killed, {@link AggKafkaConsumerService}
+   * This will be called when an ingestion task is killed. {@link AggKafkaConsumerService}
    * will try to stop all subscription associated with the given version topic.
-   * @param versionTopic
    */
   public void unsubscribeAll(String versionTopic) {
     kafkaServerToConsumerServiceMap.values().forEach(consumerService -> consumerService.unsubscribeAll(versionTopic));
@@ -253,36 +250,37 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   }
 
   public void pauseConsumerFor(String versionTopic, String topic, int partition) {
+    KafkaConsumerWrapper consumer;
     for (KafkaConsumerService consumerService : kafkaServerToConsumerServiceMap.values()) {
-      Optional<KafkaConsumerWrapper> consumer = consumerService.getConsumerAssignedToVersionTopic(versionTopic);
-      if (consumer.isPresent()) {
-        consumer.get().pause(topic, partition);
+      consumer = consumerService.getConsumerAssignedToVersionTopic(versionTopic);
+      if (consumer != null) {
+        consumer.pause(topic, partition);
       }
     }
   }
 
   public void resumeConsumerFor(String versionTopic, String topic, int partition) {
+    KafkaConsumerWrapper consumer;
     for (KafkaConsumerService consumerService : kafkaServerToConsumerServiceMap.values()) {
-      Optional<KafkaConsumerWrapper> consumer = consumerService.getConsumerAssignedToVersionTopic(versionTopic);
-      if (consumer.isPresent()) {
-        consumer.get().resume(topic, partition);
+      consumer = consumerService.getConsumerAssignedToVersionTopic(versionTopic);
+      if (consumer != null) {
+        consumer.resume(topic, partition);
       }
     }
   }
 
   /**
    * It returns all Kafka URLs of the consumers assigned for {@param versionTopic}.
-   * @param versionTopic
    */
   public Set<String> getKafkaUrlsFor(String versionTopic) {
-    Set<String> kafkaUrls = new HashSet<>();
-    kafkaServerToConsumerServiceMap.forEach((kafkaUrl, consumerService) -> {
-      Optional<KafkaConsumerWrapper> consumer = consumerService.getConsumerAssignedToVersionTopic(versionTopic);
-      if (consumer.isPresent()) {
-        kafkaUrls.add(kafkaUrl);
+    Set<String> kafkaUrls = new HashSet<>(kafkaServerToConsumerServiceMap.size());
+    KafkaConsumerWrapper consumer;
+    for (Map.Entry<String, KafkaConsumerService> entry: kafkaServerToConsumerServiceMap.entrySet()) {
+      consumer = entry.getValue().getConsumerAssignedToVersionTopic(versionTopic);
+      if (consumer != null) {
+        kafkaUrls.add(entry.getKey());
       }
-    });
+    }
     return kafkaUrls;
   }
-
 }

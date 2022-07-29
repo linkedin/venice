@@ -64,7 +64,7 @@ class CachedKafkaMetadataGetter {
 
   boolean containsTopic(TopicManager topicManager, String topicName) {
     return fetchMetadata(
-        new KafkaMetadataCacheKey(topicManager.getKafkaBootstrapServers(), topicName, null),
+        new KafkaMetadataCacheKey(topicManager.getKafkaBootstrapServers(), topicName, -1),
         topicExistenceCache,
         () -> topicManager.containsTopic(topicName)
     );
@@ -104,9 +104,9 @@ class CachedKafkaMetadataGetter {
   private static class KafkaMetadataCacheKey {
     private final String kafkaServer;
     private final String topicName;
-    private final Integer partitionId;
+    private final int partitionId;
 
-    private KafkaMetadataCacheKey(String kafkaServer, String topicName, Integer partitionId) {
+    private KafkaMetadataCacheKey(String kafkaServer, String topicName, int partitionId) {
       this.kafkaServer = kafkaServer;
       this.topicName = topicName;
       this.partitionId = partitionId;
@@ -117,7 +117,7 @@ class CachedKafkaMetadataGetter {
       int result = 1;
       result = 31 * result + (kafkaServer == null ? 0 : kafkaServer.hashCode());
       result = 31 * result + (topicName == null ? 0 : topicName.hashCode());
-      result = 31 * result + Objects.hashCode(partitionId);
+      result = 31 * result + partitionId;
       return result;
     }
 
@@ -131,9 +131,9 @@ class CachedKafkaMetadataGetter {
       }
 
       final KafkaMetadataCacheKey other = (KafkaMetadataCacheKey) o;
-      return Objects.equals(kafkaServer, other.kafkaServer)
+      return partitionId == other.partitionId
           && Objects.equals(topicName, other.topicName)
-          && Objects.equals(partitionId, other.partitionId);
+          && Objects.equals(kafkaServer, other.kafkaServer);
     }
   }
 

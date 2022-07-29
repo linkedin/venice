@@ -81,6 +81,7 @@ import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
+import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.ints.IntSet;
 import it.unimi.dsi.fastutil.ints.IntSets;
@@ -111,7 +112,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -159,6 +159,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /** storage destination for consumption */
   protected final StorageEngineRepository storageEngineRepository;
   protected final String kafkaVersionTopic;
+  protected final String realTimeTopic;
   protected final String storeName;
   protected final int versionNumber;
   protected final ReadOnlySchemaRepository schemaRepository;
@@ -388,6 +389,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.schemaRepository = builder.getSchemaRepo();
     this.kafkaVersionTopic = storeConfig.getStoreVersionName();
     this.storeName = Version.parseStoreFromKafkaTopicName(kafkaVersionTopic);
+    this.realTimeTopic = Version.composeRealTimeTopic(storeName);
     this.versionNumber = Version.parseVersionFromKafkaTopicName(kafkaVersionTopic);
     this.availableSchemaIds = new IntOpenHashSet();
     this.deserializedSchemaIds = new IntOpenHashSet();
@@ -748,90 +750,90 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       isLagAcceptable =
           versionTopicPartitionOffset <= partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset() + SLOPPY_OFFSET_CATCHUP_THRESHOLD;
     } else {
-      // Looks like none of the short-circuitry fired, so we need to measure lag!
-      long offsetThreshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
-      long producerTimeLagThresholdInSeconds = hybridStoreConfig.get().getProducerTimestampLagThresholdToGoOnlineInSeconds();
-      String msg = kafkaVersionTopic + "_" + partitionId;
+      try {
+        // Looks like none of the short-circuitry fired, so we need to measure lag!
+        long offsetThreshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
+        long producerTimeLagThresholdInSeconds = hybridStoreConfig.get().getProducerTimestampLagThresholdToGoOnlineInSeconds();
+        String msg = kafkaVersionTopic + "_" + partitionId;
 
-      // Log only once a minute per partition.
-      boolean shouldLogLag = !REDUNDANT_LOGGING_FILTER.isRedundantException(msg);
-      /**
-       * If offset lag threshold is set to -1, time lag threshold will be the only criterion for going online.
-       */
-      if (offsetThreshold >= 0) {
-        long lag = measureHybridOffsetLag(partitionConsumptionState, shouldLogLag);
-        boolean lagging = lag > offsetThreshold;
-
-        isLagAcceptable = !lagging;
-
-        if (shouldLogLag) {
-          logger.info(String.format("%s [Offset lag] partition %d is %slagging. Lag: [%d] %s Threshold [%d]", consumerTaskId,
-              partitionId, (lagging ? "" : "not "), lag, (lagging ? ">" : "<"), offsetThreshold));
-        }
-      }
-
-      /**
-       * If the hybrid producer time lag threshold is positive, check the difference between current time and latest
-       * producer timestamp; ready-to-serve will not be reported until the diff is smaller than the defined time lag threshold.
-       *
-       * If timestamp lag threshold is set to -1, offset lag threshold will be the only criterion for going online.
-       */
-      if (producerTimeLagThresholdInSeconds > 0) {
-        long producerTimeLagThresholdInMS = TimeUnit.SECONDS.toMillis(producerTimeLagThresholdInSeconds);
-        long latestConsumedProducerTimestamp = partitionConsumptionState.getOffsetRecord().getLatestProducerProcessingTimeInMs();
-        if (amplificationFactor != 1) {
-          latestConsumedProducerTimestamp =
-              getLatestConsumedProducerTimestampWithSubPartition(latestConsumedProducerTimestamp, partitionConsumptionState);
-        }
-        long producerTimestampLag = LatencyUtils.getElapsedTimeInMs(latestConsumedProducerTimestamp);
-        boolean timestampLagIsAcceptable = (producerTimestampLag < producerTimeLagThresholdInMS);
-        if (shouldLogLag) {
-          logger.info(String.format("%s [Time lag] partition %d is %slagging. The latest producer timestamp is %d. Timestamp Lag: [%d] %s Threshold [%d]",
-              consumerTaskId, partitionId, (!timestampLagIsAcceptable ? "" : "not "), latestConsumedProducerTimestamp, producerTimestampLag,
-              (timestampLagIsAcceptable ? "<" : ">"), producerTimeLagThresholdInMS));
-        }
+        // Log only once a minute per partition.
+        boolean shouldLogLag = !REDUNDANT_LOGGING_FILTER.isRedundantException(msg);
         /**
-         * If time lag is not acceptable but the producer timestamp of the last message of RT is smaller or equal than
-         * the known latest producer timestamp in server, it means ingestion task has reached the end of RT, so it's
-         * safe to ignore the time lag.
-         *
-         * Notice that if EOP is not received, this function will be short circuit before reaching here, so there is
-         * no risk of meeting the time lag earlier than expected.
+         * If offset lag threshold is set to -1, time lag threshold will be the only criterion for going online.
          */
-        if (!timestampLagIsAcceptable) {
-          String msgIdentifier = this.kafkaVersionTopic + "_" + partitionId + "_ignore_time_lag";
-          String realTimeTopic = Version.composeRealTimeTopic(storeName);
-          String realTimeTopicKafkaURL;
-          Set<String> realTimeTopicKafkaURLs = getRealTimeDataSourceKafkaAddress(partitionConsumptionState);
-          if (realTimeTopicKafkaURLs.isEmpty()) {
-            throw new VeniceException("Expect a real-time topic Kafka URL for store " + storeName);
-          } else if (realTimeTopicKafkaURLs.size() == 1) {
-            realTimeTopicKafkaURL = realTimeTopicKafkaURLs.iterator().next();
-          } else if (realTimeTopicKafkaURLs.contains(localKafkaServer)) {
-            realTimeTopicKafkaURL = localKafkaServer;
-          } else {
-            throw new VeniceException(String.format("Expect source RT Kafka URLs contains local Kafka URL. Got local " +
-                    "Kafka URL %s and RT source Kafka URLs %s", localKafkaServer, realTimeTopicKafkaURLs));
-          }
+        if (offsetThreshold >= 0) {
+          long lag = measureHybridOffsetLag(partitionConsumptionState, shouldLogLag);
 
-          final String lagMeasurementTopic, lagMeasurementKafkaUrl;
-          // Since DaVinci clients run in embedded mode, they may not have network ACLs to check remote RT to get latest
-          // producer timestamp in RT. Only use latest producer time in local RT.
-          if (isDaVinciClient) {
-            lagMeasurementKafkaUrl = localKafkaServer;
-            lagMeasurementTopic = realTimeTopic;
-          } else {
-            lagMeasurementKafkaUrl = realTimeTopicKafkaURL;
-            lagMeasurementTopic = realTimeTopic;
-          }
+          boolean lagging = lag > offsetThreshold;
 
-          if (!cachedKafkaMetadataGetter.containsTopic(getTopicManager(lagMeasurementKafkaUrl), lagMeasurementTopic)) {
-            timestampLagIsAcceptable = true;
-            if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier)) {
-              logger.info(String.format("%s [Time lag] Topic %s doesn't exist; ignoring time lag.", consumerTaskId, lagMeasurementTopic));
+          isLagAcceptable = !lagging;
+
+          if (shouldLogLag) {
+            logger.info(String.format("%s [Offset lag] partition %d is %slagging. Lag: [%d] %s Threshold [%d]", consumerTaskId,
+                partitionId, (lagging ? "" : "not "), lag, (lagging ? ">" : "<"), offsetThreshold));
+          }
+        }
+
+        /**
+         * If the hybrid producer time lag threshold is positive, check the difference between current time and latest
+         * producer timestamp; ready-to-serve will not be reported until the diff is smaller than the defined time lag threshold.
+         *
+         * If timestamp lag threshold is set to -1, offset lag threshold will be the only criterion for going online.
+         */
+        if (producerTimeLagThresholdInSeconds > 0) {
+          long producerTimeLagThresholdInMS = TimeUnit.SECONDS.toMillis(producerTimeLagThresholdInSeconds);
+          long latestConsumedProducerTimestamp = partitionConsumptionState.getOffsetRecord().getLatestProducerProcessingTimeInMs();
+          if (amplificationFactor != 1) {
+            latestConsumedProducerTimestamp =
+                getLatestConsumedProducerTimestampWithSubPartition(latestConsumedProducerTimestamp, partitionConsumptionState);
+          }
+          long producerTimestampLag = LatencyUtils.getElapsedTimeInMs(latestConsumedProducerTimestamp);
+          boolean timestampLagIsAcceptable = (producerTimestampLag < producerTimeLagThresholdInMS);
+          if (shouldLogLag) {
+            logger.info(String.format("%s [Time lag] partition %d is %slagging. The latest producer timestamp is %d. Timestamp Lag: [%d] %s Threshold [%d]",
+                consumerTaskId, partitionId, (!timestampLagIsAcceptable ? "" : "not "), latestConsumedProducerTimestamp, producerTimestampLag,
+                (timestampLagIsAcceptable ? "<" : ">"), producerTimeLagThresholdInMS));
+          }
+          /**
+           * If time lag is not acceptable but the producer timestamp of the last message of RT is smaller or equal than
+           * the known latest producer timestamp in server, it means ingestion task has reached the end of RT, so it's
+           * safe to ignore the time lag.
+           *
+           * Notice that if EOP is not received, this function will be short circuit before reaching here, so there is
+           * no risk of meeting the time lag earlier than expected.
+           */
+          if (!timestampLagIsAcceptable) {
+            String msgIdentifier = this.kafkaVersionTopic + "_" + partitionId + "_ignore_time_lag";
+            String realTimeTopicKafkaURL;
+            Set<String> realTimeTopicKafkaURLs = getRealTimeDataSourceKafkaAddress(partitionConsumptionState);
+            if (realTimeTopicKafkaURLs.isEmpty()) {
+              throw new VeniceException("Expect a real-time topic Kafka URL for store " + storeName);
+            } else if (realTimeTopicKafkaURLs.size() == 1) {
+              realTimeTopicKafkaURL = realTimeTopicKafkaURLs.iterator().next();
+            } else if (realTimeTopicKafkaURLs.contains(localKafkaServer)) {
+              realTimeTopicKafkaURL = localKafkaServer;
+            } else {
+              throw new VeniceException(String.format("Expect source RT Kafka URLs contains local Kafka URL. Got local " +
+                      "Kafka URL %s and RT source Kafka URLs %s", localKafkaServer, realTimeTopicKafkaURLs));
             }
-          } else {
-            try {
+
+            final String lagMeasurementTopic, lagMeasurementKafkaUrl;
+            // Since DaVinci clients run in embedded mode, they may not have network ACLs to check remote RT to get latest
+            // producer timestamp in RT. Only use latest producer time in local RT.
+            if (isDaVinciClient) {
+              lagMeasurementKafkaUrl = localKafkaServer;
+              lagMeasurementTopic = realTimeTopic;
+            } else {
+              lagMeasurementKafkaUrl = realTimeTopicKafkaURL;
+              lagMeasurementTopic = realTimeTopic;
+            }
+
+            if (!cachedKafkaMetadataGetter.containsTopic(getTopicManager(lagMeasurementKafkaUrl), lagMeasurementTopic)) {
+              timestampLagIsAcceptable = true;
+              if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier)) {
+                logger.info(String.format("%s [Time lag] Topic %s doesn't exist; ignoring time lag.", consumerTaskId, lagMeasurementTopic));
+              }
+            } else {
               long latestProducerTimestampInTopic = cachedKafkaMetadataGetter.getProducerTimestampOfLastDataMessage(
                   getTopicManager(lagMeasurementKafkaUrl),
                   lagMeasurementTopic,
@@ -852,34 +854,32 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                   }
                 }
               }
-            } catch (Exception e) {
-              String exceptionMsgIdentifier = new StringBuilder()
-                  .append(storeName).append("_")
-                  .append(versionNumber).append("_")
-                  .append("getProducerTimestampOfLastDataMessage")
-                  .toString();
-              if (!REDUNDANT_LOGGING_FILTER.isRedundantException(exceptionMsgIdentifier)) {
-                logger.info(String.format("Got exception when getting producer timestamp of last data message from topic: %s on Kafka cluster: %s", lagMeasurementTopic, lagMeasurementKafkaUrl));
-              }
-              timestampLagIsAcceptable = false;
             }
           }
+          if (offsetThreshold >= 0) {
+            /**
+             * If both threshold configs are on, both both offset lag and time lag must be within thresholds before online.
+             */
+            isLagAcceptable &= timestampLagIsAcceptable;
+          } else {
+            isLagAcceptable = timestampLagIsAcceptable;
+          }
         }
-        if (offsetThreshold >= 0) {
-          /**
-           * If both threshold configs are on, both both offset lag and time lag must be within thresholds before online.
-           */
-          isLagAcceptable &= timestampLagIsAcceptable;
-        } else {
-          isLagAcceptable = timestampLagIsAcceptable;
+      } catch (Exception e) {
+        String exceptionMsgIdentifier = new StringBuilder()
+            .append(kafkaVersionTopic)
+            .append("_isReadyToServe")
+            .toString();
+        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(exceptionMsgIdentifier)) {
+          logger.info("Exception when trying to determine if hybrid store is ready to serve: {}", storeName, e);
         }
+        isLagAcceptable = false;
       }
     }
 
     if (isLagAcceptable) {
       amplificationAdapter.lagHasCaughtUp(partitionConsumptionState.getUserPartition());
     }
-
     return isLagAcceptable;
   }
 
@@ -890,10 +890,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected long getLatestConsumedProducerTimestampWithSubPartition(long consumedProducerTimestamp,
       PartitionConsumptionState partitionConsumptionState) {
     long latestConsumedProducerTimestamp = consumedProducerTimestamp;
-    for (int subPartition : PartitionUtils.getSubPartitions(partitionConsumptionState.getUserPartition(), amplificationFactor)) {
-      if (partitionConsumptionStateMap.containsKey(subPartition) && partitionConsumptionStateMap.get(subPartition).isEndOfPushReceived()) {
-        latestConsumedProducerTimestamp = Math.max(latestConsumedProducerTimestamp,
-            partitionConsumptionStateMap.get(subPartition).getOffsetRecord().getLatestProducerProcessingTimeInMs());
+
+    IntList subPartitions = PartitionUtils.getSubPartitions(partitionConsumptionState.getUserPartition(), amplificationFactor);
+    PartitionConsumptionState subPartitionConsumptionState;
+    for (int i = 0; i < subPartitions.size(); i++) {
+      subPartitionConsumptionState = partitionConsumptionStateMap.get(subPartitions.getInt(i));
+      if (subPartitionConsumptionState != null && subPartitionConsumptionState.isEndOfPushReceived()) {
+        latestConsumedProducerTimestamp = Math.max(
+            latestConsumedProducerTimestamp,
+            subPartitionConsumptionState.getOffsetRecord().getLatestProducerProcessingTimeInMs());
       }
     }
     return latestConsumedProducerTimestamp;
@@ -1849,7 +1854,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * from the topic/partition before resetting offset, which is unnecessary; but we decided to keep this action
          * for now in case that in future, we do want to reset the consumer without unsubscription.
          */
-        if (partitionConsumptionStateMap.containsKey(partition) && consumerHasSubscription(topic, partitionConsumptionStateMap.get(partition))) {
+        PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+        if (partitionConsumptionState != null && consumerHasSubscription(topic, partitionConsumptionState)) {
           logger.error("This shouldn't happen since unsubscription should happen before reset offset for topic: " + topic + ", partition: " + partition);
           /*
            * Only update the consumer and partitionConsumptionStateMap when consumer actually has
@@ -1857,7 +1863,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
            * and mess up other operations on the StateMap.
            */
           try {
-            consumerResetOffset(topic, partitionConsumptionStateMap.get(partition));
+            consumerResetOffset(topic, partitionConsumptionState);
             logger.info(consumerTaskId + " Reset OffSet : Topic " + topic + " Partition Id " + partition);
           } catch (UnsubscribedTopicPartitionException e) {
             logger.error(consumerTaskId + " Kafka consumer should have subscribed to the partition already but it fails "
@@ -2290,10 +2296,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public boolean isHybridMode() {
-    if (hybridStoreConfig == null) {
-      logger.error("hybrid config shouldn't be null. Something bad happened. Topic: " + getVersionTopic());
-    }
-    return hybridStoreConfig != null && hybridStoreConfig.isPresent();
+    return hybridStoreConfig.isPresent();
   }
 
   private void syncEndOfPushTimestampToMetadataService(long endOfPushTimestamp) {
@@ -2604,11 +2607,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int subPartition) {
 
     TopicManager topicManager = topicManagerRepository.getTopicManager();
-    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
     // Tolerate missing message if store version is data recovery + hybrid and TS not received yet (due to source topic
     // data may have been log compacted) or log compaction is enabled and record is old enough for log compaction.
     boolean tolerateMissingMsgs =
-        (isDataRecovery && isHybridMode() && partitionConsumptionState.getTopicSwitch() == null) ||
+        (isDataRecovery && isHybridMode() && partitionConsumptionStateMap.get(subPartition).getTopicSwitch() == null) ||
         (topicManager.isTopicCompactionEnabled(consumerRecord.topic()) &&
         LatencyUtils.getElapsedTimeInMs(consumerRecord.timestamp()) >= topicManager.getTopicMinLogCompactionLagMs(consumerRecord.topic()));
 
@@ -3468,97 +3470,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected boolean isSegmentControlMsg(ControlMessageType msgType) {
     return ControlMessageType.START_OF_SEGMENT.equals(msgType) || ControlMessageType.END_OF_SEGMENT.equals(msgType);
   }
-
-  protected long getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState pcs, String upstreamKafkaUrl) {
-    throw new VeniceException("This API is for L/F model only!");
-  }
-
-  protected long getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState pcs, String upstreamKafkaUrl) {
-    throw new VeniceException("This API is for L/F model only!");
-  }
-
-  protected void updateLatestInMemoryLeaderConsumedRTOffset(PartitionConsumptionState pcs, String upstreamKafkaUrl, long offset) {
-    throw new VeniceException("This API is for L/F model only!");
-  }
-
-  /**
-   * This method fetches/calculates latest leader persisted offset and last offset in RT topic. The method relies on
-   * {@link StoreIngestionTask#getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement} to fetch latest leader
-   * persisted offset for different data replication policy. The return value is a pair of [latestPersistedLeaderOffset, lastOffsetInRealTimeTopic]
-   */
-  protected long getLatestLeaderPersistedOffsetAndHybridTopicOffset(String sourceRealTimeTopicKafkaURL, String leaderTopic, PartitionConsumptionState pcs, boolean shouldLog) {
-    return getLatestLeaderOffsetAndHybridTopicOffset(sourceRealTimeTopicKafkaURL, leaderTopic, pcs,
-        (partitionConsumptionState, sourceKafkaUrl)
-            -> getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(partitionConsumptionState, sourceKafkaUrl), shouldLog);
-  }
-
-  /**
-   * This method fetches/calculates latest leader consumed offset and last offset in RT topic. The method relies on
-   * {@link StoreIngestionTask#getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement} to fetch latest leader
-   * consumed offset for different data replication policy. The return value is a pair of [latestConsumedLeaderOffset, lastOffsetInRealTimeTopic]
-   */
-  protected long getLatestLeaderConsumedOffsetAndHybridTopicOffset(String sourceRealTimeTopicKafkaURL, String leaderTopic, PartitionConsumptionState pcs, boolean shouldLog) {
-    return getLatestLeaderOffsetAndHybridTopicOffset(sourceRealTimeTopicKafkaURL, leaderTopic, pcs,
-        (partitionConsumptionState, sourceKafkaUrl)
-            -> getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(partitionConsumptionState, sourceKafkaUrl), shouldLog);
-  }
-
-  private long getLatestLeaderOffsetAndHybridTopicOffset(
-      String sourceRealTimeTopicKafkaURL,
-      String leaderTopic,
-      PartitionConsumptionState pcs,
-      BiFunction<PartitionConsumptionState, String, Long> getLeaderLatestOffset,
-      boolean shouldLog
-  ) {
-      int partition = pcs.getPartition();
-      long latestLeaderOffset;
-      long lastOffsetInRealTimeTopic;
-      if (amplificationFactor != 1) {
-        /*
-         * When amplificationFactor enabled, the RT topic and VT topics have different number of partition.
-         * eg. if amplificationFactor == 10 and partitionCount == 2,
-         *     the RT topic will have 2 partitions and VT topics will have 20 partitions.
-         * No 1-to-1 mapping between the RT topic and VT topics partition, we can not calculate the offset difference.
-         * To measure the offset difference between 2 types of topics, we go through latestLeaderOffset in corresponding
-         * sub-partitions and pick up the maximum value which means picking up the offset of the sub-partition seeing the most recent records in RT,
-         * then use this value to compare against the offset in the RT topic.
-         */
-        int userPartition = PartitionUtils.getUserPartition(partition, amplificationFactor);
-        lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(
-            getTopicManager(sourceRealTimeTopicKafkaURL),
-            leaderTopic,
-            userPartition
-        );
-        latestLeaderOffset = -1;
-        for (int subPartition : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
-          long upstreamOffset = -1;
-          if (partitionConsumptionStateMap.get(subPartition) != null
-              && partitionConsumptionStateMap.get(subPartition).getOffsetRecord() != null) {
-            upstreamOffset = getLeaderLatestOffset.apply(partitionConsumptionStateMap.get(subPartition), sourceRealTimeTopicKafkaURL);
-          }
-          latestLeaderOffset = (upstreamOffset >= 0 ? Math.max(upstreamOffset, latestLeaderOffset) : latestLeaderOffset);
-        }
-      } else {
-        latestLeaderOffset = getLeaderLatestOffset.apply(pcs, sourceRealTimeTopicKafkaURL);
-        lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(
-            getTopicManager(sourceRealTimeTopicKafkaURL),
-            leaderTopic,
-            partition
-        );
-      }
-      if (latestLeaderOffset == -1) {
-        // If leader hasn't consumed anything yet we should use the value of 0 to calculate the exact offset lag.
-        latestLeaderOffset = 0;
-      }
-      long lag = lastOffsetInRealTimeTopic - latestLeaderOffset;
-      if (shouldLog) {
-        logger.info(String.format("%s partition %d real-time buffer lag offset for region: %s is: "
-                + "(Last RT offset [%d] - Last leader consumed offset [%d]) = Lag [%d]", consumerTaskId,
-            pcs.getPartition(), sourceRealTimeTopicKafkaURL, lastOffsetInRealTimeTopic,
-            latestLeaderOffset, lag));
-      }
-      return lag;
-    }
 
   /**
    * This is not a per record state. Rather it's used to indicate if the transient record buffer is being used at all

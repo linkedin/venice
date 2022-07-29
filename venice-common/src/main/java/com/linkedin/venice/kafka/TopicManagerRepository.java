@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 import java.util.Map;
@@ -29,6 +30,7 @@ public class TopicManagerRepository implements Closeable {
   private final KafkaClientFactory kafkaClientFactory;
   private final Function<Pair<String, String>, TopicManager> topicManagerCreator;
   private final Map<String, TopicManager> topicManagersMap = new VeniceConcurrentHashMap<>();
+  private final Lazy<TopicManager> localTopicManager;
 
   public TopicManagerRepository(
       String localKafkaBootstrapServers,
@@ -65,6 +67,9 @@ public class TopicManagerRepository implements Closeable {
           Optional.of(metricsRepository)
       );
     };
+    this.localTopicManager = Lazy.of(() -> topicManagersMap.computeIfAbsent(
+        this.localKafkaBootstrapServers,
+        k -> topicManagerCreator.apply(Pair.create(this.localKafkaBootstrapServers, this.localKafkaZkAddress))));
   }
 
   public TopicManagerRepository(
@@ -88,8 +93,7 @@ public class TopicManagerRepository implements Closeable {
    * By default, return TopicManager for local Kafka cluster.
    */
   public TopicManager getTopicManager() {
-    return topicManagersMap.computeIfAbsent(this.localKafkaBootstrapServers,
-        k -> topicManagerCreator.apply(Pair.create(this.localKafkaBootstrapServers, this.localKafkaZkAddress)));
+    return localTopicManager.get();
   }
 
   public TopicManager getTopicManager(Pair<String, String> kafkaServerAndZk) {

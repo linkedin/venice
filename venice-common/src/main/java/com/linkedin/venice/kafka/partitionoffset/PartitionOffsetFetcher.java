@@ -1,10 +1,9 @@
 package com.linkedin.venice.kafka.partitionoffset;
 
 import com.linkedin.venice.annotation.Threadsafe;
+import it.unimi.dsi.fastutil.ints.Int2LongMap;
 import java.io.Closeable;
-import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 
@@ -12,7 +11,7 @@ import org.apache.kafka.common.TopicPartition;
 @Threadsafe
 public interface PartitionOffsetFetcher extends Closeable {
 
-  Map<Integer, Long> getTopicLatestOffsets(String topic);
+  Int2LongMap getTopicLatestOffsets(String topic);
 
   long getPartitionLatestOffsetAndRetry(String topic, int partition, int retries);
 

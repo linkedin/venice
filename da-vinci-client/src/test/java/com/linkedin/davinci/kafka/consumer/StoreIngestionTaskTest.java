@@ -673,9 +673,9 @@ public class StoreIngestionTaskTest {
     doAnswer(invocation -> {
       String kafkaUrl = invocation.getArgument(0, String.class);
       if (kafkaUrl.equals(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer())) {
-        return Optional.of(inMemoryRemoteKafkaConsumer);
+        return inMemoryRemoteKafkaConsumer;
       }
-      return Optional.of(inMemoryLocalKafkaConsumer);
+      return inMemoryLocalKafkaConsumer;
     }).when(aggKafkaConsumerService).assignConsumerFor(any(), any());
 
     doAnswer(invocation -> {
@@ -764,8 +764,8 @@ public class StoreIngestionTaskTest {
 
     doAnswer(invocation -> {
       String versionTopic = invocation.getArgument(0, String.class);
-      Optional<KafkaConsumerWrapper> localConsumer = localKafkaConsumerService.getConsumerAssignedToVersionTopic(versionTopic);
-      if (localConsumer.isPresent()) {
+      KafkaConsumerWrapper localConsumer = localKafkaConsumerService.getConsumerAssignedToVersionTopic(versionTopic);
+      if (localConsumer != null) {
         return Collections.singleton(inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
       }
       return Collections.emptySet();
@@ -2297,6 +2297,7 @@ public class StoreIngestionTaskTest {
         Utils.setOf(PARTITION_FOO), Optional.of(hybridStoreConfig), Optional.empty(), 1, extraServerProperties, false)
         .setIsDaVinciClient(isDaVinciClient)
         .setTopicManagerRepositoryJavaBased(mockTopicManagerRepository)
+        .setAggKafkaConsumerService(aggKafkaConsumerService)
         .build();
 
     TopicManager mockTopicManagerRemoteKafka = mock(TopicManager.class);
@@ -2385,6 +2386,7 @@ public class StoreIngestionTaskTest {
     doReturn(mockOffsetRecordLagCaughtUpTimestampLagging).when(mockPcsBufferReplayStartedRemoteLagging).getOffsetRecord();
     doReturn(5L).when(mockTopicManager).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
     doReturn(150L).when(mockTopicManagerRemoteKafka).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
+    doReturn(150L).when(aggKafkaConsumerService).getLatestOffsetFor(anyString(), anyString(), anyString(), anyInt());
     Assert.assertEquals(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging), isDaVinciClient);
 
     // If there are issues in replication from remote RT -> local VT, DaVinci client will still report ready to serve
@@ -2426,6 +2428,7 @@ public class StoreIngestionTaskTest {
         Utils.setOf(PARTITION_FOO), Optional.of(hybridStoreConfig), Optional.empty(), 1, new HashMap<>(), false)
         .setIsDaVinciClient(isDaVinciClient)
         .setTopicManagerRepositoryJavaBased(mockTopicManagerRepository)
+        .setAggKafkaConsumerService(aggKafkaConsumerService)
         .build();
 
     TopicManager mockTopicManagerRemoteKafka = mock(TopicManager.class);
@@ -2465,6 +2468,7 @@ public class StoreIngestionTaskTest {
     doReturn(mockOffsetRecord).when(mockPcsMultipleSourceKafkaServers).getOffsetRecord();
     doReturn(5L).when(mockTopicManager).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
     doReturn(150L).when(mockTopicManagerRemoteKafka).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
+    doReturn(150L).when(aggKafkaConsumerService).getLatestOffsetFor(anyString(), anyString(), anyString(), anyInt());
     Assert.assertEquals(storeIngestionTaskUnderTest.isReadyToServe(mockPcsMultipleSourceKafkaServers), isDaVinciClient);
   }
 

@@ -7,8 +7,9 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.utils.Utils;
 
+import it.unimi.dsi.fastutil.ints.Int2LongMap;
+import it.unimi.dsi.fastutil.ints.Int2LongOpenHashMap;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,11 +34,11 @@ public class JobRoutesTest {
 
     TopicManager mockTopicManager = mock(TopicManager.class);
     // 3 partitions, with latest offsets 100, 110, and 120
-    Map map = new HashMap();
+    Int2LongMap map = new Int2LongOpenHashMap();
     map.put(0, 100L);
     map.put(1, 110L);
     map.put(2, 120L);
-    doReturn(Collections.unmodifiableMap(map)).when(mockTopicManager).getTopicLatestOffsets(anyString());
+    doReturn(map).when(mockTopicManager).getTopicLatestOffsets(anyString());
     doReturn(mockTopicManager).when(mockAdmin).getTopicManager();
 
     doReturn(2).when(mockAdmin).getReplicationFactor(anyString(), anyString());

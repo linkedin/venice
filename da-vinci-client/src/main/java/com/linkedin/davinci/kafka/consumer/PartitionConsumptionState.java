@@ -31,7 +31,7 @@ public class PartitionConsumptionState {
   private final boolean hybrid;
   private final boolean isIncrementalPushEnabled;
   private final IncrementalPushPolicy incrementalPushPolicy;
-  private OffsetRecord offsetRecord;
+  private final OffsetRecord offsetRecord;
   /** whether the ingestion of current partition is deferred-write. */
   private boolean deferredWrite;
   private boolean errorReported;
@@ -206,9 +206,6 @@ public class PartitionConsumptionState {
   }
   public int getAmplificationFactor() {
     return this.amplificationFactor;
-  }
-  public void setOffsetRecord(OffsetRecord offsetRecord) {
-    this.offsetRecord = offsetRecord;
   }
   public OffsetRecord getOffsetRecord() {
     return this.offsetRecord;

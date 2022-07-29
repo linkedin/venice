@@ -17,7 +17,6 @@ import it.unimi.dsi.fastutil.ints.IntList;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -111,11 +110,10 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   }
 
   /**
-   * @return a consumer that was previously assigned to a version topic {@link StoreIngestionTask#getVersionTopic()}. In
-   *         other words, if {@link this#assignConsumerFor} is never called, there is no assigned consumer to given version
-   *         topic. Hence, {@link Optional#empty()} is returned.
+   * @return a consumer that was previously assigned to a version topic via {@link #assignConsumerFor(StoreIngestionTask)},
+   *         or null if there is no assigned consumer to given version topic
    */
-  public abstract Optional<KafkaConsumerWrapper> getConsumerAssignedToVersionTopic(String versionTopic);
+  public abstract KafkaConsumerWrapper getConsumerAssignedToVersionTopic(String versionTopic);
 
   /**
    * This function assigns a consumer for the given {@link StoreIngestionTask} and returns the assigned consumer.
@@ -132,7 +130,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   public abstract void unsubscribeAll(String versionTopic);
 
   @Override
-  public boolean startInner() throws Exception {
+  public boolean startInner() {
     return true;
   }
 
@@ -161,7 +159,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       }
     }
 
-    readOnlyConsumersList.forEach( consumer -> consumer.close());
+    readOnlyConsumersList.forEach(SharedKafkaConsumer::close);
   }
 
   private class ConsumptionTask implements Runnable {
@@ -333,6 +331,52 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
     } else {
       throw new VeniceException("Shared consumer cannot be found in KafkaConsumerService.");
     }
+  }
+
+  public long getOffsetLagFor(String versionTopic, String topic, int partition) {
+    return getSomeOffsetFor(
+        versionTopic,
+        topic,
+        partition,
+        KafkaConsumerWrapper::getOffsetLag,
+        stats::recordOffsetLagIsAbsent,
+        stats::recordOffsetLagIsPresent);
+  }
+
+  public long getLatestOffsetFor(String versionTopic, String topic, int partition) {
+    return getSomeOffsetFor(
+        versionTopic,
+        topic,
+        partition,
+        KafkaConsumerWrapper::getLatestOffset,
+        stats::recordLatestOffsetIsAbsent,
+        stats::recordLatestOffsetIsPresent);
+  }
+
+  private long getSomeOffsetFor(
+      String versionTopic,
+      String topic,
+      int partition,
+      OffsetGetter offsetGetter,
+      Runnable sensorIfAbsent,
+      Runnable sensorIfPresent) {
+    KafkaConsumerWrapper consumer = getConsumerAssignedToVersionTopic(versionTopic);
+    if (consumer == null) {
+      sensorIfAbsent.run();
+      return -1;
+    } else {
+      long resut = offsetGetter.apply(consumer, topic, partition);
+      if (resut < 0) {
+        sensorIfAbsent.run();
+      } else {
+        sensorIfPresent.run();
+      }
+      return resut;
+    }
+  }
+
+  private interface OffsetGetter {
+    long apply(KafkaConsumerWrapper consumer, String topic, int partition);
   }
 
   /**

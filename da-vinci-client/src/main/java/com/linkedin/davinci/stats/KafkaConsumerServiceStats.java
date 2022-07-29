@@ -22,11 +22,16 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
   private final Sensor detectedNoRunningIngestionTopicNumSensor;
   private final Sensor delegateSubscribeLatencySensor;
   private final Sensor updateCurrentAssignmentLatencySensor;
-
   private final Sensor consumerSelectionForTopicError;
   private final Sensor maxPartitionsPerConsumer;
   private final Sensor minPartitionsPerConsumer;
   private final Sensor avgPartitionsPerConsumer;
+  private final Sensor getOffsetLagSensor;
+  private final Sensor getOffsetLagIsAbsentSensor;
+  private final Sensor getOffsetLagIsPresentSensor;
+  private final Sensor getLatestOffsetSensor;
+  private final Sensor getLatestOffsetIsAbsentSensor;
+  private final Sensor getLatestOffsetIsPresentSensor;
 
   public KafkaConsumerServiceStats(MetricsRepository metricsRepository, String nameWithKafkaClusterAlias) {
     super(metricsRepository, nameWithKafkaClusterAlias);
@@ -50,6 +55,21 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
     minPartitionsPerConsumer = registerSensor("min_partitions_per_consumer", new Gauge());
     maxPartitionsPerConsumer = registerSensor("max_partitions_per_consumer", new Gauge());
     avgPartitionsPerConsumer = registerSensor("avg_partitions_per_consumer", new Gauge());
+
+    this.getOffsetLagSensor = registerSensor("getOffsetLag", new OccurrenceRate());
+    Sensor[] offsetLagParent = new Sensor[]{getOffsetLagSensor};
+    this.getOffsetLagIsAbsentSensor = registerSensor(
+        "getOffsetLagIsAbsent", null, offsetLagParent, new OccurrenceRate());
+    this.getOffsetLagIsPresentSensor = registerSensor(
+        "getOffsetLagIsPresent", null, offsetLagParent, new OccurrenceRate());
+
+    this.getLatestOffsetSensor = registerSensor("getLatestOffset", new OccurrenceRate());
+    Sensor[] latestOffsetParent = new Sensor[]{getLatestOffsetSensor};
+    this.getLatestOffsetIsAbsentSensor = registerSensor(
+        "getOffsetLagIsAbsent", null, latestOffsetParent, new OccurrenceRate());
+    this.getLatestOffsetIsPresentSensor = registerSensor(
+        "getOffsetLagIsPresent", null, latestOffsetParent, new OccurrenceRate());
+
   }
 
   public void recordPollRequestLatency(double latency) {
@@ -103,5 +123,21 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
 
   public void recordAvgPartitionsPerConsumer(int count) {
     avgPartitionsPerConsumer.record(count);
+  }
+
+  public void recordOffsetLagIsAbsent() {
+    getOffsetLagIsAbsentSensor.record();
+  }
+
+  public void recordOffsetLagIsPresent() {
+    getOffsetLagIsPresentSensor.record();
+  }
+
+  public void recordLatestOffsetIsAbsent() {
+    getLatestOffsetIsAbsentSensor.record();
+  }
+
+  public void recordLatestOffsetIsPresent() {
+    getLatestOffsetIsPresentSensor.record();
   }
 }
