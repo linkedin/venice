@@ -10,7 +10,6 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import org.apache.logging.log4j.LogManager;
@@ -51,8 +50,8 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
   }
 
   @Override
-  public Optional<KafkaConsumerWrapper> getConsumerAssignedToVersionTopic(String versionTopic) {
-    return Optional.ofNullable(versionTopicToConsumerMap.get(versionTopic));
+  public KafkaConsumerWrapper getConsumerAssignedToVersionTopic(String versionTopic) {
+    return versionTopicToConsumerMap.get(versionTopic);
   }
 
   /**

@@ -9,6 +9,9 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import it.unimi.dsi.fastutil.ints.Int2LongMap;
+import it.unimi.dsi.fastutil.ints.Int2LongMaps;
+import it.unimi.dsi.fastutil.ints.Int2LongOpenHashMap;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -17,7 +20,6 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
@@ -72,27 +74,29 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
   }
 
   @Override
-  public Map<Integer, Long> getTopicLatestOffsets(String topic) {
+  public Int2LongMap getTopicLatestOffsets(String topic) {
     try (AutoCloseableLock ignore = AutoCloseableLock.of(rawConsumerLock)) {
       List<PartitionInfo> partitionInfoList = kafkaRawBytesConsumer.get().partitionsFor(topic);
       if (null == partitionInfoList || partitionInfoList.isEmpty()) {
         logger.warn("Unexpected! Topic: " + topic + " has a null partition set, returning empty map for latest offsets");
-        return Collections.emptyMap();
+        return Int2LongMaps.EMPTY_MAP;
       }
       List<TopicPartition> topicPartitions = partitionInfoList.stream()
           .map(partitionInfo -> new TopicPartition(partitionInfo.topic(), partitionInfo.partition()))
           .collect(Collectors.toList());
 
       Map<TopicPartition, Long> offsetsByTopicPartitions = kafkaRawBytesConsumer.get().endOffsets(topicPartitions, DEFAULT_KAFKA_OFFSET_API_TIMEOUT);
-      Map<Integer, Long> offsetsByTopicPartitionIds = new HashMap<>(offsetsByTopicPartitions.size());
+      Int2LongMap offsetsByTopicPartitionIds = new Int2LongOpenHashMap(offsetsByTopicPartitions.size());
       for (Map.Entry<TopicPartition, Long> offsetByTopicPartition : offsetsByTopicPartitions.entrySet()) {
-        offsetsByTopicPartitionIds.put(offsetByTopicPartition.getKey().partition(), offsetByTopicPartition.getValue());
+        offsetsByTopicPartitionIds.put(
+            offsetByTopicPartition.getKey().partition(),
+            offsetByTopicPartition.getValue().longValue());
       }
       return offsetsByTopicPartitionIds;
     }
   }
 
-  private Long getLatestOffset(String topic, Integer partition) throws TopicDoesNotExistException {
+  private long getLatestOffset(String topic, int partition) throws TopicDoesNotExistException {
     if (partition < 0) {
       throw new IllegalArgumentException("Cannot retrieve latest offsets for invalid partition " + partition);
     }
@@ -101,12 +105,12 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
         throw new TopicDoesNotExistException("Topic " + topic + " does not exist!");
       }
       TopicPartition topicPartition = new TopicPartition(topic, partition);
-      long latestOffset;
       try {
         Map<TopicPartition, Long> offsetMap =
             kafkaRawBytesConsumer.get().endOffsets(Collections.singletonList(topicPartition), DEFAULT_KAFKA_OFFSET_API_TIMEOUT);
-        if (offsetMap.containsKey(topicPartition)) {
-          latestOffset = offsetMap.get(topicPartition);
+        Long offset = offsetMap.get(topicPartition);
+        if (offset != null) {
+          return offset.longValue();
         } else {
           throw new VeniceException("offset result returned from endOffsets does not contain entry: " + topicPartition);
         }
@@ -119,7 +123,6 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
           throw ex;
         }
       }
-      return latestOffset;
     }
   }
 
@@ -167,13 +170,11 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
                     Validate.notNull(partitionToOffset.getKey(), "Got a null TopicPartition key out of the offsetsForTime API");
                     return partitionToOffset.getKey();
                   },
-                  partitionToOffset -> {
-                    Optional<Long> offsetOptional = Optional.ofNullable(partitionToOffset.getValue()).map(OffsetAndTimestamp::offset);
-                    return offsetOptional.orElseGet(() -> getOffsetByTimeIfOutOfRange(
-                        partitionToOffset.getKey(),
-                        timestampsToSearch.get(partitionToOffset.getKey())
-                    ));
-                  }));
+                  partitionToOffset -> partitionToOffset.getValue() != null
+                      ? partitionToOffset.getValue().offset()
+                      : getOffsetByTimeIfOutOfRange(
+                          partitionToOffset.getKey(),
+                          timestampsToSearch.get(partitionToOffset.getKey()))));
       // The given timestamp exceed the timestamp of the last message. So return the last offset.
       if (result.isEmpty()) {
         logger.warn("Offsets result is empty. Will complement with the last offsets.");

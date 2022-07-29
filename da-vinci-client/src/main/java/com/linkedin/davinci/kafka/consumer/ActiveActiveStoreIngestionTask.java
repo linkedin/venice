@@ -782,11 +782,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       LeaderProducedRecordContext leaderProducedRecordContext,
       String kafkaUrl) {
-    updateOffsets(partitionConsumptionState,
+    updateOffsets(
+        partitionConsumptionState,
         consumerRecord,
         leaderProducedRecordContext,
-        (versionTopicOffset)
-            -> offsetRecord.setCheckpointLocalVersionTopicOffset(versionTopicOffset),
+        offsetRecord::setCheckpointLocalVersionTopicOffset,
         (sourceKafkaUrl, upstreamTopicName, upstreamTopicOffset) -> {
           if (Version.isRealTimeTopic(upstreamTopicName)) {
             offsetRecord.setLeaderUpstreamOffset(sourceKafkaUrl, upstreamTopicOffset);
@@ -794,10 +794,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             offsetRecord.setCheckpointUpstreamVersionTopicOffset(upstreamTopicOffset);
           }
         },
-        (sourceKafkaUrl, upstreamTopicName)
-            -> Version.isRealTimeTopic(upstreamTopicName)
-               ? offsetRecord.getUpstreamOffset(sourceKafkaUrl)
-               : offsetRecord.getCheckpointUpstreamVersionTopicOffset(),
+        (sourceKafkaUrl, upstreamTopicName) -> Version.isRealTimeTopic(upstreamTopicName)
+            ? offsetRecord.getUpstreamOffset(sourceKafkaUrl)
+            : offsetRecord.getCheckpointUpstreamVersionTopicOffset(),
         () -> getUpstreamKafkaUrl(partitionConsumptionState, consumerRecord, kafkaUrl));
   }
 
@@ -807,11 +806,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       LeaderProducedRecordContext leaderProducedRecordContext,
       String kafkaUrl) {
-    updateOffsets(partitionConsumptionState,
+    updateOffsets(
+        partitionConsumptionState,
         consumerRecord,
         leaderProducedRecordContext,
-        (versionTopicOffset)
-            -> partitionConsumptionState.updateLatestProcessedLocalVersionTopicOffset(versionTopicOffset),
+        partitionConsumptionState::updateLatestProcessedLocalVersionTopicOffset,
         (sourceKafkaUrl, upstreamTopicName, upstreamTopicOffset) -> {
           if (Version.isRealTimeTopic(upstreamTopicName)) {
             partitionConsumptionState.updateLatestProcessedUpstreamRTOffset(sourceKafkaUrl, upstreamTopicOffset);
@@ -819,10 +818,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             partitionConsumptionState.updateLatestProcessedUpstreamVersionTopicOffset(upstreamTopicOffset);
           }
         },
-        (sourceKafkaUrl, upstreamTopicName)
-            -> Version.isRealTimeTopic(upstreamTopicName)
-               ? partitionConsumptionState.getLatestProcessedUpstreamRTOffset(sourceKafkaUrl)
-               : partitionConsumptionState.getLatestProcessedUpstreamVersionTopicOffset(),
+        (sourceKafkaUrl, upstreamTopicName) -> Version.isRealTimeTopic(upstreamTopicName)
+            ? partitionConsumptionState.getLatestProcessedUpstreamRTOffset(sourceKafkaUrl)
+            : partitionConsumptionState.getLatestProcessedUpstreamVersionTopicOffset(),
         () -> getUpstreamKafkaUrl(partitionConsumptionState, consumerRecord, kafkaUrl));
   }
 
@@ -938,6 +936,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       return 0;
     }
 
+    String kafkaSourceAddress = kafkaClusterIdToUrlMap.get(regionId);
+    // This storage node does not register with the given region ID.
+    if (kafkaSourceAddress == null) {
+      return 0;
+    }
+
     long offsetLag = partitionConsumptionStateMap.values().stream()
         .filter(LeaderFollowerStoreIngestionTask.LEADER_OFFSET_LAG_FILTER)
         // Leader consumption upstream RT offset is only available in leader subPartition
@@ -949,15 +953,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             // Leader topic not found, indicating that it is VT topic.
             return 0;
           }
-          String kafkaSourceAddress = kafkaClusterIdToUrlMap.get(regionId);
-          // This storage node does not register with the given region ID.
-          if (kafkaSourceAddress == null) {
-            return 0;
-          }
+
           // Consumer might not existed after the consumption state is created, but before attaching the corresponding consumer.
-          OptionalLong offsetLagOptional = getPartitionOffsetLag(kafkaSourceAddress, currentLeaderTopic, pcs.getUserPartition());
-          if (offsetLagOptional.isPresent()) {
-            return offsetLagOptional.getAsLong();
+          long offsetLagOptional = getPartitionOffsetLag(kafkaSourceAddress, currentLeaderTopic, pcs.getUserPartition());
+          if (offsetLagOptional >= 0) {
+            return offsetLagOptional;
           }
 
           // Fall back to calculate offset lag in the old way

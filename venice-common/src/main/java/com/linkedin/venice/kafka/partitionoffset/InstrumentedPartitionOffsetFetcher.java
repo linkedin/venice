@@ -2,8 +2,8 @@ package com.linkedin.venice.kafka.partitionoffset;
 
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import it.unimi.dsi.fastutil.ints.Int2LongMap;
 import java.util.List;
-import java.util.Map;
 
 import org.apache.commons.lang.Validate;
 import org.apache.kafka.common.PartitionInfo;
@@ -31,9 +31,9 @@ public class InstrumentedPartitionOffsetFetcher implements PartitionOffsetFetche
   }
 
   @Override
-  public Map<Integer, Long> getTopicLatestOffsets(String topic) {
+  public Int2LongMap getTopicLatestOffsets(String topic) {
     final long startTimeMs = time.getMilliseconds();
-    Map<Integer, Long> res = partitionOffsetFetcher.getTopicLatestOffsets(topic);
+    Int2LongMap res = partitionOffsetFetcher.getTopicLatestOffsets(topic);
     stats.recordLatency(
         PartitionOffsetFetcherStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_TOPIC_LATEST_OFFSETS,
         Utils.calculateDurationMs(time, startTimeMs)

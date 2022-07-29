@@ -15,6 +15,7 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
+import it.unimi.dsi.fastutil.ints.Int2LongMap;
 import java.io.Closeable;
 import java.time.Duration;
 import java.util.Arrays;
@@ -699,7 +700,7 @@ public class TopicManager implements Closeable {
    * @param topic
    * @return a Map of partition to latest offset, or an empty map if there's any problem
    */
-  public Map<Integer, Long> getTopicLatestOffsets(String topic) {
+  public Int2LongMap getTopicLatestOffsets(String topic) {
     return partitionOffsetFetcher.getTopicLatestOffsets(topic);
   }
 

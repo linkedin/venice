@@ -10,7 +10,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.OptionalLong;
 import java.util.StringJoiner;
 
 import org.apache.commons.lang.Validate;
@@ -138,9 +137,9 @@ class TopicPartitionsOffsetsTracker {
      * @param partition
      * @return end offset of a topic partition if there is any.
      */
-    OptionalLong getEndOffset(String topic, int partition) {
+    long getEndOffset(String topic, int partition) {
         Double endOffset = topicPartitionEndOffset.get(new TopicPartition(topic, partition));
-        return endOffset == null ? OptionalLong.empty() : OptionalLong.of(endOffset.longValue());
+        return endOffset == null ? -1 : endOffset.longValue();
     }
 
     /**
@@ -149,26 +148,26 @@ class TopicPartitionsOffsetsTracker {
      * @param partition
      * @return end offset of a topic partition if there is any.
      */
-    OptionalLong getOffsetLag(String topic, int partition) {
+    long getOffsetLag(String topic, int partition) {
         TopicPartition topicPartition = new TopicPartition(topic, partition);
         final Double endOffset = topicPartitionEndOffset.get(topicPartition);
         if (endOffset == null) {
             statsAccumulator.recordResult(ResultType.NO_OFFSET_LAG);
-            return OptionalLong.empty();
+            return -1;
         }
         final Double currOffset = topicPartitionCurrentOffset.get(topicPartition);
         if (currOffset == null) {
             statsAccumulator.recordResult(ResultType.NO_OFFSET_LAG);
-            return OptionalLong.empty();
+            return -1;
         }
         final long offsetLag = endOffset.longValue() - currOffset.longValue();
         if (offsetLag < 0) { // Invalid offset lag
             statsAccumulator.recordResult(ResultType.INVALID_OFFSET_LAG);
-            return OptionalLong.empty();
+            return -1;
         }
         statsAccumulator.recordResult(ResultType.VALID_OFFSET_LAG);
         statsAccumulator.maybeLogAccumulatedStats(logger);
-        return OptionalLong.of(offsetLag);
+        return offsetLag;
     }
 
     /**
