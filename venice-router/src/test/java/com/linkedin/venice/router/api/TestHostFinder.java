@@ -57,8 +57,7 @@ public class TestHostFinder {
     HostHealthMonitor mockHostHealthMonitor = mock(HostHealthMonitor.class);
     doReturn(true).when(mockHostHealthMonitor).isHostHealthy(any(), any());
 
-    VeniceHostFinder finder = new VeniceHostFinder(mockRepo, false, false,
-        mock(RouterStats.class), mockHostHealthMonitor);
+    VeniceHostFinder finder = new VeniceHostFinder(mockRepo, mock(RouterStats.class), mockHostHealthMonitor);
 
     List<Instance> hosts = finder.findHosts("get", "store_v0", "store_v0_3", NULL_HOST_HEALTH_MONITOR, null);
     Assert.assertEquals(hosts.size(), 2);
@@ -71,77 +70,6 @@ public class TestHostFinder {
     hosts = finder.findHosts("get", "store_v0", "store_v0_3", anotherHostHealthyMonitor, null);
     Assert.assertEquals(hosts.size(), 1);
     Assert.assertEquals(hosts.get(0).getHost(), "localhost2");
-  }
-
-  @Test
-  public void testStickyRoutingWhenAllInstancesAreHealthy() {
-    RoutingDataRepository mockRepo = Mockito.mock(RoutingDataRepository.class);
-    List<Instance> dummyList = new ArrayList<>();
-    int hostCount = 3;
-    for (int i = hostCount - 1; i >= 0; --i) {
-      dummyList.add(new Instance("node_id_" + i, "host_" + i, 1234));
-    }
-    doReturn(dummyList).when(mockRepo).getReadyToServeInstances(anyString(), anyInt());
-
-    HostHealthMonitor mockHostHealthMonitor = mock(HostHealthMonitor.class);
-    doReturn(true).when(mockHostHealthMonitor).isHostHealthy(any(), any());
-    RouterStats mockRouterStats = mock(RouterStats.class);
-    when(mockRouterStats.getStatsByType(any())).thenReturn(mock(AggRouterHttpRequestStats.class));
-    VeniceHostFinder finder = new VeniceHostFinder(mockRepo, true, true, mockRouterStats, mockHostHealthMonitor);
-
-    Map<Integer, String> partitionHostMapping = new HashMap<>();
-    partitionHostMapping.put(0, "host_0");
-    partitionHostMapping.put(1, "host_1");
-    partitionHostMapping.put(2, "host_2");
-    partitionHostMapping.put(3, "host_0");
-    partitionHostMapping.put(4, "host_1");
-    partitionHostMapping.put(5, "host_2");
-    partitionHostMapping.forEach((partitionId, expectedHost) -> {
-      // Notice that the variable name `expectedHost` has lost its meaning here because partition-based sticky routing no longer exists
-      List<Instance> hosts = finder.findHosts("get", "store_v0", "store_v0_" + partitionId, NULL_HOST_HEALTH_MONITOR, null);
-      // key-based sticky routing; all replicas will be returned and one host will be chosen by the key
-      Assert.assertEquals(hosts.size(), 3);
-    });
-  }
-
-  @Test
-  public void testStickyRoutingWhenSomeInstancesAreUnhealthy() {
-    RoutingDataRepository mockRepo = Mockito.mock(RoutingDataRepository.class);
-    List<Instance> dummyList = new ArrayList<>();
-    int hostCount = 3;
-    for (int i = hostCount - 1; i >= 0; --i) {
-      dummyList.add(new Instance("node_id_" + i, "host_" + i, 1234));
-    }
-    doReturn(dummyList).when(mockRepo).getReadyToServeInstances(anyString(), anyInt());
-
-    HostHealthMonitor mockHostHealthMonitor = mock(HostHealthMonitor.class);
-    doReturn(true).when(mockHostHealthMonitor).isHostHealthy(any(), any());
-    doReturn(false).when(mockHostHealthMonitor).isHostHealthy(eq(new Instance("node_id_1", "host_1", 1234)), any());
-
-    AggRouterHttpRequestStats mockSingleGetStats = mock(AggRouterHttpRequestStats.class);
-    AggRouterHttpRequestStats mockMultiGetStats = mock(AggRouterHttpRequestStats.class);
-
-    RouterStats routerStats = mock(RouterStats.class);
-    when(routerStats.getStatsByType(RequestType.SINGLE_GET)).thenReturn(mockSingleGetStats);
-    when(routerStats.getStatsByType(RequestType.MULTI_GET)).thenReturn(mockMultiGetStats);
-
-    VeniceHostFinder finder = new VeniceHostFinder(mockRepo, true, true, routerStats, mockHostHealthMonitor);
-
-    Map<Integer, String> partitionHostMapping = new HashMap<>();
-    partitionHostMapping.put(0, "host_0");
-    partitionHostMapping.put(1, "host_2");
-    partitionHostMapping.put(2, "host_0");
-    partitionHostMapping.put(3, "host_2");
-    partitionHostMapping.put(4, "host_0");
-    partitionHostMapping.put(5, "host_2");
-    partitionHostMapping.forEach((partitionId, expectedHost) -> {
-      // Notice that the variable name `expectedHost` has lost its meaning here because partition-based sticky routing no longer exists
-      List<Instance> hosts = finder.findHosts("get", "store_v0", "store_v0_" + partitionId, NULL_HOST_HEALTH_MONITOR, null);
-      // key-based sticky routing; all replicas will be returned and one host will be chosen by the key
-      Assert.assertEquals(hosts.size(), 2);
-    });
-    verify(mockSingleGetStats, times(partitionHostMapping.size())).recordFindUnhealthyHostRequest("store");
-    verify(mockMultiGetStats, never()).recordFindUnhealthyHostRequest("store");
   }
 
   @Test
@@ -171,8 +99,7 @@ public class TestHostFinder {
       doReturn(instanceList).when(mockRepo).getReadyToServeInstances(anyString(), anyInt());
       RouterStats mockRouterStats = mock(RouterStats.class);
       when(mockRouterStats.getStatsByType(any())).thenReturn(mock(AggRouterHttpRequestStats.class));
-      VeniceHostFinder finder = new VeniceHostFinder(mockRepo, false, false,
-          mockRouterStats, healthMon);
+      VeniceHostFinder finder = new VeniceHostFinder(mockRepo, mockRouterStats, healthMon);
 
       // mock HeartBeat
       FullHttpResponse goodHealthResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);

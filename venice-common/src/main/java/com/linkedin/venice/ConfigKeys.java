@@ -806,19 +806,6 @@ public class ConfigKeys {
   public static final String ROUTER_MAX_PENDING_REQUEST = "router.max.pending.request";
 
   /**
-   * Whether sticky routing for single-get is enabled in Router.
-   * Basically, sticky routing will ensure that the requests belonging to the same partition will always go to
-   * the same storage node if rebalance/deployment doesn't happen.
-   * With this way, the cache efficiency will be improved a lot in storage node since each storage node only needs
-   * to serve 1/3 of key space in the most scenarios.
-   *
-   * Note that the risk is that sometimes there is no rebalance but a replica could be overloaded. In this case, ideally
-   * the read request should be routed to other replica(s) of the partition. However, with this config being true, the
-   * read request still gets routed to the overloaded replica in a "sticky" way.
-   */
-  public static final String ROUTER_ENABLE_STICKY_ROUTING_FOR_SINGLE_GET = "router.enable.sticky.routing.for.single.get";
-
-  /**
    * This config is used to define the routing strategy for multi-key requests.
    * Please check {@literal VeniceMultiKeyRoutingStrategy} to find available routing strategy.
    */
@@ -1614,10 +1601,7 @@ public class ConfigKeys {
    * partitions and collect data on the effectiveness of previous resets.
    */
   public static final String ERROR_PARTITION_PROCESSING_CYCLE_DELAY = "error.partition.processing.cycle.delay";
-  /**
-   * Turns on  least loaded selection of server hosts.
-   */
-  public static final String ROUTER_LEAST_LOADED_HOST_ENABLED = "router.least.loaded.host.enabled";
+
   /**
    * Delay between each cycle where the checker will iterate over existing topics that are yet to be truncated and poll
    * their job status until they reach terminal state to ensure version topics in parent fabric are truncated in a

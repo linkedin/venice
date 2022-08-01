@@ -47,7 +47,6 @@ public class VeniceRouterConfig {
   private int maxOutgoingConnPerRoute;
   private int maxOutgoingConn;
   private Map<String, String> clusterToD2Map;
-  private boolean stickyRoutingEnabledForSingleGet;
   private double perStorageNodeReadQuotaBuffer;
   private int refreshAttemptsForZkReconnect;
   private long refreshIntervalForZkReconnectInMs;
@@ -102,7 +101,6 @@ public class VeniceRouterConfig {
   private boolean helixOfflinePushEnabled;
   private boolean helixHybridStoreQuotaEnabled;
   private int ioThreadCountInPoolMode;
-  private boolean leastLoadedHostSelectionEnabled;
   private boolean useGroupFieldInHelixDomain;
   private VeniceMultiKeyRoutingStrategy multiKeyRoutingStrategy;
   private HelixGroupSelectionStrategyEnum helixGroupSelectionStrategy;
@@ -167,7 +165,6 @@ public class VeniceRouterConfig {
     maxOutgoingConnPerRoute = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE, 120);
     maxOutgoingConn = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION, 1200);
     clusterToD2Map = props.getMap(CLUSTER_TO_D2);
-    stickyRoutingEnabledForSingleGet = props.getBoolean(ROUTER_ENABLE_STICKY_ROUTING_FOR_SINGLE_GET, true);
     perStorageNodeReadQuotaBuffer = props.getDouble(ROUTER_PER_STORAGE_NODE_READ_QUOTA_BUFFER, 1.0);
     refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
     refreshIntervalForZkReconnectInMs =
@@ -243,7 +240,6 @@ public class VeniceRouterConfig {
     helixOfflinePushEnabled = props.getBoolean(HELIX_OFFLINE_PUSH_ENABLED, false);
     helixHybridStoreQuotaEnabled = props.getBoolean(HELIX_HYBRID_STORE_QUOTA_ENABLED, false);
     ioThreadCountInPoolMode = props.getInt(ROUTER_HTTPASYNCCLIENT_CLIENT_POOL_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
-    leastLoadedHostSelectionEnabled = props.getBoolean(ROUTER_LEAST_LOADED_HOST_ENABLED, false);
 
     throttleClientSslHandshakes = props.getBoolean(ROUTER_THROTTLE_CLIENT_SSL_HANDSHAKES, false);
     clientSslHandshakeThreads = props.getInt(ROUTER_CLIENT_SSL_HANDSHAKE_THREADS, 4);
@@ -263,12 +259,14 @@ public class VeniceRouterConfig {
       throw new VeniceException("Unknown value: " + helixVirtualGroupFieldNameInDomain + " for config: " + ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN + ", and "
           + "allowed values: [" + GROUP_FIELD_NAME_IN_DOMAIN + ", " + ZONE_FIELD_NAME_IN_DOMAIN + "]");
     }
-    String multiKeyRoutingStrategyStr = props.getString(ROUTER_MULTI_KEY_ROUTING_STRATEGY, KEY_BASED_STICKY_ROUTING.name());
+    String multiKeyRoutingStrategyStr = props.getString(ROUTER_MULTI_KEY_ROUTING_STRATEGY, LEAST_LOADED_ROUTING.name());
     try {
       multiKeyRoutingStrategy = VeniceMultiKeyRoutingStrategy.valueOf(multiKeyRoutingStrategyStr);
     } catch (Exception e) {
-      throw new VeniceException("Invalid " + ROUTER_MULTI_KEY_ROUTING_STRATEGY + " config: " + multiKeyRoutingStrategyStr +
-          ", and allowed values: " + Arrays.toString(VeniceMultiKeyRoutingStrategy.values()));
+      logger.warn("Invalid {} config: {}, and allowed values are: {}. Using default strategy {}",
+          ROUTER_MULTI_KEY_ROUTING_STRATEGY, multiKeyRoutingStrategyStr,
+          Arrays.toString(VeniceMultiKeyRoutingStrategy.values()), LEAST_LOADED_ROUTING.name());
+      multiKeyRoutingStrategy = LEAST_LOADED_ROUTING;
     }
     String helixGroupSelectionStrategyStr = props.getString(ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_STRATEGY, LEAST_LOADED.name());
     try {
@@ -317,10 +315,6 @@ public class VeniceRouterConfig {
 
   public int getClientTimeoutMs() {
     return clientTimeoutMs;
-  }
-
-  public boolean isStickyRoutingEnabledForSingleGet() {
-    return stickyRoutingEnabledForSingleGet;
   }
 
   public double getHeartbeatTimeoutMs() {
@@ -580,10 +574,6 @@ public class VeniceRouterConfig {
 
   public boolean isAsyncStartEnabled() {
     return asyncStartEnabled;
-  }
-
-  public boolean isLeastLoadedHostSelectionEnabled() {
-    return leastLoadedHostSelectionEnabled;
   }
 
   public long getMaxRouterReadCapacityCu() {
