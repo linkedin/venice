@@ -1730,8 +1730,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             logger.info("Checking offset Lag behavior: current offset lag: " + offsetLag + ", previous offset lag: "
                 + previousOffsetLag + ", offset lag threshold: " + offsetLagThreshold);
             if (offsetLag < previousOffsetLag + offsetLagDeltaRelaxFactor * offsetLagThreshold) {
-                reportStatusAdapter.reportCompleted(newPartitionConsumptionState, true);
-                isCompletedReport = true;
+              amplificationAdapter.lagHasCaughtUp(newPartitionConsumptionState.getUserPartition());
+              reportStatusAdapter.reportCompleted(newPartitionConsumptionState, true);
+              isCompletedReport = true;
             }
             // Clear offset lag in metadata, it is only used in restart.
             newPartitionConsumptionState.getOffsetRecord().setOffsetLag(OffsetRecord.DEFAULT_OFFSET_LAG);
