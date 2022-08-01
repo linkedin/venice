@@ -445,11 +445,7 @@ public class RouterServer extends AbstractVeniceService {
             hybridStoreQuotaRepository, config.getClusterName(), config.getZkConnection(),
             config.getKafkaZkAddress(), config.getKafkaBootstrapServers());
 
-    VeniceHostFinder hostFinder = new VeniceHostFinder(onlineInstanceFinder,
-        config.isStickyRoutingEnabledForSingleGet(),
-        config.getMultiKeyRoutingStrategy().equals(KEY_BASED_STICKY_ROUTING),
-        routerStats,
-        healthMonitor);
+    VeniceHostFinder hostFinder = new VeniceHostFinder(onlineInstanceFinder, routerStats, healthMonitor);
 
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(
         metadataRepository,

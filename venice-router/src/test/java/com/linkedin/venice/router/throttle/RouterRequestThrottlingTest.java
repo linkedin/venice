@@ -75,8 +75,7 @@ public class RouterRequestThrottlingTest {
   public void testSingleGetThrottling() throws Exception {
     VeniceRouterConfig routerConfig = mock(VeniceRouterConfig.class);
     doReturn(Long.MAX_VALUE).when(routerConfig).getMaxPendingRequest();
-    doReturn(true).when(routerConfig).isStickyRoutingEnabledForSingleGet();
-    doReturn(KEY_BASED_STICKY_ROUTING).when(routerConfig).getMultiKeyRoutingStrategy();
+    doReturn(LEAST_LOADED_ROUTING).when(routerConfig).getMultiKeyRoutingStrategy();
 
     MetricsRepository metricsRepository = new MetricsRepository();
 
@@ -169,8 +168,7 @@ public class RouterRequestThrottlingTest {
 
     // mock a scatter gather helper for multi-key requests
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
-    doReturn(true).when(config).isStickyRoutingEnabledForSingleGet();
-    doReturn(KEY_BASED_STICKY_ROUTING).when(config).getMultiKeyRoutingStrategy();
+    doReturn(LEAST_LOADED_ROUTING).when(config).getMultiKeyRoutingStrategy();
 
     // multi-get/compute requests are throttled in VeniceDelegateMode
     VeniceDelegateMode delegateMode = new VeniceDelegateMode(config, mock(RouterStats.class), mock(RouteHttpRequestStats.class));

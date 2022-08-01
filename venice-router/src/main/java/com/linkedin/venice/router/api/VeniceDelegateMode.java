@@ -56,17 +56,11 @@ import static io.netty.handler.codec.http.HttpResponseStatus.*;
  * this potential leaking issue.
  */
 public class VeniceDelegateMode extends ScatterGatherMode {
-  /**
-   * This mode will initiate a request per partition, which is suitable for single-get, and it could be the default mode
-   * for all other requests.
-   */
-  private static final ScatterGatherMode SCATTER_GATHER_MODE_FOR_SINGLE_GET = ScatterGatherMode.GROUP_BY_PARTITION;
 
   /**
-   * This mode will assume there is only host for single-get request (sticky routing), and the scattering logic is
-   * optimized based on this assumption.
+   * This mode will route single get to the least loaded replica.
    */
-  private final ScatterGatherMode SCATTER_GATHER_MODE_FOR_STICKY_SINGLE_GET = new ScatterGatherModeForStickySingleGet();
+  private final ScatterGatherMode LEAST_LOADED_MODE_FOR_SINGLE_GET = new LeastLoadedModeForSingleGet();
 
   /**
    * This mode will group all requests to the same host into a single request.  Hosts are selected as the first host returned
@@ -80,10 +74,9 @@ public class VeniceDelegateMode extends ScatterGatherMode {
   private static final ScatterGatherMode GROUP_BY_GREEDY_MODE_FOR_MULTI_KEY_REQUEST = ScatterGatherMode.GROUP_BY_GREEDY_HOST;
 
   /**
-   * This mode assumes there is only one host per partition (sticky routing), and the scattering logic is optimized
-   * based on this assumption.
+   * Least loaded replica routing to avoid requests keeping hitting a busy/slow node.
    */
-  private final ScatterGatherMode KEY_BASED_STICKY_MODE_FOR_MULTI_KEY_REQUEST = new KeyBasedStickyRoutingModeForMultiKeyRequest();
+  private final ScatterGatherMode LEAST_LOADED_MODE_FOR_MULTI_KEY_REQUEST = new LeastLoadedRoutingModeForMultiKeyRequest();
 
   /**
    * Helix assisted routing to limit the fanout size for the large fanout use cases.
@@ -95,18 +88,14 @@ public class VeniceDelegateMode extends ScatterGatherMode {
 
   private HelixGroupSelector helixGroupSelector;
 
-  private final boolean stickyRoutingEnabledForSingleGet;
-  private final boolean isLeastLoadedHostEnabled;
   private final VeniceMultiKeyRoutingStrategy multiKeyRoutingStrategy;
   private final ScatterGatherMode scatterGatherModeForMultiKeyRequest;
   private final RouterStats<AggRouterHttpRequestStats> routerStats;
 
   public VeniceDelegateMode(VeniceRouterConfig config, RouterStats<AggRouterHttpRequestStats> routerStats, RouteHttpRequestStats routeHttpRequestStats) {
     super("VENICE_DELEGATE_MODE", false);
-    this.stickyRoutingEnabledForSingleGet = config.isStickyRoutingEnabledForSingleGet();
     this.routerStats = routerStats;
     this.routeHttpRequestStats = routeHttpRequestStats;
-    this.isLeastLoadedHostEnabled = config.isLeastLoadedHostSelectionEnabled();
     this.multiKeyRoutingStrategy = config.getMultiKeyRoutingStrategy();
     switch (this.multiKeyRoutingStrategy) {
       case GROUP_BY_PRIMARY_HOST_ROUTING:
@@ -115,8 +104,8 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       case GREEDY_ROUTING:
         this.scatterGatherModeForMultiKeyRequest = GROUP_BY_GREEDY_MODE_FOR_MULTI_KEY_REQUEST;
         break;
-      case KEY_BASED_STICKY_ROUTING:
-        this.scatterGatherModeForMultiKeyRequest = KEY_BASED_STICKY_MODE_FOR_MULTI_KEY_REQUEST;
+      case LEAST_LOADED_ROUTING:
+        this.scatterGatherModeForMultiKeyRequest = LEAST_LOADED_MODE_FOR_MULTI_KEY_REQUEST;
         break;
       case HELIX_ASSISTED_ROUTING:
         this.scatterGatherModeForMultiKeyRequest = HELIX_ASSISTED_MODE_FOR_MULTI_KEY_REQUEST;
@@ -175,11 +164,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         scatterMode = scatterGatherModeForMultiKeyRequest;
         break;
       case SINGLE_GET:
-        if (stickyRoutingEnabledForSingleGet) {
-          scatterMode = SCATTER_GATHER_MODE_FOR_STICKY_SINGLE_GET;
-        } else {
-          scatterMode = SCATTER_GATHER_MODE_FOR_SINGLE_GET;
-        }
+        scatterMode = LEAST_LOADED_MODE_FOR_SINGLE_GET;
         break;
       default:
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
@@ -300,13 +285,12 @@ public class VeniceDelegateMode extends ScatterGatherMode {
   }
 
   /**
-   * This mode assumes there is only one available host for single-get request (sticky routing),
-   * so it is optimized based on this assumption to avoid unnecessary memory allocation.
+   * This mode route the request to the least loaded replica for single get.
    */
-  class ScatterGatherModeForStickySingleGet extends ScatterGatherMode {
+  class LeastLoadedModeForSingleGet extends ScatterGatherMode {
 
-    protected ScatterGatherModeForStickySingleGet() {
-      super("SCATTER_GATHER_MODE_FOR_STICKY_SINGLE_GET", false);
+    protected LeastLoadedModeForSingleGet() {
+      super("LEAST_LOADED_MODE_FOR_SINGLE_GET", false);
     }
 
     @Nonnull
@@ -328,21 +312,9 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       if (hosts.isEmpty()) {
         scatter.addOfflineRequest(new ScatterGatherRequest<>(Collections.emptyList(), keySet, partitionName));
       } else if (hosts.size() > 1) {
-        /**
-         * Key based sticky routing for single-get requests;
-         * use the hashcode of the key to choose a host; in this way, keys from the same partition are evenly
-         * distributed to all the replicas of that partition; besides, it's guaranteed that the same key will always
-         * go to the same host unless some hosts are down/stopped.
-         */
         VenicePath venicePath = (VenicePath)path;
 
-        H host;
-        // when least loaded host selection is enabled we pass the entire hosts list, else just pass a single host
-        if (isLeastLoadedHostEnabled) {
-          host = selectLeastLoadedHost(hosts, venicePath, resourceName);
-        } else {
-          host = avoidSlowHost(venicePath, key, hosts);
-        }
+        H host = selectLeastLoadedHost(hosts, venicePath, resourceName);
 
         scatter.addOnlineRequest(new ScatterGatherRequest<>(Collections.singletonList(host), keySet, partitionName));
       } else {
@@ -359,7 +331,6 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     class KeyPartitionSet<H, K> {
       public TreeSet<K> keySet = new TreeSet<>();
       public Set<String> partitionNames = new HashSet<>();
-      // Only considering the first host because of sticky routing
       public List<H> hosts;
 
       public KeyPartitionSet(List<H> hosts) {
@@ -472,12 +443,11 @@ public class VeniceDelegateMode extends ScatterGatherMode {
   }
 
   /**
-   * This mode assumes there is only one available host per partition (sticky routing),
-   * and it is optimized based on this assumption to avoid unnecessary memory allocation and speed up scattering logic.
+   * This mode route the request to the least loaded replica that's available.
    */
-  class KeyBasedStickyRoutingModeForMultiKeyRequest extends ScatterGatherModeForMultiKeyRequest {
-    protected KeyBasedStickyRoutingModeForMultiKeyRequest() {
-      super("SCATTER_GATHER_MODE_FOR_STICKY_MULTI_GET");
+  class LeastLoadedRoutingModeForMultiKeyRequest extends ScatterGatherModeForMultiKeyRequest {
+    protected LeastLoadedRoutingModeForMultiKeyRequest() {
+      super("LEAST_LOADED_MODE_FOR_MULTI_GET");
     }
 
     @Override
@@ -485,19 +455,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         VenicePath venicePath, Map<H, KeyPartitionSet<H, K>> hostMap, Optional<Integer> helixGroupNum, Optional<Integer> assignedHelixGroupId) throws RouterException {
       String resourceName = venicePath.getResourceName();
       for (K key : partitionKeys) {
-        /**
-         * Key based sticky routing for multi-get requests;
-         * for each key, use the hashcode of each key to choose a host; in this way, keys are evenly distributed
-         * to all the hosts; besides, it's guaranteed that the same key will always go to the same host unless
-         * some hosts are down/stopped.
-         */
-        H selectedHost;
-        if (isLeastLoadedHostEnabled) {
-          // when least loaded host selection is enabled we pass the entire hosts list, else just pass a single host
-          selectedHost = selectLeastLoadedHost(partitionReplicas, venicePath, resourceName);
-        } else {
-          selectedHost = avoidSlowHost(venicePath, key, partitionReplicas);
-        }
+        H selectedHost = selectLeastLoadedHost(partitionReplicas, venicePath, resourceName);
         /**
          * Using {@link HashMap#get} and checking whether the result is null or not
          * is faster than {@link HashMap#containsKey(Object)} and {@link HashMap#get}
@@ -610,39 +568,5 @@ public class VeniceDelegateMode extends ScatterGatherMode {
      */
     int chosenIndex = Math.floorMod(key.hashCode(), hostsSize);
     return hosts.get(chosenIndex);
-  }
-
-  /**
-   * If the first chosen host is slow, choose another replica that is not in the
-   * slow hosts set; if all replicas are slow, abort the retry request.
-   *
-   * @param path
-   * @param key
-   * @param hosts a list of replica
-   * @param <H> {@link Instance}
-   * @return
-   */
-  protected static <H, K> H avoidSlowHost(VenicePath path, K key, List<H> hosts) throws RouterException {
-    H host = chooseHostByKey(key, hosts);
-    if (!(host instanceof Instance)) {
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(path.getStoreName()), Optional.of(path.getRequestType()),
-          INTERNAL_SERVER_ERROR, "The chosen host is not an 'Instance'");
-    }
-    Instance firstPickHost = (Instance) host;
-    if (path.canRequestStorageNode(firstPickHost.getNodeId())) {
-      return host;
-    }
-
-    /**
-     * If the first pick is a slow host, find another replica that is not slow.
-     */
-    for (H h : hosts) {
-      if (!firstPickHost.equals(h) && path.canRequestStorageNode(((Instance)h).getNodeId())) {
-        return h;
-      }
-    }
-
-    throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(path.getStoreName()), Optional.of(path.getRequestType()),
-        SERVICE_UNAVAILABLE, "Retry request aborted! Could not find any healthy replica.", RouterExceptionAndTrackingUtils.FailureType.SMART_RETRY_ABORTED_BY_SLOW_ROUTE);
   }
 }

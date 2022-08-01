@@ -146,7 +146,7 @@ public class TestVeniceDelegateMode {
     };
   }
 
-  private HostFinder<Instance, VeniceRole> getHostFinder(Map<String, List<Instance>> partitionHostMap, boolean sticky) {
+  private HostFinder<Instance, VeniceRole> getHostFinder(Map<String, List<Instance>> partitionHostMap) {
     return new HostFinder<Instance, VeniceRole>() {
       @Nonnull
       @Override
@@ -154,11 +154,6 @@ public class TestVeniceDelegateMode {
           @Nonnull String partitionName, @Nonnull HostHealthMonitor<Instance> hostHealthMonitor,
           @Nonnull VeniceRole roles) throws RouterException {
         if (partitionHostMap.containsKey(partitionName)) {
-          if (sticky) {
-            List<Instance> hosts = new ArrayList<>();
-            hosts.add(partitionHostMap.get(partitionName).get(0));
-            return hosts;
-          }
           return partitionHostMap.get(partitionName);
         }
         return Collections.EMPTY_LIST;
@@ -225,13 +220,12 @@ public class TestVeniceDelegateMode {
     instanceList.add(instance3);
     Map<String, List<Instance>> partitionInstanceMap = new HashMap<>();
     partitionInstanceMap.put(partitionName, instanceList);
-    HostFinder<Instance, VeniceRole> hostFinder = getHostFinder(partitionInstanceMap, false);
+    HostFinder<Instance, VeniceRole> hostFinder = getHostFinder(partitionInstanceMap);
     HostHealthMonitor monitor = getHostHealthMonitor();
     ReadRequestThrottler throttler = getReadRequestThrottle(false);
 
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
-    doReturn(true).when(config).isStickyRoutingEnabledForSingleGet();
-    doReturn(KEY_BASED_STICKY_ROUTING).when(config).getMultiKeyRoutingStrategy();
+    doReturn(LEAST_LOADED_ROUTING).when(config).getMultiKeyRoutingStrategy();
     VeniceDelegateMode scatterMode = new VeniceDelegateMode(
         config,
         mock(RouterStats.class),
@@ -252,52 +246,6 @@ public class TestVeniceDelegateMode {
     Assert.assertEquals(hosts.size(), 1, "There should be only one chose host");
     Instance selectedHost = hosts.get(0);
     Assert.assertTrue(instanceList.contains(selectedHost));
-
-    // Test with sticky routing
-    hostFinder = getHostFinder(partitionInstanceMap, true);
-    scatterMode = new VeniceDelegateMode(
-        config,
-        mock(RouterStats.class),
-        mock(RouteHttpRequestStats.class)
-    );
-    scatterMode.initReadRequestThrottler(throttler);
-    scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
-    finalScatter = scatterMode.scatter(scatter, requestMethod, resourceName,
-        partitionFinder, hostFinder, monitor, VeniceRole.REPLICA, new Metrics());
-    requests = finalScatter.getOnlineRequests();
-    Assert.assertEquals(requests.size(), 1, "There should be only one online request since there is only one key");
-    request = requests.iterator().next();
-    hosts = request.getHosts();
-    Assert.assertEquals(hosts.size(), 1, "There should be only one chose host");
-    selectedHost = hosts.get(0);
-    Assert.assertEquals(instanceList.get(0), selectedHost, "Sticky routing should select: " + instanceList.get(0));
-
-    // Test with least loaded host selection
-    hostFinder = getHostFinder(partitionInstanceMap, false);
-    RouteHttpRequestStats routeHttpRequestStats = mock(RouteHttpRequestStats.class);
-
-    doReturn(true).when(config).isLeastLoadedHostSelectionEnabled();
-    doReturn(40L).when(routeHttpRequestStats).getPendingRequestCount("host1_123");
-    doReturn(20L).when(routeHttpRequestStats).getPendingRequestCount("host2_123");
-    doReturn(30L).when(routeHttpRequestStats).getPendingRequestCount("host3_123");
-
-    scatterMode = new VeniceDelegateMode(
-        config,
-        mock(RouterStats.class),
-        routeHttpRequestStats
-    );
-    scatterMode.initReadRequestThrottler(throttler);
-    scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
-    finalScatter = scatterMode.scatter(scatter, requestMethod, resourceName,
-        partitionFinder, hostFinder, monitor, VeniceRole.REPLICA, new Metrics());
-    requests = finalScatter.getOnlineRequests();
-    Assert.assertEquals(requests.size(), 1, "There should be only one online request since there is only one key");
-    request = requests.iterator().next();
-    hosts = request.getHosts();
-    Assert.assertEquals(hosts.size(), 1, "There should be only one chose host");
-    selectedHost = hosts.get(0);
-    Assert.assertEquals(instanceList.get(0), selectedHost, "Sticky routing should select: " + instanceList.get(0));
-
   }
 
   @Test (expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*not available for store.*")
@@ -316,13 +264,12 @@ public class TestVeniceDelegateMode {
     PartitionFinder partitionFinder = getPartitionFinder(keyPartitionMap);
 
     Map<String, List<Instance>> partitionInstanceMap = new HashMap<>();
-    HostFinder<Instance, VeniceRole> hostFinder = getHostFinder(partitionInstanceMap, false);
+    HostFinder<Instance, VeniceRole> hostFinder = getHostFinder(partitionInstanceMap);
     HostHealthMonitor monitor = getHostHealthMonitor();
     ReadRequestThrottler throttler = getReadRequestThrottle(false);
 
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
-    doReturn(false).when(config).isStickyRoutingEnabledForSingleGet();
-    doReturn(KEY_BASED_STICKY_ROUTING).when(config).getMultiKeyRoutingStrategy();
+    doReturn(LEAST_LOADED_ROUTING).when(config).getMultiKeyRoutingStrategy();
 
     VeniceDelegateMode scatterMode = new VeniceDelegateMode(
         config,
@@ -414,11 +361,10 @@ public class TestVeniceDelegateMode {
     partitionInstanceMap.put(p5, instanceListForP5);
     partitionInstanceMap.put(p6, instanceListForP6);
 
-    HostFinder<Instance, VeniceRole> hostFinder = getHostFinder(partitionInstanceMap, false);
+    HostFinder<Instance, VeniceRole> hostFinder = getHostFinder(partitionInstanceMap);
     HostHealthMonitor monitor = getHostHealthMonitor();
     ReadRequestThrottler throttler = getReadRequestThrottle(false);
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
-    doReturn(false).when(config).isStickyRoutingEnabledForSingleGet();
     doReturn(GROUP_BY_PRIMARY_HOST_ROUTING).when(config).getMultiKeyRoutingStrategy();
 
     VeniceDelegateMode scatterMode = new VeniceDelegateMode(
@@ -448,55 +394,6 @@ public class TestVeniceDelegateMode {
         "One of instance2/instance4 should be selected");
     Assert.assertTrue(instanceSet.contains(instance3) || instanceSet.contains(instance5),
         "One of instance3/instance5 should be selected");
-
-    // test sticky routing
-    scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
-    hostFinder = getHostFinder(partitionInstanceMap, true);
-    doReturn(true).when(config).isStickyRoutingEnabledForSingleGet();
-    doReturn(KEY_BASED_STICKY_ROUTING).when(config).getMultiKeyRoutingStrategy();
-
-    scatterMode = new VeniceDelegateMode(
-        config,
-        mock(RouterStats.class),
-        mock(RouteHttpRequestStats.class)
-    );
-
-    scatterMode.initReadRequestThrottler(throttler);
-    finalScatter =
-        scatterMode.scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA, new Metrics());
-    requests = finalScatter.getOnlineRequests();
-    Assert.assertEquals(requests.size(), 3);
-    requests.stream().forEach(request -> {
-      Assert.assertEquals(request.getHosts().size(), 1,
-          "There should be only one host for each request");
-      Instance host = request.getHosts().get(0);
-      SortedSet partitionKeys = request.getPartitionKeys();
-      Set<String> partitionNames = request.getPartitionsNames();
-      if (host.equals(instance1)) {
-        Assert.assertEquals(partitionKeys.size(), 4);
-        Assert.assertTrue(partitionKeys.contains(key1));
-        Assert.assertTrue(partitionKeys.contains(key2));
-        Assert.assertTrue(partitionKeys.contains(key3));
-        Assert.assertTrue(partitionKeys.contains(key4));
-        Assert.assertEquals(partitionNames.size(), 4);
-        Assert.assertTrue(partitionNames.contains(p1));
-        Assert.assertTrue(partitionNames.contains(p2));
-        Assert.assertTrue(partitionNames.contains(p3));
-        Assert.assertTrue(partitionNames.contains(p4));
-      } else if (host.equals(instance2)) {
-        Assert.assertEquals(partitionKeys.size(), 1);
-        Assert.assertTrue(partitionKeys.contains(key5));
-        Assert.assertEquals(partitionNames.size(), 1);
-        Assert.assertTrue(partitionNames.contains(p5));;
-      } else if (host.equals(instance5)) {
-        Assert.assertEquals(partitionKeys.size(), 1);
-        Assert.assertTrue(partitionKeys.contains(key6));
-        Assert.assertEquals(partitionNames.size(), 1);
-        Assert.assertTrue(partitionNames.contains(p6));;
-      } else {
-        Assert.fail("Instance: " + host + " shouldn't be selected");
-      }
-    });
   }
 
   @Test
@@ -569,13 +466,12 @@ public class TestVeniceDelegateMode {
     partitionInstanceMap.put(p4, instanceListForP4);
     partitionInstanceMap.put(p5, instanceListForP5);
 
-    HostFinder<Instance, VeniceRole> hostFinder = getHostFinder(partitionInstanceMap, false);
+    HostFinder<Instance, VeniceRole> hostFinder = getHostFinder(partitionInstanceMap);
     HostHealthMonitor monitor = getHostHealthMonitor();
     ReadRequestThrottler throttler = getReadRequestThrottle(false);
 
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
-    doReturn(false).when(config).isStickyRoutingEnabledForSingleGet();
-    doReturn(KEY_BASED_STICKY_ROUTING).when(config).getMultiKeyRoutingStrategy();
+    doReturn(LEAST_LOADED_ROUTING).when(config).getMultiKeyRoutingStrategy();
 
     VeniceDelegateMode scatterMode = new VeniceDelegateMode(
         config,
@@ -589,60 +485,6 @@ public class TestVeniceDelegateMode {
 
     Collection<ScatterGatherRequest<Instance, RouterKey>> requests = finalScatter.getOfflineRequests();
     Assert.assertEquals(requests.size(), 1);
-  }
-
-  @Test
-  public void testRequestNotChoosingSlowHost() throws RouterException {
-    byte[] keyBytes = {'a', 'b', 'c'};
-    RouterKey key = new RouterKey(keyBytes);
-    List<Instance> hosts = new ArrayList<>(3);
-    hosts.add(Instance.fromNodeId("host1_8435"));
-    hosts.add(Instance.fromNodeId("host2_8435"));
-    hosts.add(Instance.fromNodeId("host3_8435"));
-
-    Instance firstPickHost = VeniceDelegateMode.chooseHostByKey(key, hosts);
-    VenicePath path = mock(VenicePath.class);
-
-    // Test VeniceDelegateMode should choose the first pick host when no host is slow
-    doReturn(true).when(path).canRequestStorageNode(any());
-
-    Instance chosenHost = VeniceDelegateMode.avoidSlowHost(path, key, hosts);
-    Assert.assertEquals(chosenHost, firstPickHost);
-
-
-    // Test VeniceDelegateMode should choose the fast host when the first pick host and some other hosts are slow
-    Instance fastHost = null;
-    int fastHostNumber = hosts.size() - 1;
-    // first pick host can not be the fast host
-    doReturn(false).when(path).canRequestStorageNode(firstPickHost.getNodeId());
-    for (Instance host: hosts) {
-      if (host.equals(firstPickHost)) {
-        continue;
-      }
-      if (fastHostNumber > 1) {
-        doReturn(false).when(path).canRequestStorageNode(host.getNodeId());
-        --fastHostNumber;
-      } else {
-        fastHost = host;
-      }
-    }
-
-    chosenHost = VeniceDelegateMode.avoidSlowHost(path, key, hosts);
-    Assert.assertEquals(chosenHost, fastHost);
-
-    // When all the replicas are slow
-    VenicePath pathForAllSlowReplicas = mock(VenicePath.class);
-    doReturn("test_store").when(pathForAllSlowReplicas).getStoreName();
-    doReturn(RequestType.MULTI_GET).when(pathForAllSlowReplicas).getRequestType();
-    hosts.forEach(h -> doReturn(false).when(pathForAllSlowReplicas).canRequestStorageNode(h.getNodeId()));
-    try {
-      VeniceDelegateMode.avoidSlowHost(pathForAllSlowReplicas, key, hosts);
-      Assert.fail("RouterException is expected");
-    } catch (RouterException re) {
-      // expected
-    } catch (Exception e) {
-      Assert.fail("Unexpected exception type: " + e.getClass().getSimpleName());
-    }
   }
 
   @Test
@@ -717,11 +559,10 @@ public class TestVeniceDelegateMode {
     partitionInstanceMap.put(p5, instanceListForP5);
     partitionInstanceMap.put(p6, instanceListForP6);
 
-    HostFinder<Instance, VeniceRole> hostFinder = getHostFinder(partitionInstanceMap, false);
+    HostFinder<Instance, VeniceRole> hostFinder = getHostFinder(partitionInstanceMap);
     HostHealthMonitor monitor = getHostHealthMonitor();
     ReadRequestThrottler throttler = getReadRequestThrottle(false);
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
-    doReturn(false).when(config).isStickyRoutingEnabledForSingleGet();
     doReturn(HELIX_ASSISTED_ROUTING).when(config).getMultiKeyRoutingStrategy();
 
     VeniceDelegateMode scatterMode = new VeniceDelegateMode(
