@@ -772,7 +772,7 @@ public class StoresRoutes extends AbstractRoute {
               topicsWithRetention.remove(realTimeTopic);
             }
             List<String> deletableTopicsForThisStore = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicsWithRetention,
-                minNumberOfUnusedKafkaTopicsToPreserve);
+                minNumberOfUnusedKafkaTopicsToPreserve, 0);
             if (!deletableTopicsForThisStore.isEmpty()) {
               deletableTopicsList.addAll(deletableTopicsForThisStore);
             }

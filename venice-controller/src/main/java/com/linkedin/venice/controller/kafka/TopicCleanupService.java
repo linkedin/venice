@@ -59,6 +59,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class TopicCleanupService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(TopicCleanupService.class);
+  private static final Map<String, Integer> storeToCountdownForDeletion = new HashMap<>();
 
   private final Admin admin;
   private final Thread cleanupThread;
@@ -164,9 +165,7 @@ public class TopicCleanupService extends AbstractVeniceService {
        */
       try {
         try {
-          /**
-           * Best effort to clean up staled replica statuses from meta system store.
-           */
+          // Best effort to clean up staled replica statuses from meta system store.
           cleanupReplicaStatusesFromMetaSystemStore(topic);
         } catch (Exception e) {
           LOGGER.error("Received exception while trying to clean up replica statuses from meta system store for topic: "
@@ -203,7 +202,7 @@ public class TopicCleanupService extends AbstractVeniceService {
         topicRetentions.remove(realTimeTopic);
       }
       List<String> oldTopicsToDelete = extractVersionTopicsToCleanup(admin, topicRetentions,
-          minNumberOfUnusedKafkaTopicsToPreserve);
+          minNumberOfUnusedKafkaTopicsToPreserve, delayFactor);
       if (!oldTopicsToDelete.isEmpty()) {
         topics.addAll(oldTopicsToDelete);
       }
@@ -234,7 +233,7 @@ public class TopicCleanupService extends AbstractVeniceService {
   }
 
   public static List<String> extractVersionTopicsToCleanup(Admin admin, Map<String, Long> topicRetentions,
-      int minNumberOfUnusedKafkaTopicsToPreserve) {
+      int minNumberOfUnusedKafkaTopicsToPreserve, int delayFactor) {
     if (topicRetentions.isEmpty()) {
       return Collections.emptyList();
     }
@@ -268,6 +267,19 @@ public class TopicCleanupService extends AbstractVeniceService {
          *
          */
         .filter(t -> admin.isParent() || !admin.isResourceStillAlive(t))
+        .filter(t -> {
+          if (Version.isRealTimeTopic(t)) {
+            return true;
+          }
+          // delay VT topic deletion as there could be a race condition where the resource is already deleted by venice
+          // but kafka still holding on to the deleted topic message in producer buffer which might cause infinite hang in kakfa
+          int remainingFactor = storeToCountdownForDeletion.merge(t, delayFactor, (oldVal, givenVal) -> oldVal - 1);
+          if (remainingFactor > 0) {
+            return false;
+          }
+          storeToCountdownForDeletion.remove(t);
+          return true;
+        })
         .collect(Collectors.toList());
   }
 
