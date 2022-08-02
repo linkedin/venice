@@ -286,6 +286,11 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
     getStoreStats(storeName).recordDisallowedRetryRequest();
   }
 
+  public void recordNoAvailableReplicaAbortedRetryRequest(String storeName) {
+    totalStats.recordNoAvailableReplicaAbortedRetryRequest();
+    getStoreStats(storeName).recordRetryRouteLimitAbortedRetryRequest();
+  }
+
   public void recordErrorRetryAttemptTriggeredByPendingRequestCheck(String storeName) {
     totalStats.recordErrorRetryAttemptTriggeredByPendingRequestCheck();
     getStoreStats(storeName).recordErrorRetryAttemptTriggeredByPendingRequestCheck();

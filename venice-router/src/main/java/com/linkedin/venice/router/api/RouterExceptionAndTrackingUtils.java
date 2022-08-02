@@ -28,7 +28,8 @@ public class RouterExceptionAndTrackingUtils {
     SMART_RETRY_ABORTED_BY_SLOW_ROUTE,
     SMART_RETRY_ABORTED_BY_DELAY_CONSTRAINT,
     SMART_RETRY_ABORTED_BY_MAX_RETRY_ROUTE_LIMIT,
-    RESOURCE_NOT_FOUND
+    RESOURCE_NOT_FOUND,
+    RETRY_ABORTED_BY_NO_AVAILABLE_REPLICA
   }
 
   private static final StackTraceElement[] emptyStackTrace = new StackTraceElement[0];
@@ -143,9 +144,15 @@ public class RouterExceptionAndTrackingUtils {
           if (storeName.isPresent()) {
             stats.recordDelayConstraintAbortedRetryRequest(storeName.get());
           }
+          return;
         case SMART_RETRY_ABORTED_BY_MAX_RETRY_ROUTE_LIMIT:
           if (storeName.isPresent()) {
             stats.recordRetryRouteLimitAbortedRetryRequest(storeName.get());
+          }
+          return;
+        case RETRY_ABORTED_BY_NO_AVAILABLE_REPLICA:
+          if (storeName.isPresent()) {
+            stats.recordNoAvailableReplicaAbortedRetryRequest(storeName.get());
           }
           return;
       }
