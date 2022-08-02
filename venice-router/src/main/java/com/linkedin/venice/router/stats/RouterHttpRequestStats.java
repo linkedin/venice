@@ -52,6 +52,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor delayConstraintAbortedRetryRequest;
   private final Sensor slowRouteAbortedRetryRequest;
   private final Sensor retryRouteLimitAbortedRetryRequest;
+  private final Sensor noAvailableReplicaAbortedRetryRequest;
   private final Sensor nettyClientFirstResponseLatencySensor;
   private final Sensor nettyClientLastResponseLatencySensor;
   private final Sensor nettyClientAcquireChannelFutureLatencySensor;
@@ -131,6 +132,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     delayConstraintAbortedRetryRequest = registerSensor("delay_constraint_aborted_retry_request", new Count());
     slowRouteAbortedRetryRequest = registerSensor("slow_route_aborted_retry_request", new Count());
     retryRouteLimitAbortedRetryRequest = registerSensor("retry_route_limit_aborted_retry_request", new Count());
+    noAvailableReplicaAbortedRetryRequest = registerSensor("no_available_replica_aborted_retry_request", new Count());
 
     /**
      * For each response, the response consumer will first accept a `HttpResponse` that doesn't contain any content;
@@ -330,6 +332,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordRetryRouteLimitAbortedRetryRequest() {
     retryRouteLimitAbortedRetryRequest.record();
+  }
+
+  public void recordNoAvailableReplicaAbortedRetryRequest() {
+    noAvailableReplicaAbortedRetryRequest.record();
   }
 
   public void recordKeySizeInByte(long keySize) {

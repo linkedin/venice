@@ -186,8 +186,15 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         for (ScatterGatherRequest scatterGatherRequest : offlineRequests) {
           partitions.append(scatterGatherRequest.getPartitionsNames());
         }
-        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
-            SERVICE_UNAVAILABLE, "Partitions : " + partitions + " not available for store: " + storeName + " to serve request type: " + venicePath.getRequestType());
+        RouterExceptionAndTrackingUtils.FailureType failureType = RouterExceptionAndTrackingUtils.FailureType.REGULAR;
+        if (venicePath.isRetryRequest()) {
+          // don't record it as unhealthy request.
+          failureType = RouterExceptionAndTrackingUtils.FailureType.RETRY_ABORTED_BY_NO_AVAILABLE_REPLICA;
+        }
+        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName),
+            Optional.of(venicePath.getRequestType()),
+            SERVICE_UNAVAILABLE, "Partitions : " + partitions + " not available for store: " + storeName + " to serve request type: " + venicePath.getRequestType(),
+            failureType);
       }
     }
 
