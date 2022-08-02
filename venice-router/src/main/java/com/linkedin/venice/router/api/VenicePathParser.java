@@ -77,6 +77,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
   public static final String TYPE_LEADER_CONTROLLER_LEGACY = ControllerRoute.MASTER_CONTROLLER.getPath().replace("/", "");
   public static final String TYPE_KEY_SCHEMA = "key_schema";
   public static final String TYPE_VALUE_SCHEMA = "value_schema";
+  public static final String TYPE_UPDATE_SCHEMA = "update_schema";
   public static final String TYPE_CLUSTER_DISCOVERY = "discover_cluster";
   public static final String TYPE_HEALTH_CHECK = "admin";
   public static final String TYPE_ADMIN = "admin"; // Creating a new variable name for code sanity

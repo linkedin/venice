@@ -1,0 +1,188 @@
+package com.linkedin.venice.client.schema;
+
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.AbstractAvroStoreClient;
+import com.linkedin.venice.controllerapi.MultiSchemaResponse;
+import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.schema.SchemaData;
+import com.linkedin.venice.utils.ObjectMapperFactory;
+import com.linkedin.venice.utils.RetryUtils;
+import java.io.IOException;
+import java.time.Duration;
+import java.util.Collections;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import org.apache.avro.Schema;
+import org.apache.commons.lang.Validate;
+
+import static com.linkedin.venice.schema.AvroSchemaParseUtils.*;
+
+
+/**
+ * Router based implementation of {@link StoreSchemaFetcher}. It supports schema look up for key schema, the latest value
+ * schema and latest update schema of a provided value schema version.
+ * Notice that this class does not contain any caching of schema so each API invocation will send a new request to
+ * Venice Router to fetch the desired store schema.
+ */
+public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
+  public static final String TYPE_KEY_SCHEMA = "key_schema";
+  public static final String TYPE_VALUE_SCHEMA = "value_schema";
+  public static final String TYPE_UPDATE_SCHEMA = "update_schema";
+  private final AbstractAvroStoreClient storeClient;
+  private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
+
+  // Ignore the unknown field while parsing the json response.
+  static {
+    mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+  }
+
+  public RouterBasedStoreSchemaFetcher(AbstractAvroStoreClient client) {
+    this.storeClient = client;
+  }
+
+  @Override
+  public Schema getKeySchema() {
+    String keySchemaRequestPath = TYPE_KEY_SCHEMA + "/" + storeClient.getStoreName();
+    String keySchemaStr = fetchSingleSchemaString(keySchemaRequestPath);
+    try {
+      return parseSchemaFromJSONLooseValidation(keySchemaStr);
+    } catch (Exception e) {
+      throw new VeniceException("Got exception while parsing key schema", e);
+    }
+  }
+
+  @Override
+  public Schema getLatestValueSchema() {
+    String valueSchemaRequestPath = TYPE_VALUE_SCHEMA + "/" + storeClient.getStoreName();
+    MultiSchemaResponse multiSchemaResponse = fetchAllValueSchemas(valueSchemaRequestPath);
+    int latestSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
+    String schemaStr = null;
+    for (MultiSchemaResponse.Schema schema : multiSchemaResponse.getSchemas()) {
+      if (SchemaData.INVALID_VALUE_SCHEMA_ID == latestSchemaId || latestSchemaId < schema.getId()) {
+        latestSchemaId = schema.getId();
+      }
+      schemaStr = schema.getSchemaStr();
+    }
+    try {
+      return parseSchemaFromJSONLooseValidation(schemaStr);
+    } catch (Exception e) {
+      throw new VeniceException("Got exception while parsing latest value schema", e);
+    }
+  }
+
+  @Override
+  public Schema getUpdateSchema(Schema valueSchema) throws VeniceException {
+    int valueSchemaId = getValueSchemaId(valueSchema);
+    // Fetch the latest update schema for the specified value schema.
+    String updateSchemaRequestPath = TYPE_UPDATE_SCHEMA + "/" + storeClient.getStoreName() + "/" + valueSchemaId;
+    String updateSchemaStr = fetchSingleSchemaString(updateSchemaRequestPath);
+    Schema updateSchema;
+    try {
+      updateSchema = parseSchemaFromJSONLooseValidation(updateSchemaStr);
+    } catch (Exception e) {
+      throw new VeniceException("Got exception while parsing update schema", e);
+    }
+    if (!updateSchema.getType().equals(Schema.Type.RECORD)) {
+      throw new InvalidVeniceSchemaException("Update schema can only be record schema.");
+    }
+    return updateSchema;
+  }
+
+  @Override
+  public String getStoreName() {
+    return storeClient.getStoreName();
+  }
+
+  @Override
+  public void close() throws IOException {
+    storeClient.close();
+  }
+
+  private int getValueSchemaId(Schema valueSchema) {
+    Validate.notNull(valueSchema, "Input value schema is null.");
+    if (!valueSchema.getType().equals(Schema.Type.RECORD)) {
+      throw new InvalidVeniceSchemaException("Input value schema is not a record type schema. Update schema can only be derived from record schema.");
+    }
+    // Locate value schema ID for input value schema.
+    String valueSchemaRequestPath = TYPE_VALUE_SCHEMA + "/" + storeClient.getStoreName();
+    MultiSchemaResponse multiSchemaResponse = fetchAllValueSchemas(valueSchemaRequestPath);
+    Schema retrievedValueSchema;
+    int valueSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
+    for (MultiSchemaResponse.Schema schema : multiSchemaResponse.getSchemas()) {
+      try {
+        // Use loose validation for old value schema that does not set default value as the first branch of union field.
+        retrievedValueSchema = parseSchemaFromJSONLooseValidation(schema.getSchemaStr());
+      } catch (Exception e) {
+        throw new VeniceException("Got exception while parsing latest value schema", e);
+      }
+      if (retrievedValueSchema.equals(valueSchema)) {
+        valueSchemaId = schema.getId();
+      }
+    }
+
+    if (valueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+      throw new InvalidVeniceSchemaException("Input value schema not found in Venice backend for store: " + storeClient.getStoreName());
+    }
+
+    return valueSchemaId;
+  }
+
+  private MultiSchemaResponse fetchAllValueSchemas(String requestPath) {
+    MultiSchemaResponse multiSchemaResponse;
+    byte[] response = executeRequest(requestPath);
+    try {
+      multiSchemaResponse = mapper.readValue(response, MultiSchemaResponse.class);
+    } catch (Exception e) {
+      throw new VeniceException("Got exception while deserializing response", e);
+    }
+    if (multiSchemaResponse.isError()) {
+      throw new VeniceException("Received an error while fetching value schemas from path: " + requestPath
+          + ", error message: " + multiSchemaResponse.getError());
+    }
+    if (multiSchemaResponse.getSchemas() == null) {
+      throw new VeniceException("Received bad schema response with null schema string");
+    }
+    return multiSchemaResponse;
+  }
+
+  private String fetchSingleSchemaString(String requestPath) throws VeniceClientException {
+    SchemaResponse schemaResponse;
+    byte[] response = executeRequest(requestPath);
+    try {
+      schemaResponse = mapper.readValue(response, SchemaResponse.class);
+    } catch (Exception e) {
+      throw new VeniceException("Got exception while deserializing response", e);
+    }
+    if (schemaResponse.isError()) {
+      throw new VeniceException("Received an error while fetching schema from path: " + requestPath
+          + ", error message: " + schemaResponse.getError());
+    }
+    if (schemaResponse.getSchemaStr() == null) {
+      throw new VeniceException("Received bad schema response with null schema string");
+    }
+    return schemaResponse.getSchemaStr();
+  }
+
+  private byte[] executeRequest(String requestPath) {
+    byte[] response;
+    try {
+      response = RetryUtils.executeWithMaxAttempt(
+          () -> ((CompletableFuture<byte[]>) storeClient.getRaw(requestPath)).get(),
+          3,
+          Duration.ofSeconds(5),
+          Collections.singletonList(ExecutionException.class)
+      );
+    } catch (Exception e) {
+      throw new VeniceException("Failed to fetch schema from path " + requestPath, e);
+    }
+
+    if (response == null) {
+      throw new VeniceException("Requested schema(s) doesn't exist for request path: " + requestPath);
+    }
+    return response;
+  }
+}
