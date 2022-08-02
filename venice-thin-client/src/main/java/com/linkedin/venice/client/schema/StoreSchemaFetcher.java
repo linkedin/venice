@@ -1,5 +1,7 @@
 package com.linkedin.venice.client.schema;
 
+import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
+import com.linkedin.venice.exceptions.VeniceException;
 import java.io.Closeable;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -13,20 +15,24 @@ import org.apache.avro.generic.GenericRecord;
  */
 public interface StoreSchemaFetcher extends Closeable {
   /**
-   * Returns KEY schema of the store.
+   * Returns Key schema of the store.
    */
   Schema getKeySchema();
 
   /**
-   * Returns the latest available VALUE schema of the store.
+   * Returns the latest available Value schema of the store.
    */
   Schema getLatestValueSchema();
 
   /**
-   * Returns the latest available Update (write compute) schema of the store. The returned schema is used to construct
-   * a {@link GenericRecord} that partially update a record value.
+   * Returns the Update (Write Compute) schema of the provided Value schema. The returned schema is used to construct
+   * a {@link GenericRecord} that partially updates a record value that is associated with this value schema.
+   * This method is expected to throw {@link InvalidVeniceSchemaException} when the provided value schema could not be
+   * found in the Venice backend.
+   * For other unexpected errors like store is not write-compute enabled or corresponding update schema is not found
+   * in the Venice backend, this method will throw general {@link VeniceException} with corresponding error message.
    */
-  Schema getLatestUpdateSchema();
+  Schema getUpdateSchema(Schema valueSchema) throws VeniceException;
 
   /**
    * Returns the Venice store name this class is associated with.
