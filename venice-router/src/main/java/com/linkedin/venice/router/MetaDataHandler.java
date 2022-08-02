@@ -30,6 +30,7 @@ import com.linkedin.venice.routerapi.PushStatusResponse;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.routerapi.ResourceStateResponse;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
@@ -131,6 +132,10 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       // URI: /value_schema/{$storeName} - Get all the value schema
       // URI: /value_schema/{$storeName}/{$valueSchemaId} - Get single value schema
       handleValueSchemaLookup(ctx, helper);
+    } else if (TYPE_UPDATE_SCHEMA.equals(resourceType)) {
+      // URI: /update_schema/{$storeName}/{$valueSchemaId}
+      // The request could fetch the latest derived update schema of a specific value schema
+      handleUpdateSchemaLookup(ctx, helper);
     } else if (TYPE_CLUSTER_DISCOVERY.equals(resourceType)) {
       // URI: /discover_cluster/${storeName}
       hanldeD2ServiceLookup(ctx, helper, req.headers());
@@ -151,7 +156,6 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       // since we're passing it on to the next handler, we need to retain an extra reference.
       ReferenceCountUtil.retain(req);
       ctx.fireChannelRead(req);
-      return;
     }
   }
 
@@ -226,6 +230,34 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
     }
   }
+
+  private void handleUpdateSchemaLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
+    String storeName = helper.getResourceName();
+    checkResourceName(storeName, "/" + TYPE_VALUE_SCHEMA + "/${storeName}/${valueSchemaId}");
+    String valueSchemaIdStr = helper.getKey();
+    if (valueSchemaIdStr == null || valueSchemaIdStr.isEmpty()) {
+      byte[] errBody = ("Value schema ID not found in this request").getBytes();
+      setupResponseAndFlush(BAD_REQUEST, errBody, false, ctx);
+    } else {
+      // URI: /update_schema/{$storeName}/{$valueSchemaId}
+      // Get latest update schema by value schema id
+      int valueSchemaId = Integer.parseInt(valueSchemaIdStr);
+      Optional<DerivedSchemaEntry> updateSchemaOptional = getLatestUpdateSchemaWithValueSchemaId(storeName, valueSchemaId);
+      if (!updateSchemaOptional.isPresent()) {
+        byte[] errBody = ("Update schema doesn't exist for value schema id: " + valueSchemaIdStr + " of store: " + storeName).getBytes();
+        setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
+        return;
+      }
+      SchemaResponse responseObject = new SchemaResponse();
+      responseObject.setCluster(clusterName);
+      responseObject.setName(storeName);
+      responseObject.setId(valueSchemaId);
+      responseObject.setDerivedSchemaId(updateSchemaOptional.get().getId());
+      responseObject.setSchemaStr(updateSchemaOptional.get().getSchemaStr());
+      setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
+    }
+  }
+
 
   private void hanldeD2ServiceLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper, HttpHeaders headers)
       throws IOException {
@@ -436,6 +468,18 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     if (StringUtils.isEmpty(resourceName)) {
       throw new VeniceException("Resource name required, valid path should be : " + path);
     }
+  }
+
+  private Optional<DerivedSchemaEntry> getLatestUpdateSchemaWithValueSchemaId(String storeName, int valueSchemaId) {
+    DerivedSchemaEntry latestUpdateSchemaEntry = null;
+    for (DerivedSchemaEntry entry : schemaRepo.getDerivedSchemas(storeName)) {
+      if (entry.getValueSchemaID() == valueSchemaId) {
+        if (latestUpdateSchemaEntry == null || entry.getId() > latestUpdateSchemaEntry.getId()) {
+          latestUpdateSchemaEntry = entry;
+        }
+      }
+    }
+    return Optional.ofNullable(latestUpdateSchemaEntry);
   }
 
   @Override

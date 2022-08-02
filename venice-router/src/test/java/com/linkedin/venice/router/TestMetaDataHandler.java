@@ -38,6 +38,7 @@ import com.linkedin.venice.routerapi.PushStatusResponse;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.routerapi.ResourceStateResponse;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.TestUtils;
@@ -289,6 +290,36 @@ public class TestMetaDataHandler {
   public void testInvalidValueSchemaPath() throws IOException {
 
     passRequestToMetadataHandler("http://myRouterHost:4567/value_schema/", null, null);
+  }
+
+  @Test
+  public void testUpdateSchemaLookup() throws IOException {
+    String storeName = "test_store";
+    String valueSchemaStr1 = "\"string\"";
+    String updateSchemaStr1 = "\"long\"";
+    String updateSchemaStr2 = "\"string\"";
+    String clusterName = "test-cluster";
+    int valueSchemaId1 = 1;
+    // Mock ReadOnlySchemaRepository
+    ReadOnlySchemaRepository schemaRepo = Mockito.mock(ReadOnlySchemaRepository.class);
+    SchemaEntry valueSchemaEntry1 = new SchemaEntry(valueSchemaId1, valueSchemaStr1);
+    Mockito.doReturn(Arrays.asList(valueSchemaEntry1)).when(schemaRepo).getValueSchemas(storeName);
+    SchemaEntry updateSchemaEntry1 = new DerivedSchemaEntry(valueSchemaId1, 1, updateSchemaStr1);
+    SchemaEntry updateSchemaEntry2 = new DerivedSchemaEntry(valueSchemaId1, 2, updateSchemaStr2);
+    Mockito.doReturn(Arrays.asList(updateSchemaEntry1, updateSchemaEntry2)).when(schemaRepo).getDerivedSchemas(storeName);
+
+    FullHttpResponse response = passRequestToMetadataHandler("http://myRouterHost:4567/update_schema/" + storeName + "/1", null, schemaRepo);
+
+    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
+    SchemaResponse schemaResponse = mapper.readValue(response.content().array(), SchemaResponse.class);
+
+    Assert.assertEquals(schemaResponse.getName(), storeName);
+    Assert.assertEquals(schemaResponse.getCluster(), clusterName);
+    Assert.assertFalse(schemaResponse.isError());
+    Assert.assertEquals(schemaResponse.getId(), valueSchemaId1);
+    Assert.assertEquals(schemaResponse.getSchemaStr(), updateSchemaStr2);
+    Assert.assertEquals(schemaResponse.getDerivedSchemaId(), 2);
   }
 
   @Test
