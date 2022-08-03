@@ -48,17 +48,7 @@ public enum WriteComputeOperation {
   MAP_OPS(MAP_OPS_NAME, new Function[] {
       schema -> AvroCompatibilityHelper.createSchemaField(MAP_UNION, (Schema) schema, null, Collections.emptyMap()),
       schema -> AvroCompatibilityHelper.createSchemaField(MAP_DIFF, Schema.createArray(Schema.create(Schema.Type.STRING)), null, Collections.emptyList())
-  }),
-
-  /**
-   * Marked to remove a record completely. This is used when returning writeComputeSchema with
-   * a RECORD type. The returned schema is a union of the record type and a delete operation
-   * record.
-   *
-   * Note: This is only used for non-nested records (it's only intended for removing the whole
-   * record. Removing fields inside of a record is not supported.
-   */
-  DEL_RECORD_OP(DEL_RECORD);
+  });
 
   //a name that meets class naming convention
   public final String name;
@@ -109,7 +99,7 @@ public enum WriteComputeOperation {
     return PUT_NEW_FIELD;
   }
 
-  public static boolean isDeleteRecordOp(GenericRecord writeComputeRecord) {
-    return writeComputeRecord.getSchema().getName().equals(DEL_RECORD_OP.name);
+  public static boolean isPartialUpdateOp(GenericRecord writeComputeRecord) {
+    return writeComputeRecord.getSchema().getName().endsWith(WRITE_COMPUTE_RECORD_SCHEMA_SUFFIX);
   }
 }

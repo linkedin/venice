@@ -443,15 +443,6 @@ public class WriteComputeSchemaConverter {
     return noOpSchema;
   }
 
-  public Schema getDelOpOperation(String namespace) {
-    Schema delOpSchema = Schema.createRecord(DEL_RECORD_OP.getName(), null, namespace, false);
-
-    //Avro requires every record to have a list of fields even if it's empty... Otherwise, NPE
-    //will be thrown out during parsing the schema.
-    delOpSchema.setFields(Collections.emptyList());
-    return delOpSchema;
-  }
-
   public static WriteComputeOperation getFieldOperationType(Object writeComputeFieldValue) {
     Utils.notNull(writeComputeFieldValue);
 
@@ -474,29 +465,17 @@ public class WriteComputeSchemaConverter {
     return PUT_NEW_FIELD;
   }
 
-  public static boolean isDeleteRecordOp(GenericRecord writeComputeRecord) {
-    return writeComputeRecord.getSchema().getName().equals(DEL_RECORD_OP.name);
-  }
-
   /**
    * Get a list of names of fields that a given Write Compute request record is trying to update (e.g. delete/update/collection merge).
    * @param writeComputeRecord
    * @return
    */
   public static Set<String> getNamesOfFieldsToBeUpdated(GenericRecord writeComputeRecord) {
-    final boolean isDeleteValue = isDeleteRecordOp(writeComputeRecord);
     Set<String> fieldsToBeUpdated = new HashSet<>();
-    if (isDeleteValue) {
-      // All fields need to be deleted.
-      for (Field field : writeComputeRecord.getSchema().getFields()) {
+    for (Field field : writeComputeRecord.getSchema().getFields()) {
+      Object fieldObject = writeComputeRecord.get(field.name());
+      if (getFieldOperationType(fieldObject) != NO_OP_ON_FIELD) {
         fieldsToBeUpdated.add(field.name());
-      }
-    } else {
-      for (Field field : writeComputeRecord.getSchema().getFields()) {
-        Object fieldObject = writeComputeRecord.get(field.name());
-        if (getFieldOperationType(fieldObject) != NO_OP_ON_FIELD) {
-          fieldsToBeUpdated.add(field.name());
-        }
       }
     }
     return fieldsToBeUpdated;

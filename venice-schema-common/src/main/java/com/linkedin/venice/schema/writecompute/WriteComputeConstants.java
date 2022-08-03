@@ -26,13 +26,4 @@ public class WriteComputeConstants {
   public static final String MAP_OPS_NAME = "MapOps";
   public static final String MAP_UNION = "mapUnion";
   public static final String MAP_DIFF = "mapDiff";
-
-  // Record operation
-  /**
-   * Note that Write Compute does not support Delete anymore (instead it only supports Update) and {@link WriteComputeSchemaConverter}
-   * stops generating Write Compute schema that allows for Delete. However, this constant is preserved for now because we
-   * need to make sure that the write path continues to handle Write Compute Delete request.
-   * TODO: verify that no users are still using Write Compute Delete and remove handling Write Compute Delete from the write path.
-   */
-  public static final String DEL_RECORD = "DelOp";
 }

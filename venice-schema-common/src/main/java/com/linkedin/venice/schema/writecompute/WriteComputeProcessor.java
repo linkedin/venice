@@ -47,20 +47,16 @@ public class WriteComputeProcessor {
   /**
    * Apply write-compute operations on the given record.
    *
-   * @param originalSchema the original schema that write compute schema is derived from
-   * @param writeComputeSchema the write compute schema that is auto-generated and paired with original Schema.
-   *                           See {@link WriteComputeSchemaConverter} for more details that how it's generated.
+   * @param valueSchema the original value schema that write compute schema is derived from
    * @return write-compute updated record
    */
   public GenericRecord updateRecord(
-      Schema originalSchema,
-      Schema writeComputeSchema,
+      Schema valueSchema,
       GenericRecord originalRecord,
       GenericRecord writeComputeRecord
   ) {
-    return writeComputeHandlerV2.updateRecord(
-        Utils.notNull(originalSchema),
-        Utils.notNull(writeComputeSchema),
+    return writeComputeHandlerV2.updateValueRecord(
+        Utils.notNull(valueSchema),
         originalRecord,
         Utils.notNull(writeComputeRecord)
     );

@@ -50,11 +50,17 @@ public class WriteComputeSchemaValidator {
       return valueSchema.equals(writeComputeSchema);
     }
     if (writeComputeSchema.getType() != RECORD) {
-      //If writeComputeSchema is a union type and contains DelOp, recurse on initial record
-      if (writeComputeSchema.getType() == UNION && writeComputeSchema.getTypes().get(1).getName().equals(DEL_RECORD_OP.name)) {
-        return validateSchema(valueSchema, writeComputeSchema.getTypes().get(0));
+      if (writeComputeSchema.getType() == UNION) {
+        /**
+         * If writeComputeSchema is a union schema, recurse on the first branch in the union. This is to handle legacy
+         * Write Compute schemas that are union of Update and Delete schemas. The first branch in the union schema should
+         * be the Update schema.
+         */
+        Schema updateSchema = writeComputeSchema.getTypes().get(0);
+        return validateSchema(valueSchema, updateSchema, false);
+      } else {
+        return false;
       }
-      return false;
     }
 
     for (Schema.Field field : valueSchema.getFields()) {

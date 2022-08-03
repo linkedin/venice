@@ -10,7 +10,6 @@ import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import org.apache.avro.Schema;

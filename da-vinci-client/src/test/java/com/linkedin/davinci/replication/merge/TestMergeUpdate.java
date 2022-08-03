@@ -14,10 +14,6 @@ import org.apache.avro.util.Utf8;
  */
 public class TestMergeUpdate extends TestMergeConflictResolver {
 
-  protected GenericRecord createDeleteRequestRecord(Schema writeComputeSchema) {
-    return SchemaUtils.createGenericRecord(writeComputeSchema.getTypes().get(1));
-  }
-
   protected GenericRecord createListMergeRecord(String fieldName, List<?> toAdd, List<?> toRemove, Schema writeComputeSchema) {
     Schema listMergeSchema = writeComputeSchema.getTypes().get(0).getField(fieldName).schema().getTypes().get(1);
     GenericRecord listMerge = SchemaUtils.createGenericRecord(listMergeSchema);
