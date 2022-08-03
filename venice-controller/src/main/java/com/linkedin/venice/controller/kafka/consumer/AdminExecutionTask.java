@@ -478,10 +478,6 @@ public class AdminExecutionTask implements Callable<Void> {
       params.setDisableDavinciPushStatusStore();
     }
 
-    if (message.storagePersona != null) {
-      params.setStoragePersona(message.storagePersona.toString());
-    }
-
     final UpdateStoreQueryParams finalParams;
     if (message.replicateAllConfigs) {
       finalParams = params;

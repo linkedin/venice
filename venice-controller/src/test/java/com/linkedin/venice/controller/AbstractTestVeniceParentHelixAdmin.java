@@ -12,7 +12,6 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
-import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.kafka.TopicManager;
@@ -68,7 +67,6 @@ public class AbstractTestVeniceParentHelixAdmin {
   HelixReadOnlyStoreConfigRepository readOnlyStoreConfigRepository;
   Map<String, ControllerClient> controllerClients = new HashMap<>();
   ClusterLockManager clusterLockManager;
-  StoragePersonaRepository personaRepository;
 
   public void setupInternalMocks()  {
     topicManager = mock(TopicManager.class);
@@ -100,8 +98,6 @@ public class AbstractTestVeniceParentHelixAdmin {
     doReturn(Collections.emptyList()).when(readOnlyStoreConfigRepository).getAllStoreConfigs();
     doReturn(readOnlyStoreConfigRepository).when(internalAdmin).getStoreConfigRepo();
 
-    personaRepository = mock(StoragePersonaRepository.class);
-
     store = mock(Store.class);
     doReturn(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION).when(store).getOffLinePushStrategy();
     doReturn(false).when(store).isMigrating();
@@ -123,7 +119,6 @@ public class AbstractTestVeniceParentHelixAdmin {
     ZkStoreConfigAccessor storeConfigAccessor = mock(ZkStoreConfigAccessor.class);
     doReturn(false).when(storeConfigAccessor).containsConfig(anyString());
     doReturn(storeConfigAccessor).when(resources).getStoreConfigAccessor();
-    doReturn(personaRepository).when(resources).getStoragePersonaRepository();
 
     doReturn(10).when(manager).getLiveRoutersCount();
     clusterLockManager = mock(ClusterLockManager.class);

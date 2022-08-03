@@ -1680,6 +1680,7 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void updateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
     acquireAdminMessageLock(clusterName, storeName);
+
     try {
       Optional<String> owner = params.getOwner();
       Optional<Boolean> readability = params.getEnableReads();
@@ -1726,7 +1727,6 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> activeActiveReplicationEnabled = params.getActiveActiveReplicationEnabled();
       Optional<String> regionsFilter = params.getRegionsFilter();
       Optional<Boolean> applyTargetStoreFilterForIncPush = params.applyTargetVersionFilterForIncPush();
-      Optional<String> personaName = params.getStoragePersona();
 
       /**
        * Check whether parent controllers will only propagate the update configs to child controller, or all unchanged
@@ -1894,7 +1894,6 @@ public class VeniceParentHelixAdmin implements Admin {
        * do append-only and compaction will happen later.
        * We expose actual disk usage to users, instead of multiplying/dividing the overhead ratio by situations.
        */
-
       setStore.storageQuotaInByte = storageQuotaInByte
           .map(addToUpdatedConfigList(updatedConfigsList, STORAGE_QUOTA_IN_BYTE))
           .orElseGet(currStore::getStorageQuotaInByte);
@@ -1985,32 +1984,6 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.disableDavinciPushStatusStore = params.disableDavinciPushStatusStore()
           .map(addToUpdatedConfigList(updatedConfigsList, DISABLE_DAVINCI_PUSH_STATUS_STORE))
           .orElse(false);
-
-      setStore.storagePersona = personaName
-          .map(addToUpdatedConfigList(updatedConfigsList, PERSONA_NAME))
-          .orElse(null);
-
-      StoragePersonaRepository repository = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
-      String personaNameToValidate = params.getStoragePersona().orElse(repository.getPersonaContainingStore(currStore.getName()));
-      StoragePersona personaToValidate = null;
-
-      if (personaNameToValidate != null) {
-        personaToValidate = getVeniceHelixAdmin().getStoragePersona(clusterName, personaNameToValidate);
-      }
-
-      if (params.getStoragePersona().isPresent() && personaToValidate == null) {
-        String errMsg = "UpdateStore command failed for store " + storeName + ".  The provided StoragePersona " + params.getStoragePersona().get() + " does not exist.";
-        throw new VeniceException(errMsg);
-      }
-
-      if (personaToValidate != null) {
-        /**
-         * Create a new copy of the store with an updated quota, and validate this.
-         */
-        Store updatedQuotaStore = getVeniceHelixAdmin().getStore(clusterName, storeName);
-        updatedQuotaStore.setStorageQuotaInByte(setStore.getStorageQuotaInByte());
-        repository.validateAddUpdatedStore(personaToValidate, Optional.of(updatedQuotaStore));
-      }
 
       /**
        * By default, parent controllers will not try to replicate the unchanged store configs to child controllers;
