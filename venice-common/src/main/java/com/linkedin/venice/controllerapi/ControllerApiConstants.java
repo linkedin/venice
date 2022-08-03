@@ -202,7 +202,6 @@ public class ControllerApiConstants {
 
   public static final String UPSTREAM_OFFSET = "upstream_offset";
 
-  public static final String PERSONA_NAME = "persona_name";
   public static final String PERSONA_OWNERS = "persona_owners";
   public static final String PERSONA_STORES = "persona_stores";
   public static final String PERSONA_QUOTA = "persona_quota";
