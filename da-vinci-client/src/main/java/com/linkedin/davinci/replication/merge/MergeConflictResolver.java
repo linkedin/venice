@@ -9,6 +9,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaUtils;
 import com.linkedin.venice.schema.merge.ValueAndReplicationMetadata;
+import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
@@ -682,7 +683,12 @@ public class MergeConflictResolver {
     if (rmdWithValueSchemaId == null) {
       return false;
     }
-    final boolean isDeleteValue = WriteComputeSchemaConverter.isDeleteRecordOp(writeComputeRecord);
+    if (!WriteComputeOperation.isPartialUpdateOp(writeComputeRecord)) {
+      // This Write Compute record could be a Write Compute Delete request which is not supported and there should be no
+      // one using it.
+      throw new IllegalStateException("Write Compute only support partial update. Got unexpected Write Compute record: " + writeComputeRecord);
+    }
+
     Object oldTimestampObject = rmdWithValueSchemaId.getReplicationMetadataRecord().get(TIMESTAMP_FIELD_NAME);
     Schema oldValueSchema = getValueSchema(rmdWithValueSchemaId.getValueSchemaId());
     RmdTimestampType rmdTimestampType = MergeUtils.getReplicationMetadataType(oldTimestampObject);
@@ -692,9 +698,6 @@ public class MergeConflictResolver {
         final long valueLevelTimestamp = (long) oldTimestampObject;
         if (updateOperationTimestamp > valueLevelTimestamp) {
           return false;
-        }
-        if (isDeleteValue) {
-          return updateOperationTimestamp < valueLevelTimestamp;
         }
         toUpdateFieldNames = WriteComputeSchemaConverter.getNamesOfFieldsToBeUpdated(writeComputeRecord);
         for (String toUpdateFieldName : toUpdateFieldNames) {
@@ -706,26 +709,16 @@ public class MergeConflictResolver {
 
       case PER_FIELD_TIMESTAMP:
         GenericRecord timestampRecord = (GenericRecord) oldTimestampObject;
-        if (isDeleteValue) {
-          for (Schema.Field timestampField : timestampRecord.getSchema().getFields()) {
-            if (isRmdFieldTimestampSmaller(timestampRecord, timestampField.name(), updateOperationTimestamp, false)) {
-              return false; // One existing field must be deleted.
-            }
+        toUpdateFieldNames = WriteComputeSchemaConverter.getNamesOfFieldsToBeUpdated(writeComputeRecord);
+        for (String toUpdateFieldName : toUpdateFieldNames) {
+          if (timestampRecord.get(toUpdateFieldName) == null) {
+            return false; // Write Compute tries to update a non-existing field.
           }
-          return true; // No field gets deleted because all existing fields have strictly greater timestamps.
-
-        } else {
-          toUpdateFieldNames = WriteComputeSchemaConverter.getNamesOfFieldsToBeUpdated(writeComputeRecord);
-          for (String toUpdateFieldName : toUpdateFieldNames) {
-            if (timestampRecord.get(toUpdateFieldName) == null) {
-              return false; // Write Compute tries to update a non-existing field.
-            }
-            if (isRmdFieldTimestampSmaller(timestampRecord, toUpdateFieldName, updateOperationTimestamp, false)) {
-              return false; // One existing field must be updated.
-            }
+          if (isRmdFieldTimestampSmaller(timestampRecord, toUpdateFieldName, updateOperationTimestamp, false)) {
+            return false; // One existing field must be updated.
           }
-          return true;
         }
+        return true;
 
       default:
         throw new VeniceUnsupportedOperationException("Not supported replication metadata type: " + rmdTimestampType);

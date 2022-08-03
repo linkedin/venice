@@ -21,77 +21,58 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
   protected static final GenericData genericData = GenericData.get();
 
   @Override
-  public GenericRecord updateRecord(Schema originalSchema, Schema writeComputeSchema, GenericRecord originalRecord, GenericRecord writeComputeRecord) {
-    return updateRecord(originalSchema, writeComputeSchema, originalRecord, writeComputeRecord, false);
+  public GenericRecord updateValueRecord(Schema valueSchema, GenericRecord valueRecord, GenericRecord writeComputeRecord) {
+    if (valueSchema.getType() != Schema.Type.RECORD) {
+      throw new IllegalStateException("Expect a Record value schema. Got: " + valueSchema);
+    }
+    if (!WriteComputeOperation.isPartialUpdateOp(writeComputeRecord)) {
+      // This Write Compute record could be a Write Compute Delete request which is not supported and there should be no
+      // one using it.
+      throw new IllegalStateException("Write Compute only support partial update. Got unexpected Write Compute record: " + writeComputeRecord);
+    }
+
+    if (valueRecord == null) {
+      valueRecord = SchemaUtils.createGenericRecord(valueSchema);
+    }
+    for (Schema.Field valueField : valueSchema.getFields()) {
+      final String valueFieldName = valueField.name();
+      Object writeComputeFieldValue = writeComputeRecord.get(valueFieldName);
+      if (isNoOpField(writeComputeFieldValue)) {
+        // Skip updating this field if its Write Compute operation is NoOp
+
+      } else {
+        Object updatedFieldObject = updateFieldValue(valueField.schema(), valueRecord.get(valueFieldName), writeComputeFieldValue);
+        valueRecord.put(valueFieldName, updatedFieldObject);
+      }
+    }
+    return valueRecord;
   }
 
-  GenericRecord updateRecord(Schema originalSchema, Schema writeComputeSchema, GenericRecord originalRecord,
-      GenericRecord writeComputeRecord, boolean nestedField) {
-    if (nestedField) {
-      return writeComputeRecord;
-    }
-
-    // Question: maybe we do not need to check if writeComputeSchema is an UNION at all here??
-    if (originalSchema.getType() == Schema.Type.RECORD && writeComputeSchema.getType() == Schema.Type.UNION) {
-      //if DEL_OP is in writeComputeRecord, return empty record
-      if (WriteComputeOperation.isDeleteRecordOp(writeComputeRecord)) {
-        return null;
-      } else {
-        return updateRecord(
-            originalSchema,
-            writeComputeSchema.getTypes().get(0),
-            originalRecord == null ? SchemaUtils.createGenericRecord(originalSchema) : originalRecord,
-            writeComputeRecord,
-            false
-        );
-      }
-    }
-
-    if (originalRecord == null) {
-      originalRecord = SchemaUtils.createGenericRecord(originalSchema);
-    }
-    for (Schema.Field originalField : originalSchema.getFields()) {
-      final String originalFieldName = originalField.name();
-      Object writeComputeFieldValue = writeComputeRecord.get(originalFieldName);
-
-      //skip the fields if it's NoOp
-      if (writeComputeFieldValue instanceof IndexedRecord &&
-          ((IndexedRecord) writeComputeFieldValue).getSchema().getName().equals(NO_OP_ON_FIELD.name)) {
-        continue;
-      }
-
-      Object updatedFieldObject = update(originalField.schema(), writeComputeSchema.getField(originalFieldName).schema(),
-          originalRecord.get(originalFieldName), writeComputeFieldValue);
-      originalRecord.put(originalFieldName, updatedFieldObject);
-    }
-
-    return originalRecord;
+  private boolean isNoOpField(Object writeComputeFieldValue) {
+    return (writeComputeFieldValue instanceof IndexedRecord) &&
+        ((IndexedRecord) writeComputeFieldValue).getSchema().getName().equals(NO_OP_ON_FIELD.name);
   }
 
   /**
-   * Apply write compute updates recursively.
-   * @param originalSchema the original schema that write compute schema is derived from
-   * @param originalValue current value before write compute updates are applied. Notice that this is nullable.
+   * Apply write compute updates on a field in a value record.
+   * @param valueFieldSchema the schema for this field.
+   * @param originalFieldValue current field value before it gets updated. Note that this is nullable.
    *                      A key can be nonexistent in the DB or a field is designed to be nullable. In this
    *                      case, Venice will create an empty record/field and apply the updates
-   * @param writeComputeValue write-computed value that is going to be applied
+   * @param writeComputeFieldValue write-computed value that is going to be applied
    *                          on top of original value.
    * @return The updated value
    */
-  private Object update(Schema originalSchema, Schema writeComputeSchema, Object originalValue,
-      Object writeComputeValue) {
-    switch (originalSchema.getType()) {
-      case RECORD:
-        return updateRecord(originalSchema, writeComputeSchema, (GenericRecord) originalValue,
-            (GenericRecord) writeComputeValue, true);
+  private Object updateFieldValue(Schema valueFieldSchema, Object originalFieldValue, Object writeComputeFieldValue) {
+    switch (valueFieldSchema.getType()) {
       case ARRAY:
-        return updateArray(originalSchema, (List) originalValue, writeComputeValue);
+        return updateArray(valueFieldSchema, (List) originalFieldValue, writeComputeFieldValue);
       case MAP:
-        return updateMap((Map) originalValue, writeComputeValue);
+        return updateMap((Map) originalFieldValue, writeComputeFieldValue);
       case UNION:
-        return updateUnion(originalSchema, originalValue, writeComputeValue);
+        return updateUnion(valueFieldSchema, originalFieldValue, writeComputeFieldValue);
       default:
-        return writeComputeValue;
+        return writeComputeFieldValue;
     }
   }
 

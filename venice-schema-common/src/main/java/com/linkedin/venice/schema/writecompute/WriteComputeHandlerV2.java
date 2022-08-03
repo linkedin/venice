@@ -61,21 +61,10 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
     }
 
     final GenericRecord timestampRecord = (GenericRecord) timestampObject;
-    if (WriteComputeSchemaConverter.isDeleteRecordOp(writeComputeRecord)) {
-      // Full delete
-      UpdateResultStatus recordDeleteResultStatus = mergeRecordHelper.deleteRecord(
-          currRecordAndRmd.getValue(),
-          timestampRecord,
-          updateOperationTimestamp,
-          coloID
-      );
-      if (recordDeleteResultStatus == UpdateResultStatus.COMPLETELY_UPDATED) {
-        // All fields are deleted.
-        currRecordAndRmd.setValue(null);
-      } else if (recordDeleteResultStatus == UpdateResultStatus.NOT_UPDATED_AT_ALL) {
-        currRecordAndRmd.setUpdateIgnored(true);
-      }
-      return currRecordAndRmd;
+    if (!WriteComputeOperation.isPartialUpdateOp(writeComputeRecord)) {
+      // This Write Compute record could be a Write Compute Delete request which is not supported and there should be no
+      // one using it.
+      throw new IllegalStateException("Write Compute only support partial update. Got unexpected Write Compute record: " + writeComputeRecord);
     }
 
     final Schema writeComputeSchema = writeComputeRecord.getSchema();

@@ -60,7 +60,6 @@ public class StoreIngestionWriteComputeProcessor {
     ValueAndWriteComputeSchemas valueAndWriteComputeSchemas = getValueAndWriteComputeSchemas(valueSchemaId, writeComputeSchemaId);
     GenericRecord updatedValue = writeComputeProcessor.updateRecord(
         valueAndWriteComputeSchemas.getValueSchema(),
-        valueAndWriteComputeSchemas.getWriteComputeSchema(),
         oldValue,
         writeComputeRecord
     );
