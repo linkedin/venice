@@ -307,18 +307,21 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   /**
    * Close the {@link VeniceWriter}
-   * @param shouldEndAllSegments whether to end the segments and send END_OF_SEGMENT control message.
+   * @param gracefulClose whether to end the segments and send END_OF_SEGMENT control message.
+   *
    */
   @Override
-  public void close(boolean shouldEndAllSegments) {
+  public void close(boolean gracefulClose) {
     try {
       //If {@link #broadcastEndOfPush(Map)} was already called, the {@link #endAllSegments(boolean)}
       // will not do anything (it's idempotent). Segments should not be ended if there are still data missing.
-      if (shouldEndAllSegments) {
+      if (gracefulClose) {
         endAllSegments(true);
       }
       //DO NOT call the {@link #KafkaProducerWrapper.close(int) version from here.}
-      producer.close(topicName, closeTimeOut);
+      // For non shared producer mode gracefulClose will flush the producer
+
+      producer.close(topicName, closeTimeOut, gracefulClose);
       OPEN_VENICE_WRITER_COUNT.decrementAndGet();
     } catch (Exception e) {
       logger.warn("Swallowed an exception while trying to close the VeniceWriter for " + topicName, e);
@@ -328,6 +331,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   public void close() {
     close(true);
+  }
+
+  public KafkaProducerWrapper getProducer() {
+    return producer;
   }
 
   /**

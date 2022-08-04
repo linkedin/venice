@@ -106,6 +106,14 @@ public class SharedKafkaProducer implements KafkaProducerWrapper  {
   }
 
   @Override
+  public void close(String topic, int closeTimeoutMs, boolean doFlush) {
+    if (doFlush) {
+      kafkaProducerWrapper.flush();
+    }
+    close(topic, closeTimeoutMs);
+  }
+
+  @Override
   public Map<String, Double> getMeasurableProducerMetrics() {
     return kafkaProducerWrapper.getMeasurableProducerMetrics();
   }

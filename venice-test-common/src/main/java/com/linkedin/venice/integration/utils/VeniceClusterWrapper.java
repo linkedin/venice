@@ -311,7 +311,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
     ZkServerWrapper zkServerWrapper = null;
     KafkaBrokerWrapper kafkaBrokerWrapper = null;
-    extraProperties.setProperty(TOPIC_CLEANUP_DELAY_FACTOR, "0");
 
     try {
       zkServerWrapper = ServiceFactory.getZkServer();

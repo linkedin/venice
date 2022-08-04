@@ -1,6 +1,7 @@
 package com.linkedin.venice.writer;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -36,6 +37,8 @@ import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.TopicPartition;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
@@ -44,6 +47,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
+import static org.testng.Assert.*;
 
 
 @Test
@@ -242,5 +246,44 @@ public class VeniceWriterTest {
     KafkaMessageEnvelope value6 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(6);
     Assert.assertEquals(value6.messageType, MessageType.PUT.getValue());
     Assert.assertEquals(value6.producerMetadata.logicalTimestamp, VeniceWriter.APP_DEFAULT_LOGICAL_TS);
+  }
+
+
+  @Test(timeOut = 30000)
+  public void testProducerClose() {
+    String topicName = Utils.getUniqueString("topic-for-vw-thread-safety");
+    int partitionCount = 1;
+    topicManager.createTopic(topicName, partitionCount, 1, true);
+    Properties properties = new Properties();
+    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafka.getAddress());
+    properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafka.getAddress());
+    properties.put(ConfigKeys.PARTITIONER_CLASS, DefaultVenicePartitioner.class.getName());
+
+    VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter =
+        TestUtils.getVeniceWriterFactory(properties).createVeniceWriter(topicName, partitionCount);
+    KafkaProducerWrapper producer = veniceWriter.getProducer();
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try {
+      Future future = executor.submit(() -> {
+        // send to non-existent topic
+        producer.sendMessage(new ProducerRecord("topic", "key", "value"), null);
+        fail("Should be blocking send");
+      });
+
+      try {
+        producer.close(5000, true);
+      } catch (Exception ignored) {
+        fail("Close should be able to close.", ignored);
+      }
+      try {
+        future.get();
+      } catch (ExecutionException exception) {
+        assertEquals(exception.getCause().getMessage(), "Got an error while trying to produce message into Kafka. Topic: 'topic', partition: null");
+      } catch (Exception e) {
+        fail(" Should not throw other types of exception", e);
+      }
+    } finally {
+      executor.shutdownNow();
+    }
   }
 }

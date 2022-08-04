@@ -5841,19 +5841,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
          * store topics.
          */
         topics.forEach(topic -> {
-            String storeNameForTopic = null;
             if (Version.isRealTimeTopic(topic)) {
-                storeNameForTopic = Version.parseStoreFromRealTimeTopic(topic);
-            } else if (Version.isVersionTopicOrStreamReprocessingTopic(topic)) {
-                storeNameForTopic = Version.parseStoreFromKafkaTopicName(topic);
-                if (storeNameForTopic.equals(storeName)) {
-                    /** Skip Version Topic Check */
-                    storeNameForTopic = null;
-                }
-            }
-            if (storeNameForTopic != null && allRelevantStores.contains(storeNameForTopic)) {
-                throw new VeniceException("Topic: " + ": " + topic + " still exists for store: " + storeName +
-                    ", please make sure all the resources are removed before store re-creation");
+              String storeNameForTopic = Version.parseStoreFromRealTimeTopic(topic);
+              if (allRelevantStores.contains(storeNameForTopic)) {
+                throw new VeniceException("Topic: " + ": " + topic + " still exists for store: " + storeName
+                    + ", please make sure all the resources are removed before store re-creation");
+              }
             }
         });
         // Check all the helix resources.
