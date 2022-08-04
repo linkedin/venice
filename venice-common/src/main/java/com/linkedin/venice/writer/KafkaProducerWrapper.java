@@ -22,11 +22,7 @@ public interface KafkaProducerWrapper {
 
   default int getNumberOfPartitions(String topic, int timeout, TimeUnit timeUnit)
       throws InterruptedException, ExecutionException, TimeoutException {
-    Callable<Integer> task = new Callable<Integer>() {
-      public Integer call() {
-        return getNumberOfPartitions(topic);
-      }
-    };
+    Callable<Integer> task = () -> getNumberOfPartitions(topic);
     Future<Integer> future = timeOutExecutor.submit(task);
     return future.get(timeout, timeUnit);
   }
@@ -36,6 +32,7 @@ public interface KafkaProducerWrapper {
   void flush();
   void close(int closeTimeOutMs);
   default void close(int closeTimeOutMs, boolean doFlush) {close(closeTimeOutMs);}
-  default void close(String topic, int closeTimeOutMs) { close(closeTimeOutMs); }
+  default void close(String topic, int closeTimeOutMs, boolean doFlush) {close(closeTimeOutMs, doFlush);}
+  default void close(String topic, int closeTimeOutMs) { close(closeTimeOutMs, true); }
   Map<String, Double> getMeasurableProducerMetrics();
 }

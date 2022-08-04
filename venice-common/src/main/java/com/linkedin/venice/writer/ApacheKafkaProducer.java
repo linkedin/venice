@@ -9,6 +9,7 @@ import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -203,14 +204,19 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
   }
 
   @Override
+  public void close(String topic, int closeTimeoutMs, boolean doFlush) {
+    close(closeTimeoutMs, doFlush);
+  }
+
+  @Override
   public void close(int closeTimeOutMs, boolean doFlush) {
     if (producer != null) {
       if (doFlush) {
         // Flush out all the messages in the producer buffer
-        producer.flush();
+        producer.flush(closeTimeOutMs, TimeUnit.MILLISECONDS);
         LOGGER.info("Flushed all the messages in producer before closing");
       }
-      producer.close(closeTimeOutMs, TimeUnit.MILLISECONDS);
+      producer.close(Duration.ofMillis(closeTimeOutMs));
       // Recycle the internal buffer allocated by KafkaProducer ASAP.
       producer = null;
     }

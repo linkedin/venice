@@ -28,7 +28,7 @@ public abstract class AbstractVeniceWriter <K, V, U> implements Closeable {
     return put(key, value, valueSchemaId, null);
   }
 
-  public abstract void close(boolean shouldEndAllSegments) throws IOException;
+  public abstract void close(boolean gracefulClose) throws IOException;
 
   public abstract Future<RecordMetadata> put(K key, V value, int valueSchemaId, Callback callback);
 

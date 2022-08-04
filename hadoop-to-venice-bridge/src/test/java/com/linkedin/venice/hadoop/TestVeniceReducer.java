@@ -431,7 +431,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
   public void testReduceWithWriterException() {
     AbstractVeniceWriter exceptionWriter = new AbstractVeniceWriter(TOPIC_NAME) {
       @Override
-      public void close(boolean shouldEndAllSegments) {
+      public void close(boolean gracefulClose) {
         // no-op
       }
 
@@ -520,8 +520,8 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
       }
 
       @Override
-      public void close(boolean shouldCloseAllSegments) {
-        Assert.assertFalse(shouldCloseAllSegments, "A writer exception is thrown, should not close all segments");
+      public void close(boolean gracefulClose) {
+        Assert.assertFalse(gracefulClose, "A writer exception is thrown, should not close all segments");
       }
 
       @Override

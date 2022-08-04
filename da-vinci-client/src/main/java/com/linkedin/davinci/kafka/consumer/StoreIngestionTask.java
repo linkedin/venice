@@ -1390,6 +1390,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   @Override
   public void run() {
+    boolean doFlush = true;
     try {
       // Update thread name to include topic to make it easy debugging
       Thread.currentThread().setName("venice-SIT-" + kafkaVersionTopic);
@@ -1431,7 +1432,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     } catch (VeniceIngestionTaskKilledException e) {
       logger.info(consumerTaskId + " has been killed.", e);
       reportStatusAdapter.reportKilled(partitionConsumptionStateMap.values(), e);
-
+      doFlush = false;
     } catch (org.apache.kafka.common.errors.InterruptException | InterruptedException e) {
       // Known exceptions during graceful shutdown of storage server. Report error only if the server is still running.
       if (isRunning()) {
@@ -1484,7 +1485,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       storeIngestionStats.recordIngestionFailure(storeName);
     } finally {
-      internalClose();
+      internalClose(doFlush);
     }
   }
 
@@ -1581,7 +1582,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private void internalClose() {
+  private void internalClose(boolean doFlush)  {
     // Only reset Offset Messages are important, subscribe/unSubscribe will be handled
     // on the restart by Helix Controller notifications on the new StoreIngestionTask.
     try {
@@ -1597,27 +1598,29 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           logger.info(consumerTaskId + " Cleanup ignoring the Message " + message);
         }
       }
-
-      if (serverConfig.isSharedConsumerPoolEnabled()) {
-        aggKafkaConsumerService.unsubscribeAll(getVersionTopic());
-      } else {
-        if (kafkaUrlToDedicatedConsumerMap == null || kafkaUrlToDedicatedConsumerMap.size() == 0) {
-          // Consumer constructor error-ed out, nothing can be cleaned up.
-          logger.warn("Error in consumer creation, skipping close for topic " + kafkaVersionTopic);
-        } else {
-          kafkaUrlToDedicatedConsumerMap.values().forEach(consumer -> consumer.close(everSubscribedTopics));
-        }
-      }
-
-      closeProducers();
     } catch (Exception e) {
-      logger.error("Caught exception while trying to close the current ingestion task", e);
+      logger.error(consumerTaskId + " Error while resetting offset.", e);
     }
+    try {
+      partitionConsumptionStateMap.values().parallelStream().forEach(pcs -> {
+        consumerUnSubscribeAllTopics(pcs);
+        pcs.unsubscribe();
+      });
+      partitionConsumptionStateMap.clear();
+    } catch (Exception e) {
+      logger.error(consumerTaskId + " Error while unsubscribing topic.", e);
+    }
+    try {
+      closeVeniceWriters(doFlush);
+    } catch (Exception e) {
+      logger.error("Error while closing venice writers", e);
+    }
+
     close();
     logger.info("Store ingestion task for store: " + kafkaVersionTopic + " is closed");
   }
 
-  protected void closeProducers() { }
+  protected void closeVeniceWriters(boolean doFlush) { }
 
   /**
    * Consumes the kafka actions messages in the queue.
