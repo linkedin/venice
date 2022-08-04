@@ -16,29 +16,9 @@ public interface ConsumedDataReceiver<MESSAGE> {
 
   /**
    * This method accepts data consumed from a queue and it should be non-blocking. This method may throw an exception
-   * if write is not successful. No exception being thrown means write is successful. Different sub classes of
+   * if write is not successful. No exception being thrown means write is successful.
    *
    * @param consumedData Consumed data.
    */
-  void write(MESSAGE consumedData);
-
-  /**
-   * @return Number of data records currently being in the receiver.
-   */
-  int remainingRecordsCount();
-
-  /**
-   * @return Number of bytes currently being in the receiver.
-   */
-  int remainingBytesCount();
-
-  /**
-   * @return Rate of records being drained out from this receiver.
-   */
-  int getDrainingRecordsPerSecond();
-
-  /**
-   * @return Rate of bytes being drained out from this receiver.
-   */
-  int getDrainingBytesPerSecond();
+  void write(MESSAGE consumedData) throws Exception;
 }

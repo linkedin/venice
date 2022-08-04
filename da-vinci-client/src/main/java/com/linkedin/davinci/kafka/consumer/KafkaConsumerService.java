@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
@@ -12,11 +13,13 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -60,6 +63,8 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
 
   protected final KafkaConsumerServiceStats stats;
   protected final List<SharedKafkaConsumer> readOnlyConsumersList;
+  protected final Map<TopicPartition, ConsumedDataReceiver<List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>>>
+      dataReceiverMap;
 
   private boolean stopped = false;
 
@@ -87,7 +92,8 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
        * We need to assign an unique client id across all the storage nodes, otherwise, they will fail into the same throttling bucket.
        */
       consumerProperties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, getUniqueClientId(kafkaUrl, i));
-      SharedKafkaConsumer newConsumer = createSharedKafkaConsumer(consumerFactory.getConsumer(consumerProperties),sharedConsumerNonExistingTopicCleanupDelayMS, topicExistenceChecker);
+      SharedKafkaConsumer newConsumer = createSharedKafkaConsumer(consumerFactory.getConsumer(consumerProperties),
+          sharedConsumerNonExistingTopicCleanupDelayMS, topicExistenceChecker);
       consumerExecutor.submit(new ConsumptionTask(kafkaUrl, newConsumer));
       consumers.add(newConsumer);
       consumerPartitionsNumSubscribed.add(0);
@@ -95,6 +101,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
     readOnlyConsumersList = Collections.unmodifiableList(consumers);
     consumerExecutor.shutdown();
 
+    dataReceiverMap = new VeniceConcurrentHashMap<>();
     logger.info("KafkaConsumerService was initialized with " + numOfConsumersPerKafkaCluster + " consumers.");
   }
 
@@ -162,6 +169,12 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
     readOnlyConsumersList.forEach(SharedKafkaConsumer::close);
   }
 
+  public ConsumedDataReceiver<List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> setDataReceiver(TopicPartition topicPartition,
+      ConsumedDataReceiver<List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> consumedDataReceiver) {
+    dataReceiverMap.put(topicPartition, consumedDataReceiver);
+    return consumedDataReceiver;
+  }
+
   private class ConsumptionTask implements Runnable {
     private final String kafkaUrl;
     private final SharedKafkaConsumer consumer;
@@ -179,7 +192,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       long beforePollingTimeStamp;
       ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records;
       long beforeProducingToWriteBufferTimestamp;
-      StoreIngestionTask ingestionTask;
+      ConsumedDataReceiver<List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> consumedDataReceiver;
       List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> partitionRecords;
       long totalBytes;
       while (!stopped) {
@@ -199,79 +212,18 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
           if (!records.isEmpty()) {
             beforeProducingToWriteBufferTimestamp = System.currentTimeMillis();
             for (TopicPartition topicPartition : records.partitions()) {
-              ingestionTask = consumer.getIngestionTaskForTopicPartition(topicPartition);
-              if (ingestionTask == null) {
+              consumedDataReceiver = dataReceiverMap.get(topicPartition);
+              if (consumedDataReceiver == null) {
                 // defensive code
-                logger.error("Couldn't find IngestionTask for topic partition : " + topicPartition + " after receiving records from `poll` request");
+                logger.error("Couldn't find consumed data receiver for topic partition : " + topicPartition +
+                    " after receiving records from `poll` request");
                 continue;
               }
               partitionRecords = records.records(topicPartition);
-              try {
-                /**
-                 * This function could be blocked by the following reasons:
-                 * 1. The pre-condition is not satisfied before producing to the shared StoreBufferService, such as value schema is not available;
-                 * 2. The producing is blocked by the throttling of the shared StoreBufferService;
-                 *
-                 * For #1, it is acceptable since there is a timeout for the blocking logic, and it doesn't happen very often
-                 * based on the operational experience;
-                 * For #2, the blocking caused by throttling is expected since all the ingestion tasks are sharing the
-                 * same StoreBufferService;
-                 *
-                 * If there are changes with the above assumptions or new blocking behaviors, we need to evaluate whether
-                 * we need to do some kind of isolation here, otherwise the consumptions for other store versions with the
-                 * same shared consumer will be affected.
-                 * The potential isolation strategy is:
-                 * 1. When detecting such kind of prolonged or infinite blocking, the following function should expose a
-                 * param to decide whether it should return early in those conditions;
-                 * 2. Once this function realizes this behavior, it could choose to temporarily {@link KafkaConsumerWrapper#pause}
-                 * the blocked consumptions;
-                 * 3. This runnable could {@link KafkaConsumerWrapper#resume} the subscriptions after some delays or
-                 * condition change, and there are at least two ways to make the subscription resumption without missing messages:
-                 * a. Keep the previous message leftover in this class and retry, and once the messages can be processed
-                 * without blocking, then resume the paused subscriptions;
-                 * b. Don't keep the message leftover in this class, but every time, rewind the offset to the checkpointed offset
-                 * of the corresponding {@link StoreIngestionTask} and resume subscriptions;
-                 *
-                 * For option #a, the logic is simpler and but the concern is that
-                 * the buffered messages inside the shared consumer and the message leftover could potentially cause
-                 * some GC issue, and option #b won't have this problem since {@link KafkaConsumerWrapper#pause} will drop
-                 * all the buffered messages for the paused partitions, but just slightly more complicate.
-                 *
-                 */
-                ingestionTask.produceToStoreBufferServiceOrKafka(
-                    partitionRecords,
-                    false,
-                    topicPartition,
-                    kafkaUrl);
-              } catch (Exception e) {
-                if (ExceptionUtils.recursiveClassEquals(e, InterruptedException.class)) {
-                  // We sometimes wrap InterruptedExceptions, so not taking any chances...
-                  if (ingestionTask.isRunning()) {
-                    /**
-                     * Based on the order of operations in {@link KafkaStoreIngestionService#stopInner()} the ingestion
-                     * tasks should all be closed (and therefore not running) prior to this service here being stopped.
-                     * Hence, the state detected here where we get interrupted while the ingestion task is still running
-                     * should never happen. It's unknown whether this happens or not, and if it does, whether it carries
-                     * any significant consequences. For now we will only log it if it does happen, but will not take
-                     * any special action. Some action which we might consider taking in the future would be to call
-                     * {@link StoreIngestionTask#close()} here, but in the interest of keeping the shutdown flow
-                     * simpler, we will avoid doing this for now.
-                     */
-                    logger.warn("Unexpected: got interrupted prior to the {} getting closed.",
-                        ingestionTask.getClass().getSimpleName());
-                  }
-                  /**
-                   * We want to rethrow the interrupted exception in order to skip the quota-related code below and
-                   * break the run loop. We avoid calling {@link StoreIngestionTask#setLastConsumerException(Exception)}
-                   * as we do for other exceptions as this carries side-effects that may be undesirable.
-                   */
-                  throw e;
-                }
-                logger.error("Received exception when StoreIngestionTask is processing the polled consumer record for topic: " + topicPartition, e);
-                ingestionTask.setLastConsumerException(e);
-              }
+              consumedDataReceiver.write(partitionRecords);
             }
-            stats.recordConsumerRecordsProducingToWriterBufferLatency(LatencyUtils.getElapsedTimeInMs(beforeProducingToWriteBufferTimestamp));
+            stats.recordConsumerRecordsProducingToWriterBufferLatency(
+                LatencyUtils.getElapsedTimeInMs(beforeProducingToWriteBufferTimestamp));
             if (bandwidthThrottler.getMaxRatePerSecond() > 0) {
               // Bandwidth throttling requires doing an O(N) operation proportional to the number of records
               // consumed, so we will do it only if it's enabled, and avoid it otherwise.
