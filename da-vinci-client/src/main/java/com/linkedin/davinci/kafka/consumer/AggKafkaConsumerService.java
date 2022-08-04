@@ -1,19 +1,24 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -118,6 +123,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     }
   }
 
+
   /**
    * Assigns one of the pre-allocated consumers to the provided {@link StoreIngestionTask}.
    *
@@ -132,6 +138,10 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     KafkaConsumerWrapper selectedConsumer = consumerService.assignConsumerFor(ingestionTask);
     consumerService.attach(selectedConsumer, ingestionTask.getVersionTopic(), ingestionTask);
     return selectedConsumer;
+  }
+
+  public void setKafkaConsumerService(String kafkaUrl, KafkaConsumerService kafkaConsumerService) {
+    kafkaServerToConsumerServiceMap.putIfAbsent(kafkaUrl, kafkaConsumerService);
   }
 
   public boolean hasConsumerAssignedFor(final String kafkaURL, String versionTopic, String topic, int partition) {
@@ -201,8 +211,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     }
   }
 
-  public void subscribeConsumerFor(final String kafkaURL, StoreIngestionTask storeIngestionTask,
-      String topic, int partition, long lastOffset) {
+  public ConsumedDataReceiver<List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> subscribeConsumerFor(
+      final String kafkaURL, StoreIngestionTask storeIngestionTask, String topic, int partition, long lastOffset) {
     String versionTopic = storeIngestionTask.getVersionTopic();
     KafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
     if (consumerService == null) {
@@ -222,6 +232,11 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       throw new VeniceException("Shared consumer must exist for version topic: " + versionTopic + " in Kafka cluster: "
           + kafkaURL);
     }
+    TopicPartition topicPartition = new TopicPartition(topic, partition);
+    ConsumedDataReceiver<List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> dataReceiver = new StorePartitionDataReceiver(
+        storeIngestionTask, topicPartition, kafkaURL);
+    consumerService.setDataReceiver(topicPartition, dataReceiver);
+    return dataReceiver;
   }
 
   public long getOffsetLagFor(final String kafkaURL, String versionTopic, String topic, int partition) {

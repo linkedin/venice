@@ -40,7 +40,6 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -133,7 +132,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
@@ -220,6 +218,9 @@ public class StoreIngestionTaskTest {
   private KafkaConsumerService localKafkaConsumerService;
   private KafkaConsumerService remoteKafkaConsumerService;
 
+  private StorePartitionDataReceiver localConsumedDataReceiver;
+  private StorePartitionDataReceiver remoteConsumedDataReceiver;
+
   private static String storeNameWithoutVersionInfo;
   private static String topic;
 
@@ -300,7 +301,7 @@ public class StoreIngestionTaskTest {
   }
 
   @BeforeMethod(alwaysRun = true)
-  public void methodSetUp() {
+  public void methodSetUp() throws Exception {
     aggKafkaConsumerService = mock(AggKafkaConsumerService.class);
     storeNameWithoutVersionInfo = Utils.getUniqueString("TestTopic");
     topic = Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1);
@@ -684,17 +685,23 @@ public class StoreIngestionTaskTest {
       String topic = invocation.getArgument(2, String.class);
       int partition = invocation.getArgument(3, Integer.class);
       long offset = invocation.getArgument(4, Long.class);
+      TopicPartition topicPartition = new TopicPartition(topic, partition);
       if (kafkaUrl.equals(inMemoryLocalKafkaBroker.getKafkaBootstrapServer())) {
         KafkaConsumerWrapper topicWiseKafkaConsumer = localKafkaConsumerService.assignConsumerFor(storeIngestionTask);
         localKafkaConsumerService.attach(topicWiseKafkaConsumer, topic, storeIngestionTask);
+        localConsumedDataReceiver = (StorePartitionDataReceiver) localKafkaConsumerService.setDataReceiver(
+            topicPartition, new StorePartitionDataReceiver(storeIngestionTask, topicPartition, kafkaUrl));
         topicWiseKafkaConsumer.subscribe(topic, partition, offset);
       } else if (kafkaUrl.equals(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer())) {
         KafkaConsumerWrapper topicWiseKafkaConsumer = remoteKafkaConsumerService.assignConsumerFor(storeIngestionTask);
         remoteKafkaConsumerService.attach(topicWiseKafkaConsumer, topic, storeIngestionTask);
+        remoteConsumedDataReceiver = (StorePartitionDataReceiver) remoteKafkaConsumerService.setDataReceiver(
+            topicPartition, new StorePartitionDataReceiver(storeIngestionTask, topicPartition, kafkaUrl));
         topicWiseKafkaConsumer.subscribe(topic, partition, offset);
       }
+
       return null;
-    }).when(aggKafkaConsumerService).subscribeConsumerFor(any(), any(),any(), anyInt(), anyLong());
+    }).when(aggKafkaConsumerService).subscribeConsumerFor(any(), any(), any(), anyInt(), anyLong());
 
     doAnswer(invocation -> {
       Set<String> topics = invocation.getArgument(1, Set.class);
@@ -2156,6 +2163,7 @@ public class StoreIngestionTaskTest {
     }
   }
 
+  @Test
   public void testRecordsCanBeThrottledPerRegion() throws ExecutionException, InterruptedException {
     int partitionCount = 2;
     int amplificationFactor = 1;
@@ -2180,10 +2188,10 @@ public class StoreIngestionTaskTest {
 
     Map<String, Object> extraServerProperties = new HashMap<>();
     extraServerProperties.put(SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING, true);
-    extraServerProperties.put(SERVER_SHARED_CONSUMER_POOL_ENABLED, false);
+    extraServerProperties.put(SERVER_SHARED_CONSUMER_POOL_ENABLED, true);
 
     StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(new RandomPollStrategy(),
-        Utils.setOf(PARTITION_FOO), Optional.of(hybridStoreConfig), Optional.empty(), 1, extraServerProperties, false).build();
+        Utils.setOf(PARTITION_FOO), Optional.of(hybridStoreConfig), Optional.empty(), 1, extraServerProperties, true).build();
 
     Properties kafkaProps = new Properties();
     kafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
@@ -2212,60 +2220,53 @@ public class StoreIngestionTaskTest {
     inMemoryLocalKafkaBroker.createTopic(rtTopic, partitionCount);
     inMemoryRemoteKafkaBroker.createTopic(rtTopic, partitionCount);
 
-    storeIngestionTaskUnderTest.consumerSubscribe(rtTopic, PARTITION_FOO, 0, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
-    storeIngestionTaskUnderTest.consumerSubscribe(rtTopic, PARTITION_FOO, 0, inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
+    aggKafkaConsumerService.subscribeConsumerFor(inMemoryLocalKafkaBroker.getKafkaBootstrapServer(), storeIngestionTaskUnderTest,
+        rtTopic, PARTITION_FOO, 0);
+    aggKafkaConsumerService.subscribeConsumerFor(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer(), storeIngestionTaskUnderTest,
+        rtTopic, PARTITION_FOO, 0);
 
     VeniceWriter localRtWriter = getVeniceWriter(rtTopic, () -> new MockInMemoryProducer(inMemoryLocalKafkaBroker), 1);
     VeniceWriter remoteRtWriter = getVeniceWriter(rtTopic, () -> new MockInMemoryProducer(inMemoryRemoteKafkaBroker), 1);
 
-    for (int i = 0; i < 5; i++) {
+    Long recordsNum = 5L;
+    for (int i = 0; i < recordsNum; i++) {
       localRtWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, putKeyFooTimestamp, null).get();
     }
 
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < recordsNum; i++) {
       remoteRtWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, putKeyFooTimestamp, null).get();
     }
 
-    // Verify can ingest at least some record from local and remote Kafka
-    Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> kafkaUrlToConsumerRecords1 = storeIngestionTaskUnderTest.dedicatedConsumerPoll(1 * Time.MS_PER_SECOND);
-    Assert.assertEquals(kafkaUrlToConsumerRecords1.size(), 2);
-    Assert.assertFalse(kafkaUrlToConsumerRecords1.get(inMemoryLocalKafkaBroker.getKafkaBootstrapServer()).isEmpty());
-    Assert.assertFalse(kafkaUrlToConsumerRecords1.get(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer()).isEmpty());
-
-    // Drain local and remote Kafka
-    while (true) {
-      Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> kafkaUrlToConsumerRecords = storeIngestionTaskUnderTest.dedicatedConsumerPoll(1 * Time.MS_PER_SECOND);
-      if (kafkaUrlToConsumerRecords.size() == 0) {
-        break;
-      }
-    }
+    waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Assert.assertTrue(localConsumedDataReceiver.receivedRecordsCount() == recordsNum);
+      Assert.assertTrue(remoteConsumedDataReceiver.receivedRecordsCount() == recordsNum);
+    });
 
     // Pause remote kafka consumption
     remoteKafkaQuota.set(0);
-
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < recordsNum; i++) {
       localRtWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, putKeyFooTimestamp, null).get();
     }
 
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < recordsNum; i++) {
       remoteRtWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, putKeyFooTimestamp, null).get();
     }
 
-    // Verify does not ingest from remote Kafka
-    Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> kafkaUrlToConsumerRecords2 = storeIngestionTaskUnderTest.dedicatedConsumerPoll(1 * Time.MS_PER_SECOND);
-    Assert.assertEquals(kafkaUrlToConsumerRecords2.size(), 1);
-    Assert.assertFalse(kafkaUrlToConsumerRecords2.containsKey(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer()));
+    Long doubleRecordsNum = recordsNum * 2;
+    waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Assert.assertTrue(localConsumedDataReceiver.receivedRecordsCount() == doubleRecordsNum);
+      Assert.assertTrue(remoteConsumedDataReceiver.receivedRecordsCount() == recordsNum);
+    });
 
+    // Verify resumes ingestion from remote Kafka
+    int mockInteractionsBeforePoll = Mockito.mockingDetails(mockRemoteKafkaConsumer).getInvocations().size();
     // Resume remote Kafka consumption
     remoteKafkaQuota.set(10);
     testTime.sleep(timeWindowMS); // sleep so throttling window is reset and we don't run into race conditions
 
-    // Verify resumes ingestion from remote Kafka
-    int mockInteractionsBeforePoll = Mockito.mockingDetails(mockRemoteKafkaConsumer).getInvocations().size();
-    Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> kafkaUrlToConsumerRecords3 = storeIngestionTaskUnderTest.dedicatedConsumerPoll(1 * Time.MS_PER_SECOND);
-    Assert.assertTrue(kafkaUrlToConsumerRecords3.containsKey(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer()));
     int mockInteractionsAfterPoll = Mockito.mockingDetails(mockRemoteKafkaConsumer).getInvocations().size();
-    Assert.assertEquals(mockInteractionsBeforePoll, mockInteractionsAfterPoll, "Remote consumer should not poll for new records but return previously cached records");
+    Assert.assertEquals(mockInteractionsBeforePoll, mockInteractionsAfterPoll,
+        "Remote consumer should not poll for new records but return previously cached records");
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
