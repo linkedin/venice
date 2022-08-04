@@ -1,6 +1,5 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
@@ -11,20 +10,19 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-
+import javax.annotation.Nonnull;
 import org.apache.commons.lang.Validate;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import javax.annotation.Nonnull;
 
 
 /**
@@ -38,10 +36,9 @@ import javax.annotation.Nonnull;
  * and balanced shared consumer partition assignment load. We can improve this allocation strategy if we need to.
  */
 public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
-
   private static String exceptionMessageForImproperUsage(String methodName) {
-    return methodName + " should never be called on " + VirtualSharedKafkaConsumer.class.getSimpleName() +
-        " but should rather be called on " + PartitionWiseSharedKafkaConsumer.class.getSimpleName();
+    return methodName + " should never be called on " + VirtualSharedKafkaConsumer.class.getSimpleName()
+        + " but should rather be called on " + PartitionWiseSharedKafkaConsumer.class.getSimpleName();
   }
 
   private final Map<String, VirtualSharedKafkaConsumer> versionTopicToVirtualConsumerMap;
@@ -54,14 +51,32 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
   private final Logger logger;
   private Integer shareConsumerIndex;
 
-  public PartitionWiseKafkaConsumerService(final KafkaClientFactory consumerFactory, final Properties consumerProperties,
-      final long readCycleDelayMs, final int numOfConsumersPerKafkaCluster, final EventThrottler bandwidthThrottler,
-      final EventThrottler recordsThrottler, final KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
-      final KafkaConsumerServiceStats stats, final long sharedConsumerNonExistingTopicCleanupDelayMS,
-      final TopicExistenceChecker topicExistenceChecker, final boolean liveConfigBasedKafkaThrottlingEnabled) {
-    super(consumerFactory, consumerProperties, readCycleDelayMs, numOfConsumersPerKafkaCluster, bandwidthThrottler,
-        recordsThrottler, kafkaClusterBasedRecordThrottler, stats, sharedConsumerNonExistingTopicCleanupDelayMS,
-        topicExistenceChecker, liveConfigBasedKafkaThrottlingEnabled);
+  public PartitionWiseKafkaConsumerService(
+      final KafkaClientFactory consumerFactory,
+      final Properties consumerProperties,
+      final long readCycleDelayMs,
+      final int numOfConsumersPerKafkaCluster,
+      final EventThrottler bandwidthThrottler,
+      final EventThrottler recordsThrottler,
+      final KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
+      final MetricsRepository metricsRepository,
+      final String kafkaClusterAlias,
+      final long sharedConsumerNonExistingTopicCleanupDelayMS,
+      final TopicExistenceChecker topicExistenceChecker,
+      final boolean liveConfigBasedKafkaThrottlingEnabled) {
+    super(
+        consumerFactory,
+        consumerProperties,
+        readCycleDelayMs,
+        numOfConsumersPerKafkaCluster,
+        bandwidthThrottler,
+        recordsThrottler,
+        kafkaClusterBasedRecordThrottler,
+        metricsRepository,
+        kafkaClusterAlias,
+        sharedConsumerNonExistingTopicCleanupDelayMS,
+        topicExistenceChecker,
+        liveConfigBasedKafkaThrottlingEnabled);
     this.versionTopicToVirtualConsumerMap = new VeniceConcurrentHashMap<>();
     this.rtTopicPartitionToConsumerMap = new VeniceConcurrentHashMap<>();
     this.shareConsumerIndex = 0;
@@ -69,9 +84,15 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
   }
 
   @Override
-  public SharedKafkaConsumer createSharedKafkaConsumer(final KafkaConsumerWrapper kafkaConsumerWrapper, final long nonExistingTopicCleanupDelayMS,
+  public SharedKafkaConsumer createSharedKafkaConsumer(
+      final KafkaConsumerWrapper kafkaConsumerWrapper,
+      final long nonExistingTopicCleanupDelayMS,
       TopicExistenceChecker topicExistenceChecker) {
-    return new PartitionWiseSharedKafkaConsumer(kafkaConsumerWrapper, this, nonExistingTopicCleanupDelayMS, topicExistenceChecker);
+    return new PartitionWiseSharedKafkaConsumer(
+        kafkaConsumerWrapper,
+        this,
+        nonExistingTopicCleanupDelayMS,
+        topicExistenceChecker);
   }
 
   @Override
@@ -84,11 +105,12 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
     // Check whether this version topic has been subscribed before or not.
     String versionTopic = ingestionTask.getVersionTopic();
     if (versionTopicToVirtualConsumerMap.containsKey(versionTopic)) {
-      logger.info("The version topic: " + versionTopic + " has already been subscribed,"
-          + " so this function will return the previously assigned shared consumer directly");
+      logger.info(
+          "The version topic: " + versionTopic + " has already been subscribed,"
+              + " so this function will return the previously assigned shared consumer directly");
     }
-    VirtualSharedKafkaConsumer chosenConsumer = versionTopicToVirtualConsumerMap.computeIfAbsent(
-        versionTopic, vt -> new VirtualSharedKafkaConsumer(ingestionTask));
+    VirtualSharedKafkaConsumer chosenConsumer = versionTopicToVirtualConsumerMap
+        .computeIfAbsent(versionTopic, vt -> new VirtualSharedKafkaConsumer(ingestionTask));
     return chosenConsumer;
   }
 
@@ -112,19 +134,23 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
     });
   }
 
-  private synchronized SharedKafkaConsumer getSharedConsumerForPartition(StoreIngestionTask ingestionTask, String topic, int partition) {
+  private synchronized SharedKafkaConsumer getSharedConsumerForPartition(
+      StoreIngestionTask ingestionTask,
+      String topic,
+      int partition) {
     // Basic case, round-robin search to find next consumer for this partition.
     boolean seekNewConsumer = true;
     String versionTopic = ingestionTask.getVersionTopic();
     int consumerIndex = -1;
     int consumersChecked = 0;
 
-    while(seekNewConsumer) {
+    while (seekNewConsumer) {
 
       // Safeguard logic, avoid infinite loops for searching consumer.
       if (consumersChecked == readOnlyConsumersList.size()) {
-        throw new VeniceException("Can not find consumer for topic: " + topic + " and partition: " + partition
-            +  " from the ingestion task belonging to version topic: " + versionTopic);
+        throw new VeniceException(
+            "Can not find consumer for topic: " + topic + " and partition: " + partition
+                + " from the ingestion task belonging to version topic: " + versionTopic);
       }
 
       SharedKafkaConsumer consumer = readOnlyConsumersList.get(shareConsumerIndex);
@@ -141,8 +167,9 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
          * But one consumer cannot consume from several offsets of one partition at the same time.
          */
         if (alreadySubscribedRealtimeTopicPartition(consumer, topic, partition)) {
-          logger.info("Current consumer has already subscribed the same real time topic: " + topic + ", partition: " + partition
-              + " will skip it and try next consumer in consumer pool");
+          logger.info(
+              "Current consumer has already subscribed the same real time topic: " + topic + ", partition: " + partition
+                  + " will skip it and try next consumer in consumer pool");
           seekNewConsumer = true;
         } else {
           TopicPartition rtTopicPartition = new TopicPartition(topic, partition);
@@ -151,13 +178,13 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
       }
       consumersChecked++;
     }
-    logger.info("Get shared consumer for: " + topic + " from the ingestion task belonging to version topic:" + versionTopic
-        + " for partition: " + partition + " with index: " + consumerIndex);
+    logger.info(
+        "Get shared consumer for: " + topic + " from the ingestion task belonging to version topic:" + versionTopic
+            + " for partition: " + partition + " with index: " + consumerIndex);
     return readOnlyConsumersList.get(consumerIndex);
   }
 
-
-  private boolean alreadySubscribedRealtimeTopicPartition(SharedKafkaConsumer consumer, String rtTopic, int partition)  {
+  private boolean alreadySubscribedRealtimeTopicPartition(SharedKafkaConsumer consumer, String rtTopic, int partition) {
     TopicPartition rtTopicPartition = new TopicPartition(rtTopic, partition);
     Set<KafkaConsumerWrapper> consumers = rtTopicPartitionToConsumerMap.get(rtTopicPartition);
     return consumers != null && consumers.contains(consumer);
@@ -228,7 +255,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
 
     @Override
     public void batchUnsubscribe(Set<TopicPartition> topicPartitionSet) {
-      for (TopicPartition topicPartition : topicPartitionSet) {
+      for (TopicPartition topicPartition: topicPartitionSet) {
         unSubscribe(topicPartition.topic(), topicPartition.partition());
       }
     }
@@ -258,7 +285,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
 
     @Override
     public boolean hasSubscribedAnyTopic(Set<String> topics) {
-      for (TopicPartition subscribedTopicPartition : sharedKafkaConsumerMap.keySet()) {
+      for (TopicPartition subscribedTopicPartition: sharedKafkaConsumerMap.keySet()) {
         if (topics.contains(subscribedTopicPartition.topic())) {
           return true;
         }

@@ -1,19 +1,19 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
 
 /**
  * {@link TopicWiseKafkaConsumerService} is used to allocate share consumer from consumer pool at topic granularity.
@@ -22,7 +22,6 @@ import org.apache.logging.log4j.Logger;
  * with least partitions subscribed will be chosen ideally.
  */
 public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
-
   /**
    * This field is used to maintain the mapping between version topic and the corresponding ingestion task.
    * In theory, One version topic should only be mapped to one ingestion task, and if this assumption is violated
@@ -32,21 +31,45 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
   private final Map<SharedKafkaConsumer, Set<String>> consumerToStoresMap = new VeniceConcurrentHashMap<>();
   private final Logger logger;
 
-  public TopicWiseKafkaConsumerService(final KafkaClientFactory consumerFactory, final Properties consumerProperties,
-      final long readCycleDelayMs, final int numOfConsumersPerKafkaCluster, final EventThrottler bandwidthThrottler,
-      final EventThrottler recordsThrottler, final KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
-      final KafkaConsumerServiceStats stats, final long sharedConsumerNonExistingTopicCleanupDelayMS,
-      final TopicExistenceChecker topicExistenceChecker, final boolean liveConfigBasedKafkaThrottlingEnabled) {
-    super(consumerFactory, consumerProperties, readCycleDelayMs, numOfConsumersPerKafkaCluster, bandwidthThrottler,
-        recordsThrottler, kafkaClusterBasedRecordThrottler, stats, sharedConsumerNonExistingTopicCleanupDelayMS,
-        topicExistenceChecker, liveConfigBasedKafkaThrottlingEnabled);
+  public TopicWiseKafkaConsumerService(
+      final KafkaClientFactory consumerFactory,
+      final Properties consumerProperties,
+      final long readCycleDelayMs,
+      final int numOfConsumersPerKafkaCluster,
+      final EventThrottler bandwidthThrottler,
+      final EventThrottler recordsThrottler,
+      final KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
+      final MetricsRepository metricsRepository,
+      final String kafkaClusterAlias,
+      final long sharedConsumerNonExistingTopicCleanupDelayMS,
+      final TopicExistenceChecker topicExistenceChecker,
+      final boolean liveConfigBasedKafkaThrottlingEnabled) {
+    super(
+        consumerFactory,
+        consumerProperties,
+        readCycleDelayMs,
+        numOfConsumersPerKafkaCluster,
+        bandwidthThrottler,
+        recordsThrottler,
+        kafkaClusterBasedRecordThrottler,
+        metricsRepository,
+        kafkaClusterAlias,
+        sharedConsumerNonExistingTopicCleanupDelayMS,
+        topicExistenceChecker,
+        liveConfigBasedKafkaThrottlingEnabled);
     logger = LogManager.getLogger(TopicWiseKafkaConsumerService.class + " [" + kafkaUrl + "]");
   }
 
   @Override
-  public SharedKafkaConsumer createSharedKafkaConsumer(final KafkaConsumerWrapper kafkaConsumerWrapper, final long nonExistingTopicCleanupDelayMS,
+  public SharedKafkaConsumer createSharedKafkaConsumer(
+      final KafkaConsumerWrapper kafkaConsumerWrapper,
+      final long nonExistingTopicCleanupDelayMS,
       TopicExistenceChecker topicExistenceChecker) {
-    return new TopicWiseSharedKafkaConsumer(kafkaConsumerWrapper, this, nonExistingTopicCleanupDelayMS, topicExistenceChecker);
+    return new TopicWiseSharedKafkaConsumer(
+        kafkaConsumerWrapper,
+        this,
+        nonExistingTopicCleanupDelayMS,
+        topicExistenceChecker);
   }
 
   @Override
@@ -72,13 +95,14 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
     SharedKafkaConsumer chosenConsumer = null;
     chosenConsumer = versionTopicToConsumerMap.get(versionTopic);
     if (null != chosenConsumer) {
-      logger.info("The version topic: " + versionTopic + " has been subscribed previously,"
-          + " so this function will return the previously assigned shared consumer directly");
+      logger.info(
+          "The version topic: " + versionTopic + " has been subscribed previously,"
+              + " so this function will return the previously assigned shared consumer directly");
       return chosenConsumer;
     }
 
     int minAssignmentPerConsumer = Integer.MAX_VALUE;
-    for (SharedKafkaConsumer consumer : readOnlyConsumersList) {
+    for (SharedKafkaConsumer consumer: readOnlyConsumersList) {
       /**
        * A Venice server host may consume from 2 version topics that belongs to the same store because each store has 2
        * versions. We need to make sure multiple store versions won't share the same consumer. Because for Hybrid stores,
@@ -86,8 +110,9 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
        * To simplify the logic here, we ensure that one consumer consumes from only one version topic of a specific store.
        */
       if (checkWhetherConsumerHasSubscribedSameStore(consumer, versionTopic)) {
-        logger.info("Current consumer has already subscribed the same store as the new topic: " + versionTopic + ", "
-            + "will skip it and try next consumer in consumer pool");
+        logger.info(
+            "Current consumer has already subscribed the same store as the new topic: " + versionTopic + ", "
+                + "will skip it and try next consumer in consumer pool");
         continue;
       }
       /**
@@ -98,8 +123,9 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
       if (!isConsumerAssignedTopic(consumer)) {
         chosenConsumer = consumer;
         assignVersionTopicToConsumer(versionTopic, chosenConsumer);
-        logger.info("Assigned a shared consumer with index of " + readOnlyConsumersList.indexOf(chosenConsumer) +
-            " without any assigned topic for topic: " + versionTopic);
+        logger.info(
+            "Assigned a shared consumer with index of " + readOnlyConsumersList.indexOf(chosenConsumer)
+                + " without any assigned topic for topic: " + versionTopic);
         return chosenConsumer;
       }
 
@@ -112,12 +138,14 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
     }
     if (null == chosenConsumer) {
       stats.recordConsumerSelectionForTopicError();
-      throw new VeniceException("Failed to find consumer for topic: " + versionTopic + ", and it might be caused by that all"
-          + " the existing consumers have subscribed the same store, and that might be caused by a bug or resource leaking");
+      throw new VeniceException(
+          "Failed to find consumer for topic: " + versionTopic + ", and it might be caused by that all"
+              + " the existing consumers have subscribed the same store, and that might be caused by a bug or resource leaking");
     }
     assignVersionTopicToConsumer(versionTopic, chosenConsumer);
-    logger.info("Assigned a shared consumer with index of " + readOnlyConsumersList.indexOf(chosenConsumer) + " for topic: "
-        + versionTopic + " with least # of partitions assigned: " + minAssignmentPerConsumer);
+    logger.info(
+        "Assigned a shared consumer with index of " + readOnlyConsumersList.indexOf(chosenConsumer) + " for topic: "
+            + versionTopic + " with least # of partitions assigned: " + minAssignmentPerConsumer);
     return chosenConsumer;
   }
 
@@ -128,7 +156,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
    * @param versionTopic
    * @return
    */
-  private boolean checkWhetherConsumerHasSubscribedSameStore(SharedKafkaConsumer consumer, String versionTopic)  {
+  private boolean checkWhetherConsumerHasSubscribedSameStore(SharedKafkaConsumer consumer, String versionTopic) {
     String storeName = Version.parseStoreFromKafkaTopicName(versionTopic);
     Set<String> stores = consumerToStoresMap.get(consumer);
     return stores != null && stores.contains(storeName);
@@ -142,7 +170,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
     if (!(consumer instanceof SharedKafkaConsumer)) {
       throw new VeniceException("The `consumer` passed must be a `SharedKafkaConsumer`");
     }
-    SharedKafkaConsumer sharedConsumer = (SharedKafkaConsumer)consumer;
+    SharedKafkaConsumer sharedConsumer = (SharedKafkaConsumer) consumer;
     if (!readOnlyConsumersList.contains(sharedConsumer)) {
       throw new VeniceException("Unknown shared consumer passed");
     }
@@ -174,7 +202,8 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
 
   private void assignVersionTopicToConsumer(String versionTopic, SharedKafkaConsumer consumer) {
     versionTopicToConsumerMap.put(versionTopic, consumer);
-    consumerToStoresMap.computeIfAbsent(consumer, k -> new HashSet<>()).add(Version.parseStoreFromKafkaTopicName(versionTopic));
+    consumerToStoresMap.computeIfAbsent(consumer, k -> new HashSet<>())
+        .add(Version.parseStoreFromKafkaTopicName(versionTopic));
   }
 
   private void removeTopicFromConsumer(String versionTopic, SharedKafkaConsumer consumer) {

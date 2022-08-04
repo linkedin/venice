@@ -1,12 +1,15 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.Utils;
+import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.Sensor;
 import java.util.HashSet;
 import java.util.Properties;
 import java.util.Set;
@@ -16,11 +19,8 @@ import org.apache.kafka.common.TopicPartition;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static org.mockito.Mockito.*;
-
 
 public class KafkaConsumerServiceTest {
-
   @Test
   public void testTopicWiseGetConsumer() throws Exception {
     SharedKafkaConsumer consumer1 = mock(SharedKafkaConsumer.class);
@@ -41,21 +41,35 @@ public class KafkaConsumerServiceTest {
     when(task2.getVersionTopic()).thenReturn(topicForStoreName2);
     when(task2.isHybridMode()).thenReturn(true);
 
-
-
     KafkaClientFactory factory = mock(KafkaClientFactory.class);
     when(factory.getConsumer(any())).thenReturn(consumer1, consumer2);
 
     Properties properties = new Properties();
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "test_kafka_url");
 
-    KafkaConsumerService consumerService = new TopicWiseKafkaConsumerService(factory, properties, 1000l,
-        2, mock(EventThrottler.class), mock(EventThrottler.class), mock(KafkaClusterBasedRecordThrottler.class),
-        mock(KafkaConsumerServiceStats.class), TimeUnit.MINUTES.toMillis(1), mock(TopicExistenceChecker.class), true);
+    MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
+    final Sensor mockSensor = mock(Sensor.class);
+    doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
+    KafkaConsumerService consumerService = new TopicWiseKafkaConsumerService(
+        factory,
+        properties,
+        1000l,
+        2,
+        mock(EventThrottler.class),
+        mock(EventThrottler.class),
+        mock(KafkaClusterBasedRecordThrottler.class),
+        mockMetricsRepository,
+        "test_kafka_cluster_alias",
+        TimeUnit.MINUTES.toMillis(1),
+        mock(TopicExistenceChecker.class),
+        false);
+    consumerService.start();
 
     KafkaConsumerWrapper assignedConsumerForTask1 = consumerService.assignConsumerFor(task1);
     KafkaConsumerWrapper assignedConsumerForTask2 = consumerService.assignConsumerFor(task2);
-    Assert.assertNotEquals(assignedConsumerForTask1, assignedConsumerForTask2,
+    Assert.assertNotEquals(
+        assignedConsumerForTask1,
+        assignedConsumerForTask2,
         "We should avoid to share consumer when there is consumer not assigned topic.");
 
     // Get partitions assigned to those two consumers
@@ -76,8 +90,11 @@ public class KafkaConsumerServiceTest {
     when(task3.getVersionTopic()).thenReturn(topicForStoreName3);
     when(task3.isHybridMode()).thenReturn(true);
     KafkaConsumerWrapper assignedConsumerForTask3 = consumerService.assignConsumerFor(task3);
-    Assert.assertEquals(assignedConsumerForTask3, assignedConsumerForTask2,
+    Assert.assertEquals(
+        assignedConsumerForTask3,
+        assignedConsumerForTask2,
         "The assigned consumer should come with least partitions, when no zero loaded consumer available.");
+    consumerService.stop();
   }
 
   private Set<TopicPartition> getTopicPartitionsSet(String topic, int partitionNum) {
@@ -102,9 +119,23 @@ public class KafkaConsumerServiceTest {
     Properties properties = new Properties();
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "test_kafka_url");
 
-    KafkaConsumerService consumerService = new TopicWiseKafkaConsumerService(factory, properties, 1000l,
-        2, mock(EventThrottler.class), mock(EventThrottler.class), mock(KafkaClusterBasedRecordThrottler.class),
-        mock(KafkaConsumerServiceStats.class), TimeUnit.MINUTES.toMillis(1), mock(TopicExistenceChecker.class), true);
+    MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
+    final Sensor mockSensor = mock(Sensor.class);
+    doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
+    KafkaConsumerService consumerService = new TopicWiseKafkaConsumerService(
+        factory,
+        properties,
+        1000l,
+        2,
+        mock(EventThrottler.class),
+        mock(EventThrottler.class),
+        mock(KafkaClusterBasedRecordThrottler.class),
+        mockMetricsRepository,
+        "test_kafka_cluster_alias",
+        TimeUnit.MINUTES.toMillis(1),
+        mock(TopicExistenceChecker.class),
+        false);
+    consumerService.start();
 
     String storeName = Utils.getUniqueString("test_consumer_service");
     StoreIngestionTask task1 = mock(StoreIngestionTask.class);
@@ -113,7 +144,10 @@ public class KafkaConsumerServiceTest {
     when(task1.isHybridMode()).thenReturn(true);
 
     KafkaConsumerWrapper assignedConsumerForV1 = consumerService.assignConsumerFor(task1);
-    Assert.assertEquals(consumerService.assignConsumerFor(task1), assignedConsumerForV1, "The 'getConsumer' function should be idempotent");
+    Assert.assertEquals(
+        consumerService.assignConsumerFor(task1),
+        assignedConsumerForV1,
+        "The 'getConsumer' function should be idempotent");
 
     String topicForStoreVersion2 = Version.composeKafkaTopic(storeName, 2);
     StoreIngestionTask task2 = mock(StoreIngestionTask.class);
@@ -121,8 +155,10 @@ public class KafkaConsumerServiceTest {
     when(task2.isHybridMode()).thenReturn(true);
 
     KafkaConsumerWrapper assignedConsumerForV2 = consumerService.assignConsumerFor(task2);
-    Assert.assertNotEquals(assignedConsumerForV2, assignedConsumerForV1, "The 'getConsumer' function should return a different consumer from v1");
-
+    Assert.assertNotEquals(
+        assignedConsumerForV2,
+        assignedConsumerForV1,
+        "The 'getConsumer' function should return a different consumer from v1");
 
     String topicForStoreVersion3 = Version.composeKafkaTopic(storeName, 3);
     StoreIngestionTask task3 = mock(StoreIngestionTask.class);
@@ -165,9 +201,23 @@ public class KafkaConsumerServiceTest {
     Properties properties = new Properties();
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "test_kafka_url");
 
-    PartitionWiseKafkaConsumerService consumerService = new PartitionWiseKafkaConsumerService(factory, properties, 1000l,
-        2, mock(EventThrottler.class), mock(EventThrottler.class), mock(KafkaClusterBasedRecordThrottler.class),
-        mock(KafkaConsumerServiceStats.class), TimeUnit.MINUTES.toMillis(1), mock(TopicExistenceChecker.class), true);
+    MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
+    final Sensor mockSensor = mock(Sensor.class);
+    doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
+    PartitionWiseKafkaConsumerService consumerService = new PartitionWiseKafkaConsumerService(
+        factory,
+        properties,
+        1000l,
+        2,
+        mock(EventThrottler.class),
+        mock(EventThrottler.class),
+        mock(KafkaClusterBasedRecordThrottler.class),
+        mockMetricsRepository,
+        "test_kafka_cluster_alias",
+        TimeUnit.MINUTES.toMillis(1),
+        mock(TopicExistenceChecker.class),
+        false);
+    consumerService.start();
 
     PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer assignedConsumerForTask1 =
         (PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer) consumerService.assignConsumerFor(task1);
@@ -185,19 +235,18 @@ public class KafkaConsumerServiceTest {
     Assert.assertEquals(assignedConsumerForTask2.getAssignment().size(), partitionNumForTask2);
     Assert.assertNotEquals(
         assignedConsumerForTask1.getSharedKafkaConsumerMap().get(new TopicPartition(topicForStoreName1, 0)),
-        assignedConsumerForTask1.getSharedKafkaConsumerMap().get(new TopicPartition(topicForStoreName1, 1))
-    );
+        assignedConsumerForTask1.getSharedKafkaConsumerMap().get(new TopicPartition(topicForStoreName1, 1)));
     Assert.assertEquals(
         assignedConsumerForTask1.getSharedKafkaConsumerMap().get(new TopicPartition(topicForStoreName1, 0)),
-        assignedConsumerForTask1.getSharedKafkaConsumerMap().get(new TopicPartition(topicForStoreName1, 2))
-    );
+        assignedConsumerForTask1.getSharedKafkaConsumerMap().get(new TopicPartition(topicForStoreName1, 2)));
     Assert.assertEquals(
         assignedConsumerForTask1.getSharedKafkaConsumerMap().get(new TopicPartition(topicForStoreName1, 3)),
-        assignedConsumerForTask2.getSharedKafkaConsumerMap().get(new TopicPartition(topicForStoreName2, 1))
-    );
-    // Balance  check.
+        assignedConsumerForTask2.getSharedKafkaConsumerMap().get(new TopicPartition(topicForStoreName2, 1)));
+    // Balance check.
     Assert.assertEquals(consumer1.getAssignmentSize(), consumer2.getAssignmentSize());
-    Assert.assertNotEquals(assignedConsumerForTask1, assignedConsumerForTask2,
+    Assert.assertNotEquals(
+        assignedConsumerForTask1,
+        assignedConsumerForTask2,
         "We should avoid to share consumer when there is consumer not assigned topic.");
 
     // Unsubscribe check.
@@ -207,6 +256,7 @@ public class KafkaConsumerServiceTest {
       Assert.assertNull(assignedConsumerForTask1.getSharedKafkaConsumerMap().get(topicPartition));
     }
     Assert.assertFalse(assignedConsumerForTask1.hasAnySubscription());
+    consumerService.stop();
   }
 
   @Test
@@ -223,9 +273,23 @@ public class KafkaConsumerServiceTest {
     Properties properties = new Properties();
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "test_kafka_url");
 
-    PartitionWiseKafkaConsumerService consumerService = new PartitionWiseKafkaConsumerService(factory, properties, 1000l,
-        2, mock(EventThrottler.class), mock(EventThrottler.class), mock(KafkaClusterBasedRecordThrottler.class),
-        mock(KafkaConsumerServiceStats.class), TimeUnit.MINUTES.toMillis(1), mock(TopicExistenceChecker.class), true);
+    MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
+    final Sensor mockSensor = mock(Sensor.class);
+    doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
+    PartitionWiseKafkaConsumerService consumerService = new PartitionWiseKafkaConsumerService(
+        factory,
+        properties,
+        1000l,
+        2,
+        mock(EventThrottler.class),
+        mock(EventThrottler.class),
+        mock(KafkaClusterBasedRecordThrottler.class),
+        mockMetricsRepository,
+        "test_kafka_cluster_alias",
+        TimeUnit.MINUTES.toMillis(1),
+        mock(TopicExistenceChecker.class),
+        false);
+    consumerService.start();
 
     String storeName = Utils.getUniqueString("test_consumer_service");
     StoreIngestionTask task1 = mock(StoreIngestionTask.class);
@@ -237,8 +301,10 @@ public class KafkaConsumerServiceTest {
     PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer assignedConsumerForV1 =
         (PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer) consumerService.assignConsumerFor(task1);
 
-
-    Assert.assertEquals(consumerService.assignConsumerFor(task1), assignedConsumerForV1, "The 'getConsumer' function should be idempotent");
+    Assert.assertEquals(
+        consumerService.assignConsumerFor(task1),
+        assignedConsumerForV1,
+        "The 'getConsumer' function should be idempotent");
 
     String topicForStoreVersion2 = Version.composeKafkaTopic(storeName, 2);
     StoreIngestionTask task2 = mock(StoreIngestionTask.class);
@@ -247,7 +313,10 @@ public class KafkaConsumerServiceTest {
 
     PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer assignedConsumerForV2 =
         (PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer) consumerService.assignConsumerFor(task2);
-    Assert.assertNotEquals(assignedConsumerForV2, assignedConsumerForV1, "The 'getConsumer' function should return a different consumer from v1");
+    Assert.assertNotEquals(
+        assignedConsumerForV2,
+        assignedConsumerForV1,
+        "The 'getConsumer' function should return a different consumer from v1");
     assignedConsumerForV1.subscribe(realTimeTopic, 0, 0);
     assignedConsumerForV1.subscribe(realTimeTopic, 1, 0);
 
@@ -256,12 +325,10 @@ public class KafkaConsumerServiceTest {
 
     Assert.assertEquals(
         assignedConsumerForV1.getSharedKafkaConsumerMap().get(new TopicPartition(realTimeTopic, 0)),
-        assignedConsumerForV2.getSharedKafkaConsumerMap().get(new TopicPartition(realTimeTopic, 1))
-    );
+        assignedConsumerForV2.getSharedKafkaConsumerMap().get(new TopicPartition(realTimeTopic, 1)));
     Assert.assertNotEquals(
         assignedConsumerForV1.getSharedKafkaConsumerMap().get(new TopicPartition(realTimeTopic, 0)),
-        assignedConsumerForV2.getSharedKafkaConsumerMap().get(new TopicPartition(realTimeTopic, 0))
-    );
+        assignedConsumerForV2.getSharedKafkaConsumerMap().get(new TopicPartition(realTimeTopic, 0)));
 
     String topicForStoreVersion3 = Version.composeKafkaTopic(storeName, 3);
     StoreIngestionTask task3 = mock(StoreIngestionTask.class);
@@ -270,15 +337,15 @@ public class KafkaConsumerServiceTest {
 
     PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer assignedConsumerForV3 =
         (PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer) consumerService.assignConsumerFor(task3);
-    // We only have 2 consumers and the RT has two 2 partitions, 3rd time RT subscribing partition 0 should not work, we could not find consumer.
+    // We only have 2 consumers and the RT has two 2 partitions, 3rd time RT subscribing partition 0 should not work, we
+    // could not find consumer.
     Assert.assertThrows(VeniceException.class, () -> assignedConsumerForV3.subscribe(realTimeTopic, 0, 0));
 
     assignedConsumerForV1.unSubscribe(realTimeTopic, 0);
     assignedConsumerForV3.subscribe(realTimeTopic, 0, 0);
     Assert.assertEquals(
         assignedConsumerForV3.getSharedKafkaConsumerMap().get(new TopicPartition(realTimeTopic, 0)),
-        assignedConsumerForV2.getSharedKafkaConsumerMap().get(new TopicPartition(realTimeTopic, 1))
-    );
+        assignedConsumerForV2.getSharedKafkaConsumerMap().get(new TopicPartition(realTimeTopic, 1)));
     consumerService.stop();
   }
 }

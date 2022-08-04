@@ -12,8 +12,11 @@ import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import java.util.ArrayList;
@@ -24,6 +27,7 @@ import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -50,6 +54,8 @@ import org.apache.logging.log4j.Logger;
  */
 
 public abstract class KafkaConsumerService extends AbstractVeniceService {
+  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private final long readCycleDelayMs;
   private final IntList consumerPartitionsNumSubscribed;
@@ -61,51 +67,73 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   private final boolean liveConfigBasedKafkaThrottlingEnabled;
   private final Logger logger;
 
-  protected final KafkaConsumerServiceStats stats;
+  protected KafkaConsumerServiceStats stats;
   protected final List<SharedKafkaConsumer> readOnlyConsumersList;
-  protected final Map<TopicPartition, ConsumedDataReceiver<List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>>>
-      dataReceiverMap;
+  protected final Map<TopicPartition, ConsumedDataReceiver<List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>>> dataReceiverMap;
+  private final List<ConsumptionTask> consumptionTaskList;
 
+  private final Map<String, Long> consumerIdToLastSuccessfulPollTimestamp;
   private boolean stopped = false;
 
-  public KafkaConsumerService(final KafkaClientFactory consumerFactory, final Properties consumerProperties,
-      final long readCycleDelayMs, final int numOfConsumersPerKafkaCluster, final EventThrottler bandwidthThrottler,
-      final EventThrottler recordsThrottler, final KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
-      final KafkaConsumerServiceStats stats, final long sharedConsumerNonExistingTopicCleanupDelayMS,
-      final TopicExistenceChecker topicExistenceChecker, final boolean liveConfigBasedKafkaThrottlingEnabled) {
+  public KafkaConsumerService(
+      final KafkaClientFactory consumerFactory,
+      final Properties consumerProperties,
+      final long readCycleDelayMs,
+      final int numOfConsumersPerKafkaCluster,
+      final EventThrottler bandwidthThrottler,
+      final EventThrottler recordsThrottler,
+      final KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
+      final MetricsRepository metricsRepository,
+      final String kafkaClusterAlias,
+      final long sharedConsumerNonExistingTopicCleanupDelayMS,
+      final TopicExistenceChecker topicExistenceChecker,
+      final boolean liveConfigBasedKafkaThrottlingEnabled) {
     this.readCycleDelayMs = readCycleDelayMs;
     this.bandwidthThrottler = bandwidthThrottler;
     this.recordsThrottler = recordsThrottler;
     this.liveConfigBasedKafkaThrottlingEnabled = liveConfigBasedKafkaThrottlingEnabled;
     this.kafkaClusterBasedRecordThrottler = kafkaClusterBasedRecordThrottler;
-    this.stats = stats;
 
     this.kafkaUrl = consumerProperties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
     this.logger = LogManager.getLogger(KafkaConsumerService.class.getSimpleName() + " [" + kafkaUrl + "]");
 
     // Initialize consumers and consumerExecutor
-    consumerExecutor = Executors.newFixedThreadPool(numOfConsumersPerKafkaCluster, new DaemonThreadFactory("venice-shared-consumer-for-" + kafkaUrl));
+    consumerExecutor = Executors.newFixedThreadPool(
+        numOfConsumersPerKafkaCluster,
+        new DaemonThreadFactory("venice-shared-consumer-for-" + kafkaUrl));
     consumerPartitionsNumSubscribed = new IntArrayList(numOfConsumersPerKafkaCluster);
     ArrayList<SharedKafkaConsumer> consumers = new ArrayList<>(numOfConsumersPerKafkaCluster);
+    consumptionTaskList = new ArrayList<>(numOfConsumersPerKafkaCluster);
+    consumerIdToLastSuccessfulPollTimestamp = new VeniceConcurrentHashMap<>(numOfConsumersPerKafkaCluster);
+    this.stats = createKafkaConsumerServiceStats(
+        metricsRepository,
+        kafkaClusterAlias,
+        this::getMaxElapsedTimeSinceLastPollInConsumerPool);
     for (int i = 0; i < numOfConsumersPerKafkaCluster; ++i) {
       /**
-       * We need to assign an unique client id across all the storage nodes, otherwise, they will fail into the same throttling bucket.
+       * We need to assign a unique client id across all the storage nodes, otherwise, they will fail into the same throttling bucket.
        */
-      consumerProperties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, getUniqueClientId(kafkaUrl, i));
-      SharedKafkaConsumer newConsumer = createSharedKafkaConsumer(consumerFactory.getConsumer(consumerProperties),
-          sharedConsumerNonExistingTopicCleanupDelayMS, topicExistenceChecker);
-      consumerExecutor.submit(new ConsumptionTask(kafkaUrl, newConsumer));
+      final String uniqueClientId = getUniqueClientId(kafkaUrl, i);
+      consumerProperties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, uniqueClientId);
+      SharedKafkaConsumer newConsumer = createSharedKafkaConsumer(
+          consumerFactory.getConsumer(consumerProperties),
+          sharedConsumerNonExistingTopicCleanupDelayMS,
+          topicExistenceChecker);
+      consumptionTaskList.add(new ConsumptionTask(kafkaUrl, uniqueClientId, newConsumer));
       consumers.add(newConsumer);
       consumerPartitionsNumSubscribed.add(0);
+      // Initialize the map with current time, in case consumer task threads get stuck from the get-go
+      consumerIdToLastSuccessfulPollTimestamp.put(uniqueClientId, System.currentTimeMillis());
     }
     readOnlyConsumersList = Collections.unmodifiableList(consumers);
-    consumerExecutor.shutdown();
 
     dataReceiverMap = new VeniceConcurrentHashMap<>();
     logger.info("KafkaConsumerService was initialized with " + numOfConsumersPerKafkaCluster + " consumers.");
   }
 
-  protected abstract SharedKafkaConsumer createSharedKafkaConsumer(final KafkaConsumerWrapper kafkaConsumerWrapper, final long nonExistingTopicCleanupDelayMS,
+  protected abstract SharedKafkaConsumer createSharedKafkaConsumer(
+      final KafkaConsumerWrapper kafkaConsumerWrapper,
+      final long nonExistingTopicCleanupDelayMS,
       TopicExistenceChecker topicExistenceChecker);
 
   private String getUniqueClientId(String kafkaUrl, int suffix) {
@@ -114,6 +142,11 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
 
   KafkaConsumerServiceStats getStats() {
     return stats;
+  }
+
+  // Used in test case only
+  public void setStats(KafkaConsumerServiceStats stats) {
+    this.stats = stats;
   }
 
   /**
@@ -126,6 +159,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
    * This function assigns a consumer for the given {@link StoreIngestionTask} and returns the assigned consumer.
    */
   public abstract KafkaConsumerWrapper assignConsumerFor(StoreIngestionTask ingestionTask);
+
   /**
    * Attach the messages belonging to {@param topic} to the passed {@param ingestionTask}
    */
@@ -138,6 +172,9 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
 
   @Override
   public boolean startInner() {
+    consumptionTaskList.stream().forEach(t -> consumerExecutor.submit(t));
+    consumerExecutor.shutdown();
+    logger.info("KafkaConsumerService started for " + kafkaUrl);
     return true;
   }
 
@@ -152,7 +189,8 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
     if (gracefulShutdownSuccess) {
       logger.info("consumerExecutor terminated gracefully in {} ms.", gracefulShutdownDuration);
     } else {
-      logger.warn("consumerExecutor timed out after {} ms while awaiting graceful termination. Will force shutdown.",
+      logger.warn(
+          "consumerExecutor timed out after {} ms while awaiting graceful termination. Will force shutdown.",
           gracefulShutdownDuration);
       long forcefulShutdownBeginningTime = System.currentTimeMillis();
       consumerExecutor.shutdownNow();
@@ -161,7 +199,8 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       if (forcefulShutdownSuccess) {
         logger.info("consumerExecutor terminated forcefully in {} ms.", forcefulShutdownDuration);
       } else {
-        logger.warn("consumerExecutor timed out after {} ms while awaiting forceful termination.",
+        logger.warn(
+            "consumerExecutor timed out after {} ms while awaiting forceful termination.",
             forcefulShutdownDuration);
       }
     }
@@ -169,7 +208,39 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
     readOnlyConsumersList.forEach(SharedKafkaConsumer::close);
   }
 
-  public ConsumedDataReceiver<List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> setDataReceiver(TopicPartition topicPartition,
+  private KafkaConsumerServiceStats createKafkaConsumerServiceStats(
+      MetricsRepository metricsRepository,
+      String kafkaClusterAlias,
+      LongSupplier getMaxElapsedTimeSinceLastPollInConsumerPool) {
+    String nameWithKafkaClusterAlias = "kafka_consumer_service_for_" + kafkaClusterAlias;
+    return new KafkaConsumerServiceStats(
+        metricsRepository,
+        nameWithKafkaClusterAlias,
+        getMaxElapsedTimeSinceLastPollInConsumerPool);
+  }
+
+  private long getMaxElapsedTimeSinceLastPollInConsumerPool() {
+    long maxElapsedTimeSinceLastPollInConsumerPool = -1;
+    String slowestConsumerId = "";
+    for (Map.Entry<String, Long> entry: consumerIdToLastSuccessfulPollTimestamp.entrySet()) {
+      long elapsedTimeSinceLastPoll = LatencyUtils.getElapsedTimeInMs(entry.getValue());
+      if (elapsedTimeSinceLastPoll > maxElapsedTimeSinceLastPollInConsumerPool) {
+        maxElapsedTimeSinceLastPollInConsumerPool = elapsedTimeSinceLastPoll;
+        slowestConsumerId = entry.getKey();
+      }
+    }
+    if (maxElapsedTimeSinceLastPollInConsumerPool > Time.MS_PER_MINUTE) {
+      // log the slowest consumer id if it couldn't make any progress in a minute!
+      String warningMessage = "Shared consumer (" + slowestConsumerId + ") couldn't make any progress";
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(warningMessage)) {
+        logger.warn(warningMessage + " for over " + maxElapsedTimeSinceLastPollInConsumerPool + "ms!");
+      }
+    }
+    return maxElapsedTimeSinceLastPollInConsumerPool;
+  }
+
+  public ConsumedDataReceiver<List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> setDataReceiver(
+      TopicPartition topicPartition,
       ConsumedDataReceiver<List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> consumedDataReceiver) {
     dataReceiverMap.put(topicPartition, consumedDataReceiver);
     return consumedDataReceiver;
@@ -177,10 +248,12 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
 
   private class ConsumptionTask implements Runnable {
     private final String kafkaUrl;
+    private final String uniqueClientId;
     private final SharedKafkaConsumer consumer;
 
-    public ConsumptionTask(final String kafkaUrl, final SharedKafkaConsumer consumer) {
+    public ConsumptionTask(final String kafkaUrl, final String uniqueClientId, final SharedKafkaConsumer consumer) {
       this.kafkaUrl = kafkaUrl;
+      this.uniqueClientId = uniqueClientId;
       this.consumer = consumer;
     }
 
@@ -207,16 +280,19 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
           } else {
             records = consumer.poll(readCycleDelayMs);
           }
-          stats.recordPollRequestLatency(LatencyUtils.getElapsedTimeInMs(beforePollingTimeStamp));
+          final long currentTimeInMs = System.currentTimeMillis();
+          consumerIdToLastSuccessfulPollTimestamp.put(this.uniqueClientId, currentTimeInMs);
+          stats.recordPollRequestLatency(currentTimeInMs - beforePollingTimeStamp);
           stats.recordPollResultNum(records.count());
           if (!records.isEmpty()) {
             beforeProducingToWriteBufferTimestamp = System.currentTimeMillis();
-            for (TopicPartition topicPartition : records.partitions()) {
+            for (TopicPartition topicPartition: records.partitions()) {
               consumedDataReceiver = dataReceiverMap.get(topicPartition);
               if (consumedDataReceiver == null) {
                 // defensive code
-                logger.error("Couldn't find consumed data receiver for topic partition : " + topicPartition +
-                    " after receiving records from `poll` request");
+                logger.error(
+                    "Couldn't find consumed data receiver for topic partition : " + topicPartition
+                        + " after receiving records from `poll` request");
                 continue;
               }
               partitionRecords = records.records(topicPartition);
@@ -228,7 +304,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
               // Bandwidth throttling requires doing an O(N) operation proportional to the number of records
               // consumed, so we will do it only if it's enabled, and avoid it otherwise.
               totalBytes = 0;
-              for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
+              for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record: records) {
                 totalBytes += record.serializedKeySize() + record.serializedValueSize();
               }
               bandwidthThrottler.maybeThrottle(totalBytes);
@@ -263,7 +339,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       minPartitionsPerConsumer = -1;
       maxPartitionsPerConsumer = -1;
     } else {
-      for (int partitionsNum : consumerPartitionsNumSubscribed) {
+      for (int partitionsNum: consumerPartitionsNumSubscribed) {
         totalPartitions += partitionsNum;
         minPartitionsPerConsumer = Math.min(minPartitionsPerConsumer, partitionsNum);
         maxPartitionsPerConsumer = Math.max(maxPartitionsPerConsumer, partitionsNum);
@@ -337,8 +413,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
    * respectively. Each strategy will have a specific extension of {@link KafkaConsumerService}.
    */
   public enum ConsumerAssignmentStrategy {
-    TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY,
-    PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY
+    TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY, PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY
   }
 
 }
