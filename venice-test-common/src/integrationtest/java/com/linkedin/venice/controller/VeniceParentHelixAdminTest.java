@@ -340,7 +340,7 @@ public class VeniceParentHelixAdminTest {
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
         VeniceControllerWrapper childControllerWrapper =
-            ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, isControllerSslEnabled);
+            ServiceFactory.getVeniceChildController(clusterName, kafkaBrokerWrapper, isControllerSslEnabled);
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
         VeniceControllerWrapper parentControllerWrapper =
             ServiceFactory.getVeniceParentController(

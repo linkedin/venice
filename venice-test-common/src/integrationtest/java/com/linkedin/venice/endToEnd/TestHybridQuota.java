@@ -110,7 +110,7 @@ public class TestHybridQuota {
     SafeHelixManager readManager = null;
     HelixCustomizedViewOfflinePushRepository offlinePushRepository = null;
     HelixHybridStoreQuotaRepository hybridStoreQuotaOnlyRepository = null;
-    try (ControllerClient controllerClient = createStoreForJob(sharedVenice, recordSchema, h2vProperties);
+    try (ControllerClient controllerClient = createStoreForJob(sharedVenice.getClusterName(), recordSchema, h2vProperties);
         TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l,
             TestUtils.getVeniceConsumerFactory(sharedVenice.getKafka()))) {
 

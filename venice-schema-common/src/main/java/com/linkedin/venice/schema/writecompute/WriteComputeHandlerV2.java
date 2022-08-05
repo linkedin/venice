@@ -5,7 +5,6 @@ import com.linkedin.venice.schema.merge.AvroCollectionElementComparator;
 import com.linkedin.venice.schema.merge.CollectionFieldOperationHandler;
 import com.linkedin.venice.schema.merge.MergeRecordHelper;
 import com.linkedin.venice.schema.merge.SortBasedCollectionFieldOpHandler;
-import com.linkedin.venice.schema.merge.UpdateResultStatus;
 import com.linkedin.venice.utils.IndexedHashMap;
 import com.linkedin.venice.schema.SchemaUtils;
 import com.linkedin.venice.schema.rmd.v1.CollectionReplicationMetadata;
@@ -34,7 +33,10 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
     this.collectionFieldOperationHandler = new SortBasedCollectionFieldOpHandler(AvroCollectionElementComparator.INSTANCE);
   }
 
-  public ValueAndReplicationMetadata<GenericRecord> updateRecord(
+  /**
+   * Handle partial update request on a value record that has associated replication metadata.
+   */
+  public ValueAndReplicationMetadata<GenericRecord> updateRecordWithRmd(
       @Nonnull Schema currValueSchema,
       @Nonnull ValueAndReplicationMetadata<GenericRecord> currRecordAndRmd,
       @Nonnull GenericRecord writeComputeRecord,

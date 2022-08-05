@@ -142,7 +142,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
   }
 
   public T get(AbstractStorageEngine store,
-      int readerSchema,
+      int readerSchemaID,
       int partition,
       ByteBuffer key,
       boolean isChunked,
@@ -158,7 +158,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
     if (isChunked) {
       key = ByteBuffer.wrap(ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key));
     }
-    return ChunkingUtils.getFromStorage(this, store, readerSchema, partition, key, response, reusedValue,
+    return ChunkingUtils.getFromStorage(this, store, readerSchemaID, partition, key, response, reusedValue,
         reusedDecoder, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory, skipCache);
   }
 

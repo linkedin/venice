@@ -192,7 +192,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           extraProperties.put(CLIENT_CONFIG_FOR_CONSUMER, clientConfig);
         }
         VeniceControllerWrapper veniceControllerWrapper =
-            ServiceFactory.getVeniceController(new String[]{clusterName}, kafkaBrokerWrapper, replicationFactor, partitionSize,
+            ServiceFactory.getVeniceChildController(new String[]{clusterName}, kafkaBrokerWrapper, replicationFactor, partitionSize,
                 rebalanceDelayMs, minActiveReplica, clusterToD2, sslToKafka, true, extraProperties);
         veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);
       }
@@ -490,7 +490,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   public VeniceControllerWrapper addVeniceController(Properties properties) {
     VeniceControllerWrapper veniceControllerWrapper =
-        ServiceFactory.getVeniceController(new String[]{clusterName}, kafkaBrokerWrapper, defaultReplicaFactor, defaultPartitionSize,
+        ServiceFactory.getVeniceChildController(new String[]{clusterName}, kafkaBrokerWrapper, defaultReplicaFactor, defaultPartitionSize,
             defaultDelayToRebalanceMS, defaultMinActiveReplica, null, sslToKafka, false, properties);
     synchronized (this) {
       veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);

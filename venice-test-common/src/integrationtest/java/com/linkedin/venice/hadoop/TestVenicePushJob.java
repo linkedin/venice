@@ -316,7 +316,7 @@ public class TestVenicePushJob {
 
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
-    createStoreForJob(veniceCluster, recordSchema, props).close();
+    createStoreForJob(veniceCluster.getClusterName(), recordSchema, props).close();
     String jobName = "Test push job";
 
     // Run job with different key schema (from 'string' to 'int')
@@ -338,7 +338,7 @@ public class TestVenicePushJob {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
-    createStoreForJob(veniceCluster, recordSchema, props).close();
+    createStoreForJob(veniceCluster.getClusterName(), recordSchema, props).close();
     String jobName = "Test push job";
     // Run job with different value schema (from 'string' to 'int')
     props.setProperty(VALUE_FIELD_PROP, "age");
@@ -357,7 +357,7 @@ public class TestVenicePushJob {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
     props.setProperty(SUPPRESS_END_OF_PUSH_MESSAGE, "true");
-    createStoreForJob(veniceCluster, recordSchema, props);
+    createStoreForJob(veniceCluster.getClusterName(), recordSchema, props);
     TestPushUtils.runPushJob("Test push job", props);
 
     TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
@@ -383,7 +383,7 @@ public class TestVenicePushJob {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
     props.setProperty(DEFER_VERSION_SWAP, "true");
-    createStoreForJob(veniceCluster, recordSchema, props);
+    createStoreForJob(veniceCluster.getClusterName(), recordSchema, props);
 
     // Create Version 1
     TestPushUtils.runPushJob("Test push job", props);

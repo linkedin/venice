@@ -7,6 +7,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericArray;
 import org.apache.avro.generic.GenericData;
@@ -170,7 +171,7 @@ public class TestWriteComputeProcessor {
   @Test
   public void testCanUpdateRecord() {
     Schema recordSchema = AvroCompatibilityHelper.parse(recordSchemaStr);
-    Schema recordWriteComputeSchema = writeComputeSchemaConverter.convert(recordSchema);
+    Schema recordWriteComputeSchema = writeComputeSchemaConverter.convertFromValueRecordSchema(recordSchema);
     WriteComputeHandlerV2 writeComputeHandler = new WriteComputeHandlerV2(new CollectionTimestampMergeRecordHelper());
 
     //construct original record
@@ -196,7 +197,7 @@ public class TestWriteComputeProcessor {
     recordUpdateRecord.put("hits", noOpRecord);
     recordUpdateRecord.put("hasNext", true);
 
-    Object result = writeComputeHandler.updateValueRecord(recordSchema, originalRecord, recordUpdateRecord);
+    Object result = writeComputeHandler.updateValueRecord(recordSchema, Optional.of(originalRecord), recordUpdateRecord);
     Assert.assertTrue(result instanceof GenericData.Record);
     Assert.assertEquals(((GenericData.Record)result).get("hits"), innerArray);
     Assert.assertEquals(((GenericData.Record)result).get("hasNext"), true);
@@ -212,7 +213,7 @@ public class TestWriteComputeProcessor {
     collectionUpdateRecord.put(SET_DIFF, Collections.emptyList());
     recordUpdateRecord.put("hits", collectionUpdateRecord);
 
-    result = writeComputeHandler.updateValueRecord(recordSchema, originalRecord, recordUpdateRecord);
+    result = writeComputeHandler.updateValueRecord(recordSchema, Optional.of(originalRecord), recordUpdateRecord);
     List hitsList = (List) ((GenericData.Record) result).get("hits");
     Assert.assertEquals(hitsList.size(), 2);
     Assert.assertTrue(hitsList.contains(innerRecord));
@@ -221,14 +222,14 @@ public class TestWriteComputeProcessor {
     //test passing a "null" as the original value. The write compute adapter should set noOp field to
     //its default value if it's possible
     recordUpdateRecord.put("hasNext", noOpRecord);
-    result = writeComputeHandler.updateValueRecord(recordSchema, null, recordUpdateRecord);
+    result = writeComputeHandler.updateValueRecord(recordSchema, Optional.empty(), recordUpdateRecord);
     Assert.assertEquals(((GenericData.Record)result).get("hasNext"), false);
   }
 
   @Test
   public void testCanUpdateNullableUnion() {
     Schema nullableRecordSchema = AvroCompatibilityHelper.parse(nullableRecordStr);
-    Schema writeComputeSchema = writeComputeSchemaConverter.convert(nullableRecordSchema);
+    Schema writeComputeSchema = writeComputeSchemaConverter.convertFromValueRecordSchema(nullableRecordSchema);
     WriteComputeProcessor writeComputeProcessor = new WriteComputeProcessor(new CollectionTimestampMergeRecordHelper());
 
     //construct an empty write compute schema. WC adapter is supposed to construct the
@@ -243,7 +244,7 @@ public class TestWriteComputeProcessor {
 
     GenericData.Record result = (GenericData.Record) writeComputeProcessor.updateRecord(
         nullableRecordSchema,
-        null,
+        Optional.empty(),
         writeComputeRecord
     );
 
@@ -257,7 +258,7 @@ public class TestWriteComputeProcessor {
     listOpsRecord.put(SET_DIFF, Collections.emptyList());
     writeComputeRecord.put("nullableArray", listOpsRecord);
 
-    result = (GenericData.Record) writeComputeProcessor.updateRecord(nullableRecordSchema, result, writeComputeRecord);
+    result = (GenericData.Record) writeComputeProcessor.updateRecord(nullableRecordSchema, Optional.of(result), writeComputeRecord);
     GenericArray array = (GenericArray) result.get("nullableArray");
     Assert.assertEquals(array.size(), 2);
     Assert.assertTrue(array.contains(1) && array.contains(2));
@@ -266,7 +267,7 @@ public class TestWriteComputeProcessor {
   @Test
   public void testCanHandleNestedRecord() {
     Schema recordSchema = AvroCompatibilityHelper.parse(nestedRecordStr);
-    Schema recordWriteComputeUnionSchema = writeComputeSchemaConverter.convert(recordSchema);
+    Schema recordWriteComputeUnionSchema = writeComputeSchemaConverter.convertFromValueRecordSchema(recordSchema);
     WriteComputeProcessor writeComputeProcessor = new WriteComputeProcessor(new CollectionTimestampMergeRecordHelper());
 
     Schema nestedRecordSchema =  recordSchema.getField("nestedRecord").schema();
@@ -278,7 +279,7 @@ public class TestWriteComputeProcessor {
 
     GenericData.Record result = (GenericData.Record) writeComputeProcessor.updateRecord(
         recordSchema,
-        null,
+        Optional.empty(),
         writeComputeRecord
     );
 

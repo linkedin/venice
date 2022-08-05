@@ -73,7 +73,7 @@ public class TestBackupVersionDatabaseOptimization {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
     Properties h2vProperties = defaultH2VProps(venice, inputDirPath, storeName);
 
-    try (ControllerClient controllerClient = createStoreForJob(venice, recordSchema, h2vProperties);
+    try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, h2vProperties);
         AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
       //Do an H2V push

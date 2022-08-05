@@ -187,7 +187,7 @@ public class ChunkingUtils {
   static <VALUE, CHUNKS_CONTAINER> VALUE getFromStorage(
       ChunkingAdapter<CHUNKS_CONTAINER, VALUE> adapter,
       AbstractStorageEngine store,
-      int readerSchemaId,
+      int readerSchemaID,
       int partition,
       ByteBuffer keyBuffer,
       ReadResponse response,
@@ -203,7 +203,7 @@ public class ChunkingUtils {
     byte[] value = store.get(partition, keyBuffer, skipCache);
 
     return getFromStorage(
-        value, (null == value ? 0 : value.length), databaseLookupStartTimeInNS, adapter, store, readerSchemaId, partition,
+        value, (null == value ? 0 : value.length), databaseLookupStartTimeInNS, adapter, store, readerSchemaID, partition,
         response, reusedValue, reusedDecoder, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory,
         skipCache);
   }
