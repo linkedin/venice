@@ -421,7 +421,7 @@ public class TestAdminConsumptionTask {
       String adminTopic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
       topicManager.createTopic(adminTopic, 1, 1, true);
       String storeName = "test-store";
-      try (VeniceControllerWrapper controller = ServiceFactory.getVeniceController(clusterName, kafka);
+      try (VeniceControllerWrapper controller = ServiceFactory.getVeniceChildController(clusterName, kafka);
           VeniceWriter<byte[], byte[], byte[]> writer = TestUtils.getVeniceWriterFactory(kafka.getAddress()).createBasicVeniceWriter(adminTopic)) {
         byte[] message = getStoreCreationMessage(clusterName, storeName, owner, "invalid_key_schema", valueSchema, 1); // This name is special
         long badOffset =

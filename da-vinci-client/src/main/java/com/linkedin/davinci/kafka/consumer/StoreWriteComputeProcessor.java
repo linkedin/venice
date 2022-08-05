@@ -12,6 +12,7 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang.Validate;
@@ -20,47 +21,47 @@ import javax.annotation.Nonnull;
 
 
 /**
- * Utils class that handles operations related to write compute in {@link LeaderFollowerStoreIngestionTask}.
- * TODO: We make a couple of additional copies here. Optimize the process to reduce the footprint.
+ * This class handles Write Compute operations related to a specific store.
+ * TODO: Optimize the process to reduce the footprint.
  */
-public class StoreIngestionWriteComputeProcessor {
+public class StoreWriteComputeProcessor {
   private final String storeName;
   private final ReadOnlySchemaRepository schemaRepo;
   private final WriteComputeProcessor writeComputeProcessor;
   private final Map<SchemaIds, ValueAndWriteComputeSchemas> schemaIdsToSchemasMap;
-  private final Map<SchemaIds, AvroGenericDeserializer<GenericRecord>> idToWriteComputeSchemaDeserializerMap;
   private final Map<Schema, AvroSerializer<GenericRecord>> valueSchemaSerializerMap;
 
-  public StoreIngestionWriteComputeProcessor(@Nonnull String storeName, @Nonnull ReadOnlySchemaRepository schemaRepo, MergeRecordHelper mergeRecordHelper) {
+  public StoreWriteComputeProcessor(@Nonnull String storeName, @Nonnull ReadOnlySchemaRepository schemaRepo, MergeRecordHelper mergeRecordHelper) {
     Validate.notEmpty(storeName);
     Validate.notNull(schemaRepo);
     this.storeName = storeName;
     this.schemaRepo = schemaRepo;
     this.writeComputeProcessor = new WriteComputeProcessor(mergeRecordHelper);
     this.schemaIdsToSchemasMap = new VeniceConcurrentHashMap<>();
-    this.idToWriteComputeSchemaDeserializerMap = new VeniceConcurrentHashMap<>();
     this.valueSchemaSerializerMap = new VeniceConcurrentHashMap<>();
   }
 
   /**
-   * Apply write-compute operation on old/current value.
+   * Apply Write Compute operation on the current value record.
    *
-   * @param oldValue value schema associated within UPDATE message. Notice that this can be different
-   *                      from which original schema was serialized.
+   * @param currValue value record that is currently stored on this Venice server. It is {@link Optional#empty()} when there
+   *                  is currently no value stored on this Venice server.
    * @param writeComputeBytes serialized write-compute operation.
-   * @param valueSchemaId value schema id that this write-compute operation is associated with.
-   *                      It's read from Kafka record.
-   * @param writeComputeSchemaId schema id that this write-compute operation is associated with.
-   *                             It's read from Kafka record.
+   * @param valueSchemaId ID of the value schema used by the value record. This value schema ID should be used to deserialize
+   *                      the Write Compute bytes into a record and it is also used as the writer schema to serialize the
+   *                      updated value record into bytes.
+   * @param writeComputeSchemaId ID of the schema that this Write Compute operation is associated with.
    *
    * @return Serialized bytes from the write-compute-updated original value.
    */
-  public byte[] applyWriteCompute(GenericRecord oldValue, ByteBuffer writeComputeBytes, int valueSchemaId, int writeComputeSchemaId) {
-    GenericRecord writeComputeRecord = deserializeWriteComputeRecord(writeComputeBytes, valueSchemaId, writeComputeSchemaId);
-    ValueAndWriteComputeSchemas valueAndWriteComputeSchemas = getValueAndWriteComputeSchemas(valueSchemaId, writeComputeSchemaId);
+  public byte[] applyWriteCompute(Optional<GenericRecord> currValue, int writerValueSchemaId, int readerValueSchemaId, ByteBuffer writeComputeBytes, int writeComputeSchemaId) {
+    GenericRecord writeComputeRecord = deserializeWriteComputeRecord(
+        writeComputeBytes, writerValueSchemaId, readerValueSchemaId, writeComputeSchemaId
+    );
+    Schema valueSchema = getValueSchema(readerValueSchemaId);
     GenericRecord updatedValue = writeComputeProcessor.updateRecord(
-        valueAndWriteComputeSchemas.getValueSchema(),
-        oldValue,
+        valueSchema,
+        currValue,
         writeComputeRecord
     );
 
@@ -68,7 +69,7 @@ public class StoreIngestionWriteComputeProcessor {
     if (updatedValue == null) {
       return null;
     }
-    return getValueSerializer(getValueSchema(valueSchemaId)).serialize(updatedValue, AvroSerializer.REUSE.get());
+    return getValueSerializer(valueSchema).serialize(updatedValue, AvroSerializer.REUSE.get());
   }
 
   private ValueAndWriteComputeSchemas getValueAndWriteComputeSchemas(int valueSchemaId, int writeComputeSchemaId) {
@@ -82,21 +83,20 @@ public class StoreIngestionWriteComputeProcessor {
     });
   }
 
-  private GenericRecord deserializeWriteComputeRecord(ByteBuffer writeComputeBytes, int valueSchemaId,
-      int writeComputeSchemaId) {
-    return getWriteComputeUpdateDeserializer(valueSchemaId, writeComputeSchemaId)
-        .deserialize(writeComputeBytes);
-  }
+  private GenericRecord deserializeWriteComputeRecord(
+      ByteBuffer writeComputeBytes,
+      int writerValueSchemaId,
+      int readerValueSchemaId,
+      int writeComputeSchemaId
+  ) {
+    Schema writerSchema = getValueAndWriteComputeSchemas(writerValueSchemaId, writeComputeSchemaId).getWriteComputeSchema();
+    Schema readerSchema = getValueAndWriteComputeSchemas(readerValueSchemaId, writeComputeSchemaId).getWriteComputeSchema();
 
-  private AvroGenericDeserializer<GenericRecord> getWriteComputeUpdateDeserializer(int valueSchemaId, int writeComputeSchemaId) {
-    return idToWriteComputeSchemaDeserializerMap.computeIfAbsent(new SchemaIds(valueSchemaId, writeComputeSchemaId),
-        schemaIds -> {
-          Schema writeComputeSchema = getValueAndWriteComputeSchemas(valueSchemaId, writeComputeSchemaId).getWriteComputeSchema();
-          // Map in write compute needs to have consistent ordering. On the sender side, users may not care about ordering
-          // in their maps. However, on the receiver side, we still want to make sure that the same serialized map bytes
-          // always get deserialized into maps with the same entry ordering.
-          return MapOrderingPreservingSerDeFactory.getDeserializer(writeComputeSchema, writeComputeSchema);
-        });
+    // Map in write compute needs to have consistent ordering. On the sender side, users may not care about ordering
+    // in their maps. However, on the receiver side, we still want to make sure that the same serialized map bytes
+    // always get deserialized into maps with the same entry ordering.
+    AvroGenericDeserializer<GenericRecord> deserializer = MapOrderingPreservingSerDeFactory.getDeserializer(writerSchema, readerSchema);
+    return deserializer.deserialize(writeComputeBytes);
   }
 
   private AvroSerializer<GenericRecord> getValueSerializer(Schema schema) {

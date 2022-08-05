@@ -145,28 +145,28 @@ public class ServiceFactory {
   /**
    * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService} with all default settings
    */
-  public static VeniceControllerWrapper getVeniceController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper) {
-    return getVeniceController(clusterName, kafkaBrokerWrapper, false);
+  public static VeniceControllerWrapper getVeniceChildController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper) {
+    return getVeniceChildController(clusterName, kafkaBrokerWrapper, false);
   }
 
   /**
    * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService}
    */
-  public static VeniceControllerWrapper getVeniceController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, boolean sslToKafka) {
-    return getVeniceController(clusterName, kafkaBrokerWrapper, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES,
+  public static VeniceControllerWrapper getVeniceChildController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, boolean sslToKafka) {
+    return getVeniceChildController(clusterName, kafkaBrokerWrapper, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES,
         DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR, sslToKafka);
   }
 
   /**
    * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService}
    */
-  public static VeniceControllerWrapper getVeniceController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
+  public static VeniceControllerWrapper getVeniceChildController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
       int replicaFactor, int partitionSize, long delayToRebalanceMS, int minActiveReplica, boolean sslToKafka) {
-    return getVeniceController(new String[]{clusterName}, kafkaBrokerWrapper, replicaFactor, partitionSize,
+    return getVeniceChildController(new String[]{clusterName}, kafkaBrokerWrapper, replicaFactor, partitionSize,
         delayToRebalanceMS, minActiveReplica, null, sslToKafka, false, new Properties());
   }
 
-  public static VeniceControllerWrapper getVeniceController(String[] clusterNames,
+  public static VeniceControllerWrapper getVeniceChildController(String[] clusterNames,
       KafkaBrokerWrapper kafkaBrokerWrapper, int replicationFactor, int partitionSize, long delayToRebalanceMS,
       int minActiveReplica, String clusterToD2, boolean sslToKafka, boolean d2Enabled,
       Properties properties) {

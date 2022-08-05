@@ -93,7 +93,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
           .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
           .setD2Client(clientConfigD2Client));
       for (int i = 0; i < numberOfControllers; i++) {
-        VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(clusterNames, kafkaBrokerWrapper, replicationFactor, partitionSize,
+        VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceChildController(clusterNames, kafkaBrokerWrapper, replicationFactor, partitionSize,
             rebalanceDelayMs, minActiveReplica, clusterToD2, false, true, controllerProperties);
         controllerMap.put(controllerWrapper.getPort(), controllerWrapper);
       }

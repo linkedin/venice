@@ -3,6 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
+import com.linkedin.davinci.storage.chunking.ChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -117,13 +118,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * some time after seeing the last messages in version topic.
    */
   private final long newLeaderInactiveTime;
-
-  private final StoreIngestionWriteComputeProcessor ingestionTaskWriteComputeHandler;
-
+  private final StoreWriteComputeProcessor storeWriteComputeHandler;
   private final boolean isNativeReplicationEnabled;
   private final String nativeReplicationSourceVersionTopicKafkaURL;
   private final Set<String> nativeReplicationSourceVersionTopicKafkaURLSingletonSet;
-
   private final VeniceWriterFactory veniceWriterFactory;
 
   /**
@@ -142,15 +140,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    *    entire ingestion task.
    */
   protected final Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriter;
-
   protected final Lazy<VeniceCompressor> compressor;
-
   protected final StorageEngineBackedCompressorFactory compressorFactory;
-
   protected final Map<Integer, String> kafkaClusterIdToUrlMap;
-
   protected final Map<String, Integer> kafkaClusterUrlToIdMap;
-
   private long dataRecoveryCompletionTimeLagThresholdInMs = 0;
 
   public LeaderFollowerStoreIngestionTask(
@@ -186,8 +179,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       newLeaderInactiveTime = serverConfig.getServerPromotionToLeaderReplicaDelayMs();
     }
     MergeRecordHelper mergeRecordHelper = new CollectionTimestampMergeRecordHelper();
-    this.ingestionTaskWriteComputeHandler = new StoreIngestionWriteComputeProcessor(storeName, schemaRepository, mergeRecordHelper);
-
+    this.storeWriteComputeHandler = new StoreWriteComputeProcessor(storeName, schemaRepository, mergeRecordHelper);
     this.isNativeReplicationEnabled = version.isNativeReplicationEnabled();
 
     /**
@@ -2248,9 +2240,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected ByteBuffer maybeCompressData(int partition, ByteBuffer data, PartitionConsumptionState partitionConsumptionState) {
     // To handle delete operations
     if (data == null) {
-      return data;
+      return null;
     }
-
     if(shouldCompressData(partitionConsumptionState)) {
       try {
         // We need to expand the front of the returned bytebuffer to make room for schema header insertion
@@ -2258,13 +2249,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       } catch (IOException e) {
         // throw a loud exception if something goes wrong here
         throw new RuntimeException(
-            String.format("Failed to compress value in venice writer!  Aborting write! partition: %i, leader topic: %s, compressor: %s",
+            String.format("Failed to compress value in venice writer! Aborting write! partition: %d, leader topic: %s, compressor: %s",
                 partition, partitionConsumptionState.getOffsetRecord().getLeaderTopic(), compressor.getClass().getName()), e);
       }
     }
     return data;
   }
-
 
   protected boolean shouldCompressData(PartitionConsumptionState partitionConsumptionState) {
     if (!isLeader(partitionConsumptionState)) {
@@ -2274,12 +2264,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (!realTimeTopic.equals(leaderTopic)) {
       return false; // We're consuming from version topic (don't compress it)
     }
-    if (compressionStrategy.equals(CompressionStrategy.NO_OP)) {
-      return false; // We're not even supposed to be compressing, don't compress
-    }
-    return true;
+    CompressionStrategy compressionStrategy = storageMetadataService.getStoreVersionCompressionStrategy(kafkaVersionTopic);
+    return !compressionStrategy.equals(CompressionStrategy.NO_OP);
   }
-
 
   protected void processMessageAndMaybeProduceToKafka(
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
@@ -2344,107 +2331,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         break;
 
       case UPDATE:
-        Update update = (Update) kafkaValue.payloadUnion;
-        final int valueSchemaId = update.schemaId;
-        final int writeComputeSchemaId = update.updateSchemaId;
-        final GenericRecord originalValue;
-
-        /**
-         *  Few Notes:
-         *  1. Currently we support chunking only for messages produced on VT topic during batch part of the ingestion
-         *     for hybrid stores. Chunking is NOT supported for messages produced to RT topics during streaming ingestion.
-         *
-         *     So the assumption here is that the PUT/UPDATE messages stored in transientRecord should always be a full value
-         *     (non chunked). Decoding should succeed using the the simplified API
-         *     {@link ChunkingAdapter#constructValue}
-         *
-         *  2. It's debatable if we'd like to the latest value schema or the value schema associated in the UPDATE message
-         *     as the reader schema. Either one has pro and cons. The former is appealing when the schema has been devolved
-         *     but hasn't been caught up by the write-compute pipeline. It prevents records which are originally serialized
-         *     by the later schema get "reverted" to the old schema. However, this can go the opposite way as well. If the
-         *     users register a "bad" schema unintentionally. The "latest value schema" approach will force the value
-         *     record being upgraded even if the latest value schema hasn't been used by users yet.
-         *
-         *     As for now, we're using the value schema associated in the UPDATE message as the reader schema.
-         */
-
-        // Find the existing value. If a value for this key is found from the transient map then use that value, otherwise get it from DB.
-        PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(keyBytes);
-        if (transientRecord == null) {
-          try {
-            long lookupStartTimeInNS = System.nanoTime();
-            originalValue = GenericRecordChunkingAdapter.INSTANCE.get(
-                storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic), valueSchemaId,
-                getSubPartitionId(keyBytes, consumerRecord.topic(), consumerRecord.partition()),
-                ByteBuffer.wrap(keyBytes), isChunkedTopic, null, null, null,
-                storageMetadataService.getStoreVersionCompressionStrategy(kafkaVersionTopic),
-                serverConfig.isComputeFastAvroEnabled(), schemaRepository, storeName, compressorFactory, false);
-            storeIngestionStats.recordWriteComputeLookUpLatency(storeName,
-                LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
-          } catch (Exception e) {
-            writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
-            throw e;
-          }
-        } else {
-          storeIngestionStats.recordWriteComputeCacheHitCount(storeName);
-          //construct originalValue from this transient record only if it's not null.
-          if (transientRecord.getValue() != null) {
-            try {
-              originalValue = GenericRecordChunkingAdapter.INSTANCE.constructValue(transientRecord.getValueSchemaId(),
-                  valueSchemaId, transientRecord.getValue(), transientRecord.getValueOffset(),
-                  transientRecord.getValueLen(), serverConfig.isComputeFastAvroEnabled(), schemaRepository, storeName,
-                  compressor.get());
-            } catch (Exception e) {
-              writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
-              throw e;
-            }
-          } else {
-            originalValue = null;
-          }
-        }
-
-        // Apply Write Compute.
-        final byte[] updatedValueBytes;
-        try {
-          long writeComputeStartTimeInNS = System.nanoTime();
-          // Leader nodes are the only ones which process UPDATES, so it's valid to always compress and not call 'maybeCompress'.
-          updatedValueBytes = compressor.get().compress(ingestionTaskWriteComputeHandler.applyWriteCompute(originalValue,
-              update.updateValue, valueSchemaId, writeComputeSchemaId));
-          storeIngestionStats.recordWriteComputeUpdateLatency(storeName, LatencyUtils.getLatencyInMS(writeComputeStartTimeInNS));
-        } catch (Exception e) {
-          writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code;
-          throw new RuntimeException(e);
-        }
-
-        //finally produce and update the transient record map.
-        if (updatedValueBytes == null) {
-          partitionConsumptionState.setTransientRecord(kafkaUrl, consumerRecord.offset(), keyBytes, -1, null);
-          leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(kafkaUrl, consumerRecord.offset(), keyBytes, null);
-          produceToLocalKafka(consumerRecord, partitionConsumptionState, leaderProducedRecordContext,
-              (callback, leaderMetadataWrapper) -> veniceWriter.get().delete(keyBytes, callback, leaderMetadataWrapper),
-              subPartition, kafkaUrl);
-        } else {
-          partitionConsumptionState.setTransientRecord(kafkaUrl, consumerRecord.offset(), keyBytes, updatedValueBytes, 0,
-              updatedValueBytes.length, valueSchemaId, null);
-
-          ByteBuffer updateValueWithSchemaId = ByteUtils.prependIntHeaderToByteBuffer(ByteBuffer.wrap(updatedValueBytes), valueSchemaId, false);
-
-          Put updatedPut = new Put();
-          updatedPut.putValue = updateValueWithSchemaId;
-          updatedPut.schemaId = valueSchemaId;
-
-          byte[] updatedKeyBytes = keyBytes;
-          if (isChunkedTopic) {
-            // Samza VeniceWriter doesn't handle chunking config properly. It reads chunking config
-            // from user's input instead of getting it from store's metadata repo. This causes SN
-            // to der-se of keys a couple of times.
-            updatedKeyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes);
-          }
-          leaderProducedRecordContext = LeaderProducedRecordContext.newPutRecord(kafkaUrl, consumerRecord.offset(), updatedKeyBytes, updatedPut);
-          produceToLocalKafka(consumerRecord, partitionConsumptionState, leaderProducedRecordContext,
-              (callback, leaderMetadataWrapper) -> veniceWriter.get().put(keyBytes, updatedValueBytes, valueSchemaId,
-                  callback, leaderMetadataWrapper), subPartition, kafkaUrl);
-        }
+        handleUpdateRequest(
+            (Update) kafkaValue.payloadUnion, keyBytes, consumerRecord, isChunkedTopic, kafkaUrl, partitionConsumptionState
+        );
         break;
 
       case DELETE:
@@ -2472,6 +2361,173 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       default:
         throw new VeniceMessageException(consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
+  }
+
+  /**
+   *  1. Currently we support chunking only for messages produced on VT topic during batch part of the ingestion
+   *     for hybrid stores. Chunking is NOT supported for messages produced to RT topics during streaming ingestion.
+   *
+   *     So the assumption here is that the PUT/UPDATE messages stored in transientRecord should always be a full value
+   *     (non chunked). Decoding should succeed using the the simplified API
+   *     {@link ChunkingAdapter#constructValue}
+   *
+   *  2. We always use the latest value schema to deserialize stored value bytes.
+   *  3. We always use the write compute schema with an ID combination of latest value schema ID + update schema ID
+   *     to deserialize the incoming Update request payload bytes.
+   *
+   *  The reason for 2 and 3 is that we depend on the fact that the latest value schema must be a superset schema
+   *  that contains all value fields that ever existed in a store value schema. So, always using a superset schema
+   *  as the reader schema avoids data loss where the serialized bytes contain data for a field , however, the
+   *  deserialized record does not contain that field because the reader schema does not contain that field.
+   */
+  private void handleUpdateRequest(
+      Update update,
+      byte[] keyBytes,
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      boolean isChunkedTopic,
+      String kafkaUrl,
+      PartitionConsumptionState partitionConsumptionState
+  ) {
+    final int subPartition = partitionConsumptionState.getPartition();
+    final int updateSchemaId = update.updateSchemaId;
+    final int latestValueSchemaId = schemaRepository.getLatestValueSchema(storeName).getId();
+    final Optional<GenericRecord> currValue = readStoredValueRecord(
+        partitionConsumptionState,
+        keyBytes,
+        latestValueSchemaId,
+        consumerRecord.topic(),
+        consumerRecord.partition(),
+        isChunkedTopic
+    );
+
+    // Apply Write Compute.
+    final byte[] updatedValueBytes;
+    try {
+      long writeComputeStartTimeInNS = System.nanoTime();
+      // Leader nodes are the only ones which process UPDATES, so it's valid to always compress and not call 'maybeCompress'.
+      updatedValueBytes = compressor.get().compress(
+          storeWriteComputeHandler.applyWriteCompute(
+              currValue,
+              update.schemaId,
+              latestValueSchemaId,
+              update.updateValue,
+              updateSchemaId
+          )
+      );
+      storeIngestionStats.recordWriteComputeUpdateLatency(storeName, LatencyUtils.getLatencyInMS(writeComputeStartTimeInNS));
+    } catch (Exception e) {
+      writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code;
+      throw new RuntimeException(e);
+    }
+
+    if (updatedValueBytes == null) {
+      if (currValue.isPresent()) {
+        throw new IllegalStateException("Detect a situation where the current value exists and the Write Compute request"
+            + "deletes the current value. It is unexpected because Write Compute only supports partial update and does "
+            + "not support record value deletion.");
+      } else {
+        // No-op. The fact that currValue does not exist on the leader means currValue does not exist on the follower
+        // either. So, there is no need to tell the follower replica to do anything.
+      }
+    } else {
+      partitionConsumptionState.setTransientRecord(kafkaUrl, consumerRecord.offset(), keyBytes, updatedValueBytes, 0,
+          updatedValueBytes.length, latestValueSchemaId, null);
+
+      ByteBuffer updateValueWithSchemaId = ByteUtils.prependIntHeaderToByteBuffer(ByteBuffer.wrap(updatedValueBytes), latestValueSchemaId, false);
+
+      Put updatedPut = new Put();
+      updatedPut.putValue = updateValueWithSchemaId;
+      updatedPut.schemaId = latestValueSchemaId;
+
+      byte[] updatedKeyBytes = keyBytes;
+      if (isChunkedTopic) {
+        // Samza VeniceWriter doesn't handle chunking config properly. It reads chunking config
+        // from user's input instead of getting it from store's metadata repo. This causes SN
+        // to der-se of keys a couple of times.
+        updatedKeyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes);
+      }
+      LeaderProducedRecordContext leaderProducedRecordContext =
+          LeaderProducedRecordContext.newPutRecord(kafkaUrl, consumerRecord.offset(), updatedKeyBytes, updatedPut);
+
+      ProduceToTopic produce = (callback, leaderMetadataWrapper) ->
+          veniceWriter.get().put(keyBytes, updatedValueBytes, latestValueSchemaId, callback, leaderMetadataWrapper);
+
+      produceToLocalKafka(
+          consumerRecord,
+          partitionConsumptionState,
+          leaderProducedRecordContext,
+          produce,
+          subPartition,
+          kafkaUrl
+      );
+    }
+  }
+
+  /**
+   * Read the existing value. If a value for this key is found from the transient map then use that value, otherwise read
+   * it from the storage engine.
+   * @return {@link Optional#empty} if the value
+   */
+  private Optional<GenericRecord> readStoredValueRecord(
+      PartitionConsumptionState partitionConsumptionState,
+      byte[] keyBytes,
+      int valueSchemaID,
+      String topic,
+      int partition,
+      boolean isChunkedTopic
+  ) {
+    final GenericRecord currValue;
+    PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(keyBytes);
+    if (transientRecord == null) {
+      try {
+        long lookupStartTimeInNS = System.nanoTime();
+        currValue = GenericRecordChunkingAdapter.INSTANCE.get(
+            storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic),
+            valueSchemaID,
+            getSubPartitionId(keyBytes, topic, partition),
+            ByteBuffer.wrap(keyBytes),
+            isChunkedTopic,
+            null,
+            null,
+            null,
+            storageMetadataService.getStoreVersionCompressionStrategy(kafkaVersionTopic),
+            serverConfig.isComputeFastAvroEnabled(),
+            schemaRepository,
+            storeName,
+            compressorFactory,
+            false
+        );
+        storeIngestionStats.recordWriteComputeLookUpLatency(storeName,
+            LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
+      } catch (Exception e) {
+        writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
+        throw e;
+      }
+    } else {
+      storeIngestionStats.recordWriteComputeCacheHitCount(storeName);
+      //construct currValue from this transient record only if it's not null.
+      if (transientRecord.getValue() != null) {
+        try {
+          currValue = GenericRecordChunkingAdapter.INSTANCE.constructValue(
+              transientRecord.getValueSchemaId(),
+              valueSchemaID,
+              transientRecord.getValue(),
+              transientRecord.getValueOffset(),
+              transientRecord.getValueLen(),
+              serverConfig.isComputeFastAvroEnabled(),
+              schemaRepository,
+              storeName,
+              compressor.get()
+          );
+        } catch (Exception e) {
+          writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
+          throw e;
+        }
+      } else {
+        currValue = null;
+      }
+    }
+    return Optional.ofNullable(currValue);
   }
 
   /**

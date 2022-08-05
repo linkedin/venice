@@ -1001,21 +1001,21 @@ public abstract class TestBatch {
         },
         (avroClient, vsonClient, metricsRepository) -> {
           String schemaWithoutSymbolDocStr = loadFileAsString("SchemaWithoutSymbolDoc.avsc");
-          Schema schemaWithoutSymbolDoc = Schema.parse(schemaWithoutSymbolDocStr);
+          Schema schemaWithoutSymbolDoc = AvroCompatibilityHelper.parse(schemaWithoutSymbolDocStr);
           GenericRecord keyRecord = new GenericData.Record(schemaWithoutSymbolDoc.getField("key").schema());
           Schema sourceSchema = keyRecord.getSchema().getField("source").schema();
           keyRecord.put("memberId", (long)1);
           keyRecord.put("source", AvroCompatibilityHelper.newEnumSymbol(sourceSchema, testRecordType.OFFLINE.toString()));
-          IndexedRecord value = (IndexedRecord)avroClient.get(keyRecord).get();
+          IndexedRecord value = (IndexedRecord) avroClient.get(keyRecord).get();
           Assert.assertEquals(value.get(0).toString(), "LOGO");
           Assert.assertEquals(value.get(1), 1);
 
           String schemaWithSymbolDocStr = loadFileAsString("SchemaWithSymbolDoc.avsc");
-          Schema schemaWithSymbolDoc = Schema.parse(schemaWithSymbolDocStr);
+          Schema schemaWithSymbolDoc = AvroCompatibilityHelper.parse(schemaWithSymbolDocStr);
           GenericRecord keyRecord2 = new GenericData.Record(schemaWithSymbolDoc.getField("key").schema());
           keyRecord2.put("memberId", (long)2);
           keyRecord2.put("source", AvroCompatibilityHelper.newEnumSymbol(sourceSchema, testRecordType.NEARLINE.toString()));
-          IndexedRecord value2 = (IndexedRecord)avroClient.get(keyRecord2).get();
+          IndexedRecord value2 = (IndexedRecord) avroClient.get(keyRecord2).get();
           Assert.assertEquals(value2.get(0).toString(), "INDUSTRY");
           Assert.assertEquals(value2.get(1), 2);
         });
@@ -1198,7 +1198,7 @@ public abstract class TestBatch {
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
     props.setProperty(VenicePushJob.PBNJ_ENABLE, "true");
     props.setProperty(VenicePushJob.PBNJ_ROUTER_URL_PROP, veniceCluster.getRandomRouterURL());
-    createStoreForJob(veniceCluster, recordSchema, props).close();
+    createStoreForJob(veniceCluster.getClusterName(), recordSchema, props).close();
 
     try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
       job.run();

@@ -4,6 +4,7 @@ import com.linkedin.venice.schema.SchemaUtils;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -21,7 +22,7 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
   protected static final GenericData genericData = GenericData.get();
 
   @Override
-  public GenericRecord updateValueRecord(Schema valueSchema, GenericRecord valueRecord, GenericRecord writeComputeRecord) {
+  public GenericRecord updateValueRecord(Schema valueSchema, Optional<GenericRecord> currValue, GenericRecord writeComputeRecord) {
     if (valueSchema.getType() != Schema.Type.RECORD) {
       throw new IllegalStateException("Expect a Record value schema. Got: " + valueSchema);
     }
@@ -31,9 +32,7 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
       throw new IllegalStateException("Write Compute only support partial update. Got unexpected Write Compute record: " + writeComputeRecord);
     }
 
-    if (valueRecord == null) {
-      valueRecord = SchemaUtils.createGenericRecord(valueSchema);
-    }
+    final GenericRecord updatedValue = currValue.orElseGet(() -> SchemaUtils.createGenericRecord(valueSchema));
     for (Schema.Field valueField : valueSchema.getFields()) {
       final String valueFieldName = valueField.name();
       Object writeComputeFieldValue = writeComputeRecord.get(valueFieldName);
@@ -41,11 +40,11 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
         // Skip updating this field if its Write Compute operation is NoOp
 
       } else {
-        Object updatedFieldObject = updateFieldValue(valueField.schema(), valueRecord.get(valueFieldName), writeComputeFieldValue);
-        valueRecord.put(valueFieldName, updatedFieldObject);
+        Object updatedFieldObject = updateFieldValue(valueField.schema(), updatedValue.get(valueFieldName), writeComputeFieldValue);
+        updatedValue.put(valueFieldName, updatedFieldObject);
       }
     }
-    return valueRecord;
+    return updatedValue;
   }
 
   private boolean isNoOpField(Object writeComputeFieldValue) {

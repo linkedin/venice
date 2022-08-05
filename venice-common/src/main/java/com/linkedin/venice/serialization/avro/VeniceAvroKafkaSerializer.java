@@ -1,5 +1,6 @@
 package com.linkedin.venice.serialization.avro;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
@@ -20,7 +21,7 @@ public class VeniceAvroKafkaSerializer implements VeniceKafkaSerializer<Object> 
     private final AvroGenericDeserializer<Object> deserializer;
 
     public VeniceAvroKafkaSerializer(String schemaStr) {
-        this(Schema.parse(schemaStr));
+        this(AvroCompatibilityHelper.parse(schemaStr));
     }
 
     public VeniceAvroKafkaSerializer(Schema schema) {

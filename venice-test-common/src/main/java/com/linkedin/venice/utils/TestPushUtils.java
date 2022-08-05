@@ -21,11 +21,13 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
@@ -498,17 +500,17 @@ public class TestPushUtils {
     }
     return writeAvroFile(parentDir, fileName, STRING_RECORD_SCHEMA_STRING,
         (recordSchema, writer) -> {
-      Schema nameSchema = Schema.parse(NESTED_SCHEMA_STRING);
+      Schema valueSchema = AvroCompatibilityHelper.parse(NESTED_SCHEMA_STRING);
       String firstName = "first_name_";
       String lastName = "last_name_";
       for (int i = 1; i <= 100; ++i) {
-        GenericRecord s2r = new GenericData.Record(recordSchema);
-        s2r.put("id", String.valueOf(i));
-        GenericRecord nameRecord = new GenericData.Record(nameSchema);
-        nameRecord.put("firstName", firstName + i);
-        nameRecord.put("lastName", lastName + i);
-        s2r.put("name", nameRecord);
-        writer.append(s2r);
+        GenericRecord keyValueRecord = new GenericData.Record(recordSchema);
+        keyValueRecord.put("id", String.valueOf(i)); // Key
+        GenericRecord valueRecord = new GenericData.Record(valueSchema);
+        valueRecord.put("firstName", firstName + i);
+        valueRecord.put("lastName", lastName + i);
+        keyValueRecord.put("name", valueRecord); // Value
+        writer.append(keyValueRecord);
       }
     });
   }
@@ -708,8 +710,7 @@ public class TestPushUtils {
      * that doesn't contain symbolDoc but the files in HDFS has symbolDoc.
      */
     String schemaWithoutSymbolDocStr = loadFileAsString("SchemaWithoutSymbolDoc.avsc");
-    Schema schemaWithoutSymbolDoc = Schema.parse(schemaWithoutSymbolDocStr);
-    return schemaWithoutSymbolDoc;
+    return AvroCompatibilityHelper.parse(schemaWithoutSymbolDocStr);
   }
 
   //write vson byte (int 8) and short (int16) to a file
@@ -840,6 +841,10 @@ public class TestPushUtils {
     void write(Schema recordSchema, DataFileWriter writer) throws IOException;
   }
 
+  public static Properties defaultH2VProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {
+    return defaultH2VProps(veniceCluster.getRandmonVeniceController().getControllerUrl(), inputDirPath, storeName);
+  }
+
   public static Properties defaultH2VProps(String veniceUrl, String inputDirPath, String storeName) {
     Properties props = new Properties();
     props.put(VENICE_URL_PROP, veniceUrl);
@@ -859,10 +864,6 @@ public class TestPushUtils {
     return props;
   }
 
-  public static Properties defaultH2VProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {
-    return defaultH2VProps(veniceCluster.getRandmonVeniceController().getControllerUrl(), inputDirPath, storeName);
-  }
-
   public static Properties sslH2VProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
     props.putAll(KafkaSSLUtils.getLocalKafkaClientSSLConfig());
@@ -872,10 +873,6 @@ public class TestPushUtils {
     props.remove(SslConfigs.SSL_KEY_PASSWORD_CONFIG);
     props.remove(SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG);
     return props;
-  }
-
-  public static ControllerClient createStoreForJob(VeniceClusterWrapper veniceCluster, Schema recordSchema, Properties props) {
-    return createStoreForJob(veniceCluster.getClusterName(), recordSchema, props);
   }
 
   public static ControllerClient createStoreForJob(String veniceClusterName, Schema recordSchema, Properties props) {
@@ -1005,6 +1002,7 @@ public class TestPushUtils {
     return samzaConfig;
   }
 
+  @SafeVarargs
   public static SystemProducer getSamzaProducer(VeniceClusterWrapper venice, String storeName, PushType type,
       Pair<String, String>... optionalConfigs) {
     Map<String, String> samzaConfig = getSamzaProducerConfig(venice, storeName, type);
@@ -1054,7 +1052,10 @@ public class TestPushUtils {
   }
 
   public static String loadFileAsString(String fileName) throws IOException {
-    return IOUtils.toString(Thread.currentThread().getContextClassLoader().getResourceAsStream(fileName), "utf-8");
+    return IOUtils.toString(
+        Objects.requireNonNull(Thread.currentThread().getContextClassLoader().getResourceAsStream(fileName)),
+        StandardCharsets.UTF_8
+    );
   }
 
   public static void updateStore(String clusterName, String storeName, ControllerClient controllerClient, UpdateStoreQueryParams params) {
@@ -1064,7 +1065,7 @@ public class TestPushUtils {
   }
 
   public static String getETLStoreSchemaString(String keySchema, String valueSchema) {
-    String finalValueSchema = ETLUtils.transformValueSchemaForETL(Schema.parse(valueSchema)).toString();
+    String finalValueSchema = ETLUtils.transformValueSchemaForETL(AvroCompatibilityHelper.parse(valueSchema)).toString();
     return "{\n" +
       "  \"type\": \"record\",\n" +
       "  \"name\": \"storeName_v1\",\n" +

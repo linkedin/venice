@@ -27,8 +27,8 @@ public class TestBackupControllerResponse {
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker(zkServer);
         ControllerTransport transport = new ControllerTransport(Optional.empty());
-        VeniceControllerWrapper controller1 = ServiceFactory.getVeniceController(clusterName, kafka);
-        VeniceControllerWrapper controller2 = ServiceFactory.getVeniceController(clusterName, kafka)) {
+        VeniceControllerWrapper controller1 = ServiceFactory.getVeniceChildController(clusterName, kafka);
+        VeniceControllerWrapper controller2 = ServiceFactory.getVeniceChildController(clusterName, kafka)) {
       // TODO: Eliminate sleep to make test reliable
       Thread.sleep(2000);
       VeniceControllerWrapper nonLeaderController = !controller1.isLeaderController(clusterName) ? controller1 : controller2;

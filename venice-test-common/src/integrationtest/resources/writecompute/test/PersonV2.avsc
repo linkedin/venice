@@ -1,0 +1,9 @@
+{
+  "type" : "record",
+  "namespace" : "example.avro",
+  "name" : "Person",
+  "fields" : [
+    { "name" : "name", "type" : "string", "default" : "default_name" },
+    { "name" : "hometown", "type" : "string", "default" : "default_hometown" }
+  ]
+}

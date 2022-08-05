@@ -37,7 +37,7 @@ public class TestControllerEnforeSSL {
 
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
-         VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(
+         VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceChildController(
              new String[]{CLUSTER_NAME}, kafkaBrokerWrapper, 1, 10, 0, 1,
              null, false, false, extraProperties);
          ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(CLUSTER_NAME, controllerWrapper.getControllerUrl())) {

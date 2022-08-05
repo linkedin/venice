@@ -26,7 +26,7 @@ public class AdminChannelWithSSLTest {
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
         VeniceControllerWrapper childControllerWrapper =
-            ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, 1, 10, 0, 1, true);
+            ServiceFactory.getVeniceChildController(clusterName, kafkaBrokerWrapper, 1, 10, 0, 1, true);
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
         VeniceControllerWrapper controllerWrapper =
             ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,

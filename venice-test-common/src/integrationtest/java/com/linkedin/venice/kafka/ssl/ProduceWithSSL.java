@@ -24,7 +24,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
@@ -137,9 +137,9 @@ public class ProduceWithSSL {
       credentials.addSecretKey(new Text(keyStorePropertyName), keyStoreCert);
       credentials.addSecretKey(new Text(trustStorePropertyName), trustStoreCert);
       credentials.addSecretKey(new Text(keyStorePwdPropertyName), sslProps.getProperty(SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG).getBytes(
-          Charset.forName("UTF-8")));
+          StandardCharsets.UTF_8));
       credentials.addSecretKey(new Text(keyPwdPropertyName), sslProps.getProperty(SslConfigs.SSL_KEY_PASSWORD_CONFIG).getBytes(
-          Charset.forName("UTF-8")));
+          StandardCharsets.UTF_8));
       UserGroupInformation.getCurrentUser().addCredentials(credentials);
       // Setup token file
       String filePath = getTempDataDirectory().getAbsolutePath() + "/testHadoopToken";
@@ -148,7 +148,7 @@ public class ProduceWithSSL {
 
       Assert.assertEquals(System.getProperty(UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION), filePath);
 
-      createStoreForJob(cluster, recordSchema, props).close();
+      createStoreForJob(cluster.getClusterName(), recordSchema, props).close();
       String controllerUrl = cluster.getAllControllersURLs();
       ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), controllerUrl);
       Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 0, "Push has not been start, current should be 0");

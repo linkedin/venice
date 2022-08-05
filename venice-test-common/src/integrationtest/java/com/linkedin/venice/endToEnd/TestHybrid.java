@@ -272,7 +272,7 @@ public class TestHybrid {
       Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
       Properties h2vProperties = defaultH2VProps(venice, inputDirPath, storeName);
 
-      try (ControllerClient controllerClient = createStoreForJob(venice, recordSchema, h2vProperties);
+      try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, h2vProperties);
           AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
               ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
           TopicManager topicManager = new TopicManager(
@@ -966,7 +966,7 @@ public class TestHybrid {
       Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
       Properties h2vProperties = defaultH2VProps(venice, inputDirPath, storeName);
 
-      try (ControllerClient controllerClient = createStoreForJob(venice, recordSchema, h2vProperties);
+      try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, h2vProperties);
           AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
               ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
           TopicManager topicManager = new TopicManager(
@@ -1078,7 +1078,7 @@ public class TestHybrid {
       Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
       Properties h2vProperties = defaultH2VProps(venice, inputDirPath, storeName);
 
-      try (ControllerClient controllerClient = createStoreForJob(venice, recordSchema, h2vProperties)) {
+      try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, h2vProperties)) {
         // Have 1 partition only, so that all keys are produced to the same partition
         ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
             .setHybridRewindSeconds(streamingRewindSeconds)
@@ -1213,7 +1213,7 @@ public class TestHybrid {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
     Properties h2vProperties = defaultH2VProps(venice, inputDirPath, storeName);
-    try (ControllerClient controllerClient = createStoreForJob(venice, recordSchema, h2vProperties);
+    try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, h2vProperties);
         AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
       // Have 1 partition only, so that all keys are produced to the same partition
@@ -1284,7 +1284,7 @@ public class TestHybrid {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
     Properties h2vProperties = defaultH2VProps(venice, inputDirPath, storeName);
-    try (ControllerClient controllerClient = createStoreForJob(venice, recordSchema, h2vProperties);
+    try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, h2vProperties);
         AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
       // Have 1 partition only, so that all keys are produced to the same partition
