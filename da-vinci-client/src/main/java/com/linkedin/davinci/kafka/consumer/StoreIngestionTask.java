@@ -2418,6 +2418,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     // Flush data partition
     Map<String, String> dbCheckpointingInfo = storageEngineReloadedFromRepo.sync(partition);
+    storageUtilizationManager.notifyFlushToDisk(pcs);
 
     // Update the partition key in metadata partition
     if (offsetLagDeltaRelaxEnabled) {

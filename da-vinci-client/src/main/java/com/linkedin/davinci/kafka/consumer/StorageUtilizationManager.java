@@ -385,4 +385,9 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       return 0;
     }
   }
+
+  public void notifyFlushToDisk(PartitionConsumptionState pcs) {
+    int partition = pcs.getPartition();
+    partitionConsumptionSizeMap.get(partition).syncWithDB();
+  }
 }
