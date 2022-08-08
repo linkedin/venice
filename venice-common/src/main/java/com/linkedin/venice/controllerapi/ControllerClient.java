@@ -11,7 +11,6 @@ import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.security.SSLFactory;
-import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -27,9 +26,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -1050,7 +1046,7 @@ public class ControllerClient implements Closeable {
 
   public ControllerResponse createStoragePersona(String name, long quota, Set<String> storesToEnforce, Set<String> owners) {
     QueryParams params = newParams()
-        .add(NAME, name)
+        .add(PERSONA_NAME, name)
         .add(PERSONA_QUOTA, quota)
         .putStringSet(PERSONA_STORES, storesToEnforce)
         .putStringSet(PERSONA_OWNERS, owners);
@@ -1059,20 +1055,27 @@ public class ControllerClient implements Closeable {
 
   public StoragePersonaResponse getStoragePersona(String name) {
     QueryParams params = newParams()
-        .add(NAME, name);
+        .add(PERSONA_NAME, name);
     return request(ControllerRoute.GET_STORAGE_PERSONA, params, StoragePersonaResponse.class);
   }
 
   public ControllerResponse deleteStoragePersona(String name) {
     QueryParams params = newParams()
-        .add(NAME, name);
+        .add(PERSONA_NAME, name);
     return request(ControllerRoute.DELETE_STORAGE_PERSONA, params, ControllerResponse.class);
   }
 
   public ControllerResponse updateStoragePersona(String name, UpdateStoragePersonaQueryParams queryParams) {
     QueryParams params = addCommonParams(queryParams)
-        .add(NAME, name);
+        .add(PERSONA_NAME, name);
     return request(ControllerRoute.UPDATE_STORAGE_PERSONA, params, ControllerResponse.class);
+  }
+
+  public StoragePersonaResponse getStoragePersonaAssociatedWithStore(String name) {
+    QueryParams params = newParams()
+        .add(NAME, name);
+    return request(ControllerRoute.GET_STORAGE_PERSONA_ASSOCIATED_WITH_STORE, params, StoragePersonaResponse.class);
+
   }
 
   /***

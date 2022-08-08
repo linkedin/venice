@@ -1991,16 +1991,17 @@ public class VeniceParentHelixAdmin implements Admin {
           .orElse(null);
 
       StoragePersonaRepository repository = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
-      String personaNameToValidate = params.getStoragePersona().orElse(repository.getPersonaContainingStore(currStore.getName()));
       StoragePersona personaToValidate = null;
+      StoragePersona existingPersona = repository.getPersonaContainingStore(currStore.getName());
 
-      if (personaNameToValidate != null) {
-        personaToValidate = getVeniceHelixAdmin().getStoragePersona(clusterName, personaNameToValidate);
-      }
-
-      if (params.getStoragePersona().isPresent() && personaToValidate == null) {
-        String errMsg = "UpdateStore command failed for store " + storeName + ".  The provided StoragePersona " + params.getStoragePersona().get() + " does not exist.";
-        throw new VeniceException(errMsg);
+      if (params.getStoragePersona().isPresent()) {
+        personaToValidate = getVeniceHelixAdmin().getStoragePersona(clusterName, params.getStoragePersona().get());
+        if (personaToValidate == null) {
+          String errMsg = "UpdateStore command failed for store " + storeName + ".  The provided StoragePersona " + params.getStoragePersona().get() + " does not exist.";
+          throw new VeniceException(errMsg);
+        }
+      } else if (existingPersona != null) {
+        personaToValidate = existingPersona;
       }
 
       if (personaToValidate != null) {
@@ -3918,4 +3919,8 @@ public class VeniceParentHelixAdmin implements Admin {
     sendAdminMessageAndWaitForConsumed(clusterName, null, message);
   }
 
+  @Override
+  public StoragePersona getPersonaAssociatedWithStore(String clusterName, String storeName) {
+    return getVeniceHelixAdmin().getPersonaAssociatedWithStore(clusterName, storeName);
+  }
 }

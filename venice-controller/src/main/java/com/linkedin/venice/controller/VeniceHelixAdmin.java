@@ -6238,4 +6238,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
+  @Override
+  public StoragePersona getPersonaAssociatedWithStore(String clusterName, String storeName) {
+    checkControllerLeadershipFor(clusterName);
+    StoragePersonaRepository repository = getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
+    return repository.getPersonaContainingStore(storeName);
+  }
 }

@@ -2,6 +2,7 @@ package com.linkedin.venice.endToEnd;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.StoragePersonaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -282,5 +283,50 @@ public class StoragePersonaTest {
         () -> Assert.assertEquals(controllerClient.getStoragePersona(persona2.getName()).getStoragePersona(),
             persona2));
   }
+
+  @Test
+  public void testGetPersonaContainingStore() {
+    long quota = 1000;
+    Store testStore = setUpTestStoreAndAddToRepo(quota);
+    StoragePersona persona = createDefaultPersona();
+    persona.getStoresToEnforce().add(testStore.getName());
+    persona.setQuotaNumber(quota);
+    controllerClient.createStoragePersona(persona.getName(), persona.getQuotaNumber(),
+        persona.getStoresToEnforce(), persona.getOwners());
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () ->
+        Assert.assertEquals(controllerClient.getStoragePersonaAssociatedWithStore(testStore.getName()).getStoragePersona(), persona));
+  }
+
+  @Test
+  public void testGetPersonaContainingStorePersonaUpdate() {
+    long quota = 1000;
+    Store testStore = setUpTestStoreAndAddToRepo(quota);
+    StoragePersona persona = createDefaultPersona();
+    persona.setQuotaNumber(quota);
+    controllerClient.createStoragePersona(persona.getName(), persona.getQuotaNumber(),
+        persona.getStoresToEnforce(), persona.getOwners());
+    persona.getStoresToEnforce().add(testStore.getName());
+    controllerClient.updateStoragePersona(persona.getName(),
+        new UpdateStoragePersonaQueryParams().setStoresToEnforce(persona.getStoresToEnforce()));
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () ->
+        Assert.assertEquals(controllerClient.getStoragePersonaAssociatedWithStore(testStore.getName()).getStoragePersona(), persona));
+  }
+
+  @Test
+  public void testGetPersonaContainingStoreDoesNotExist() {
+    StoragePersonaResponse response = controllerClient.getStoragePersonaAssociatedWithStore("testStoreDoesNotExist");
+    Assert.assertNull(response.getStoragePersona());
+    Assert.assertFalse(response.isError());
+  }
+
+  @Test
+  public void testGetPersonaContainingStoreNoPersona() {
+    Store testStore = setUpTestStoreAndAddToRepo(1000);
+    StoragePersonaResponse response = controllerClient.getStoragePersonaAssociatedWithStore(testStore.getName());
+    Assert.assertNull(response.getStoragePersona());
+    Assert.assertFalse(response.isError());
+  }
+
+
 
 }

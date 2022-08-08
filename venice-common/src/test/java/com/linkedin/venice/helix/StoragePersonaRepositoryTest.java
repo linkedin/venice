@@ -128,7 +128,7 @@ public class StoragePersonaRepositoryTest {
     persona.getStoresToEnforce().add(storeName);
     addPersonaToRepository(persona);
     Assert.assertEquals(personaRepository.getPersona(persona.getName()).getStoresToEnforce().size(), 1);
-    Assert.assertEquals(personaRepository.getPersonaContainingStore(storeName), persona.getName());
+    Assert.assertEquals(personaRepository.getPersonaContainingStore(storeName), persona);
 
     StoragePersona persona2 = createDefaultPersona();
     persona2.getStoresToEnforce().add(storeName);
@@ -243,7 +243,7 @@ public class StoragePersonaRepositoryTest {
         new UpdateStoragePersonaQueryParams().setStoresToEnforce(new HashSet<>(stores)));
     Assert.assertEquals(personaRepository.getPersona(persona.getName()), persona);
     Assert.assertEquals(personaRepository.getPersona(persona.getName()).getStoresToEnforce().size(), 2);
-    Assert.assertEquals(personaRepository.getPersonaContainingStore(stores.get(1)), persona.getName());
+    Assert.assertEquals(personaRepository.getPersonaContainingStore(stores.get(1)), persona);
   }
 
   @Test(expectedExceptions =  {VeniceException.class}, expectedExceptionsMessageRegExp = storesFailedRegex)
@@ -319,7 +319,7 @@ public class StoragePersonaRepositoryTest {
         new UpdateStoragePersonaQueryParams().setStoresToEnforce(new HashSet<>(stores)));
     Assert.assertEquals(personaRepository.getPersona(persona.getName()), persona);
     Assert.assertEquals(personaRepository.getPersona(persona.getName()).getStoresToEnforce().size(), 1);
-    Assert.assertEquals(personaRepository.getPersonaContainingStore(stores.get(0)), persona.getName());
+    Assert.assertEquals(personaRepository.getPersonaContainingStore(stores.get(0)), persona);
 
   }
 
@@ -331,7 +331,7 @@ public class StoragePersonaRepositoryTest {
     persona.getStoresToEnforce().add(storeName);
     addPersonaToRepository(persona);
     Assert.assertEquals(personaRepository.getPersona(persona.getName()).getStoresToEnforce().size(), 1);
-    Assert.assertEquals(personaRepository.getPersonaContainingStore(storeName), persona.getName());
+    Assert.assertEquals(personaRepository.getPersonaContainingStore(storeName), persona);
 
     StoragePersona persona2 = createDefaultPersona();
     addPersonaToRepository(persona2);
@@ -351,7 +351,7 @@ public class StoragePersonaRepositoryTest {
     Assert.assertEquals(defaultPersona, personaRepository.getPersona(defaultPersona.getName()));
     personaRepository.deletePersona(defaultPersona.getName());
     Assert.assertNull(personaRepository.getPersona(defaultPersona.getName()));
-    Assert.assertEquals(personaRepository.getPersonaContainingStore(testStore.getName()), null);
+    Assert.assertNull(personaRepository.getPersonaContainingStore(testStore.getName()));
   }
 
   @Test
@@ -376,7 +376,7 @@ public class StoragePersonaRepositoryTest {
     Assert.assertEquals(defaultPersona, personaRepository.getPersona(defaultPersona.getName()));
     personaRepository.deletePersona(defaultPersona.getName());
     Assert.assertNull(personaRepository.getPersona(defaultPersona.getName()));
-    Assert.assertEquals(personaRepository.getPersonaContainingStore(testStore.getName()), null);
+    Assert.assertNull(personaRepository.getPersonaContainingStore(testStore.getName()));
 
     defaultPersona = createDefaultPersona();
     defaultPersona.setName(name);
