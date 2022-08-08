@@ -3923,4 +3923,9 @@ public class VeniceParentHelixAdmin implements Admin {
   public StoragePersona getPersonaAssociatedWithStore(String clusterName, String storeName) {
     return getVeniceHelixAdmin().getPersonaAssociatedWithStore(clusterName, storeName);
   }
+
+  @Override
+  public List<StoragePersona> getClusterStoragePersonas(String clusterName) {
+    return getVeniceHelixAdmin().getClusterStoragePersonas(clusterName);
+  }
 }
