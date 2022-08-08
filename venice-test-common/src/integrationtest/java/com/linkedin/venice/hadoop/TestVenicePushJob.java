@@ -594,8 +594,8 @@ public class TestVenicePushJob {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testKIFRepushFetch() throws Exception {
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testKIFRepushFetch(boolean chunkingEnabled) throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
     // Setup job properties
@@ -621,6 +621,7 @@ public class TestVenicePushJob {
     TestUtils.assertCommand(veniceCluster.updateStore(storeName, new UpdateStoreQueryParams()
         .setHybridOffsetLagThreshold(1)
         .setHybridRewindSeconds(0)
+        .setChunkingEnabled(chunkingEnabled)
         .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)));
     //Run the repush job, it should still pass
     TestPushUtils.runPushJob("Test push job", props);
