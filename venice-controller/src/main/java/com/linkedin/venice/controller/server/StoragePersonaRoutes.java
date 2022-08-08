@@ -54,7 +54,7 @@ public class StoragePersonaRoutes extends AbstractRoute {
       public void internalHandle(Request request, StoragePersonaResponse veniceResponse) {
         AdminSparkServer.validateParams(request, GET_STORAGE_PERSONA.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
-        String personaName = request.queryParams(NAME);
+        String personaName = request.queryParams(PERSONA_NAME);
         try {
           StoragePersona persona = admin.getStoragePersona(clusterName, personaName);
           veniceResponse.setStoragePersona(persona);
@@ -71,7 +71,7 @@ public class StoragePersonaRoutes extends AbstractRoute {
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         AdminSparkServer.validateParams(request, DELETE_STORAGE_PERSONA.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
-        String personaName = request.queryParams(NAME);
+        String personaName = request.queryParams(PERSONA_NAME);
         try {
           admin.deleteStoragePersona(clusterName, personaName);
         } catch (Exception e) {
@@ -89,7 +89,7 @@ public class StoragePersonaRoutes extends AbstractRoute {
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         AdminSparkServer.validateParams(request, UPDATE_STORAGE_PERSONA.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
-        String personaName = request.queryParams(NAME);
+        String personaName = request.queryParams(PERSONA_NAME);
         Map<String, String> params = Utils.extractQueryParamsFromRequest(request.queryMap().toMap(), veniceResponse);
         try {
           admin.updateStoragePersona(clusterName, personaName, new UpdateStoragePersonaQueryParams(params));
@@ -99,5 +99,23 @@ public class StoragePersonaRoutes extends AbstractRoute {
       }
     };
   }
+
+  public Route getPersonaAssociatedWithStore(Admin admin) {
+    return new VeniceRouteHandler<StoragePersonaResponse>(StoragePersonaResponse.class) {
+      @Override
+      public void internalHandle(Request request, StoragePersonaResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, GET_STORAGE_PERSONA_ASSOCIATED_WITH_STORE.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        try {
+          StoragePersona persona = admin.getPersonaAssociatedWithStore(clusterName, storeName);
+          veniceResponse.setStoragePersona(persona);
+        } catch (Exception e) {
+          veniceResponse.setError("Failed when getting persona for store " + storeName + ".  Exception type: " + e.getClass().toString() + ".  Detailed message = " + e.getMessage());
+        }
+      }
+    };
+  }
+
 
 }

@@ -25,11 +25,11 @@ public class UpdateStoragePersonaQueryParams extends QueryParams {
   }
 
   public Optional<String> getName() {
-    return getString(NAME);
+    return getString(PERSONA_NAME);
   }
 
   public UpdateStoragePersonaQueryParams setName(String name) {
-    return (UpdateStoragePersonaQueryParams) add(NAME, name);
+    return (UpdateStoragePersonaQueryParams) add(PERSONA_NAME , name);
   }
 
   public Optional<Set<String>> getOwners() {

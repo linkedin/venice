@@ -169,8 +169,10 @@ public class StoragePersonaRepository {
     }
   }
 
-  public String getPersonaContainingStore(String storeName) {
-    return storeNamePersonaMap.get(storeName);
+  public StoragePersona getPersonaContainingStore(String storeName) {
+    String personaName = storeNamePersonaMap.get(storeName);
+    if (personaName == null) return null;
+    return getPersona(personaName);
   }
 
   private boolean isStoreSetValid(StoragePersona persona, Optional<Store> additionalStore) {

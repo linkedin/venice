@@ -752,4 +752,6 @@ public interface Admin extends AutoCloseable, Closeable {
 
     void updateStoragePersona(String clusterName, String name, UpdateStoragePersonaQueryParams queryParams);
 
+    StoragePersona getPersonaAssociatedWithStore(String clusterName, String storeName);
+
 }
