@@ -1,9 +1,9 @@
 package com.linkedin.venice.persona;
 
-import com.linkedin.venice.helix.VeniceJsonSerializer;
-import java.util.Set;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.linkedin.venice.helix.VeniceJsonSerializer;
+import java.util.Set;
 
 
 /**
@@ -15,7 +15,7 @@ public class StoragePersonaJSONSerializer extends VeniceJsonSerializer<StoragePe
     mapper.addMixIn(StoragePersona.class, StoragePersonaSerializerMixin.class);
   }
 
-  /** This class annotates the constructor for {@link Persona} and serves as a property-based creator.
+  /** This class annotates the constructor for {@link StoragePersona} and serves as a property-based creator.
    * See the Jackson documentation for more information about property-based creators. */
   public static class StoragePersonaSerializerMixin {
     @JsonCreator
