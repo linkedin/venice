@@ -1692,11 +1692,6 @@ public class VenicePushJob implements AutoCloseable {
       }
 
       storeSetting.sourceKafkaInputVersionInfo = sourceVersion.get();
-      if (storeSetting.sourceKafkaInputVersionInfo.isChunkingEnabled() != storeSetting.isChunkingEnabled) {
-        throw new VeniceException(String.format("Source version and new version have mismatch on chunking support. " +
-                "Source chunking enable: %s and new version chunking enable: %s ",
-                storeSetting.sourceKafkaInputVersionInfo.isChunkingEnabled(), storeSetting.isChunkingEnabled));
-      }
       // Skip quota check
       storeSetting.storeStorageQuota = Store.UNLIMITED_STORAGE_QUOTA;
 
@@ -1835,11 +1830,11 @@ public class VenicePushJob implements AutoCloseable {
             + " source version: " + sourceVersion.getNumber() + " is using: " + sourceVersion.getCompressionStrategy()
             + ", new version: " + newVersion.getNumber() + " is using: " + newVersion.getCompressionStrategy());
       }
-      if (sourceVersion.isChunkingEnabled() != newVersion.isChunkingEnabled()) {
-        throw new VeniceException("Chunking config mismatch between the source version and the new version is "
-            + "not supported by Kafka Input right now, "
-            + " source version: " + sourceVersion.getNumber() + " is using: " + sourceVersion.isChunkingEnabled()
-            + ", new version: " + newVersion.getNumber() + " is using: " + newVersion.isChunkingEnabled());
+      // Chunked source version cannot be repushed if new version is not chunking enabled.
+      if (sourceVersion.isChunkingEnabled() && !newVersion.isChunkingEnabled()) {
+        throw new VeniceException("Chunking config mismatch between the source and the new version of store "
+            + storeResponse.getStore().getName() + ". Source version: " + sourceVersion.getNumber() + " is using: "
+            + sourceVersion.isChunkingEnabled() + ", new version: " + newVersion.getNumber() + " is using: " + newVersion.isChunkingEnabled());
       }
       if (sourceVersion.isActiveActiveReplicationEnabled() && newVersion.isActiveActiveReplicationEnabled()
           && sourceVersion.getReplicationMetadataVersionId() != newVersion.getReplicationMetadataVersionId()) {
