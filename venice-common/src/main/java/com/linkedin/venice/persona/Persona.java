@@ -28,6 +28,9 @@ public class Persona {
     this.owners = new HashSet<>(persona.getOwners());
   }
 
+  public Persona() {
+  }
+
   public String getName() {
     return name;
   }
