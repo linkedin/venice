@@ -2,6 +2,7 @@ package com.linkedin.venice.endToEnd;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.MultiStoragePersonaResponse;
 import com.linkedin.venice.controllerapi.StoragePersonaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -327,6 +328,31 @@ public class StoragePersonaTest {
     Assert.assertFalse(response.isError());
   }
 
-
+  @Test
+  public void testGetAllPersonas() {
+    long quota = 200;
+    List<StoragePersona> expected = controllerClient.getClusterStoragePersonas().getStoragePersonas();
+    int originalSize = expected.size();
+    Assert.assertNotNull(expected);
+    MultiStoragePersonaResponse response = controllerClient.getClusterStoragePersonas();
+    Assert.assertEqualsNoOrder(response.getStoragePersonas().toArray(new StoragePersona[0]), expected.toArray(new StoragePersona[0]));
+    StoragePersona persona = createDefaultPersona();
+    controllerClient.createStoragePersona(persona.getName(), persona.getQuotaNumber(), persona.getStoresToEnforce(), persona.getOwners());
+    expected.add(persona);
+    persona = createDefaultPersona();
+    persona.getStoresToEnforce().add(setUpTestStoreAndAddToRepo(quota).getName());
+    persona.setQuotaNumber(quota);
+    expected.add(persona);
+    controllerClient.createStoragePersona(persona.getName(), persona.getQuotaNumber(), persona.getStoresToEnforce(), persona.getOwners());
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () ->
+        Assert.assertEqualsNoOrder(controllerClient.getClusterStoragePersonas().getStoragePersonas().toArray(new StoragePersona[0]),
+            expected.toArray(new StoragePersona[0])));
+    controllerClient.deleteStoragePersona(expected.get(0).getName());
+    expected.remove(0);
+    Assert.assertEquals(expected.size(), originalSize + 1);
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () ->
+        Assert.assertEqualsNoOrder(controllerClient.getClusterStoragePersonas().getStoragePersonas().toArray(new StoragePersona[0]),
+            expected.toArray(new StoragePersona[0])));
+  }
 
 }

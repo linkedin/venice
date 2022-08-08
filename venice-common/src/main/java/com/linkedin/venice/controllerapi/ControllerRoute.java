@@ -140,7 +140,8 @@ public enum ControllerRoute {
   GET_STORAGE_PERSONA("/get_storage_persona", HttpMethod.GET, Arrays.asList(CLUSTER, PERSONA_NAME)),
   DELETE_STORAGE_PERSONA("/delete_storage_persona", HttpMethod.POST, Arrays.asList(CLUSTER, PERSONA_NAME)),
   UPDATE_STORAGE_PERSONA("/update_storage_persona", HttpMethod.POST, Arrays.asList(CLUSTER, PERSONA_NAME), PERSONA_QUOTA, PERSONA_STORES, PERSONA_OWNERS),
-  GET_STORAGE_PERSONA_ASSOCIATED_WITH_STORE("/get_storage_persona_associated_with_store", HttpMethod.GET, Arrays.asList(CLUSTER, NAME));
+  GET_STORAGE_PERSONA_ASSOCIATED_WITH_STORE("/get_storage_persona_associated_with_store", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
+  GET_CLUSTER_STORAGE_PERSONAS("/get_cluster_personas", HttpMethod.GET, Arrays.asList(CLUSTER));
 
   private final String path;
   private final HttpMethod httpMethod;

@@ -1075,7 +1075,11 @@ public class ControllerClient implements Closeable {
     QueryParams params = newParams()
         .add(NAME, name);
     return request(ControllerRoute.GET_STORAGE_PERSONA_ASSOCIATED_WITH_STORE, params, StoragePersonaResponse.class);
+  }
 
+  public MultiStoragePersonaResponse getClusterStoragePersonas() {
+    QueryParams params = newParams();
+    return request(ControllerRoute.GET_CLUSTER_STORAGE_PERSONAS, params, MultiStoragePersonaResponse.class);
   }
 
   /***

@@ -3,10 +3,12 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.MultiStoragePersonaResponse;
 import com.linkedin.venice.controllerapi.StoragePersonaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.utils.Utils;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -112,6 +114,22 @@ public class StoragePersonaRoutes extends AbstractRoute {
           veniceResponse.setStoragePersona(persona);
         } catch (Exception e) {
           veniceResponse.setError("Failed when getting persona for store " + storeName + ".  Exception type: " + e.getClass().toString() + ".  Detailed message = " + e.getMessage());
+        }
+      }
+    };
+  }
+
+  public Route getClusterStoragePersonas(Admin admin) {
+    return new VeniceRouteHandler<MultiStoragePersonaResponse>(MultiStoragePersonaResponse.class) {
+      @Override
+      public void internalHandle(Request request, MultiStoragePersonaResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, GET_CLUSTER_STORAGE_PERSONAS.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        try {
+          List<StoragePersona> personaList = admin.getClusterStoragePersonas(clusterName);
+          veniceResponse.setStoragePersonas(personaList);
+        } catch (Exception e) {
+          veniceResponse.setError("Failed when getting all personas for cluster " + clusterName + ".  Exception type: " + e.getClass().toString() + ".  Detailed message = " + e.getMessage());
         }
       }
     };

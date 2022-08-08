@@ -88,6 +88,33 @@ public class StoragePersonaRepositoryTest {
   }
 
   @Test
+  public void testGetAllPersonasDeletePersonas() {
+    StoragePersona persona;
+    List<StoragePersona> expected = new ArrayList<>();
+    persona = createDefaultPersona();
+    persona.setQuotaNumber(200);
+    expected.add(persona);
+    addPersonaToRepository(persona);
+    Assert.assertEqualsNoOrder(personaRepository.getAllPersonas().toArray(), expected.toArray());
+    persona = createDefaultPersona();
+    persona.setQuotaNumber(320);
+    expected.add(persona);
+    addPersonaToRepository(persona);
+    Assert.assertEquals(expected.size(), 2);
+    Assert.assertEqualsNoOrder(personaRepository.getAllPersonas().toArray(), expected.toArray());
+    personaRepository.deletePersona(expected.get(1).getName());
+    expected.remove(1);
+    Assert.assertEquals(expected.size(), 1);
+    Assert.assertEqualsNoOrder(personaRepository.getAllPersonas().toArray(), expected.toArray());
+  }
+
+  @Test
+  public void testGetAllPersonasNoPersonaExists() {
+    List<StoragePersona> expected = new ArrayList<>();
+    Assert.assertEquals(personaRepository.getAllPersonas(), expected);
+  }
+
+  @Test
   public void testPersonaNameExists() {
     StoragePersona persona1 = createDefaultPersona();
     addPersonaToRepository(persona1);

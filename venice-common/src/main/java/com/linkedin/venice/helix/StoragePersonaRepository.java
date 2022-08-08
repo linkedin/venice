@@ -187,7 +187,7 @@ public class StoragePersonaRepository {
   private boolean isQuotaValid(StoragePersona persona, Optional<Store> additionalStore) {
     long totalStorage;
     Set<Store> stores = new HashSet<>();
-    if (additionalStore.isPresent()) stores.add(additionalStore.get());
+    additionalStore.ifPresent(stores::add);
     Set<String> storeNames = stores.stream().map(Store::getName).collect(Collectors.toSet());
     /** If the store is currently being updated, use the updated version of the store, not the
      * stale version from the store repository. */
