@@ -205,12 +205,12 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final String PUSH_JOB_DETAILS_STORE_DESCRIPTOR = "push job details store: ";
   private static final String BATCH_JOB_HEARTBEAT_STORE_DESCRIPTOR = "batch job liveness heartbeat store: ";
   //Store version number to retain in Parent Controller to limit 'Store' ZNode size.
-  protected static final int STORE_VERSION_RETENTION_COUNT = 5;
+  static final int STORE_VERSION_RETENTION_COUNT = 5;
   private static final StackTraceElement[] EMPTY_STACK_TRACE = new StackTraceElement[0];
 
   private static final long TOPIC_DELETION_DELAY_MS = 5 * Time.MS_PER_MINUTE;
 
-  protected final Map<String, Boolean> asyncSetupEnabledMap;
+  final Map<String, Boolean> asyncSetupEnabledMap;
   private final VeniceHelixAdmin veniceHelixAdmin;
   private final Map<String, VeniceWriter<byte[], byte[], byte[]>> veniceWriterMap;
   private final AdminTopicMetadataAccessor adminTopicMetadataAccessor;
@@ -254,7 +254,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private final boolean batchJobHeartbeatEnabled;
 
-  Optional<DynamicAccessController> accessController;
+  private Optional<DynamicAccessController> accessController;
 
   private final Optional<AuthorizerService> authorizerService;
 
@@ -367,8 +367,8 @@ public class VeniceParentHelixAdmin implements Admin {
     this.writeComputeSchemaConverter = writeComputeSchemaConverter;
   }
 
-  // For testing purpose
-  protected void setMaxErroredTopicNumToKeep(int maxErroredTopicNumToKeep) {
+  // For testing purpose.
+  void setMaxErroredTopicNumToKeep(int maxErroredTopicNumToKeep) {
     this.maxErroredTopicNumToKeep = maxErroredTopicNumToKeep;
   }
 
@@ -380,24 +380,26 @@ public class VeniceParentHelixAdmin implements Admin {
   public synchronized void initStorageCluster(String clusterName) {
     getVeniceHelixAdmin().initStorageCluster(clusterName);
     asyncSetupEnabledMap.put(clusterName, true);
-    // We might not be able to call a lot of functions of veniceHelixAdmin since
-    // current controller might not be the leader controller for the given clusterName
-    // Even current controller is leader controller, it will take some time to become 'leader'
-    // since VeniceHelixAdmin.start won't wait for state becomes 'Leader', but a lot of
-    // VeniceHelixAdmin functions have 'leadership' check.
+    /*
+     * We might not be able to call a lot of functions of veniceHelixAdmin since
+     * current controller might not be the leader controller for the given clusterName
+     * Even current controller is leader controller, it will take some time to become 'leader'
+     * since VeniceHelixAdmin.start won't wait for state becomes 'Leader', but a lot of
+     * VeniceHelixAdmin functions have 'leadership' check.
+     */
 
-    // Check whether the admin topic exists or not
+    // Check whether the admin topic exists or not.
     String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     TopicManager topicManager = getTopicManager();
     if (topicManager.containsTopicAndAllPartitionsAreOnline(topicName)) {
       logger.info("Admin topic: " + topicName + " for cluster: " + clusterName + " already exists.");
     } else {
-      // Create Kafka topic
+      // Create Kafka topic.
       topicManager.createTopic(topicName, AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC, getMultiClusterConfigs().getKafkaReplicaFactor());
       logger.info("Created admin topic: " + topicName + " for cluster: " + clusterName);
     }
 
-    // Initialize producer
+    // Initialize producer.
     veniceWriterMap.computeIfAbsent(clusterName, (key) -> {
       /**
        * Venice just needs to check seq id in {@link com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask} to catch the following scenarios:

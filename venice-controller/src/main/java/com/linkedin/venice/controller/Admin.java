@@ -126,7 +126,7 @@ public interface Admin extends AutoCloseable, Closeable {
     void abortMigration(String srcClusterName, String destClusterName, String storeName);
 
     /**
-    * Delete the entire store includeing both metadata and real user's data. Before deleting a store, we should disable
+    * Delete the entire store including both metadata and real user's data. Before deleting a store, we should disable
     * the store manually to ensure there is no reading/writing request hitting this tore.
     */
     void deleteStore(String clusterName, String storeName, int largestUsedVersionNumber, boolean waitOnRTTopicDeletion);
@@ -252,7 +252,7 @@ public interface Admin extends AutoCloseable, Closeable {
     DerivedSchemaEntry addDerivedSchema(String clusterName, String storeName, int valueSchemaId, String derivedSchemaStr);
 
     /**
-     * This method skips most of precondition checks and is intended for only internal use.
+     * This method skips most precondition checks and is intended for only internal use.
      */
     DerivedSchemaEntry addDerivedSchema(String clusterName, String storeName, int valueSchemaId, int derivedSchemaId, String derivedSchemaStr);
 
@@ -305,7 +305,6 @@ public interface Admin extends AutoCloseable, Closeable {
 
     /**
      * Stop the helix controller for a single cluster.
-     * @param clusterName
      */
     void stop(String clusterName);
 
@@ -353,17 +352,11 @@ public interface Admin extends AutoCloseable, Closeable {
      * either a parent controller or a child controller since a cluster must have a leader child controller and a leader
      * parent controller. The point is not to be confused the concept of leader-standby with parent-child controller
      * architecture.
-     *
-     * @param clusterName
-     * @return
      */
     boolean isLeaderControllerFor(String clusterName);
 
     /**
     * Calculate how many partitions are needed for the given store and size.
-    * @param storeName
-    * @param storeSize
-    * @return
     */
     int calculateNumberOfPartitions(String clusterName, String storeName, long storeSize);
 
@@ -494,7 +487,6 @@ public interface Admin extends AutoCloseable, Closeable {
      * This function can be used to perform cluster-wide operations which need to be performed by a single process
      * only in the whole cluster. There could be a race condition during leader controller failover,
      * and so long operation should have some way of guarding against that.
-     * @return
      */
     boolean isLeaderControllerOfControllerCluster();
 
@@ -504,8 +496,6 @@ public interface Admin extends AutoCloseable, Closeable {
 
     int getMinNumberOfUnusedKafkaTopicsToPreserve();
     /**
-     *
-     * @param topicName
      * @return false indicates that the truncate operation has already been done before;
      *         true if it's the first time truncating this topic.
      */
@@ -513,8 +503,6 @@ public interface Admin extends AutoCloseable, Closeable {
 
     /**
      * Check whether the specified resource is fully removed or not.
-     * @param resourceName
-     * @return
      */
     boolean isResourceStillAlive(String resourceName);
 
@@ -540,25 +528,18 @@ public interface Admin extends AutoCloseable, Closeable {
     boolean whetherEnableBatchPushFromAdmin(String storeName);
 
     /**
-     * provision a new set of ACL for a venice store and it's associated kafka topic.
-     * @param clusterName
-     * @param storeName
-     * @param accessPermisions
+     * Provision a new set of ACL for a venice store and its associated kafka topic.
      */
     void updateAclForStore(String clusterName, String storeName, String accessPermisions);
 
     /**
-     * fetch the current set of ACL provisioned for a venice store and it's associated kafka topic.
-     * @param clusterName
-     * @param storeName
+     * Fetch the current set of ACL provisioned for a venice store and its associated kafka topic.
      * @return The string representation of the accessPermissions. It will return empty string in case store is not present.
      */
     String getAclForStore(String clusterName, String storeName);
 
     /**
-     * Delete the current set of ACL provisioned for a venice store and it's associated kafka topic.
-     * @param clusterName
-     * @param storeName
+     * Delete the current set of ACL provisioned for a venice store and its associated kafka topic.
      */
     void deleteAclForStore(String clusterName, String storeName);
 
@@ -569,22 +550,19 @@ public interface Admin extends AutoCloseable, Closeable {
     boolean isParent();
 
     /**
-     * Get child datacenter to child controller url mapping
-     * @param clusterName
+     * Get child datacenter to child controller url mapping.
      * @return A map of child datacenter -> child controller url
      */
     Map<String, String> getChildDataCenterControllerUrlMap(String clusterName);
 
     /**
      * Get child datacenter to child controller d2 zk host mapping
-     * @param clusterName
      * @return A map of child datacenter -> child controller d2 zk host
      */
     Map<String, String> getChildDataCenterControllerD2Map(String clusterName);
 
     /**
      * Get child datacenter controller d2 service name
-     * @param clusterName
      * @return d2 service name
      */
     String getChildControllerD2ServiceName(String clusterName);
@@ -718,7 +696,7 @@ public interface Admin extends AutoCloseable, Closeable {
     Pair<Boolean, String> isStoreVersionReadyForDataRecovery(String clusterName, String storeName, int version,
         String sourceFabric, String destinationFabric, Optional<Integer> sourceAmplificationFactor);
 
-    /*
+    /**
      * Return whether the admin consumption task is enabled for the passed cluster.
      */
     default boolean isAdminTopicConsumptionEnabled(String clusterName) {
