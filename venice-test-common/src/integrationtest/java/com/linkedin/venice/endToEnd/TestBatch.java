@@ -442,6 +442,41 @@ public abstract class TestBatch {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
+  public void testIncrementalPushWithCompression() throws Exception {
+    String storeName = testBatchStore(
+        inputDir -> {
+          Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
+          return new Pair<>(recordSchema.getField("id").schema(),
+              recordSchema.getField("name").schema());
+        },
+        properties -> {
+          /**
+           * Here will use {@link VENICE_DISCOVER_URL_PROP} instead.
+           */
+          properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
+          properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
+        },
+        getSimpleFileWithUserSchemaValidatorForZstd(),
+        new UpdateStoreQueryParams()
+            .setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT)
+            .setIncrementalPushEnabled(true)
+            .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)
+            .setHybridOffsetLagThreshold(10)
+            .setHybridRewindSeconds(0));
+
+    testBatchStore(inputDir -> {
+      Schema recordSchema = writeSimpleAvroFileWithUserSchema2(inputDir);
+      return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
+    }, properties -> {
+      properties.setProperty(INCREMENTAL_PUSH, "true");
+    }, (avroClient, vsonClient, metricsRepository) -> {
+      for (int i = 51; i <= 150; i++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + (i * 2));
+      }
+    }, storeName, null, false);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
   public void testIncrementalPushWritesToRealTimeTopicWithPolicy() throws Exception {
     /**
      * N.B. This test has some flaky issues where it occasionally times out... It seems to be specific to
