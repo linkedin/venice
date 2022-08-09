@@ -362,6 +362,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected boolean isDataRecovery;
   protected final MetaStoreWriter metaStoreWriter;
 
+  protected final CompressionStrategy compressionStrategy;
+
   public StoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
       Store store,
@@ -531,6 +533,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       throw new IllegalArgumentException(AggKafkaConsumerService.class.getSimpleName()
           + " instance does not exist for shared consumer mode.");
     }
+
+    this.compressionStrategy = version.getCompressionStrategy();
   }
 
   /** Package-private on purpose, only intended for tests. Do not use for production use cases. */

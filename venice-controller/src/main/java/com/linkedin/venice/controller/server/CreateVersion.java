@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -276,9 +277,11 @@ public class CreateVersion extends AbstractRoute {
             }
             String responseTopic;
             boolean overrideSourceFabric = true;
+            boolean isTopicRT = false;
             if (pushType.isStreamReprocessing()) {
               responseTopic = Version.composeStreamReprocessingTopic(storeName, version.getNumber());
             } else if (pushType.isIncremental() && version.getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
+              isTopicRT = true;
               responseTopic = Version.composeRealTimeTopic(storeName);
               // disable amplificationFactor logic on real-time topic
               responseObject.setAmplificationFactor(1);
@@ -296,7 +299,12 @@ public class CreateVersion extends AbstractRoute {
 
             responseObject.setVersion(version.getNumber());
             responseObject.setKafkaTopic(responseTopic);
-            responseObject.setCompressionStrategy(version.getCompressionStrategy());
+            if (isTopicRT) {
+              // RT topic only supports NO_OP compression
+              responseObject.setCompressionStrategy(CompressionStrategy.NO_OP);
+            } else {
+              responseObject.setCompressionStrategy(version.getCompressionStrategy());
+            }
             if (version.isNativeReplicationEnabled() && overrideSourceFabric) {
               String childDataCenterKafkaBootstrapServer = version.getPushStreamSourceAddress();
               if (childDataCenterKafkaBootstrapServer != null) {

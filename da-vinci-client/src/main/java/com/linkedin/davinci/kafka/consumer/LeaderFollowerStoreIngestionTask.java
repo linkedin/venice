@@ -236,14 +236,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         venicePartitioner,
         storeVersionPartitionCount * amplificationFactor));
 
-    this.compressor = Lazy.of(() -> {
-      byte[] dictionary = storageMetadataService.getStoreVersionCompressionDictionary(kafkaVersionTopic) == null ?
-          null : storageMetadataService.getStoreVersionCompressionDictionary(kafkaVersionTopic).array();
-      return compressorFactory.createVersionSpecificCompressorIfNotExist(
-          storageMetadataService.getStoreVersionCompressionStrategy(kafkaVersionTopic),
-          kafkaVersionTopic,
-          dictionary);
-    });
+    this.compressor = Lazy.of(() -> compressorFactory.getCompressor(compressionStrategy, kafkaVersionTopic));
 
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
     this.kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
@@ -2281,7 +2274,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (!realTimeTopic.equals(leaderTopic)) {
       return false; // We're consuming from version topic (don't compress it)
     }
-    CompressionStrategy compressionStrategy = storageMetadataService.getStoreVersionCompressionStrategy(kafkaVersionTopic);
     if (compressionStrategy.equals(CompressionStrategy.NO_OP)) {
       return false; // We're not even supposed to be compressing, don't compress
     }
