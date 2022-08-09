@@ -162,17 +162,17 @@ public class TestRouterRetry {
 
     // Verify retry metrics
     double noAvailableReplicaAbortedRetryRequestMetricForSingleGet = MetricsUtils.getSum(".total--no_available_replica_aborted_retry_request.Count", veniceCluster.getVeniceRouters());
-    double noAvailableReplicaAbortedRetryRequestMetricForBatchGet = MetricsUtils.getSum(".total--multiget_no_available_replica_aborted_retry_request.Count", veniceCluster.getVeniceRouters());
-    double noAvailableReplicaAbortedRetryRequestMetricForCompute = MetricsUtils.getSum(".total--compute_no_available_replica_aborted_retry_request.Count", veniceCluster.getVeniceRouters());
+    double noAvailableReplicaAbortedRetryRequestMetricForBatchGetStreaming = MetricsUtils.getSum(".total--multiget_streaming_no_available_replica_aborted_retry_request.Count", veniceCluster.getVeniceRouters());
+    double noAvailableReplicaAbortedRetryRequestMetricForComputeStreaming = MetricsUtils.getSum(".total--compute_streaming_no_available_replica_aborted_retry_request.Count", veniceCluster.getVeniceRouters());
     Assert.assertTrue(noAvailableReplicaAbortedRetryRequestMetricForSingleGet > 0, "No available aborted retry request should be triggered for single-get");
-    Assert.assertTrue(noAvailableReplicaAbortedRetryRequestMetricForBatchGet > 0, "No available aborted retry request should be triggered for batch-get");
-    Assert.assertTrue(noAvailableReplicaAbortedRetryRequestMetricForCompute > 0, "No available aborted retry request should be triggered for compute");
+    Assert.assertTrue(noAvailableReplicaAbortedRetryRequestMetricForBatchGetStreaming > 0, "No available aborted retry request should be triggered for batch-get streaming");
+    Assert.assertTrue(noAvailableReplicaAbortedRetryRequestMetricForComputeStreaming > 0, "No available aborted retry request should be triggered for compute streaming");
     // No unhealthy request
     double unhealthyRequestMetricForSingleGet = MetricsUtils.getSum(".total--unhealthy_request.Count", veniceCluster.getVeniceRouters());
-    double unhealthyRequestMetricForBatchGet = MetricsUtils.getSum(".total--multiget_unhealthy_request.Count", veniceCluster.getVeniceRouters());
-    double unhealthyRequestMetricForForCompute = MetricsUtils.getSum(".total--compute_unhealthy_request.Count", veniceCluster.getVeniceRouters());
+    double unhealthyRequestMetricForBatchGetStreaming = MetricsUtils.getSum(".total--multiget_streaming_unhealthy_request.Count", veniceCluster.getVeniceRouters());
+    double unhealthyRequestMetricForForComputeStreaming = MetricsUtils.getSum(".total--compute_streaming_unhealthy_request.Count", veniceCluster.getVeniceRouters());
     Assert.assertEquals(unhealthyRequestMetricForSingleGet, 0.0, "Unhealthy request for single-get is unexpected");
-    Assert.assertEquals(unhealthyRequestMetricForBatchGet, 0.0, "Unhealthy request for batch-get is unexpected");
-    Assert.assertEquals(unhealthyRequestMetricForForCompute, 0.0, "Unhealthy request for compute is unexpected");
+    Assert.assertEquals(unhealthyRequestMetricForBatchGetStreaming, 0.0, "Unhealthy request for batch-get streaming is unexpected");
+    Assert.assertEquals(unhealthyRequestMetricForForComputeStreaming, 0.0, "Unhealthy request for compute streaming is unexpected");
   }
 }
