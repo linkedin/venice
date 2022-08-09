@@ -1,7 +1,6 @@
 package com.linkedin.venice.writer;
 
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -28,6 +27,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -38,7 +38,6 @@ import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.TopicPartition;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
@@ -263,17 +262,23 @@ public class VeniceWriterTest {
         TestUtils.getVeniceWriterFactory(properties).createVeniceWriter(topicName, partitionCount);
     KafkaProducerWrapper producer = veniceWriter.getProducer();
     ExecutorService executor = Executors.newSingleThreadExecutor();
+    CountDownLatch countDownLatch = new CountDownLatch(1);
+
     try {
       Future future = executor.submit(() -> {
+        countDownLatch.countDown();
         // send to non-existent topic
         producer.sendMessage(new ProducerRecord("topic", "key", "value"), null);
         fail("Should be blocking send");
       });
 
       try {
+        countDownLatch.await();
+        // Still wait for some time to make sure blocking sendMessage is inside kafka before closing it.
+        Utils.sleep(50);
         producer.close(5000, true);
-      } catch (Exception ignored) {
-        fail("Close should be able to close.", ignored);
+      } catch (Exception e) {
+        fail("Close should be able to close.", e);
       }
       try {
         future.get();
