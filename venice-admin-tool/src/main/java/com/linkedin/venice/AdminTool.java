@@ -25,6 +25,7 @@ import com.linkedin.venice.controllerapi.MultiNodeResponse;
 import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
+import com.linkedin.venice.controllerapi.MultiStoragePersonaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
@@ -469,6 +470,12 @@ public class AdminTool {
         case UPDATE_STORAGE_PERSONA:
           updateStoragePersona(cmd);
           break;
+        case GET_STORAGE_PERSONA_FOR_STORE:
+          getStoragePersonaForStore(cmd);
+          break;
+        case LIST_CLUSTER_STORAGE_PERSONAS:
+          listClusterStoragePersonas(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c : Command.values()){
@@ -860,6 +867,7 @@ public class AdminTool {
     booleanParam(cmd, Arg.ACTIVE_ACTIVE_REPLICATION_ENABLED, p -> params.setActiveActiveReplicationEnabled(p), argSet);
     genericParam(cmd, Arg.REGIONS_FILTER, s -> s, p -> params.setRegionsFilter(p), argSet);
     booleanParam(cmd, Arg.APPLY_TARGET_VERSION_FILTER_FOR_INC_PUSH, p -> params.setApplyTargetVersionFilterForIncPush(p), argSet);
+    genericParam(cmd, Arg.STORAGE_PERSONA, s -> s, p -> params.setStoragePersona(p), argSet);
 
     /**
      * {@link Arg#REPLICATE_ALL_CONFIGS} doesn't require parameters; once specified, it means true.
@@ -2356,6 +2364,18 @@ public class AdminTool {
     stringSetParam(cmd, Arg.OWNER, p -> params.setOwners(p), argSet);
     return params;
   }
+
+  private static void getStoragePersonaForStore(CommandLine cmd) {
+    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    StoragePersonaResponse response = controllerClient.getStoragePersonaAssociatedWithStore(storeName);
+    printObject(response);
+  }
+
+  private static void listClusterStoragePersonas(CommandLine cmd) {
+    MultiStoragePersonaResponse response = controllerClient.getClusterStoragePersonas();
+    printObject(response);
+  }
+
 
   private static Map<String, ControllerClient> getAndCheckChildControllerClientMap(String clusterName, String srcFabric,
       String destFabric) {
