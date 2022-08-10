@@ -100,7 +100,7 @@ public enum Command {
           REGULAR_VERSION_ETL_ENABLED, FUTURE_VERSION_ETL_ENABLED, ETLED_PROXY_USER_ACCOUNT, NATIVE_REPLICATION_ENABLED, PUSH_STREAM_SOURCE_ADDRESS,
           INCREMENTAL_PUSH_POLICY, BACKUP_VERSION_RETENTION_DAY, REPLICATION_FACTOR, NATIVE_REPLICATION_SOURCE_FABRIC, REPLICATE_ALL_CONFIGS,
           ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER, APPLY_TARGET_VERSION_FILTER_FOR_INC_PUSH,
-          DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE}),
+          DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE, STORAGE_PERSONA}),
   UPDATE_CLUSTER_CONFIG("update-cluster-config", "Update live cluster configs",
       new Arg[] {URL, CLUSTER},
       new Arg[] {FABRIC, SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, ALLOW_STORE_MIGRATION,
@@ -219,7 +219,9 @@ public enum Command {
   NEW_STORAGE_PERSONA("new-storage-persona", "Creates a new storage persona.", new Arg[] {URL, CLUSTER, STORAGE_PERSONA, STORAGE_QUOTA, STORE, OWNER}),
   GET_STORAGE_PERSONA("get-storage-persona", "Gets info on an existing storage persona by name", new Arg[] {URL, CLUSTER, STORAGE_PERSONA}),
   DELETE_STORAGE_PERSONA("delete-storage-persona", "Deletes an existing storage persona", new Arg[] {URL, CLUSTER, STORAGE_PERSONA}),
-  UPDATE_STORAGE_PERSONA("update-storage-persona", "Updates an existing storage persona", new Arg[] {URL, CLUSTER, STORAGE_PERSONA}, new Arg[]{STORAGE_QUOTA, STORE, OWNER});
+  UPDATE_STORAGE_PERSONA("update-storage-persona", "Updates an existing storage persona", new Arg[] {URL, CLUSTER, STORAGE_PERSONA}, new Arg[]{STORAGE_QUOTA, STORE, OWNER}),
+  GET_STORAGE_PERSONA_FOR_STORE("get-storage-persona-for-store", "Gets the storage persona associated with a store name.", new Arg[] {URL, CLUSTER, STORE}),
+  LIST_CLUSTER_STORAGE_PERSONAS("list-cluster-storage-personas", "Lists all storage personas in a cluster.", new Arg[] {URL, CLUSTER});
 
   private final String commandName;
   private final String description;
