@@ -1,4 +1,4 @@
-package com.linkedin.venice.controller.spark;
+package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
@@ -42,7 +42,7 @@ public class VeniceSparkEmbeddedJettyServer implements EmbeddedServer {
   private final Logger logger = LogManager.getLogger(this.getClass());
 
   private Map<String, WebSocketHandlerWrapper> webSocketHandlers;
-  private Optional<Long> webSocketIdleTimeoutMillis;
+  private Optional<Integer> webSocketIdleTimeoutMillis;
 
   private ThreadPool threadPool = null;
 
@@ -53,7 +53,7 @@ public class VeniceSparkEmbeddedJettyServer implements EmbeddedServer {
 
   @Override
   public void configureWebSockets(Map<String, WebSocketHandlerWrapper> webSocketHandlers,
-      Optional<Long> webSocketIdleTimeoutMillis) {
+      Optional<Integer> webSocketIdleTimeoutMillis) {
 
     this.webSocketHandlers = webSocketHandlers;
     this.webSocketIdleTimeoutMillis = webSocketIdleTimeoutMillis;
@@ -107,9 +107,9 @@ public class VeniceSparkEmbeddedJettyServer implements EmbeddedServer {
     ServerConnector connector;
 
     if (sslStores == null) {
-      connector = VeniceSocketConnectorFactory.createSocketConnector(server, host, port);
+      connector = SocketConnectorFactory.createSocketConnector(server, host, port);
     } else {
-      connector = VeniceSocketConnectorFactory.createSecureSocketConnector(server, host, port, sslStores);
+      connector = SocketConnectorFactory.createSecureSocketConnector(server, host, port, sslStores);
     }
 
     Connector previousConnectors[] = server.getConnectors();

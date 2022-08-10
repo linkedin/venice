@@ -1,4 +1,4 @@
-package com.linkedin.venice.controller.spark;
+package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.utils.VeniceProperties;
 import org.eclipse.jetty.util.thread.ThreadPool;
