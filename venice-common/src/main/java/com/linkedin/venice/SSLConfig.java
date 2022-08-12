@@ -10,6 +10,8 @@ import static com.linkedin.venice.ConfigKeys.*;
 
 
 public class SSLConfig {
+  public static final boolean DEFAULT_CONTROLLER_SSL_ENABLED = true;
+
   private String sslKeyStoreLocation;
   private String sslKeyStorePassword;
   private String sslKeyStoreType;
@@ -36,7 +38,7 @@ public class SSLConfig {
     sslTrustManagerAlgorithm = veniceProperties.getString(SSL_TRUSTMANAGER_ALGORITHM);
     sslSecureRandomImplementation = veniceProperties.getString(SSL_SECURE_RANDOM_IMPLEMENTATION);
     sslNeedsClientCert = veniceProperties.getBoolean(SSL_NEEDS_CLIENT_CERT, false);
-    controllerSSLEnabled = veniceProperties.getBoolean(CONTROLLER_SSL_ENABLED, true);
+    controllerSSLEnabled = veniceProperties.getBoolean(CONTROLLER_SSL_ENABLED, DEFAULT_CONTROLLER_SSL_ENABLED);
   }
 
   /**

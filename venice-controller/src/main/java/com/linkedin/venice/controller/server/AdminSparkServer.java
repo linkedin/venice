@@ -163,24 +163,24 @@ public class AdminSparkServer extends AbstractVeniceService {
     });
 
     // Build all different routes
-    ControllerRoutes controllerRoutes = new ControllerRoutes(accessController);
-    StoresRoutes storesRoutes = new StoresRoutes(accessController);
-    JobRoutes jobRoutes = new JobRoutes(accessController);
-    SkipAdminRoute skipAdminRoute = new SkipAdminRoute(accessController);
-    CreateVersion createVersion = new CreateVersion(accessController, this.checkReadMethodForKafka,
+    ControllerRoutes controllerRoutes = new ControllerRoutes(sslEnabled, accessController);
+    StoresRoutes storesRoutes = new StoresRoutes(sslEnabled, accessController);
+    JobRoutes jobRoutes = new JobRoutes(sslEnabled, accessController);
+    SkipAdminRoute skipAdminRoute = new SkipAdminRoute(sslEnabled, accessController);
+    CreateVersion createVersion = new CreateVersion(sslEnabled, accessController, this.checkReadMethodForKafka,
         disableParentRequestTopicForStreamPushes);
-    CreateStore createStoreRoute = new CreateStore(accessController);
-    NodesAndReplicas nodesAndReplicas = new NodesAndReplicas(accessController);
-    SchemaRoutes schemaRoutes = new SchemaRoutes(accessController);
-    AdminCommandExecutionRoutes adminCommandExecutionRoutes = new AdminCommandExecutionRoutes(accessController);
-    RoutersClusterConfigRoutes routersClusterConfigRoutes = new RoutersClusterConfigRoutes(accessController);
-    MigrationRoutes migrationRoutes = new MigrationRoutes(accessController);
-    VersionRoute versionRoute = new VersionRoute(accessController);
-    ClusterRoutes clusterRoutes = new ClusterRoutes(accessController);
-    NewClusterBuildOutRoutes newClusterBuildOutRoutes = new NewClusterBuildOutRoutes(accessController);
-    DataRecoveryRoutes dataRecoveryRoutes = new DataRecoveryRoutes(accessController);
-    AdminTopicMetadataRoutes adminTopicMetadataRoutes = new AdminTopicMetadataRoutes(accessController);
-    StoragePersonaRoutes storagePersonaRoutes = new StoragePersonaRoutes(accessController);
+    CreateStore createStoreRoute = new CreateStore(sslEnabled, accessController);
+    NodesAndReplicas nodesAndReplicas = new NodesAndReplicas(sslEnabled, accessController);
+    SchemaRoutes schemaRoutes = new SchemaRoutes(sslEnabled, accessController);
+    AdminCommandExecutionRoutes adminCommandExecutionRoutes = new AdminCommandExecutionRoutes(sslEnabled, accessController);
+    RoutersClusterConfigRoutes routersClusterConfigRoutes = new RoutersClusterConfigRoutes(sslEnabled, accessController);
+    MigrationRoutes migrationRoutes = new MigrationRoutes(sslEnabled, accessController);
+    VersionRoute versionRoute = new VersionRoute(sslEnabled, accessController);
+    ClusterRoutes clusterRoutes = new ClusterRoutes(sslEnabled, accessController);
+    NewClusterBuildOutRoutes newClusterBuildOutRoutes = new NewClusterBuildOutRoutes(sslEnabled, accessController);
+    DataRecoveryRoutes dataRecoveryRoutes = new DataRecoveryRoutes(sslEnabled, accessController);
+    AdminTopicMetadataRoutes adminTopicMetadataRoutes = new AdminTopicMetadataRoutes(sslEnabled, accessController);
+    StoragePersonaRoutes storagePersonaRoutes = new StoragePersonaRoutes(sslEnabled, accessController);
 
     httpService.get(SET_VERSION.getPath(), (request, response) -> {
       response.type(HttpConstants.TEXT_HTML);

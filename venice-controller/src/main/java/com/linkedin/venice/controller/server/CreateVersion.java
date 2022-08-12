@@ -44,9 +44,9 @@ public class CreateVersion extends AbstractRoute {
   private final boolean checkReadMethodForKafka;
   private final boolean disableParentRequestTopicForStreamPushes;
 
-  public CreateVersion(Optional<DynamicAccessController> accessController, boolean checkReadMethodForKafka,
+  public CreateVersion(boolean sslEnabled, Optional<DynamicAccessController> accessController, boolean checkReadMethodForKafka,
       boolean disableParentRequestTopicForStreamPushes) {
-    super(accessController);
+    super(sslEnabled, accessController);
     this.checkReadMethodForKafka = checkReadMethodForKafka;
     this.disableParentRequestTopicForStreamPushes = disableParentRequestTopicForStreamPushes;
   }

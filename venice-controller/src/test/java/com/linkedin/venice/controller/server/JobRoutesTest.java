@@ -58,11 +58,11 @@ public class JobRoutesTest {
     String cluster = Utils.getUniqueString("cluster");
     String store = Utils.getUniqueString("store");
     int version = 5;
-    JobRoutes jobRoutes = new JobRoutes(Optional.empty());
+    JobRoutes jobRoutes = new JobRoutes(false, Optional.empty());
     JobStatusQueryResponse response = jobRoutes.populateJobStatus(cluster, store, version, mockAdmin, Optional.empty());
 
-    Long available = response.getMessagesAvailable();
-    Long consumed = response.getMessagesConsumed();
+    long available = response.getMessagesAvailable();
+    long consumed = response.getMessagesConsumed();
 
     Map<String, String> extraInfo = response.getExtraInfo();
     LOGGER.info("extraInfo: " + extraInfo);

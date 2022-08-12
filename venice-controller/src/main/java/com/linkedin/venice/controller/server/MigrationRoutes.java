@@ -15,8 +15,8 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
 public class MigrationRoutes extends AbstractRoute {
-  public MigrationRoutes(Optional<DynamicAccessController> accessController) {
-    super(accessController);
+  public MigrationRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+    super(sslEnabled, accessController);
   }
 
   /**

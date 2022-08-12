@@ -12,8 +12,8 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_BOOTSTRAPPI
 
 
 public class VersionRoute extends AbstractRoute {
-  public VersionRoute(Optional<DynamicAccessController> accessController) {
-    super(accessController);
+  public VersionRoute(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+    super(sslEnabled, accessController);
   }
 
   /**

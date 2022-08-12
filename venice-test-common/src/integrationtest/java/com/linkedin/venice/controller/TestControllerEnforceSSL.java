@@ -9,26 +9,27 @@ import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
 
-public class TestControllerEnforeSSL {
+public class TestControllerEnforceSSL {
   private static final String CLUSTER_NAME = Utils.getUniqueString("test-cluster");
   private static final String KEY_SCHEMA = "\"string\"";
   private static final String VALUE_SCHEMA = "\"string\"";
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testInsecureRouteFailWhenEnforcingSSL() {
+    Utils.thisIsLocalhost();
     /**
      * Once controller enforce SSL, all routes except cluster/leader controller discovery in insecure port will fail.
      */
@@ -37,10 +38,13 @@ public class TestControllerEnforeSSL {
 
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
-         VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceChildController(
-             new String[]{CLUSTER_NAME}, kafkaBrokerWrapper, 1, 10, 0, 1,
-             null, false, false, extraProperties);
-         ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(CLUSTER_NAME, controllerWrapper.getControllerUrl())) {
+        VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceChildController(
+          new String[]{CLUSTER_NAME}, kafkaBrokerWrapper, 1, 10, 0, 1,
+          null, true, false, extraProperties);
+        ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(CLUSTER_NAME,
+            controllerWrapper.getControllerUrl());
+        ControllerClient secureControllerClient = ControllerClient.constructClusterControllerClient(CLUSTER_NAME,
+            controllerWrapper.getSecureControllerUrl(), Optional.of(SslUtils.getVeniceLocalSslFactory()))) {
       TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> controllerWrapper.isLeaderController(CLUSTER_NAME));
 
       /**
@@ -54,18 +58,25 @@ public class TestControllerEnforeSSL {
        * leader controller discovery should still work.
        */
       try {
+        secureControllerClient.getLeaderControllerUrl();
         controllerClient.getLeaderControllerUrl();
       } catch (Exception e) {
-        Assert.fail("Leader controller discover should still work after enforcing SSL.");
+        Assert.fail("Leader controller discover should still work after enforcing SSL.", e);
       }
 
       /**
-       * All other routes like getStore, updateStore, etc. should fail.
+       * All other routes like getStore, updateStore, etc. should fail for non-secure controller clients to http URLs
+       * but succeed for controller clients to https URLs
        */
+      StoreResponse storeResponseSecure = secureControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponseSecure.isError(), storeResponseSecure.getError());
       StoreResponse storeResponse = controllerClient.getStore(storeName);
-      Assert.assertEquals(storeResponse.isError(), true);
-      ControllerResponse updateResponse = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionCount(100));
-      Assert.assertEquals(updateResponse.isError(), true);
+      Assert.assertTrue(storeResponse.isError(), storeResponse.getError());
+
+      ControllerResponse updateResponseSecure = secureControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionCount(2));
+      Assert.assertFalse(updateResponseSecure.isError(), updateResponseSecure.getError());
+      ControllerResponse updateResponse = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionCount(2));
+      Assert.assertTrue(updateResponse.isError(), updateResponse.getError());
 
       /**
        * Cluster discovery should still work; explicitly put the test after getStore and updateStore to confirm that

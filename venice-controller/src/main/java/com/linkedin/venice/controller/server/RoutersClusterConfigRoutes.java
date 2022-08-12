@@ -14,8 +14,8 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
 public class RoutersClusterConfigRoutes extends AbstractRoute {
-  public RoutersClusterConfigRoutes(Optional<DynamicAccessController> accessController) {
-    super(accessController);
+  public RoutersClusterConfigRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+    super(sslEnabled, accessController);
   }
 
   public Route enableThrottling(Admin admin) {

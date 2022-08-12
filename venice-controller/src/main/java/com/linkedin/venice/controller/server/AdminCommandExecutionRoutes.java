@@ -18,8 +18,8 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.LAST_SUCCEED_EXE
 
 
 public class AdminCommandExecutionRoutes extends AbstractRoute {
-  public AdminCommandExecutionRoutes(Optional<DynamicAccessController> accessController) {
-    super(accessController);
+  public AdminCommandExecutionRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+    super(sslEnabled, accessController);
   }
 
   /**

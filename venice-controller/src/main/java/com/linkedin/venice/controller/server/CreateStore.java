@@ -15,8 +15,8 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
 public class CreateStore extends AbstractRoute {
-  public CreateStore(Optional<DynamicAccessController> accessController) {
-    super(accessController);
+  public CreateStore(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+    super(sslEnabled, accessController);
   }
 
   public Route createStore(Admin admin) {

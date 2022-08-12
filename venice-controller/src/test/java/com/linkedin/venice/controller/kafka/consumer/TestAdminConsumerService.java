@@ -5,6 +5,7 @@ import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -20,7 +21,7 @@ import static org.mockito.Mockito.*;
 
 public class TestAdminConsumerService {
   @Test
-  public void testMutlipleAdminConsumerServiceWithSameMetricsRepo() throws IOException {
+  public void testMultipleAdminConsumerServiceWithSameMetricsRepo() throws IOException {
     MetricsRepository metricsRepository = new MetricsRepository();
 
     String someClusterName = "clusterName";
@@ -35,6 +36,7 @@ public class TestAdminConsumerService {
         .put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + adminTopicSourceRegion, "blah")
         .put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + adminTopicSourceRegion, "blah")
         .put(CHILD_CLUSTER_ALLOWLIST, someClusterName)
+        .put(SslUtils.getVeniceLocalSslProperties())
         .build();
     VeniceControllerConfig controllerConfig = new VeniceControllerConfig(props);
 

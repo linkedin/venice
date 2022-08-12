@@ -16,6 +16,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -34,6 +35,7 @@ import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.SSLConfig.*;
 
 
 class AbstractTestVeniceHelixAdmin {
@@ -75,6 +77,7 @@ class AbstractTestVeniceHelixAdmin {
   }
 
   public void setupCluster(boolean createParticipantStore) throws Exception {
+    Utils.thisIsLocalhost();
     zkServerWrapper = ServiceFactory.getZkServer();
     zkAddress = zkServerWrapper.getAddress();
     kafkaZkServer = ServiceFactory.getZkServer();
@@ -177,6 +180,7 @@ class AbstractTestVeniceHelixAdmin {
     properties.put(TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS, true);
     properties.put(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, clusterName);
     properties.put(CHILD_CLUSTER_ALLOWLIST, "dc-0");
+    properties.put(CONTROLLER_SSL_ENABLED, false);
     return properties;
   }
 

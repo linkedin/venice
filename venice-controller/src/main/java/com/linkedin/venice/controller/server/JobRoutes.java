@@ -33,8 +33,8 @@ public class JobRoutes extends AbstractRoute {
   private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer =
       AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
 
-  public JobRoutes(Optional<DynamicAccessController> accessController) {
-    super(accessController);
+  public JobRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+    super(sslEnabled, accessController);
   }
 
   public Route jobStatus(Admin admin) {

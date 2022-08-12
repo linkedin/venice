@@ -77,7 +77,7 @@ public class CreateVersionTest {
     /**
      * Build a CreateVersion route.
      */
-    CreateVersion createVersion = new CreateVersion(Optional.of(accessClient), checkReadMethod,
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), checkReadMethod,
         false);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
@@ -141,7 +141,7 @@ public class CreateVersionTest {
     partitionerConfig.setAmplificationFactor(2);
     when(store.getPartitionerConfig()).thenReturn(partitionerConfig);
     when(admin.getStore(any(), any())).thenReturn(store);
-    CreateVersion createVersion = new CreateVersion(Optional.empty(), false, false);
+    CreateVersion createVersion = new CreateVersion(false, Optional.empty(), false, false);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
     Request request = mock(Request.class);
@@ -230,7 +230,7 @@ public class CreateVersionTest {
     /**
      * Build a CreateVersion route.
      */
-    CreateVersion createVersion = new CreateVersion(Optional.of(accessClient), false, false);
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
     doReturn(true).when(accessClient).isAllowlistUsers(certificate, storeName, HTTP_GET);

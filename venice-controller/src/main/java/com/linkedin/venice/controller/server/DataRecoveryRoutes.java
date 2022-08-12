@@ -23,8 +23,8 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 public class DataRecoveryRoutes extends AbstractRoute {
   private final VeniceJsonSerializer<Version> versionVeniceJsonSerializer = new VeniceJsonSerializer<>(Version.class);
 
-  public DataRecoveryRoutes(Optional<DynamicAccessController> accessController) {
-    super(accessController);
+  public DataRecoveryRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+    super(sslEnabled, accessController);
   }
 
   public Route dataRecovery(Admin admin) {

@@ -14,8 +14,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 public class SkipAdminRoute extends AbstractRoute {
-  public SkipAdminRoute(Optional<DynamicAccessController> accessController) {
-    super(accessController);
+  public SkipAdminRoute(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+    super(sslEnabled, accessController);
   }
 
   public Route skipAdminMessage(Admin admin) {

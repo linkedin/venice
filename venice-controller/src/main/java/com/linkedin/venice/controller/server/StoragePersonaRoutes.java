@@ -21,8 +21,8 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 public class StoragePersonaRoutes extends AbstractRoute {
 
-  public StoragePersonaRoutes(Optional<DynamicAccessController> accessController) {
-    super(accessController);
+  public StoragePersonaRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+    super(sslEnabled, accessController);
   }
 
   public Route createStoragePersona(Admin admin) {

@@ -15,6 +15,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -24,13 +25,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
-
 import org.apache.commons.lang.StringUtils;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.SSLConfig.*;
 import static com.linkedin.venice.integration.utils.D2TestUtils.*;
 
 
@@ -97,6 +98,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       List<VeniceProperties> propertiesList = new ArrayList<>();
 
       VeniceProperties extraProps = new VeniceProperties(extraProperties);
+      final boolean sslEnabled = extraProps.getBoolean(CONTROLLER_SSL_ENABLED, DEFAULT_CONTROLLER_SSL_ENABLED);
+
       for(String clusterName : clusterNames) {
         VeniceProperties clusterProps =
             IntegrationTestUtils.getClusterProps(clusterName, dataDirectory, zkAddress, kafkaBroker, sslToKafka);
@@ -149,6 +152,10 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(CONCURRENT_INIT_ROUTINES_ENABLED, true)
             .put(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, true)
             .put(extraProps.toProperties());
+
+        if (sslEnabled) {
+          builder.put(SslUtils.getVeniceLocalSslProperties());
+        }
 
         if (sslToKafka) {
           builder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);
@@ -231,7 +238,10 @@ public class VeniceControllerWrapper extends ProcessWrapper {
 
       List<D2Server> d2ServerList = new ArrayList<>();
       if (d2Enabled) {
-        d2ServerList.add(createD2Server(zkAddress, adminPort));
+        d2ServerList.add(createD2Server(zkAddress, adminPort, false));
+        if (sslEnabled) {
+          d2ServerList.add(createD2Server(zkAddress, adminSecurePort, true));
+        }
       }
 
       D2Client d2Client = D2TestUtils.getAndStartD2Client(zkAddress);
@@ -315,8 +325,9 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     service.stop();
   }
 
-  private static D2Server createD2Server(String zkAddress, int port) {
-    return D2TestUtils.getD2Server(zkAddress, "http://localhost:" + port, D2TestUtils.CONTROLLER_CLUSTER_NAME);
+  private static D2Server createD2Server(String zkAddress, int port, boolean https) {
+    String scheme = https ? "https" : "http";
+    return D2TestUtils.getD2Server(zkAddress, scheme + "://localhost:" + port, D2TestUtils.CONTROLLER_CLUSTER_NAME);
   }
 
   @Override
@@ -331,7 +342,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
      */
     if (!d2ServerList.isEmpty()) {
       d2ServerList.clear();
-      d2ServerList.add(createD2Server(zkAddress, port));
+      d2ServerList.add(createD2Server(zkAddress, port, false));
+      d2ServerList.add(createD2Server(zkAddress, securePort, true));
     }
     D2Client d2Client = D2TestUtils.getAndStartD2Client(zkAddress);
     service = new VeniceController(configs, d2ServerList, Optional.empty(), d2Client);

@@ -28,6 +28,7 @@ public class AbstractRoute {
 
   private static final ResourceAclCheck readAccessToTopic = (cert, resourceName, aclClient) -> aclClient.hasAccessToTopic(cert, resourceName, "Read");
 
+  private final boolean sslEnabled;
   private final Optional<DynamicAccessController> accessController;
 
   /**
@@ -37,7 +38,8 @@ public class AbstractRoute {
    * through this constructor; make sure Nuage is also in the allowlist so that they can create stores
    * @param accessController the access client that check whether a certificate can access a resource
    */
-  public AbstractRoute(Optional<DynamicAccessController> accessController) {
+  public AbstractRoute(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+    this.sslEnabled = sslEnabled;
     this.accessController = accessController;
   }
 
@@ -93,16 +95,20 @@ public class AbstractRoute {
    * Get principal Id from request.
    */
   protected String getPrincipalId(Request request) {
-    if (!isAclEnabled()) {
-      logger.warn("ACL is not enabled. No certificate could be extracted from request.");
+    if (!isSslEnabled()) {
+      logger.warn("SSL is not enabled. No certificate could be extracted from request.");
       return USER_UNKNOWN;
     }
-    try {
-      X509Certificate certificate = getCertificate(request);
-      return accessController.get().getPrincipalId(certificate);
-    } catch (Exception e) {
-      logger.error("Error when retrieving principal Id from request", e);
-      return USER_UNKNOWN;
+    X509Certificate certificate = getCertificate(request);
+    if (isAclEnabled()) {
+      try {
+        return accessController.get().getPrincipalId(certificate);
+      } catch (Exception e) {
+        logger.error("Error when retrieving principal Id from request", e);
+        return USER_UNKNOWN;
+      }
+    } else {
+      return certificate.getSubjectDN().getName();
     }
   }
 
@@ -131,6 +137,13 @@ public class AbstractRoute {
 
     String storeName = request.queryParamOrDefault(NAME, STORE_UNKNOWN);
     return accessController.get().isAllowlistUsers(certificate, storeName, HTTP_GET);
+  }
+
+  /**
+   * @return whether SSL is enabled
+   */
+  protected boolean isSslEnabled() {
+    return sslEnabled;
   }
 
   /**

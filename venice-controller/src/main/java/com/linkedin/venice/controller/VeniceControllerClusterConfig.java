@@ -24,6 +24,7 @@ import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.SSLConfig.*;
 import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.kafka.TopicManager.*;
 
@@ -328,7 +329,7 @@ public class VeniceControllerClusterConfig {
     if (!KafkaSSLUtils.isKafkaProtocolValid(kafkaSecurityProtocol)) {
       throw new ConfigurationException("Invalid kafka security protocol: " + kafkaSecurityProtocol);
     }
-    if (KafkaSSLUtils.isKafkaSSLProtocol(kafkaSecurityProtocol)) {
+    if (doesControllerNeedsSslConfig()) {
       sslConfig = Optional.of(new SSLConfig(props));
     } else {
       sslConfig = Optional.empty();
@@ -356,6 +357,13 @@ public class VeniceControllerClusterConfig {
     this.disableParentRequestTopicForStreamPushes = props.getBoolean(CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES, false);
     this.defaultReadQuotaPerRouter = props.getInt(CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER, DEFAULT_PER_ROUTER_READ_QUOTA);
     this.replicationMetadataVersionId = props.getInt(REPLICATION_METADATA_VERSION_ID,1);
+  }
+
+  private boolean doesControllerNeedsSslConfig() {
+    final boolean controllerSslEnabled = props.getBoolean(CONTROLLER_SSL_ENABLED, DEFAULT_CONTROLLER_SSL_ENABLED);
+    final boolean kafkaNeedsSsl = KafkaSSLUtils.isKafkaSSLProtocol(kafkaSecurityProtocol);
+
+    return controllerSslEnabled || kafkaNeedsSsl;
   }
 
   public int getDefaultReadQuotaPerRouter() {

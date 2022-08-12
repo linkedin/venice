@@ -53,8 +53,8 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
 public class StoresRoutes extends AbstractRoute {
-  public StoresRoutes(Optional<DynamicAccessController> accessController) {
-    super(accessController);
+  public StoresRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+    super(sslEnabled, accessController);
   }
 
   /**
