@@ -29,8 +29,8 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
 public class SchemaRoutes extends AbstractRoute {
-  public SchemaRoutes(Optional<DynamicAccessController> accessController) {
-    super(accessController);
+  public SchemaRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+    super(sslEnabled, accessController);
   }
 
   // Route to handle retrieving key schema request

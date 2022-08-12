@@ -13,8 +13,8 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
 public class NewClusterBuildOutRoutes extends AbstractRoute {
-  public NewClusterBuildOutRoutes(Optional<DynamicAccessController> accessController) {
-    super(accessController);
+  public NewClusterBuildOutRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+    super(sslEnabled, accessController);
   }
 
   public Route copyOverStoreSchemasAndConfigs(Admin admin) {

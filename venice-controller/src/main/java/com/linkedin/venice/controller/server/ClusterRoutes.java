@@ -16,8 +16,8 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
 public class ClusterRoutes  extends AbstractRoute {
-  public ClusterRoutes(Optional<DynamicAccessController> accessController) {
-    super(accessController);
+  public ClusterRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+    super(sslEnabled, accessController);
   }
 
   public Route updateClusterConfig(Admin admin) {

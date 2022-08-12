@@ -97,8 +97,13 @@ public class SslUtils {
     sslProperties.setProperty(SSL_KEYSTORE_TYPE, "JKS");
     sslProperties.setProperty(SSL_KEYSTORE_LOCATION, keyStorePath);
     sslProperties.setProperty(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD);
+    sslProperties.setProperty(SSL_TRUSTSTORE_TYPE, "JKS");
     sslProperties.setProperty(SSL_TRUSTSTORE_LOCATION, keyStorePath);
     sslProperties.setProperty(SSL_TRUSTSTORE_PASSWORD, LOCAL_PASSWORD);
+    sslProperties.setProperty(SSL_KEY_PASSWORD, LOCAL_PASSWORD);
+    sslProperties.setProperty(SSL_KEYMANAGER_ALGORITHM, "SunX509");
+    sslProperties.setProperty(SSL_TRUSTMANAGER_ALGORITHM, "SunX509");
+    sslProperties.setProperty(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
     return sslProperties;
   }
 

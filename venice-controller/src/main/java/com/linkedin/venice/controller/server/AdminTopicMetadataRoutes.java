@@ -19,8 +19,8 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
 public class AdminTopicMetadataRoutes extends AbstractRoute {
-  public AdminTopicMetadataRoutes(Optional<DynamicAccessController> accessController) {
-    super(accessController);
+  public AdminTopicMetadataRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+    super(sslEnabled, accessController);
   }
 
   public Route getAdminTopicMetadata(Admin admin) {

@@ -20,8 +20,8 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 public class ControllerRoutes extends AbstractRoute {
 
-  public ControllerRoutes(Optional<DynamicAccessController> accessController) {
-    super(accessController);
+  public ControllerRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+    super(sslEnabled, accessController);
   }
 
   /**
@@ -34,7 +34,7 @@ public class ControllerRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, LEADER_CONTROLLER.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         responseObject.setCluster(cluster);
-        responseObject.setUrl(admin.getLeaderController(cluster).getUrl(isAclEnabled()));
+        responseObject.setUrl(admin.getLeaderController(cluster).getUrl(isSslEnabled()));
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);

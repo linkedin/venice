@@ -78,8 +78,7 @@ import static org.mockito.Mockito.*;
  *implements Closeable
  * If it's hard to set cluster back, please move the tests to {@link TestVeniceHelixAdminWithIsolatedEnvironment}
  */
-public class
-TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVeniceHelixAdmin {
+public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVeniceHelixAdmin {
 
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {

@@ -51,6 +51,7 @@ public class VeniceParentHelixAdminTest {
 
   @BeforeClass
   public void setUp() {
+    Utils.thisIsLocalhost();
     Properties properties = new Properties();
     // Disable topic deletion
     properties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));

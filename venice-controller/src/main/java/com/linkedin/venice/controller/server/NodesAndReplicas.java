@@ -38,8 +38,8 @@ public class NodesAndReplicas extends AbstractRoute {
   /**
    * TODO: Make sure services "venice-hooks-deployable" is also in allowlist
    */
-  public NodesAndReplicas(Optional<DynamicAccessController> accessController) {
-    super(accessController);
+  public NodesAndReplicas(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+    super(sslEnabled, accessController);
   }
 
   /**

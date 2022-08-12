@@ -9,6 +9,7 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
@@ -22,6 +23,7 @@ public class AdminChannelWithSSLTest {
    */
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testEnd2EndWithKafkaSSLEnabled() {
+    Utils.thisIsLocalhost();
     String clusterName = "test-cluster";
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
