@@ -6054,11 +6054,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
+  /**
+   * Unsupported operation in the child controller.
+   */
   @Override
   public Map<String, String> getAllStorePushStrategyForMigration() {
     throw new VeniceUnsupportedOperationException("getAllStorePushStrategyForMigration");
   }
 
+  /**
+   * Unsupported operation in the child controller.
+   */
   @Override
   public void setStorePushStrategyForMigration(String voldemortStoreName, String strategy) {
     throw new VeniceUnsupportedOperationException("setStorePushStrategyForMigration");
