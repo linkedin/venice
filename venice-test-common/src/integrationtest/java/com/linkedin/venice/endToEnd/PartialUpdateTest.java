@@ -1,13 +1,12 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
+import static com.linkedin.venice.utils.TestUtils.*;
 import static org.testng.Assert.*;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTaskBackdoor;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -21,7 +20,10 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
@@ -29,12 +31,14 @@ import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -48,26 +52,149 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class TestWriteCompute {
-  private static final int STREAMING_RECORD_SIZE = 1024;
+/**
+ * This class includes tests on partial update (Write Compute) with a setup that has both the parent and child controllers.
+ */
+public class PartialUpdateTest {
+  private static final int NUMBER_OF_CHILD_DATACENTERS = 1;
+  private static final int NUMBER_OF_CLUSTERS = 1;
+  private static final int TEST_TIMEOUT_MS = 120_000;
+  private static final String CLUSTER_NAME = "venice-cluster0";
 
-  private VeniceClusterWrapper veniceClusterWrapper;
+  private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
+  private VeniceControllerWrapper parentController;
+  private List<VeniceMultiClusterWrapper> childDatacenters;
 
-  @BeforeClass
+  @BeforeClass(alwaysRun = true)
   public void setUp() {
-    Properties extraProperties = new Properties();
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
-    int maxMessageSizeInServer = STREAMING_RECORD_SIZE / 2;
-    extraProperties.setProperty(
-        VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES,
-        Integer.toString(maxMessageSizeInServer));
-    // N.B.: RF 2 with 2 servers is important, in order to test both the leader and follower code paths
-    veniceClusterWrapper = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 1000000, false, false, extraProperties);
+    Properties serverProperties = new Properties();
+    Properties controllerProps = new Properties();
+    controllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
+    this.multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+        NUMBER_OF_CHILD_DATACENTERS,
+        NUMBER_OF_CLUSTERS,
+        1,
+        1,
+        2,
+        1,
+        2,
+        Optional.of(new VeniceProperties(controllerProps)),
+        Optional.of(new Properties(controllerProps)),
+        Optional.of(new VeniceProperties(serverProperties)),
+        false,
+        false);
+    this.childDatacenters = multiColoMultiClusterWrapper.getClusters();
+    List<VeniceControllerWrapper> parentControllers = multiColoMultiClusterWrapper.getParentControllers();
+    if (parentControllers.size() != 1) {
+      throw new IllegalStateException("Expect only one parent controller. Got: " + parentControllers.size());
+    }
+    this.parentController = parentControllers.get(0);
   }
 
-  @AfterClass
-  public void cleanUp() {
-    veniceClusterWrapper.close();
+  /**
+   * This test simulates a situation where the stored value schema mismatches with the value schema used by a partial update
+   * request. In other words, the partial update request tries to update a field that does not exist in the stored value
+   * record due to schema mismatch.
+   *
+   * In this case, we expect a superset schema that contains fields from all value schema to be used to store the partially
+   * updated value record. The partially updated value record should contain original fields as well as the partially updated
+   * field.
+   */
+  @Test(timeOut = TEST_TIMEOUT_MS)
+  public void testUpdateWithSupersetSchema() throws IOException {
+    final String storeName = Utils.getUniqueString("store");
+    String parentControllerUrl = parentController.getControllerUrl();
+    String keySchemaStr = "{\"type\" : \"string\"}";
+    Schema valueSchemaV1 = AvroCompatibilityHelper.parse(loadFileAsString("writecompute/test/PersonV1.avsc"));
+    Schema valueSchemaV2 = AvroCompatibilityHelper.parse(loadFileAsString("writecompute/test/PersonV2.avsc"));
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      assertCommand(
+          parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchemaV1.toString()));
+
+      UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setWriteComputationEnabled(true)
+              .setLeaderFollowerModel(true)
+              .setHybridRewindSeconds(10L)
+              .setHybridOffsetLagThreshold(2L);
+      ControllerResponse updateStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
+      Assert.assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+
+      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
+      assertEquals(response.getVersion(), 1);
+      assertFalse(response.isError(), "Empty push to parent colo should succeed");
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+
+      assertCommand(parentControllerClient.addValueSchema(storeName, valueSchemaV2.toString()));
+    }
+
+    SystemProducer veniceProducer = null;
+    VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+
+    try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+
+      // Step 1. Put a value record.
+      veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM);
+      String key = "key1";
+      GenericRecord value = new GenericData.Record(valueSchemaV1);
+      value.put("name", "Lebron");
+      value.put("age", 37);
+      sendStreamingRecord(veniceProducer, storeName, key, value);
+
+      // Verify the Put has been persisted
+      TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, () -> {
+        try {
+          GenericRecord retrievedValue = readValue(storeReader, key);
+          assertNotNull(retrievedValue);
+          assertEquals(retrievedValue.get("name").toString(), "Lebron");
+          assertEquals(retrievedValue.get("age").toString(), "37");
+
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+
+      // Step 2: Partially update a field that exists in V2 schema (and it does not exist in V1 schema).
+      Schema writeComputeSchemaV2 =
+          WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchemaV2);
+      UpdateBuilder updateBuilder = new UpdateBuilderImpl(writeComputeSchemaV2);
+      updateBuilder.setNewFieldValue("name", "Lebron James");
+      updateBuilder.setNewFieldValue("hometown", "Akron");
+      GenericRecord partialUpdateRecord = updateBuilder.build();
+      sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord);
+
+      // Verify the value record has been partially updated and it uses V3 superset value schema now.
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        try {
+          GenericRecord retrievedValue = readValue(storeReader, key);
+          assertNotNull(retrievedValue);
+          assertEquals(retrievedValue.get("name").toString(), "Lebron James"); // Updated field
+          assertEquals(retrievedValue.get("age").toString(), "37");
+          assertEquals(retrievedValue.get("hometown").toString(), "Akron"); // Updated field
+
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+
+    } finally {
+      if (veniceProducer != null) {
+        veniceProducer.stop();
+      }
+    }
+  }
+
+  private GenericRecord readValue(AvroGenericStoreClient<Object, Object> storeReader, String key)
+      throws ExecutionException, InterruptedException {
+    return (GenericRecord) storeReader.get(key).get();
   }
 
   @Test(timeOut = 120
@@ -75,6 +202,7 @@ public class TestWriteCompute {
   public void testWriteComputeWithHybridLeaderFollowerLargeRecord(
       boolean writeComputeFromCache,
       CompressionStrategy compressionStrategy) throws Exception {
+
     SystemProducer veniceProducer = null;
 
     try {
@@ -84,25 +212,31 @@ public class TestWriteCompute {
       String storeName = Utils.getUniqueString("write-compute-store");
       File inputDir = getTempDataDirectory();
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
+      String parentControllerURL = parentController.getControllerUrl();
       // Records 1-100, id string to name record
       Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir, true);
-      Properties h2vProperties = defaultH2VProps(veniceClusterWrapper, inputDirPath, storeName);
-
-      try (
-          ControllerClient controllerClient =
-              createStoreForJob(veniceClusterWrapper.getClusterName(), recordSchema, h2vProperties);
+      VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+      Properties h2vProperties = defaultH2VProps(parentControllerURL, inputDirPath, storeName);
+      try (ControllerClient controllerClient = new ControllerClient(CLUSTER_NAME, parentControllerURL);
           AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
               ClientConfig.defaultGenericClientConfig(storeName)
                   .setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
+
+        String keySchemaStr = recordSchema.getField("id").schema().toString();
+        String valueSchemaStr = recordSchema.getField("name").schema().toString();
+        assertCommand(controllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchemaStr));
 
         ControllerResponse response = controllerClient.updateStore(
             storeName,
             new UpdateStoreQueryParams().setHybridRewindSeconds(streamingRewindSeconds)
                 .setHybridOffsetLagThreshold(streamingMessageLag)
                 .setLeaderFollowerModel(true)
+                .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
                 .setChunkingEnabled(true)
                 .setCompressionStrategy(compressionStrategy)
-                .setWriteComputationEnabled(true));
+                .setWriteComputationEnabled(true)
+                .setHybridRewindSeconds(10L)
+                .setHybridOffsetLagThreshold(2L));
 
         Assert.assertFalse(response.isError());
 
@@ -121,7 +255,10 @@ public class TestWriteCompute {
         Assert.assertFalse(schemaResponse.isError());
 
         // H2V push
-        runH2V(h2vProperties, 1, controllerClient);
+        String childControllerUrl = childDatacenters.get(0).getRandomController().getControllerUrl();
+        try (ControllerClient childControllerClient = new ControllerClient(CLUSTER_NAME, childControllerUrl)) {
+          runH2V(h2vProperties, 1, childControllerClient);
+        }
 
         // Verify records (note, records 1-100 have been pushed)
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
@@ -138,13 +275,6 @@ public class TestWriteCompute {
             throw new VeniceException(e);
           }
         });
-
-        // VersionCreationResponse versionCreationResponse = controllerClient.emptyPush(storeName,
-        // Utils.getUniqueString("emptyPushId"), 10000);
-        // Assert.assertFalse(versionCreationResponse.isError());
-        // final int expectedVersionNumber = 1;
-        // TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS,
-        // () -> controllerClient.getStore(storeName).getStore().getCurrentVersion() == expectedVersionNumber);
 
         // disable the purging of transientRecord buffer using reflection.
         if (writeComputeFromCache) {
@@ -290,150 +420,23 @@ public class TestWriteCompute {
   }
 
   /**
-   * This test simulates a situation where the stored value schema mismatches with the value schema used by a partial update
-   * request. In other words, the partial update request tries to update a field that does not exist in the stored value
-   * record due to schema mismatch.
-   *
-   * In this case, we expect a superset schema that contains fields from all value schema to be used to store the partially
-   * updated value record. The partially updated value record should contain original fields as well as the partially updated
-   * field.
-   */
-  @Test(timeOut = 120 * Time.MS_PER_SECOND)
-  public void testLatestValueSchemaIsUsed() throws IOException {
-    final String storeName = Utils.getUniqueString("partial-update-test-store");
-    final String clusterName = veniceClusterWrapper.getClusterName();
-    String keySchemaStr = "{\"type\" : \"string\"}";
-
-    // Value schema V3 is a superset schema of V1 and V2.
-    String valueSchemaV1Str = loadFileAsString("writecompute/test/PersonV1.avsc");
-    String valueSchemaV2Str = loadFileAsString("writecompute/test/PersonV2.avsc");
-    String valueSchemaV3Str = loadFileAsString("writecompute/test/PersonV3.avsc");
-
-    Properties properties = new Properties();
-    properties.put(VENICE_URL_PROP, veniceClusterWrapper.getRandmonVeniceController().getControllerUrl());
-    properties.put(VENICE_STORE_NAME_PROP, storeName);
-
-    UpdateStoreQueryParams storeParams =
-        new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-            .setCompressionStrategy(CompressionStrategy.NO_OP)
-            .setBatchGetLimit(2000)
-            .setReadQuotaInCU(DEFAULT_PER_ROUTER_READ_QUOTA)
-            .setChunkingEnabled(false)
-            .setIncrementalPushEnabled(false)
-            .setLeaderFollowerModel(true)
-            .setHybridRewindSeconds(10L)
-            .setHybridOffsetLagThreshold(2L)
-            .setWriteComputationEnabled(true);
-
-    SystemProducer veniceProducer = null;
-    try (
-        ControllerClient controllerClient =
-            createStoreForJob(clusterName, keySchemaStr, valueSchemaV1Str, properties, storeParams, true);
-        AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
-            ClientConfig.defaultGenericClientConfig(storeName)
-                .setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
-      addValueAndWriteComputeSchemas(storeName, controllerClient, valueSchemaV2Str);
-      addValueAndWriteComputeSchemas(storeName, controllerClient, valueSchemaV3Str);
-      doEmptyPush(storeName, controllerClient);
-
-      Schema valueSchemaV1 = AvroCompatibilityHelper.parse(valueSchemaV1Str);
-      Schema valueSchemaV2 = AvroCompatibilityHelper.parse(valueSchemaV2Str);
-
-      // Step 1: Put a k-v pair where the value uses schema V1
-      veniceProducer = getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
-      String key = "key1";
-      GenericRecord value = new GenericData.Record(valueSchemaV1);
-      value.put("name", "Lebron");
-      value.put("age", 37);
-      sendStreamingRecord(veniceProducer, storeName, key, value);
-
-      // Verify the Put has been persisted
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-        try {
-          GenericRecord retrievedValue = readValue(storeReader, key);
-          assertNotNull(retrievedValue);
-          assertEquals(retrievedValue.get("name").toString(), "Lebron");
-          assertEquals(retrievedValue.get("age").toString(), "37");
-          assertEquals(retrievedValue.get("hometown").toString(), "default_hometown");
-
-        } catch (Exception e) {
-          throw new VeniceException(e);
-        }
-      });
-
-      // Step 2: Partially update a field that exists in V2 schema (and it does not exist in V1 schema).
-      Schema writeComputeSchemaV2 =
-          WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchemaV2);
-      UpdateBuilder updateBuilder = new UpdateBuilderImpl(writeComputeSchemaV2);
-      updateBuilder.setNewFieldValue("name", "Lebron James");
-      updateBuilder.setNewFieldValue("hometown", "Akron");
-      GenericRecord partialUpdateRecord = updateBuilder.build();
-      sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord);
-
-      // Verify the value record has been partially updated and it uses V3 superset value schema now.
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-        try {
-          GenericRecord retrievedValue = readValue(storeReader, key);
-          assertNotNull(retrievedValue);
-          assertEquals(retrievedValue.get("name").toString(), "Lebron James");
-          assertEquals(retrievedValue.get("age").toString(), "37");
-          assertEquals(retrievedValue.get("hometown").toString(), "Akron");
-
-        } catch (Exception e) {
-          throw new VeniceException(e);
-        }
-      });
-
-    } finally {
-      if (veniceProducer != null) {
-        veniceProducer.stop();
-      }
-    }
-  }
-
-  private void doEmptyPush(String storeName, ControllerClient controllerClient) {
-    VersionCreationResponse versionCreationResponse =
-        controllerClient.emptyPush(storeName, Utils.getUniqueString("emptyPushId"), 10000);
-    Assert.assertFalse(versionCreationResponse.isError());
-    final int expectedVersionNumber = 1;
-    TestUtils.waitForNonDeterministicCompletion(
-        10,
-        TimeUnit.SECONDS,
-        () -> controllerClient.getStore(storeName).getStore().getCurrentVersion() == expectedVersionNumber);
-  }
-
-  private void addValueAndWriteComputeSchemas(
-      String storeName,
-      ControllerClient controllerClient,
-      String valueSchemaStr) {
-    SchemaResponse schemaResponse = controllerClient.addValueSchema(storeName, valueSchemaStr);
-    Assert.assertFalse(schemaResponse.isError(), "Got error: " + schemaResponse.getError());
-
-    Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance()
-        .convertFromValueRecordSchema(AvroCompatibilityHelper.parse(valueSchemaStr));
-    schemaResponse =
-        controllerClient.addDerivedSchema(storeName, schemaResponse.getId(), writeComputeSchema.toString());
-    Assert.assertFalse(schemaResponse.isError(), "Got error: " + schemaResponse.getError());
-  }
-
-  private GenericRecord readValue(AvroGenericStoreClient<Object, Object> storeReader, String key)
-      throws ExecutionException, InterruptedException {
-    return (GenericRecord) storeReader.get(key).get();
-  }
-
-  /**
    * Blocking, waits for new version to go online
    */
-  private static void runH2V(Properties h2vProperties, int expectedVersionNumber, ControllerClient controllerClient) {
+  private void runH2V(Properties h2vProperties, int expectedVersionNumber, ControllerClient controllerClient) {
     String jobName = Utils.getUniqueString("write-compute-job-" + expectedVersionNumber);
     try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
       job.run();
       TestUtils.waitForNonDeterministicCompletion(
-          5,
+          10,
           TimeUnit.SECONDS,
           () -> controllerClient.getStore((String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
               .getStore()
               .getCurrentVersion() == expectedVersionNumber);
     }
+  }
+
+  @AfterClass(alwaysRun = true)
+  public void cleanUp() {
+    Utils.closeQuietlyWithErrorLogged(multiColoMultiClusterWrapper);
   }
 }

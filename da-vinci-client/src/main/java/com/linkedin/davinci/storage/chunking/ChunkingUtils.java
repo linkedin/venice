@@ -116,7 +116,7 @@ public class ChunkingUtils {
         databaseLookupStartTimeInNS,
         adapter,
         store,
-        schemaRepo.getLatestValueSchema(storeName).getId(),
+        schemaRepo.getSupersetOrLatestValueSchema(storeName).getId(),
         partition,
         response,
         reusedValue,
@@ -169,7 +169,7 @@ public class ChunkingUtils {
 
           deserializedValueRecord = (GenericRecord) adapter.constructValue(
               writerSchemaId,
-              schemaRepo.getLatestValueSchema(storeName).getId(),
+              schemaRepo.getSupersetOrLatestValueSchema(storeName).getId(),
               value,
               value.length,
               reusedValue,

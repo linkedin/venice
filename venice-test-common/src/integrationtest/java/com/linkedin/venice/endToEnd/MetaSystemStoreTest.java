@@ -485,7 +485,7 @@ public class MetaSystemStoreTest {
               finalNativeMetadataRepository.getValueSchemas(regularVeniceStoreName).size(),
               numberOfLargeSchemaVersions,
               "There should be " + numberOfLargeSchemaVersions + " versions of value schemas in total"));
-      SchemaEntry latestValueSchema = nativeMetadataRepository.getLatestValueSchema(regularVeniceStoreName);
+      SchemaEntry latestValueSchema = nativeMetadataRepository.getSupersetOrLatestValueSchema(regularVeniceStoreName);
       assertEquals(
           latestValueSchema,
           venice.getLeaderVeniceController()

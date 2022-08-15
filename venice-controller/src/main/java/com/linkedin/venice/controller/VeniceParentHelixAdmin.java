@@ -2618,7 +2618,7 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       final Store store = getVeniceHelixAdmin().getStore(clusterName, storeName);
-      Schema existingValueSchema = getVeniceHelixAdmin().getLatestValueSchema(clusterName, store);
+      Schema existingValueSchema = getVeniceHelixAdmin().getSupersetOrLatestValueSchema(clusterName, store);
 
       final boolean doUpdateSupersetSchemaID;
       if (existingValueSchema != null && (store.isReadComputationEnabled() || store.isWriteComputationEnabled())) {
@@ -2677,7 +2677,7 @@ public class VeniceParentHelixAdmin implements Admin {
        * for this newly added value schema.
        */
       if (store.isActiveActiveReplicationEnabled()) {
-        Schema latestValueSchema = getVeniceHelixAdmin().getLatestValueSchema(clusterName, store);
+        Schema latestValueSchema = getVeniceHelixAdmin().getSupersetOrLatestValueSchema(clusterName, store);
         final int valueSchemaId = getValueSchemaId(clusterName, storeName, latestValueSchema.toString());
         updateReplicationMetadataSchema(clusterName, storeName, latestValueSchema, valueSchemaId);
       }
@@ -2744,10 +2744,10 @@ public class VeniceParentHelixAdmin implements Admin {
           writeComputeSchemaConverter.convertFromValueRecordSchema(newValueSchemaEntry.getSchema());
       Schema newSuperSetWriteComputeSchema =
           writeComputeSchemaConverter.convertFromValueRecordSchema(newSupersetSchemaEntry.getSchema());
-      addDerivedSchema(storeName, clusterName, newValueSchemaEntry.getId(), newValueWriteComputeSchema.toString());
+      addDerivedSchema(clusterName, storeName, newValueSchemaEntry.getId(), newValueWriteComputeSchema.toString());
       addDerivedSchema(
-          storeName,
           clusterName,
+          storeName,
           newSupersetSchemaEntry.getId(),
           newSuperSetWriteComputeSchema.toString());
     }

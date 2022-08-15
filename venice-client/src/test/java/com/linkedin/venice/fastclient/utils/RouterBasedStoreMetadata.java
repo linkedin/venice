@@ -95,12 +95,12 @@ public class RouterBasedStoreMetadata extends AbstractStoreMetadata {
 
   @Override
   public Schema getLatestValueSchema() {
-    return schemaRepository.getLatestValueSchema(storeName).getSchema();
+    return schemaRepository.getSupersetOrLatestValueSchema(storeName).getSchema();
   }
 
   @Override
   public Integer getLatestValueSchemaId() {
-    return schemaRepository.getLatestValueSchema(storeName).getId();
+    return schemaRepository.getSupersetOrLatestValueSchema(storeName).getId();
   }
 
   @Override

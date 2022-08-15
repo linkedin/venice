@@ -172,13 +172,22 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
   }
 
   @Override
-  public SchemaEntry getLatestValueSchema(String storeName) {
+  public SchemaEntry getSupersetOrLatestValueSchema(String storeName) {
     if (VeniceSystemStoreType.getSystemStoreType(storeName) == VeniceSystemStoreType.META_STORE) {
       return new SchemaEntry(
           metaStoreSchemaReader.getLatestValueSchemaId(),
           metaStoreSchemaReader.getLatestValueSchema());
     } else {
-      return super.getLatestValueSchema(storeName);
+      return super.getSupersetOrLatestValueSchema(storeName);
+    }
+  }
+
+  @Override
+  public Optional<SchemaEntry> getSupersetSchema(String storeName) {
+    if (VeniceSystemStoreType.getSystemStoreType(storeName) == VeniceSystemStoreType.META_STORE) {
+      throw new VeniceException("Meta store does not have superset schema. Store name: " + storeName);
+    } else {
+      return super.getSupersetSchema(storeName);
     }
   }
 

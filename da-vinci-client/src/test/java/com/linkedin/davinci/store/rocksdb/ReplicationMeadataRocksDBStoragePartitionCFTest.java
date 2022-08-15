@@ -1,5 +1,10 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.storage.StorageService;
@@ -20,11 +25,6 @@ import java.util.Properties;
 import org.apache.avro.Schema;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
-
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.*;
 
 
 public class ReplicationMeadataRocksDBStoragePartitionCFTest extends ReplicationMetadataRocksDBStoragePartitionTest {
@@ -58,19 +58,18 @@ public class ReplicationMeadataRocksDBStoragePartitionCFTest extends Replication
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         mockReadOnlyStoreRepository);
     storeConfig = new VeniceStoreVersionConfig(topicName, serverProps, PersistenceType.ROCKS_DB);
-    testStoreEngine = storageService.openStoreForNewPartition(storeConfig , PARTITION_ID);
+    testStoreEngine = storageService.openStoreForNewPartition(storeConfig, PARTITION_ID);
     createStoreForTest();
     String stringSchema = "\"string\"";
     Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(stringSchema, 1);
     ReadOnlySchemaRepository schemaRepository = mock(ReadOnlySchemaRepository.class);
 
-    ReplicationMetadataSchemaEntry
-        rmdSchemaEntry = new ReplicationMetadataSchemaEntry(1, 1, aaSchema);
+    ReplicationMetadataSchemaEntry rmdSchemaEntry = new ReplicationMetadataSchemaEntry(1, 1, aaSchema);
     doReturn(rmdSchemaEntry).when(schemaRepository).getReplicationMetadataSchema(anyString(), anyInt(), anyInt());
 
     SchemaEntry valueSchemaEntry = new SchemaEntry(1, stringSchema);
     ReplicationMetadataSchemaEntry rmdSchemaEnry = new ReplicationMetadataSchemaEntry(1, 1, aaSchema);
-    doReturn(valueSchemaEntry).when(schemaRepository).getLatestValueSchema(anyString());
+    doReturn(valueSchemaEntry).when(schemaRepository).getSupersetOrLatestValueSchema(anyString());
     doReturn(rmdSchemaEnry).when(schemaRepository).getReplicationMetadataSchema(anyString(), anyInt(), anyInt());
   }
 
@@ -81,7 +80,7 @@ public class ReplicationMeadataRocksDBStoragePartitionCFTest extends Replication
 
   @AfterClass
   public void cleanUp() throws Exception {
-    storageService.dropStorePartition(storeConfig , PARTITION_ID);
+    storageService.dropStorePartition(storeConfig, PARTITION_ID);
     storageService.stop();
   }
 }

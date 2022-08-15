@@ -344,7 +344,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
    * Caller shouldn't modify the returned SchemeEntry
    */
   @Override
-  public SchemaEntry getLatestValueSchema(String storeName) {
+  public SchemaEntry getSupersetOrLatestValueSchema(String storeName) {
     schemaLock.readLock().lock();
     try {
       /**
@@ -358,14 +358,9 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       if (null == schemaData) {
         throw new VeniceNoStoreException(storeName);
       }
-      Store store = storeRepository.getStoreOrThrow(storeName);
       final int latestValueSchemaId;
-
-      if (store.getLatestSuperSetValueSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
-        latestValueSchemaId = store.getLatestSuperSetValueSchemaId();
-      } else {
-        latestValueSchemaId = schemaData.getMaxValueSchemaId();
-      }
+      Optional<Integer> supersetSchemaID = getSupersetSchemaID(storeName);
+      latestValueSchemaId = supersetSchemaID.orElseGet(schemaData::getMaxValueSchemaId);
       if (latestValueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
         throw new VeniceException(storeName + " doesn't have latest schema!");
       }
@@ -373,6 +368,29 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     } finally {
       schemaLock.readLock().unlock();
     }
+  }
+
+  @Override
+  public Optional<SchemaEntry> getSupersetSchema(String storeName) {
+    schemaLock.readLock().lock();
+    try {
+      fetchStoreSchemaIfNotInCache(storeName);
+      SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
+      if (null == schemaData) {
+        throw new VeniceNoStoreException(storeName);
+      }
+      Optional<Integer> supersetSchemaID = getSupersetSchemaID(storeName);
+      return supersetSchemaID.map(schemaData::getValueSchema);
+
+    } finally {
+      schemaLock.readLock().unlock();
+    }
+  }
+
+  private Optional<Integer> getSupersetSchemaID(String storeName) {
+    Store store = storeRepository.getStoreOrThrow(storeName);
+    final int supersetSchemaId = store.getLatestSuperSetValueSchemaId();
+    return supersetSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID ? Optional.empty() : Optional.of(supersetSchemaId);
   }
 
   @Override

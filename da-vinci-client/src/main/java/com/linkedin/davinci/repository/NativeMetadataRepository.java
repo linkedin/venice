@@ -44,6 +44,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.Executors;
@@ -285,23 +286,37 @@ public abstract class NativeMetadataRepository
   }
 
   @Override
-  public SchemaEntry getLatestValueSchema(String storeName) {
+  public SchemaEntry getSupersetOrLatestValueSchema(String storeName) {
     fetchStoreSchemaIfNotInCache(storeName);
     SchemaData schemaData = schemaMap.get(storeName);
     if (null == schemaData) {
       throw new VeniceNoStoreException(storeName);
     }
-    Store store = getStoreOrThrow(storeName);
-    int latestValueSchemaId;
-    if (store.getLatestSuperSetValueSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
-      latestValueSchemaId = store.getLatestSuperSetValueSchemaId();
-    } else {
-      latestValueSchemaId = schemaData.getMaxValueSchemaId();
-    }
+    final int latestValueSchemaId;
+    Optional<Integer> supersetSchemaID = getSupersetSchemaID(storeName);
+    latestValueSchemaId = supersetSchemaID.orElseGet(schemaData::getMaxValueSchemaId);
     if (latestValueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
       throw new VeniceException(storeName + " doesn't have latest schema!");
     }
     return schemaData.getValueSchema(latestValueSchemaId);
+  }
+
+  @Override
+  public Optional<SchemaEntry> getSupersetSchema(String storeName) {
+    fetchStoreSchemaIfNotInCache(storeName);
+    SchemaData schemaData = schemaMap.get(storeName);
+    if (null == schemaData) {
+      throw new VeniceNoStoreException(storeName);
+    }
+
+    Optional<Integer> supersetSchemaID = getSupersetSchemaID(storeName);
+    return supersetSchemaID.map(schemaData::getValueSchema);
+  }
+
+  private Optional<Integer> getSupersetSchemaID(String storeName) {
+    Store store = getStoreOrThrow(storeName);
+    final int supersetSchemaId = store.getLatestSuperSetValueSchemaId();
+    return supersetSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID ? Optional.empty() : Optional.of(supersetSchemaId);
   }
 
   @Override

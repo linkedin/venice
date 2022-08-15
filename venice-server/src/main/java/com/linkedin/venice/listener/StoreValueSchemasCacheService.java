@@ -16,6 +16,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
@@ -125,10 +126,15 @@ public class StoreValueSchemasCacheService extends AbstractVeniceService impleme
   }
 
   @Override
-  public SchemaEntry getLatestValueSchema(String storeName) {
+  public SchemaEntry getSupersetOrLatestValueSchema(String storeName) {
     StoreValueSchemas storeValueSchemas =
         storeValueSchemasMap.computeIfAbsent(storeName, s -> refreshStoreValueSchemas(storeName));
     return storeValueSchemas.latestValueSchema;
+  }
+
+  @Override
+  public Optional<SchemaEntry> getSupersetSchema(String storeName) {
+    return schemaRepository.getSupersetSchema(storeName);
   }
 
   private StoreValueSchemas refreshStoreValueSchemas(String storeName) {
@@ -136,7 +142,7 @@ public class StoreValueSchemasCacheService extends AbstractVeniceService impleme
       throw new VeniceNoStoreException(storeName);
     }
     // fetch the latest value schema and all the value schemas
-    SchemaEntry latestValueSchema = schemaRepository.getLatestValueSchema(storeName);
+    SchemaEntry latestValueSchema = schemaRepository.getSupersetOrLatestValueSchema(storeName);
     Collection<SchemaEntry> valueSchemas = schemaRepository.getValueSchemas(storeName);
     StoreValueSchemas storeValueSchemas = storeValueSchemasMap.get(storeName);
     if (null == storeValueSchemas) {

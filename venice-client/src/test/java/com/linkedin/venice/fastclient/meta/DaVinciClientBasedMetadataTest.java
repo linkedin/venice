@@ -151,7 +151,7 @@ public class DaVinciClientBasedMetadataTest {
   public void testMetadataSchemaRetriever() {
     ReadOnlySchemaRepository schemaRepository = veniceCluster.getRandomVeniceRouter().getSchemaRepository();
     assertEquals(daVinciClientBasedMetadata.getKeySchema(), schemaRepository.getKeySchema(storeName).getSchema());
-    SchemaEntry latestValueSchema = schemaRepository.getLatestValueSchema(storeName);
+    SchemaEntry latestValueSchema = schemaRepository.getSupersetOrLatestValueSchema(storeName);
     assertEquals(daVinciClientBasedMetadata.getLatestValueSchemaId().intValue(), latestValueSchema.getId());
     assertEquals(daVinciClientBasedMetadata.getLatestValueSchema(), latestValueSchema.getSchema());
     assertEquals(daVinciClientBasedMetadata.getValueSchema(latestValueSchema.getId()), latestValueSchema.getSchema());

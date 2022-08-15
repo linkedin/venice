@@ -521,7 +521,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     if (request.getValueSchemaId() != -1) {
       valueSchema = this.schemaRepo.getValueSchema(storeName, request.getValueSchemaId()).getSchema();
     } else {
-      valueSchema = this.schemaRepo.getLatestValueSchema(storeName).getSchema();
+      valueSchema = this.schemaRepo.getSupersetOrLatestValueSchema(storeName).getSchema();
     }
     ComputeRequestWrapper computeRequestWrapper = request.getComputeRequest();
 
