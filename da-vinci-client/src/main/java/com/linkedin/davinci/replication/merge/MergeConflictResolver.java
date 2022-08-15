@@ -450,7 +450,7 @@ public class MergeConflictResolver {
      *
      * In such cases, the incoming Delete operation will be applied directly and we should store a tombstone for it.
      */
-    final int valueSchemaID = schemaRepository.getLatestValueSchema(storeName).getId();
+    final int valueSchemaID = schemaRepository.getSupersetOrLatestValueSchema(storeName).getId();
     GenericRecord newRmd = newRmdCreator.apply(valueSchemaID);
     newRmd.put(TIMESTAMP_FIELD_NAME, deleteOperationTimestamp);
     newRmd.put(

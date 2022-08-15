@@ -656,7 +656,7 @@ public class ReadOnlyStore implements Store {
     }
   }
 
-  private Store delegate;
+  private final Store delegate;
 
   public ReadOnlyStore(Store delegate) {
     this.delegate = delegate;

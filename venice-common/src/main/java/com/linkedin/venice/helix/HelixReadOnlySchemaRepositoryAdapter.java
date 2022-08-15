@@ -7,6 +7,7 @@ import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.Pair;
 import java.util.Collection;
+import java.util.Optional;
 
 
 /**
@@ -69,12 +70,21 @@ public class HelixReadOnlySchemaRepositoryAdapter implements ReadOnlySchemaRepos
   }
 
   @Override
-  public SchemaEntry getLatestValueSchema(String storeName) {
+  public SchemaEntry getSupersetOrLatestValueSchema(String storeName) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (HelixReadOnlyStoreRepositoryAdapter.forwardToRegularRepository(systemStoreType)) {
-      return regularStoreSchemaRepository.getLatestValueSchema(storeName);
+      return regularStoreSchemaRepository.getSupersetOrLatestValueSchema(storeName);
     }
-    return systemStoreSchemaRepository.getLatestValueSchema(systemStoreType.getZkSharedStoreName());
+    return systemStoreSchemaRepository.getSupersetOrLatestValueSchema(systemStoreType.getZkSharedStoreName());
+  }
+
+  @Override
+  public Optional<SchemaEntry> getSupersetSchema(String storeName) {
+    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+    if (HelixReadOnlyStoreRepositoryAdapter.forwardToRegularRepository(systemStoreType)) {
+      return regularStoreSchemaRepository.getSupersetSchema(storeName);
+    }
+    return systemStoreSchemaRepository.getSupersetSchema(systemStoreType.getZkSharedStoreName());
   }
 
   @Override

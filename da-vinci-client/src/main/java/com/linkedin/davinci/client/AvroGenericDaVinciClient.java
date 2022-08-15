@@ -141,7 +141,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   @Override
   public Schema getLatestValueSchema() {
     throwIfNotReady();
-    return getBackend().getSchemaRepository().getLatestValueSchema(getStoreName()).getSchema();
+    return getBackend().getSchemaRepository().getSupersetOrLatestValueSchema(getStoreName()).getSchema();
   }
 
   @Override

@@ -1111,6 +1111,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     String topicToReceiveEndOfPush = version.getPushType().isStreamReprocessing()
         ? Version.composeStreamReprocessingTopic(storeName, versionNumber)
         : Version.composeKafkaTopic(storeName, versionNumber);
+
     // write EOP message
     VeniceWriterFactory factory = getVeniceWriterFactory();
     int partitionCount = version.getPartitionCount() * version.getPartitionerConfig().getAmplificationFactor();
@@ -4858,10 +4859,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return instancesStatusesMap;
   }
 
-  Schema getLatestValueSchema(String clusterName, Store store) {
+  Schema getSupersetOrLatestValueSchema(String clusterName, Store store) {
     ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
     // If already a superset schema exists, try to generate the new superset from that and the input value schema
-    SchemaEntry existingSchema = schemaRepository.getLatestValueSchema(store.getName());
+    SchemaEntry existingSchema = schemaRepository.getSupersetOrLatestValueSchema(store.getName());
     return existingSchema == null ? null : existingSchema.getSchema();
   }
 

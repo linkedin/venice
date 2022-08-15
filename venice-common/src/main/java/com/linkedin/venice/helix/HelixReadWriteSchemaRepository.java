@@ -221,17 +221,14 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   @Override
-  public SchemaEntry getLatestValueSchema(String storeName) {
-    Collection<SchemaEntry> valueSchemas = getValueSchemas(storeName);
-
-    Store store = storeRepository.getStoreOrThrow(storeName);
-    if (store.getLatestSuperSetValueSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
-      int latestValueSchemaId = store.getLatestSuperSetValueSchemaId();
-      return accessor.getValueSchema(storeName, String.valueOf(latestValueSchemaId));
+  public SchemaEntry getSupersetOrLatestValueSchema(String storeName) {
+    Optional<SchemaEntry> supersetSchema = getSupersetSchema(storeName);
+    if (supersetSchema.isPresent()) {
+      return supersetSchema.get();
     }
-
     int maxValueSchemaId = -1;
     SchemaEntry latestSchema = null;
+    Collection<SchemaEntry> valueSchemas = getValueSchemas(storeName);
     for (SchemaEntry schema: valueSchemas) {
       if (schema.getId() > maxValueSchemaId) {
         maxValueSchemaId = schema.getId();
@@ -239,6 +236,18 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
       }
     }
     return latestSchema;
+  }
+
+  @Override
+  public Optional<SchemaEntry> getSupersetSchema(String storeName) {
+    Optional<Integer> supersetSchemaID = getSupersetSchemaID(storeName);
+    return supersetSchemaID.map(schemaID -> accessor.getValueSchema(storeName, String.valueOf(schemaID)));
+  }
+
+  private Optional<Integer> getSupersetSchemaID(String storeName) {
+    Store store = storeRepository.getStoreOrThrow(storeName);
+    final int supersetSchemaId = store.getLatestSuperSetValueSchemaId();
+    return supersetSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID ? Optional.empty() : Optional.of(supersetSchemaId);
   }
 
   @Override

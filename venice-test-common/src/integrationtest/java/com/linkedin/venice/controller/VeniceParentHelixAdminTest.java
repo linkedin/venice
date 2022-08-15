@@ -5,6 +5,7 @@ import static com.linkedin.venice.controller.SchemaConstants.*;
 import static com.linkedin.venice.utils.TestUtils.*;
 import static org.testng.Assert.*;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -27,8 +28,10 @@ import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.SslUtils;
+import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -36,8 +39,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -45,8 +46,7 @@ import org.testng.annotations.Test;
 
 
 public class VeniceParentHelixAdminTest {
-  private static final Logger LOGGER = LogManager.getLogger(VeniceParentHelixAdminTest.class);
-  private static final long DEFAULT_TEST_TIMEOUT = 60000;
+  private static final long DEFAULT_TEST_TIMEOUT_MS = 60000;
   VeniceClusterWrapper venice;
   ZkServerWrapper zkServerWrapper;
 
@@ -66,7 +66,7 @@ public class VeniceParentHelixAdminTest {
     Utils.closeQuietlyWithErrorLogged(zkServerWrapper);
   }
 
-  @Test(timeOut = DEFAULT_TEST_TIMEOUT)
+  @Test(timeOut = DEFAULT_TEST_TIMEOUT_MS)
   public void testTerminalStateTopicChecker() {
     Properties properties = new Properties();
     properties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
@@ -98,7 +98,7 @@ public class VeniceParentHelixAdminTest {
     }
   }
 
-  @Test(timeOut = 2 * DEFAULT_TEST_TIMEOUT)
+  @Test(timeOut = 2 * DEFAULT_TEST_TIMEOUT_MS)
   public void testAddVersion() {
     Properties properties = new Properties();
     properties.setProperty(REPLICATION_METADATA_VERSION_ID, String.valueOf(1));
@@ -215,7 +215,7 @@ public class VeniceParentHelixAdminTest {
     }
   }
 
-  @Test(timeOut = DEFAULT_TEST_TIMEOUT * 2)
+  @Test(timeOut = DEFAULT_TEST_TIMEOUT_MS * 2)
   public void testResourceCleanupCheckForStoreRecreation() {
     Properties properties = new Properties();
     properties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
@@ -286,7 +286,7 @@ public class VeniceParentHelixAdminTest {
     }
   }
 
-  @Test(timeOut = DEFAULT_TEST_TIMEOUT)
+  @Test(timeOut = DEFAULT_TEST_TIMEOUT_MS)
   public void testHybridAndETLStoreConfig() {
     try (VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceParentController(
         venice.getClusterName(),
@@ -376,9 +376,9 @@ public class VeniceParentHelixAdminTest {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = DEFAULT_TEST_TIMEOUT
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = DEFAULT_TEST_TIMEOUT_MS
       * 10)
-  public void testStoreMetaDataUpdateFromParentToChildController(boolean isControllerSslEnabled) {
+  public void testStoreMetaDataUpdateFromParentToChildController(boolean isControllerSslEnabled) throws IOException {
     String clusterName = Utils.getUniqueString("testStoreMetadataUpdate");
     Properties properties = new Properties();
     // This cluster setup don't have server, we cannot perform push here.
@@ -411,6 +411,7 @@ public class VeniceParentHelixAdminTest {
         testBackupVersionRetentionUpdate(parentControllerClient, childControllerClient);
         testSuperSetSchemaGen(parentControllerClient);
         testSuperSetSchemaGenWithSameUpcomingSchema(parentControllerClient);
+        testSupersetSchemaRegistration(parentControllerClient);
         testAddValueSchemaDocUpdate(parentControllerClient);
         testAddBadValueSchema(parentControllerClient);
         testWriteComputeSchemaAutoGeneration(parentControllerClient);
@@ -520,6 +521,82 @@ public class VeniceParentHelixAdminTest {
         4,
         "Superset schema ID should be the same as the latest value schema because the latest value schema should "
             + "be the superset schema at this point.");
+  }
+
+  private void testSupersetSchemaRegistration(ControllerClient parentControllerClient) throws IOException {
+    String storeName = Utils.getUniqueString("test_store");
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+    Schema valueSchemaV1 =
+        AvroCompatibilityHelper.parse(TestPushUtils.loadFileAsString("supersetschemas/ValueV1.avsc"));
+    Schema valueSchemaV2 =
+        AvroCompatibilityHelper.parse(TestPushUtils.loadFileAsString("supersetschemas/ValueV2.avsc"));
+    Schema valueSchemaV3 =
+        AvroCompatibilityHelper.parse(TestPushUtils.loadFileAsString("supersetschemas/ValueV3.avsc"));
+    Schema valueSchemaV4 =
+        AvroCompatibilityHelper.parse(TestPushUtils.loadFileAsString("supersetschemas/ValueV4.avsc"));
+    Schema valueSchemaV5 =
+        AvroCompatibilityHelper.parse(TestPushUtils.loadFileAsString("supersetschemas/ValueV5.avsc"));
+
+    NewStoreResponse newStoreResponse =
+        parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaV1.toString());
+    Assert.assertNotNull(newStoreResponse);
+    Assert.assertFalse(newStoreResponse.isError(), "error in newStoreResponse: " + newStoreResponse.getError());
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    params.setReadComputationEnabled(true);
+    params.setAutoSchemaPushJobEnabled(true);
+    ControllerResponse updateStoreResponse = parentControllerClient.updateStore(storeName, params);
+    Assert.assertNotNull(updateStoreResponse);
+    Assert
+        .assertFalse(updateStoreResponse.isError(), "error in updateStoreResponse: " + updateStoreResponse.getError());
+    validateAllValueSchemas(parentControllerClient, storeName, 1, "There should be one value schema.");
+    int supersetSchemaID = parentControllerClient.getStore(storeName).getStore().getLatestSuperSetValueSchemaId();
+    Assert.assertEquals(supersetSchemaID, 1, "The first value schema ID should be the superset value schema ID.");
+
+    addValueSchema(parentControllerClient, valueSchemaV2, storeName);
+    supersetSchemaID = parentControllerClient.getStore(storeName).getStore().getLatestSuperSetValueSchemaId();
+    Assert.assertEquals(supersetSchemaID, 2);
+
+    addValueSchema(parentControllerClient, valueSchemaV3, storeName);
+    validateAllValueSchemas(parentControllerClient, storeName, 4, "3 value schemas + 1 superset schema.");
+
+    supersetSchemaID = parentControllerClient.getStore(storeName).getStore().getLatestSuperSetValueSchemaId();
+    Assert.assertEquals(supersetSchemaID, 4);
+
+    addValueSchema(parentControllerClient, valueSchemaV4, storeName);
+    addValueSchema(parentControllerClient, valueSchemaV5, storeName);
+    validateAllValueSchemas(parentControllerClient, storeName, 6, "5 value schemas + 1 superset schema.");
+
+    supersetSchemaID = parentControllerClient.getStore(storeName).getStore().getLatestSuperSetValueSchemaId();
+    Assert.assertEquals(supersetSchemaID, 4, "Got unexpected superset schema ID: " + supersetSchemaID);
+
+    // Superset schema should contain all fields.
+    Schema supersetSchema = AvroCompatibilityHelper
+        .parse(parentControllerClient.getValueSchema(storeName, supersetSchemaID).getSchemaStr());
+    assertNotNull(supersetSchema.getField("f0"));
+    assertNotNull(supersetSchema.getField("f1"));
+    assertNotNull(supersetSchema.getField("f2"));
+    assertNotNull(supersetSchema.getField("f3"));
+    assertNotNull(supersetSchema.getField("f4"));
+  }
+
+  private void validateAllValueSchemas(
+      ControllerClient controllerClient,
+      String storeName,
+      int expectedValueSchemaCount,
+      String expectationReason) {
+    MultiSchemaResponse schemaResponse = controllerClient.getAllValueSchema(storeName);
+    Assert.assertNotNull(schemaResponse);
+    Assert.assertFalse(schemaResponse.isError(), "error in schemaResponse: " + schemaResponse.getError());
+    Assert.assertNotNull(schemaResponse.getSchemas());
+    Assert.assertEquals(schemaResponse.getSchemas().length, expectedValueSchemaCount, expectationReason);
+  }
+
+  private void addValueSchema(ControllerClient parentControllerClient, Schema newValueSchema, String storeName) {
+    SchemaResponse addSchemaResponse = parentControllerClient.addValueSchema(storeName, newValueSchema.toString());
+    Assert.assertNotNull(addSchemaResponse);
+    Assert.assertFalse(addSchemaResponse.isError(), "error in addSchemaResponse: " + addSchemaResponse.getError());
   }
 
   private void testSuperSetSchemaGenWithSameUpcomingSchema(ControllerClient parentControllerClient) {

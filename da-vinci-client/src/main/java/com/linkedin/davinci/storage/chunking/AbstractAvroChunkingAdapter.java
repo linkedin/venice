@@ -36,7 +36,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
     return getDeserializer(
         storeName,
         writerSchemaId,
-        schemaRepo.getLatestValueSchema(storeName).getId(),
+        schemaRepo.getSupersetOrLatestValueSchema(storeName).getId(),
         schemaRepo,
         fastAvroEnabled);
   }
@@ -155,7 +155,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       boolean skipCache) {
     return get(
         store,
-        schemaRepo.getLatestValueSchema(storeName).getId(),
+        schemaRepo.getSupersetOrLatestValueSchema(storeName).getId(),
         partition,
         key,
         isChunked,

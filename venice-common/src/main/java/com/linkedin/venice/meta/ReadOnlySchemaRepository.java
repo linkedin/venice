@@ -7,7 +7,6 @@ import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.Pair;
 import java.util.Collection;
 import java.util.Optional;
-import org.apache.commons.lang3.NotImplementedException;
 
 
 public interface ReadOnlySchemaRepository extends VeniceResource {
@@ -37,9 +36,13 @@ public interface ReadOnlySchemaRepository extends VeniceResource {
   Collection<SchemaEntry> getValueSchemas(String storeName);
 
   /**
-   * Get the most recent value schema added to the given store
+   * Get the most recent value schema or superset value schema if one exists.
+   * TODO: Either:
+   *    1. Get rid of this method.
+   *    2. Make it only return the latest value schema. To get superset schema. Users should use the getSupersetSchema
+   *       method.
    */
-  SchemaEntry getLatestValueSchema(String storeName);
+  SchemaEntry getSupersetOrLatestValueSchema(String storeName);
 
   /**
    * Get the superset value schema for a given store. Each store has at most one active superset schema. Specifically a
@@ -48,10 +51,7 @@ public interface ReadOnlySchemaRepository extends VeniceResource {
    *
    * @return Superset value or {@link Optional#empty()} if store {@param storeName} does not have any superset value schema.
    */
-  default Optional<SchemaEntry> getSupersetSchema(String storeName) {
-    // TODO: Implement it.
-    throw new NotImplementedException("Implementation coming soon!");
-  }
+  Optional<SchemaEntry> getSupersetSchema(String storeName);
 
   /**
    * Look up derived schema id and its corresponding value schema id

@@ -50,7 +50,7 @@ public class SchemaRepoBackedSchemaReaderTest {
     Mockito.doReturn(keySchemaEntry).when(mockSchemaRepository).getKeySchema(storeName);
     Mockito.doReturn(schemaEntry1).when(mockSchemaRepository).getValueSchema(storeName, 1);
     Mockito.doReturn(schemaEntry2).when(mockSchemaRepository).getValueSchema(storeName, 2);
-    Mockito.doReturn(schemaEntry2).when(mockSchemaRepository).getLatestValueSchema(storeName);
+    Mockito.doReturn(schemaEntry2).when(mockSchemaRepository).getSupersetOrLatestValueSchema(storeName);
 
     SchemaReader schemaReader = new SchemaRepoBackedSchemaReader(mockSchemaRepository, storeName);
 
@@ -77,7 +77,7 @@ public class SchemaRepoBackedSchemaReaderTest {
     Mockito.doReturn(keySchemaEntry).when(mockSchemaRepository).getKeySchema(storeName);
     Mockito.doReturn(schemaEntry1).when(mockSchemaRepository).getValueSchema(storeName, 1);
     Mockito.doReturn(null).when(mockSchemaRepository).getValueSchema(storeName, 2);
-    Mockito.doReturn(schemaEntry1).when(mockSchemaRepository).getLatestValueSchema(storeName);
+    Mockito.doReturn(schemaEntry1).when(mockSchemaRepository).getSupersetOrLatestValueSchema(storeName);
 
     Mockito.doThrow(new VeniceNoStoreException(invalidStoreName))
         .when(mockSchemaRepository)
@@ -110,7 +110,7 @@ public class SchemaRepoBackedSchemaReaderTest {
     Mockito.doReturn(keySchemaEntry).when(mockSchemaRepository).getKeySchema(storeName);
     Mockito.doReturn(schemaEntry1).when(mockSchemaRepository).getValueSchema(storeName, 1);
     Mockito.doReturn(schemaEntry2).when(mockSchemaRepository).getValueSchema(storeName, 2);
-    Mockito.doReturn(schemaEntry2).when(mockSchemaRepository).getLatestValueSchema(storeName);
+    Mockito.doReturn(schemaEntry2).when(mockSchemaRepository).getSupersetOrLatestValueSchema(storeName);
 
     SchemaReader schemaReader = new SchemaRepoBackedSchemaReader(mockSchemaRepository, storeName);
 
@@ -126,7 +126,7 @@ public class SchemaRepoBackedSchemaReaderTest {
     ReadOnlySchemaRepository mockSchemaRepository = Mockito.mock(ReadOnlySchemaRepository.class);
     Mockito.doThrow(new VeniceException(storeName + " doesn't have latest schema!"))
         .when(mockSchemaRepository)
-        .getLatestValueSchema(storeName);
+        .getSupersetOrLatestValueSchema(storeName);
 
     SchemaReader schemaReader = new SchemaRepoBackedSchemaReader(mockSchemaRepository, storeName);
     schemaReader.getLatestValueSchema();

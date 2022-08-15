@@ -980,7 +980,7 @@ public class StoreIngestionTaskTest {
         .getReplicationMetadata(deleteKeyFoo);
 
     SchemaEntry schemaEntry = new SchemaEntry(1, "\"string\"");
-    doReturn(schemaEntry).when(mockSchemaRepo).getLatestValueSchema(storeNameWithoutVersionInfo);
+    doReturn(schemaEntry).when(mockSchemaRepo).getSupersetOrLatestValueSchema(storeNameWithoutVersionInfo);
 
     VeniceWriter vtWriter =
         getVeniceWriter(topic, () -> new MockInMemoryProducer(inMemoryLocalKafkaBroker), amplificationFactor);

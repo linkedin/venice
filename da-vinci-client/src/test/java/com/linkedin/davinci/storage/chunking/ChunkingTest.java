@@ -178,7 +178,7 @@ public class ChunkingTest {
     SchemaEntry schemaEntry = new SchemaEntry(1, schema);
     HelixReadOnlySchemaRepository schemaRepository = mock(HelixReadOnlySchemaRepository.class);
     doReturn(schemaEntry).when(schemaRepository).getValueSchema(storeName, 1);
-    doReturn(schemaEntry).when(schemaRepository).getLatestValueSchema(storeName);
+    doReturn(schemaEntry).when(schemaRepository).getSupersetOrLatestValueSchema(storeName);
 
     AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
     byte[] firstKey = ByteUtils.fromHexString(

@@ -40,6 +40,7 @@ import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.venice.schema.merge.MergeRecordHelper;
 import com.linkedin.venice.stats.StatsErrorCode;
@@ -1151,7 +1152,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           final long newUpstreamOffset = kafkaValue.leaderMetadataFooter == null
               ? kafkaValue.producerMetadata.upstreamOffset
               : kafkaValue.leaderMetadataFooter.upstreamOffset;
-
           String upstreamTopicName =
               offsetRecord.getLeaderTopic() != null ? offsetRecord.getLeaderTopic() : kafkaVersionTopic;
           final long previousUpstreamOffset =
@@ -2690,15 +2690,26 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String kafkaUrl,
       int kafkaClusterId,
       PartitionConsumptionState partitionConsumptionState) {
+
     final int subPartition = partitionConsumptionState.getPartition();
-    final int latestValueSchemaId = schemaRepository.getLatestValueSchema(storeName).getId();
-    final int updateSchemaId = isIngestingSystemStore()
-        ? schemaRepository.getLatestDerivedSchema(storeName, latestValueSchemaId).getId()
-        : update.updateSchemaId;
+    final int readerValueSchemaId;
+    final int readerUpdateProtocolVersion;
+    if (isIngestingSystemStore()) {
+      readerValueSchemaId = schemaRepository.getSupersetOrLatestValueSchema(storeName).getId();
+      readerUpdateProtocolVersion = schemaRepository.getLatestDerivedSchema(storeName, readerValueSchemaId).getId();
+    } else {
+      SchemaEntry supersetSchemaEntry = schemaRepository.getSupersetSchema(storeName).orElse(null);
+      if (supersetSchemaEntry == null) {
+        throw new IllegalStateException("Cannot find superset schema for store: " + storeName);
+      }
+      readerValueSchemaId = supersetSchemaEntry.getId();
+      readerUpdateProtocolVersion = update.updateSchemaId;
+    }
+
     final Optional<GenericRecord> currValue = readStoredValueRecord(
         partitionConsumptionState,
         keyBytes,
-        latestValueSchemaId,
+        readerValueSchemaId,
         consumerRecord.topic(),
         consumerRecord.partition(),
         isChunkedTopic);
@@ -2714,9 +2725,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               storeWriteComputeHandler.applyWriteCompute(
                   currValue,
                   update.schemaId,
-                  latestValueSchemaId,
+                  readerValueSchemaId,
                   update.updateValue,
-                  updateSchemaId));
+                  readerUpdateProtocolVersion));
       storeIngestionStats
           .recordWriteComputeUpdateLatency(storeName, LatencyUtils.getLatencyInMS(writeComputeStartTimeInNS));
     } catch (Exception e) {
@@ -2742,15 +2753,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           updatedValueBytes,
           0,
           updatedValueBytes.length,
-          latestValueSchemaId,
+          readerValueSchemaId,
           null);
 
       ByteBuffer updateValueWithSchemaId =
-          ByteUtils.prependIntHeaderToByteBuffer(ByteBuffer.wrap(updatedValueBytes), latestValueSchemaId, false);
+          ByteUtils.prependIntHeaderToByteBuffer(ByteBuffer.wrap(updatedValueBytes), readerValueSchemaId, false);
 
       Put updatedPut = new Put();
       updatedPut.putValue = updateValueWithSchemaId;
-      updatedPut.schemaId = latestValueSchemaId;
+      updatedPut.schemaId = readerValueSchemaId;
 
       byte[] updatedKeyBytes = keyBytes;
       if (isChunkedTopic) {
@@ -2763,7 +2774,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           .newPutRecord(kafkaClusterId, consumerRecord.offset(), updatedKeyBytes, updatedPut);
 
       ProduceToTopic produce = (callback, leaderMetadataWrapper) -> veniceWriter.get()
-          .put(keyBytes, updatedValueBytes, latestValueSchemaId, callback, leaderMetadataWrapper);
+          .put(keyBytes, updatedValueBytes, readerValueSchemaId, callback, leaderMetadataWrapper);
 
       produceToLocalKafka(
           consumerRecord,
@@ -2784,7 +2795,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private Optional<GenericRecord> readStoredValueRecord(
       PartitionConsumptionState partitionConsumptionState,
       byte[] keyBytes,
-      int valueSchemaID,
+      int readerValueSchemaID,
       String topic,
       int partition,
       boolean isChunkedTopic) {
@@ -2795,7 +2806,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         long lookupStartTimeInNS = System.nanoTime();
         currValue = GenericRecordChunkingAdapter.INSTANCE.get(
             storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic),
-            valueSchemaID,
+            readerValueSchemaID,
             getSubPartitionId(keyBytes, topic, partition),
             ByteBuffer.wrap(keyBytes),
             isChunkedTopic,
@@ -2821,7 +2832,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         try {
           currValue = GenericRecordChunkingAdapter.INSTANCE.constructValue(
               transientRecord.getValueSchemaId(),
-              valueSchemaID,
+              readerValueSchemaID,
               transientRecord.getValue(),
               transientRecord.getValueOffset(),
               transientRecord.getValueLen(),
