@@ -4,8 +4,6 @@ import org.apache.tools.ant.taskdefs.condition.Os
 plugins {
   id 'idea'
   id 'java'
-  id 'com.diffplug.spotless' version '6.6.1'
-  id 'com.dorongold.task-tree' version '2.1.0'
   id 'com.github.johnrengelman.shadow' version '6.1.0' apply false
   id 'com.github.spotbugs' version '4.8.0' apply false
   id 'io.netifi.flatbuffers' version '1.0.6' apply false
@@ -313,25 +311,6 @@ subprojects {
   }
 }
 
-spotless {
-  ratchetFrom 'origin/master'
-  java {
-    importOrder()
-    removeUnusedImports()
-    eclipse().configFile("$rootDir/gradle/spotless/eclipse-java-formatter.xml")
-    target '**/*.java'
-    targetExclude '**/generated/**'
-  }
-}
-
-task gitHooks(type: Copy) {
-  from ("$rootDir/gradle/githooks")
-  into ("$rootDir/.git/hooks")
-  eachFile {
-    println "Copying ${relativePath(it.file)} to .git/hooks"
-  }
-}
-
 task spotbugs {
   dependsOn subprojects.tasks*.withType(SpotBugsTask)
 }
@@ -344,7 +323,6 @@ test {
 
 assemble {
   dependsOn (
-    gitHooks,
     testClasses,
     'venice-test-common:jmhClasses',
     'venice-test-common:integrationTestClasses'
