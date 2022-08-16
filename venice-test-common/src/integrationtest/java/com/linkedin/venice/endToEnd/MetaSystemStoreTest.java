@@ -52,6 +52,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -166,9 +167,12 @@ public class MetaSystemStoreTest {
     StoreMetaValue storeValueSchemas = storeClient.get(valueSchemasKey).get();
     assertTrue(storeValueSchemas != null && storeValueSchemas.storeValueSchemas != null);
     assertEquals(storeValueSchemas.storeValueSchemas.valueSchemaMap.size(), 1);
-    assertEquals(
-        Schema.parse(storeValueSchemas.storeValueSchemas.valueSchemaMap.get(new Utf8("1")).toString()),
-        Schema.parse(VALUE_SCHEMA_1));
+    Map<String, String> keyMap = new HashMap<>(2);
+    keyMap.put(KEY_STRING_STORE_NAME, regularVeniceStoreName);
+    keyMap.put(KEY_STRING_SCHEMA_ID, Integer.toString(1));
+    StoreMetaKey individualValueSchemaKey = MetaStoreDataType.STORE_VALUE_SCHEMA.getStoreMetaKey(keyMap);
+    String valueSchema = storeClient.get(individualValueSchemaKey).get().storeValueSchema.valueSchema.toString();
+    assertEquals(Schema.parse(valueSchema), Schema.parse(VALUE_SCHEMA_1));
     // Query replica status
     StoreMetaKey replicaStatusKeyForV1P0 =
         MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(new HashMap<String, String>() {
@@ -197,9 +201,10 @@ public class MetaSystemStoreTest {
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       final StoreMetaValue v = storeClient.get(valueSchemasKey).get();
       assertEquals(v.storeValueSchemas.valueSchemaMap.size(), 2);
-      assertEquals(
-          Schema.parse(v.storeValueSchemas.valueSchemaMap.get(new Utf8("2")).toString()),
-          Schema.parse(VALUE_SCHEMA_2));
+      keyMap.put(KEY_STRING_SCHEMA_ID, Integer.toString(2));
+      StoreMetaKey schemaKey = MetaStoreDataType.STORE_VALUE_SCHEMA.getStoreMetaKey(keyMap);
+      String valueSchema1 = storeClient.get(schemaKey).get().storeValueSchema.valueSchema.toString();
+      assertEquals(Schema.parse(valueSchema1), Schema.parse(VALUE_SCHEMA_2));
     });
 
     // Do the 2nd empty push to the Venice store
