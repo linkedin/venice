@@ -126,37 +126,41 @@ public class MetaStoreWriter implements Closeable {
    * contain all the value schemas since this operation will be a full PUT.
    */
   public void writeStoreValueSchemas(String storeName, Collection<SchemaEntry> valueSchemas) {
-    // Update this method to only write the value schema ids without the value schema strings once all DaVinci client is
-    // updated. i.e. a map of schema id to empty strings.
-    try {
-      write(storeName, MetaStoreDataType.STORE_VALUE_SCHEMAS, () -> new HashMap<String, String>() {
-        {
-          put(KEY_STRING_STORE_NAME, storeName);
-        }
+    writeStoreValueSchemasIndividually(storeName, valueSchemas);
+
+    write(storeName, MetaStoreDataType.STORE_VALUE_SCHEMAS, () -> {
+      Map<String, String> keyMap = new HashMap<>(1);
+      keyMap.put(KEY_STRING_STORE_NAME, storeName);
+      return keyMap;
       }, () -> {
+      StoreMetaValue value = new StoreMetaValue();
+      StoreValueSchemas storeValueSchemas = new StoreValueSchemas();
+      storeValueSchemas.valueSchemaMap = buildSchemaIdOnlyMap(valueSchemas);
+      value.storeValueSchemas = storeValueSchemas;
+      return value;
+    });
+  }
+
+  /**
+   * Improved version of writeStoreValueSchemas. Instead of writing all value schemas into one K/V pair we write it to
+   * a different key space where each K/V pair only represents one version of the value schema. This allows us to store
+   * many versions of a large value schema.
+   */
+  private void writeStoreValueSchemasIndividually(String storeName, Collection<SchemaEntry> valueSchemas) {
+    for (SchemaEntry schemaEntry : valueSchemas) {
+      write(storeName, MetaStoreDataType.STORE_VALUE_SCHEMA, () -> {
+        Map<String, String> keyMap = new HashMap<>(2);
+        keyMap.put(KEY_STRING_STORE_NAME, storeName);
+        keyMap.put(KEY_STRING_SCHEMA_ID, Integer.toString(schemaEntry.getId()));
+        return keyMap;
+        }, () -> {
         StoreMetaValue value = new StoreMetaValue();
-        StoreValueSchemas storeValueSchemas = new StoreValueSchemas();
-        storeValueSchemas.valueSchemaMap = buildSchemaMap(valueSchemas);
-        value.storeValueSchemas = storeValueSchemas;
-        return value;
-      });
-    } catch (RecordTooLargeException recordTooLargeException) {
-      LOGGER.warn(
-          "Store: " + storeName + "'s value schemas can no longer fit into a single K/V pair."
-              + " Please update the DaVinci client to versions that can support large value schemas in meta system store.");
-      write(storeName, MetaStoreDataType.STORE_VALUE_SCHEMAS, () -> new HashMap<String, String>() {
-        {
-          put(KEY_STRING_STORE_NAME, storeName);
-        }
-      }, () -> {
-        StoreMetaValue value = new StoreMetaValue();
-        StoreValueSchemas storeValueSchemas = new StoreValueSchemas();
-        storeValueSchemas.valueSchemaMap = buildSchemaIdOnlyMap(valueSchemas);
-        value.storeValueSchemas = storeValueSchemas;
+        StoreValueSchema storeValueSchema = new StoreValueSchema();
+        storeValueSchema.valueSchema = schemaEntry.getSchema().toString();
+        value.storeValueSchema = storeValueSchema;
         return value;
       });
     }
-    writeStoreValueSchemasIndividually(storeName, valueSchemas);
   }
 
   public void writeInUseValueSchema(String storeName, int versionNumber, int valueSchemaId) {
@@ -177,28 +181,6 @@ public class MetaStoreWriter implements Closeable {
       writeOpRecord.storeValueSchemaIdsWrittenPerStoreVersion = listOps;
       return writeOpRecord;
     });
-  }
-
-  /**
-   * Improved version of writeStoreValueSchemas. Instead of writing all value schemas into one K/V pair we write it to
-   * a different key space where each K/V pair only represents one version of the value schema. This allows us to store
-   * many versions of a large value schema.
-   */
-  private void writeStoreValueSchemasIndividually(String storeName, Collection<SchemaEntry> valueSchemas) {
-    for (SchemaEntry schemaEntry: valueSchemas) {
-      write(storeName, MetaStoreDataType.STORE_VALUE_SCHEMA, () -> new HashMap<String, String>() {
-        {
-          put(KEY_STRING_STORE_NAME, storeName);
-          put(KEY_STRING_SCHEMA_ID, Integer.toString(schemaEntry.getId()));
-        }
-      }, () -> {
-        StoreMetaValue value = new StoreMetaValue();
-        StoreValueSchema storeValueSchema = new StoreValueSchema();
-        storeValueSchema.valueSchema = schemaEntry.getSchema().toString();
-        value.storeValueSchema = storeValueSchema;
-        return value;
-      });
-    }
   }
 
   /**

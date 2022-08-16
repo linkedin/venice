@@ -284,22 +284,13 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
         new SchemaEntry(Integer.parseInt(keySchemaEntry.getKey().toString()), keySchemaEntry.getValue().toString()));
     Map<CharSequence, CharSequence> valueSchemaMap =
         getStoreMetaValue(storeMetaKeyMap.get(STORE_VALUE_SCHEMAS_KEY)).storeValueSchemas.valueSchemaMap;
-    for (Map.Entry<CharSequence, CharSequence> entry: valueSchemaMap.entrySet()) {
-      if (entry.getValue().toString().isEmpty()) {
-        // The value schemas might be too large to be stored in a single K/V.
-        StoreMetaKey individualValueSchemaKey =
-            MetaStoreDataType.STORE_VALUE_SCHEMA.getStoreMetaKey(new HashMap<String, String>() {
-              {
-                put(KEY_STRING_STORE_NAME, storeName);
-                put(KEY_STRING_SCHEMA_ID, entry.getKey().toString());
-              }
-            });
-        String valueSchema = getStoreMetaValue(individualValueSchemaKey).storeValueSchema.valueSchema.toString();
-        schemaData.addValueSchema(new SchemaEntry(Integer.parseInt(entry.getKey().toString()), valueSchema));
-      } else {
-        schemaData
-            .addValueSchema(new SchemaEntry(Integer.parseInt(entry.getKey().toString()), entry.getValue().toString()));
-      }
+    for (Map.Entry<CharSequence, CharSequence> entry : valueSchemaMap.entrySet()) {
+      Map<String, String> keyMap = new HashMap<>(2);
+      keyMap.put(KEY_STRING_STORE_NAME, storeName);
+      keyMap.put(KEY_STRING_SCHEMA_ID, entry.getKey().toString());
+      StoreMetaKey individualValueSchemaKey = MetaStoreDataType.STORE_VALUE_SCHEMA.getStoreMetaKey(keyMap);
+      String valueSchema = getStoreMetaValue(individualValueSchemaKey).storeValueSchema.valueSchema.toString();
+      schemaData.addValueSchema(new SchemaEntry(Integer.parseInt(entry.getKey().toString()), valueSchema));
     }
     schemas.set(schemaData);
 
