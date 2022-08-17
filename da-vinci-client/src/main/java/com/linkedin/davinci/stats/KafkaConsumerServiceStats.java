@@ -82,9 +82,9 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
     this.getLatestOffsetSensor = registerSensor("getLatestOffset", new OccurrenceRate());
     Sensor[] latestOffsetParent = new Sensor[] { getLatestOffsetSensor };
     this.getLatestOffsetIsAbsentSensor =
-        registerSensor("getOffsetLagIsAbsent", null, latestOffsetParent, new OccurrenceRate());
+        registerSensor("getLatestOffsetIsAbsent", null, latestOffsetParent, new OccurrenceRate());
     this.getLatestOffsetIsPresentSensor =
-        registerSensor("getOffsetLagIsPresent", null, latestOffsetParent, new OccurrenceRate());
+        registerSensor("getLatestOffsetIsPresent", null, latestOffsetParent, new OccurrenceRate());
 
   }
 

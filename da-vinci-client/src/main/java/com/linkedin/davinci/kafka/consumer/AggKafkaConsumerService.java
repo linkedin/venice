@@ -11,6 +11,7 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +44,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final KafkaConsumerService.ConsumerAssignmentStrategy sharedConsumerAssignmentStrategy;
   private final Map<String, KafkaConsumerService> kafkaServerToConsumerServiceMap = new VeniceConcurrentHashMap<>();
   private final Map<String, String> kafkaClusterUrlToAliasMap;
+  private final Object2IntMap<String> kafkaClusterUrlToIdMap;
 
   public AggKafkaConsumerService(
       final KafkaClientFactory consumerFactory,
@@ -64,6 +66,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.liveConfigBasedKafkaThrottlingEnabled = serverConfig.isLiveConfigBasedKafkaThrottlingEnabled();
     this.sharedConsumerAssignmentStrategy = serverConfig.getSharedConsumerAssignmentStrategy();
     this.kafkaClusterUrlToAliasMap = serverConfig.getKafkaClusterUrlToAliasMap();
+    this.kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
     logger.info("Successfully initialized AggKafkaConsumerService");
   }
 
@@ -109,46 +112,22 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       return alreadyCreatedConsumerService;
     }
 
-    // TODO: introduce builder pattern due to significant # of parameters for KafkaConsumerService.
-    KafkaConsumerService consumerService;
-    switch (sharedConsumerAssignmentStrategy) {
-      case PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY:
-        consumerService = kafkaServerToConsumerServiceMap.computeIfAbsent(kafkaUrl, url -> {
-          return new PartitionWiseKafkaConsumerService(
-              consumerFactory,
-              consumerProperties,
-              readCycleDelayMs,
-              numOfConsumersPerKafkaCluster,
-              bandwidthThrottler,
-              recordsThrottler,
-              kafkaClusterBasedRecordThrottler,
-              metricsRepository,
-              kafkaClusterUrlToAliasMap.getOrDefault(url, url),
-              sharedConsumerNonExistingTopicCleanupDelayMS,
-              topicExistenceChecker,
-              liveConfigBasedKafkaThrottlingEnabled);
-        });
-        break;
-      case TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY:
-        consumerService = kafkaServerToConsumerServiceMap.computeIfAbsent(kafkaUrl, url -> {
-          return new TopicWiseKafkaConsumerService(
-              consumerFactory,
-              consumerProperties,
-              readCycleDelayMs,
-              numOfConsumersPerKafkaCluster,
-              bandwidthThrottler,
-              recordsThrottler,
-              kafkaClusterBasedRecordThrottler,
-              metricsRepository,
-              kafkaClusterUrlToAliasMap.getOrDefault(url, url),
-              sharedConsumerNonExistingTopicCleanupDelayMS,
-              topicExistenceChecker,
-              liveConfigBasedKafkaThrottlingEnabled);
-        });
-        break;
-      default:
-        throw new VeniceException("Unknown shared consumer assignment strategy: " + sharedConsumerAssignmentStrategy);
-    }
+    KafkaConsumerService consumerService = kafkaServerToConsumerServiceMap.computeIfAbsent(
+        kafkaUrl,
+        url -> sharedConsumerAssignmentStrategy.constructor.construct(
+            consumerFactory,
+            consumerProperties,
+            readCycleDelayMs,
+            numOfConsumersPerKafkaCluster,
+            bandwidthThrottler,
+            recordsThrottler,
+            kafkaClusterBasedRecordThrottler,
+            metricsRepository,
+            kafkaClusterUrlToAliasMap.getOrDefault(url, url),
+            sharedConsumerNonExistingTopicCleanupDelayMS,
+            topicExistenceChecker,
+            liveConfigBasedKafkaThrottlingEnabled));
+
     if (!consumerService.isRunning()) {
       consumerService.start();
     }
@@ -269,7 +248,11 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     }
     TopicPartition topicPartition = new TopicPartition(topic, partition);
     ConsumedDataReceiver<List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> dataReceiver =
-        new StorePartitionDataReceiver(storeIngestionTask, topicPartition, kafkaURL);
+        new StorePartitionDataReceiver(
+            storeIngestionTask,
+            topicPartition,
+            kafkaURL,
+            kafkaClusterUrlToIdMap.getOrDefault(kafkaURL, -1));
     consumerService.setDataReceiver(topicPartition, dataReceiver);
     return dataReceiver;
   }

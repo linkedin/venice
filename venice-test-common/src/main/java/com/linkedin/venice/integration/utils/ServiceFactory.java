@@ -127,10 +127,6 @@ public class ServiceFactory {
     return getKafkaBroker(ServiceFactory.getZkServer());
   }
 
-  public static KafkaBrokerWrapper getKafkaBroker(MockTime mockTime) {
-    return getKafkaBroker(ServiceFactory.getZkServer(), Optional.of(mockTime));
-  }
-
   public static KafkaBrokerWrapper getKafkaBroker(ZkServerWrapper zkServerWrapper) {
     return getKafkaBroker(zkServerWrapper, Optional.empty());
   }
@@ -139,12 +135,6 @@ public class ServiceFactory {
     return getStatefulService(
         KafkaBrokerWrapper.SERVICE_NAME,
         KafkaBrokerWrapper.generateService(zkServerWrapper, mockTime));
-  }
-
-  public static KafkaBrokerWrapper getKafkaBroker(ZkServerWrapper zkServerWrapper, int port) {
-    return getStatefulService(
-        KafkaBrokerWrapper.SERVICE_NAME,
-        KafkaBrokerWrapper.generateService(zkServerWrapper, Optional.empty(), port));
   }
 
   /**
@@ -395,7 +385,7 @@ public class ServiceFactory {
         configProperties,
         false,
         "",
-        Optional.empty());
+        Collections.emptyMap());
   }
 
   public static VeniceServerWrapper getVeniceServer(
@@ -406,7 +396,7 @@ public class ServiceFactory {
       Properties configProperties,
       boolean forkServer,
       String serverName,
-      Optional<Map<String, Map<String, String>>> kafkaClusterMap) {
+      Map<String, Map<String, String>> kafkaClusterMap) {
     // Set ZK host needed for D2 client creation ingestion isolation ingestion.
     configProperties.setProperty(D2_CLIENT_ZK_HOSTS_ADDRESS, zkAddress);
     return getStatefulService(
@@ -784,7 +774,7 @@ public class ServiceFactory {
       boolean sslToKafka,
       Optional<VeniceProperties> veniceProperties,
       boolean forkServer,
-      Optional<Map<String, Map<String, String>>> kafkaClusterMap) {
+      Map<String, Map<String, String>> kafkaClusterMap) {
     return getService(
         VeniceClusterWrapper.SERVICE_NAME,
         VeniceClusterWrapper.generateService(
@@ -839,7 +829,7 @@ public class ServiceFactory {
             Optional.empty(),
             false,
             false,
-            Optional.empty()));
+            Collections.emptyMap()));
   }
 
   public static VeniceMultiClusterWrapper getVeniceMultiClusterWrapper(
@@ -857,7 +847,7 @@ public class ServiceFactory {
       Optional<Properties> childControllerProperties,
       Optional<VeniceProperties> veniceProperties,
       boolean forkServer,
-      Optional<Map<String, Map<String, String>>> kafkaClusterMap) {
+      Map<String, Map<String, String>> kafkaClusterMap) {
     return getService(
         VeniceMultiClusterWrapper.SERVICE_NAME,
         VeniceMultiClusterWrapper.generateService(
@@ -923,7 +913,7 @@ public class ServiceFactory {
             veniceProperties,
             multiD2,
             forkServer,
-            Optional.empty()));
+            Collections.emptyMap()));
   }
 
   public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(

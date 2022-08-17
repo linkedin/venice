@@ -246,6 +246,22 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
     return consumedDataReceiver;
   }
 
+  interface KCSConstructor {
+    KafkaConsumerService construct(
+        KafkaClientFactory consumerFactory,
+        Properties consumerProperties,
+        long readCycleDelayMs,
+        int numOfConsumersPerKafkaCluster,
+        EventThrottler bandwidthThrottler,
+        EventThrottler recordsThrottler,
+        KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
+        MetricsRepository metricsRepository,
+        String kafkaClusterAlias,
+        long sharedConsumerNonExistingTopicCleanupDelayMS,
+        TopicExistenceChecker topicExistenceChecker,
+        boolean liveConfigBasedKafkaThrottlingEnabled);
+  }
+
   private class ConsumptionTask implements Runnable {
     private final String kafkaUrl;
     private final String uniqueClientId;
@@ -393,13 +409,13 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       sensorIfAbsent.run();
       return -1;
     } else {
-      long resut = offsetGetter.apply(consumer, topic, partition);
-      if (resut < 0) {
+      long result = offsetGetter.apply(consumer, topic, partition);
+      if (result < 0) {
         sensorIfAbsent.run();
       } else {
         sensorIfPresent.run();
       }
-      return resut;
+      return result;
     }
   }
 
@@ -413,7 +429,14 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
    * respectively. Each strategy will have a specific extension of {@link KafkaConsumerService}.
    */
   public enum ConsumerAssignmentStrategy {
-    TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY, PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY
+    TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY(TopicWiseKafkaConsumerService::new),
+    PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY(PartitionWiseKafkaConsumerService::new);
+
+    final KCSConstructor constructor;
+
+    ConsumerAssignmentStrategy(KCSConstructor constructor) {
+      this.constructor = constructor;
+    }
   }
 
 }

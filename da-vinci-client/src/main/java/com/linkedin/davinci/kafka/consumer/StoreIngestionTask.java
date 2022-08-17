@@ -87,6 +87,7 @@ import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.ints.IntSet;
 import it.unimi.dsi.fastutil.ints.IntSets;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -115,6 +116,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
@@ -159,6 +161,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /** storage destination for consumption */
   protected final StorageEngineRepository storageEngineRepository;
+  protected final AbstractStorageEngine storageEngine;
   protected final String kafkaVersionTopic;
   protected final String realTimeTopic;
   protected final String storeName;
@@ -352,6 +355,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final AmplificationAdapter amplificationAdapter;
 
   protected final String localKafkaServer;
+  protected final int localKafkaClusterId;
   protected final Set<String> localKafkaServerSingletonSet;
   private int valueSchemaId = -1;
 
@@ -362,6 +366,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected boolean isDataRecovery;
   protected final MetaStoreWriter metaStoreWriter;
+  protected final Function<String, String> kafkaClusterUrlResolver;
+  /** TODO Get rid of this map once we delete the dedicated consumer mode */
+  private final Object2IntMap<String> kafkaClusterUrlToIdMap;
 
   protected final CompressionStrategy compressionStrategy;
 
@@ -430,7 +437,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.diskUsage = builder.getDiskUsage();
 
-    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
+    this.storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
     this.rocksDBMemoryStats = Optional.ofNullable(
         storageEngineRepository.hasLocalStorageEngine(kafkaVersionTopic)
             && storageEngine.getType().equals(PersistenceType.ROCKS_DB) ? builder.getRocksDBMemoryStats() : null);
@@ -531,6 +538,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             ? (topic, partition) -> resumeConsumption(topic, partition)
             : (topic, partition) -> {});
     this.storeRepository.registerStoreDataChangedListener(this.storageUtilizationManager);
+    this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
+    this.kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
+    this.localKafkaClusterId = kafkaClusterUrlToIdMap.getOrDefault(localKafkaServer, Integer.MIN_VALUE);
 
     if (serverConfig.isSharedConsumerPoolEnabled() && aggKafkaConsumerService == null) {
       throw new IllegalArgumentException(
@@ -557,7 +567,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   // TODO: Support memory enforcer with shared consumer as it has been fully rolled out.
   private void buildRocksDBMemoryEnforcer() {
-    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
     if (rocksDBMemoryStats.isPresent() && storageEngine.getType().equals(PersistenceType.ROCKS_DB)
         && !serverConfig.isSharedConsumerPoolEnabled()) {
       this.rocksDBMemoryEnforcer = Optional.of(new RocksDBMemoryEnforcement(this));
@@ -688,8 +697,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        */
       storagePartitionConfig.setDisableAutoCompaction(true);
     }
-    storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic)
-        .beginBatchWrite(storagePartitionConfig, checkpointedDatabaseInfo, partitionChecksumSupplier);
+    storageEngine.beginBatchWrite(storagePartitionConfig, checkpointedDatabaseInfo, partitionChecksumSupplier);
     logger.info(
         "Started batch write to store: " + kafkaVersionTopic + ", partition: " + partitionId
             + " with checkpointed database info: " + checkpointedDatabaseInfo + " and sorted: " + sorted
@@ -1014,7 +1022,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Iterable<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> records,
       boolean whetherToApplyThrottling,
       TopicPartition topicPartition,
-      String kafkaUrl) throws InterruptedException {
+      String kafkaUrl,
+      int kafkaClusterId) throws InterruptedException {
     long totalBytesRead = 0;
     double elapsedTimeForPuttingIntoQueue = 0;
     long beforeProcessingTimestamp = System.currentTimeMillis();
@@ -1167,11 +1176,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                       + " are persisted, for one-time db compaction");
 
               // Trigger one-time compaction
-              AbstractStorageEngine engine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
-              if (null == engine) {
+              AbstractStorageEngine storageEngineReloadedFromRepo =
+                  storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
+              if (null == storageEngineReloadedFromRepo) {
                 throw new VeniceException("Storage Engine for store: " + kafkaVersionTopic + " has been closed");
               }
-              AbstractStoragePartition storagePartition = engine.getPartitionOrThrow(consumingPartition);
+              AbstractStoragePartition storagePartition =
+                  storageEngineReloadedFromRepo.getPartitionOrThrow(consumingPartition);
               dbCompactFutureMap.put(record.partition(), storagePartition.compactDB());
               eopControlMessageMap.put(consumingPartition, record);
               logger.info(
@@ -1194,7 +1205,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // this call.
 
       DelegateConsumerRecordResult delegateConsumerRecordResult =
-          delegateConsumerRecord(record, subPartition, kafkaUrl);
+          delegateConsumerRecord(record, subPartition, kafkaUrl, kafkaClusterId);
       switch (delegateConsumerRecordResult) {
         case QUEUED_TO_DRAINER:
           long queuePutStartTimeInNS = System.nanoTime();
@@ -1477,7 +1488,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             entry.getValue().records(topicPartition),
             true,
             topicPartition,
-            entry.getKey());
+            entry.getKey(),
+            this.kafkaClusterUrlToIdMap.getOrDefault(entry.getKey(), -1));
       }
     }
   }
@@ -1789,6 +1801,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
+  /**
+   * Applies name resolution to all Kafka URLs in the provided TopicSwitch. Useful for translating URLs that came from
+   * a different runtime (e.g. from the controller, or from state persisted by a previous run of the same server).
+   *
+   * @return the same TopicSwitch, mutated such that all Kafka URLs it contains are guaranteed to be usable by
+   *         the current Venice server instance
+   */
+  protected TopicSwitch resolveSourceKafkaServersWithinTopicSwitch(TopicSwitch originalTopicSwitch) {
+    if (originalTopicSwitch == null || originalTopicSwitch.sourceKafkaServers == null) {
+      return originalTopicSwitch;
+    }
+    List<CharSequence> returnSet = new ArrayList<>(originalTopicSwitch.sourceKafkaServers.size());
+    for (CharSequence url: originalTopicSwitch.sourceKafkaServers) {
+      returnSet.add(kafkaClusterUrlResolver.apply(url.toString()));
+    }
+    originalTopicSwitch.sourceKafkaServers = returnSet;
+    return originalTopicSwitch;
+  }
+
   private void checkConsumptionStateWhenStart(
       OffsetRecord offsetRecord,
       PartitionConsumptionState newPartitionConsumptionState) {
@@ -1803,7 +1834,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         /**
          * Put TopicSwitch message into in-memory state.
          */
-        TopicSwitch topicSwitch = storeVersionState.get().topicSwitch;
+        TopicSwitch topicSwitch = resolveSourceKafkaServersWithinTopicSwitch(storeVersionState.get().topicSwitch);
         newPartitionConsumptionState.setTopicSwitch(topicSwitch);
 
         /**
@@ -2378,15 +2409,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private void syncOffset(String topic, PartitionConsumptionState pcs) {
     int partition = pcs.getPartition();
-    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(topic);
-    if (storageEngine == null) {
+    AbstractStorageEngine storageEngineReloadedFromRepo = storageEngineRepository.getLocalStorageEngine(topic);
+    if (storageEngineReloadedFromRepo == null) {
       logger.warn(
           "Storage engine has been removed. Could not execute sync offset for topic: " + topic + " and partition: "
               + partition);
       return;
     }
     // Flush data partition
-    Map<String, String> dbCheckpointingInfo = storageEngine.sync(partition);
+    Map<String, String> dbCheckpointingInfo = storageEngineReloadedFromRepo.sync(partition);
 
     // Update the partition key in metadata partition
     if (offsetLagDeltaRelaxEnabled) {
@@ -2508,7 +2539,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       KafkaMessageEnvelope startOfPushKME,
       ControlMessage controlMessage,
       int partition,
-      long offset,
       PartitionConsumptionState partitionConsumptionState) {
     StartOfPush startOfPush = (StartOfPush) controlMessage.controlMessageUnion;
     /*
@@ -2530,6 +2560,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       newStoreVersionState.startOfPushTimestamp = startOfPushKME.producerMetadata.messageTimestamp;
 
       storageMetadataService.put(kafkaVersionTopic, newStoreVersionState);
+      logger.info(
+          "Persisted {} for the first time following a SOP for topic {}.",
+          StoreVersionState.class.getSimpleName(),
+          kafkaVersionTopic);
     } else if (storeVersionState.get().sorted != startOfPush.sorted) {
       // Something very wrong is going on ): ...
       throw new VeniceException(
@@ -2575,7 +2609,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /**
      * Indicate the batch push is done, and the internal storage engine needs to do some cleanup.
      */
-    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
     storageEngine.endBatchWrite(storagePartitionConfig);
 
     if (cacheBackend.isPresent()) {
@@ -2661,7 +2694,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     switch (type) {
       case START_OF_PUSH:
-        processStartOfPush(kafkaMessageEnvelope, controlMessage, partition, offset, partitionConsumptionState);
+        processStartOfPush(kafkaMessageEnvelope, controlMessage, partition, partitionConsumptionState);
         break;
       case END_OF_PUSH:
         processEndOfPush(kafkaMessageEnvelope, controlMessage, partition, offset, partitionConsumptionState);
@@ -2920,7 +2953,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * in order to insert the {@param schemaId} there. This avoids a byte array copy, which can be beneficial in terms
    * of GC.
    */
-  private void prependHeaderAndWriteToStorageEngine(String topic, int partition, byte[] keyBytes, Put put) {
+  private void prependHeaderAndWriteToStorageEngine(int partition, byte[] keyBytes, Put put) {
     ByteBuffer putValue = put.putValue;
     /*
      * Since {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer} reuses the original byte
@@ -2938,16 +2971,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       putValue.position(putValue.position() - ValueRecord.SCHEMA_HEADER_LENGTH);
       ByteUtils.writeInt(putValue.array(), put.schemaId, putValue.position());
 
-      writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(topic), partition, keyBytes, put);
+      writeToStorageEngine(partition, keyBytes, put);
 
       /* We still want to recover the original position to make this function idempotent. */
       putValue.putInt(backupBytes);
     }
   }
 
-  private void writeToStorageEngine(AbstractStorageEngine storageEngine, int partition, byte[] keyBytes, Put put) {
+  private void writeToStorageEngine(int partition, byte[] keyBytes, Put put) {
     long putStartTimeNs = System.nanoTime();
-    putInStorageEngine(storageEngine, partition, keyBytes, put);
+    putInStorageEngine(partition, keyBytes, put);
     if (cacheBackend.isPresent()) {
       if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
         cacheBackend.get().getStorageEngine(kafkaVersionTopic).put(partition, keyBytes, put.putValue);
@@ -2966,16 +2999,40 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * Persist Put record to storage engine.
    */
-  protected void putInStorageEngine(AbstractStorageEngine storageEngine, int partition, byte[] keyBytes, Put put) {
-    storageEngine.put(partition, keyBytes, put.putValue);
+  protected void putInStorageEngine(int partition, byte[] keyBytes, Put put) {
+    try {
+      storageEngine.put(partition, keyBytes, put.putValue);
+    } catch (PersistenceFailureException e) {
+      throwOrLogStorageFailureDependingIfStillSubscribed(partition, e);
+    }
   }
 
-  protected void removeFromStorageEngine(
-      AbstractStorageEngine storageEngine,
-      int partition,
-      byte[] keyBytes,
-      Delete delete) {
-    storageEngine.delete(partition, keyBytes);
+  protected void removeFromStorageEngine(int partition, byte[] keyBytes, Delete delete) {
+    try {
+      storageEngine.delete(partition, keyBytes);
+    } catch (PersistenceFailureException e) {
+      throwOrLogStorageFailureDependingIfStillSubscribed(partition, e);
+    }
+  }
+
+  protected void throwOrLogStorageFailureDependingIfStillSubscribed(int partition, PersistenceFailureException e) {
+    if (partitionConsumptionStateMap.containsKey(partition)) {
+      throw new VeniceException(
+          "Caught an exception while trying to interact with the storage engine for partition " + partition
+              + " while it still appears to be subscribed.",
+          e);
+    } else {
+      logStorageOperationWhileUnsubscribed(partition);
+    }
+  }
+
+  protected void logStorageOperationWhileUnsubscribed(int partition) {
+    // TODO Consider if this is going to be too noisy, in which case we could mute it.
+    logger.info(
+        "Attempted to interact with the storage engine for partition {} while the "
+            + "partitionConsumptionStateMap does not contain this partition. "
+            + "Will ignore the operation as it probably indicates the partition was unsubscribed.",
+        partition);
   }
 
   /**
@@ -3159,7 +3216,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // when writing to local StorageEngine, use producedPartition.
     // #subPartitionins in StorageEngine should be consistent with #subPartitionins in VTs.
     int producedPartition = partitionConsumptionState.getPartition();
-    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
     byte[] keyBytes;
 
     MessageType messageType = (leaderProducedRecordContext == null
@@ -3183,7 +3239,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // update checksum for this PUT message if needed.
         partitionConsumptionState.maybeUpdateExpectedChecksum(keyBytes, put);
         prependHeaderAndWriteToStorageEngine(
-            kafkaVersionTopic,
             // Leaders might consume from a RT topic and immediately write into StorageEngine,
             // so we need to re-calculate partition.
             // Followers are not affected since they are always consuming from VTs.
@@ -3210,7 +3265,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         long deleteStartTimeNs = System.nanoTime();
 
-        removeFromStorageEngine(storageEngine, producedPartition, keyBytes, delete);
+        removeFromStorageEngine(producedPartition, keyBytes, delete);
         if (cacheBackend.isPresent()) {
           if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
             cacheBackend.get().getStorageEngine(kafkaVersionTopic).delete(producedPartition, keyBytes);
@@ -3244,7 +3299,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (purgeTransientRecordBuffer && isTransientRecordBufferUsed() && partitionConsumptionState.isEndOfPushReceived()
         && leaderProducedRecordContext != null && leaderProducedRecordContext.getConsumedOffset() != -1) {
       PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.mayRemoveTransientRecord(
-          leaderProducedRecordContext.getConsumedKafkaUrl(),
+          leaderProducedRecordContext.getConsumedKafkaClusterId(),
           leaderProducedRecordContext.getConsumedOffset(),
           kafkaKey.getKey());
       if (transientRecord != null) {
@@ -3538,14 +3593,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           int partition = partitionConsumptionState.getPartition();
           Store store = storeRepository.getStoreOrThrow(storeName);
 
-          AbstractStorageEngine<?> storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
+          AbstractStorageEngine storageEngineReloadedFromRepo =
+              storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
           if (store.isHybrid()) {
-            if (storageEngine == null) {
+            if (storageEngineReloadedFromRepo == null) {
               logger.warn("Storage engine " + kafkaVersionTopic + " was removed before reopening");
             } else {
               logger.info(
                   "Reopen partition " + kafkaVersionTopic + "_" + partition + " for reading after ready-to-serve.");
-              storageEngine.preparePartitionForReading(partition);
+              storageEngineReloadedFromRepo.preparePartitionForReading(partition);
             }
           }
           if (partitionConsumptionState.isCompletionReported()) {
@@ -3555,7 +3611,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                     + partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset());
           } else {
             // Check whether we need to warm-up cache here.
-            if (storageEngine != null && serverConfig.isCacheWarmingBeforeReadyToServeEnabled()
+            if (storageEngineReloadedFromRepo != null && serverConfig.isCacheWarmingBeforeReadyToServeEnabled()
                 && serverConfig.isCacheWarmingEnabledForStore(storeName) // Only warm up configured stores
                 && store.getCurrentVersion() <= versionNumber) { // Only warm up current version or future version
               /*
@@ -3569,7 +3625,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                   cacheWarmingThreadPool.submit(() -> {
                     logger.info("Start warming up store: " + kafkaVersionTopic + ", partition: " + partition);
                     try {
-                      storageEngine.warmUpStoragePartition(partition);
+                      storageEngineReloadedFromRepo.warmUpStoragePartition(partition);
                       logger.info("Finished warming up store: " + kafkaVersionTopic + ", partition: " + partition);
                     } catch (Exception e) {
                       logger.error(
@@ -3741,12 +3797,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected DelegateConsumerRecordResult delegateConsumerRecord(
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
       int subPartition,
-      String kafkaUrl) {
+      String kafkaUrl,
+      int kafkaClusterId) {
     return DelegateConsumerRecordResult.QUEUED_TO_DRAINER;
   }
 
   /**
-   * This enum represents all potential results after calling {@link #delegateConsumerRecord(ConsumerRecord, int, String)}.
+   * This enum represents all potential results after calling {@link #delegateConsumerRecord(ConsumerRecord, int, String, int)}.
    */
   protected enum DelegateConsumerRecordResult {
     /**

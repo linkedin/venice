@@ -171,10 +171,6 @@ public class OffsetRecord {
     this.partitionState.incrementalPushInfo = ip;
   }
 
-  public IncrementalPush getIncrementalPush() {
-    return this.partitionState.incrementalPushInfo;
-  }
-
   public void setLeaderTopic(String leaderTopic) {
     this.partitionState.leaderTopic = leaderTopic;
   }

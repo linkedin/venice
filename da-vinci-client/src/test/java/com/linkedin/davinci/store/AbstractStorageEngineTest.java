@@ -30,13 +30,8 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
   public static VeniceProperties getServerProperties(PersistenceType persistenceType, Properties properties) {
     File dataDirectory = Utils.getTempDataDirectory();
     return new PropertyBuilder().put(CLUSTER_NAME, "test_offset_manager")
-        .put(ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, "true")
-        .put(OFFSET_MANAGER_FLUSH_INTERVAL_MS, 1000)
-        .put(OFFSET_DATA_BASE_PATH, dataDirectory.getAbsolutePath())
         .put(ZOOKEEPER_ADDRESS, "localhost:2181")
         .put(PERSISTENCE_TYPE, persistenceType.toString())
-        .put(KAFKA_BROKERS, "localhost")
-        .put(KAFKA_BROKER_PORT, "9092")
         .put(KAFKA_BOOTSTRAP_SERVERS, "127.0.0.1:9092")
         .put(KAFKA_ZK_ADDRESS, "localhost:2181")
         .put(LISTENER_PORT, 7072)

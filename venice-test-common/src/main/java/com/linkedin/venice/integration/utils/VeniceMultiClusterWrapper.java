@@ -6,6 +6,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -67,7 +68,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       Optional<VeniceProperties> veniceProperties,
       boolean multiD2,
       boolean forkServer,
-      Optional<Map<String, Map<String, String>>> kafkaClusterMap) {
+      Map<String, Map<String, String>> kafkaClusterMap) {
     ZkServerWrapper zkServerWrapper = null;
     KafkaBrokerWrapper kafkaBrokerWrapper = null;
     Map<String, VeniceClusterWrapper> clusterWrapperMap = new HashMap<>();
@@ -136,10 +137,11 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
         controllerMap.put(controllerWrapper.getPort(), controllerWrapper);
       }
       // Specify the system store cluster name
-      Properties extraProperties =
-          veniceProperties.isPresent() ? veniceProperties.get().toProperties() : new Properties();
+      Properties extraProperties = veniceProperties.map(VeniceProperties::toProperties).orElse(new Properties());
       extraProperties.put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterNames[0]);
+      extraProperties.putAll(KafkaSSLUtils.getLocalCommonKafkaSSLConfig());
       veniceProperties = Optional.of(new VeniceProperties(extraProperties));
+      boolean sslToKafkaForServers = false;
 
       for (int i = 0; i < numberOfClusters; i++) {
         // Create a wrapper for cluster without controller.
@@ -159,7 +161,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
             rebalanceDelayMs,
             minActiveReplica,
             sslToStorageNodes,
-            false,
+            sslToKafkaForServers,
             veniceProperties,
             forkServer,
             kafkaClusterMap);

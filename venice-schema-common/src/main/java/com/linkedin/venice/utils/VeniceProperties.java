@@ -432,18 +432,6 @@ public class VeniceProperties {
     return new Pair<>(key, value);
   }
 
-  public Map<Integer, String> getIntegerToStringMap(String key, Map<Integer, String> defaultValue) {
-    if (!containsKey(key) || getString(key).trim().isEmpty()) {
-      return defaultValue;
-    }
-    Map<Integer, String> rMap = new HashMap<>();
-    Map<String, String> map = getMap(key);
-    for (Map.Entry<String, String> entry: map.entrySet()) {
-      rMap.put(Integer.parseInt(entry.getKey()), entry.getValue());
-    }
-    return rMap;
-  }
-
   public Properties toProperties() {
     Properties properties = new Properties();
     properties.putAll(this.props);

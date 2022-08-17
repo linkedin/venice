@@ -568,16 +568,12 @@ public class TestUtils {
 
   public static VeniceWriterFactory getVeniceWriterFactory(Properties properties) {
     Properties factoryProperties = new Properties();
-    factoryProperties.put(KAFKA_REQUEST_TIMEOUT_MS, 5000);
-    factoryProperties.put(KAFKA_DELIVERY_TIMEOUT_MS, 5000);
     factoryProperties.putAll(properties);
     return new VeniceWriterFactory(factoryProperties);
   }
 
   public static SharedKafkaProducerService getSharedKafkaProducerService(Properties properties) {
     Properties factoryProperties = new Properties();
-    factoryProperties.put(KAFKA_REQUEST_TIMEOUT_MS, 5000);
-    factoryProperties.put(KAFKA_DELIVERY_TIMEOUT_MS, 5000);
     factoryProperties.putAll(properties);
     return new SharedKafkaProducerService(
         factoryProperties,

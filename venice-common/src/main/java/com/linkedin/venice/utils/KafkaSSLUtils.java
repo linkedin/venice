@@ -88,6 +88,10 @@ public class KafkaSSLUtils {
     return kafkaProtocol.equals(SecurityProtocol.SSL.name());
   }
 
+  public static boolean isKafkaSSLProtocol(SecurityProtocol kafkaProtocol) {
+    return kafkaProtocol == SecurityProtocol.SSL;
+  }
+
   /**
    * This function will extract SSL related config if Kafka SSL is enabled.
    *

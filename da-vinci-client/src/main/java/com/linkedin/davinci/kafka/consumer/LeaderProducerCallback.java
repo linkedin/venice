@@ -154,7 +154,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
             chunkPut.schemaId = schemaId;
 
             LeaderProducedRecordContext producedRecordForChunk =
-                LeaderProducedRecordContext.newPutRecord(null, -1, ByteUtils.extractByteArray(chunkKey), chunkPut);
+                LeaderProducedRecordContext.newPutRecord(-1, -1, ByteUtils.extractByteArray(chunkKey), chunkPut);
             producedRecordForChunk.setProducedOffset(-1);
             ingestionTask
                 .produceToStoreBufferService(sourceConsumerRecord, producedRecordForChunk, subPartition, kafkaUrl);
@@ -179,7 +179,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
           manifestPut.schemaId = schemaId;
 
           LeaderProducedRecordContext producedRecordForManifest = LeaderProducedRecordContext.newPutRecordWithFuture(
-              leaderProducedRecordContext.getConsumedKafkaUrl(),
+              leaderProducedRecordContext.getConsumedKafkaClusterId(),
               leaderProducedRecordContext.getConsumedOffset(),
               key,
               manifestPut,

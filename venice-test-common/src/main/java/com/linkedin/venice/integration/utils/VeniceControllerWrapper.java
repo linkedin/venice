@@ -101,7 +101,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
 
       for (String clusterName: clusterNames) {
         VeniceProperties clusterProps =
-            IntegrationTestUtils.getClusterProps(clusterName, dataDirectory, zkAddress, kafkaBroker, sslToKafka);
+            IntegrationTestUtils.getClusterProps(clusterName, zkAddress, kafkaBroker, sslToKafka);
 
         // TODO: Validate that these configs are all still used.
         // TODO: Centralize default config values in a single place
@@ -134,8 +134,6 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(ENABLE_OFFLINE_PUSH_SSL_WHITELIST, false)
             .put(ENABLE_HYBRID_PUSH_SSL_WHITELIST, false)
             .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBroker.getAddress())
-            .put(KAFKA_REQUEST_TIMEOUT_MS, 5000)
-            .put(KAFKA_DELIVERY_TIMEOUT_MS, 5000)
             .put(OFFLINE_JOB_START_TIMEOUT_MS, 60_000)
             // To speed up topic cleanup
             .put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, 100)

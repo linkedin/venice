@@ -62,11 +62,8 @@ public class PartitionStatusOnlineInstanceFinder
   public synchronized void onPartitionStatusChange(String kafkaTopic, ReadOnlyPartitionStatus partitionStatus) {
     partitionStatus.getReplicaStatuses()
         .forEach(
-            replicaStatus -> logger.info(
-                String.format(
-                    "instance: %s, status: %s. \n",
-                    replicaStatus.getInstanceId(),
-                    replicaStatus.getCurrentStatus())));
+            replicaStatus -> logger
+                .info("instance: {}, status: {}.", replicaStatus.getInstanceId(), replicaStatus.getCurrentStatus()));
 
     OfflinePushStatus offlinePushStatus = topicToResourceStatus.get(kafkaTopic);
     if (offlinePushStatus == null) {

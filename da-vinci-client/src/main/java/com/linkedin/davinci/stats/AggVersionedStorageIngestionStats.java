@@ -18,7 +18,6 @@ import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Rate;
 import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
-import java.util.Map;
 import java.util.function.DoubleSupplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -172,8 +171,6 @@ public class AggVersionedStorageIngestionStats extends
 
   static class StorageIngestionStats {
     private static final MetricConfig METRIC_CONFIG = new MetricConfig();
-    private final MetricsRepository localMetricRepository = new MetricsRepository(METRIC_CONFIG);
-    private final Map<Integer, String> kafkaClusterIdToAliasMap;
 
     private StoreIngestionTask ingestionTask;
     private int ingestionTaskPushTimeoutGauge = 0;
@@ -227,7 +224,7 @@ public class AggVersionedStorageIngestionStats extends
     private final Sensor tombstoneCreationDCRSensor;
 
     public StorageIngestionStats(VeniceServerConfig serverConfig) {
-      kafkaClusterIdToAliasMap = serverConfig.getKafkaClusterIdToAliasMap();
+      Int2ObjectMap<String> kafkaClusterIdToAliasMap = serverConfig.getKafkaClusterIdToAliasMap();
 
       regionIdToHybridBytesConsumedRateMap = new Int2ObjectArrayMap<>(kafkaClusterIdToAliasMap.size());
       regionIdToHybridBytesConsumedSensorMap = new Int2ObjectArrayMap<>(kafkaClusterIdToAliasMap.size());
@@ -236,8 +233,9 @@ public class AggVersionedStorageIngestionStats extends
       regionIdToHybridAvgConsumedOffsetMap = new Int2ObjectArrayMap<>(kafkaClusterIdToAliasMap.size());
       regionIdToHybridAvgConsumedOffsetSensorMap = new Int2ObjectArrayMap<>(kafkaClusterIdToAliasMap.size());
 
-      for (Map.Entry<Integer, String> entry: kafkaClusterIdToAliasMap.entrySet()) {
-        int regionId = entry.getKey();
+      MetricsRepository localMetricRepository = new MetricsRepository(METRIC_CONFIG);
+      for (Int2ObjectMap.Entry<String> entry: kafkaClusterIdToAliasMap.int2ObjectEntrySet()) {
+        int regionId = entry.getIntKey();
         String regionNamePrefix =
             RegionUtils.getRegionSpecificMetricPrefix(serverConfig.getRegionName(), entry.getValue());
         Rate regionHybridBytesConsumedRate = new Rate();
@@ -775,10 +773,10 @@ public class AggVersionedStorageIngestionStats extends
             OFFSET_REGRESSION_DCR_ERROR,
             new IngestionStatsGauge(this, () -> getStats().getOffsetRegressionDCRRate(), 0));
 
-        for (Map.Entry<Integer, String> entry: getStats().ingestionTask.getServerConfig()
+        for (Int2ObjectMap.Entry<String> entry: getStats().ingestionTask.getServerConfig()
             .getKafkaClusterIdToAliasMap()
-            .entrySet()) {
-          int regionId = entry.getKey();
+            .int2ObjectEntrySet()) {
+          int regionId = entry.getIntKey();
           String regionNamePrefix = RegionUtils.getRegionSpecificMetricPrefix(
               getStats().ingestionTask.getServerConfig().getRegionName(),
               entry.getValue());

@@ -37,6 +37,8 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.HashMap;
@@ -159,6 +161,10 @@ public class KafkaConsumptionTest {
     clusterUrlToAlias.put(localKafkaUrl, localKafkaUrl);
     clusterUrlToAlias.put(remoteKafkaUrl, remoteKafkaUrl);
     doReturn(clusterUrlToAlias).when(veniceServerConfig).getKafkaClusterUrlToAliasMap();
+    Object2IntMap<String> clusterUrlToIdMap = new Object2IntOpenHashMap<>(2);
+    clusterUrlToIdMap.put(localKafkaUrl, 0);
+    clusterUrlToIdMap.put(remoteKafkaUrl, 1);
+    doReturn(clusterUrlToIdMap).when(veniceServerConfig).getKafkaClusterUrlToIdMap();
 
     TopicExistenceChecker topicExistenceChecker = mock(TopicExistenceChecker.class);
     KafkaClientFactory kafkaClientFactory = new KafkaConsumerFactoryImpl(new VeniceProperties());

@@ -5,6 +5,9 @@ import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.pushmonitor.SubPartitionStatus;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.lazy.Lazy;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntList;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -13,6 +16,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -194,6 +198,7 @@ public class ReportStatusAdapter {
 
     AtomicInteger statusRecordCounter = statusRecordCounterMap.get(userPartition).get(versionAwareSubPartitionStatus);
     int statusRecordCount;
+    Lazy<IntList> subPartitions = Lazy.of(() -> PartitionUtils.getSubPartitions(userPartition, amplificationFactor));
     if ((subPartitionStatus.equals(SubPartitionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED)
         || (subPartitionStatus.equals(SubPartitionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED)))
         && incrementalPushPolicy.equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
@@ -202,10 +207,9 @@ public class ReportStatusAdapter {
        * detailed subPartition status for every subPartition of the same user partition so that the below report logic
        * can be triggered.
        */
-      for (int subPartition: PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
-        PartitionConsumptionState subPartitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
-        subPartitionConsumptionState.recordSubPartitionStatus(versionAwareSubPartitionStatus);
-      }
+      attemptToManipulateAllSubPartitions(
+          subPartitions.get(),
+          pcs -> pcs.recordSubPartitionStatus(versionAwareSubPartitionStatus));
       statusRecordCount = statusRecordCounter.addAndGet(amplificationFactor);
     } else {
       int subPartitionIndexInUserPartition =
@@ -242,12 +246,42 @@ public class ReportStatusAdapter {
         }
         report.run();
         if (subPartitionStatus.equals(SubPartitionStatus.COMPLETED)) {
-          for (int subPartition: PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
-            PartitionConsumptionState subPartitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
-            subPartitionConsumptionState.completionReported();
-          }
+          attemptToManipulateAllSubPartitions(subPartitions.get(), PartitionConsumptionState::completionReported);
         }
       }
+    }
+  }
+
+  private void attemptToManipulateAllSubPartitions(
+      IntList subPartitions,
+      Consumer<PartitionConsumptionState> pcsConsumer) {
+    PartitionConsumptionState subPartitionConsumptionState;
+    int partitionsProcessed = 0;
+    IntList nullSubPartitions = null;
+    for (int i = 0, subPartition; i < subPartitions.size(); i++) {
+      subPartition = subPartitions.getInt(i);
+      subPartitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
+      if (subPartitionConsumptionState == null) {
+        if (nullSubPartitions == null) {
+          nullSubPartitions = new IntArrayList(subPartitions.size());
+        }
+        nullSubPartitions.add(subPartition);
+        continue;
+      }
+      pcsConsumer.accept(subPartitionConsumptionState);
+      partitionsProcessed++;
+    }
+    if (partitionsProcessed == 0) {
+      logger.warn(
+          "None of the subPartitions ({}) were found in the partitionConsumptionStateMap ({})!",
+          subPartitions,
+          partitionConsumptionStateMap.keySet());
+    } else if (nullSubPartitions != null) {
+      logger.warn(
+          "Received null subPartitionConsumptionState from partitionConsumptionStateMap::get for {} but "
+              + "{} other sub-partitions were successfully found and processed",
+          nullSubPartitions,
+          partitionsProcessed);
     }
   }
 

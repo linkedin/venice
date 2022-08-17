@@ -47,7 +47,7 @@ public class ServerJavaKafkaClientFactory extends ServerKafkaClientFactory {
     clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
     clonedProperties.setProperty(KAFKA_ZK_ADDRESS, kafkaZkAddress);
     return new ServerJavaKafkaClientFactory(
-        new VeniceServerConfig(new VeniceProperties(clonedProperties)),
+        new VeniceServerConfig(new VeniceProperties(clonedProperties), serverConfig.getKafkaClusterMap()),
         kafkaMessageEnvelopeSchemaReader,
         metricsParameters);
   }

@@ -17,6 +17,7 @@ public class StorePartitionDataReceiver
   private final StoreIngestionTask storeIngestionTask;
   private final TopicPartition topicPartition;
   private final String kafkaUrl;
+  private final int kafkaClusterId;
   private final Logger logger;
 
   private long receivedRecordsCount;
@@ -24,10 +25,12 @@ public class StorePartitionDataReceiver
   public StorePartitionDataReceiver(
       StoreIngestionTask storeIngestionTask,
       TopicPartition topicPartition,
-      String kafkaUrl) {
+      String kafkaUrl,
+      int kafkaClusterId) {
     this.storeIngestionTask = Validate.notNull(storeIngestionTask);
     this.topicPartition = Validate.notNull(topicPartition);
     this.kafkaUrl = Validate.notNull(kafkaUrl);
+    this.kafkaClusterId = kafkaClusterId;
     this.logger = LogManager.getLogger(this.getClass().getSimpleName() + " [" + kafkaUrl + "]");
     this.receivedRecordsCount = 0L;
   }
@@ -67,7 +70,8 @@ public class StorePartitionDataReceiver
        * all the buffered messages for the paused partitions, but just slightly more complicate.
        *
        */
-      storeIngestionTask.produceToStoreBufferServiceOrKafka(consumedData, false, topicPartition, kafkaUrl);
+      storeIngestionTask
+          .produceToStoreBufferServiceOrKafka(consumedData, false, topicPartition, kafkaUrl, kafkaClusterId);
     } catch (Exception e) {
       handleDataReceiverException(e);
     }

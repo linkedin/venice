@@ -47,6 +47,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -172,7 +173,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       boolean isKafkaOpenSSLEnabled,
       Properties extraProperties,
       boolean forkServer,
-      Optional<Map<String, Map<String, String>>> kafkaClusterMap) {
+      Map<String, Map<String, String>> kafkaClusterMap) {
 
     Map<Integer, VeniceControllerWrapper> veniceControllerWrappers = new HashMap<>();
     Map<Integer, VeniceServerWrapper> veniceServerWrappers = new HashMap<>();
@@ -372,7 +373,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           isKafkaOpenSSLEnabled,
           extraProperties,
           false,
-          Optional.empty());
+          Collections.emptyMap());
 
     } catch (Exception e) {
       IOUtils.closeQuietly(kafkaBrokerWrapper);

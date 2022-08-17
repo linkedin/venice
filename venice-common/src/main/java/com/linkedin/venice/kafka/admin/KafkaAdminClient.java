@@ -52,7 +52,7 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
       throw new IllegalArgumentException("properties cannot be null!");
     }
     this.kafkaAdminClient = AdminClient.create(properties);
-    this.maxRetryInMs = (Long) properties.get(KAFKA_ADMIN_GET_TOPIC_CONFG_MAX_RETRY_TIME_SEC) * MS_PER_SECOND;
+    this.maxRetryInMs = (Long) properties.get(KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC) * MS_PER_SECOND;
   }
 
   @Override

@@ -9,13 +9,19 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
+import it.unimi.dsi.fastutil.objects.Object2IntMaps;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
+import java.util.function.Function;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.logging.log4j.LogManager;
@@ -28,176 +34,194 @@ import org.apache.logging.log4j.Logger;
 public class VeniceClusterConfig {
   private static final Logger logger = LogManager.getLogger(VeniceServerConfig.class.getName());
 
-  private String clusterName;
-  // TODO: shouldn't the following configs be moved to VeniceServerConfig??
-  protected String dataBasePath;
-  private String zookeeperAddress;
-  private PersistenceType persistenceType;
-  private String kafkaBootstrapServers;
-  private String kafkaZkAddress;
-  private long kafkaFetchQuotaTimeWindow;
-  private long kafkaFetchQuotaBytesPerSecond;
-  private long kafkaFetchQuotaRecordPerSecond;
-  private long kafkaFetchQuotaUnorderedBytesPerSecond;
-  private long kafkaFetchQuotaUnorderedRecordPerSecond;
-  private int refreshAttemptsForZkReconnect;
-  private long refreshIntervalForZkReconnectInMs;
-  private long kafkaReadCycleDelayMs;
-  private long kafkaEmptyPollSleepMs;
-  private long kafkaFetchMinSizePerSecond;
-  private long kafkaFetchMaxSizePerSecond;
-  private long kafkaFetchMaxTimeMS;
-  private long kafkaFetchPartitionMaxSizePerSecond;
-  private String regionName;
+  private final String clusterName;
+  private final String zookeeperAddress;
+  private final PersistenceType persistenceType;
+  private final String kafkaBootstrapServers;
+  private final String kafkaZkAddress;
+  private final long kafkaFetchQuotaTimeWindow;
+  private final long kafkaFetchQuotaBytesPerSecond;
+  private final long kafkaFetchQuotaRecordPerSecond;
+  private final long kafkaFetchQuotaUnorderedBytesPerSecond;
+  private final long kafkaFetchQuotaUnorderedRecordPerSecond;
+  private final int refreshAttemptsForZkReconnect;
+  private final long refreshIntervalForZkReconnectInMs;
+  private final long kafkaReadCycleDelayMs;
+  private final long kafkaEmptyPollSleepMs;
+  private final long kafkaFetchMinSizePerSecond;
+  private final long kafkaFetchMaxSizePerSecond;
+  private final long kafkaFetchMaxTimeMS;
+  private final long kafkaFetchPartitionMaxSizePerSecond;
+  private final String regionName;
 
-  private Map<Integer, String> kafkaClusterIdToUrlMap = new HashMap<>();
-  private Map<String, Integer> kafkaClusterUrlToIdMap = new HashMap<>();
-  private Map<Integer, String> kafkaClusterIdToAliasMap = new HashMap<>();
-  private Map<String, Integer> kafkaClusterAliasToIdMap = new HashMap<>();
-  private Map<String, String> kafkaClusterUrlToAliasMap = new HashMap<>();
-  private final Optional<Map<String, Map<String, String>>> kafkaClusterMap;
+  /**
+   * TODO: Encapsulate all these mappings into a "PubSubServiceRepo" which can hand out "PubSubService" objects
+   *       by any of the keys here. Each PubSubService object would contain its URL, cluster ID and other relevant info.
+   */
+  private final Int2ObjectMap<String> kafkaClusterIdToUrlMap;
+  private final Object2IntMap<String> kafkaClusterUrlToIdMap;
+  private final Int2ObjectMap<String> kafkaClusterIdToAliasMap;
+  private final Object2IntMap<String> kafkaClusterAliasToIdMap;
+  private final Map<String, String> kafkaClusterUrlToAliasMap;
+  private final Map<String, Map<String, String>> kafkaClusterMap;
+  private final Map<String, String> kafkaUrlResolution;
+  private final Function<String, String> kafkaClusterUrlResolver;
 
   private final VeniceProperties clusterProperties;
 
-  private String kafkaSecurityProtocol;
-  // SSL related config
-  Optional<SSLConfig> sslConfig;
+  private final SecurityProtocol kafkaSecurityProtocol;
+  private final Map<String, SecurityProtocol> kafkaBootstrapUrlToSecurityProtocol;
+  private final Optional<SSLConfig> sslConfig;
 
-  public VeniceClusterConfig(
-      VeniceProperties clusterProperties,
-      Optional<Map<String, Map<String, String>>> kafkaClusterMap) throws ConfigurationException {
-    checkProperties(clusterProperties, kafkaClusterMap);
-    this.clusterProperties = clusterProperties;
-    this.kafkaClusterMap = kafkaClusterMap;
-  }
+  public VeniceClusterConfig(VeniceProperties clusterProps, Map<String, Map<String, String>> kafkaClusterMap)
+      throws ConfigurationException {
+    this.clusterName = clusterProps.getString(CLUSTER_NAME);
+    this.zookeeperAddress = clusterProps.getString(ZOOKEEPER_ADDRESS);
 
-  /**
-   * kafkaClusterMap should look like this
-   * <property name="venice.server.kafkaClustersMap">
-   *       <map>
-   *         <entry key="0">
-   *           <map>
-   *             <entry key="name" value="ei-ltx1"/>
-   *             <entry key="url" value="${venice.kafka.ssl.bootstrap.servers.ei-ltx1}"/>
-   *           </map>
-   *         </entry>
-   *         <entry key="1">
-   *           <map>
-   *             <entry key="name" value="ei4"/>
-   *             <entry key="url" value="${venice.kafka.ssl.bootstrap.servers.ei4}"/>
-   *           </map>
-   *         </entry>
-   *       </map>
-   * </property>
-   * @param kafkaClusterMap
-   */
-  private void parseKafkaClusterMap(Map<String, Map<String, String>> kafkaClusterMap) {
-    kafkaClusterIdToAliasMap.clear();
-    kafkaClusterAliasToIdMap.clear();
-    kafkaClusterIdToUrlMap.clear();
-    kafkaClusterUrlToIdMap.clear();
+    try {
+      this.persistenceType =
+          PersistenceType.valueOf(clusterProps.getString(PERSISTENCE_TYPE, PersistenceType.IN_MEMORY.toString()));
+    } catch (UndefinedPropertyException ex) {
+      throw new ConfigurationException("persistence type undefined", ex);
+    }
+    String baseKafkaBootstrapServers = clusterProps.getString(KAFKA_BOOTSTRAP_SERVERS);
+    if (baseKafkaBootstrapServers == null || baseKafkaBootstrapServers.isEmpty()) {
+      throw new ConfigurationException("kafkaBootstrapServers can't be empty");
+    }
+
+    this.kafkaZkAddress = clusterProps.getString(KAFKA_ZK_ADDRESS);
+
+    this.kafkaFetchQuotaTimeWindow =
+        clusterProps.getLong(KAFKA_FETCH_QUOTA_TIME_WINDOW_MS, TimeUnit.SECONDS.toMillis(5));
+    this.kafkaFetchQuotaBytesPerSecond = clusterProps.getSizeInBytes(KAFKA_FETCH_QUOTA_BYTES_PER_SECOND, -1);
+    this.kafkaFetchQuotaRecordPerSecond = clusterProps.getLong(KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, -1);
+    this.kafkaFetchQuotaUnorderedBytesPerSecond =
+        clusterProps.getSizeInBytes(KAFKA_FETCH_QUOTA_UNORDERED_BYTES_PER_SECOND, -1);
+    this.kafkaFetchQuotaUnorderedRecordPerSecond =
+        clusterProps.getLong(KAFKA_FETCH_QUOTA_UNORDERED_RECORDS_PER_SECOND, -1);
+
+    this.refreshAttemptsForZkReconnect = clusterProps.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
+    this.refreshIntervalForZkReconnectInMs =
+        clusterProps.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, TimeUnit.SECONDS.toMillis(10));
+    this.kafkaReadCycleDelayMs = clusterProps.getLong(KAFKA_READ_CYCLE_DELAY_MS, 1000);
+    this.kafkaEmptyPollSleepMs = clusterProps.getLong(KAFKA_EMPTY_POLL_SLEEP_MS, 0);
+    // get fetching related from config or use the kafka default values.
+    this.kafkaFetchMinSizePerSecond = clusterProps.getSizeInBytes(KAFKA_FETCH_MIN_SIZE_PER_SEC, 1);
+    this.kafkaFetchMaxSizePerSecond =
+        clusterProps.getSizeInBytes(KAFKA_FETCH_MAX_SIZE_PER_SEC, ConsumerConfig.DEFAULT_FETCH_MAX_BYTES);
+    this.kafkaFetchMaxTimeMS = clusterProps.getLong(KAFKA_FETCH_MAX_WAIT_TIME_MS, 500);
+    this.kafkaFetchPartitionMaxSizePerSecond = clusterProps
+        .getSizeInBytes(KAFKA_FETCH_PARTITION_MAX_SIZE_PER_SEC, ConsumerConfig.DEFAULT_MAX_PARTITION_FETCH_BYTES);
+
+    this.regionName = RegionUtils.getLocalRegionName(clusterProps, false);
+    logger.info("Final region name for this node: " + this.regionName);
+
+    String kafkaSecurityProtocolString =
+        clusterProps.getString(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name());
+    if (!KafkaSSLUtils.isKafkaProtocolValid(kafkaSecurityProtocolString)) {
+      throw new ConfigurationException("Invalid kafka security protocol: " + kafkaSecurityProtocolString);
+    }
+    this.kafkaSecurityProtocol = SecurityProtocol.forName(kafkaSecurityProtocolString);
+
+    Int2ObjectMap<String> tmpKafkaClusterIdToUrlMap = new Int2ObjectOpenHashMap<>();
+    Object2IntMap<String> tmpKafkaClusterUrlToIdMap = new Object2IntOpenHashMap<>();
+    Int2ObjectMap<String> tmpKafkaClusterIdToAliasMap = new Int2ObjectOpenHashMap<>();
+    Object2IntMap<String> tmpKafkaClusterAliasToIdMap = new Object2IntOpenHashMap<>();
+    Map<String, SecurityProtocol> tmpKafkaBootstrapUrlToSecurityProtocol = new HashMap<>();
+    Map<String, String> tmpKafkaUrlResolution = new HashMap<>();
+
+    boolean foundBaseKafkaUrlInMappingIfItIsPopulated = kafkaClusterMap.isEmpty();
     for (Map.Entry<String, Map<String, String>> kafkaCluster: kafkaClusterMap.entrySet()) {
       int clusterId = Integer.parseInt(kafkaCluster.getKey());
       Map<String, String> mappings = kafkaCluster.getValue();
 
       String alias = mappings.get(KAFKA_CLUSTER_MAP_KEY_NAME);
       if (alias != null) {
-        kafkaClusterIdToAliasMap.put(clusterId, alias);
-        kafkaClusterAliasToIdMap.put(alias, clusterId);
+        tmpKafkaClusterIdToAliasMap.put(clusterId, alias);
+        tmpKafkaClusterAliasToIdMap.put(alias, clusterId);
       }
+
+      String securityProtocolString = mappings.get(KAFKA_CLUSTER_MAP_SECURITY_PROTOCOL);
 
       String url = mappings.get(KAFKA_CLUSTER_MAP_KEY_URL);
       if (url != null) {
-        kafkaClusterIdToUrlMap.put(clusterId, url);
-        kafkaClusterUrlToIdMap.put(url, clusterId);
+        tmpKafkaClusterIdToUrlMap.put(clusterId, url);
+        tmpKafkaClusterUrlToIdMap.put(url, clusterId);
+        tmpKafkaUrlResolution.put(url, url);
+        if (securityProtocolString != null) {
+          tmpKafkaBootstrapUrlToSecurityProtocol.put(url, SecurityProtocol.valueOf(securityProtocolString));
+        }
+      }
+      if (baseKafkaBootstrapServers.equals(url)) {
+        foundBaseKafkaUrlInMappingIfItIsPopulated = true;
+      }
+
+      String otherUrls = mappings.get(KAFKA_CLUSTER_MAP_KEY_OTHER_URLS);
+      if (otherUrls != null) {
+        String[] otherUrlsList = otherUrls.split(",");
+        for (String otherUrl: otherUrlsList) {
+          if (baseKafkaBootstrapServers.equals(otherUrl)) {
+            foundBaseKafkaUrlInMappingIfItIsPopulated = true;
+          }
+
+          tmpKafkaClusterUrlToIdMap.put(otherUrl, clusterId);
+          String previousMappingForSameName = tmpKafkaUrlResolution.put(otherUrl, url);
+          if (previousMappingForSameName != null) {
+            throw new IllegalArgumentException(
+                "Alternative URLs must be unique, they cannot map to two different Kafka clusters!");
+          }
+        }
       }
     }
-  }
-
-  protected void checkProperties(
-      VeniceProperties clusterProps,
-      Optional<Map<String, Map<String, String>>> kafkaClusterMap) throws ConfigurationException {
-    clusterName = clusterProps.getString(CLUSTER_NAME);
-    zookeeperAddress = clusterProps.getString(ZOOKEEPER_ADDRESS);
-
-    try {
-      persistenceType =
-          PersistenceType.valueOf(clusterProps.getString(PERSISTENCE_TYPE, PersistenceType.IN_MEMORY.toString()));
-    } catch (UndefinedPropertyException ex) {
-      throw new ConfigurationException("persistence type undefined", ex);
+    if (!foundBaseKafkaUrlInMappingIfItIsPopulated) {
+      logger.info(
+          "baseKafkaBootstrapServers ({}) not found in Kafka cluster mapping: {}",
+          baseKafkaBootstrapServers,
+          kafkaClusterMap);
     }
 
-    kafkaBootstrapServers = clusterProps.getString(KAFKA_BOOTSTRAP_SERVERS);
-    if (kafkaBootstrapServers == null || kafkaBootstrapServers.isEmpty()) {
+    this.kafkaClusterIdToUrlMap = Int2ObjectMaps.unmodifiable(tmpKafkaClusterIdToUrlMap);
+    this.kafkaClusterUrlToIdMap = Object2IntMaps.unmodifiable(tmpKafkaClusterUrlToIdMap);
+    this.kafkaClusterIdToAliasMap = Int2ObjectMaps.unmodifiable(tmpKafkaClusterIdToAliasMap);
+    this.kafkaClusterAliasToIdMap = Object2IntMaps.unmodifiable(tmpKafkaClusterAliasToIdMap);
+    this.kafkaBootstrapUrlToSecurityProtocol = Collections.unmodifiableMap(tmpKafkaBootstrapUrlToSecurityProtocol);
+    this.kafkaUrlResolution = Collections.unmodifiableMap(tmpKafkaUrlResolution);
+    /**
+     * If the {@link kafkaClusterIdToUrlMap} and {@link kafkaClusterUrlToIdMap} are equal in size, then it means
+     * that {@link KAFKA_CLUSTER_MAP_KEY_OTHER_URLS} was never specified in the {@link kafkaClusterMap}, in which
+     * case, the resolver needs not lookup anything, and it will always return the same as its input.
+     */
+    this.kafkaClusterUrlResolver = this.kafkaClusterIdToUrlMap.size() == this.kafkaClusterUrlToIdMap.size()
+        ? String::toString
+        : url -> kafkaUrlResolution.getOrDefault(url, url);
+    this.kafkaBootstrapServers = this.kafkaClusterUrlResolver.apply(baseKafkaBootstrapServers);
+    if (this.kafkaBootstrapServers == null || this.kafkaBootstrapServers.isEmpty()) {
       throw new ConfigurationException("kafkaBootstrapServers can't be empty");
     }
-    kafkaZkAddress = clusterProps.getString(KAFKA_ZK_ADDRESS);
 
-    kafkaFetchQuotaTimeWindow = clusterProps.getLong(KAFKA_FETCH_QUOTA_TIME_WINDOW_MS, TimeUnit.SECONDS.toMillis(5));
-    kafkaFetchQuotaBytesPerSecond = clusterProps.getSizeInBytes(KAFKA_FETCH_QUOTA_BYTES_PER_SECOND, -1);
-    kafkaFetchQuotaRecordPerSecond = clusterProps.getLong(KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, -1);
-    kafkaFetchQuotaUnorderedBytesPerSecond =
-        clusterProps.getSizeInBytes(KAFKA_FETCH_QUOTA_UNORDERED_BYTES_PER_SECOND, -1);
-    kafkaFetchQuotaUnorderedRecordPerSecond = clusterProps.getLong(KAFKA_FETCH_QUOTA_UNORDERED_RECORDS_PER_SECOND, -1);
-
-    kafkaSecurityProtocol = clusterProps.getString(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name());
-    if (!KafkaSSLUtils.isKafkaProtocolValid(kafkaSecurityProtocol)) {
-      throw new ConfigurationException("Invalid kafka security protocol: " + kafkaSecurityProtocol);
+    Map<String, String> tmpKafkaClusterUrlToAliasMap = new HashMap<>();
+    for (Object2IntMap.Entry<String> entry: tmpKafkaClusterUrlToIdMap.object2IntEntrySet()) {
+      String kafkaClusterAlias = tmpKafkaClusterIdToAliasMap.get(entry.getIntValue());
+      tmpKafkaClusterUrlToAliasMap.put(entry.getKey(), kafkaClusterAlias);
     }
-    if (KafkaSSLUtils.isKafkaSSLProtocol(kafkaSecurityProtocol)) {
-      sslConfig = Optional.of(new SSLConfig(clusterProps));
+    this.kafkaClusterUrlToAliasMap = Collections.unmodifiableMap(tmpKafkaClusterUrlToAliasMap);
+
+    if (!KafkaSSLUtils.isKafkaProtocolValid(kafkaSecurityProtocolString)) {
+      throw new ConfigurationException("Invalid kafka security protocol: " + kafkaSecurityProtocolString);
+    }
+    if (KafkaSSLUtils.isKafkaSSLProtocol(kafkaSecurityProtocolString)
+        || kafkaBootstrapUrlToSecurityProtocol.containsValue(SecurityProtocol.SSL)) {
+      this.sslConfig = Optional.of(new SSLConfig(clusterProps));
     } else {
-      sslConfig = Optional.empty();
-    }
-    refreshAttemptsForZkReconnect = clusterProps.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
-    refreshIntervalForZkReconnectInMs =
-        clusterProps.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, java.util.concurrent.TimeUnit.SECONDS.toMillis(10));
-    kafkaReadCycleDelayMs = clusterProps.getLong(KAFKA_READ_CYCLE_DELAY_MS, 1000);
-    kafkaEmptyPollSleepMs = clusterProps.getLong(KAFKA_EMPTY_POLL_SLEEP_MS, 0);
-    // get fetching related from config or use the kafka default values.
-    kafkaFetchMinSizePerSecond = clusterProps.getSizeInBytes(KAFKA_FETCH_MIN_SIZE_PER_SEC, 1);
-    kafkaFetchMaxSizePerSecond =
-        clusterProps.getSizeInBytes(KAFKA_FETCH_MAX_SIZE_PER_SEC, ConsumerConfig.DEFAULT_FETCH_MAX_BYTES);
-    kafkaFetchMaxTimeMS = clusterProps.getLong(KAFKA_FETCH_MAX_WAIT_TIME_MS, 500);
-    kafkaFetchPartitionMaxSizePerSecond = clusterProps
-        .getSizeInBytes(KAFKA_FETCH_PARTITION_MAX_SIZE_PER_SEC, ConsumerConfig.DEFAULT_MAX_PARTITION_FETCH_BYTES);
-
-    Map<Integer, String> kafkaClusterIdToAliasUrlMap =
-        clusterProps.getIntegerToStringMap(SERVER_KAFKA_CLUSTER_ID_TO_URL, Collections.emptyMap());
-    kafkaClusterIdToUrlMap = new HashMap<>();
-    kafkaClusterIdToAliasMap = new HashMap<>();
-    for (Map.Entry<Integer, String> entry: kafkaClusterIdToAliasUrlMap.entrySet()) {
-      String[] items = entry.getValue().split("@");
-      if (items.length != 2) {
-        throw new ConfigurationException("Invalid kafka cluster url config: " + entry);
-      }
-      kafkaClusterIdToAliasMap.put(entry.getKey(), items[0]);
-      kafkaClusterIdToUrlMap.put(entry.getKey(), items[1]);
-    }
-    kafkaClusterUrlToIdMap =
-        kafkaClusterIdToUrlMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
-    kafkaClusterAliasToIdMap =
-        kafkaClusterIdToAliasMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
-
-    for (Map.Entry<String, Integer> entry: kafkaClusterUrlToIdMap.entrySet()) {
-      String kafkaClusterAlias = kafkaClusterIdToAliasMap.get(entry.getValue());
-      kafkaClusterUrlToAliasMap.put(entry.getKey(), kafkaClusterAlias);
+      this.sslConfig = Optional.empty();
     }
 
-    this.regionName = RegionUtils.getLocalRegionName(clusterProps, false);
-    logger.info("Final region name for this node: " + this.regionName);
-
-    // parse the new kafka cluster map config. This must be done after processing the SERVER_KAFKA_CLUSTER_ID_TO_URL
-    // config above. This will
-    // help deprecate this config later.
-    if (kafkaClusterMap.isPresent()) {
-      logger.info("Input kafka cluster mapping: " + kafkaClusterMap.get());
-      parseKafkaClusterMap(kafkaClusterMap.get());
-    }
     logger.info(
-        "Derived kafka cluster mapping: kafkaClusterIdToUrlMap: " + kafkaClusterIdToUrlMap
-            + ", kafkaClusterUrlToIdMap: " + kafkaClusterUrlToIdMap + ", kafkaClusterIdToAliasMap: "
-            + kafkaClusterIdToAliasMap + ", kafkaClusterAliasToIdMap: " + kafkaClusterAliasToIdMap);
+        "Derived kafka cluster mapping: kafkaClusterIdToUrlMap: " + tmpKafkaClusterIdToUrlMap
+            + ", kafkaClusterUrlToIdMap: " + tmpKafkaClusterUrlToIdMap + ", kafkaClusterIdToAliasMap: "
+            + tmpKafkaClusterIdToAliasMap + ", kafkaClusterAliasToIdMap: " + tmpKafkaClusterAliasToIdMap);
+    this.clusterProperties = clusterProps;
+    this.kafkaClusterMap = kafkaClusterMap;
   }
 
   public String getClusterName() {
@@ -220,8 +244,9 @@ public class VeniceClusterConfig {
     return kafkaZkAddress;
   }
 
-  public String getKafkaSecurityProtocol() {
-    return kafkaSecurityProtocol;
+  public SecurityProtocol getKafkaSecurityProtocol(String kafkaBootstrapUrl) {
+    SecurityProtocol clusterSpecificSecurityProtocol = kafkaBootstrapUrlToSecurityProtocol.get(kafkaBootstrapUrl);
+    return clusterSpecificSecurityProtocol == null ? kafkaSecurityProtocol : clusterSpecificSecurityProtocol;
   }
 
   public Optional<SSLConfig> getSslConfig() {
@@ -284,35 +309,43 @@ public class VeniceClusterConfig {
     return regionName;
   }
 
-  public Map<Integer, String> getKafkaClusterIdToUrlMap() {
-    return Collections.unmodifiableMap(kafkaClusterIdToUrlMap);
+  public Int2ObjectMap<String> getKafkaClusterIdToUrlMap() {
+    return kafkaClusterIdToUrlMap;
   }
 
-  public Map<String, Integer> getKafkaClusterUrlToIdMap() {
-    return Collections.unmodifiableMap(kafkaClusterUrlToIdMap);
+  public Object2IntMap<String> getKafkaClusterUrlToIdMap() {
+    return kafkaClusterUrlToIdMap;
   }
 
-  public Map<Integer, String> getKafkaClusterIdToAliasMap() {
-    return Collections.unmodifiableMap(kafkaClusterIdToAliasMap);
+  public Int2ObjectMap<String> getKafkaClusterIdToAliasMap() {
+    return kafkaClusterIdToAliasMap;
   }
 
-  public Map<String, Integer> getKafkaClusterAliasToIdMap() {
-    return Collections.unmodifiableMap(kafkaClusterAliasToIdMap);
+  public Object2IntMap<String> getKafkaClusterAliasToIdMap() {
+    return kafkaClusterAliasToIdMap;
   }
 
   public Map<String, String> getKafkaClusterUrlToAliasMap() {
-    return Collections.unmodifiableMap(kafkaClusterUrlToAliasMap);
+    return kafkaClusterUrlToAliasMap;
+  }
+
+  /**
+   * Used to convert from an alternative Kafka URL to the one used in this server instance. For example, can be used
+   * in case of a URL migration, or a security protocol migration (e.g. from PLAINTEXT to SSL).
+   */
+  public Function<String, String> getKafkaClusterUrlResolver() {
+    return this.kafkaClusterUrlResolver;
   }
 
   public Set<String> getRegionNames() {
-    return Collections.unmodifiableSet(kafkaClusterAliasToIdMap.keySet());
+    return kafkaClusterAliasToIdMap.keySet();
   }
 
   public VeniceProperties getClusterProperties() {
     return this.clusterProperties;
   }
 
-  public Optional<Map<String, Map<String, String>>> getKafkaClusterMap() {
+  public Map<String, Map<String, String>> getKafkaClusterMap() {
     return kafkaClusterMap;
   }
 }

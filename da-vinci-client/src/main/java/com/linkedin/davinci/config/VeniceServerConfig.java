@@ -21,7 +21,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -42,6 +41,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   public static final int MINIMUM_CONSUMER_NUM_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER = 3;
 
   private final int listenerPort;
+  private final String dataBasePath;
   private final RocksDBServerConfig rocksDBServerConfig;
   private final boolean enableServerAllowList;
   private final boolean autoCreateDataPath; // default true
@@ -84,14 +84,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   /**
    * Considering the consumer thread could put various sizes of messages into the shared queue, the internal
-   * {@link com.linkedin.venice.kafka.consumer.MemoryBoundBlockingQueue} won't notify the waiting thread (consumer thread)
+   * {@link com.linkedin.davinci.kafka.consumer.MemoryBoundBlockingQueue} won't notify the waiting thread (consumer thread)
    * right away when some message gets processed until the freed memory hit the follow config: {@link #storeWriterBufferNotifyDelta}.
    * The reason behind this design:
    * When the buffered queue is full, and the processing thread keeps processing small message, the bigger message won't
    * have chance to get queued into the buffer since the memory freed by the processed small message is not enough to
    * fit the bigger message.
    *
-   * With this delta config, {@link com.linkedin.venice.kafka.consumer.MemoryBoundBlockingQueue} will guarantee some fairness
+   * With this delta config, {@link com.linkedin.davinci.kafka.consumer.MemoryBoundBlockingQueue} will guarantee some fairness
    * among various sizes of messages when buffered queue is full.
    *
    * When tuning this config, we need to consider the following tradeoffs:
@@ -280,12 +280,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long optimizeDatabaseServiceScheduleIntervalSeconds;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
-    this(serverProperties, Optional.empty());
+    this(serverProperties, Collections.emptyMap());
   }
 
-  public VeniceServerConfig(
-      VeniceProperties serverProperties,
-      Optional<Map<String, Map<String, String>>> kafkaClusterMap) throws ConfigurationException {
+  public VeniceServerConfig(VeniceProperties serverProperties, Map<String, Map<String, String>> kafkaClusterMap)
+      throws ConfigurationException {
     super(serverProperties, kafkaClusterMap);
     listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
     dataBasePath = serverProperties.getString(
@@ -390,9 +389,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     Map<String, String> storeToEarlyTerminationThresholdMSMapProp =
         serverProperties.getMap(SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP, Collections.emptyMap());
     storeToEarlyTerminationThresholdMSMap = new HashMap<>();
-    storeToEarlyTerminationThresholdMSMapProp.forEach((storeName, thresholdStr) -> {
-      storeToEarlyTerminationThresholdMSMap.put(storeName, Integer.parseInt(thresholdStr.trim()));
-    });
+    storeToEarlyTerminationThresholdMSMapProp.forEach(
+        (storeName, thresholdStr) -> storeToEarlyTerminationThresholdMSMap
+            .put(storeName, Integer.parseInt(thresholdStr.trim())));
     databaseLookupQueueCapacity = serverProperties.getInt(SERVER_DATABASE_LOOKUP_QUEUE_CAPACITY, Integer.MAX_VALUE);
     computeQueueCapacity = serverProperties.getInt(SERVER_COMPUTE_QUEUE_CAPACITY, Integer.MAX_VALUE);
     kafkaOpenSSLEnabled = serverProperties.getBoolean(SERVER_ENABLE_KAFKA_OPENSSL, false);

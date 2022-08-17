@@ -17,7 +17,7 @@ import org.apache.kafka.common.utils.SystemTime;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import scala.Option;
-import scala.collection.JavaConversions;
+import scala.collection.JavaConverters;
 import scala.collection.Seq;
 
 
@@ -44,15 +44,8 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
   static StatefulServiceProvider<KafkaBrokerWrapper> generateService(
       ZkServerWrapper zkServerWrapper,
       Optional<MockTime> mockTime) {
-    int port = Utils.getFreePort();
-    return generateService(zkServerWrapper, mockTime, port);
-  }
-
-  static StatefulServiceProvider<KafkaBrokerWrapper> generateService(
-      ZkServerWrapper zkServerWrapper,
-      Optional<MockTime> mockTime,
-      int port) {
     return (String serviceName, File dir) -> {
+      int port = Utils.getFreePort();
       int sslPort = Utils.getFreePort();
       Map<String, Object> configMap = new HashMap<>();
 
@@ -93,14 +86,14 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
     // class)
     Option<String> threadNamePrefix = scala.Some$.MODULE$.apply("kafka-broker-port-" + port);
     // This needs to be a Scala List
-    Seq<KafkaMetricsReporter> metricsReporterSeq = JavaConversions.asScalaBuffer(new ArrayList<>());
+    Seq<KafkaMetricsReporter> metricsReporterSeq = JavaConverters.asScalaBuffer(new ArrayList<>());
     return new KafkaServer(kafkaConfig, time, threadNamePrefix, metricsReporterSeq);
   }
 
   // Instance-level state and APIs
 
   private KafkaServer kafkaServer;
-  private ZkServerWrapper zkServerWrapper;
+  private final ZkServerWrapper zkServerWrapper;
   private final KafkaConfig kafkaConfig;
   private final Optional<MockTime> mockTime;
 
@@ -161,7 +154,7 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
   }
 
   @Override
-  protected void internalStart() throws Exception {
+  protected void internalStart() {
     Properties properties = System.getProperties();
     if (properties.contains("kafka_mx4jenable")) {
       throw new VeniceException(
@@ -172,13 +165,18 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
   }
 
   @Override
-  protected void internalStop() throws Exception {
+  protected void internalStop() {
     kafkaServer.shutdown();
     kafkaServer.awaitShutdown();
   }
 
   @Override
-  protected void newProcess() throws Exception {
+  protected void newProcess() {
     kafkaServer = instantiateNewKafkaServer(kafkaConfig, mockTime);
+  }
+
+  @Override
+  public String toString() {
+    return "KafkaBrokerWrapper{address: '" + getAddress() + "', sslAddress: '" + getSSLAddress() + "'}";
   }
 }

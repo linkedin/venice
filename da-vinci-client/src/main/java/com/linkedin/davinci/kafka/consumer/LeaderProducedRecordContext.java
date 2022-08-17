@@ -23,9 +23,9 @@ import java.util.concurrent.CompletableFuture;
 
 public class LeaderProducedRecordContext {
   /**
-   * Kafka address where the source kafka consumer record was consumed from.
+   * Kafka cluster ID where the source kafka consumer record was consumed from.
    */
-  private final String consumedKafkaUrl;
+  private final int consumedKafkaClusterId;
   /**
    * This is the offset of the source kafka consumer record from upstream kafka
    * topic ( which could be either Real-Time or Stream-Reprocessing topic or remote VT topic).
@@ -62,12 +62,12 @@ public class LeaderProducedRecordContext {
   private CompletableFuture<Void> persistedToDBFuture = null;
 
   public static LeaderProducedRecordContext newControlMessageRecord(
-      String consumedKafkaUrl,
+      int consumedKafkaClusterId,
       long consumedOffset,
       byte[] keyBytes,
       ControlMessage valueUnion) {
     return new LeaderProducedRecordContext(
-        consumedKafkaUrl,
+        consumedKafkaClusterId,
         consumedOffset,
         MessageType.CONTROL_MESSAGE,
         keyBytes,
@@ -76,12 +76,12 @@ public class LeaderProducedRecordContext {
   }
 
   public static LeaderProducedRecordContext newPutRecord(
-      String consumedKafkaUrl,
+      int consumedKafkaClusterId,
       long consumedOffset,
       byte[] keyBytes,
       Put valueUnion) {
     return new LeaderProducedRecordContext(
-        consumedKafkaUrl,
+        consumedKafkaClusterId,
         consumedOffset,
         MessageType.PUT,
         keyBytes,
@@ -90,24 +90,29 @@ public class LeaderProducedRecordContext {
   }
 
   public static LeaderProducedRecordContext newPutRecordWithFuture(
-      String consumedKafkaUrl,
+      int consumedKafkaClusterId,
       long consumedOffset,
       byte[] keyBytes,
       Put valueUnion,
       CompletableFuture<Void> persistedToDBFuture) {
-    LeaderProducedRecordContext leaderProducedRecordContext =
-        new LeaderProducedRecordContext(consumedKafkaUrl, consumedOffset, MessageType.PUT, keyBytes, valueUnion, false);
+    LeaderProducedRecordContext leaderProducedRecordContext = new LeaderProducedRecordContext(
+        consumedKafkaClusterId,
+        consumedOffset,
+        MessageType.PUT,
+        keyBytes,
+        valueUnion,
+        false);
     leaderProducedRecordContext.persistedToDBFuture = persistedToDBFuture;
     return leaderProducedRecordContext;
   }
 
   public static LeaderProducedRecordContext newDeleteRecord(
-      String consumedKafkaUrl,
+      int consumedKafkaClusterId,
       long consumedOffset,
       byte[] keyBytes,
       Delete valueUnion) {
     return new LeaderProducedRecordContext(
-        consumedKafkaUrl,
+        consumedKafkaClusterId,
         consumedOffset,
         MessageType.DELETE,
         keyBytes,
@@ -116,13 +121,13 @@ public class LeaderProducedRecordContext {
   }
 
   private LeaderProducedRecordContext(
-      String consumedKafkaUrl,
+      int consumedKafkaClusterId,
       long consumedOffset,
       MessageType messageType,
       byte[] keyBytes,
       Object valueUnion,
       boolean createFuture) {
-    this.consumedKafkaUrl = consumedKafkaUrl;
+    this.consumedKafkaClusterId = consumedKafkaClusterId;
     this.consumedOffset = consumedOffset;
     this.messageType = messageType;
     this.keyBytes = keyBytes;
@@ -140,8 +145,8 @@ public class LeaderProducedRecordContext {
     this.producedOffset = producerOffset;
   }
 
-  public String getConsumedKafkaUrl() {
-    return consumedKafkaUrl;
+  public int getConsumedKafkaClusterId() {
+    return consumedKafkaClusterId;
   }
 
   public long getConsumedOffset() {

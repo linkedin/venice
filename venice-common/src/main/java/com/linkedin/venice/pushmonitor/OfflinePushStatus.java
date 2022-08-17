@@ -90,7 +90,9 @@ public class OfflinePushStatus {
                 newStatus,
                 newStatusDetails.orElse("not specified!!")));
       } else {
-        throw new VeniceException("Can not transit status from:" + currentStatus + " to " + newStatus);
+        throw new VeniceException(
+            "Can not transit status from: " + currentStatus + " to " + newStatus + " for topic " + kafkaTopic
+                + ", newStatusDetails: " + newStatusDetails + ", statusHistory: " + statusHistory);
       }
     }
   }

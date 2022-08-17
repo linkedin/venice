@@ -14,6 +14,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Optional;
 import java.util.Properties;
 import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.common.protocol.SecurityProtocol;
 
 
 /**
@@ -32,13 +33,23 @@ public class ServerKafkaClientFactory extends KafkaClientFactory {
   }
 
   public Properties setupSSL(Properties properties) {
-    if (KafkaSSLUtils.isKafkaSSLProtocol(serverConfig.getKafkaSecurityProtocol())) {
+    String kafkaBootstrapUrls = properties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+    if (kafkaBootstrapUrls == null) {
+      /** Override the bootstrap servers config if it's not set in the proposed properties. */
+      kafkaBootstrapUrls = serverConfig.getKafkaBootstrapServers();
+    }
+    String resolvedKafkaUrl = serverConfig.getKafkaClusterUrlResolver().apply(kafkaBootstrapUrls);
+    if (resolvedKafkaUrl != null) {
+      kafkaBootstrapUrls = resolvedKafkaUrl;
+    }
+    properties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapUrls);
+    SecurityProtocol securityProtocol = serverConfig.getKafkaSecurityProtocol(kafkaBootstrapUrls);
+    if (KafkaSSLUtils.isKafkaSSLProtocol(securityProtocol)) {
       Optional<SSLConfig> sslConfig = serverConfig.getSslConfig();
       if (!sslConfig.isPresent()) {
         throw new VeniceException("SSLConfig should be present when Kafka SSL is enabled");
       }
       properties.putAll(sslConfig.get().getKafkaSSLConfig());
-      properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, serverConfig.getKafkaSecurityProtocol());
       /**
        * Check whether openssl is enabled for the kafka consumers in ingestion service.
        */
@@ -46,12 +57,8 @@ public class ServerKafkaClientFactory extends KafkaClientFactory {
         properties.setProperty(SSL_CONTEXT_PROVIDER_CLASS_CONFIG, DEFAULT_KAFKA_SSL_CONTEXT_PROVIDER_CLASS_NAME);
       }
     }
-    /**
-     * Only override the bootstrap servers config if it's not set in the proposed properties.
-     */
-    if (!properties.containsKey(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG)) {
-      properties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, serverConfig.getKafkaBootstrapServers());
-    }
+    properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, securityProtocol.name);
+
     return properties;
   }
 
@@ -94,7 +101,7 @@ public class ServerKafkaClientFactory extends KafkaClientFactory {
     clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
     clonedProperties.setProperty(KAFKA_ZK_ADDRESS, kafkaZkAddress);
     return new ServerKafkaClientFactory(
-        new VeniceServerConfig(new VeniceProperties(clonedProperties)),
+        new VeniceServerConfig(new VeniceProperties(clonedProperties), serverConfig.getKafkaClusterMap()),
         kafkaMessageEnvelopeSchemaReader,
         metricsParameters);
   }

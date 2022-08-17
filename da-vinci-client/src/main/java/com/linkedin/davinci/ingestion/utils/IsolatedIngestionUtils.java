@@ -465,8 +465,7 @@ public class IsolatedIngestionUtils {
     }
   }
 
-  public static Optional<Map<String, Map<String, String>>> loadForkedIngestionKafkaClusterMapConfig(
-      String configBasePath) {
+  public static Map<String, Map<String, String>> loadForkedIngestionKafkaClusterMapConfig(String configBasePath) {
     try {
       return VeniceConfigLoader.parseKafkaClusterMap(configBasePath, ISOLATED_INGESTION_KAFKA_CLUSTER_MAP_FILENAME);
     } catch (Exception e) {

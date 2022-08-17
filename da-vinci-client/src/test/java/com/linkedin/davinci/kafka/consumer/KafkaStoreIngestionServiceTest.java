@@ -30,6 +30,8 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
+import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.util.NavigableMap;
 import java.util.Optional;
 import java.util.Properties;
@@ -74,6 +76,8 @@ public class KafkaStoreIngestionServiceTest {
     doReturn(-1l).when(mockVeniceServerConfig).getKafkaFetchQuotaUnorderedRecordPerSecond();
     doReturn("").when(mockVeniceServerConfig).getDataBasePath();
     doReturn(0.9d).when(mockVeniceServerConfig).getDiskFullThreshold();
+    doReturn(Int2ObjectMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterIdToAliasMap();
+    doReturn(Object2IntMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
 
     VeniceClusterConfig mockVeniceClusterConfig = mock(VeniceClusterConfig.class);
     doReturn("localhost:1234").when(mockVeniceClusterConfig).getKafkaZkAddress();

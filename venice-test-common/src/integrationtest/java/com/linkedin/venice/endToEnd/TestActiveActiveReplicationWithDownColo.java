@@ -63,7 +63,7 @@ public class TestActiveActiveReplicationWithDownColo {
      */
     Properties serverProperties = new Properties();
     // We're going to trigger timeouts. Set this lower to improve developer happiness
-    serverProperties.put(KAFKA_ADMIN_GET_TOPIC_CONFG_MAX_RETRY_TIME_SEC, 10L);
+    serverProperties.put(KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC, 10L);
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     serverProperties.put(SERVER_SHARED_CONSUMER_POOL_ENABLED, "true");
     serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
@@ -75,7 +75,7 @@ public class TestActiveActiveReplicationWithDownColo {
     getExtraServerProperties().forEach(serverProperties::put);
 
     Properties controllerProps = new Properties();
-    controllerProps.put(KAFKA_ADMIN_GET_TOPIC_CONFG_MAX_RETRY_TIME_SEC, 10L);
+    controllerProps.put(KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC, 10L);
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
     controllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC, "dc-0");
     controllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);

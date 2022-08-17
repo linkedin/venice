@@ -1,8 +1,8 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
 import java.util.Map;
 import java.util.Queue;
@@ -34,7 +34,7 @@ public class KeyLevelLocksManager {
   private final String storeVersion;
   private final int initialPoolSize;
   private final int maxPoolSize;
-  private final Map<ByteBuffer, LockWithReferenceCount> keyToLockMap;
+  private final Map<ByteArrayKey, LockWithReferenceCount> keyToLockMap;
   // Free locks pool
   private final Queue<LockWithReferenceCount> locksPool;
   private int currentPoolSize;
@@ -51,7 +51,7 @@ public class KeyLevelLocksManager {
     }
   }
 
-  synchronized ReentrantLock acquireLockByKey(ByteBuffer key) {
+  synchronized ReentrantLock acquireLockByKey(ByteArrayKey key) {
     LockWithReferenceCount lockWrapper = keyToLockMap.computeIfAbsent(key, k -> {
       LockWithReferenceCount nextAvailableLock = locksPool.poll();
       if (nextAvailableLock == null) {
@@ -75,7 +75,7 @@ public class KeyLevelLocksManager {
    * If no other thread is using the lock, return the lock back to the pool, and remove the key from keyToLock map
    * so that we only keep a very small footprint, instead of caching the whole key space in memory.
    */
-  synchronized void releaseLock(ByteBuffer key) {
+  synchronized void releaseLock(ByteArrayKey key) {
     LockWithReferenceCount lockWrapper = keyToLockMap.get(key);
     if (lockWrapper == null) {
       throw new VeniceException("Store version: " + storeVersion + " .Key to lock is not being maintained correctly.");
