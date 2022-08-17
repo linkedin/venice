@@ -341,6 +341,9 @@ public class AdminSparkServer extends AbstractVeniceService {
         storagePersonaRoutes.getPersonaAssociatedWithStore(admin));
     httpService.get(GET_CLUSTER_STORAGE_PERSONAS.getPath(), storagePersonaRoutes.getClusterStoragePersonas(admin));
 
+    httpService
+        .post(CLEANUP_INSTANCE_CUSTOMIZED_STATES.getPath(), clusterRoutes.cleanupInstanceCustomizedStates(admin));
+
     httpService.awaitInitialization(); // Wait for server to be initialized
     Exception e = initFailure.get();
     if (e != null) {

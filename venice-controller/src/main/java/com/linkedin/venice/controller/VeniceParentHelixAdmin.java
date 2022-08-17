@@ -4450,4 +4450,9 @@ public class VeniceParentHelixAdmin implements Admin {
   public List<StoragePersona> getClusterStoragePersonas(String clusterName) {
     return getVeniceHelixAdmin().getClusterStoragePersonas(clusterName);
   }
+
+  @Override
+  public List<String> cleanupInstanceCustomizedStates(String clusterName) {
+    throw new VeniceUnsupportedOperationException("cleanupInstanceCustomizedStates");
+  }
 }

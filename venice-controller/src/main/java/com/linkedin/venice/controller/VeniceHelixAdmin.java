@@ -60,6 +60,7 @@ import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
+import com.linkedin.venice.helix.HelixPartitionState;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
@@ -195,6 +196,7 @@ import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
+import org.apache.helix.AccessOption;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManagerProperty;
 import org.apache.helix.HelixPropertyFactory;
@@ -206,6 +208,7 @@ import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZNRecordSerializer;
+import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.ExternalView;
 import org.apache.helix.model.HelixConfigScope;
@@ -214,6 +217,7 @@ import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.LiveInstance;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.helix.participant.StateMachineEngine;
+import org.apache.helix.zookeeper.datamodel.ZNRecord;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
@@ -309,6 +313,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final boolean usePushStatusStoreToReadServerIncrementalPushStatus;
   private static final ByteBuffer emptyPushZstdDictionary =
       ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData());
+  private static final String ZK_INSTANCES_SUB_PATH = "INSTANCES";
+  private static final String ZK_CUSTOMIZEDSTATES_SUB_PATH =
+      "CUSTOMIZEDSTATES/" + HelixPartitionState.OFFLINE_PUSH.toString();
 
   /**
    * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
@@ -7465,5 +7472,49 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     checkControllerLeadershipFor(clusterName);
     StoragePersonaRepository repository = getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
     return repository.getAllPersonas();
+  }
+
+  @Override
+  public List<String> cleanupInstanceCustomizedStates(String clusterName) {
+    checkControllerLeadershipFor(clusterName);
+    ReadWriteStoreRepository repository = getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
+    List<String> deletedZNodes = new ArrayList<>();
+    Set<String> irrelevantStoreVersions = new HashSet<>();
+    ZkBaseDataAccessor<ZNRecord> znRecordAccessor = new ZkBaseDataAccessor<>(zkClient);
+    String instancesZkPath = HelixUtils.getHelixClusterZkPath(clusterName) + "/" + ZK_INSTANCES_SUB_PATH;
+    List<String> instances = znRecordAccessor.getChildNames(instancesZkPath, AccessOption.PERSISTENT);
+    for (String instance: instances) {
+      String instanceCustomizedStatesPath = instancesZkPath + "/" + instance + "/" + ZK_CUSTOMIZEDSTATES_SUB_PATH;
+      List<String> storeVersions =
+          znRecordAccessor.getChildNames(instanceCustomizedStatesPath, AccessOption.PERSISTENT);
+      if (storeVersions != null) {
+        for (String storeVersion: storeVersions) {
+          boolean delete = irrelevantStoreVersions.contains(storeVersion);
+          if (!delete) {
+            // Check if the store version is still relevant
+            try {
+              Store store = repository.getStoreOrThrow(Version.parseStoreFromVersionTopic(storeVersion));
+              if (!store.getVersion(Version.parseVersionFromKafkaTopicName(storeVersion)).isPresent()) {
+                irrelevantStoreVersions.add(storeVersion);
+                delete = true;
+              }
+            } catch (VeniceNoStoreException e) {
+              irrelevantStoreVersions.add(storeVersion);
+              delete = true;
+            }
+          }
+          if (delete) {
+            String deleteInstanceCustomizedStatePath = instanceCustomizedStatesPath + "/" + storeVersion;
+            HelixUtils.remove(znRecordAccessor, deleteInstanceCustomizedStatePath);
+            logger.info(
+                "Deleted lingering instance level customized state ZNode: {} in cluster {}",
+                deleteInstanceCustomizedStatePath,
+                clusterName);
+            deletedZNodes.add(deleteInstanceCustomizedStatePath);
+          }
+        }
+      }
+    }
+    return deletedZNodes;
   }
 }

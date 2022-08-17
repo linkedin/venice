@@ -475,6 +475,9 @@ public class AdminTool {
         case LIST_CLUSTER_STORAGE_PERSONAS:
           listClusterStoragePersonas(cmd);
           break;
+        case CLEANUP_INSTANCE_CUSTOMIZED_STATES:
+          cleanupInstanceCustomizedStates(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c: Command.values()) {
@@ -2525,6 +2528,11 @@ public class AdminTool {
   private static void listClusterStoragePersonas(CommandLine cmd) {
     MultiStoragePersonaResponse response = controllerClient.getClusterStoragePersonas();
     printObject(response);
+  }
+
+  private static void cleanupInstanceCustomizedStates(CommandLine cmd) {
+    MultiStoreTopicsResponse multiStoreTopicsResponse = controllerClient.cleanupInstanceCustomizedStates();
+    printObject(multiStoreTopicsResponse);
   }
 
   private static Map<String, ControllerClient> getAndCheckChildControllerClientMap(

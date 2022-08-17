@@ -330,6 +330,10 @@ public enum Command {
   ),
   LIST_CLUSTER_STORAGE_PERSONAS(
       "list-cluster-storage-personas", "Lists all storage personas in a cluster.", new Arg[] { URL, CLUSTER }
+  ),
+  CLEANUP_INSTANCE_CUSTOMIZED_STATES(
+      "cleanup-instance-customized-states", "Cleanup any lingering instance level customized states",
+      new Arg[] { URL, CLUSTER }
   );
 
   private final String commandName;

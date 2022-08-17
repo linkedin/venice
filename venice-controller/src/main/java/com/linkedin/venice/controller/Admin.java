@@ -871,4 +871,12 @@ public interface Admin extends AutoCloseable, Closeable {
 
   List<StoragePersona> getClusterStoragePersonas(String clusterName);
 
+  /**
+   * Scan through instance level customized states and remove any lingering ZNodes that are no longer relevant. This
+   * operation shouldn't be needed under normal circumstances. It's intended to cleanup ZNodes that failed to be deleted
+   * due to bugs and errors.
+   * @param clusterName to perform the cleanup.
+   * @return list of deleted ZNode paths.
+   */
+  List<String> cleanupInstanceCustomizedStates(String clusterName);
 }

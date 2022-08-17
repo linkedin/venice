@@ -200,7 +200,11 @@ public enum ControllerRoute {
   ),
   GET_STORAGE_PERSONA_ASSOCIATED_WITH_STORE(
       "/get_storage_persona_associated_with_store", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)
-  ), GET_CLUSTER_STORAGE_PERSONAS("/get_cluster_personas", HttpMethod.GET, Arrays.asList(CLUSTER));
+  ), GET_CLUSTER_STORAGE_PERSONAS("/get_cluster_personas", HttpMethod.GET, Collections.singletonList(CLUSTER)),
+
+  CLEANUP_INSTANCE_CUSTOMIZED_STATES(
+      "/cleanup_instance_customized_states", HttpMethod.POST, Collections.singletonList(CLUSTER)
+  );
 
   private final String path;
   private final HttpMethod httpMethod;
