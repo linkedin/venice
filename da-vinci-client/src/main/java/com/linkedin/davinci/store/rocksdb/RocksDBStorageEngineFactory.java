@@ -250,7 +250,9 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     });
     storageEngineMap.clear();
     sharedCache.close();
-    sharedRMDCache.close();
+    if (sharedRMDCache != null) {
+      sharedRMDCache.close();
+    }
     writeBufferManager.close();
     rateLimiter.close();
     this.env.close();
