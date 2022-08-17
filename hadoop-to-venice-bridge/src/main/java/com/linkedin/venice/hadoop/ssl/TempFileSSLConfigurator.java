@@ -1,5 +1,8 @@
 package com.linkedin.venice.hadoop.ssl;
 
+import static com.linkedin.venice.CommonConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import java.io.ByteArrayInputStream;
@@ -15,9 +18,6 @@ import org.apache.hadoop.security.Credentials;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.CommonConfigKeys.*;
-import static com.linkedin.venice.ConfigKeys.*;
-
 
 public class TempFileSSLConfigurator implements SSLConfigurator {
   private static final Logger logger = LogManager.getLogger(TempFileSSLConfigurator.class);
@@ -26,20 +26,21 @@ public class TempFileSSLConfigurator implements SSLConfigurator {
   public Properties setupSSLConfig(Properties props, Credentials userCredentials) {
     Properties properties = new Properties();
     properties.putAll(props);
-    if (properties.containsKey(KAFKA_SECURITY_PROTOCOL) && properties.getProperty(KAFKA_SECURITY_PROTOCOL)
-        .toLowerCase()
-        .equals("ssl")) {
+    if (properties.containsKey(KAFKA_SECURITY_PROTOCOL)
+        && properties.getProperty(KAFKA_SECURITY_PROTOCOL).toLowerCase().equals("ssl")) {
       logger.info("Start setting up the ssl properties.");
       try {
         // Setup keystore certification
-        byte[] keyStoreCert = getCertification(userCredentials,
+        byte[] keyStoreCert = getCertification(
+            userCredentials,
             new Text(properties.getProperty(VenicePushJob.SSL_KEY_STORE_PROPERTY_NAME)));
         logger.info("Found key store cert from credentials.");
         String keyStoreLocation = writeToTempFile(keyStoreCert);
         logger.info("Write key store cert to file: " + keyStoreLocation);
         properties.put(SSL_KEYSTORE_LOCATION, keyStoreLocation);
         // Setup truststore certification
-        byte[] truestStoreCert = getCertification(userCredentials,
+        byte[] truestStoreCert = getCertification(
+            userCredentials,
             new Text(properties.getProperty(VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME)));
         logger.info("Found trust store cert from credentials.");
         String trustStoreLocation = writeToTempFile(truestStoreCert);
@@ -47,30 +48,32 @@ public class TempFileSSLConfigurator implements SSLConfigurator {
         properties.put(SSL_TRUSTSTORE_LOCATION, trustStoreLocation);
 
         // Setup keystore password.
-        String keyStorePassword = getPassword(userCredentials,
+        String keyStorePassword = getPassword(
+            userCredentials,
             new Text(properties.getProperty(VenicePushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME)));
         properties.put(SSL_KEYSTORE_PASSWORD, keyStorePassword);
 
         // Setup key password.
-        String keyPassword =
-            getPassword(userCredentials, new Text(properties.getProperty(VenicePushJob.SSL_KEY_PASSWORD_PROPERTY_NAME)));
+        String keyPassword = getPassword(
+            userCredentials,
+            new Text(properties.getProperty(VenicePushJob.SSL_KEY_PASSWORD_PROPERTY_NAME)));
         properties.put(SSL_KEY_PASSWORD, keyPassword);
-        if(!properties.containsKey(SSL_KEYSTORE_TYPE)) {
+        if (!properties.containsKey(SSL_KEYSTORE_TYPE)) {
           properties.put(SSL_KEYSTORE_TYPE, "pkcs12");
         }
-        if(!properties.containsKey(SSL_TRUSTSTORE_TYPE)) {
+        if (!properties.containsKey(SSL_TRUSTSTORE_TYPE)) {
           properties.put(SSL_TRUSTSTORE_TYPE, "JKS");
         }
-        if(!properties.containsKey(SSL_TRUSTSTORE_PASSWORD)){
+        if (!properties.containsKey(SSL_TRUSTSTORE_PASSWORD)) {
           properties.put(SSL_TRUSTSTORE_PASSWORD, "changeit");
         }
-        if(!properties.containsKey(SSL_TRUSTMANAGER_ALGORITHM)){
+        if (!properties.containsKey(SSL_TRUSTMANAGER_ALGORITHM)) {
           properties.put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509");
         }
-        if(!properties.containsKey(SSL_KEYMANAGER_ALGORITHM)){
+        if (!properties.containsKey(SSL_KEYMANAGER_ALGORITHM)) {
           properties.put(SSL_KEYMANAGER_ALGORITHM, "SunX509");
         }
-        if(!properties.containsKey(SSL_SECURE_RANDOM_IMPLEMENTATION)) {
+        if (!properties.containsKey(SSL_SECURE_RANDOM_IMPLEMENTATION)) {
           properties.put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
         }
         logger.info("Complete setting up the ssl properties.");
@@ -98,8 +101,11 @@ public class TempFileSSLConfigurator implements SSLConfigurator {
     File file;
     try {
       Path path = Files.createTempFile(null, null);
-      IOUtils.copyBytes(new ByteArrayInputStream(certification), Files.newOutputStream(path),
-          (long) certification.length, true);
+      IOUtils.copyBytes(
+          new ByteArrayInputStream(certification),
+          Files.newOutputStream(path),
+          (long) certification.length,
+          true);
       file = path.toFile();
       // Clean up the cert temp file once job completed.
       // If jvm is terminated unexpectedly, the file will be left, but as it's the tmp file so it should be collected

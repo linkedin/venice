@@ -1,8 +1,5 @@
 package com.linkedin.venice.hadoop.pbnj;
 
-import java.util.concurrent.atomic.AtomicLong;
-
-
 public class Sampler {
   private final double samplingRatio;
 

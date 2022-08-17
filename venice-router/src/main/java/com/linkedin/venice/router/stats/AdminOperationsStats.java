@@ -17,9 +17,9 @@ public class AdminOperationsStats extends AbstractVeniceStats {
     adminRequestSensor = registerSensorIfAbsent("admin_request", new Count());
     errorAdminRequestSensor = registerSensorIfAbsent("error_admin_request", new Count());
 
-    registerSensorIfAbsent("read_quota_throttle", new Gauge(() ->
-        config.isReadThrottlingEnabled() || config.isEarlyThrottleEnabled() ? 1 : 0
-    ));
+    registerSensorIfAbsent(
+        "read_quota_throttle",
+        new Gauge(() -> config.isReadThrottlingEnabled() || config.isEarlyThrottleEnabled() ? 1 : 0));
   }
 
   public void recordAdminRequest() {

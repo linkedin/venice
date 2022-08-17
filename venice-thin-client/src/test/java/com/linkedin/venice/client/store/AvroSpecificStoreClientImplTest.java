@@ -26,6 +26,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
+
 public class AvroSpecificStoreClientImplTest {
   private static Logger logger = LogManager.getLogger(AvroSpecificStoreClientImplTest.class);
   private MockD2ServerWrapper routerServer;
@@ -55,38 +56,48 @@ public class AvroSpecificStoreClientImplTest {
   public void setupStoreClient() throws VeniceClientException, IOException {
     routerServer.clearResponseMapping();
     // Push key schema
-    FullHttpResponse schemaResponse = StoreClientTestUtils.constructHttpSchemaResponse(storeName, 1, defaultKeySchemaStr);
+    FullHttpResponse schemaResponse =
+        StoreClientTestUtils.constructHttpSchemaResponse(storeName, 1, defaultKeySchemaStr);
     String keySchemaPath = "/" + RouterBackedSchemaReader.TYPE_KEY_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(keySchemaPath, schemaResponse);
-    String clusterDiscoveryPath = "/"+ D2ServiceDiscovery.TYPE_D2_SERVICE_DISCOVERY+"/"+storeName;
+    String clusterDiscoveryPath = "/" + D2ServiceDiscovery.TYPE_D2_SERVICE_DISCOVERY + "/" + storeName;
 
-    routerServer.addResponseForUri(clusterDiscoveryPath, StoreClientTestUtils.constructHttpClusterDiscoveryResponse(storeName, "test_cluster", D2TestUtils.DEFAULT_TEST_SERVICE_NAME));
+    routerServer.addResponseForUri(
+        clusterDiscoveryPath,
+        StoreClientTestUtils
+            .constructHttpClusterDiscoveryResponse(storeName, "test_cluster", D2TestUtils.DEFAULT_TEST_SERVICE_NAME));
 
     // http based client
     String routerUrl = "http://" + routerHost + ":" + port + "/";
     AvroSpecificStoreClient<TestKeyRecord, TestValueRecord> httpStoreClient =
-        ClientFactory.getAndStartSpecificAvroClient(ClientConfig.defaultSpecificClientConfig(storeName, TestValueRecord.class).setVeniceURL(routerUrl));
-    storeClients.put(HttpTransportClient.class.getSimpleName(),httpStoreClient);
+        ClientFactory.getAndStartSpecificAvroClient(
+            ClientConfig.defaultSpecificClientConfig(storeName, TestValueRecord.class).setVeniceURL(routerUrl));
+    storeClients.put(HttpTransportClient.class.getSimpleName(), httpStoreClient);
     // d2 based client
     d2Client = D2TestUtils.getAndStartD2Client(routerServer.getZkAddress());
-    AvroSpecificStoreClient<TestKeyRecord, TestValueRecord> d2StoreClient =
-        ClientFactory.getAndStartSpecificAvroClient(ClientConfig.defaultSpecificClientConfig(storeName, TestValueRecord.class)
-            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME).setD2Client(d2Client));
-    storeClients.put(D2TransportClient.class.getSimpleName(),d2StoreClient);
+    AvroSpecificStoreClient<TestKeyRecord, TestValueRecord> d2StoreClient = ClientFactory.getAndStartSpecificAvroClient(
+        ClientConfig.defaultSpecificClientConfig(storeName, TestValueRecord.class)
+            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+            .setD2Client(d2Client));
+    storeClients.put(D2TransportClient.class.getSimpleName(), d2StoreClient);
 
     // d2 based client with fast-avro support
     AvroSpecificStoreClient<TestKeyRecord, TestValueRecord> d2StoreClientWithFastAvro =
-        ClientFactory.getAndStartSpecificAvroClient(ClientConfig.defaultSpecificClientConfig(storeName, TestValueRecord.class)
-            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME).setD2Client(d2Client).setUseFastAvro(true));
+        ClientFactory.getAndStartSpecificAvroClient(
+            ClientConfig.defaultSpecificClientConfig(storeName, TestValueRecord.class)
+                .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+                .setD2Client(d2Client)
+                .setUseFastAvro(true));
     storeClients.put(D2TransportClient.class.getSimpleName() + "-fast_avro", d2StoreClientWithFastAvro);
     DelegatingStoreClient<TestKeyRecord, TestValueRecord> delegatingStoreClient =
-        (DelegatingStoreClient<TestKeyRecord, TestValueRecord>)httpStoreClient;
-    someStoreClient = (AbstractAvroStoreClient<TestKeyRecord, TestValueRecord>)delegatingStoreClient.getInnerStoreClient();
+        (DelegatingStoreClient<TestKeyRecord, TestValueRecord>) httpStoreClient;
+    someStoreClient =
+        (AbstractAvroStoreClient<TestKeyRecord, TestValueRecord>) delegatingStoreClient.getInnerStoreClient();
   }
 
   @AfterMethod
   public void closeStoreClient() {
-    for (AvroSpecificStoreClient<TestKeyRecord, TestValueRecord> storeClient : storeClients.values()) {
+    for (AvroSpecificStoreClient<TestKeyRecord, TestValueRecord> storeClient: storeClients.values()) {
       if (null != storeClient) {
         storeClient.close();
       }
@@ -102,11 +113,13 @@ public class AvroSpecificStoreClientImplTest {
     valueSchemaEntries.put(valueSchemaId, valueSchemaStr);
 
     // Push value schema
-    FullHttpResponse valueSchemaResponse = StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId, valueSchemaStr);
+    FullHttpResponse valueSchemaResponse =
+        StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId, valueSchemaStr);
     String valueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/" + valueSchemaId;
     routerServer.addResponseForUri(valueSchemaPath, valueSchemaResponse);
 
-    FullHttpResponse multiValueSchemaResponse = StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
+    FullHttpResponse multiValueSchemaResponse =
+        StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
     String multiValueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(multiValueSchemaPath, multiValueSchemaResponse);
 
@@ -123,7 +136,7 @@ public class AvroSpecificStoreClientImplTest {
     FullHttpResponse valueResponse = StoreClientTestUtils.constructStoreResponse(valueSchemaId, valueByteArray);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
 
-    for (Map.Entry<String, AvroSpecificStoreClient<TestKeyRecord, TestValueRecord>> entry : storeClients.entrySet()) {
+    for (Map.Entry<String, AvroSpecificStoreClient<TestKeyRecord, TestValueRecord>> entry: storeClients.entrySet()) {
       logger.info("Execute test for transport client: " + entry.getKey());
       TestValueRecord actual = entry.getValue().get(testKey).get();
       Assert.assertEquals(actual.long_field, testValue.long_field);
@@ -132,7 +145,8 @@ public class AvroSpecificStoreClientImplTest {
   }
 
   @Test
-  public void getByStoreKeyTestWithDifferentSchema() throws IOException, VeniceClientException, ExecutionException, InterruptedException {
+  public void getByStoreKeyTestWithDifferentSchema()
+      throws IOException, VeniceClientException, ExecutionException, InterruptedException {
     int valueSchemaId1 = 1;
     String valueSchemaStr1 = TestValueRecord.SCHEMA$.toString();
     int valueSchemaId2 = 2;
@@ -142,14 +156,17 @@ public class AvroSpecificStoreClientImplTest {
     valueSchemaEntries.put(valueSchemaId2, valueSchemaStr2);
 
     // Push value schema
-    FullHttpResponse valueSchemaResponse1 = StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId1, valueSchemaStr1);
+    FullHttpResponse valueSchemaResponse1 =
+        StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId1, valueSchemaStr1);
     String valueSchemaPath1 = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/" + valueSchemaId1;
     routerServer.addResponseForUri(valueSchemaPath1, valueSchemaResponse1);
-    FullHttpResponse valueSchemaResponse2 = StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId2, valueSchemaStr2);
+    FullHttpResponse valueSchemaResponse2 =
+        StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId2, valueSchemaStr2);
     String valueSchemaPath2 = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/" + valueSchemaId2;
     routerServer.addResponseForUri(valueSchemaPath2, valueSchemaResponse2);
 
-    FullHttpResponse multiValueSchemaResponse = StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
+    FullHttpResponse multiValueSchemaResponse =
+        StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
     String multiValueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(multiValueSchemaPath, multiValueSchemaResponse);
 
@@ -166,7 +183,7 @@ public class AvroSpecificStoreClientImplTest {
     FullHttpResponse valueResponse = StoreClientTestUtils.constructStoreResponse(valueSchemaId2, valueByteArray);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
 
-    for (Map.Entry<String, AvroSpecificStoreClient<TestKeyRecord, TestValueRecord>> entry : storeClients.entrySet()) {
+    for (Map.Entry<String, AvroSpecificStoreClient<TestKeyRecord, TestValueRecord>> entry: storeClients.entrySet()) {
       logger.info("Execute test for transport client: " + entry.getKey());
       TestValueRecord actual = entry.getValue().get(testKey).get();
       Assert.assertEquals(actual.long_field, testValue.long_field);

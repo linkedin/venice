@@ -4,23 +4,23 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 
 
 public class VeniceRouterException extends VeniceException {
-  public VeniceRouterException(){
+  public VeniceRouterException() {
     super();
   }
 
-  public VeniceRouterException(String s){
+  public VeniceRouterException(String s) {
     super(s);
   }
 
-  public VeniceRouterException(Throwable t){
+  public VeniceRouterException(Throwable t) {
     super(t);
   }
 
-  public VeniceRouterException(String s, Throwable t){
-    super(s,t);
+  public VeniceRouterException(String s, Throwable t) {
+    super(s, t);
   }
 
-  public HttpResponseStatus getHttpResponseStatus(){
+  public HttpResponseStatus getHttpResponseStatus() {
     return HttpResponseStatus.valueOf(getHttpStatusCode());
   }
 

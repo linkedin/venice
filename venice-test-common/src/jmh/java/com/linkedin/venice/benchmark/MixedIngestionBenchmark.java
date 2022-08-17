@@ -1,5 +1,7 @@
 package com.linkedin.venice.benchmark;
 
+import static com.linkedin.venice.ConfigKeys.*;
+
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -35,8 +37,6 @@ import org.rocksdb.ComparatorOptions;
 import org.rocksdb.util.BytewiseComparator;
 import org.testng.Assert;
 
-import static com.linkedin.venice.ConfigKeys.*;
-
 
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
@@ -59,8 +59,7 @@ public class MixedIngestionBenchmark {
     Utils.thisIsLocalhost();
     int numberOfController = 1;
 
-    cluster = ServiceFactory.getVeniceCluster(numberOfController, 0, 0, replicaFactor,
-        partitionSize, false, false);
+    cluster = ServiceFactory.getVeniceCluster(numberOfController, 0, 0, replicaFactor, partitionSize, false, false);
     cluster.addVeniceServer(new Properties(getVeniceServerProperties()));
     // JMH benchmark relies on System.exit to finish one round of benchmark run, otherwise it will hang there.
     TestUtils.restoreSystemExit();
@@ -95,7 +94,7 @@ public class MixedIngestionBenchmark {
     try (VeniceWriter<String, String, byte[]> veniceWriter = cluster.getVeniceWriter(topicName)) {
       veniceWriter.broadcastStartOfPush(new HashMap<>());
       Map<String, String> records = generateInput(500000, true, 0);
-      for (Map.Entry<String, String> entry : records.entrySet()) {
+      for (Map.Entry<String, String> entry: records.entrySet()) {
         veniceWriter.put(entry.getKey(), entry.getValue(), 1);
       }
       veniceWriter.broadcastEndOfPush(new HashMap<>());
@@ -104,7 +103,9 @@ public class MixedIngestionBenchmark {
 
     // Wait push completed.
 
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS,
+    TestUtils.waitForNonDeterministicCompletion(
+        testTimeOutMS,
+        TimeUnit.MILLISECONDS,
         () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()
             .getOffLinePushStatus(cluster.getClusterName(), topicName)
@@ -134,10 +135,10 @@ public class MixedIngestionBenchmark {
   }
 
   public static void main(String[] args) throws RunnerException {
-    org.openjdk.jmh.runner.options.Options opt = new OptionsBuilder()
-        .include(MixedIngestionBenchmark.class.getSimpleName())
-        .addProfiler(GCProfiler.class)
-        .build();
+    org.openjdk.jmh.runner.options.Options opt =
+        new OptionsBuilder().include(MixedIngestionBenchmark.class.getSimpleName())
+            .addProfiler(GCProfiler.class)
+            .build();
     new Runner(opt).run();
   }
 }

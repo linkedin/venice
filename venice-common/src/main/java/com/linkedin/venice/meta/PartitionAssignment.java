@@ -24,8 +24,9 @@ public class PartitionAssignment {
   public PartitionAssignment(String topic, int numberOfPartition) {
     this.topic = topic;
     if (numberOfPartition <= 0) {
-      throw new VeniceException("Expected number of partition should be larger than 0 for resource '" + topic
-          + "'. Current value:" + numberOfPartition);
+      throw new VeniceException(
+          "Expected number of partition should be larger than 0 for resource '" + topic + "'. Current value:"
+              + numberOfPartition);
     }
     this.expectedNumberOfPartitions = numberOfPartition;
     idToPartitionMap = new HashMap<>();
@@ -70,11 +71,8 @@ public class PartitionAssignment {
 
   @Override
   public String toString() {
-    return this.getClass().getSimpleName() + " {"
-        + "\n\ttopic: " + topic + ", "
-        + "\n\texpectedNumberOfPartitions: " + expectedNumberOfPartitions + ", "
-        + "\n\tidToPartitionMap: " + idToPartitionMap.toString()
-        + "\n}";
+    return this.getClass().getSimpleName() + " {" + "\n\ttopic: " + topic + ", " + "\n\texpectedNumberOfPartitions: "
+        + expectedNumberOfPartitions + ", " + "\n\tidToPartitionMap: " + idToPartitionMap.toString() + "\n}";
   }
 
   @Override

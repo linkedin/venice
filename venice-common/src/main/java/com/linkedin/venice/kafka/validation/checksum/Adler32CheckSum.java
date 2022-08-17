@@ -17,8 +17,8 @@
 package com.linkedin.venice.kafka.validation.checksum;
 
 import com.linkedin.venice.utils.ByteUtils;
-
 import java.util.zip.Adler32;
+
 
 /**
  * Running checksum implementations based on Adler32.
@@ -26,7 +26,6 @@ import java.util.zip.Adler32;
  * N.B.: Class taken from Voldemort.
  */
 public class Adler32CheckSum extends CheckSum {
-
   private Adler32 checkSumGenerator = null;
 
   public Adler32CheckSum() {
@@ -50,7 +49,6 @@ public class Adler32CheckSum extends CheckSum {
   public void resetInternal() {
     checkSumGenerator.reset();
   }
-
 
   @Override
   public CheckSumType getType() {

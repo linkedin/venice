@@ -6,12 +6,10 @@ import java.util.Collection;
 import java.util.LinkedList;
 import java.util.Map;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericDatumReader;
 
 
 public class MapOrderPreservingDatumReader<T> extends GenericDatumReader<T> {
-
   public MapOrderPreservingDatumReader(Schema writer, Schema reader) {
     super(writer, reader);
   }
@@ -21,7 +19,8 @@ public class MapOrderPreservingDatumReader<T> extends GenericDatumReader<T> {
     if (old instanceof Collection) {
       ((Collection) old).clear();
       return old;
-    } else return new LinkedList<>();
+    } else
+      return new LinkedList<>();
   }
 
   @Override

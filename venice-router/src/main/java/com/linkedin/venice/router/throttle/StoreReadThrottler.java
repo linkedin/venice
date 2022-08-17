@@ -41,15 +41,21 @@ public class StoreReadThrottler {
    */
   private ConcurrentMap<String, EventThrottler> storageNodesThrottlers;
 
-  public StoreReadThrottler(String storeName, long localQuota, EventThrottlingStrategy throttlingStrategy,
-      Optional<PartitionAssignment> partitionAssignment, double perStorageNodeReadQuotaBuffer,
-      long storeQuotaCheckTimeWindow, long storageNodeQuotaCheckTimeWindow) {
+  public StoreReadThrottler(
+      String storeName,
+      long localQuota,
+      EventThrottlingStrategy throttlingStrategy,
+      Optional<PartitionAssignment> partitionAssignment,
+      double perStorageNodeReadQuotaBuffer,
+      long storeQuotaCheckTimeWindow,
+      long storageNodeQuotaCheckTimeWindow) {
     this.storeName = storeName;
     this.localQuota = localQuota;
     this.throttlingStrategy = throttlingStrategy;
     this.perStorageNodeReadQuotaBuffer = perStorageNodeReadQuotaBuffer;
     storageNodesThrottlers = new ConcurrentHashMap<>();
-    storeThrottler = new EventThrottler(localQuota, storeQuotaCheckTimeWindow, storeName+"-throttler", true, throttlingStrategy);
+    storeThrottler =
+        new EventThrottler(localQuota, storeQuotaCheckTimeWindow, storeName + "-throttler", true, throttlingStrategy);
     this.storageNodeQuotaCheckTimeWindow = storageNodeQuotaCheckTimeWindow;
     if (partitionAssignment.isPresent()) {
       updateStorageNodesThrottlers(partitionAssignment.get());
@@ -73,9 +79,9 @@ public class StoreReadThrottler {
     // Calculated the latest quota for each storage node.
     Map<String, Long> storageNodeQuotaMap = new HashMap<>();
     long partitionQuota = Math.max(localQuota / partitionAssignment.getExpectedNumberOfPartitions(), 10);
-    for (Partition partition : partitionAssignment.getAllPartitions()) {
+    for (Partition partition: partitionAssignment.getAllPartitions()) {
       List<Instance> readyToServeInstances = partition.getReadyToServeInstances();
-      for (Instance instance : readyToServeInstances) {
+      for (Instance instance: readyToServeInstances) {
         long replicaQuota = Math.max(partitionQuota / readyToServeInstances.size(), 5);
         if (storageNodeQuotaMap.containsKey(instance.getNodeId())) {
           replicaQuota = storageNodeQuotaMap.get(instance.getNodeId()) + replicaQuota;
@@ -87,16 +93,21 @@ public class StoreReadThrottler {
     int[] addedOrUpdated = new int[1];
 
     // Update throttler for the storage node which is a new node or the its quota has been changed.
-    // Add a buffer to per storage node quota to make our throttler more lenient, particularly once we enable sticky routing.
+    // Add a buffer to per storage node quota to make our throttler more lenient, particularly once we enable sticky
+    // routing.
     storageNodeQuotaMap.entrySet()
         .stream()
-        .filter(entry -> !storageNodesThrottlers.containsKey(entry.getKey())
-            || storageNodesThrottlers.get(entry.getKey()).getMaxRatePerSecond() != (long) (entry.getValue() * (1
-            + perStorageNodeReadQuotaBuffer)))
+        .filter(
+            entry -> !storageNodesThrottlers.containsKey(entry.getKey()) || storageNodesThrottlers.get(entry.getKey())
+                .getMaxRatePerSecond() != (long) (entry.getValue() * (1 + perStorageNodeReadQuotaBuffer)))
         .forEach(entry -> {
-          storageNodesThrottlers.put(entry.getKey(),
-              new EventThrottler((long) (entry.getValue() * (1 + perStorageNodeReadQuotaBuffer)),
-                  storageNodeQuotaCheckTimeWindow, storeName + "-" + entry.getKey() + "-throttler", true,
+          storageNodesThrottlers.put(
+              entry.getKey(),
+              new EventThrottler(
+                  (long) (entry.getValue() * (1 + perStorageNodeReadQuotaBuffer)),
+                  storageNodeQuotaCheckTimeWindow,
+                  storeName + "-" + entry.getKey() + "-throttler",
+                  true,
                   throttlingStrategy));
           addedOrUpdated[0]++;
         });
@@ -111,7 +122,9 @@ public class StoreReadThrottler {
     }
 
     if (addedOrUpdated[0] != 0 || deleted != 0) {
-      logger.info("Added or Updated throttlers for " + addedOrUpdated[0] + " storage nodes.  Deleted: " + deleted + " throttlers for storage nodes. Store: " + storeName + " currentVersion:" + currentVersion);
+      logger.info(
+          "Added or Updated throttlers for " + addedOrUpdated[0] + " storage nodes.  Deleted: " + deleted
+              + " throttlers for storage nodes. Store: " + storeName + " currentVersion:" + currentVersion);
     }
   }
 

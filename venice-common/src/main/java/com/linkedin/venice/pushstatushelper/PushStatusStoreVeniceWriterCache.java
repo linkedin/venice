@@ -36,8 +36,10 @@ public class PushStatusStoreVeniceWriterCache implements AutoCloseable {
       String rtTopic = Version.composeRealTimeTopic(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName));
       Schema valueSchema = AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema();
       Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
-      return writerFactory.createVeniceWriter(rtTopic,
-          new VeniceAvroKafkaSerializer(AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
+      return writerFactory.createVeniceWriter(
+          rtTopic,
+          new VeniceAvroKafkaSerializer(
+              AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
           new VeniceAvroKafkaSerializer(valueSchema),
           new VeniceAvroKafkaSerializer(writeComputeSchema),
           Optional.empty(),

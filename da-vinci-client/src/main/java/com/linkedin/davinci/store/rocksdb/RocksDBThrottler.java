@@ -30,8 +30,9 @@ public class RocksDBThrottler {
 
   public RocksDBThrottler(int allowedMaxOpenOperationsInParallel) {
     if (allowedMaxOpenOperationsInParallel <= 0) {
-      throw new IllegalArgumentException("Param: allowedMaxOpenOperationsInParallel should be positive, but is: "
-          + allowedMaxOpenOperationsInParallel);
+      throw new IllegalArgumentException(
+          "Param: allowedMaxOpenOperationsInParallel should be positive, but is: "
+              + allowedMaxOpenOperationsInParallel);
     }
     this.allowedMaxOpenOperationsInParallel = allowedMaxOpenOperationsInParallel;
   }
@@ -40,7 +41,8 @@ public class RocksDBThrottler {
     RocksDB get() throws RocksDBException;
   }
 
-  protected RocksDB throttledOpen(String dbPath, RocksDBSupplier rocksDBSupplier) throws InterruptedException, RocksDBException {
+  protected RocksDB throttledOpen(String dbPath, RocksDBSupplier rocksDBSupplier)
+      throws InterruptedException, RocksDBException {
     throttlerLock.lock();
     try {
       while (currentOngoingOpenOperations >= allowedMaxOpenOperationsInParallel) {
@@ -72,18 +74,30 @@ public class RocksDBThrottler {
   /**
    * Open RocksDB in read-only mode with provided column family descriptors and handlers.
    */
-  public RocksDB openReadOnly(Options options, String dbPath, List<ColumnFamilyDescriptor> columnFamilyDescriptors,
+  public RocksDB openReadOnly(
+      Options options,
+      String dbPath,
+      List<ColumnFamilyDescriptor> columnFamilyDescriptors,
       List<ColumnFamilyHandle> columnFamilyHandles) throws RocksDBException, InterruptedException {
-    columnFamilyHandles.clear(); // Make sure we pass in a clean column family handle list. RocksDB JNI only calls add to insert each handle.
-    return throttledOpen(dbPath, () -> RocksDB.openReadOnly(new DBOptions(options), dbPath, columnFamilyDescriptors, columnFamilyHandles));
+    columnFamilyHandles.clear(); // Make sure we pass in a clean column family handle list. RocksDB JNI only calls add
+                                 // to insert each handle.
+    return throttledOpen(
+        dbPath,
+        () -> RocksDB.openReadOnly(new DBOptions(options), dbPath, columnFamilyDescriptors, columnFamilyHandles));
   }
 
   /**
    * Open RocksDB in read-write mode with provided column family descriptors and handlers.
    */
-  public RocksDB open(Options options, String dbPath, List<ColumnFamilyDescriptor> columnFamilyDescriptors,
+  public RocksDB open(
+      Options options,
+      String dbPath,
+      List<ColumnFamilyDescriptor> columnFamilyDescriptors,
       List<ColumnFamilyHandle> columnFamilyHandles) throws RocksDBException, InterruptedException {
-    columnFamilyHandles.clear(); // Make sure we pass in a clean column family handle list. RocksDB JNI only calls add to insert each handle.
-    return throttledOpen(dbPath, () -> RocksDB.open(new DBOptions(options), dbPath, columnFamilyDescriptors, columnFamilyHandles));
+    columnFamilyHandles.clear(); // Make sure we pass in a clean column family handle list. RocksDB JNI only calls add
+                                 // to insert each handle.
+    return throttledOpen(
+        dbPath,
+        () -> RocksDB.open(new DBOptions(options), dbPath, columnFamilyDescriptors, columnFamilyHandles));
   }
 }

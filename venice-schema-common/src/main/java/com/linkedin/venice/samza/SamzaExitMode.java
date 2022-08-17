@@ -25,6 +25,7 @@ public enum SamzaExitMode {
   NO_OP(2);
 
   private final int value;
+
   SamzaExitMode(int value) {
     this.value = value;
   }

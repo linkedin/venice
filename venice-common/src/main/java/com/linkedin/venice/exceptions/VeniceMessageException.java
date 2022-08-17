@@ -5,7 +5,6 @@ package com.linkedin.venice.exceptions;
  * Currently everything is inherited from the superclass.
  */
 public class VeniceMessageException extends VeniceException {
-
   private static final long serialVersionUID = 1L;
 
   public VeniceMessageException(String message) {

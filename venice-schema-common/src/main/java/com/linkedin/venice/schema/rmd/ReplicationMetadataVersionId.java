@@ -28,13 +28,17 @@ public class ReplicationMetadataVersionId {
 
   @Override
   public boolean equals(Object o) {
-    if (this == o) return true;
-    if (o == null || getClass() != o.getClass()) return false;
+    if (this == o)
+      return true;
+    if (o == null || getClass() != o.getClass())
+      return false;
 
-    ReplicationMetadataVersionId that = (ReplicationMetadataVersionId)o;
+    ReplicationMetadataVersionId that = (ReplicationMetadataVersionId) o;
 
-    if (valueSchemaID != that.valueSchemaID) return false;
-    if (replicationMetadataProtocolVersion != that.replicationMetadataProtocolVersion) return false;
+    if (valueSchemaID != that.valueSchemaID)
+      return false;
+    if (replicationMetadataProtocolVersion != that.replicationMetadataProtocolVersion)
+      return false;
 
     return true;
   }

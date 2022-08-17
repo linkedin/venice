@@ -13,8 +13,11 @@ import org.apache.avro.util.Utf8;
  * This is a base class for testing the handling of Update (Write Compute) request.
  */
 public class TestMergeUpdate extends TestMergeConflictResolver {
-
-  protected GenericRecord createListMergeRecord(String fieldName, List<?> toAdd, List<?> toRemove, Schema writeComputeSchema) {
+  protected GenericRecord createListMergeRecord(
+      String fieldName,
+      List<?> toAdd,
+      List<?> toRemove,
+      Schema writeComputeSchema) {
     Schema listMergeSchema = writeComputeSchema.getTypes().get(0).getField(fieldName).schema().getTypes().get(1);
     GenericRecord listMerge = SchemaUtils.createGenericRecord(listMergeSchema);
     listMerge.put(WriteComputeConstants.SET_UNION, toAdd);
@@ -26,8 +29,7 @@ public class TestMergeUpdate extends TestMergeConflictResolver {
       String fieldName,
       Map<String, ?> toAddEntries,
       List<String> toRemoveKeys,
-      Schema writeComputeSchema
-  ) {
+      Schema writeComputeSchema) {
     Schema mapMergeSchema = writeComputeSchema.getTypes().get(0).getField(fieldName).schema().getTypes().get(1);
     GenericRecord mapMerge = SchemaUtils.createGenericRecord(mapMergeSchema);
     mapMerge.put(WriteComputeConstants.MAP_UNION, toAddEntries);

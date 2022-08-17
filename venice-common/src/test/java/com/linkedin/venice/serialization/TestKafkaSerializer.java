@@ -1,17 +1,16 @@
 package com.linkedin.venice.serialization;
 
+import static com.linkedin.venice.writer.VeniceWriter.*;
+
 import com.linkedin.venice.kafka.protocol.*;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import org.testng.Assert;
 import org.testng.annotations.Test;
-
-import java.nio.ByteBuffer;
-
-import static com.linkedin.venice.writer.VeniceWriter.*;
 
 
 /**
@@ -20,7 +19,6 @@ import static com.linkedin.venice.writer.VeniceWriter.*;
  * 2. Repeat for a PUT message and a DELETE message
  */
 public class TestKafkaSerializer {
-
   private static final String TEST_TOPIC = "TEST_TOPIC";
 
   @Test
@@ -34,10 +32,13 @@ public class TestKafkaSerializer {
     byte[] byteArray = serializer.serialize(TEST_TOPIC, expectedKafkaKey);
     KafkaKey actualKafkaKey = serializer.deserialize(TEST_TOPIC, byteArray);
 
-    Assert.assertEquals(actualKafkaKey.getKeyHeaderByte(), expectedKafkaKey.getKeyHeaderByte(),
+    Assert.assertEquals(
+        actualKafkaKey.getKeyHeaderByte(),
+        expectedKafkaKey.getKeyHeaderByte(),
         "The KafkaKey for PUT does not have the same header byte before and after serialization");
 
-    Assert.assertTrue(Arrays.equals(expectedKeyContent, actualKafkaKey.getKey()),
+    Assert.assertTrue(
+        Arrays.equals(expectedKeyContent, actualKafkaKey.getKey()),
         "The KafkaKey for PUT does not have the same payload before and after serialization");
 
     /* TEST 2: DELETE */
@@ -46,10 +47,13 @@ public class TestKafkaSerializer {
     byteArray = serializer.serialize(TEST_TOPIC, expectedKafkaKey);
     actualKafkaKey = serializer.deserialize(TEST_TOPIC, byteArray);
 
-    Assert.assertEquals(actualKafkaKey.getKeyHeaderByte(), expectedKafkaKey.getKeyHeaderByte(),
+    Assert.assertEquals(
+        actualKafkaKey.getKeyHeaderByte(),
+        expectedKafkaKey.getKeyHeaderByte(),
         "The KafkaKey for DELETE does not have the same header byte before and after serialization");
 
-    Assert.assertTrue(Arrays.equals(key2, actualKafkaKey.getKey()),
+    Assert.assertTrue(
+        Arrays.equals(key2, actualKafkaKey.getKey()),
         "The KafkaKey for DELETE does not have the same payload before and after serialization");
 
     /* TEST 3: CONTROL_MESSAGE */
@@ -57,10 +61,13 @@ public class TestKafkaSerializer {
     byteArray = serializer.serialize(TEST_TOPIC, expectedKafkaKey);
     actualKafkaKey = serializer.deserialize(TEST_TOPIC, byteArray);
 
-    Assert.assertEquals(actualKafkaKey.getKeyHeaderByte(), expectedKafkaKey.getKeyHeaderByte(),
+    Assert.assertEquals(
+        actualKafkaKey.getKeyHeaderByte(),
+        expectedKafkaKey.getKeyHeaderByte(),
         "The KafkaKey for a CONTROL_MESSAGE does not have the same header byte before and after serialization");
 
-    Assert.assertTrue(Arrays.equals(expectedKeyContent, actualKafkaKey.getKey()),
+    Assert.assertTrue(
+        Arrays.equals(expectedKeyContent, actualKafkaKey.getKey()),
         "The KafkaKey for a CONTROL_MESSAGE does not have the same payload before and after serialization");
   }
 
@@ -93,16 +100,23 @@ public class TestKafkaSerializer {
     byte[] byteArray = serializer.serialize(TEST_TOPIC, expectedKafkaValue1);
     KafkaMessageEnvelope actualKafkaValue1 = serializer.deserialize(TEST_TOPIC, byteArray);
 
-    Assert.assertEquals(actualKafkaValue1, expectedKafkaValue1,
+    Assert.assertEquals(
+        actualKafkaValue1,
+        expectedKafkaValue1,
         "KafkaMessageEnvelope for PUT should be equal() before and after serialization");
 
-    Assert.assertEquals(actualKafkaValue1.producerMetadata, producerMetadata,
+    Assert.assertEquals(
+        actualKafkaValue1.producerMetadata,
+        producerMetadata,
         "ProducerMetadata for PUT should be equal() before and after serialization");
 
-    Assert.assertTrue(Arrays.equals(val1, ((Put) actualKafkaValue1.payloadUnion).putValue.array()),
+    Assert.assertTrue(
+        Arrays.equals(val1, ((Put) actualKafkaValue1.payloadUnion).putValue.array()),
         "PUT value should be the same before and after serialization");
 
-    Assert.assertEquals(((Put) actualKafkaValue1.payloadUnion).schemaId, put.schemaId,
+    Assert.assertEquals(
+        ((Put) actualKafkaValue1.payloadUnion).schemaId,
+        put.schemaId,
         "PUT schemaId should be equal() before and after serialization");
 
     /* TEST 2 */
@@ -126,10 +140,14 @@ public class TestKafkaSerializer {
     byteArray = serializer.serialize(TEST_TOPIC, expectedKafkaValue2);
     KafkaMessageEnvelope actualKafkaValue2 = serializer.deserialize(TEST_TOPIC, byteArray);
 
-    Assert.assertEquals(actualKafkaValue2, expectedKafkaValue2,
+    Assert.assertEquals(
+        actualKafkaValue2,
+        expectedKafkaValue2,
         "KafkaMessageEnvelope for DELETE should be equal() before and after serialization");
 
-    Assert.assertEquals(actualKafkaValue2.producerMetadata, producerMetadata2,
+    Assert.assertEquals(
+        actualKafkaValue2.producerMetadata,
+        producerMetadata2,
         "KafkaMessageEnvelope's ProducerMetadata for DELETE should be equal() before and after serialization");
 
   }

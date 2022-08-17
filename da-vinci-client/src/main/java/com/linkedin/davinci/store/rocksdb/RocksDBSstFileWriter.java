@@ -1,5 +1,7 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import static com.linkedin.venice.store.rocksdb.RocksDBUtils.*;
+
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
@@ -29,11 +31,10 @@ import org.rocksdb.SstFileReader;
 import org.rocksdb.SstFileReaderIterator;
 import org.rocksdb.SstFileWriter;
 
-import static com.linkedin.venice.store.rocksdb.RocksDBUtils.*;
-
 
 public class RocksDBSstFileWriter {
   private static final Logger LOGGER = LogManager.getLogger(RocksDBSstFileWriter.class);
+
   /**
    * This class will be used in {@link #put(byte[], ByteBuffer)} to improve GC.
    * Since the only update is from {@literal com.linkedin.venice.kafka.consumer.StoreBufferService.StoreBufferDrainer}, the
@@ -45,10 +46,13 @@ public class RocksDBSstFileWriter {
 
     public ReusableObjects() {
       directKeyBuffer = ByteBuffer.allocateDirect(1024 * 1024);
-      directValueBuffer = ByteBuffer.allocateDirect(1024 * 1024 + 128); // Adding another 128 bytes considering potential overhead of metadata
+      directValueBuffer = ByteBuffer.allocateDirect(1024 * 1024 + 128); // Adding another 128 bytes considering
+                                                                        // potential overhead of metadata
     }
   }
-  private static final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(() -> new ReusableObjects());
+
+  private static final ThreadLocal<ReusableObjects> threadLocalReusableObjects =
+      ThreadLocal.withInitial(() -> new ReusableObjects());
   /**
    * This field is being stored during offset checkpointing in {@link com.linkedin.davinci.kafka.consumer.StoreIngestionTask}.
    * With the field, RocksDB could recover properly during restart.
@@ -77,8 +81,15 @@ public class RocksDBSstFileWriter {
   private final RocksDBServerConfig rocksDBServerConfig;
   private final String lastCheckPointedSSTFileNum;
 
-  public RocksDBSstFileWriter(String storeName, int partitionId, String dbDir, EnvOptions envOptions, Options options,
-      String fullPathForTempSSTFileDir, boolean isRMD, RocksDBServerConfig rocksDBServerConfig) {
+  public RocksDBSstFileWriter(
+      String storeName,
+      int partitionId,
+      String dbDir,
+      EnvOptions envOptions,
+      Options options,
+      String fullPathForTempSSTFileDir,
+      boolean isRMD,
+      RocksDBServerConfig rocksDBServerConfig) {
     this.storeName = storeName;
     this.partitionId = partitionId;
     this.envOptions = envOptions;
@@ -91,8 +102,9 @@ public class RocksDBSstFileWriter {
 
   public void put(byte[] key, ByteBuffer valueBuffer) throws RocksDBException {
     if (null == currentSSTFileWriter) {
-      throw new VeniceException("currentSSTFileWriter is null for store: " + storeName + ", partition id: "
-          + partitionId + ", 'beginBatchWrite' should be invoked before any write");
+      throw new VeniceException(
+          "currentSSTFileWriter is null for store: " + storeName + ", partition id: " + partitionId
+              + ", 'beginBatchWrite' should be invoked before any write");
     }
     if (rocksDBServerConfig.isPutReuseByteBufferEnabled()) {
       ReusableObjects reusableObjects = threadLocalReusableObjects.get();
@@ -116,20 +128,32 @@ public class RocksDBSstFileWriter {
     }
     ++recordNumInCurrentSSTFile;
   }
+
   public void open(Map<String, String> checkpointedInfo, Optional<Supplier<byte[]>> expectedChecksumSupplier) {
-    LOGGER.info("'beginBatchWrite' got invoked for RocksDB store: {}, partition: {} with checkpointed info: {} ", storeName, partitionId, checkpointedInfo);
+    LOGGER.info(
+        "'beginBatchWrite' got invoked for RocksDB store: {}, partition: {} with checkpointed info: {} ",
+        storeName,
+        partitionId,
+        checkpointedInfo);
     // Create temp SST file dir if it doesn't exist
     File tempSSTFileDir = new File(fullPathForTempSSTFileDir);
     if (!tempSSTFileDir.exists()) {
       tempSSTFileDir.mkdirs();
     }
     if (!checkpointedInfo.containsKey(lastCheckPointedSSTFileNum)) {
-      LOGGER.info("No checkpointed info for store: {}, partition id: {} so RocksDB will start building sst file from beginning", storeName, partitionId);
+      LOGGER.info(
+          "No checkpointed info for store: {}, partition id: {} so RocksDB will start building sst file from beginning",
+          storeName,
+          partitionId);
       lastFinishedSSTFileNo = -1;
       currentSSTFileNo = 0;
     } else {
       lastFinishedSSTFileNo = Integer.parseInt(checkpointedInfo.get(lastCheckPointedSSTFileNum));
-      LOGGER.info("Received last finished sst file no: {} for store: {}, partition id: {}", lastFinishedSSTFileNo, storeName, partitionId);
+      LOGGER.info(
+          "Received last finished sst file no: {} for store: {}, partition id: {}",
+          lastFinishedSSTFileNo,
+          storeName,
+          partitionId);
       if (lastFinishedSSTFileNo < 0) {
         throw new VeniceException("Last finished sst file no: " + lastFinishedSSTFileNo + " shouldn't be negative");
       }
@@ -167,8 +191,11 @@ public class RocksDBSstFileWriter {
         String fullPathForCurrentSSTFile = composeFullPathForSSTFile(currentSSTFileNo);
         currentSSTFileWriter.open(fullPathForCurrentSSTFile);
 
-        LOGGER.info("Sync gets invoked for store: {}, partition id: {}, last finished sst file: {} current sst file: {}",
-            storeName, partitionId, fullPathForLastFinishedSSTFile,
+        LOGGER.info(
+            "Sync gets invoked for store: {}, partition id: {}, last finished sst file: {} current sst file: {}",
+            storeName,
+            partitionId,
+            fullPathForLastFinishedSSTFile,
             fullPathForCurrentSSTFile);
         long recordNumInLastSSTFile = recordNumInCurrentSSTFile;
         recordNumInCurrentSSTFile = 0;
@@ -178,13 +205,17 @@ public class RocksDBSstFileWriter {
           long startMs = System.currentTimeMillis();
           if (!verifyChecksum(fullPathForLastFinishedSSTFile, recordNumInLastSSTFile, checksumToMatch)) {
             throw new VeniceChecksumException(
-                "verifyChecksum: failure. last sstFile checksum didn't match for store: " + storeName + ", partition: " + partitionId
-                    + ", sstFile: " + fullPathForLastFinishedSSTFile + ", records: " + recordNumInLastSSTFile
-                    + ", latency(ms): " + LatencyUtils.getElapsedTimeInMs(startMs));
+                "verifyChecksum: failure. last sstFile checksum didn't match for store: " + storeName + ", partition: "
+                    + partitionId + ", sstFile: " + fullPathForLastFinishedSSTFile + ", records: "
+                    + recordNumInLastSSTFile + ", latency(ms): " + LatencyUtils.getElapsedTimeInMs(startMs));
           }
         }
       } else {
-        LOGGER.warn("Sync gets invoked for store: {}, partition id: {}, but the last sst file: {} is empty", storeName, partitionId, composeFullPathForSSTFile(currentSSTFileNo));
+        LOGGER.warn(
+            "Sync gets invoked for store: {}, partition id: {}, but the last sst file: {} is empty",
+            storeName,
+            partitionId,
+            composeFullPathForSSTFile(currentSSTFileNo));
       }
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to sync SstFileWriter", e);
@@ -206,7 +237,7 @@ public class RocksDBSstFileWriter {
       throw new VeniceException("Failed to list sst files in " + tempSSTFileDir.getAbsolutePath());
     }
 
-    for (String sstFile : sstFiles) {
+    for (String sstFile: sstFiles) {
       int sstFileNo = extractTempSSTFileNo(sstFile);
       if (sstFileNo > lastFinishedSSTFileNo) {
         String fullPathForSSTFile = fullPathForTempSSTFileDir + File.separator + sstFile;
@@ -227,14 +258,14 @@ public class RocksDBSstFileWriter {
       String sstFilePath = composeFullPathForSSTFile(cur);
       File sstFile = new File(sstFilePath);
       if (!sstFile.exists()) {
-        throw new VeniceException("SST File: " + sstFilePath + " doesn't exist, but last finished sst file no is: " + lastFinishedSSTFileNo);
+        throw new VeniceException(
+            "SST File: " + sstFilePath + " doesn't exist, but last finished sst file no is: " + lastFinishedSSTFileNo);
       }
     }
   }
 
   private String composeFullPathForSSTFile(int sstFileNo) {
-    return fullPathForTempSSTFileDir + File.separator +
-        RocksDBUtils.composeTempSSTFileName(sstFileNo);
+    return fullPathForTempSSTFileDir + File.separator + RocksDBUtils.composeTempSSTFileName(sstFileNo);
   }
 
   /**
@@ -263,7 +294,8 @@ public class RocksDBSstFileWriter {
       long actualRecordCounts = sstFileReader.getTableProperties().getNumEntries();
       if (actualRecordCounts != expectedRecordNumInSSTFile) {
         LOGGER.error(
-            "verifyChecksum: failure. SSTFile record count does not match expected: {} actual: {}", expectedRecordNumInSSTFile,
+            "verifyChecksum: failure. SSTFile record count does not match expected: {} actual: {}",
+            expectedRecordNumInSSTFile,
             actualRecordCounts);
         return false;
       }
@@ -281,8 +313,9 @@ public class RocksDBSstFileWriter {
       final byte[] finalChecksum = sstFileFinalCheckSum.get().getCheckSum();
       boolean result = Arrays.equals(finalChecksum, checksumToMatch);
       if (!result) {
-        LOGGER.error("verifyChecksum: failure. SSTFile recordCount: " + recordCount + " expectedChecksum: "
-            + ByteUtils.toHexString(checksumToMatch) + " actualChecksum: " + ByteUtils.toHexString(finalChecksum));
+        LOGGER.error(
+            "verifyChecksum: failure. SSTFile recordCount: " + recordCount + " expectedChecksum: "
+                + ByteUtils.toHexString(checksumToMatch) + " actualChecksum: " + ByteUtils.toHexString(finalChecksum));
       }
       return result;
     } catch (Exception e) {
@@ -306,7 +339,7 @@ public class RocksDBSstFileWriter {
     if (files.isEmpty()) {
       return true;
     }
-    for (String path : files) {
+    for (String path: files) {
       File file = new File(path);
       if (file.length() != 0) {
         LOGGER.error("Non-empty sst found when validating batch ingestion: " + path);
@@ -316,24 +349,30 @@ public class RocksDBSstFileWriter {
     return true;
   }
 
-
   public void ingestSSTFiles(RocksDB rocksDB, List<ColumnFamilyHandle> columnFamilyHandleList) {
     List<String> sstFilePaths = getTemporarySSTFilePaths();
     if (0 == sstFilePaths.size()) {
-      LOGGER.info("No valid sst file found, so will skip the sst file ingestion for store: {}, partition: {}", storeName,  partitionId);
+      LOGGER.info(
+          "No valid sst file found, so will skip the sst file ingestion for store: {}, partition: {}",
+          storeName,
+          partitionId);
       return;
     }
-    LOGGER.info("Start ingesting to store: " + storeName + ", partition id: " + partitionId +
-        " from files: " + sstFilePaths);
+    LOGGER.info(
+        "Start ingesting to store: " + storeName + ", partition id: " + partitionId + " from files: " + sstFilePaths);
     try (IngestExternalFileOptions ingestOptions = new IngestExternalFileOptions()) {
       ingestOptions.setMoveFiles(true);
       if (isRMD) {
-        rocksDB.ingestExternalFile(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), sstFilePaths, ingestOptions);
+        rocksDB.ingestExternalFile(
+            columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX),
+            sstFilePaths,
+            ingestOptions);
       } else {
         rocksDB.ingestExternalFile(sstFilePaths, ingestOptions);
       }
-      LOGGER.info("Finished ingestion to store: " + storeName + ", partition id: " + partitionId +
-          " from files: " + sstFilePaths);
+      LOGGER.info(
+          "Finished ingestion to store: " + storeName + ", partition id: " + partitionId + " from files: "
+              + sstFilePaths);
     } catch (RocksDBException e) {
       throw new VeniceException("Received exception during RocksDB#ingestExternalFile", e);
     }
@@ -341,13 +380,12 @@ public class RocksDBSstFileWriter {
 
   private List<String> getTemporarySSTFilePaths() {
     File tempSSTFileDir = new File(fullPathForTempSSTFileDir);
-    String[] sstFiles = tempSSTFileDir.list(
-        (dir, name) -> isTempSSTFile(name) && new File(dir, name).length() > 0);
+    String[] sstFiles = tempSSTFileDir.list((dir, name) -> isTempSSTFile(name) && new File(dir, name).length() > 0);
     List<String> sstFilePaths = new ArrayList<>();
     if (sstFiles == null) {
       return sstFilePaths;
     }
-    for (String sstFile : sstFiles) {
+    for (String sstFile: sstFiles) {
       sstFilePaths.add(tempSSTFileDir + File.separator + sstFile);
     }
     return sstFilePaths;

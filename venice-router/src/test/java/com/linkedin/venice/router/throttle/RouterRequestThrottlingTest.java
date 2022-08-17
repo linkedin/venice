@@ -1,5 +1,8 @@
 package com.linkedin.venice.router.throttle;
 
+import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.ddsstorage.base.misc.Metrics;
 import com.linkedin.ddsstorage.router.api.HostFinder;
 import com.linkedin.ddsstorage.router.api.HostHealthMonitor;
@@ -36,8 +39,6 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
-import static org.mockito.Mockito.*;
 
 public class RouterRequestThrottlingTest {
   private long totalQuota = 1000;
@@ -58,7 +59,7 @@ public class RouterRequestThrottlingTest {
     storeRepository = mock(ReadOnlyStoreRepository.class);
     doReturn(false).when(storeRepository).isReadComputationEnabled(storeName);
     doReturn(store).when(storeRepository).getStore(storeName);
-    doReturn(Arrays.asList(new Store[]{store})).when(storeRepository).getAllStores();
+    doReturn(Arrays.asList(new Store[] { store })).when(storeRepository).getAllStores();
     doReturn(totalQuota).when(storeRepository).getTotalStoreReadQuota();
 
     AggRouterHttpRequestStats stats = mock(AggRouterHttpRequestStats.class);
@@ -68,10 +69,18 @@ public class RouterRequestThrottlingTest {
     doReturn(true).when(zkRoutersClusterManager).isThrottlingEnabled();
     doReturn(true).when(zkRoutersClusterManager).isMaxCapacityProtectionEnabled();
     RoutingDataRepository routingDataRepository = mock(RoutingDataRepository.class);
-    throttler = new ReadRequestThrottler(zkRoutersClusterManager, storeRepository, routingDataRepository, 2000, stats, 0.0, 1000, 1000);
+    throttler = new ReadRequestThrottler(
+        zkRoutersClusterManager,
+        storeRepository,
+        routingDataRepository,
+        2000,
+        stats,
+        0.0,
+        1000,
+        1000);
   }
 
-  @Test (timeOut = 30000, groups = {"flaky"})
+  @Test(timeOut = 30000, groups = { "flaky" })
   public void testSingleGetThrottling() throws Exception {
     VeniceRouterConfig routerConfig = mock(VeniceRouterConfig.class);
     doReturn(Long.MAX_VALUE).when(routerConfig).getMaxPendingRequest();
@@ -79,10 +88,12 @@ public class RouterRequestThrottlingTest {
 
     MetricsRepository metricsRepository = new MetricsRepository();
 
-    VeniceDelegateMode delegateMode = new VeniceDelegateMode(routerConfig, mock(RouterStats.class), mock(RouteHttpRequestStats.class));
+    VeniceDelegateMode delegateMode =
+        new VeniceDelegateMode(routerConfig, mock(RouterStats.class), mock(RouteHttpRequestStats.class));
     delegateMode.initReadRequestThrottler(throttler);
 
-    RouterExceptionAndTrackingUtils.setRouterStats(new RouterStats<>( requestType -> new AggRouterHttpRequestStats(metricsRepository, requestType)));
+    RouterExceptionAndTrackingUtils.setRouterStats(
+        new RouterStats<>(requestType -> new AggRouterHttpRequestStats(metricsRepository, requestType)));
 
     VenicePath path = mock(VenicePath.class);
     doReturn(storeName).when(path).getStoreName();
@@ -121,8 +132,15 @@ public class RouterRequestThrottlingTest {
     for (int iter = 0; iter < 3; iter++) {
       for (int i = 0; i < totalQuota; i++) {
         try {
-          delegateMode.scatter(scatter, HttpMethod.GET.name(), storeName + "_v1", partitionFinder, hostFinder,
-              hostHealthMonitor, VeniceRole.REPLICA, metrics);
+          delegateMode.scatter(
+              scatter,
+              HttpMethod.GET.name(),
+              storeName + "_v1",
+              partitionFinder,
+              hostFinder,
+              hostHealthMonitor,
+              VeniceRole.REPLICA,
+              metrics);
         } catch (Exception e) {
           if (e instanceof RouterException) {
             Assert.fail("Router shouldn't throttle any single-get requests if the QPS is below 1000");
@@ -140,8 +158,15 @@ public class RouterRequestThrottlingTest {
     boolean singleGetThrottled = false;
     for (int i = 0; i < totalQuota + 200; i++) {
       try {
-        delegateMode.scatter(scatter, HttpMethod.GET.name(), storeName + "_v1", partitionFinder, hostFinder,
-            hostHealthMonitor, VeniceRole.REPLICA, metrics);
+        delegateMode.scatter(
+            scatter,
+            HttpMethod.GET.name(),
+            storeName + "_v1",
+            partitionFinder,
+            hostFinder,
+            hostHealthMonitor,
+            VeniceRole.REPLICA,
+            metrics);
       } catch (Exception e) {
         singleGetThrottled = true;
         if (i < totalQuota) {
@@ -158,9 +183,10 @@ public class RouterRequestThrottlingTest {
 
   @DataProvider(name = "multiGet_compute")
   public static Object[][] requestType() {
-    return new Object[][]{{RequestType.MULTI_GET}, {RequestType.COMPUTE}};
+    return new Object[][] { { RequestType.MULTI_GET }, { RequestType.COMPUTE } };
   }
-  @Test (timeOut = 30000, dataProvider = "multiGet_compute")
+
+  @Test(timeOut = 30000, dataProvider = "multiGet_compute")
   public void testMultiKeyThrottling(RequestType requestType) throws Exception {
     // Allow 10 multi-key requests per second
     int batchGetSize = 100;
@@ -171,7 +197,8 @@ public class RouterRequestThrottlingTest {
     doReturn(LEAST_LOADED_ROUTING).when(config).getMultiKeyRoutingStrategy();
 
     // multi-get/compute requests are throttled in VeniceDelegateMode
-    VeniceDelegateMode delegateMode = new VeniceDelegateMode(config, mock(RouterStats.class), mock(RouteHttpRequestStats.class));
+    VeniceDelegateMode delegateMode =
+        new VeniceDelegateMode(config, mock(RouterStats.class), mock(RouteHttpRequestStats.class));
     delegateMode.initReadRequestThrottler(throttler);
 
     VenicePath path = mock(VenicePath.class);
@@ -207,8 +234,15 @@ public class RouterRequestThrottlingTest {
     for (int iter = 0; iter < 3; iter++) {
       for (int i = 0; i < allowedQPS; i++) {
         try {
-          delegateMode.scatter(scatter, HttpMethod.POST.name(), storeName + "_v1", partitionFinder, hostFinder,
-              hostHealthMonitor, VeniceRole.REPLICA, metrics);
+          delegateMode.scatter(
+              scatter,
+              HttpMethod.POST.name(),
+              storeName + "_v1",
+              partitionFinder,
+              hostFinder,
+              hostHealthMonitor,
+              VeniceRole.REPLICA,
+              metrics);
         } catch (Exception e) {
           Assert.fail("router shouldn't throttle any multi-get requests if the QPS is below " + allowedQPS);
         }
@@ -222,8 +256,15 @@ public class RouterRequestThrottlingTest {
     boolean multiGetThrottled = false;
     for (int i = 0; i < allowedQPS + 1; i++) {
       try {
-        delegateMode.scatter(scatter, HttpMethod.POST.name(), storeName + "_v1", partitionFinder, hostFinder,
-            hostHealthMonitor, VeniceRole.REPLICA, metrics);
+        delegateMode.scatter(
+            scatter,
+            HttpMethod.POST.name(),
+            storeName + "_v1",
+            partitionFinder,
+            hostFinder,
+            hostHealthMonitor,
+            VeniceRole.REPLICA,
+            metrics);
       } catch (Exception e) {
         multiGetThrottled = true;
         if (i < allowedQPS) {

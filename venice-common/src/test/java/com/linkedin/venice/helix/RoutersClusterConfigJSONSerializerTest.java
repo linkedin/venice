@@ -8,8 +8,7 @@ import org.testng.annotations.Test;
 
 public class RoutersClusterConfigJSONSerializerTest {
   @Test
-  public void testSerializeAndDeserialize()
-      throws IOException {
+  public void testSerializeAndDeserialize() throws IOException {
     RoutersClusterConfig config = new RoutersClusterConfig();
     config.setExpectedRouterCount(10);
     config.setQuotaRebalanceEnabled(false);
@@ -21,8 +20,7 @@ public class RoutersClusterConfigJSONSerializerTest {
   }
 
   @Test
-  public void testDeserializeWithMissingFields()
-      throws IOException {
+  public void testDeserializeWithMissingFields() throws IOException {
     String jsonStr = "{\"expectedRouterCount\":10}";
     RouterClusterConfigJSONSerializer serializer = new RouterClusterConfigJSONSerializer();
     RoutersClusterConfig config = serializer.deserialize(jsonStr.getBytes(), "");

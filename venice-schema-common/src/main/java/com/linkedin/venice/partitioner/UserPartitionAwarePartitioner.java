@@ -3,6 +3,7 @@ package com.linkedin.venice.partitioner;
 import java.nio.ByteBuffer;
 import java.util.function.IntUnaryOperator;
 
+
 /**
  * UserPartitionAwarePartitioner takes a partitioner and amplification factor as input params.
  * When partitioning, the partitioner is run twice in a row, once to determine the application partition,
@@ -28,14 +29,18 @@ public class UserPartitionAwarePartitioner extends VenicePartitioner {
 
   @Override
   public int getPartitionId(ByteBuffer keyByteBuffer, int subPartitionCount) {
-    return getPartitionId((partitionCount -> partitioner.getPartitionId(keyByteBuffer, partitionCount)), subPartitionCount);
+    return getPartitionId(
+        (partitionCount -> partitioner.getPartitionId(keyByteBuffer, partitionCount)),
+        subPartitionCount);
   }
 
   private int getPartitionId(IntUnaryOperator partitioner, int subPartitionCount) {
     if (subPartitionCount % amplificationFactor != 0) {
       throw new IllegalArgumentException(
-          String.format("Sub-partition count %d is not a multiple of amplification factor %d.",
-              subPartitionCount, amplificationFactor));
+          String.format(
+              "Sub-partition count %d is not a multiple of amplification factor %d.",
+              subPartitionCount,
+              amplificationFactor));
     }
     int userPartitionCount = subPartitionCount / amplificationFactor;
     int userPartition = partitioner.applyAsInt(userPartitionCount);

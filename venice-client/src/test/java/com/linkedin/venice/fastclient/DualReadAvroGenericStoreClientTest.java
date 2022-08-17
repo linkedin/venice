@@ -1,21 +1,20 @@
 package com.linkedin.venice.fastclient;
 
+import static org.mockito.Mockito.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.fastclient.stats.ClientStats;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.utils.TestUtils;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-
-import com.linkedin.venice.utils.TestUtils;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.Test;
-
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
 
 
 public class DualReadAvroGenericStoreClientTest {
@@ -28,9 +27,14 @@ public class DualReadAvroGenericStoreClientTest {
     TestUtils.shutdownExecutor(scheduledExecutor);
   }
 
-  private DualReadAvroGenericStoreClient<String, String> prepareClients(boolean fastClientThrowExceptionWhenSending,
-      boolean fastClientSucceed, long fastClientDelayMS, boolean thinClientThrowExceptionWhenSending,
-      boolean thinClientSucceed, long thinClientDelayMS, ClientStats clientStatsForSingleGet) {
+  private DualReadAvroGenericStoreClient<String, String> prepareClients(
+      boolean fastClientThrowExceptionWhenSending,
+      boolean fastClientSucceed,
+      long fastClientDelayMS,
+      boolean thinClientThrowExceptionWhenSending,
+      boolean thinClientSucceed,
+      long thinClientDelayMS,
+      ClientStats clientStatsForSingleGet) {
     InternalAvroStoreClient<String, String> fastClient = mock(InternalAvroStoreClient.class);
     AvroGenericStoreClient<String, String> thinClient = mock(AvroGenericStoreClient.class);
     ClientConfig clientConfig = mock(ClientConfig.class);
@@ -38,30 +42,40 @@ public class DualReadAvroGenericStoreClientTest {
     doReturn(thinClient).when(clientConfig).getGenericThinClient();
 
     if (fastClientThrowExceptionWhenSending) {
-      doThrow(new VeniceClientException("Mocked VeniceClientException for fast-client while sending out request")).when(fastClient).get(any(GetRequestContext.class), any());
+      doThrow(new VeniceClientException("Mocked VeniceClientException for fast-client while sending out request"))
+          .when(fastClient)
+          .get(any(GetRequestContext.class), any());
     } else {
       if (fastClientSucceed) {
         if (fastClientDelayMS == 0) {
-          doReturn(CompletableFuture.completedFuture(fastClientResponse)).when(fastClient).get(any(GetRequestContext.class), any());
+          doReturn(CompletableFuture.completedFuture(fastClientResponse)).when(fastClient)
+              .get(any(GetRequestContext.class), any());
         } else {
           CompletableFuture<String> fastClientFuture = new CompletableFuture<>();
           doReturn(fastClientFuture).when(fastClient).get(any(GetRequestContext.class), any());
-          scheduledExecutor.schedule(() -> fastClientFuture.complete(fastClientResponse), fastClientDelayMS, TimeUnit.MILLISECONDS);
+          scheduledExecutor
+              .schedule(() -> fastClientFuture.complete(fastClientResponse), fastClientDelayMS, TimeUnit.MILLISECONDS);
         }
       } else {
         CompletableFuture<String> fastClientFuture = new CompletableFuture<>();
         doReturn(fastClientFuture).when(fastClient).get(any(GetRequestContext.class), any());
         if (fastClientDelayMS == 0) {
-          fastClientFuture.completeExceptionally(new VeniceClientException("Mocked VeniceClientException for fast-client"));
+          fastClientFuture
+              .completeExceptionally(new VeniceClientException("Mocked VeniceClientException for fast-client"));
         } else {
-          scheduledExecutor.schedule(() -> fastClientFuture.completeExceptionally(new VeniceClientException("Mocked VeniceClientException for fast-client")),
-              fastClientDelayMS, TimeUnit.MILLISECONDS);
+          scheduledExecutor.schedule(
+              () -> fastClientFuture
+                  .completeExceptionally(new VeniceClientException("Mocked VeniceClientException for fast-client")),
+              fastClientDelayMS,
+              TimeUnit.MILLISECONDS);
         }
       }
     }
 
     if (thinClientThrowExceptionWhenSending) {
-      doThrow(new VeniceClientException("Mocked VeniceClientException for thin-client while sending out request")).when(thinClient).get(any());
+      doThrow(new VeniceClientException("Mocked VeniceClientException for thin-client while sending out request"))
+          .when(thinClient)
+          .get(any());
     } else {
       if (thinClientSucceed) {
         if (thinClientDelayMS == 0) {
@@ -69,16 +83,21 @@ public class DualReadAvroGenericStoreClientTest {
         } else {
           CompletableFuture<String> thinClientFuture = new CompletableFuture<>();
           doReturn(thinClientFuture).when(thinClient).get(any());
-          scheduledExecutor.schedule(() -> thinClientFuture.complete(thinClientResponse), fastClientDelayMS, TimeUnit.MILLISECONDS);
+          scheduledExecutor
+              .schedule(() -> thinClientFuture.complete(thinClientResponse), fastClientDelayMS, TimeUnit.MILLISECONDS);
         }
       } else {
         CompletableFuture<String> thinClientFuture = new CompletableFuture<>();
         doReturn(thinClientFuture).when(thinClient).get(any());
         if (thinClientDelayMS == 0) {
-          thinClientFuture.completeExceptionally(new VeniceClientException("Mocked VeniceClientException for thin-client"));
+          thinClientFuture
+              .completeExceptionally(new VeniceClientException("Mocked VeniceClientException for thin-client"));
         } else {
-          scheduledExecutor.schedule(() -> thinClientFuture.completeExceptionally(new VeniceClientException("Mocked VeniceClientException for thin-client")),
-              thinClientDelayMS, TimeUnit.MILLISECONDS);
+          scheduledExecutor.schedule(
+              () -> thinClientFuture
+                  .completeExceptionally(new VeniceClientException("Mocked VeniceClientException for thin-client")),
+              thinClientDelayMS,
+              TimeUnit.MILLISECONDS);
         }
       }
     }
@@ -90,7 +109,8 @@ public class DualReadAvroGenericStoreClientTest {
   public void testGet() throws ExecutionException, InterruptedException {
     // Both returns, but fast-client is faster
     ClientStats clientStatsForSingleGet = mock(ClientStats.class);
-    AvroGenericStoreClient<String, String> dualReadClient = prepareClients(false,true, 0, false, true, 1000, clientStatsForSingleGet);
+    AvroGenericStoreClient<String, String> dualReadClient =
+        prepareClients(false, true, 0, false, true, 1000, clientStatsForSingleGet);
     String res = dualReadClient.get("test_key").get();
     assertEquals(res, fastClientResponse, "Fast client response should be returned since it is faster");
     verify(clientStatsForSingleGet, never()).recordFastClientErrorThinClientSucceedRequest();

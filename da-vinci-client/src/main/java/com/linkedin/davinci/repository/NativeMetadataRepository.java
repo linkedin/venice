@@ -1,5 +1,9 @@
 package com.linkedin.davinci.repository;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.system.store.MetaStoreWriter.*;
+import static java.lang.Thread.*;
+
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreType;
@@ -49,10 +53,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.system.store.MetaStoreWriter.*;
-import static java.lang.Thread.*;
-
 
 /**
  * Venice in-house implementation of a read only metadata repository where callers can retrieve various metadata such as
@@ -76,14 +76,16 @@ public abstract class NativeMetadataRepository
   protected final Map<String, Store> subscribedStoreMap = new VeniceConcurrentHashMap<>();
   // A map of user store name to their corresponding StoreConfig object.
   private final Map<String, StoreConfig> storeConfigMap = new VeniceConcurrentHashMap<>();
-  // Local cache for key/value schemas. SchemaData supports one key schema per store only, which may need to be changed for key schema evolvability.
+  // Local cache for key/value schemas. SchemaData supports one key schema per store only, which may need to be changed
+  // for key schema evolvability.
   private final Map<String, SchemaData> schemaMap = new VeniceConcurrentHashMap<>();
   private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
   private final Set<StoreDataChangedListener> listeners = new CopyOnWriteArraySet<>();
   private final AtomicLong totalStoreReadQuota = new AtomicLong();
 
   protected NativeMetadataRepository(ClientConfig clientConfig, VeniceProperties backendConfig) {
-    long refreshIntervalInSeconds = backendConfig.getLong(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS,
+    long refreshIntervalInSeconds = backendConfig.getLong(
+        CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS,
         NativeMetadataRepository.DEFAULT_REFRESH_INTERVAL_IN_SECONDS);
     this.scheduler.scheduleAtFixedRate(this::refresh, 0, refreshIntervalInSeconds, TimeUnit.SECONDS);
     this.clientConfig = clientConfig;
@@ -93,18 +95,23 @@ public abstract class NativeMetadataRepository
     return getInstance(clientConfig, backendConfig, null);
   }
 
-  public static NativeMetadataRepository getInstance(ClientConfig clientConfig, VeniceProperties backendConfig,
+  public static NativeMetadataRepository getInstance(
+      ClientConfig clientConfig,
+      VeniceProperties backendConfig,
       ICProvider icProvider) {
-    // Not using a factory pattern here because the different implementations are temporary. Eventually we will only use DaVinciClientMetaStoreBasedRepository.
+    // Not using a factory pattern here because the different implementations are temporary. Eventually we will only use
+    // DaVinciClientMetaStoreBasedRepository.
     // If all feature configs are enabled then:
     // DaVinciClientMetaStoreBasedRepository > ThinClientMetadataStoreBasedRepository.
     if (backendConfig.getBoolean(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, false)) {
-      logger.info("Initializing " + NativeMetadataRepository.class.getSimpleName() + " with "
-          + DaVinciClientMetaStoreBasedRepository.class.getSimpleName());
+      logger.info(
+          "Initializing " + NativeMetadataRepository.class.getSimpleName() + " with "
+              + DaVinciClientMetaStoreBasedRepository.class.getSimpleName());
       return new DaVinciClientMetaStoreBasedRepository(clientConfig, backendConfig);
     } else {
-      logger.info("Initializing " + NativeMetadataRepository.class.getSimpleName() + " with "
-          + ThinClientMetaStoreBasedRepository.class.getSimpleName());
+      logger.info(
+          "Initializing " + NativeMetadataRepository.class.getSimpleName() + " with "
+              + ThinClientMetaStoreBasedRepository.class.getSimpleName());
       return new ThinClientMetaStoreBasedRepository(clientConfig, backendConfig, icProvider);
     }
   }
@@ -317,7 +324,9 @@ public abstract class NativeMetadataRepository
     throw new VeniceException("Derived schema is not included in system store.");
   }
 
-  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(String storeName, int valueSchemaId,
+  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(
+      String storeName,
+      int valueSchemaId,
       int replicationMetadataVersionId) {
     throw new VeniceException("Function: getReplicationMetadataSchema is not supported!");
   }
@@ -333,11 +342,12 @@ public abstract class NativeMetadataRepository
   @Override
   public void refresh() {
     logger.debug("Refresh started for " + getClass().getSimpleName());
-    for (String storeName : subscribedStoreMap.keySet()) {
+    for (String storeName: subscribedStoreMap.keySet()) {
       try {
         refreshOneStore(storeName);
       } catch (Exception e) {
-        // Catch all exceptions here so the scheduled periodic refresh doesn't break and transient errors can be retried.
+        // Catch all exceptions here so the scheduled periodic refresh doesn't break and transient errors can be
+        // retried.
         logger.warn("Caught an exception when trying to refresh " + getClass().getSimpleName(), e);
       }
     }
@@ -381,9 +391,10 @@ public abstract class NativeMetadataRepository
 
   // Helper function with common code for retrieving StoreConfig from meta system store.
   protected StoreConfig getStoreConfigFromMetaSystemStore(String storeName) {
-    StoreClusterConfig clusterConfig = getStoreMetaValue(storeName,
-        MetaStoreDataType.STORE_CLUSTER_CONFIG.getStoreMetaKey(
-            Collections.singletonMap(KEY_STRING_STORE_NAME, storeName))).storeClusterConfig;
+    StoreClusterConfig clusterConfig = getStoreMetaValue(
+        storeName,
+        MetaStoreDataType.STORE_CLUSTER_CONFIG
+            .getStoreMetaKey(Collections.singletonMap(KEY_STRING_STORE_NAME, storeName))).storeClusterConfig;
     return new StoreConfig(clusterConfig);
   }
 
@@ -392,8 +403,8 @@ public abstract class NativeMetadataRepository
     SchemaData schemaData = new SchemaData(storeName);
     StoreMetaKey keySchemaKey =
         MetaStoreDataType.STORE_KEY_SCHEMAS.getStoreMetaKey(Collections.singletonMap(KEY_STRING_STORE_NAME, storeName));
-    StoreMetaKey valueSchemaKey = MetaStoreDataType.STORE_VALUE_SCHEMAS.getStoreMetaKey(
-        Collections.singletonMap(KEY_STRING_STORE_NAME, storeName));
+    StoreMetaKey valueSchemaKey = MetaStoreDataType.STORE_VALUE_SCHEMAS
+        .getStoreMetaKey(Collections.singletonMap(KEY_STRING_STORE_NAME, storeName));
     Map<CharSequence, CharSequence> keySchemaMap =
         getStoreMetaValue(storeName, keySchemaKey).storeKeySchemas.keySchemaMap;
     if (keySchemaMap.isEmpty()) {
@@ -405,39 +416,48 @@ public abstract class NativeMetadataRepository
     Map<CharSequence, CharSequence> valueSchemaMap =
         getStoreMetaValue(storeName, valueSchemaKey).storeValueSchemas.valueSchemaMap;
     // Check the value schema string, if it's empty then try to query the other key space for individual value schema.
-    for (Map.Entry<CharSequence, CharSequence> entry : valueSchemaMap.entrySet()) {
+    for (Map.Entry<CharSequence, CharSequence> entry: valueSchemaMap.entrySet()) {
       if (entry.getValue().toString().isEmpty()) {
         // The value schemas might be too large to be stored in a single K/V.
         StoreMetaKey individualValueSchemaKey =
-            MetaStoreDataType.STORE_VALUE_SCHEMA.getStoreMetaKey(new HashMap<String, String>() {{
-              put(KEY_STRING_STORE_NAME, storeName);
-              put(KEY_STRING_SCHEMA_ID, entry.getKey().toString());
-            }});
+            MetaStoreDataType.STORE_VALUE_SCHEMA.getStoreMetaKey(new HashMap<String, String>() {
+              {
+                put(KEY_STRING_STORE_NAME, storeName);
+                put(KEY_STRING_SCHEMA_ID, entry.getKey().toString());
+              }
+            });
         // Empty string is not a valid value schema therefore it's safe to throw exceptions if we also cannot find it in
         // the individual value schema key space.
         String valueSchema =
             getStoreMetaValue(storeName, individualValueSchemaKey).storeValueSchema.valueSchema.toString();
         schemaData.addValueSchema(new SchemaEntry(Integer.parseInt(entry.getKey().toString()), valueSchema));
       } else {
-        schemaData.addValueSchema(
-            new SchemaEntry(Integer.parseInt(entry.getKey().toString()), entry.getValue().toString()));
+        schemaData
+            .addValueSchema(new SchemaEntry(Integer.parseInt(entry.getKey().toString()), entry.getValue().toString()));
       }
     }
     return schemaData;
   }
 
   // Helper functions to parse version data retrieved from metadata system store based implementations
-  protected List<Version> getVersionsFromCurrentVersionStates(String storeName,
+  protected List<Version> getVersionsFromCurrentVersionStates(
+      String storeName,
       CurrentVersionStates currentVersionStates) {
     List<Version> versionList = new ArrayList<>();
-    for (StoreVersionState storeVersionState : currentVersionStates.currentVersionStates) {
-      PartitionerConfig partitionerConfig =
-          new PartitionerConfigImpl(storeVersionState.partitionerConfig.partitionerClass.toString(),
-              CollectionUtils.getStringMapFromCharSequenceMap(storeVersionState.partitionerConfig.partitionerParams),
-              storeVersionState.partitionerConfig.amplificationFactor);
+    for (StoreVersionState storeVersionState: currentVersionStates.currentVersionStates) {
+      PartitionerConfig partitionerConfig = new PartitionerConfigImpl(
+          storeVersionState.partitionerConfig.partitionerClass.toString(),
+          CollectionUtils.getStringMapFromCharSequenceMap(storeVersionState.partitionerConfig.partitionerParams),
+          storeVersionState.partitionerConfig.amplificationFactor);
 
-      Version version = new VersionImpl(storeName, storeVersionState.versionNumber, storeVersionState.creationTime,
-          storeVersionState.pushJobId.toString(), storeVersionState.partitionCount, partitionerConfig, null);
+      Version version = new VersionImpl(
+          storeName,
+          storeVersionState.versionNumber,
+          storeVersionState.creationTime,
+          storeVersionState.pushJobId.toString(),
+          storeVersionState.partitionCount,
+          partitionerConfig,
+          null);
       version.setChunkingEnabled(storeVersionState.chunkingEnabled);
       version.setCompressionStrategy(CompressionStrategy.valueOf(storeVersionState.compressionStrategy.toString()));
       version.setLeaderFollowerModelEnabled(storeVersionState.leaderFollowerModelEnabled);
@@ -477,7 +497,7 @@ public abstract class NativeMetadataRepository
   }
 
   protected void notifyStoreCreated(Store store) {
-    for (StoreDataChangedListener listener : listeners) {
+    for (StoreDataChangedListener listener: listeners) {
       try {
         listener.handleStoreCreated(store);
       } catch (Throwable e) {
@@ -487,7 +507,7 @@ public abstract class NativeMetadataRepository
   }
 
   protected void notifyStoreDeleted(Store store) {
-    for (StoreDataChangedListener listener : listeners) {
+    for (StoreDataChangedListener listener: listeners) {
       try {
         listener.handleStoreDeleted(store);
       } catch (Throwable e) {
@@ -497,7 +517,7 @@ public abstract class NativeMetadataRepository
   }
 
   protected void notifyStoreChanged(Store store) {
-    for (StoreDataChangedListener listener : listeners) {
+    for (StoreDataChangedListener listener: listeners) {
       try {
         listener.handleStoreChanged(store);
       } catch (Throwable e) {

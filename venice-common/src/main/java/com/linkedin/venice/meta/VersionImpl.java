@@ -26,7 +26,14 @@ public class VersionImpl implements Version {
    */
   @Deprecated
   public VersionImpl(String storeName, int number) {
-    this(storeName , number, System.currentTimeMillis(), Version.numberBasedDummyPushId(number), 0, new PartitionerConfigImpl(), null);
+    this(
+        storeName,
+        number,
+        System.currentTimeMillis(),
+        Version.numberBasedDummyPushId(number),
+        0,
+        new PartitionerConfigImpl(),
+        null);
   }
 
   public VersionImpl(String storeName, int number, String pushJobId) {
@@ -49,7 +56,13 @@ public class VersionImpl implements Version {
     this.storeVersion.storeName = storeName;
     this.storeVersion.number = number;
     this.storeVersion.createdTime = createdTime;
-    this.storeVersion.pushJobId = pushJobId == null ? Version.numberBasedDummyPushId(number) : pushJobId; // for deserializing old Versions that didn't get an pushJobId
+    this.storeVersion.pushJobId = pushJobId == null ? Version.numberBasedDummyPushId(number) : pushJobId; // for
+                                                                                                          // deserializing
+                                                                                                          // old
+                                                                                                          // Versions
+                                                                                                          // that didn't
+                                                                                                          // get an
+                                                                                                          // pushJobId
     this.storeVersion.partitionCount = partitionCount;
     if (partitionerConfig != null) {
       this.storeVersion.partitionerConfig = partitionerConfig.dataModel();
@@ -328,36 +341,25 @@ public class VersionImpl implements Version {
     return this.storeVersion;
   }
 
-
   @Override
   public String toString() {
-    return "Version{" +
-        "storeName='" + getStoreName() + '\'' +
-        ", number=" + getNumber() +
-        ", createdTime=" + getCreatedTime() +
-        ", status=" + getStatus() +
-        ", pushJobId='" + getPushJobId() + '\'' +
-        ", compressionStrategy='" + getCompressionStrategy() + '\'' +
-        ", leaderFollowerModelEnabled=" + isLeaderFollowerModelEnabled() +
-        ", pushType=" + getPushType() +
-        ", partitionCount=" + getPartitionCount() +
-        ", partitionerConfig=" + getPartitionerConfig() +
-        ", nativeReplicationEnabled=" + isNativeReplicationEnabled() +
-        ", pushStreamSourceAddress=" + getPushStreamSourceAddress() +
-        ", replicationFactor=" + getReplicationFactor() +
-        ", nativeReplicationSourceFabric=" + getNativeReplicationSourceFabric() +
-        ", incrementalPushEnabled=" + isIncrementalPushEnabled() +
-        ", useVersionLevelIncrementalPushEnabled=" + isUseVersionLevelIncrementalPushEnabled() +
-        ", hybridConfig=" + getHybridStoreConfig() +
-        ", useVersionLevelHybridConfig=" + isUseVersionLevelHybridConfig() +
-        ", activeActiveReplicationEnabled=" + isActiveActiveReplicationEnabled() +
-        ", replicationMetadataVersionId=" + getReplicationMetadataVersionId() +
-        '}';
+    return "Version{" + "storeName='" + getStoreName() + '\'' + ", number=" + getNumber() + ", createdTime="
+        + getCreatedTime() + ", status=" + getStatus() + ", pushJobId='" + getPushJobId() + '\''
+        + ", compressionStrategy='" + getCompressionStrategy() + '\'' + ", leaderFollowerModelEnabled="
+        + isLeaderFollowerModelEnabled() + ", pushType=" + getPushType() + ", partitionCount=" + getPartitionCount()
+        + ", partitionerConfig=" + getPartitionerConfig() + ", nativeReplicationEnabled=" + isNativeReplicationEnabled()
+        + ", pushStreamSourceAddress=" + getPushStreamSourceAddress() + ", replicationFactor=" + getReplicationFactor()
+        + ", nativeReplicationSourceFabric=" + getNativeReplicationSourceFabric() + ", incrementalPushEnabled="
+        + isIncrementalPushEnabled() + ", useVersionLevelIncrementalPushEnabled="
+        + isUseVersionLevelIncrementalPushEnabled() + ", hybridConfig=" + getHybridStoreConfig()
+        + ", useVersionLevelHybridConfig=" + isUseVersionLevelHybridConfig() + ", activeActiveReplicationEnabled="
+        + isActiveActiveReplicationEnabled() + ", replicationMetadataVersionId=" + getReplicationMetadataVersionId()
+        + '}';
   }
 
   @Override
   public int compareTo(Version o) {
-    if(o == null) {
+    if (o == null) {
       throw new IllegalArgumentException("Input argument is null");
     }
     return Integer.compare(storeVersion.number, o.getNumber());
@@ -387,8 +389,14 @@ public class VersionImpl implements Version {
    */
   @JsonIgnore
   public Version cloneVersion() {
-    Version clonedVersion = new VersionImpl(getStoreName(), getNumber(), getCreatedTime(), getPushJobId(),
-        getPartitionCount(), getPartitionerConfig(), getDataRecoveryVersionConfig());
+    Version clonedVersion = new VersionImpl(
+        getStoreName(),
+        getNumber(),
+        getCreatedTime(),
+        getPushJobId(),
+        getPartitionCount(),
+        getPartitionerConfig(),
+        getDataRecoveryVersionConfig());
     clonedVersion.setStatus(getStatus());
     clonedVersion.setCompressionStrategy(getCompressionStrategy());
     clonedVersion.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled());

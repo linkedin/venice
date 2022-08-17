@@ -31,7 +31,7 @@ public class BlockingDeserializer<E, K, V> extends BatchDeserializer<E, K, V> {
       Optional<ClientStats> stats,
       long preResponseEnvelopeDeserialization) {
     Map<K, V> resultMap = new HashMap<>(keyList.size());
-    for (E envelope : envelopes) {
+    for (E envelope: envelopes) {
       envelopeProcessor.accept(resultMap, envelope);
     }
     valueFuture.complete(resultMap);

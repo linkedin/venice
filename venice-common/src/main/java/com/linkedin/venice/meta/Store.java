@@ -1,12 +1,9 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import org.apache.avro.Schema;
-import org.apache.avro.specific.SpecificRecord;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -16,6 +13,8 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.apache.avro.Schema;
+import org.apache.avro.specific.SpecificRecord;
 
 
 /**
@@ -54,11 +53,11 @@ public interface Store {
    */
 
   Pattern storeNamePattern = Pattern.compile("^[a-zA-Z0-9_-]+$");
-  static boolean isValidStoreName(String name){
+
+  static boolean isValidStoreName(String name) {
     Matcher matcher = storeNamePattern.matcher(name);
     return matcher.matches() && !name.contains("--");
   }
-
 
   /**
    * This function is used to pre-fill the default value defined in schema.
@@ -78,7 +77,7 @@ public interface Store {
    */
   static <T extends SpecificRecord> T prefillAvroRecordWithDefaultValue(T recordType) {
     Schema schema = recordType.getSchema();
-    for (Schema.Field field : schema.getFields()) {
+    for (Schema.Field field: schema.getFields()) {
       if (AvroCompatibilityHelper.fieldHasDefault(field)) {
         // has default
         Object defaultValue = AvroCompatibilityHelper.getSpecificDefaultValue(field);
@@ -102,15 +101,16 @@ public interface Store {
             }
             break;
           case ARRAY:
-            Collection collection = (Collection)defaultValue;
+            Collection collection = (Collection) defaultValue;
             if (collection.isEmpty()) {
               recordType.put(field.pos(), new ArrayList<>());
             } else {
-              throw new VeniceException("Non 'empty array' default value is not supported for array type: " + field.name());
+              throw new VeniceException(
+                  "Non 'empty array' default value is not supported for array type: " + field.name());
             }
             break;
           case MAP:
-            Map map = (Map)defaultValue;
+            Map map = (Map) defaultValue;
             if (map.isEmpty()) {
               recordType.put(field.pos(), new HashMap<>());
             } else {
@@ -121,7 +121,8 @@ public interface Store {
           case FIXED:
           case BYTES:
           case RECORD:
-            throw new VeniceException("Default value for field: " + field.name() + " with type: " + fieldType + " is not supported");
+            throw new VeniceException(
+                "Default value for field: " + field.name() + " with type: " + fieldType + " is not supported");
         }
       }
     }

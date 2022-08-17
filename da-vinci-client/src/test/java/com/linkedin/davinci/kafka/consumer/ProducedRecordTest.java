@@ -10,11 +10,10 @@ import org.testng.annotations.Test;
 
 
 public class ProducedRecordTest {
-
   @Test
   public void testProducedRecordCompletionSuccess() throws Exception {
-    byte[] key1 = new byte[]{97,98,99};
-    byte[] value1 = new byte[]{97,98,100};
+    byte[] key1 = new byte[] { 97, 98, 99 };
+    byte[] value1 = new byte[] { 97, 98, 100 };
 
     Put put1 = new Put();
     put1.putValue = ByteBuffer.wrap(value1);
@@ -27,8 +26,8 @@ public class ProducedRecordTest {
 
   @Test
   public void testProducedRecordCompletionException() {
-    byte[] key1 = new byte[]{97,98,99};
-    byte[] value1 = new byte[]{97,98,100};
+    byte[] key1 = new byte[] { 97, 98, 99 };
+    byte[] value1 = new byte[] { 97, 98, 100 };
 
     Put put1 = new Put();
     put1.putValue = ByteBuffer.wrap(value1);

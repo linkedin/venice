@@ -1,5 +1,8 @@
 package com.linkedin.venice.schema.rmd.v1;
 
+import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
+import static org.apache.avro.Schema.Type.*;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.SchemaUtils;
@@ -7,9 +10,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import org.apache.avro.Schema;
-
-import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
-import static org.apache.avro.Schema.Type.*;
 
 
 /**
@@ -34,7 +34,8 @@ public class ReplicationMetadataSchemaGeneratorV1 {
   public static final Schema LONG_TYPE_TIMESTAMP_SCHEMA = Schema.create(LONG);
   protected static final Schema OFFSET_VECTOR_SCHEMA = Schema.createArray(Schema.create(LONG));
 
-  public ReplicationMetadataSchemaGeneratorV1() {}
+  public ReplicationMetadataSchemaGeneratorV1() {
+  }
 
   public Schema generateMetadataSchema(String valueSchemaStr) {
     return generateMetadataSchema(AvroCompatibilityHelper.parse(valueSchemaStr));
@@ -55,7 +56,12 @@ public class ReplicationMetadataSchemaGeneratorV1 {
 
   protected void validateSchemaType(Schema schema, Schema.Type expectedType) {
     if (schema.getType() != expectedType) {
-      throw new VeniceException(String.format("Expect schema with type %s. Got: %s with name %s", expectedType, schema.getType(), schema.getName()));
+      throw new VeniceException(
+          String.format(
+              "Expect schema with type %s. Got: %s with name %s",
+              expectedType,
+              schema.getType(),
+              schema.getName()));
     }
   }
 

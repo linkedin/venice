@@ -5,6 +5,10 @@ import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Utils;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.io.Decoder;
 import org.apache.avro.io.DecoderFactory;
@@ -12,16 +16,14 @@ import org.apache.avro.io.Encoder;
 import org.apache.avro.specific.SpecificDatumReader;
 import org.apache.avro.specific.SpecificDatumWriter;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
 
 public class AdminOperationSerializer {
   // Latest schema id, and it needs to be updated whenever we add a new version
-  public static int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION = AvroProtocolDefinition.ADMIN_OPERATION.getCurrentProtocolVersion();
+  public static int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION =
+      AvroProtocolDefinition.ADMIN_OPERATION.getCurrentProtocolVersion();
 
-  private static SpecificDatumWriter<AdminOperation> SPECIFIC_DATUM_WRITER = new SpecificDatumWriter<>(AdminOperation.SCHEMA$);
+  private static SpecificDatumWriter<AdminOperation> SPECIFIC_DATUM_WRITER =
+      new SpecificDatumWriter<>(AdminOperation.SCHEMA$);
   /** Used to generate decoders. */
   private static final DecoderFactory DECODER_FACTORY = new DecoderFactory();
 
@@ -44,12 +46,12 @@ public class AdminOperationSerializer {
     if (!PROTOCOL_MAP.containsKey(writerSchemaId)) {
       throw new VeniceMessageException("Writer schema: " + writerSchemaId + " doesn't exist");
     }
-    SpecificDatumReader<AdminOperation> reader = new SpecificDatumReader<>(
-        PROTOCOL_MAP.get(writerSchemaId), AdminOperation.SCHEMA$);
+    SpecificDatumReader<AdminOperation> reader =
+        new SpecificDatumReader<>(PROTOCOL_MAP.get(writerSchemaId), AdminOperation.SCHEMA$);
     Decoder decoder = DECODER_FACTORY.createBinaryDecoder(bytes, null);
     try {
       return reader.read(null, decoder);
-    } catch(IOException e) {
+    } catch (IOException e) {
       throw new VeniceMessageException("Could not deserialize bytes back into AdminOperation object" + e);
     }
   }
@@ -57,8 +59,8 @@ public class AdminOperationSerializer {
   public static Map<Integer, Schema> initProtocolMap() {
     try {
       Map<Integer, Schema> protocolSchemaMap = new HashMap<>();
-      for (int i=1; i<= LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION; i++){
-        protocolSchemaMap.put(i, Utils.getSchemaFromResource("avro/AdminOperation/v"+i+"/AdminOperation.avsc"));
+      for (int i = 1; i <= LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION; i++) {
+        protocolSchemaMap.put(i, Utils.getSchemaFromResource("avro/AdminOperation/v" + i + "/AdminOperation.avsc"));
       }
       return protocolSchemaMap;
     } catch (IOException e) {

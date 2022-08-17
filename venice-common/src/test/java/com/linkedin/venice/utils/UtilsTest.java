@@ -1,31 +1,27 @@
 package com.linkedin.venice.utils;
 
+import static org.testng.Assert.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
-
-import org.testng.Assert;
-import org.testng.annotations.Test;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.TreeMap;
-
-import static org.testng.Assert.*;
+import org.testng.Assert;
+import org.testng.annotations.Test;
 
 
 /**
  * Test cases for Venice {@link Utils}
  */
 public class UtilsTest {
-
   @Test
   public void testGetHelixNodeIdentifier() {
     int port = 1234;
     String identifier = Utils.getHelixNodeIdentifier(1234);
-    assertEquals(identifier, Utils.getHostName() + "_" + port,
-        "Identifier is not the valid format required by Helix.");
+    assertEquals(identifier, Utils.getHostName() + "_" + port, "Identifier is not the valid format required by Helix.");
   }
 
   @Test
@@ -45,7 +41,7 @@ public class UtilsTest {
       assertEquals(Utils.parsePortFromHelixNodeIdentifier(identifier), port);
       fail("Port should be numeric value");
     } catch (VeniceException e) {
-      //expected
+      // expected
     }
   }
 
@@ -54,10 +50,13 @@ public class UtilsTest {
     Map<CharSequence, CharSequence> debugInfo = Utils.getDebugInfo();
     debugInfo.forEach((k, v) -> System.out.println(k + ": " + v));
     Assert.assertFalse(debugInfo.isEmpty(), "debugInfo should not be empty.");
-    String[] expectedKeys = {"path", "host", "pid", "version", "user", "JDK major version"};
-    Assert.assertEquals(debugInfo.size(), expectedKeys.length, "debugInfo does not contain the expected number of elements.");
-    Arrays.stream(expectedKeys).forEach(key ->
-        Assert.assertTrue(debugInfo.containsKey(key), "debugInfo should contain: " + key));
+    String[] expectedKeys = { "path", "host", "pid", "version", "user", "JDK major version" };
+    Assert.assertEquals(
+        debugInfo.size(),
+        expectedKeys.length,
+        "debugInfo does not contain the expected number of elements.");
+    Arrays.stream(expectedKeys)
+        .forEach(key -> Assert.assertTrue(debugInfo.containsKey(key), "debugInfo should contain: " + key));
 
     // N.B.: Not testing the actual debugInfo values because them being environment-specific makes things a bit tricky
   }
@@ -84,11 +83,13 @@ public class UtilsTest {
     inputOutput.put(7654321987654321L, "7654T");
     inputOutput.put(87654321987654321L, "87654T");
 
-    inputOutput.entrySet().stream()
-        .forEach(entry -> Assert.assertEquals(
-            Utils.makeLargeNumberPretty(entry.getKey()),
-            entry.getValue(),
-            entry.getKey() + " does not get converted properly!"));
+    inputOutput.entrySet()
+        .stream()
+        .forEach(
+            entry -> Assert.assertEquals(
+                Utils.makeLargeNumberPretty(entry.getKey()),
+                entry.getValue(),
+                entry.getKey() + " does not get converted properly!"));
   }
 
   @Test
@@ -111,11 +112,13 @@ public class UtilsTest {
     inputOutput.put(54321987654321L, "15.1h");
     inputOutput.put(654321987654321L, "181.8h");
 
-    inputOutput.entrySet().stream()
-        .forEach(entry -> Assert.assertEquals(
-            Utils.makeTimePretty(entry.getKey()),
-            entry.getValue(),
-            entry.getKey() + " does not get converted properly!"));
+    inputOutput.entrySet()
+        .stream()
+        .forEach(
+            entry -> Assert.assertEquals(
+                Utils.makeTimePretty(entry.getKey()),
+                entry.getValue(),
+                entry.getKey() + " does not get converted properly!"));
   }
 
   @Test

@@ -10,13 +10,11 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
-
+import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
-
-import java.util.concurrent.TimeUnit;
 
 
 public class TestWritePathComputation {
@@ -30,13 +28,15 @@ public class TestWritePathComputation {
       String storeName = "test-store0";
 
       // Create store
-      Admin admin = multiClusterWrapper.getLeaderController(clusterName, GET_LEADER_CONTROLLER_TIMEOUT).getVeniceAdmin();
+      Admin admin =
+          multiClusterWrapper.getLeaderController(clusterName, GET_LEADER_CONTROLLER_TIMEOUT).getVeniceAdmin();
       admin.createStore(clusterName, storeName, "tester", "\"string\"", "\"string\"");
       Assert.assertTrue(admin.hasStore(clusterName, storeName));
       Assert.assertFalse(admin.getStore(clusterName, storeName).isWriteComputationEnabled());
 
       // Set flag
-      String controllerUrl = multiClusterWrapper.getLeaderController(clusterName, GET_LEADER_CONTROLLER_TIMEOUT).getControllerUrl();
+      String controllerUrl =
+          multiClusterWrapper.getLeaderController(clusterName, GET_LEADER_CONTROLLER_TIMEOUT).getControllerUrl();
       try (ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl)) {
         controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true));
         Assert.assertTrue(admin.getStore(clusterName, storeName).isWriteComputationEnabled());
@@ -50,8 +50,8 @@ public class TestWritePathComputation {
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testFeatureFlagMultipleDC() {
-    try (VeniceTwoLayerMultiColoMultiClusterWrapper twoLayerMultiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
-        1, 1, 1, 1, 1, 0)) {
+    try (VeniceTwoLayerMultiColoMultiClusterWrapper twoLayerMultiColoMultiClusterWrapper =
+        ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(1, 1, 1, 1, 1, 0)) {
 
       VeniceMultiClusterWrapper multiCluster = twoLayerMultiColoMultiClusterWrapper.getClusters().get(0);
       VeniceControllerWrapper parentController = twoLayerMultiColoMultiClusterWrapper.getParentControllers().get(0);
@@ -59,7 +59,8 @@ public class TestWritePathComputation {
       String storeName = "test-store0";
 
       // Create store
-      Admin parentAdmin = twoLayerMultiColoMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName).getVeniceAdmin();
+      Admin parentAdmin =
+          twoLayerMultiColoMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName).getVeniceAdmin();
       Admin childAdmin = multiCluster.getLeaderController(clusterName, GET_LEADER_CONTROLLER_TIMEOUT).getVeniceAdmin();
       parentAdmin.createStore(clusterName, storeName, "tester", "\"string\"", "\"string\"");
       TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
@@ -72,24 +73,23 @@ public class TestWritePathComputation {
       // Set flag
       String parentControllerUrl = parentController.getControllerUrl();
       try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrl)) {
-        ControllerResponse response = parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true));
+        ControllerResponse response = parentControllerClient
+            .updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true));
         Assert.assertTrue(response.isError());
         Assert.assertTrue(
-            response.getError().contains("Cannot generate write-compute schema from non-Record value schema")
-        );
+            response.getError().contains("Cannot generate write-compute schema from non-Record value schema"));
         TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
           Assert.assertFalse(
               parentAdmin.getStore(clusterName, storeName).isWriteComputationEnabled(),
-              "Write Compute should not be enabled before the value schema is not a Record."
-          );
+              "Write Compute should not be enabled before the value schema is not a Record.");
           Assert.assertFalse(
               childAdmin.getStore(clusterName, storeName).isWriteComputationEnabled(),
-              "Write Compute should not be enabled before the value schema is not a Record."
-          );
+              "Write Compute should not be enabled before the value schema is not a Record.");
         });
 
         // Reset flag
-        response = parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(false));
+        response = parentControllerClient
+            .updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(false));
         Assert.assertFalse(response.isError(), "No error is expected to disable Write Compute (that was not enabled)");
         TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
           Assert.assertFalse(parentAdmin.getStore(clusterName, storeName).isWriteComputationEnabled());

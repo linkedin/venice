@@ -46,7 +46,7 @@ public enum DataReplicationPolicy {
 
   public static Map<Integer, DataReplicationPolicy> getDataReplicationPolicyMap() {
     final Map<Integer, DataReplicationPolicy> intToTypeMap = new HashMap<>();
-    for (DataReplicationPolicy style : DataReplicationPolicy.values()) {
+    for (DataReplicationPolicy style: DataReplicationPolicy.values()) {
       intToTypeMap.put(style.value, style);
     }
 

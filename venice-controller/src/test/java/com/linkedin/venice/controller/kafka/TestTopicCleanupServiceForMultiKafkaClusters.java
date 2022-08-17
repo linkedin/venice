@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller.kafka;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.kafka.TopicManager;
@@ -12,14 +14,12 @@ import java.util.concurrent.ExecutionException;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
-import static org.mockito.Mockito.*;
 
 public class TestTopicCleanupServiceForMultiKafkaClusters {
   private Admin admin;
   private TopicManager topicManager1;
   private TopicManager topicManager2;
   private TopicCleanupServiceForParentController topicCleanupService;
-
 
   @BeforeTest
   public void setUp() {

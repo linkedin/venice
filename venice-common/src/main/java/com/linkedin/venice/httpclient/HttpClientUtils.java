@@ -1,5 +1,7 @@
 package com.linkedin.venice.httpclient;
 
+import static com.linkedin.venice.HttpConstants.*;
+
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.stats.HttpConnectionPoolStats;
@@ -25,8 +27,6 @@ import org.apache.http.nio.reactor.SessionRequestCallback;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.HttpConstants.*;
-
 
 public class HttpClientUtils {
   private static final Logger LOGGER = LogManager.getLogger(HttpClientUtils.class);
@@ -37,7 +37,9 @@ public class HttpClientUtils {
     private final CloseableHttpAsyncClient client;
     private final PoolingNHttpClientConnectionManager connManager;
 
-    public ClosableHttpAsyncClientWithConnManager(CloseableHttpAsyncClient client, PoolingNHttpClientConnectionManager connManager) {
+    public ClosableHttpAsyncClientWithConnManager(
+        CloseableHttpAsyncClient client,
+        PoolingNHttpClientConnectionManager connManager) {
       this.client = client;
       this.connManager = connManager;
     }
@@ -57,37 +59,91 @@ public class HttpClientUtils {
     return sslSessionStrategy;
   }
 
-  public static CloseableHttpAsyncClient getMinimalHttpClient(int ioThreadNum, int maxConnPerRoute, int maxConnTotal,
-      int socketTimeout, int connectionTimeout, Optional<SSLEngineComponentFactory> sslFactory,
-      Optional<CachedDnsResolver> dnsResolver, Optional<HttpConnectionPoolStats> poolStats) {
-    return getMinimalHttpClient(ioThreadNum, maxConnPerRoute, maxConnTotal, socketTimeout, connectionTimeout, sslFactory,
-        dnsResolver, poolStats, true, TimeUnit.HOURS.toMinutes(3));
+  public static CloseableHttpAsyncClient getMinimalHttpClient(
+      int ioThreadNum,
+      int maxConnPerRoute,
+      int maxConnTotal,
+      int socketTimeout,
+      int connectionTimeout,
+      Optional<SSLEngineComponentFactory> sslFactory,
+      Optional<CachedDnsResolver> dnsResolver,
+      Optional<HttpConnectionPoolStats> poolStats) {
+    return getMinimalHttpClient(
+        ioThreadNum,
+        maxConnPerRoute,
+        maxConnTotal,
+        socketTimeout,
+        connectionTimeout,
+        sslFactory,
+        dnsResolver,
+        poolStats,
+        true,
+        TimeUnit.HOURS.toMinutes(3));
   }
 
-  public static ClosableHttpAsyncClientWithConnManager getMinimalHttpClientWithConnManager(int ioThreadNum, int maxConnPerRoute, int maxConnTotal,
-      int socketTimeout, int connectionTimeout, Optional<SSLEngineComponentFactory> sslFactory,
-      Optional<CachedDnsResolver> dnsResolver, Optional<HttpConnectionPoolStats> poolStats, boolean isIdleConnectionToServerCleanupEnabled,
+  public static ClosableHttpAsyncClientWithConnManager getMinimalHttpClientWithConnManager(
+      int ioThreadNum,
+      int maxConnPerRoute,
+      int maxConnTotal,
+      int socketTimeout,
+      int connectionTimeout,
+      Optional<SSLEngineComponentFactory> sslFactory,
+      Optional<CachedDnsResolver> dnsResolver,
+      Optional<HttpConnectionPoolStats> poolStats,
+      boolean isIdleConnectionToServerCleanupEnabled,
       long idleConnectionCleanupThresholdMins) {
-    PoolingNHttpClientConnectionManager connectionManager = createConnectionManager(ioThreadNum, maxConnPerRoute,
-        maxConnTotal, socketTimeout, connectionTimeout, sslFactory, dnsResolver, poolStats);
+    PoolingNHttpClientConnectionManager connectionManager = createConnectionManager(
+        ioThreadNum,
+        maxConnPerRoute,
+        maxConnTotal,
+        socketTimeout,
+        connectionTimeout,
+        sslFactory,
+        dnsResolver,
+        poolStats);
     if (poolStats.isPresent()) {
       poolStats.get().addConnectionPoolManager(connectionManager);
     }
     if (isIdleConnectionToServerCleanupEnabled) {
-      LOGGER.info("Idle connection to server cleanup is enabled, and the idle threshold is " + idleConnectionCleanupThresholdMins + " mins");
-      reapIdleConnections(connectionManager, 10, TimeUnit.MINUTES, idleConnectionCleanupThresholdMins, TimeUnit.MINUTES);
+      LOGGER.info(
+          "Idle connection to server cleanup is enabled, and the idle threshold is "
+              + idleConnectionCleanupThresholdMins + " mins");
+      reapIdleConnections(
+          connectionManager,
+          10,
+          TimeUnit.MINUTES,
+          idleConnectionCleanupThresholdMins,
+          TimeUnit.MINUTES);
     } else {
       LOGGER.info("Idle connection to server cleanup is disabled");
     }
-    return new ClosableHttpAsyncClientWithConnManager(HttpAsyncClients.createMinimal(connectionManager), connectionManager);
+    return new ClosableHttpAsyncClientWithConnManager(
+        HttpAsyncClients.createMinimal(connectionManager),
+        connectionManager);
   }
 
-  public static CloseableHttpAsyncClient getMinimalHttpClient(int ioThreadNum, int maxConnPerRoute, int maxConnTotal,
-      int socketTimeout, int connectionTimeout, Optional<SSLEngineComponentFactory> sslFactory,
-      Optional<CachedDnsResolver> dnsResolver, Optional<HttpConnectionPoolStats> poolStats, boolean isIdleConnectionToServerCleanupEnabled,
+  public static CloseableHttpAsyncClient getMinimalHttpClient(
+      int ioThreadNum,
+      int maxConnPerRoute,
+      int maxConnTotal,
+      int socketTimeout,
+      int connectionTimeout,
+      Optional<SSLEngineComponentFactory> sslFactory,
+      Optional<CachedDnsResolver> dnsResolver,
+      Optional<HttpConnectionPoolStats> poolStats,
+      boolean isIdleConnectionToServerCleanupEnabled,
       long idleConnectionCleanupThresholdMins) {
-    return getMinimalHttpClientWithConnManager(ioThreadNum, maxConnPerRoute, maxConnTotal, socketTimeout, connectionTimeout,
-        sslFactory, dnsResolver, poolStats, isIdleConnectionToServerCleanupEnabled, idleConnectionCleanupThresholdMins).getClient();
+    return getMinimalHttpClientWithConnManager(
+        ioThreadNum,
+        maxConnPerRoute,
+        maxConnTotal,
+        socketTimeout,
+        connectionTimeout,
+        sslFactory,
+        dnsResolver,
+        poolStats,
+        isIdleConnectionToServerCleanupEnabled,
+        idleConnectionCleanupThresholdMins).getClient();
   }
 
   /**
@@ -102,7 +158,9 @@ public class HttpClientUtils {
       private final SessionRequestCallback actualCallback;
       private final Optional<HttpConnectionPoolStats> poolStats;
 
-      public VeniceSessionRequestCallback(SessionRequestCallback callback, Optional<HttpConnectionPoolStats> poolStats) {
+      public VeniceSessionRequestCallback(
+          SessionRequestCallback callback,
+          Optional<HttpConnectionPoolStats> poolStats) {
         this.startTimeMs = System.currentTimeMillis();
         this.actualCallback = callback;
         this.poolStats = poolStats;
@@ -153,7 +211,8 @@ public class HttpClientUtils {
       }
     }
 
-    public VeniceConnectingIOReactor(final IOReactorConfig config, Optional<HttpConnectionPoolStats> poolStats) throws IOReactorException {
+    public VeniceConnectingIOReactor(final IOReactorConfig config, Optional<HttpConnectionPoolStats> poolStats)
+        throws IOReactorException {
       super(config, null);
       this.poolStats = poolStats;
     }
@@ -164,16 +223,23 @@ public class HttpClientUtils {
         SocketAddress localAddress,
         Object attachment,
         SessionRequestCallback callback) {
-      return super.connect(remoteAddress,
+      return super.connect(
+          remoteAddress,
           localAddress,
           attachment,
           new VeniceSessionRequestCallback(callback, poolStats));
     }
   }
 
-  public static PoolingNHttpClientConnectionManager createConnectionManager(int ioThreadNum, int perRoute, int total,
-      int soTimeout, int connectionTimeout, Optional<SSLEngineComponentFactory> sslFactory,
-      Optional<CachedDnsResolver> dnsResolver, Optional<HttpConnectionPoolStats> poolStats) {
+  public static PoolingNHttpClientConnectionManager createConnectionManager(
+      int ioThreadNum,
+      int perRoute,
+      int total,
+      int soTimeout,
+      int connectionTimeout,
+      Optional<SSLEngineComponentFactory> sslFactory,
+      Optional<CachedDnsResolver> dnsResolver,
+      Optional<HttpConnectionPoolStats> poolStats) {
     IOReactorConfig ioReactorConfig = IOReactorConfig.custom()
         .setSoKeepAlive(true)
         .setIoThreadCount(ioThreadNum)
@@ -189,7 +255,7 @@ public class HttpClientUtils {
     PoolingNHttpClientConnectionManager connMgr;
     RegistryBuilder<SchemeIOSessionStrategy> registryBuilder = RegistryBuilder.create();
     registryBuilder.register(HTTP, NoopIOSessionStrategy.INSTANCE);
-    if(sslFactory.isPresent()) {
+    if (sslFactory.isPresent()) {
       SSLIOSessionStrategy sslStrategy = getSslStrategy(sslFactory.get());
       registryBuilder.register(HTTPS, sslStrategy);
     }
@@ -197,7 +263,11 @@ public class HttpClientUtils {
     if (dnsResolver.isPresent()) {
       dnsResolverForConnectionManager = dnsResolver.get();
     }
-    connMgr = new PoolingNHttpClientConnectionManager(ioReactor, null, registryBuilder.build(), dnsResolverForConnectionManager);
+    connMgr = new PoolingNHttpClientConnectionManager(
+        ioReactor,
+        null,
+        registryBuilder.build(),
+        dnsResolverForConnectionManager);
     connMgr.setMaxTotal(total);
     connMgr.setDefaultMaxPerRoute(perRoute);
 
@@ -211,9 +281,21 @@ public class HttpClientUtils {
    * @param sslFactory
    * @return
    */
-  public static CloseableHttpAsyncClient getMinimalHttpClient(int maxConnPerRoute, int maxConnTotal, Optional<SSLEngineComponentFactory> sslFactory) {
-    return getMinimalHttpClient(1, maxConnPerRoute, maxConnTotal, 10000, 10000,
-        sslFactory, Optional.empty(), Optional.empty(), true, TimeUnit.HOURS.toMinutes(3));
+  public static CloseableHttpAsyncClient getMinimalHttpClient(
+      int maxConnPerRoute,
+      int maxConnTotal,
+      Optional<SSLEngineComponentFactory> sslFactory) {
+    return getMinimalHttpClient(
+        1,
+        maxConnPerRoute,
+        maxConnTotal,
+        10000,
+        10000,
+        sslFactory,
+        Optional.empty(),
+        Optional.empty(),
+        true,
+        TimeUnit.HOURS.toMinutes(3));
   }
 
   /**
@@ -225,15 +307,18 @@ public class HttpClientUtils {
    * @param maxIdleTimeUnits
    * @return started daemon thread that is doing the reaping.  Interrupt this thread to halt reaping or ignore the return value.
    */
-  private static Thread reapIdleConnections(PoolingNHttpClientConnectionManager connectionManager,
-      long sleepTime, TimeUnit sleepTimeUnits,
-      long maxIdleTime, TimeUnit maxIdleTimeUnits) {
-    Thread idleConnectionReaper = new Thread(()->{
-      while (true){
+  private static Thread reapIdleConnections(
+      PoolingNHttpClientConnectionManager connectionManager,
+      long sleepTime,
+      TimeUnit sleepTimeUnits,
+      long maxIdleTime,
+      TimeUnit maxIdleTimeUnits) {
+    Thread idleConnectionReaper = new Thread(() -> {
+      while (true) {
         try {
           Thread.sleep(sleepTimeUnits.toMillis(sleepTime));
           connectionManager.closeIdleConnections(maxIdleTime, maxIdleTimeUnits);
-        } catch (InterruptedException e){
+        } catch (InterruptedException e) {
           break;
         }
       }

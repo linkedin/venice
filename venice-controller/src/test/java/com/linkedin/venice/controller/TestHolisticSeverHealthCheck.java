@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessResponse;
@@ -26,7 +28,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static org.mockito.Mockito.*;
 
 public class TestHolisticSeverHealthCheck {
   private VeniceClusterWrapper cluster;
@@ -37,8 +38,7 @@ public class TestHolisticSeverHealthCheck {
   @BeforeClass
   public void setUp() {
     int numOfController = 1;
-    cluster = ServiceFactory.getVeniceCluster(numOfController, 2, 1, replicaFactor,
-        partitionSize, false, false);
+    cluster = ServiceFactory.getVeniceCluster(numOfController, 2, 1, replicaFactor, partitionSize, false, false);
 
     Properties routerProperties = new Properties();
     routerProperties.put(ConfigKeys.HELIX_OFFLINE_PUSH_ENABLED, true);
@@ -53,7 +53,6 @@ public class TestHolisticSeverHealthCheck {
     cluster.close();
   }
 
-
   private boolean VerifyNodeReplicasState(String nodeId, NodeReplicasReadinessState state) {
     NodeReplicasReadinessResponse response = controllerClient.nodeReplicasReadiness(nodeId);
     return !response.isError() && response.getNodeState() == state;
@@ -66,7 +65,7 @@ public class TestHolisticSeverHealthCheck {
 
   private void verifyNodesAreReady() {
     String wrongNodeId = "incorrect_node_id";
-    for (VeniceServerWrapper server : cluster.getVeniceServers()) {
+    for (VeniceServerWrapper server: cluster.getVeniceServers()) {
       String nodeId = Utils.getHelixNodeIdentifier(server.getPort());
       Assert.assertTrue(VerifyNodeReplicasState(nodeId, NodeReplicasReadinessState.READY));
       Assert.assertTrue(VerifyNodeIsError(wrongNodeId));
@@ -74,7 +73,7 @@ public class TestHolisticSeverHealthCheck {
   }
 
   private void verifyNodesAreInExpectedState(NodeReplicasReadinessState state) {
-    for (VeniceServerWrapper server : cluster.getVeniceServers()) {
+    for (VeniceServerWrapper server: cluster.getVeniceServers()) {
       String nodeId = Utils.getHelixNodeIdentifier(server.getPort());
       Assert.assertTrue(VerifyNodeReplicasState(nodeId, state));
     }
@@ -126,7 +125,9 @@ public class TestHolisticSeverHealthCheck {
     }
 
     // Wait until push is completed.
-    TestUtils.waitForNonDeterministicCompletion(120, TimeUnit.SECONDS,
+    TestUtils.waitForNonDeterministicCompletion(
+        120,
+        TimeUnit.SECONDS,
         () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()
             .getOffLinePushStatus(cluster.getClusterName(), topicName)
@@ -137,7 +138,7 @@ public class TestHolisticSeverHealthCheck {
     verifyNodesAreReady();
 
     // Stop both servers.
-    for (VeniceServerWrapper server : cluster.getVeniceServers()) {
+    for (VeniceServerWrapper server: cluster.getVeniceServers()) {
       cluster.stopVeniceServer(server.getPort());
     }
 
@@ -159,14 +160,16 @@ public class TestHolisticSeverHealthCheck {
     verifyNodesAreInanimate();
 
     // Restart both servers.
-    for (VeniceServerWrapper restartServer : cluster.getVeniceServers()) {
+    for (VeniceServerWrapper restartServer: cluster.getVeniceServers()) {
       cluster.restartVeniceServer(restartServer.getPort());
     }
 
     // Wait until the servers are in the ready state again.
-    for (VeniceServerWrapper server : cluster.getVeniceServers()) {
+    for (VeniceServerWrapper server: cluster.getVeniceServers()) {
       String nodeId = Utils.getHelixNodeIdentifier(server.getPort());
-      TestUtils.waitForNonDeterministicCompletion(120, TimeUnit.SECONDS,
+      TestUtils.waitForNonDeterministicCompletion(
+          120,
+          TimeUnit.SECONDS,
           () -> VerifyNodeReplicasState(nodeId, NodeReplicasReadinessState.READY));
     }
 
@@ -177,8 +180,8 @@ public class TestHolisticSeverHealthCheck {
         .getResourceAssignment();
 
     HelixCustomizedViewOfflinePushRepository mockedCvRepo = mock(HelixCustomizedViewOfflinePushRepository.class);
-    when(mockedCvRepo.getReadyToServeInstances((PartitionAssignment) any(), anyInt())).thenReturn(
-        Collections.emptyList());
+    when(mockedCvRepo.getReadyToServeInstances((PartitionAssignment) any(), anyInt()))
+        .thenReturn(Collections.emptyList());
     when(mockedCvRepo.getResourceAssignment()).thenReturn(resourceAssignment);
     admin.getHelixVeniceClusterResources(cluster.getClusterName()).setCustomizedViewRepository(mockedCvRepo);
 

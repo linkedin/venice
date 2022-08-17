@@ -1,26 +1,22 @@
 package com.linkedin.davinci.store.memory;
 
-import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.store.AbstractStoreTest;
-import org.testng.annotations.Test;
-
 import java.io.File;
+import org.testng.annotations.Test;
 
 
 public class InMemoryStoreTest extends AbstractStoreTest {
-
   VeniceConfigLoader veniceConfigLoader;
 
-  public InMemoryStoreTest()
-      throws Exception {
+  public InMemoryStoreTest() throws Exception {
     createStoreForTest();
   }
 
   @Override
-  public void createStoreForTest()
-      throws Exception {
-    File configFile = new File("src/test/resources/config"); //TODO this does not run from IDE because IDE expects
+  public void createStoreForTest() throws Exception {
+    File configFile = new File("src/test/resources/config"); // TODO this does not run from IDE because IDE expects
     // relative path starting from venice-server
     veniceConfigLoader = VeniceConfigLoader.loadFromConfigDirectory(configFile.getAbsolutePath());
     String storeName = "testng-in-memory";
@@ -32,32 +28,32 @@ public class InMemoryStoreTest extends AbstractStoreTest {
   }
 
   @Test
-  public void testGetAndPut(){
+  public void testGetAndPut() {
     super.testGetAndPut();
   }
 
   @Test
-  public void testGetByKeyPrefixManyKeys(){
+  public void testGetByKeyPrefixManyKeys() {
     super.testGetByKeyPrefixManyKeys();
   }
 
   @Test
-  public void testGetByKeyPrefixMaxSignedByte(){
+  public void testGetByKeyPrefixMaxSignedByte() {
     super.testGetByKeyPrefixMaxSignedByte();
   }
 
   @Test
-  public void testGetByKeyPrefixMaxUnsignedByte(){
+  public void testGetByKeyPrefixMaxUnsignedByte() {
     super.testGetByKeyPrefixMaxUnsignedByte();
   }
 
   @Test
-  public void testGetByKeyPrefixByteOverflow(){
+  public void testGetByKeyPrefixByteOverflow() {
     super.testGetByKeyPrefixByteOverflow();
   }
 
   @Test
-  public void testDelete(){
+  public void testDelete() {
     super.testDelete();
   }
 
@@ -67,8 +63,7 @@ public class InMemoryStoreTest extends AbstractStoreTest {
   }
 
   @Test
-  public void testGetInvalidKeys()
-  {
+  public void testGetInvalidKeys() {
     super.testGetInvalidKeys();
   }
 }

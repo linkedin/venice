@@ -34,16 +34,32 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
   private static final int DEFAULT_COLUMN_FAMILY_INDEX = 0;
   private static final int REPLICATION_METADATA_COLUMN_FAMILY_INDEX = 1;
 
-  public ReplicationMetadataRocksDBStoragePartition(StoragePartitionConfig storagePartitionConfig,
-      RocksDBStorageEngineFactory factory, String dbDir, RocksDBMemoryStats rocksDBMemoryStats,
-      RocksDBThrottler rocksDbThrottler, RocksDBServerConfig rocksDBServerConfig) {
-    super(storagePartitionConfig, factory, dbDir, rocksDBMemoryStats, rocksDbThrottler, rocksDBServerConfig,
+  public ReplicationMetadataRocksDBStoragePartition(
+      StoragePartitionConfig storagePartitionConfig,
+      RocksDBStorageEngineFactory factory,
+      String dbDir,
+      RocksDBMemoryStats rocksDBMemoryStats,
+      RocksDBThrottler rocksDbThrottler,
+      RocksDBServerConfig rocksDBServerConfig) {
+    super(
+        storagePartitionConfig,
+        factory,
+        dbDir,
+        rocksDBMemoryStats,
+        rocksDbThrottler,
+        rocksDBServerConfig,
         Arrays.asList(RocksDB.DEFAULT_COLUMN_FAMILY, REPLICATION_METADATA_COLUMN_FAMILY));
     this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempRMDSSTFileDir(dbDir, storeName, partitionId);
     if (deferredWrite) {
-      this.rocksDBSstFileWriter =
-          new RocksDBSstFileWriter(storeName, partitionId, dbDir, super.getEnvOptions(), super.getOptions(),
-              fullPathForTempSSTFileDir, true, rocksDBServerConfig);
+      this.rocksDBSstFileWriter = new RocksDBSstFileWriter(
+          storeName,
+          partitionId,
+          dbDir,
+          super.getEnvOptions(),
+          super.getOptions(),
+          fullPathForTempSSTFileDir,
+          true,
+          rocksDBServerConfig);
     }
   }
 
@@ -52,7 +68,8 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
     makeSureRocksDBIsStillOpen();
     if (readOnly) {
       throw new VeniceException(
-          "Cannot make writes while partition is opened in read-only mode" + ", partition=" + storeName + "_" + partitionId);
+          "Cannot make writes while partition is opened in read-only mode" + ", partition=" + storeName + "_"
+              + partitionId);
     }
 
     try {
@@ -62,13 +79,14 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
       } else {
         try (WriteBatch writeBatch = new WriteBatch()) {
           writeBatch.put(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key, value);
-          writeBatch.put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key,
-              metadata);
+          writeBatch.put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, metadata);
           rocksDB.write(writeOptions, writeBatch);
         }
       }
     } catch (RocksDBException e) {
-        throw new VeniceException("Failed to put key/value pair to store: " + storeName + ", partition id: " + partitionId, e);
+      throw new VeniceException(
+          "Failed to put key/value pair to store: " + storeName + ", partition id: " + partitionId,
+          e);
     }
   }
 
@@ -108,7 +126,8 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
     makeSureRocksDBIsStillOpen();
     if (readOnly) {
       throw new VeniceException(
-          "Cannot make writes while partition is opened in read-only mode" + ", partition=" + storeName + "_" + partitionId);
+          "Cannot make writes while partition is opened in read-only mode" + ", partition=" + storeName + "_"
+              + partitionId);
     }
     try {
       if (deferredWrite) {
@@ -117,20 +136,23 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
       } else {
         try (WriteBatch writeBatch = new WriteBatch()) {
           writeBatch.delete(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key);
-          writeBatch.put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, replicationMetadata);
+          writeBatch
+              .put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, replicationMetadata);
           rocksDB.write(writeOptions, writeBatch);
         }
       }
     } catch (RocksDBException e) {
-      String msg = deferredWrite ? "Failed to put metadata while deleing key for store: " + storeName + ", partition id: " + partitionId
+      String msg = deferredWrite
+          ? "Failed to put metadata while deleing key for store: " + storeName + ", partition id: " + partitionId
           : "Failed to delete entry to store: " + storeName + ", partition id: " + partitionId;
-        throw new VeniceException(msg, e);
+      throw new VeniceException(msg, e);
     }
   }
 
   @Override
   public synchronized void beginBatchWrite(
-      Map<String, String> checkpointedInfo, Optional<Supplier<byte[]>> expectedChecksumSupplier) {
+      Map<String, String> checkpointedInfo,
+      Optional<Supplier<byte[]>> expectedChecksumSupplier) {
     if (!deferredWrite) {
       LOGGER.info("'beginBatchWrite' will do nothing since 'deferredWrite' is disabled");
       return;

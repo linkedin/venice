@@ -1,11 +1,13 @@
 package com.linkedin.venice.consumer;
 
-import com.linkedin.venice.schema.SchemaReader;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -20,8 +22,6 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.testng.Assert;
 import org.testng.annotations.Test;
-
-import static org.mockito.Mockito.*;
 
 
 @Test
@@ -44,7 +44,8 @@ public class ConsumerTest {
     // Sanity check to make sure that a serializer without forward compat enabled cannot deserialize the new protocol
     try {
       REGULAR_KAFKA_VALUE_SERIALIZER.deserialize("", serializedMessage);
-      Assert.fail("The regular serializer should have failed to decode the message encoded with the new version. The test may have regressed.");
+      Assert.fail(
+          "The regular serializer should have failed to decode the message encoded with the new version. The test may have regressed.");
     } catch (VeniceMessageException e) {
       // Expected
     }
@@ -58,22 +59,30 @@ public class ConsumerTest {
     obliviousDeserializer.configure(configMap, false);
 
     // Sanity checks to make sure the new protocol has not somehow crept into the fresh (not warmed up) serializer
-    Assert.assertEquals(obliviousDeserializer.knownProtocols(), REGULAR_KAFKA_VALUE_SERIALIZER.knownProtocols(),
+    Assert.assertEquals(
+        obliviousDeserializer.knownProtocols(),
+        REGULAR_KAFKA_VALUE_SERIALIZER.knownProtocols(),
         "The obliviousDeserializer should not know the same as the REGULAR_KAFKA_VALUE_SERIALIZER before reading the new version.");
-    Assert.assertFalse(obliviousDeserializer.knownProtocols().contains(NEW_PROTOCOL_VERSION),
+    Assert.assertFalse(
+        obliviousDeserializer.knownProtocols().contains(NEW_PROTOCOL_VERSION),
         "The obliviousDeserializer should not know about the new protocol ahead of time.");
 
     // CODE UNDER TEST
     GenericRecord messageFromObliviousDeserializer = obliviousDeserializer.deserialize("", serializedMessage);
 
     // Check that the new protocol which was previously absent has now been fetched
-    Assert.assertTrue(obliviousDeserializer.knownProtocols().contains(NEW_PROTOCOL_VERSION),
+    Assert.assertTrue(
+        obliviousDeserializer.knownProtocols().contains(NEW_PROTOCOL_VERSION),
         "The obliviousDeserializer should know about the new protocol after encountering it.");
 
     // Data integrity checks for the fields the reader is interested in
-    Arrays.asList(PRODUCER_METADATA_FIELD, MESSAGE_TYPE_FIELD, PAYLOAD_UNION_FIELD).stream()
-        .forEach(f -> Assert.assertEquals(messageFromObliviousDeserializer.get(f), messageFromNewProtocol.get(f),
-            "Field '" + f + "' is not equal pre- and post-serialization."));
+    Arrays.asList(PRODUCER_METADATA_FIELD, MESSAGE_TYPE_FIELD, PAYLOAD_UNION_FIELD)
+        .stream()
+        .forEach(
+            f -> Assert.assertEquals(
+                messageFromObliviousDeserializer.get(f),
+                messageFromNewProtocol.get(f),
+                "Field '" + f + "' is not equal pre- and post-serialization."));
 
     // The new field should be absent in order to be fully compliant with the reader's compiled schema
     try {
@@ -82,7 +91,9 @@ public class ConsumerTest {
     } catch (NullPointerException e) {
       // Expected
     }
-    Assert.assertNotEquals(messageFromObliviousDeserializer, messageFromNewProtocol,
+    Assert.assertNotEquals(
+        messageFromObliviousDeserializer,
+        messageFromNewProtocol,
         "The two records should not be completely equal pre- and post-serialization since the new field should be ignored.");
   }
 

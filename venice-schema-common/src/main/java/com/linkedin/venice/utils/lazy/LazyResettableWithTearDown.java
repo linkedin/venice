@@ -6,6 +6,7 @@ import java.util.function.Supplier;
 
 public class LazyResettableWithTearDown<C> extends LazyResettableImpl<C> {
   private final Consumer<C> tearDown;
+
   public LazyResettableWithTearDown(Supplier<C> supplier, Consumer<C> tearDown) {
     super(supplier);
     this.tearDown = tearDown;

@@ -1,5 +1,7 @@
 package com.linkedin.venice.helix;
 
+import static org.testng.Assert.*;
+
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -17,8 +19,6 @@ import org.apache.zookeeper.CreateMode;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-
-import static org.testng.Assert.*;
 
 
 public class TestHelixReadOnlyZKSharedSystemStoreRepository {
@@ -46,14 +46,22 @@ public class TestHelixReadOnlyZKSharedSystemStoreRepository {
     zkClient.create(clusterPath + storesPath, null, CreateMode.PERSISTENT);
 
     repo = new HelixReadOnlyZKSharedSystemStoreRepository(zkClient, adapter, cluster);
-    writeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, Optional.empty(),
+    writeRepo = new HelixReadWriteStoreRepository(
+        zkClient,
+        adapter,
+        cluster,
+        Optional.empty(),
         new ClusterLockManager(cluster));
     repo.refresh();
     writeRepo.refresh();
     // Create zk shared store first
-    Store zkSharedStore = TestUtils.createTestStore(systemStoreType.getZkSharedStoreName(), "test_system_store_owner", 1);
+    Store zkSharedStore =
+        TestUtils.createTestStore(systemStoreType.getZkSharedStoreName(), "test_system_store_owner", 1);
     writeRepo.addStore(zkSharedStore);
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> assertTrue(writeRepo.hasStore(systemStoreType.getZkSharedStoreName())));
+    TestUtils.waitForNonDeterministicAssertion(
+        10,
+        TimeUnit.SECONDS,
+        () -> assertTrue(writeRepo.hasStore(systemStoreType.getZkSharedStoreName())));
 
     // Create one regular store
     regularStoreName = Utils.getUniqueString("test_store");
@@ -126,8 +134,13 @@ public class TestHelixReadOnlyZKSharedSystemStoreRepository {
     });
     // Update the zkSharedStore in write repo and check to make sure read repo gets the updates.
     Store zkSharedStore = writeRepo.getStore(systemStoreType.getZkSharedStoreName());
-    zkSharedStore.setHybridStoreConfig(new HybridStoreConfigImpl(3600, 1,
-        60, DataReplicationPolicy.NON_AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP));
+    zkSharedStore.setHybridStoreConfig(
+        new HybridStoreConfigImpl(
+            3600,
+            1,
+            60,
+            DataReplicationPolicy.NON_AGGREGATE,
+            BufferReplayPolicy.REWIND_FROM_EOP));
     writeRepo.updateStore(zkSharedStore);
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       assertTrue(repo.getStore(systemStoreType.getZkSharedStoreName()).isHybrid());

@@ -5,6 +5,7 @@ import com.linkedin.venice.serialization.IdentityRecordDeserializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import java.nio.ByteBuffer;
 
+
 /**
  * A ChunkingAdapter to be used when we want to read the value from storage engine as raw bytes. The
  * {@link AbstractAvroChunkingAdapter} merges the separate chunks and returns a complete value.
@@ -21,8 +22,12 @@ public class RawBytesChunkingAdapter extends AbstractAvroChunkingAdapter<ByteBuf
    * Both writer and reader schema are ignored here
    */
   @Override
-  protected RecordDeserializer<ByteBuffer> getDeserializer(String storeName, int writerSchemaId, int readerSchemaId,
-      ReadOnlySchemaRepository schemaRepo, boolean fastAvroEnabled) {
+  protected RecordDeserializer<ByteBuffer> getDeserializer(
+      String storeName,
+      int writerSchemaId,
+      int readerSchemaId,
+      ReadOnlySchemaRepository schemaRepo,
+      boolean fastAvroEnabled) {
     return IdentityRecordDeserializer.getInstance();
   }
 }

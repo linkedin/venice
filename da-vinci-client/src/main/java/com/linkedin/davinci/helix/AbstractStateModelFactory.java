@@ -26,19 +26,20 @@ public abstract class AbstractStateModelFactory extends StateModelFactory<StateM
   private final VeniceConfigLoader configService;
   protected final ReadOnlyStoreRepository storeMetadataRepo;
 
-  //a dedicated thread pool for state transition execution that all state model created by the
-  //same factory would share. If it's null, Helix would use a shared thread pool.
+  // a dedicated thread pool for state transition execution that all state model created by the
+  // same factory would share. If it's null, Helix would use a shared thread pool.
   protected final ExecutorService executorService;
 
   protected CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture;
   protected final String instanceName;
 
-  public AbstractStateModelFactory(VeniceIngestionBackend ingestionBackend,
-                                   VeniceConfigLoader configService, ExecutorService executorService,
-                                   ReadOnlyStoreRepository storeMetadataRepo,
-                                   CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture,
-                                   String instanceName
-  ) {
+  public AbstractStateModelFactory(
+      VeniceIngestionBackend ingestionBackend,
+      VeniceConfigLoader configService,
+      ExecutorService executorService,
+      ReadOnlyStoreRepository storeMetadataRepo,
+      CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture,
+      String instanceName) {
     this.ingestionBackend = ingestionBackend;
     this.configService = configService;
     this.executorService = executorService;

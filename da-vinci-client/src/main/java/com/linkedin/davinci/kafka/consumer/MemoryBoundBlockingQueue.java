@@ -63,8 +63,9 @@ public class MemoryBoundBlockingQueue<T extends Measurable> implements BlockingQ
 
   public MemoryBoundBlockingQueue(long memoryCapacityInByte, long notifyDeltaInByte) {
     if (notifyDeltaInByte > memoryCapacityInByte) {
-      throw new IllegalArgumentException("Param notifyDeltaInByte: " + notifyDeltaInByte +
-          " should not be bigger than param memoryCapacityInByte: " + memoryCapacityInByte);
+      throw new IllegalArgumentException(
+          "Param notifyDeltaInByte: " + notifyDeltaInByte + " should not be bigger than param memoryCapacityInByte: "
+              + memoryCapacityInByte);
     }
     /**
      * There is no need to use any blocking queue here since it is using a lock for both
@@ -92,8 +93,9 @@ public class MemoryBoundBlockingQueue<T extends Measurable> implements BlockingQ
   public void put(T record) throws InterruptedException {
     int recordSize = getRecordSize(record);
     if (recordSize > notifyDeltaInByte) {
-      LOGGER.warn("Record size of record: " + record + " is " + recordSize + ", which exceeds notifyDeltaInByte: " +
-      notifyDeltaInByte +", and it could potentially be blocked when the buffer is full.");
+      LOGGER.warn(
+          "Record size of record: " + record + " is " + recordSize + ", which exceeds notifyDeltaInByte: "
+              + notifyDeltaInByte + ", and it could potentially be blocked when the buffer is full.");
     }
     memoryLock.lock();
     try {

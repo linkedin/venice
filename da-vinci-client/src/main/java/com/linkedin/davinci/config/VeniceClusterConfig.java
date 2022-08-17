@@ -1,5 +1,7 @@
 package com.linkedin.davinci.config;
 
+import static com.linkedin.venice.ConfigKeys.*;
+
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
@@ -19,8 +21,6 @@ import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.ConfigKeys.*;
-
 
 /**
  * class that maintains config very specific to a Venice cluster
@@ -29,7 +29,7 @@ public class VeniceClusterConfig {
   private static final Logger logger = LogManager.getLogger(VeniceServerConfig.class.getName());
 
   private String clusterName;
-  //TODO: shouldn't the following configs be moved to VeniceServerConfig??
+  // TODO: shouldn't the following configs be moved to VeniceServerConfig??
   protected String dataBasePath;
   private String zookeeperAddress;
   private PersistenceType persistenceType;
@@ -63,8 +63,9 @@ public class VeniceClusterConfig {
   // SSL related config
   Optional<SSLConfig> sslConfig;
 
-  public VeniceClusterConfig(VeniceProperties clusterProperties, Optional<Map<String, Map<String, String>>> kafkaClusterMap)
-      throws ConfigurationException {
+  public VeniceClusterConfig(
+      VeniceProperties clusterProperties,
+      Optional<Map<String, Map<String, String>>> kafkaClusterMap) throws ConfigurationException {
     checkProperties(clusterProperties, kafkaClusterMap);
     this.clusterProperties = clusterProperties;
     this.kafkaClusterMap = kafkaClusterMap;
@@ -113,13 +114,15 @@ public class VeniceClusterConfig {
     }
   }
 
-  protected void checkProperties(VeniceProperties clusterProps, Optional<Map<String, Map<String, String>>> kafkaClusterMap) throws ConfigurationException {
+  protected void checkProperties(
+      VeniceProperties clusterProps,
+      Optional<Map<String, Map<String, String>>> kafkaClusterMap) throws ConfigurationException {
     clusterName = clusterProps.getString(CLUSTER_NAME);
     zookeeperAddress = clusterProps.getString(ZOOKEEPER_ADDRESS);
 
     try {
-      persistenceType = PersistenceType.valueOf(clusterProps.getString(PERSISTENCE_TYPE,
-          PersistenceType.IN_MEMORY.toString()));
+      persistenceType =
+          PersistenceType.valueOf(clusterProps.getString(PERSISTENCE_TYPE, PersistenceType.IN_MEMORY.toString()));
     } catch (UndefinedPropertyException ex) {
       throw new ConfigurationException("persistence type undefined", ex);
     }
@@ -133,7 +136,8 @@ public class VeniceClusterConfig {
     kafkaFetchQuotaTimeWindow = clusterProps.getLong(KAFKA_FETCH_QUOTA_TIME_WINDOW_MS, TimeUnit.SECONDS.toMillis(5));
     kafkaFetchQuotaBytesPerSecond = clusterProps.getSizeInBytes(KAFKA_FETCH_QUOTA_BYTES_PER_SECOND, -1);
     kafkaFetchQuotaRecordPerSecond = clusterProps.getLong(KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, -1);
-    kafkaFetchQuotaUnorderedBytesPerSecond = clusterProps.getSizeInBytes(KAFKA_FETCH_QUOTA_UNORDERED_BYTES_PER_SECOND, -1);
+    kafkaFetchQuotaUnorderedBytesPerSecond =
+        clusterProps.getSizeInBytes(KAFKA_FETCH_QUOTA_UNORDERED_BYTES_PER_SECOND, -1);
     kafkaFetchQuotaUnorderedRecordPerSecond = clusterProps.getLong(KAFKA_FETCH_QUOTA_UNORDERED_RECORDS_PER_SECOND, -1);
 
     kafkaSecurityProtocol = clusterProps.getString(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name());
@@ -152,14 +156,17 @@ public class VeniceClusterConfig {
     kafkaEmptyPollSleepMs = clusterProps.getLong(KAFKA_EMPTY_POLL_SLEEP_MS, 0);
     // get fetching related from config or use the kafka default values.
     kafkaFetchMinSizePerSecond = clusterProps.getSizeInBytes(KAFKA_FETCH_MIN_SIZE_PER_SEC, 1);
-    kafkaFetchMaxSizePerSecond = clusterProps.getSizeInBytes(KAFKA_FETCH_MAX_SIZE_PER_SEC, ConsumerConfig.DEFAULT_FETCH_MAX_BYTES);
+    kafkaFetchMaxSizePerSecond =
+        clusterProps.getSizeInBytes(KAFKA_FETCH_MAX_SIZE_PER_SEC, ConsumerConfig.DEFAULT_FETCH_MAX_BYTES);
     kafkaFetchMaxTimeMS = clusterProps.getLong(KAFKA_FETCH_MAX_WAIT_TIME_MS, 500);
-    kafkaFetchPartitionMaxSizePerSecond = clusterProps.getSizeInBytes(KAFKA_FETCH_PARTITION_MAX_SIZE_PER_SEC, ConsumerConfig.DEFAULT_MAX_PARTITION_FETCH_BYTES);
+    kafkaFetchPartitionMaxSizePerSecond = clusterProps
+        .getSizeInBytes(KAFKA_FETCH_PARTITION_MAX_SIZE_PER_SEC, ConsumerConfig.DEFAULT_MAX_PARTITION_FETCH_BYTES);
 
-    Map<Integer, String> kafkaClusterIdToAliasUrlMap = clusterProps.getIntegerToStringMap(SERVER_KAFKA_CLUSTER_ID_TO_URL, Collections.emptyMap());
+    Map<Integer, String> kafkaClusterIdToAliasUrlMap =
+        clusterProps.getIntegerToStringMap(SERVER_KAFKA_CLUSTER_ID_TO_URL, Collections.emptyMap());
     kafkaClusterIdToUrlMap = new HashMap<>();
     kafkaClusterIdToAliasMap = new HashMap<>();
-    for (Map.Entry<Integer, String> entry : kafkaClusterIdToAliasUrlMap.entrySet()) {
+    for (Map.Entry<Integer, String> entry: kafkaClusterIdToAliasUrlMap.entrySet()) {
       String[] items = entry.getValue().split("@");
       if (items.length != 2) {
         throw new ConfigurationException("Invalid kafka cluster url config: " + entry);
@@ -167,10 +174,12 @@ public class VeniceClusterConfig {
       kafkaClusterIdToAliasMap.put(entry.getKey(), items[0]);
       kafkaClusterIdToUrlMap.put(entry.getKey(), items[1]);
     }
-    kafkaClusterUrlToIdMap = kafkaClusterIdToUrlMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
-    kafkaClusterAliasToIdMap = kafkaClusterIdToAliasMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
+    kafkaClusterUrlToIdMap =
+        kafkaClusterIdToUrlMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
+    kafkaClusterAliasToIdMap =
+        kafkaClusterIdToAliasMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
 
-    for (Map.Entry<String, Integer> entry : kafkaClusterUrlToIdMap.entrySet()) {
+    for (Map.Entry<String, Integer> entry: kafkaClusterUrlToIdMap.entrySet()) {
       String kafkaClusterAlias = kafkaClusterIdToAliasMap.get(entry.getValue());
       kafkaClusterUrlToAliasMap.put(entry.getKey(), kafkaClusterAlias);
     }
@@ -178,14 +187,17 @@ public class VeniceClusterConfig {
     this.regionName = RegionUtils.getLocalRegionName(clusterProps, false);
     logger.info("Final region name for this node: " + this.regionName);
 
-    //  parse the new kafka cluster map config. This must be done after processing the SERVER_KAFKA_CLUSTER_ID_TO_URL config above. This will
-    //  help deprecate this config later.
+    // parse the new kafka cluster map config. This must be done after processing the SERVER_KAFKA_CLUSTER_ID_TO_URL
+    // config above. This will
+    // help deprecate this config later.
     if (kafkaClusterMap.isPresent()) {
       logger.info("Input kafka cluster mapping: " + kafkaClusterMap.get());
       parseKafkaClusterMap(kafkaClusterMap.get());
     }
-    logger.info("Derived kafka cluster mapping: kafkaClusterIdToUrlMap: " + kafkaClusterIdToUrlMap + ", kafkaClusterUrlToIdMap: " + kafkaClusterUrlToIdMap +
-        ", kafkaClusterIdToAliasMap: " + kafkaClusterIdToAliasMap +  ", kafkaClusterAliasToIdMap: " + kafkaClusterAliasToIdMap);
+    logger.info(
+        "Derived kafka cluster mapping: kafkaClusterIdToUrlMap: " + kafkaClusterIdToUrlMap
+            + ", kafkaClusterUrlToIdMap: " + kafkaClusterUrlToIdMap + ", kafkaClusterIdToAliasMap: "
+            + kafkaClusterIdToAliasMap + ", kafkaClusterAliasToIdMap: " + kafkaClusterAliasToIdMap);
   }
 
   public String getClusterName() {

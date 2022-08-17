@@ -26,10 +26,14 @@ public class ControlMessageDumper {
   private Map<GUID, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> producerToRecords = new HashMap<>();
   private KafkaConsumer consumer;
   private int messageCount;
-  private int COUNTDOWN = 3;  // TODO: make this configurable
+  private int COUNTDOWN = 3; // TODO: make this configurable
 
-
-  public ControlMessageDumper(Properties consumerProps, String topic, int partitionNumber,  int startingOffset, int messageCount) {
+  public ControlMessageDumper(
+      Properties consumerProps,
+      String topic,
+      int partitionNumber,
+      int startingOffset,
+      int messageCount) {
     this.messageCount = messageCount;
     this.consumer = new KafkaConsumer(consumerProps);
 
@@ -37,7 +41,6 @@ public class ControlMessageDumper {
     consumer.assign(Collections.singletonList(partition));
     consumer.seek(partition, startingOffset);
   }
-
 
   /**
    * 1. Fetch up to {@link ControlMessageDumper#messageCount} messages in this partition.
@@ -70,7 +73,6 @@ public class ControlMessageDumper {
     return this;
   }
 
-
   /**
    *  Display control messages from each producer
    */
@@ -81,7 +83,7 @@ public class ControlMessageDumper {
       System.out.println(String.format("\nproducer %d: %s", i++, producerGUID));
 
       List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> records = entry.getValue();
-      for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
+      for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record: records) {
         KafkaMessageEnvelope envelope = record.value();
         ProducerMetadata metadata = envelope.producerMetadata;
 

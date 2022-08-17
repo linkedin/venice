@@ -1,5 +1,7 @@
 package com.linkedin.venice.helix;
 
+import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -9,7 +11,6 @@ import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataVersionId;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -27,8 +28,6 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.helix.zookeeper.zkclient.IZkChildListener;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
 
 
 /**
@@ -70,13 +69,21 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   // Mutex for local cache
   private final ReadWriteLock schemaLock = new ReentrantReadWriteLock();
 
-  public HelixReadOnlySchemaRepository(ReadOnlyStoreRepository storeRepository, ZkClient zkClient,
-      HelixAdapterSerializer adapter, String clusterName, int refreshAttemptsForZkReconnect,
+  public HelixReadOnlySchemaRepository(
+      ReadOnlyStoreRepository storeRepository,
+      ZkClient zkClient,
+      HelixAdapterSerializer adapter,
+      String clusterName,
+      int refreshAttemptsForZkReconnect,
       long refreshIntervalForZkReconnectInMs) {
     this.storeRepository = storeRepository;
     this.zkClient = zkClient;
-    this.accessor = new HelixSchemaAccessor(zkClient, adapter, clusterName,
-        refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
+    this.accessor = new HelixSchemaAccessor(
+        zkClient,
+        adapter,
+        clusterName,
+        refreshAttemptsForZkReconnect,
+        refreshIntervalForZkReconnectInMs);
 
     storeRepository.registerStoreDataChangedListener(this);
     zkStateListener =
@@ -370,14 +377,15 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
 
   @Override
   public DerivedSchemaEntry getLatestDerivedSchema(String storeName, int valueSchemaId) {
-    return (DerivedSchemaEntry)doSchemaOperation(storeName, (schemaData -> {
-      Optional<DerivedSchemaEntry> latestDerivedSchemaEntry = schemaData.getDerivedSchemas().stream()
+    return (DerivedSchemaEntry) doSchemaOperation(storeName, (schemaData -> {
+      Optional<DerivedSchemaEntry> latestDerivedSchemaEntry = schemaData.getDerivedSchemas()
+          .stream()
           .filter(entry -> entry.getValueSchemaID() == valueSchemaId)
           .max(Comparator.comparing(DerivedSchemaEntry::getId));
 
       if (!latestDerivedSchemaEntry.isPresent()) {
-        throw new VeniceException("Cannot find latest schema for store: " + storeName
-            + ", value schema id: " + valueSchemaId);
+        throw new VeniceException(
+            "Cannot find latest schema for store: " + storeName + ", value schema id: " + valueSchemaId);
       }
 
       return latestDerivedSchemaEntry.get();
@@ -385,14 +393,20 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   }
 
   @Override
-  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(String storeName, int valueSchemaId, int replicationMetadataVersionId) {
-    return (ReplicationMetadataSchemaEntry)doSchemaOperation(storeName, ((schemaData) -> schemaData.getReplicationMetadataSchema(valueSchemaId,
-        replicationMetadataVersionId)));
+  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(
+      String storeName,
+      int valueSchemaId,
+      int replicationMetadataVersionId) {
+    return (ReplicationMetadataSchemaEntry) doSchemaOperation(
+        storeName,
+        ((schemaData) -> schemaData.getReplicationMetadataSchema(valueSchemaId, replicationMetadataVersionId)));
   }
 
   @Override
   public Collection<ReplicationMetadataSchemaEntry> getReplicationMetadataSchemas(String storeName) {
-    return (Collection<ReplicationMetadataSchemaEntry>)doSchemaOperation(storeName, ((schemaData) -> schemaData.getReplicationMetadataSchemas()));
+    return (Collection<ReplicationMetadataSchemaEntry>) doSchemaOperation(
+        storeName,
+        ((schemaData) -> schemaData.getReplicationMetadataSchemas()));
   }
 
   /**
@@ -412,7 +426,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       schemaMap.clear();
       zkClient.subscribeStateChanges(zkStateListener);
       List<Store> stores = storeRepository.getAllStores();
-      for (Store store : stores) {
+      for (Store store: stores) {
         populateSchemaMap(store.getName());
       }
     } finally {
@@ -443,7 +457,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       accessor.subscribeValueSchemaCreationChange(storeName, valueSchemaChildListener);
       accessor.getAllValueSchemas(storeName).forEach(schemaData::addValueSchema);
 
-      //Fetch derived schemas if they are existing
+      // Fetch derived schemas if they are existing
       Store store = storeRepository.getStoreOrThrow(storeName);
       if (store.isWriteComputationEnabled()) {
         accessor.subscribeDerivedSchemaCreationChange(storeName, derivedSchemaChildListener);
@@ -558,7 +572,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     void handleSchemaChanges(String storeName, List<String> currentChildren) {
       SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
 
-      for (String id : currentChildren) {
+      for (String id: currentChildren) {
         if (null == schemaData.getValueSchema(Integer.parseInt(id))) {
           schemaData.addValueSchema(accessor.getValueSchema(storeName, id));
         }
@@ -570,11 +584,11 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     @Override
     void handleSchemaChanges(String storeName, List<String> currentChildren) {
       SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
-      for (String derivedSchemaIdPairStr : currentChildren) {
-        String [] ids = derivedSchemaIdPairStr.split(HelixSchemaAccessor.MULTIPART_SCHEMA_VERSION_DELIMITER);
+      for (String derivedSchemaIdPairStr: currentChildren) {
+        String[] ids = derivedSchemaIdPairStr.split(HelixSchemaAccessor.MULTIPART_SCHEMA_VERSION_DELIMITER);
         if (ids.length != 2) {
-          throw new VeniceException("unrecognized derivedSchema path format. Store: " + storeName
-           + " path: " + derivedSchemaIdPairStr);
+          throw new VeniceException(
+              "unrecognized derivedSchema path format. Store: " + storeName + " path: " + derivedSchemaIdPairStr);
         }
 
         if (null == schemaData.getDerivedSchema(Integer.parseInt(ids[0]), Integer.parseInt(ids[1]))) {
@@ -588,15 +602,17 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     @Override
     void handleSchemaChanges(String storeName, List<String> currentChildren) {
       SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
-      for (String replicationMetadataVersionIdPairStr : currentChildren) {
-        String [] ids = replicationMetadataVersionIdPairStr.split(HelixSchemaAccessor.MULTIPART_SCHEMA_VERSION_DELIMITER);
+      for (String replicationMetadataVersionIdPairStr: currentChildren) {
+        String[] ids =
+            replicationMetadataVersionIdPairStr.split(HelixSchemaAccessor.MULTIPART_SCHEMA_VERSION_DELIMITER);
         if (ids.length != 2) {
-          throw new VeniceException("unrecognized Schema path format. Store: " + storeName
-              + " path: " + replicationMetadataVersionIdPairStr);
+          throw new VeniceException(
+              "unrecognized Schema path format. Store: " + storeName + " path: " + replicationMetadataVersionIdPairStr);
         }
 
         if (null == schemaData.getReplicationMetadataSchema(Integer.parseInt(ids[0]), Integer.parseInt(ids[1]))) {
-          schemaData.addReplicationMetadataSchema(accessor.getReplicationMetadataSchema(storeName, replicationMetadataVersionIdPairStr));
+          schemaData.addReplicationMetadataSchema(
+              accessor.getReplicationMetadataSchema(storeName, replicationMetadataVersionIdPairStr));
         }
       }
     }

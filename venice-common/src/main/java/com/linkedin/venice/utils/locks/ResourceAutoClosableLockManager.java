@@ -1,17 +1,14 @@
 package com.linkedin.venice.utils.locks;
 
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.Lock;
 import java.util.function.Function;
 import java.util.function.Supplier;
-
+import javax.annotation.Nonnull;
 import org.apache.commons.lang.Validate;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import javax.annotation.Nonnull;
 
 
 /**

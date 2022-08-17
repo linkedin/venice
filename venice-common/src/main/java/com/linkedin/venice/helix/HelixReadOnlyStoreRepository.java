@@ -46,7 +46,7 @@ public class HelixReadOnlyStoreRepository extends CachedReadOnlyStoreRepository 
     try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       zkClient.unsubscribeStateChanges(zkStateListener);
       zkDataAccessor.unsubscribeChildChanges(clusterStoreRepositoryPath, zkStoreRepositoryListener);
-      for (String storeName : storeMap.values().stream().map(Store::getName).collect(Collectors.toSet())) {
+      for (String storeName: storeMap.values().stream().map(Store::getName).collect(Collectors.toSet())) {
         zkDataAccessor.unsubscribeDataChanges(getStoreZkPath(storeName), zkStoreListener);
       }
       super.clear();
@@ -99,18 +99,18 @@ public class HelixReadOnlyStoreRepository extends CachedReadOnlyStoreRepository 
     try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       Set<String> addedZkStoreNames = new HashSet<>(newZkStoreNames);
       List<String> deletedZkStoreNames = new ArrayList<>();
-      for (String zkStoreName : storeMap.keySet()) {
+      for (String zkStoreName: storeMap.keySet()) {
         if (!addedZkStoreNames.remove(zkStoreName)) {
           deletedZkStoreNames.add(zkStoreName);
         }
       }
 
       List<Store> addedStores = getStoresFromZk(addedZkStoreNames);
-      for (Store newStore : addedStores) {
+      for (Store newStore: addedStores) {
         putStore(newStore);
       }
 
-      for (String zkStoreName : deletedZkStoreNames) {
+      for (String zkStoreName: deletedZkStoreNames) {
         removeStore(storeMap.get(zkStoreName).getName());
       }
     }

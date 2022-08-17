@@ -1,12 +1,9 @@
 package com.linkedin.venice.authorization;
 
-import com.linkedin.venice.common.VeniceSystemStoreType;
-import com.linkedin.venice.meta.Store;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Set;
 
 
 /**
@@ -75,7 +72,7 @@ public class AclBinding {
   public String toString() {
     StringBuilder sb = new StringBuilder();
     sb.append("{").append(resource).append(", [");
-    for (AceEntry ace : aceEntryList) {
+    for (AceEntry ace: aceEntryList) {
       sb.append(ace);
     }
     sb.append("]}");
@@ -86,7 +83,7 @@ public class AclBinding {
   public int hashCode() {
     int result = 1;
     result = result * 31 + resource.hashCode();
-    for (AceEntry aceEntry : aceEntryList) {
+    for (AceEntry aceEntry: aceEntryList) {
       result = result * 31 + aceEntry.hashCode();
     }
 
@@ -109,7 +106,7 @@ public class AclBinding {
     if (aceEntryList.size() != other.aceEntryList.size()) {
       return false;
     }
-    for (AceEntry aceEntry : aceEntryList) {
+    for (AceEntry aceEntry: aceEntryList) {
       if (!other.aceEntryList.contains(aceEntry)) {
         return false;
       }

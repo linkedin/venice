@@ -1,8 +1,9 @@
 package com.linkedin.venice.client.store;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.utils.Utils;
-
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -15,7 +16,6 @@ import org.testng.Assert;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
-import static org.mockito.Mockito.*;
 
 public class RetriableStoreClientTest {
   private StatTrackingStoreClient<String, Object> mockStoreClient;
@@ -27,7 +27,6 @@ public class RetriableStoreClientTest {
     String storeName = Utils.getUniqueString("store");
     doReturn(storeName).when(mockStoreClient).getStoreName();
   }
-
 
   @Test
   public void testGet() throws ExecutionException, InterruptedException {
@@ -45,7 +44,8 @@ public class RetriableStoreClientTest {
 
     doReturn(mockInnerFuture).when(mockStoreClient).get(any(), any(), anyLong());
 
-    RetriableStoreClient<String, Object> retriableStoreClient = new RetriableStoreClient<>(mockStoreClient,
+    RetriableStoreClient<String, Object> retriableStoreClient = new RetriableStoreClient<>(
+        mockStoreClient,
         ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName()));
     Assert.assertEquals(mockReturnObject, retriableStoreClient.get("key", Optional.empty(), 1234).get());
   }
@@ -55,7 +55,7 @@ public class RetriableStoreClientTest {
     CompletableFuture<Object> mockInnerFuture = new CompletableFuture();
     Object mockReturnObject = mock(Object.class);
     mockInnerFuture.completeExceptionally(new VeniceClientHttpException(503));
-    CompletableFuture<Object>  mockInnerFuture1 = new CompletableFuture();
+    CompletableFuture<Object> mockInnerFuture1 = new CompletableFuture();
     mockInnerFuture1.complete(mockReturnObject);
 
     mockInnerFuture.handle((value, throwable) -> {
@@ -77,7 +77,8 @@ public class RetriableStoreClientTest {
 
     doReturn(mockInnerFuture).doReturn(mockInnerFuture1).when(mockStoreClient).get(any());
 
-    RetriableStoreClient<String, Object> retriableStoreClient = new RetriableStoreClient<>(mockStoreClient,
+    RetriableStoreClient<String, Object> retriableStoreClient = new RetriableStoreClient<>(
+        mockStoreClient,
         ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName()));
     Assert.assertEquals(mockReturnObject, retriableStoreClient.get("key").get());
   }
@@ -87,7 +88,7 @@ public class RetriableStoreClientTest {
     CompletableFuture<Object> mockInnerFuture = new CompletableFuture();
     Object mockReturnObject = mock(Object.class);
     mockInnerFuture.completeExceptionally(new VeniceClientHttpException(503));
-    CompletableFuture<Object>  mockInnerFuture1 = new CompletableFuture();
+    CompletableFuture<Object> mockInnerFuture1 = new CompletableFuture();
     mockInnerFuture1.complete(mockReturnObject);
 
     mockInnerFuture.handle((value, throwable) -> {
@@ -107,10 +108,10 @@ public class RetriableStoreClientTest {
       return null;
     });
 
-
     // Verify retry count and retry backoff can be configured
     doReturn(mockInnerFuture).doReturn(mockInnerFuture).doReturn(mockInnerFuture1).when(mockStoreClient).get(any());
-    RetriableStoreClient<String, Object> retriableStoreClient = new RetriableStoreClient<>(mockStoreClient,
+    RetriableStoreClient<String, Object> retriableStoreClient = new RetriableStoreClient<>(
+        mockStoreClient,
         ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName())
             .setRetryCount(3)
             .setRetryBackOffInMs(100));
@@ -142,7 +143,8 @@ public class RetriableStoreClientTest {
 
     doReturn(mockInnerFuture).when(mockStoreClient).batchGet(any());
 
-    RetriableStoreClient<String, Object> retriableStoreClient = new RetriableStoreClient<>(mockStoreClient,
+    RetriableStoreClient<String, Object> retriableStoreClient = new RetriableStoreClient<>(
+        mockStoreClient,
         ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName()));
     Assert.assertEquals(result, retriableStoreClient.batchGet(keySet).get());
   }
@@ -160,7 +162,7 @@ public class RetriableStoreClientTest {
       keySet.add(keyPrefix + i);
     }
     mockInnerFuture.completeExceptionally(new VeniceClientHttpException(503));
-    CompletableFuture<Object>  mockInnerFuture1 = new CompletableFuture();
+    CompletableFuture<Object> mockInnerFuture1 = new CompletableFuture();
     mockInnerFuture1.complete(result);
 
     mockInnerFuture.handle((value, throwable) -> {
@@ -182,7 +184,8 @@ public class RetriableStoreClientTest {
 
     doReturn(mockInnerFuture).doReturn(mockInnerFuture1).when(mockStoreClient).batchGet(any());
 
-    RetriableStoreClient<String, Object> retriableStoreClient = new RetriableStoreClient<>(mockStoreClient,
+    RetriableStoreClient<String, Object> retriableStoreClient = new RetriableStoreClient<>(
+        mockStoreClient,
         ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName()));
     Assert.assertEquals(result, retriableStoreClient.batchGet(keySet).get());
   }
@@ -190,10 +193,12 @@ public class RetriableStoreClientTest {
   @Test
   public void testGetWithException() throws InterruptedException {
     CompletableFuture<Object> mockInnerFuture = new CompletableFuture();
-    mockInnerFuture.completeExceptionally(new VeniceClientHttpException("Inner mock exception", HttpResponseStatus.BAD_REQUEST.code()));
+    mockInnerFuture.completeExceptionally(
+        new VeniceClientHttpException("Inner mock exception", HttpResponseStatus.BAD_REQUEST.code()));
     doReturn(mockInnerFuture).when(mockStoreClient).get(any());
 
-    RetriableStoreClient<String, Object> retriableStoreClient = new RetriableStoreClient<>(mockStoreClient,
+    RetriableStoreClient<String, Object> retriableStoreClient = new RetriableStoreClient<>(
+        mockStoreClient,
         ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName()));
     try {
       retriableStoreClient.get("key").get();

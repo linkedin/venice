@@ -93,13 +93,21 @@ abstract class SharedKafkaConsumer implements KafkaConsumerWrapper {
 
   private final TopicExistenceChecker topicExistenceChecker;
 
-  public SharedKafkaConsumer(final KafkaConsumerWrapper delegate, final KafkaConsumerService service, final long nonExistingTopicCleanupDelayMS,
+  public SharedKafkaConsumer(
+      final KafkaConsumerWrapper delegate,
+      final KafkaConsumerService service,
+      final long nonExistingTopicCleanupDelayMS,
       TopicExistenceChecker topicExistenceChecker) {
     this(delegate, service, 1000, nonExistingTopicCleanupDelayMS, new SystemTime(), topicExistenceChecker);
   }
 
-  SharedKafkaConsumer(final KafkaConsumerWrapper delegate, final KafkaConsumerService service,
-      int sanitizeTopicSubscriptionAfterPollTimes, long nonExistingTopicCleanupDelayMS, Time time, TopicExistenceChecker topicExistenceChecker) {
+  SharedKafkaConsumer(
+      final KafkaConsumerWrapper delegate,
+      final KafkaConsumerService service,
+      int sanitizeTopicSubscriptionAfterPollTimes,
+      long nonExistingTopicCleanupDelayMS,
+      Time time,
+      TopicExistenceChecker topicExistenceChecker) {
     this.delegate = delegate;
     this.kafkaConsumerService = service;
     this.sanitizeTopicSubscriptionAfterPollTimes = sanitizeTopicSubscriptionAfterPollTimes;
@@ -115,14 +123,16 @@ abstract class SharedKafkaConsumer implements KafkaConsumerWrapper {
     currentAssignmentSize.set(newAssignment.size());
     currentAssignment = Collections.unmodifiableSet(newAssignment);
     kafkaConsumerService.setPartitionsNumSubscribed(this, newAssignment.size());
-    kafkaConsumerService.getStats().recordUpdateCurrentAssignmentLatency(LatencyUtils.getElapsedTimeInMs(updateCurrentAssignmentStartTime));
+    kafkaConsumerService.getStats()
+        .recordUpdateCurrentAssignmentLatency(LatencyUtils.getElapsedTimeInMs(updateCurrentAssignmentStartTime));
   }
 
   @Override
   public synchronized void subscribe(String topic, int partition, long lastReadOffset) {
     long delegateSubscribeStartTime = System.currentTimeMillis();
     this.delegate.subscribe(topic, partition, lastReadOffset);
-    kafkaConsumerService.getStats().recordDelegateSubscribeLatency(LatencyUtils.getElapsedTimeInMs(delegateSubscribeStartTime));
+    kafkaConsumerService.getStats()
+        .recordDelegateSubscribeLatency(LatencyUtils.getElapsedTimeInMs(delegateSubscribeStartTime));
     updateCurrentAssignment(delegate.getAssignment());
   }
 
@@ -152,8 +162,11 @@ abstract class SharedKafkaConsumer implements KafkaConsumerWrapper {
     int numberOfUnsubbedPartitions = action.getAsInt();
     long elapsedTime = System.currentTimeMillis() - startTime;
 
-    LOGGER.info("Shared consumer {} unsubscribed {} partition(s) in {} ms.",
-        this.getClass().getSimpleName(), numberOfUnsubbedPartitions, elapsedTime);
+    LOGGER.info(
+        "Shared consumer {} unsubscribed {} partition(s) in {} ms.",
+        this.getClass().getSimpleName(),
+        numberOfUnsubbedPartitions,
+        elapsedTime);
     updateCurrentAssignment(delegate.getAssignment());
     waitAfterUnsubscribe(currentPollTimes);
   }
@@ -161,18 +174,19 @@ abstract class SharedKafkaConsumer implements KafkaConsumerWrapper {
   protected void waitAfterUnsubscribe(long currentPollTimes) {
     currentPollTimes++;
     waitingForPoll.set(true);
-    //Wait for the next poll or maximum 10 seconds. Interestingly wait api does not provide any indication if wait returned
-    //due to timeout. So an explicit time check is necessary.
-    long timeoutMs = (time.getNanoseconds()/Time.NS_PER_MS) + (10 * Time.MS_PER_SECOND);
+    // Wait for the next poll or maximum 10 seconds. Interestingly wait api does not provide any indication if wait
+    // returned
+    // due to timeout. So an explicit time check is necessary.
+    long timeoutMs = (time.getNanoseconds() / Time.NS_PER_MS) + (10 * Time.MS_PER_SECOND);
     try {
       while (currentPollTimes > pollTimes) {
-        long waitMs = timeoutMs - (time.getNanoseconds()/Time.NS_PER_MS);
+        long waitMs = timeoutMs - (time.getNanoseconds() / Time.NS_PER_MS);
         if (waitMs <= 0) {
           break;
         }
         wait(waitMs);
       }
-      //no action to take actually, just return;
+      // no action to take actually, just return;
     } catch (InterruptedException e) {
       LOGGER.info("Wait for poll request in `unSubscribe` function got interrupted.");
       Thread.currentThread().interrupt();
@@ -195,7 +209,7 @@ abstract class SharedKafkaConsumer implements KafkaConsumerWrapper {
     // Get the current subscription for this topic and unsubscribe them
     Set<TopicPartition> currentAssignment = getAssignment();
     Set<TopicPartition> newAssignment = new HashSet<>();
-    for (TopicPartition topicPartition : currentAssignment) {
+    for (TopicPartition topicPartition: currentAssignment) {
       if (!topics.contains(topicPartition.topic())) {
         newAssignment.add(topicPartition);
       }
@@ -220,7 +234,7 @@ abstract class SharedKafkaConsumer implements KafkaConsumerWrapper {
     }
     Set<String> nonExistingTopics = new HashSet<>();
     long currentTimestamp = time.getMilliseconds();
-    assignment.forEach( tp -> {
+    assignment.forEach(tp -> {
       String topic = tp.topic();
       boolean isExistingTopic = topicExistenceChecker.checkTopicExists(topic);
       if (!isExistingTopic) {
@@ -234,18 +248,19 @@ abstract class SharedKafkaConsumer implements KafkaConsumerWrapper {
         if (nonExistingTopicDiscoverTimestampMap.containsKey(topic)) {
           long detectedTimestamp = nonExistingTopicDiscoverTimestampMap.remove(topic);
           long diff = currentTimestamp - detectedTimestamp;
-          LOGGER.info("The non-existing topic detected previously: " + topic + " show up after " + diff + " ms. "
-              + "and it will be removed from `nonExistingTopicDiscoverTimestampMap`");
+          LOGGER.info(
+              "The non-existing topic detected previously: " + topic + " show up after " + diff + " ms. "
+                  + "and it will be removed from `nonExistingTopicDiscoverTimestampMap`");
         }
       }
     });
     Set<String> topicsToUnsubscribe = new HashSet<>(nonExistingTopics);
     if (!nonExistingTopics.isEmpty()) {
       LOGGER.error("Detected the following non-existing topics: " + nonExistingTopics);
-      nonExistingTopics.forEach( topic -> {
+      nonExistingTopics.forEach(topic -> {
         Long firstDetectedTimestamp = nonExistingTopicDiscoverTimestampMap.get(topic);
         Set<StoreIngestionTask> storeIngestionTasks = getIngestionTasksForTopic(topic);
-        for (StoreIngestionTask storeIngestionTask : storeIngestionTasks) {
+        for (StoreIngestionTask storeIngestionTask: storeIngestionTasks) {
           if (storeIngestionTask != null) {
             if (null == firstDetectedTimestamp) {
               // The first time to detect this non-existing topic.
@@ -258,8 +273,9 @@ abstract class SharedKafkaConsumer implements KafkaConsumerWrapper {
              */
             long diff = currentTimestamp - firstDetectedTimestamp;
             if (diff >= nonExistingTopicCleanupDelayMS) {
-              LOGGER.error("The non-existing topic hasn't showed up after " + diff +
-                  " ms, so we will fail the attached ingestion task");
+              LOGGER.error(
+                  "The non-existing topic hasn't showed up after " + diff
+                      + " ms, so we will fail the attached ingestion task");
               storeIngestionTask.setLastConsumerException(new VeniceException("Topic: " + topic + " got deleted"));
               nonExistingTopicDiscoverTimestampMap.remove(topic);
             } else {
@@ -270,10 +286,13 @@ abstract class SharedKafkaConsumer implements KafkaConsumerWrapper {
             }
           } else {
             // defensive coding
-            LOGGER.error("Detected an non-existing topic: " + topic + ", which is present in consumer assignment, but without any attached ingestion task");
+            LOGGER.error(
+                "Detected an non-existing topic: " + topic
+                    + ", which is present in consumer assignment, but without any attached ingestion task");
             if (firstDetectedTimestamp != null) {
-              LOGGER.info("There is no associated ingestion task with this non-existing topic: " + topic +
-                  ", so it will be" + " removed from `nonExistingTopicDiscoverTimestampMap` directly");
+              LOGGER.info(
+                  "There is no associated ingestion task with this non-existing topic: " + topic + ", so it will be"
+                      + " removed from `nonExistingTopicDiscoverTimestampMap` directly");
               nonExistingTopicDiscoverTimestampMap.remove(topic);
             }
           }
@@ -318,7 +337,8 @@ abstract class SharedKafkaConsumer implements KafkaConsumerWrapper {
      */
     try {
       if (!hasAnySubscription()) {
-        // TODO: removing this sleep inside the poll with synchronization, this sleep should be added by the logic calling this poll method.
+        // TODO: removing this sleep inside the poll with synchronization, this sleep should be added by the logic
+        // calling this poll method.
         Thread.sleep(timeoutMs);
         return ConsumerRecords.empty();
       }
@@ -341,7 +361,8 @@ abstract class SharedKafkaConsumer implements KafkaConsumerWrapper {
     return records;
   }
 
-  protected abstract void sanitizeTopicsWithoutCorrespondingIngestionTask(ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records);
+  protected abstract void sanitizeTopicsWithoutCorrespondingIngestionTask(
+      ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records);
 
   @Override
   public boolean hasAnySubscription() {
@@ -353,7 +374,7 @@ abstract class SharedKafkaConsumer implements KafkaConsumerWrapper {
    */
   @Override
   public boolean hasSubscribedAnyTopic(Set<String> topics) {
-    for (TopicPartition subscribedTopicPartition : currentAssignment) {
+    for (TopicPartition subscribedTopicPartition: currentAssignment) {
       if (topics.contains(subscribedTopicPartition.topic())) {
         return true;
       }

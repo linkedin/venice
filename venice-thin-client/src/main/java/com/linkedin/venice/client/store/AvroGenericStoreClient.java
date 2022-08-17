@@ -2,7 +2,6 @@ package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-
 import com.linkedin.venice.client.schema.StoreSchemaFetcher;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
@@ -19,7 +18,6 @@ import org.apache.avro.Schema;
  * @param <V>
  */
 public interface AvroGenericStoreClient<K, V> extends Closeable {
-
   /**
    * Lookup the value by given key, and get(key).get() will return null if it doesn't exist.
    *
@@ -50,8 +48,9 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
    * @throws VeniceClientException
    */
   default CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
-    throw new VeniceClientException("Please use CachingVeniceStoreClientFactory#getAndStartAvroGenericStoreClient() " +
-        "or VeniceGenericStoreClientFactory#createInstance() to generate a Venice avro generic client");
+    throw new VeniceClientException(
+        "Please use CachingVeniceStoreClientFactory#getAndStartAvroGenericStoreClient() "
+            + "or VeniceGenericStoreClientFactory#createInstance() to generate a Venice avro generic client");
   }
 
   /**
@@ -67,10 +66,10 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
    * @throws VeniceClientException
    */
   default CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(Set<K> keys) throws VeniceClientException {
-    throw new VeniceClientException("Please use CachingVeniceStoreClientFactory#getAndStartAvroGenericStoreClient() " +
-        "or VeniceGenericStoreClientFactory#createInstance() to generate a Venice avro generic client");
+    throw new VeniceClientException(
+        "Please use CachingVeniceStoreClientFactory#getAndStartAvroGenericStoreClient() "
+            + "or VeniceGenericStoreClientFactory#createInstance() to generate a Venice avro generic client");
   }
-
 
   /**
    * Streaming interface for {@link #batchGet(Set)}.
@@ -81,8 +80,9 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
    * @throws VeniceClientException
    */
   default void streamingBatchGet(final Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
-    throw new VeniceClientException("Please use CachingVeniceStoreClientFactory#getAndStartAvroGenericStoreClient() " +
-        "or VeniceGenericStoreClientFactory#createInstance() to generate a Venice avro generic client");
+    throw new VeniceClientException(
+        "Please use CachingVeniceStoreClientFactory#getAndStartAvroGenericStoreClient() "
+            + "or VeniceGenericStoreClientFactory#createInstance() to generate a Venice avro generic client");
   }
 
   /**
@@ -91,10 +91,10 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
    */
   @Experimental
   default ComputeRequestBuilder<K> compute() {
-    throw new VeniceClientException("Please use CachingVeniceStoreClientFactory#getAndStartAvroGenericStoreClient() " +
-        "or VeniceGenericStoreClientFactory#createInstance() to generate a Venice avro generic client");
+    throw new VeniceClientException(
+        "Please use CachingVeniceStoreClientFactory#getAndStartAvroGenericStoreClient() "
+            + "or VeniceGenericStoreClientFactory#createInstance() to generate a Venice avro generic client");
   }
-
 
   void start() throws VeniceClientException;
 

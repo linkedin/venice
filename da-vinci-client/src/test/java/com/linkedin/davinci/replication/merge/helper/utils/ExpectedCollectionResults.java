@@ -12,21 +12,26 @@ import java.util.Map;
  * @param <T2>
  */
 public class ExpectedCollectionResults<T1, T2> {
-
   private final String mapFieldName;
   private final String listFieldName;
   private final Map<String, T1> expectedMap;
   private final List<T2> expectedList;
 
-  public static<T2> ExpectedCollectionResults createExpectedListResult(String listFieldName, List<T2> expectedList) {
+  public static <T2> ExpectedCollectionResults createExpectedListResult(String listFieldName, List<T2> expectedList) {
     return new ExpectedCollectionResults<Void, T2>(null, null, listFieldName, expectedList);
   }
 
-  public static<T1> ExpectedCollectionResults createExpectedMapResult(String mapFieldName, Map<String, T1> expectedMap) {
+  public static <T1> ExpectedCollectionResults createExpectedMapResult(
+      String mapFieldName,
+      Map<String, T1> expectedMap) {
     return new ExpectedCollectionResults<T1, Void>(mapFieldName, expectedMap, null, null);
   }
 
-  private ExpectedCollectionResults(String mapFieldName, Map<String, T1> expectedMap, String listFieldName, List<T2> expectedList) {
+  private ExpectedCollectionResults(
+      String mapFieldName,
+      Map<String, T1> expectedMap,
+      String listFieldName,
+      List<T2> expectedList) {
     this.mapFieldName = mapFieldName;
     this.expectedMap = expectedMap;
     this.listFieldName = listFieldName;

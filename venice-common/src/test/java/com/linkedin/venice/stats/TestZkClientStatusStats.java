@@ -1,5 +1,7 @@
 package com.linkedin.venice.stats;
 
+import static org.apache.zookeeper.Watcher.Event.KeeperState;
+
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -13,8 +15,6 @@ import org.apache.zookeeper.WatchedEvent;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
-
-import static org.apache.zookeeper.Watcher.Event.KeeperState;
 
 
 public class TestZkClientStatusStats {
@@ -48,7 +48,8 @@ public class TestZkClientStatusStats {
       zkServer = ServiceFactory.getZkServer();
       zkClient = ZkClientFactory.newZkClient(zkServer.getAddress());
       long zkConnectionTimeout = 5000;
-      Assert.assertTrue(zkClient.waitUntilConnected(zkConnectionTimeout, TimeUnit.MILLISECONDS),
+      Assert.assertTrue(
+          zkClient.waitUntilConnected(zkConnectionTimeout, TimeUnit.MILLISECONDS),
           "ZK did not connect within " + zkConnectionTimeout + " ms.");
       zkClient.subscribeStateChanges(zkStats);
 
@@ -67,24 +68,45 @@ public class TestZkClientStatusStats {
     }
   }
 
-  private void changeAndTestState(double expectedDisconnectedCount, double expectedSyncConnectedCount,
-      double expectedExpiredCount, double minimumExpectedReconnectionLatency, KeeperState newState) {
+  private void changeAndTestState(
+      double expectedDisconnectedCount,
+      double expectedSyncConnectedCount,
+      double expectedExpiredCount,
+      double minimumExpectedReconnectionLatency,
+      KeeperState newState) {
     zkStats.handleStateChanged(newState);
-    testState(expectedDisconnectedCount, expectedSyncConnectedCount, expectedExpiredCount, minimumExpectedReconnectionLatency, newState);
+    testState(
+        expectedDisconnectedCount,
+        expectedSyncConnectedCount,
+        expectedExpiredCount,
+        minimumExpectedReconnectionLatency,
+        newState);
   }
 
-  private void testState(double expectedDisconnectedCount, double expectedSyncConnectedCount,
-      double expectedExpiredCount, double minimumExpectedReconnectionLatency, KeeperState newState) {
-    Assert.assertEquals(reporter.query("." + clientName + "--zk_client_Disconnected.Count").value(), expectedDisconnectedCount);
-    Assert.assertEquals(reporter.query("." + clientName + "--zk_client_SyncConnected.Count").value(), expectedSyncConnectedCount);
+  private void testState(
+      double expectedDisconnectedCount,
+      double expectedSyncConnectedCount,
+      double expectedExpiredCount,
+      double minimumExpectedReconnectionLatency,
+      KeeperState newState) {
+    Assert.assertEquals(
+        reporter.query("." + clientName + "--zk_client_Disconnected.Count").value(),
+        expectedDisconnectedCount);
+    Assert.assertEquals(
+        reporter.query("." + clientName + "--zk_client_SyncConnected.Count").value(),
+        expectedSyncConnectedCount);
     Assert.assertEquals(reporter.query("." + clientName + "--zk_client_Expired.Count").value(), expectedExpiredCount);
-    Assert.assertEquals(reporter.query("." + clientName + "--zk_client_status.Gauge").value(), (double) newState.getIntValue());
+    Assert.assertEquals(
+        reporter.query("." + clientName + "--zk_client_status.Gauge").value(),
+        (double) newState.getIntValue());
     double reconnectionLatency = reporter.query("." + clientName + "--zk_client_reconnection_latency.Avg").value();
     if (Double.isNaN(minimumExpectedReconnectionLatency)) {
       Assert.assertEquals(reconnectionLatency, minimumExpectedReconnectionLatency);
     } else {
-      Assert.assertTrue(reconnectionLatency >= minimumExpectedReconnectionLatency,
-          "Reconnection latency expected to be at least " + minimumExpectedReconnectionLatency + " but was " + reconnectionLatency);
+      Assert.assertTrue(
+          reconnectionLatency >= minimumExpectedReconnectionLatency,
+          "Reconnection latency expected to be at least " + minimumExpectedReconnectionLatency + " but was "
+              + reconnectionLatency);
     }
   }
 }

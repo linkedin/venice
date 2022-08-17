@@ -1,7 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.utils.Utils;
-
 import java.io.File;
 
 

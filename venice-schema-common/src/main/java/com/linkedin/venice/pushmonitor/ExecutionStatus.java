@@ -43,7 +43,8 @@ public enum ExecutionStatus {
   END_OF_PUSH_RECEIVED(true, true, true, false, 4),
 
   /** Tasks belonging to a Hybrid Store emits this instead when it consumes a SOBR message */
-  @Deprecated START_OF_BUFFER_REPLAY_RECEIVED(false, true, true, false, 5),
+  @Deprecated
+  START_OF_BUFFER_REPLAY_RECEIVED(false, true, true, false, 5),
 
   /** Tasks belonging to a Hybrid Store emits this instead when it consumes a TS message */
   TOPIC_SWITCH_RECEIVED(false, true, true, false, 6),
@@ -93,7 +94,12 @@ public enum ExecutionStatus {
 
   final int value;
 
-  ExecutionStatus(boolean isJobStatus, boolean isTaskStatus, boolean isUsedByHybridStoresOnly, boolean isTerminal, int value) {
+  ExecutionStatus(
+      boolean isJobStatus,
+      boolean isTaskStatus,
+      boolean isUsedByHybridStoresOnly,
+      boolean isTerminal,
+      int value) {
     this.isJobStatus = isJobStatus;
     this.isTaskStatus = isTaskStatus;
     this.isUsedByHybridStoresOnly = isUsedByHybridStoresOnly;
@@ -107,7 +113,8 @@ public enum ExecutionStatus {
    * and whether a host is ready to serve read requests.
    */
   public static boolean isDeterminedStatus(ExecutionStatus status) {
-    return status == STARTED || status == COMPLETED || status == ERROR || status == DROPPED || status == END_OF_PUSH_RECEIVED;
+    return status == STARTED || status == COMPLETED || status == ERROR || status == DROPPED
+        || status == END_OF_PUSH_RECEIVED;
   }
 
   public boolean isJobStatus() {
@@ -141,6 +148,7 @@ public enum ExecutionStatus {
   public int getValue() {
     return value;
   }
+
   /**
    * Get ExecutionStatus from integer ordinal value in avro.
    */
@@ -148,6 +156,7 @@ public enum ExecutionStatus {
   static {
     Arrays.stream(values()).forEach(s -> idMapping.put(s.value, s));
   }
+
   public static ExecutionStatus fromInt(int v) {
     ExecutionStatus status = idMapping.get(v);
     if (status == null) {

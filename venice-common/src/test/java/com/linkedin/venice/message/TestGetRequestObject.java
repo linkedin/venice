@@ -9,7 +9,6 @@ import org.testng.annotations.Test;
  * Created by mwise on 1/14/16.
  */
 public class TestGetRequestObject {
-
   @Test
   public void getRequestCanBeSerializedAndDeserialized() {
     char[] topic = "mytopic".toCharArray();

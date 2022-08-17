@@ -10,7 +10,6 @@ import org.testng.annotations.Test;
  * Test class for authorization related classes, AceEntry, AclBinding, etc.
  */
 public class AuthorizationTest {
-
   @Test
   public void testAceEntry() {
 
@@ -87,23 +86,30 @@ public class AuthorizationTest {
     ab.addAceEntry(new AceEntry(p2, Method.Write, Permission.ALLOW));
     ab.addAceEntry(new AceEntry(p3, Method.Read, Permission.ALLOW));
 
-    for (VeniceSystemStoreType veniceSystemStoreType : VeniceSystemStoreType.values()) {
+    for (VeniceSystemStoreType veniceSystemStoreType: VeniceSystemStoreType.values()) {
       AclBinding sysAb = veniceSystemStoreType.generateSystemStoreAclBinding(ab);
       AclBinding sysKafkaTopicAb = new AclBinding(new Resource(veniceSystemStoreType.getSystemStoreName(storeName)));
-      sysKafkaTopicAb.addAceEntry(new AceEntry(p1,
-          veniceSystemStoreType.getClientAccessMethod() == Method.READ_SYSTEM_STORE ? Method.Read : Method.Write,
-          Permission.ALLOW));
-      sysKafkaTopicAb.addAceEntry(new AceEntry(p3,
-          veniceSystemStoreType.getClientAccessMethod() == Method.READ_SYSTEM_STORE ? Method.Read : Method.Write,
-          Permission.ALLOW));
+      sysKafkaTopicAb.addAceEntry(
+          new AceEntry(
+              p1,
+              veniceSystemStoreType.getClientAccessMethod() == Method.READ_SYSTEM_STORE ? Method.Read : Method.Write,
+              Permission.ALLOW));
+      sysKafkaTopicAb.addAceEntry(
+          new AceEntry(
+              p3,
+              veniceSystemStoreType.getClientAccessMethod() == Method.READ_SYSTEM_STORE ? Method.Read : Method.Write,
+              Permission.ALLOW));
       Assert.assertEquals(sysAb.getResource().getName(), veniceSystemStoreType.getSystemStoreName(storeName));
       Assert.assertEquals(sysAb.getAceEntries().size(), 2);
-      Assert.assertTrue(sysAb.getAceEntries()
-          .contains(new AceEntry(p1, veniceSystemStoreType.getClientAccessMethod(), Permission.ALLOW)));
-      Assert.assertFalse(sysAb.getAceEntries()
-          .contains(new AceEntry(p2, veniceSystemStoreType.getClientAccessMethod(), Permission.ALLOW)));
-      Assert.assertTrue(sysAb.getAceEntries()
-          .contains(new AceEntry(p3, veniceSystemStoreType.getClientAccessMethod(), Permission.ALLOW)));
+      Assert.assertTrue(
+          sysAb.getAceEntries()
+              .contains(new AceEntry(p1, veniceSystemStoreType.getClientAccessMethod(), Permission.ALLOW)));
+      Assert.assertFalse(
+          sysAb.getAceEntries()
+              .contains(new AceEntry(p2, veniceSystemStoreType.getClientAccessMethod(), Permission.ALLOW)));
+      Assert.assertTrue(
+          sysAb.getAceEntries()
+              .contains(new AceEntry(p3, veniceSystemStoreType.getClientAccessMethod(), Permission.ALLOW)));
       Assert.assertEquals(sysAb, VeniceSystemStoreType.getSystemStoreAclFromTopicAcl(sysKafkaTopicAb));
     }
   }

@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller;
 
+import static org.testng.Assert.*;
+
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
@@ -14,8 +16,8 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiCluster
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -32,38 +34,28 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static org.testng.Assert.*;
-
 
 public class TestParentControllerWithMultiDataCenter {
   private static final int TEST_TIMEOUT = 90_000; // ms
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
   private static final String[] CLUSTER_NAMES =
-      IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new); // ["venice-cluster0", "venice-cluster1", ...];
+      IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new); // ["venice-cluster0",
+                                                                                                         // "venice-cluster1",
+                                                                                                         // ...];
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
 
-  private static final String BASIC_USER_SCHEMA_STRING_WITH_DEFAULT = "{" +
-      "  \"namespace\" : \"example.avro\",  " +
-      "  \"type\": \"record\",   " +
-      "  \"name\": \"User\",     " +
-      "  \"fields\": [           " +
-      "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"\"}  " +
-      "  ] " +
-      " } ";
+  private static final String BASIC_USER_SCHEMA_STRING_WITH_DEFAULT = "{" + "  \"namespace\" : \"example.avro\",  "
+      + "  \"type\": \"record\",   " + "  \"name\": \"User\",     " + "  \"fields\": [           "
+      + "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"\"}  " + "  ] " + " } ";
 
   @BeforeClass
   public void setUp() {
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
-        NUMBER_OF_CHILD_DATACENTERS,
-        NUMBER_OF_CLUSTERS,
-        1,
-        1,
-        1,
-        1);
+    multiColoMultiClusterWrapper = ServiceFactory
+        .getVeniceTwoLayerMultiColoMultiClusterWrapper(NUMBER_OF_CHILD_DATACENTERS, NUMBER_OF_CLUSTERS, 1, 1, 1, 1);
 
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
@@ -81,13 +73,16 @@ public class TestParentControllerWithMultiDataCenter {
 
     String parentControllerURLs =
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
-    try (ControllerClient parentControllerClient = ControllerClient.constructClusterControllerClient(clusterName, parentControllerURLs)) {
+    try (ControllerClient parentControllerClient =
+        ControllerClient.constructClusterControllerClient(clusterName, parentControllerURLs)) {
       /**
        * Create a test store
        */
       NewStoreResponse newStoreResponse =
           parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
-      Assert.assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+      Assert.assertFalse(
+          newStoreResponse.isError(),
+          "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
       /**
        * Send UpdateStore to parent controller to update a store config
@@ -95,34 +90,38 @@ public class TestParentControllerWithMultiDataCenter {
       final long expectedHybridRewindSeconds = 100;
       final long expectedHybridOffsetLagThreshold = 100;
       final BufferReplayPolicy expectedHybridBufferReplayPolicy = BufferReplayPolicy.REWIND_FROM_SOP;
-      final UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams().setHybridRewindSeconds(expectedHybridRewindSeconds)
-          .setHybridOffsetLagThreshold(expectedHybridOffsetLagThreshold)
-          .setHybridBufferReplayPolicy(expectedHybridBufferReplayPolicy)
-          .setLeaderFollowerModel(true) // Enable L/F to update amplification factor.
-          .setAmplificationFactor(2);
+      final UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setHybridRewindSeconds(expectedHybridRewindSeconds)
+              .setHybridOffsetLagThreshold(expectedHybridOffsetLagThreshold)
+              .setHybridBufferReplayPolicy(expectedHybridBufferReplayPolicy)
+              .setLeaderFollowerModel(true) // Enable L/F to update amplification factor.
+              .setAmplificationFactor(2);
 
       TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, updateStoreParams);
 
       ControllerClient[] controllerClients = new ControllerClient[childDatacenters.size() + 1];
       controllerClients[0] = parentControllerClient;
       for (int i = 0; i < childDatacenters.size(); i++) {
-        controllerClients[i + 1] = new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString());
+        controllerClients[i + 1] =
+            new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString());
       }
 
       /**
        * Verify parent controller and all child controllers have updated the config
        */
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
-        for (ControllerClient controllerClient : controllerClients) {
+        for (ControllerClient controllerClient: controllerClients) {
           StoreResponse storeResponse = controllerClient.getStore(storeName);
           Assert.assertFalse(storeResponse.isError());
           StoreInfo storeInfo = storeResponse.getStore();
 
           Assert.assertNotNull(storeInfo.getHybridStoreConfig());
-          Assert.assertEquals(storeInfo.getHybridStoreConfig().getOffsetLagThresholdToGoOnline(),
+          Assert.assertEquals(
+              storeInfo.getHybridStoreConfig().getOffsetLagThresholdToGoOnline(),
               expectedHybridOffsetLagThreshold);
           Assert.assertEquals(storeInfo.getHybridStoreConfig().getRewindTimeInSeconds(), expectedHybridRewindSeconds);
-          Assert.assertEquals(storeInfo.getHybridStoreConfig().getBufferReplayPolicy(), expectedHybridBufferReplayPolicy);
+          Assert
+              .assertEquals(storeInfo.getHybridStoreConfig().getBufferReplayPolicy(), expectedHybridBufferReplayPolicy);
           Assert.assertTrue(storeInfo.isLeaderFollowerModelEnabled());
           Assert.assertNotNull(storeInfo.getPartitionerConfig());
           Assert.assertEquals(storeInfo.getPartitionerConfig().getAmplificationFactor(), 2);
@@ -134,7 +133,7 @@ public class TestParentControllerWithMultiDataCenter {
           new UpdateStoreQueryParams().setHybridRewindSeconds(-1).setHybridOffsetLagThreshold(-1);
       TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, updateStoreParams2);
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
-        for (ControllerClient controllerClient : controllerClients) {
+        for (ControllerClient controllerClient: controllerClients) {
           StoreResponse storeResponse = controllerClient.getStore(storeName);
           Assert.assertFalse(storeResponse.isError());
           StoreInfo storeInfo = storeResponse.getStore();
@@ -143,16 +142,19 @@ public class TestParentControllerWithMultiDataCenter {
       });
 
       // Update partitioner parameters make sure new update is in and other fields of partitioner config is not reset.
-      final UpdateStoreQueryParams updateStoreParams3 = new UpdateStoreQueryParams().setPartitionerParams(Collections.singletonMap("key", "val"));
+      final UpdateStoreQueryParams updateStoreParams3 =
+          new UpdateStoreQueryParams().setPartitionerParams(Collections.singletonMap("key", "val"));
       TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, updateStoreParams3);
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
-        for (ControllerClient controllerClient : controllerClients) {
+        for (ControllerClient controllerClient: controllerClients) {
           StoreResponse storeResponse = controllerClient.getStore(storeName);
           Assert.assertFalse(storeResponse.isError());
           StoreInfo storeInfo = storeResponse.getStore();
           Assert.assertNotNull(storeInfo.getPartitionerConfig());
           Assert.assertEquals(storeInfo.getPartitionerConfig().getAmplificationFactor(), 2);
-          Assert.assertEquals(storeInfo.getPartitionerConfig().getPartitionerParams(), Collections.singletonMap("key", "val"));
+          Assert.assertEquals(
+              storeInfo.getPartitionerConfig().getPartitionerParams(),
+              Collections.singletonMap("key", "val"));
         }
       });
     }
@@ -165,13 +167,16 @@ public class TestParentControllerWithMultiDataCenter {
 
     String parentControllerURLs =
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
-    try (ControllerClient parentControllerClient = ControllerClient.constructClusterControllerClient(clusterName, parentControllerURLs)) {
+    try (ControllerClient parentControllerClient =
+        ControllerClient.constructClusterControllerClient(clusterName, parentControllerURLs)) {
       /**
        * Create a test store
        */
       NewStoreResponse newStoreResponse =
           parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
-      Assert.assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+      Assert.assertFalse(
+          newStoreResponse.isError(),
+          "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
       /**
        * Send UpdateStore to child controller in the first data center; update 3 configs:
@@ -182,10 +187,12 @@ public class TestParentControllerWithMultiDataCenter {
       long expectedStorageQuotaInDC0 = 9527;
       boolean expectedLeaderFollowerConfigInDC0 = true;
       boolean expectedNativeReplicationConfigInDC0 = true;
-      ControllerClient dc0Client = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
-      UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams().setStorageQuotaInByte(expectedStorageQuotaInDC0)
-          .setLeaderFollowerModel(expectedLeaderFollowerConfigInDC0)
-          .setNativeReplicationEnabled(expectedNativeReplicationConfigInDC0);
+      ControllerClient dc0Client =
+          new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+      UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(expectedStorageQuotaInDC0)
+              .setLeaderFollowerModel(expectedLeaderFollowerConfigInDC0)
+              .setNativeReplicationEnabled(expectedNativeReplicationConfigInDC0);
       TestPushUtils.updateStore(clusterName, storeName, dc0Client, updateStoreParams);
 
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
@@ -201,7 +208,8 @@ public class TestParentControllerWithMultiDataCenter {
        * Send UpdateStore to parent controller to update a store config that is irrelevant to the above 3 configs
        */
       long expectedReadQuota = 2021;
-      UpdateStoreQueryParams updateStoreParamsOnParent = new UpdateStoreQueryParams().setReadQuotaInCU(expectedReadQuota);
+      UpdateStoreQueryParams updateStoreParamsOnParent =
+          new UpdateStoreQueryParams().setReadQuotaInCU(expectedReadQuota);
       TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, updateStoreParamsOnParent);
 
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
@@ -291,23 +299,26 @@ public class TestParentControllerWithMultiDataCenter {
       /**
        * Create a test store
        */
-      NewStoreResponse newStoreResponse = parentControllerClient.retryableRequest(5,
-          c -> c.createNewStore(storeName, "", "\"string\"", valueRecordSchemaStr1));
-      Assert.assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+      NewStoreResponse newStoreResponse = parentControllerClient
+          .retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", valueRecordSchemaStr1));
+      Assert.assertFalse(
+          newStoreResponse.isError(),
+          "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
-      SchemaResponse schemaResponse2 = parentControllerClient.retryableRequest(5,
-          c -> c.addValueSchema(storeName, valueRecordSchemaStr2));
+      SchemaResponse schemaResponse2 =
+          parentControllerClient.retryableRequest(5, c -> c.addValueSchema(storeName, valueRecordSchemaStr2));
       Assert.assertFalse(schemaResponse2.isError(), "addValeSchema returned error: " + schemaResponse2.getError());
 
       // Enable AA on store
-      UpdateStoreQueryParams updateStoreToEnableAARepl =
-          new UpdateStoreQueryParams().setLeaderFollowerModel(true).setNativeReplicationEnabled(true).setActiveActiveReplicationEnabled(true);
+      UpdateStoreQueryParams updateStoreToEnableAARepl = new UpdateStoreQueryParams().setLeaderFollowerModel(true)
+          .setNativeReplicationEnabled(true)
+          .setActiveActiveReplicationEnabled(true);
       TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, updateStoreToEnableAARepl);
       /**
        * Test Active/Active replication config enablement generates the active active metadata schema.
        */
-      try (ControllerClient dc0Client = new ControllerClient(clusterName,
-          childDatacenters.get(0).getControllerConnectString())) {
+      try (ControllerClient dc0Client =
+          new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString())) {
         TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, false, true, () -> {
           StoreResponse storeResponse = dc0Client.getStore(storeName);
           Assert.assertFalse(storeResponse.isError());
@@ -319,15 +330,16 @@ public class TestParentControllerWithMultiDataCenter {
 
         Admin veniceHelixAdmin = childDatacenters.get(0).getControllers().values().iterator().next().getVeniceAdmin();
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
-              Collection<ReplicationMetadataSchemaEntry> replicationMetadataSchemas = veniceHelixAdmin.getReplicationMetadataSchemas(clusterName, storeName);
-              // Expect two RMD schemas because there were 2 value schemas when AA was enabled on this store.
-              Assert.assertEquals(replicationMetadataSchemas.size(), 2);
-              Iterator<ReplicationMetadataSchemaEntry> iterator = replicationMetadataSchemas.iterator();
-              Assert.assertEquals(iterator.next().getSchema(), rmdSchema1);
-              Assert.assertEquals(iterator.next().getSchema(), rmdSchema2);
+          Collection<ReplicationMetadataSchemaEntry> replicationMetadataSchemas =
+              veniceHelixAdmin.getReplicationMetadataSchemas(clusterName, storeName);
+          // Expect two RMD schemas because there were 2 value schemas when AA was enabled on this store.
+          Assert.assertEquals(replicationMetadataSchemas.size(), 2);
+          Iterator<ReplicationMetadataSchemaEntry> iterator = replicationMetadataSchemas.iterator();
+          Assert.assertEquals(iterator.next().getSchema(), rmdSchema1);
+          Assert.assertEquals(iterator.next().getSchema(), rmdSchema2);
         });
 
-        //Add a new value schema for the store and make sure the corresponding new metadata schema is generated.
+        // Add a new value schema for the store and make sure the corresponding new metadata schema is generated.
         SchemaResponse schemaResponse3 =
             parentControllerClient.retryableRequest(5, c -> c.addValueSchema(storeName, valueRecordSchemaStr3));
         Assert.assertFalse(schemaResponse3.isError(), "addValeSchema returned error: " + schemaResponse3.getError());
@@ -335,7 +347,8 @@ public class TestParentControllerWithMultiDataCenter {
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
           // N.B.: The value schema and RMD schema are added by the parent, so we cannot expect that the child will
           // find out about it immediately, hence the retries.
-          Collection<ReplicationMetadataSchemaEntry> replicationMetadataSchemas = veniceHelixAdmin.getReplicationMetadataSchemas(clusterName, storeName);
+          Collection<ReplicationMetadataSchemaEntry> replicationMetadataSchemas =
+              veniceHelixAdmin.getReplicationMetadataSchemas(clusterName, storeName);
           Assert.assertEquals(replicationMetadataSchemas.size(), 3);
           Iterator<ReplicationMetadataSchemaEntry> iterator = replicationMetadataSchemas.iterator();
           Assert.assertEquals(iterator.next().getSchema(), rmdSchema1);
@@ -343,7 +356,7 @@ public class TestParentControllerWithMultiDataCenter {
           Assert.assertEquals(iterator.next().getSchema(), rmdSchema3);
         });
 
-        //Add a new version for the store and make sure all new metadata schema are generated.
+        // Add a new version for the store and make sure all new metadata schema are generated.
         VersionCreationResponse vcr =
             parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-push"), 1L);
         assertEquals(vcr.getVersion(), 1, "requesting a topic for a push should provide version number 1");

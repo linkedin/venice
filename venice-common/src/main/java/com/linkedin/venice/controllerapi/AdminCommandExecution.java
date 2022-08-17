@@ -41,13 +41,13 @@ public class AdminCommandExecution {
     if (fabrics.isEmpty()) {
       throw new VeniceException("At least one remote fabric is required.");
     }
-    for (String fabric : fabrics) {
+    for (String fabric: fabrics) {
       this.fabricToExecutionStatusMap.put(fabric, AdminCommandExecutionStatus.NOT_SENT);
     }
   }
 
   public boolean isSucceedInAllFabric() {
-    for (AdminCommandExecutionStatus status : fabricToExecutionStatusMap.values()) {
+    for (AdminCommandExecutionStatus status: fabricToExecutionStatusMap.values()) {
       if (!status.equals(AdminCommandExecutionStatus.COMPLETED)) {
         return false;
       }
@@ -63,11 +63,12 @@ public class AdminCommandExecution {
       LastSucceedExecutionIdResponse response = controllerClient.getLastSucceedExecutionId();
       if (response.isError()) {
         throw new VeniceException(
-            "Query the last succeed execution id from fabric: " + fabric + " failed. Caused by: " + response.getError());
+            "Query the last succeed execution id from fabric: " + fabric + " failed. Caused by: "
+                + response.getError());
       } else if (this.executionId <= response.getLastSucceedExecutionId()) {
         // Command has been processed in remote fabric.
         this.updateCommandStatusForFabric(fabric, AdminCommandExecutionStatus.COMPLETED);
-      } else{
+      } else {
         this.updateCommandStatusForFabric(fabric, AdminCommandExecutionStatus.PROCESSING);
       }
     } catch (Exception e) {

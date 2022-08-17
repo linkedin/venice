@@ -48,8 +48,9 @@ public class TestRouterRetry {
 
   private static final String KEY_SCHEMA_STR = "\"string\"";
   private static final String VALUE_FIELD_NAME = "int_field";
-  private static final String VALUE_SCHEMA_STR = "{\n" + "\"type\": \"record\",\n" + "\"name\": \"test_value_schema\",\n"
-      + "\"fields\": [\n" + "  {\"name\": \"" + VALUE_FIELD_NAME + "\", \"type\": \"int\"}]\n" + "}";
+  private static final String VALUE_SCHEMA_STR =
+      "{\n" + "\"type\": \"record\",\n" + "\"name\": \"test_value_schema\",\n" + "\"fields\": [\n" + "  {\"name\": \""
+          + VALUE_FIELD_NAME + "\", \"type\": \"int\"}]\n" + "}";
   private static final Schema VALUE_SCHEMA = new Schema.Parser().parse(VALUE_SCHEMA_STR);
   private static final String KEY_PREFIX = "key_";
 
@@ -60,12 +61,15 @@ public class TestRouterRetry {
     // Add the following specific configs for Router
     // To trigger long-tail retry
     extraProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 1);
-    extraProperties.put(ConfigKeys.ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, MAX_KEY_LIMIT); // 10 keys at most in a batch-get request
+    extraProperties.put(ConfigKeys.ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, MAX_KEY_LIMIT); // 10 keys at most in a
+                                                                                         // batch-get request
     extraProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-:1");
     extraProperties.put(ConfigKeys.ROUTER_SMART_LONG_TAIL_RETRY_ENABLED, false);
 
     // For Controller
-    extraProperties.put(ConfigKeys.DEFAULT_OFFLINE_PUSH_STRATEGY, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION.toString());
+    extraProperties.put(
+        ConfigKeys.DEFAULT_OFFLINE_PUSH_STRATEGY,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION.toString());
 
     veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 1, 2, 100, true, false, extraProperties);
     routerAddr = veniceCluster.getRandomRouterSslURL();
@@ -83,7 +87,8 @@ public class TestRouterRetry {
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STR);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STR);
 
-    veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress()).createVeniceWriter(storeVersionName, keySerializer, valueSerializer);
+    veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress())
+        .createVeniceWriter(storeVersionName, keySerializer, valueSerializer);
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
 
     veniceWriter.broadcastStartOfPush(new HashMap<>());
@@ -99,7 +104,9 @@ public class TestRouterRetry {
     // Wait for storage node to finish consuming, and new version to be activated
     String controllerUrl = veniceCluster.getAllControllersURLs();
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
-      int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName).getStore().getCurrentVersion();
+      int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName)
+          .getStore()
+          .getCurrentVersion();
       return currentVersion == pushVersion;
     });
 
@@ -113,10 +120,11 @@ public class TestRouterRetry {
   }
 
   private void updateStore(long readQuota, int maxKeyLimit) {
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
-        .setReadQuotaInCU(readQuota)
-        .setReadComputationEnabled(true)
-        .setBatchGetLimit(maxKeyLimit));
+    controllerClient.updateStore(
+        storeName,
+        new UpdateStoreQueryParams().setReadQuotaInCU(readQuota)
+            .setReadComputationEnabled(true)
+            .setBatchGetLimit(maxKeyLimit));
   }
 
   @Test(timeOut = 60000)
@@ -135,7 +143,8 @@ public class TestRouterRetry {
         keySet.add("unknown_key");
         Map<String, GenericRecord> result = storeClient.batchGet(keySet).get();
         Assert.assertEquals(result.size(), MAX_KEY_LIMIT - 1);
-        Map<String, GenericRecord> computeResult = storeClient.compute().project(VALUE_FIELD_NAME).execute(keySet).get();
+        Map<String, GenericRecord> computeResult =
+            storeClient.compute().project(VALUE_FIELD_NAME).execute(keySet).get();
         Assert.assertEquals(computeResult.size(), MAX_KEY_LIMIT - 1);
 
         for (int i = 0; i < MAX_KEY_LIMIT - 1; ++i) {
@@ -161,18 +170,38 @@ public class TestRouterRetry {
     }
 
     // Verify retry metrics
-    double noAvailableReplicaAbortedRetryRequestMetricForSingleGet = MetricsUtils.getSum(".total--no_available_replica_aborted_retry_request.Count", veniceCluster.getVeniceRouters());
-    double noAvailableReplicaAbortedRetryRequestMetricForBatchGetStreaming = MetricsUtils.getSum(".total--multiget_streaming_no_available_replica_aborted_retry_request.Count", veniceCluster.getVeniceRouters());
-    double noAvailableReplicaAbortedRetryRequestMetricForComputeStreaming = MetricsUtils.getSum(".total--compute_streaming_no_available_replica_aborted_retry_request.Count", veniceCluster.getVeniceRouters());
-    Assert.assertTrue(noAvailableReplicaAbortedRetryRequestMetricForSingleGet > 0, "No available aborted retry request should be triggered for single-get");
-    Assert.assertTrue(noAvailableReplicaAbortedRetryRequestMetricForBatchGetStreaming > 0, "No available aborted retry request should be triggered for batch-get streaming");
-    Assert.assertTrue(noAvailableReplicaAbortedRetryRequestMetricForComputeStreaming > 0, "No available aborted retry request should be triggered for compute streaming");
+    double noAvailableReplicaAbortedRetryRequestMetricForSingleGet = MetricsUtils
+        .getSum(".total--no_available_replica_aborted_retry_request.Count", veniceCluster.getVeniceRouters());
+    double noAvailableReplicaAbortedRetryRequestMetricForBatchGetStreaming = MetricsUtils.getSum(
+        ".total--multiget_streaming_no_available_replica_aborted_retry_request.Count",
+        veniceCluster.getVeniceRouters());
+    double noAvailableReplicaAbortedRetryRequestMetricForComputeStreaming = MetricsUtils.getSum(
+        ".total--compute_streaming_no_available_replica_aborted_retry_request.Count",
+        veniceCluster.getVeniceRouters());
+    Assert.assertTrue(
+        noAvailableReplicaAbortedRetryRequestMetricForSingleGet > 0,
+        "No available aborted retry request should be triggered for single-get");
+    Assert.assertTrue(
+        noAvailableReplicaAbortedRetryRequestMetricForBatchGetStreaming > 0,
+        "No available aborted retry request should be triggered for batch-get streaming");
+    Assert.assertTrue(
+        noAvailableReplicaAbortedRetryRequestMetricForComputeStreaming > 0,
+        "No available aborted retry request should be triggered for compute streaming");
     // No unhealthy request
-    double unhealthyRequestMetricForSingleGet = MetricsUtils.getSum(".total--unhealthy_request.Count", veniceCluster.getVeniceRouters());
-    double unhealthyRequestMetricForBatchGetStreaming = MetricsUtils.getSum(".total--multiget_streaming_unhealthy_request.Count", veniceCluster.getVeniceRouters());
-    double unhealthyRequestMetricForForComputeStreaming = MetricsUtils.getSum(".total--compute_streaming_unhealthy_request.Count", veniceCluster.getVeniceRouters());
+    double unhealthyRequestMetricForSingleGet =
+        MetricsUtils.getSum(".total--unhealthy_request.Count", veniceCluster.getVeniceRouters());
+    double unhealthyRequestMetricForBatchGetStreaming =
+        MetricsUtils.getSum(".total--multiget_streaming_unhealthy_request.Count", veniceCluster.getVeniceRouters());
+    double unhealthyRequestMetricForForComputeStreaming =
+        MetricsUtils.getSum(".total--compute_streaming_unhealthy_request.Count", veniceCluster.getVeniceRouters());
     Assert.assertEquals(unhealthyRequestMetricForSingleGet, 0.0, "Unhealthy request for single-get is unexpected");
-    Assert.assertEquals(unhealthyRequestMetricForBatchGetStreaming, 0.0, "Unhealthy request for batch-get streaming is unexpected");
-    Assert.assertEquals(unhealthyRequestMetricForForComputeStreaming, 0.0, "Unhealthy request for compute streaming is unexpected");
+    Assert.assertEquals(
+        unhealthyRequestMetricForBatchGetStreaming,
+        0.0,
+        "Unhealthy request for batch-get streaming is unexpected");
+    Assert.assertEquals(
+        unhealthyRequestMetricForForComputeStreaming,
+        0.0,
+        "Unhealthy request for compute streaming is unexpected");
   }
 }

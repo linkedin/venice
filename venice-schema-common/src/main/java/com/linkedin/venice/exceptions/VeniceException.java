@@ -41,7 +41,7 @@ public class VeniceException extends RuntimeException {
    * Exceptions that extend VeniceException can override this for different behavior
    * @return 500 (Internal Server Error)
    */
-  public int getHttpStatusCode(){
+  public int getHttpStatusCode() {
     return HttpStatus.SC_INTERNAL_SERVER_ERROR;
   }
 

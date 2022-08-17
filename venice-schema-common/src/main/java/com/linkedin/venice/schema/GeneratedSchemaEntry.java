@@ -41,6 +41,7 @@ public class GeneratedSchemaEntry extends SchemaEntry {
 
   @Override
   public String toString() {
-    return String.format("value schema id: %d\t schema id: %d\t schema: %s", valueSchemaID, getId(), getSchema().toString());
+    return String
+        .format("value schema id: %d\t schema id: %d\t schema: %s", valueSchemaID, getId(), getSchema().toString());
   }
 }

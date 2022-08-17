@@ -1,5 +1,8 @@
 package com.linkedin.venice.router.api;
 
+import static org.apache.http.HttpStatus.*;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.integration.utils.MockHttpServerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.meta.Instance;
@@ -26,12 +29,8 @@ import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static org.apache.http.HttpStatus.*;
-import static org.mockito.Mockito.*;
-
 
 public class TestRouterHeartbeat {
-
   private LiveInstanceMonitor mockLiveInstanceMonitor(Set<Instance> liveInstance) {
     LiveInstanceMonitor mockLiveInstanceMonitor = mock(LiveInstanceMonitor.class);
     doReturn(true).when(mockLiveInstanceMonitor).isInstanceAlive(any());
@@ -41,7 +40,7 @@ public class TestRouterHeartbeat {
   }
 
   private StorageNodeClient mockStorageNodeClient(boolean ret) {
-    StorageNodeClient client =  mock(StorageNodeClient.class);
+    StorageNodeClient client = mock(StorageNodeClient.class);
     doReturn(ret).when(client).isInstanceReadyToServe(anyString());
     return client;
   }
@@ -57,9 +56,8 @@ public class TestRouterHeartbeat {
   }
 
   @Test
-  public void heartBeatMarksUnreachableNodes()
-      throws Exception {
-    // This is a fake instance that wont respond.  Nothing is runing on that port
+  public void heartBeatMarksUnreachableNodes() throws Exception {
+    // This is a fake instance that wont respond. Nothing is runing on that port
     Instance dummyInstance = Instance.fromNodeId("localhost_58262");
     Set<Instance> instanceSet = new HashSet<>();
     instanceSet.add(dummyInstance);
@@ -69,19 +67,27 @@ public class TestRouterHeartbeat {
     VeniceRouterConfig config = mockVeniceRouterConfig();
     StorageNodeClient client = mockStorageNodeClient(true);
 
-    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, client, config, routeHttpRequestStats, mock(AggHostHealthStats.class));
+    VeniceHostHealth healthMon = new VeniceHostHealth(
+        mockLiveInstanceMonitor,
+        client,
+        config,
+        routeHttpRequestStats,
+        mock(AggHostHealthStats.class));
 
     Assert.assertTrue(healthMon.isHostHealthy(dummyInstance, "partition"));
 
     StorageNodeClient storageNodeClient = mockClient(SC_FORBIDDEN);
 
     // storageNodeClients.add(mock(CloseableHttpAsyncClient.class));
-    RouterHeartbeat heartbeat = new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, config, Optional.empty(), storageNodeClient);
+    RouterHeartbeat heartbeat =
+        new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, config, Optional.empty(), storageNodeClient);
     heartbeat.start();
 
     // Since the heartbeat is querying an instance that wont respond, we expect it to tell the health monitor that the
     // host is unhealthy.
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS,
+    TestUtils.waitForNonDeterministicAssertion(
+        10,
+        TimeUnit.SECONDS,
         () -> Assert.assertFalse(healthMon.isHostHealthy(dummyInstance, "partition")));
     heartbeat.stop();
   }
@@ -119,11 +125,17 @@ public class TestRouterHeartbeat {
     RouteHttpRequestStats routeHttpRequestStats = mock(RouteHttpRequestStats.class);
     VeniceRouterConfig config = mockVeniceRouterConfig();
 
-    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, mockStorageNodeClient(true), config, routeHttpRequestStats, mock(AggHostHealthStats.class));
+    VeniceHostHealth healthMon = new VeniceHostHealth(
+        mockLiveInstanceMonitor,
+        mockStorageNodeClient(true),
+        config,
+        routeHttpRequestStats,
+        mock(AggHostHealthStats.class));
 
     StorageNodeClient storageNodeClient = mockClient(SC_OK);
 
-    RouterHeartbeat heartbeat = new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, config, Optional.empty(), storageNodeClient);
+    RouterHeartbeat heartbeat =
+        new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, config, Optional.empty(), storageNodeClient);
     heartbeat.start();
 
     // our instance should stay healthy since it responds to the health check.
@@ -137,8 +149,9 @@ public class TestRouterHeartbeat {
     // We want to verify the heartbeat can get a response from a server, so we create a server that
     // responds to a health check.
     MockHttpServerWrapper server = ServiceFactory.getMockHttpServer("storage-node");
-    FullHttpResponse badHealthResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.INTERNAL_SERVER_ERROR);
-    badHealthResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH,0);
+    FullHttpResponse badHealthResponse =
+        new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.INTERNAL_SERVER_ERROR);
+    badHealthResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, 0);
     server.addResponseForUri("/" + QueryAction.HEALTH.toString().toLowerCase(), badHealthResponse);
 
     // now our dummy instance lives at the port where a good health check will return
@@ -152,13 +165,19 @@ public class TestRouterHeartbeat {
     RouteHttpRequestStats routeHttpRequestStats = mock(RouteHttpRequestStats.class);
     VeniceRouterConfig config = mockVeniceRouterConfig();
 
-    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, mockStorageNodeClient(true), config, routeHttpRequestStats,  mock(AggHostHealthStats.class));
+    VeniceHostHealth healthMon = new VeniceHostHealth(
+        mockLiveInstanceMonitor,
+        mockStorageNodeClient(true),
+        config,
+        routeHttpRequestStats,
+        mock(AggHostHealthStats.class));
 
     Assert.assertTrue(healthMon.isHostHealthy(dummyInstance, "partition"));
 
     StorageNodeClient storageNodeClient = mockClient(SC_BAD_REQUEST);
 
-    RouterHeartbeat heartbeat = new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, config, Optional.empty(), storageNodeClient);
+    RouterHeartbeat heartbeat =
+        new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, config, Optional.empty(), storageNodeClient);
     heartbeat.start();
     Thread.sleep(1000);
 

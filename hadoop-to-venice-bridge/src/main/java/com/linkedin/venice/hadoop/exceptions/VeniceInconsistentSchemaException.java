@@ -9,12 +9,12 @@ import com.linkedin.venice.hadoop.VenicePushJob;
  * in {@link VenicePushJob}
  */
 public class VeniceInconsistentSchemaException extends VeniceException {
-    public VeniceInconsistentSchemaException(String message) {
-        super(message);
-    }
+  public VeniceInconsistentSchemaException(String message) {
+    super(message);
+  }
 
-    public VeniceInconsistentSchemaException(String message, Throwable throwable) {
-        super(message, throwable);
-    }
+  public VeniceInconsistentSchemaException(String message, Throwable throwable) {
+    super(message, throwable);
+  }
 
 }

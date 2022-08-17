@@ -14,7 +14,6 @@ import io.netty.handler.codec.http.HttpResponseStatus;
  */
 @ChannelHandler.Sharable
 public class ErrorCatchingHandler extends ChannelInboundHandlerAdapter {
-
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
     ctx.writeAndFlush(new HttpShortcutResponse(cause.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));

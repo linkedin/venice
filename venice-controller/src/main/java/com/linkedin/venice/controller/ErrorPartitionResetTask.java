@@ -57,9 +57,15 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
   private final AtomicBoolean isRunning = new AtomicBoolean();
   private final Set<String> irrelevantResources = new HashSet<>();
 
-  public ErrorPartitionResetTask(String clusterName, HelixAdminClient helixAdminClient,
-      ReadOnlyStoreRepository readOnlyStoreRepository, HelixExternalViewRepository routingDataRepository,
-      PushMonitor pushMonitor, MetricsRepository metricsRepository, int errorPartitionAutoResetLimit, long processingCycleDelayMs) {
+  public ErrorPartitionResetTask(
+      String clusterName,
+      HelixAdminClient helixAdminClient,
+      ReadOnlyStoreRepository readOnlyStoreRepository,
+      HelixExternalViewRepository routingDataRepository,
+      PushMonitor pushMonitor,
+      MetricsRepository metricsRepository,
+      int errorPartitionAutoResetLimit,
+      long processingCycleDelayMs) {
     taskId = String.format(TASK_ID_FORMAT, clusterName);
     logger = LogManager.getLogger(taskId);
     this.clusterName = clusterName;
@@ -82,11 +88,13 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
         long startTime = System.currentTimeMillis();
         // Copy the previous iteration's reset tracker resources and remove them from the set if they are still relevant
         irrelevantResources.addAll(errorPartitionResetTracker.keySet());
-        readOnlyStoreRepository.getAllStores().stream().filter(s -> !s.isSystemStore())
+        readOnlyStoreRepository.getAllStores()
+            .stream()
+            .filter(s -> !s.isSystemStore())
             .forEach(this::resetApplicableErrorPartitions);
 
         // Remove all the irrelevant entries from the error partition reset tracker
-        for (String irrelevantResource : irrelevantResources) {
+        for (String irrelevantResource: irrelevantResources) {
           errorPartitionResetTracker.remove(irrelevantResource);
         }
         irrelevantResources.clear();
@@ -108,11 +116,11 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
     irrelevantResources.remove(resourceName);
     try {
       PartitionAssignment partitionAssignment = routingDataRepository.getPartitionAssignments(resourceName);
-      Map<Integer, Integer> partitionResetCountMap = errorPartitionResetTracker.computeIfAbsent(resourceName,
-          k -> new HashMap<>());
+      Map<Integer, Integer> partitionResetCountMap =
+          errorPartitionResetTracker.computeIfAbsent(resourceName, k -> new HashMap<>());
       Map<String, List<String>> resetMap = new HashMap<>();
       OfflinePushStatus pushStatus = null;
-      for (Partition partition : partitionAssignment.getAllPartitions()) {
+      for (Partition partition: partitionAssignment.getAllPartitions()) {
         List<Instance> errorInstances = partition.getErrorInstances();
         if (errorInstances.isEmpty()) {
           if (checkPartitionRecovered(partition, partitionResetCountMap)) {
@@ -138,26 +146,33 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
               // if we call the get very frequently.
               pushStatus = pushMonitor.getOfflinePushOrThrow(resourceName);
             }
-            logger.warn("Error partition unrecoverable from reset. Resource: " + resourceName + ", partition: "
-                + partition.getId() + ", reset count: " + currentResetCount);
+            logger.warn(
+                "Error partition unrecoverable from reset. Resource: " + resourceName + ", partition: "
+                    + partition.getId() + ", reset count: " + currentResetCount);
             PartitionStatus partitionStatus = pushStatus.getPartitionStatus(partition.getId());
             // skip printing the hosts the info if partition status is null.
             if (partitionStatus == null) {
               logger.warn("Hosts unavailable to retrieve.");
               continue;
             }
-            Collection<ReplicaStatus> replicaStatuses= partitionStatus.getReplicaStatuses();
-            replicaStatuses.forEach((i) -> logger.warn(String.format("Host: %s, Offline push status: %s, Details: %s.", i.getInstanceId(), i.getCurrentStatus().name(), i.getIncrementalPushVersion())));
+            Collection<ReplicaStatus> replicaStatuses = partitionStatus.getReplicaStatuses();
+            replicaStatuses.forEach(
+                (i) -> logger.warn(
+                    String.format(
+                        "Host: %s, Offline push status: %s, Details: %s.",
+                        i.getInstanceId(),
+                        i.getCurrentStatus().name(),
+                        i.getIncrementalPushVersion())));
           } else if (errorInstances.size() > 1) {
             // The following scenarios can occur:
             // 1. Helix will trigger recovery re-balance in attempt to bring more replicas ONLINE.
             // 2. The recovery re-balance was successful and we now have excess error replicas that should be reset.
-            //    e.g. 2 ERROR 3 ONLINE or 3 ERROR and 2 ONLINE for replication factor of 3 .
+            // e.g. 2 ERROR 3 ONLINE or 3 ERROR and 2 ONLINE for replication factor of 3 .
             // 3. All replicas are in ERROR state and Helix has given up on this partition until manual intervention.
             if ((partition.getNumOfTotalInstances() - errorInstances.size()) >= store.getReplicationFactor() - 1) {
               // Only perform reset for scenario 2 since the error partition reset task is not responsible for 1 and 3.
               partitionResetCountMap.put(partition.getId(), currentResetCount + 1);
-              for (Instance i : errorInstances) {
+              for (Instance i: errorInstances) {
                 resetMap.computeIfAbsent(i.getNodeId(), k -> new ArrayList<>())
                     .add(HelixUtils.getPartitionName(resourceName, partition.getId()));
               }
@@ -173,7 +188,7 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
 
       // Update the tracker with newest reset count map
       errorPartitionResetTracker.put(resourceName, partitionResetCountMap);
-      resetMap.forEach((k,v) -> {
+      resetMap.forEach((k, v) -> {
         helixAdminClient.resetPartition(clusterName, k, resourceName, v);
         errorPartitionStats.recordErrorPartitionResetAttempt(v.size());
       });
@@ -181,8 +196,10 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
       logger.error("Resource: " + resourceName + " is missing unexpectedly", noHelixResourceException);
       errorPartitionStats.recordErrorPartitionResetAttemptErrored();
     } catch (Exception e) {
-      logger.error("Unexpected exception while processing partitions for resource: " + resourceName
-          + " for error partition reset", e);
+      logger.error(
+          "Unexpected exception while processing partitions for resource: " + resourceName
+              + " for error partition reset",
+          e);
       errorPartitionStats.recordErrorPartitionResetAttemptErrored();
     }
   }
@@ -190,9 +207,9 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
   private boolean checkPartitionRecovered(Partition partition, Map<Integer, Integer> partitionResetCountMap) {
     // Check if the partition reached healthy state after a reset.
     Set<String> states = partition.getAllInstances().keySet();
-    return partitionResetCountMap.containsKey(partition.getId()) &&
-           ((states.size() == 1 && states.contains(HelixState.ONLINE_STATE)) ||
-           (states.size() == 2 && states.contains(HelixState.LEADER_STATE) && states.contains(HelixState.STANDBY_STATE)));
+    return partitionResetCountMap.containsKey(partition.getId())
+        && ((states.size() == 1 && states.contains(HelixState.ONLINE_STATE)) || (states.size() == 2
+            && states.contains(HelixState.LEADER_STATE) && states.contains(HelixState.STANDBY_STATE)));
   }
 
   @Override

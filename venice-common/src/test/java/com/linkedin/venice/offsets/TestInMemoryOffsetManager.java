@@ -2,15 +2,13 @@ package com.linkedin.venice.offsets;
 
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Utils;
-
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class TestInMemoryOffsetManager {
-
   @Test
-  public void canSaveOffsets(){
+  public void canSaveOffsets() {
     String topic = Utils.getUniqueString("topic");
 
     OffsetManager om = new InMemoryOffsetManager();

@@ -21,6 +21,7 @@ import org.apache.hc.core5.reactor.ssl.TransportSecurityLayer;
 import org.apache.hc.core5.util.Args;
 import org.apache.hc.core5.util.Timeout;
 
+
 /**
  * This class copies most of the logic from {@link DefaultClientTlsStrategy} and {@link AbstractClientTlsStrategy} to
  * get rid of the cipher check to be backward compatible.
@@ -32,10 +33,19 @@ public class VeniceClientTlsStrategy extends DefaultClientTlsStrategy {
   private final SSLBufferMode sslBufferManagement;
   private final Factory<SSLEngine, TlsDetails> tlsDetailsFactory;
 
-  public VeniceClientTlsStrategy(SSLContext sslContext, String[] supportedProtocols, String[] supportedCipherSuites,
-      SSLBufferMode sslBufferManagement, HostnameVerifier hostnameVerifier,
+  public VeniceClientTlsStrategy(
+      SSLContext sslContext,
+      String[] supportedProtocols,
+      String[] supportedCipherSuites,
+      SSLBufferMode sslBufferManagement,
+      HostnameVerifier hostnameVerifier,
       Factory<SSLEngine, TlsDetails> tlsDetailsFactory) {
-    super(sslContext, supportedProtocols, supportedCipherSuites, sslBufferManagement, hostnameVerifier,
+    super(
+        sslContext,
+        supportedProtocols,
+        supportedCipherSuites,
+        sslBufferManagement,
+        hostnameVerifier,
         tlsDetailsFactory);
 
     this.sslContext = Args.notNull(sslContext, "SSL context");
@@ -54,12 +64,11 @@ public class VeniceClientTlsStrategy extends DefaultClientTlsStrategy {
       final Object attachment,
       final Timeout handshakeTimeout) {
     tlsSession.startTls(sslContext, host, sslBufferManagement, new SSLSessionInitializer() {
-
       @Override
       public void initialize(final NamedEndpoint endpoint, final SSLEngine sslEngine) {
 
-        final HttpVersionPolicy versionPolicy = attachment instanceof HttpVersionPolicy
-            ? (HttpVersionPolicy) attachment : HttpVersionPolicy.NEGOTIATE;
+        final HttpVersionPolicy versionPolicy =
+            attachment instanceof HttpVersionPolicy ? (HttpVersionPolicy) attachment : HttpVersionPolicy.NEGOTIATE;
 
         final SSLParameters sslParameters = sslEngine.getSSLParameters();
         if (supportedProtocols != null) {
@@ -73,7 +82,7 @@ public class VeniceClientTlsStrategy extends DefaultClientTlsStrategy {
           /**
            * Skip the H2 cipher check since LinkedIn is using an unsupported cipher.
            */
-//          sslParameters.setCipherSuites(TlsCiphers.excludeH2-lacklisted(sslParameters.getCipherSuites()));
+          // sslParameters.setCipherSuites(TlsCiphers.excludeH2-lacklisted(sslParameters.getCipherSuites()));
           sslParameters.setCipherSuites(sslParameters.getCipherSuites());
         }
 
@@ -87,7 +96,6 @@ public class VeniceClientTlsStrategy extends DefaultClientTlsStrategy {
       }
 
     }, new SSLSessionVerifier() {
-
       @Override
       public TlsDetails verify(final NamedEndpoint endpoint, final SSLEngine sslEngine) throws SSLException {
         verifySession(host.getHostName(), sslEngine.getSession());
@@ -95,13 +103,13 @@ public class VeniceClientTlsStrategy extends DefaultClientTlsStrategy {
         /**
          * Skip the H2 cipher check to be backward compatible.
          */
-//        final String negotiatedCipherSuite = sslEngine.getSession().getCipherSuite();
-//        if (tlsDetails != null && ApplicationProtocol.HTTP_2.id.equals(tlsDetails.getApplicationProtocol())) {
-//          if (TlsCiphers.isH2-lacklisted(negotiatedCipherSuite)) {
-//            throw new SSLHandshakeException("Cipher suite `" + negotiatedCipherSuite
-//                + "` does not provide adequate security for HTTP/2");
-//          }
-//        }
+        // final String negotiatedCipherSuite = sslEngine.getSession().getCipherSuite();
+        // if (tlsDetails != null && ApplicationProtocol.HTTP_2.id.equals(tlsDetails.getApplicationProtocol())) {
+        // if (TlsCiphers.isH2-lacklisted(negotiatedCipherSuite)) {
+        // throw new SSLHandshakeException("Cipher suite `" + negotiatedCipherSuite
+        // + "` does not provide adequate security for HTTP/2");
+        // }
+        // }
         return tlsDetails;
       }
 

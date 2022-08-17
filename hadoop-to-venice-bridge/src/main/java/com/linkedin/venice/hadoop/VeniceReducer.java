@@ -1,5 +1,7 @@
 package com.linkedin.venice.hadoop;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.RecordTooLargeException;
@@ -55,8 +57,6 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-
 
 /**
  * {@link VeniceReducer} will be in charge of producing the messages to Kafka broker.
@@ -69,24 +69,35 @@ import static com.linkedin.venice.hadoop.VenicePushJob.*;
  * much smaller than before);
  *
  */
-public class VeniceReducer
-    extends AbstractMapReduceTask
+public class VeniceReducer extends AbstractMapReduceTask
     implements Reducer<BytesWritable, BytesWritable, BytesWritable, BytesWritable> {
-
   public static class VeniceWriterMessage {
     private final byte[] keyBytes;
     private final byte[] valueBytes;
     private final int valueSchemaId;
     private final int replicationMetadataVersionId;
     private final ByteBuffer replicationMetadataPayload;
-    private final Consumer<AbstractVeniceWriter<byte[], byte[], byte[]> > consumer;
+    private final Consumer<AbstractVeniceWriter<byte[], byte[], byte[]>> consumer;
 
-    public VeniceWriterMessage(byte[] keyBytes, byte[] valueBytes, int valueSchemaId, Callback callback, boolean enableWriteCompute, int derivedValueSchemaId) {
+    public VeniceWriterMessage(
+        byte[] keyBytes,
+        byte[] valueBytes,
+        int valueSchemaId,
+        Callback callback,
+        boolean enableWriteCompute,
+        int derivedValueSchemaId) {
       this(keyBytes, valueBytes, valueSchemaId, -1, null, callback, enableWriteCompute, derivedValueSchemaId);
     }
 
-    public VeniceWriterMessage(byte[] keyBytes, byte[] valueBytes, int valueSchemaId, int replicationMetadataVersionId,
-        ByteBuffer replicationMetadataPayload, Callback callback, boolean enableWriteCompute, int derivedValueSchemaId) {
+    public VeniceWriterMessage(
+        byte[] keyBytes,
+        byte[] valueBytes,
+        int valueSchemaId,
+        int replicationMetadataVersionId,
+        ByteBuffer replicationMetadataPayload,
+        Callback callback,
+        boolean enableWriteCompute,
+        int derivedValueSchemaId) {
       this.keyBytes = keyBytes;
       this.valueBytes = valueBytes;
       this.valueSchemaId = valueSchemaId;
@@ -98,7 +109,8 @@ public class VeniceReducer
             throw new VeniceException("Found empty replication metadata");
           }
           if (valueBytes == null) {
-            DeleteMetadata deleteMetadata = new DeleteMetadata(valueSchemaId, replicationMetadataVersionId, replicationMetadataPayload);
+            DeleteMetadata deleteMetadata =
+                new DeleteMetadata(valueSchemaId, replicationMetadataVersionId, replicationMetadataPayload);
             writer.delete(keyBytes, callback, deleteMetadata);
           } else {
             PutMetadata putMetadata = (new PutMetadata(replicationMetadataVersionId, replicationMetadataPayload));
@@ -112,7 +124,7 @@ public class VeniceReducer
       };
     }
 
-    public Consumer<AbstractVeniceWriter<byte[], byte[], byte[]> > getConsumer() {
+    public Consumer<AbstractVeniceWriter<byte[], byte[], byte[]>> getConsumer() {
       return consumer;
     }
 
@@ -197,17 +209,18 @@ public class VeniceReducer
       BytesWritable key,
       Iterator<BytesWritable> values,
       OutputCollector<BytesWritable, BytesWritable> output,
-      Reporter reporter
-  ) {
+      Reporter reporter) {
     if (updatePreviousReporter(reporter)) {
       callback = new KafkaMessageCallback(reporter);
     }
     final long timeOfLastReduceFunctionStartInNS = System.nanoTime();
     if (timeOfLastReduceFunctionEndInNS > 0) {
       // Will only be true starting from the 2nd invocation.
-      aggregateTimeOfInBetweenReduceInvocationsInNS += (timeOfLastReduceFunctionStartInNS - timeOfLastReduceFunctionEndInNS);
+      aggregateTimeOfInBetweenReduceInvocationsInNS +=
+          (timeOfLastReduceFunctionStartInNS - timeOfLastReduceFunctionEndInNS);
     }
-    if (key.getLength() > VeniceMRPartitioner.EMPTY_KEY_LENGTH && (!hasReportedFailure(reporter, this.isDuplicateKeyAllowed))) {
+    if (key.getLength() > VeniceMRPartitioner.EMPTY_KEY_LENGTH
+        && (!hasReportedFailure(reporter, this.isDuplicateKeyAllowed))) {
       Optional<VeniceWriterMessage> message = extract(key, values, reporter);
       if (message.isPresent()) {
         try {
@@ -242,26 +255,34 @@ public class VeniceReducer
     return enableWriteCompute;
   }
 
-  protected Optional<VeniceWriterMessage> extract(BytesWritable key, Iterator<BytesWritable> values, Reporter reporter) {
+  protected Optional<VeniceWriterMessage> extract(
+      BytesWritable key,
+      Iterator<BytesWritable> values,
+      Reporter reporter) {
     /**
      * Don't use {@link BytesWritable#getBytes()} since it could be padded or modified by some other records later on.
      */
     byte[] keyBytes = key.copyBytes();
     if (!values.hasNext()) {
-      throw new VeniceException("There is no value corresponding to key bytes: " +
-          ByteUtils.toHexString(keyBytes));
+      throw new VeniceException("There is no value corresponding to key bytes: " + ByteUtils.toHexString(keyBytes));
     }
     byte[] valueBytes = values.next().copyBytes();
     if (duplicateKeyPrinter == null) {
       throw new VeniceException("'DuplicateKeyPrinter' is not initialized properly");
     }
     duplicateKeyPrinter.detectAndHandleDuplicateKeys(keyBytes, valueBytes, values, reporter);
-    return Optional.of(new VeniceWriterMessage(keyBytes, valueBytes, valueSchemaId, getCallback(), isEnableWriteCompute(), getDerivedValueSchemaId()));
+    return Optional.of(
+        new VeniceWriterMessage(
+            keyBytes,
+            valueBytes,
+            valueSchemaId,
+            getCallback(),
+            isEnableWriteCompute(),
+            getDerivedValueSchemaId()));
   }
 
   protected boolean hasReportedFailure(Reporter reporter, boolean isDuplicateKeyAllowed) {
-    return exceedQuota(reporter)
-        || hasWriteAclFailure(reporter)
+    return exceedQuota(reporter) || hasWriteAclFailure(reporter)
         || hasDuplicatedKeyWithDistinctValueFailure(reporter, isDuplicateKeyAllowed)
         || hasRecordTooLargeFailure(reporter);
   }
@@ -299,8 +320,7 @@ public class VeniceReducer
     if (this.hasDuplicateKeyWithDistinctValue) {
       return true;
     }
-    final boolean hasDuplicateKeyWithDistinctValue =
-        MRJobCounterHelper.getDuplicateKeyWithDistinctCount(reporter) > 0;
+    final boolean hasDuplicateKeyWithDistinctValue = MRJobCounterHelper.getDuplicateKeyWithDistinctCount(reporter) > 0;
     if (hasDuplicateKeyWithDistinctValue) {
       this.hasDuplicateKeyWithDistinctValue = true;
     }
@@ -333,7 +353,9 @@ public class VeniceReducer
     aggregateTimeOfReduceExecutionInNS += (timeOfLastReduceFunctionEndInNS - timeOfLastReduceFunctionStartInNS);
   }
 
-  protected void sendMessageToKafka(Reporter reporter, Consumer<AbstractVeniceWriter<byte[], byte[], byte[]> > writerConsumer) {
+  protected void sendMessageToKafka(
+      Reporter reporter,
+      Consumer<AbstractVeniceWriter<byte[], byte[], byte[]>> writerConsumer) {
     maybePropagateCallbackException();
     if (null == veniceWriter) {
       veniceWriter = createBasicVeniceWriter();
@@ -354,8 +376,7 @@ public class VeniceReducer
 
   private VeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter() {
     Properties writerProps = props.toProperties();
-    writerProps.put(GuidUtils.GUID_GENERATOR_IMPLEMENTATION,
-        GuidUtils.DETERMINISTIC_GUID_GENERATOR_IMPLEMENTATION);
+    writerProps.put(GuidUtils.GUID_GENERATOR_IMPLEMENTATION, GuidUtils.DETERMINISTIC_GUID_GENERATOR_IMPLEMENTATION);
     // Closing segments based on elapsed time should always be disabled in MR to prevent storage nodes consuming out of
     // order keys when speculative execution is in play.
     writerProps.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, -1);
@@ -372,27 +393,38 @@ public class VeniceReducer
     VeniceWriterFactory veniceWriterFactoryFactory = new VeniceWriterFactory(writerProps);
     boolean chunkingEnabled = props.getBoolean(VeniceWriter.ENABLE_CHUNKING);
     VenicePartitioner partitioner = PartitionUtils.getVenicePartitioner(props);
-    return veniceWriterFactoryFactory.createVeniceWriter(props.getString(TOPIC_PROP), new DefaultSerializer(), new DefaultSerializer(),
-        new DefaultSerializer(), Optional.of(chunkingEnabled), SystemTime.INSTANCE, partitioner, Optional.empty(), this.targetStoreVersionForIncPush);
+    return veniceWriterFactoryFactory.createVeniceWriter(
+        props.getString(TOPIC_PROP),
+        new DefaultSerializer(),
+        new DefaultSerializer(),
+        new DefaultSerializer(),
+        Optional.of(chunkingEnabled),
+        SystemTime.INSTANCE,
+        partitioner,
+        Optional.empty(),
+        this.targetStoreVersionForIncPush);
   }
 
   private void telemetry() {
     if (messageSent % telemetryMessageInterval == 0) {
-      double timeSinceLastMeasurementInSeconds = (System.nanoTime() - lastTimeThroughputWasLoggedInNS) / (double) Time.NS_PER_SECOND;
+      double timeSinceLastMeasurementInSeconds =
+          (System.nanoTime() - lastTimeThroughputWasLoggedInNS) / (double) Time.NS_PER_SECOND;
 
       // Mapping rate measurement
       long mrFrameworkRate = (long) (telemetryMessageInterval / timeSinceLastMeasurementInSeconds);
-      LOGGER.info("MR Framework records processed: " + messageSent
-          + ", total time spent: " + Utils.makeTimePretty(aggregateTimeOfInBetweenReduceInvocationsInNS)
-          + ", current throughput: " + Utils.makeLargeNumberPretty(mrFrameworkRate) + " rec/s");
+      LOGGER.info(
+          "MR Framework records processed: " + messageSent + ", total time spent: "
+              + Utils.makeTimePretty(aggregateTimeOfInBetweenReduceInvocationsInNS) + ", current throughput: "
+              + Utils.makeLargeNumberPretty(mrFrameworkRate) + " rec/s");
 
       // Produce rate measurement
       long newMessageCompletedCount = messageCompleted.get();
       long messagesProducedSinceLastLog = newMessageCompletedCount - lastMessageCompletedCount;
       long produceRate = (long) (messagesProducedSinceLastLog / timeSinceLastMeasurementInSeconds);
-      LOGGER.info("Kafka records produced: " + newMessageCompletedCount
-          + ", total time spent: " + Utils.makeTimePretty(aggregateTimeOfReduceExecutionInNS)
-          + ", current throughput: " + Utils.makeLargeNumberPretty(produceRate) + " rec/s");
+      LOGGER.info(
+          "Kafka records produced: " + newMessageCompletedCount + ", total time spent: "
+              + Utils.makeTimePretty(aggregateTimeOfReduceExecutionInNS) + ", current throughput: "
+              + Utils.makeLargeNumberPretty(produceRate) + " rec/s");
 
       // Bookkeeping for the next measurement iteration
       lastTimeThroughputWasLoggedInNS = System.nanoTime();
@@ -409,8 +441,8 @@ public class VeniceReducer
         boolean shouldEndAllSegments = false;
         try {
           veniceWriter.flush();
-          shouldEndAllSegments = messageErrored.get() == 0 && messageSent == messageCompleted.get() &&
-              previousReporter.getProgress() == 1.0;
+          shouldEndAllSegments = messageErrored.get() == 0 && messageSent == messageCompleted.get()
+              && previousReporter.getProgress() == 1.0;
         } finally {
           veniceWriter.close(shouldEndAllSegments);
         }
@@ -419,7 +451,8 @@ public class VeniceReducer
       LOGGER.info("Kafka message progress after flushing and closing producer:");
       logMessageProgress();
       if (messageSent != messageCompleted.get()) {
-        throw new VeniceException("Message sent: " + messageSent + " doesn't match message completed: " + messageCompleted.get());
+        throw new VeniceException(
+            "Message sent: " + messageSent + " doesn't match message completed: " + messageCompleted.get());
       }
     } finally {
       Utils.closeQuietlyWithErrorLogged(duplicateKeyPrinter);
@@ -447,7 +480,8 @@ public class VeniceReducer
     this.duplicateKeyPrinter = initDuplicateKeyPrinter(job);
     this.telemetryMessageInterval = props.getInt(TELEMETRY_MESSAGE_INTERVAL, 10000);
     this.targetStoreVersionForIncPush = props.containsKey(TARGET_VERSION_FOR_INCREMENTAL_PUSH)
-        ? Optional.of(props.getInt(TARGET_VERSION_FOR_INCREMENTAL_PUSH)) : Optional.empty();
+        ? Optional.of(props.getInt(TARGET_VERSION_FOR_INCREMENTAL_PUSH))
+        : Optional.empty();
     initStorageQuotaFields(props, job);
     /**
      * A dummy background task that reports progress every 5 minutes.
@@ -495,9 +529,15 @@ public class VeniceReducer
        *
        * TODO: Fix this so that tests are more representative of prod
        */
-      throw new VeniceException(String.format(
-          "Can't read input file size from counters; hadoopJobClient: %s; jobIdProp: %s; jobID: %s; runningJob: %s; quotaCounters: %s",
-          hadoopJobClient, jobIdProp, jobID, runningJob, quotaCounters), e);
+      throw new VeniceException(
+          String.format(
+              "Can't read input file size from counters; hadoopJobClient: %s; jobIdProp: %s; jobID: %s; runningJob: %s; quotaCounters: %s",
+              hadoopJobClient,
+              jobIdProp,
+              jobID,
+              runningJob,
+              quotaCounters),
+          e);
     } finally {
       if (hadoopJobClient != null) {
         try {
@@ -516,8 +556,12 @@ public class VeniceReducer
   }
 
   private void logMessageProgress() {
-    LOGGER.info(String.format("Message sent: %d, message completed: %d, message errored: %d",
-        messageSent, messageCompleted.get(), messageErrored.get()));
+    LOGGER.info(
+        String.format(
+            "Message sent: %d, message completed: %d, message errored: %d",
+            messageSent,
+            messageCompleted.get(),
+            messageErrored.get()));
   }
 
   // Visible for testing
@@ -555,10 +599,14 @@ public class VeniceReducer
         if (partition != getTaskId()) {
           // Reducer input and output are not aligned!
           messageErrored.incrementAndGet();
-          sendException = new VeniceException(String.format(
-              "The reducer is not writing to the Kafka partition that maps to its task (taskId = %d, partition = %d). "
-                  + "This could mean that MR shuffling is buggy or that the configured %s (%s) is non-deterministic.",
-              getTaskId(), partition, VenicePartitioner.class.getSimpleName(), props.getString(ConfigKeys.PARTITIONER_CLASS)));
+          sendException = new VeniceException(
+              String.format(
+                  "The reducer is not writing to the Kafka partition that maps to its task (taskId = %d, partition = %d). "
+                      + "This could mean that MR shuffling is buggy or that the configured %s (%s) is non-deterministic.",
+                  getTaskId(),
+                  partition,
+                  VenicePartitioner.class.getSimpleName(),
+                  props.getString(ConfigKeys.PARTITIONER_CLASS)));
         }
       }
       // Report progress so map-reduce framework won't kill current reducer when it finishes
@@ -586,7 +634,7 @@ public class VeniceReducer
     private final boolean isDupKeyAllowed;
 
     private final String topic;
-    private final Schema  keySchema;
+    private final Schema keySchema;
     private final AbstractVeniceRecordReader<?, ?> recordReader;
     private final VeniceKafkaSerializer<?> keySerializer;
     private final GenericDatumWriter<Object> avroDatumWriter;
@@ -597,8 +645,9 @@ public class VeniceReducer
       this.isDupKeyAllowed = jobConf.getBoolean(ALLOW_DUPLICATE_KEY, false);
 
       VeniceProperties veniceProperties = HadoopUtils.getVeniceProps(jobConf);
-      this.recordReader = jobConf.getBoolean(VSON_PUSH, false) ?
-          new VeniceVsonRecordReader(veniceProperties) : new VeniceAvroRecordReader(veniceProperties);
+      this.recordReader = jobConf.getBoolean(VSON_PUSH, false)
+          ? new VeniceVsonRecordReader(veniceProperties)
+          : new VeniceAvroRecordReader(veniceProperties);
       this.keySchema = Schema.parse(recordReader.getKeySchemaStr());
 
       if (recordReader.getKeySerializer() == null) {
@@ -609,7 +658,11 @@ public class VeniceReducer
       this.avroDatumWriter = new GenericDatumWriter<>(keySchema);
     }
 
-    protected void detectAndHandleDuplicateKeys(byte[] keyBytes, byte[] valueBytes, Iterator<BytesWritable> values, Reporter reporter) {
+    protected void detectAndHandleDuplicateKeys(
+        byte[] keyBytes,
+        byte[] valueBytes,
+        Iterator<BytesWritable> values,
+        Reporter reporter) {
       if (numOfDupKey > MAX_NUM_OF_LOG) {
         return;
       }

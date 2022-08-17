@@ -12,7 +12,6 @@ import org.testng.annotations.Test;
 
 
 public class ListCollectionMergeTest extends SortBasedCollectionFieldOperationHandlerTestBase {
-
   @Test
   public void testHandleListOpsCase1() {
     /**
@@ -27,10 +26,11 @@ public class ListCollectionMergeTest extends SortBasedCollectionFieldOperationHa
         new PutListOperation(3L, COLO_ID_1, Arrays.asList(3, 2, 1), LIST_FIELD_NAME),
         new MergeListOperation(6L, COLO_ID_1, Collections.singletonList(5), Collections.emptyList(), LIST_FIELD_NAME),
         new PutListOperation(3L, COLO_ID_2, Arrays.asList(2, 3, 4), LIST_FIELD_NAME),
-        new MergeListOperation(7L, COLO_ID_2, Collections.emptyList(), Collections.singletonList(3), LIST_FIELD_NAME)
-    );
+        new MergeListOperation(7L, COLO_ID_2, Collections.emptyList(), Collections.singletonList(3), LIST_FIELD_NAME));
     List<Integer> expectedItemsResult = Arrays.asList(2, 4, 5);
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedListResult(LIST_FIELD_NAME, expectedItemsResult));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedListResult(LIST_FIELD_NAME, expectedItemsResult));
   }
 
   @Test
@@ -47,10 +47,11 @@ public class ListCollectionMergeTest extends SortBasedCollectionFieldOperationHa
         new PutListOperation(3L, COLO_ID_1, Arrays.asList(2, 3, 4), LIST_FIELD_NAME),
         new MergeListOperation(6L, COLO_ID_1, Collections.singletonList(5), Collections.emptyList(), LIST_FIELD_NAME),
         new PutListOperation(3L, COLO_ID_2, Arrays.asList(3, 2, 1), LIST_FIELD_NAME),
-        new MergeListOperation(7L, COLO_ID_2, Collections.emptyList(), Collections.singletonList(3), LIST_FIELD_NAME)
-    );
+        new MergeListOperation(7L, COLO_ID_2, Collections.emptyList(), Collections.singletonList(3), LIST_FIELD_NAME));
     List<Integer> expectedItemsResult = Arrays.asList(2, 1, 5);
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedListResult(LIST_FIELD_NAME, expectedItemsResult));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedListResult(LIST_FIELD_NAME, expectedItemsResult));
   }
 
   @Test
@@ -74,10 +75,11 @@ public class ListCollectionMergeTest extends SortBasedCollectionFieldOperationHa
         new MergeListOperation(8L, COLO_ID_1, Collections.singletonList(7), Collections.emptyList(), LIST_FIELD_NAME),
         new MergeListOperation(9L, COLO_ID_2, Collections.singletonList(8), Collections.emptyList(), LIST_FIELD_NAME),
         // This operation should move element 5 to the end of the list.
-        new MergeListOperation(10L, COLO_ID_1, Collections.singletonList(5), Collections.emptyList(), LIST_FIELD_NAME)
-    );
+        new MergeListOperation(10L, COLO_ID_1, Collections.singletonList(5), Collections.emptyList(), LIST_FIELD_NAME));
     List<Integer> expectedItemsResult = Arrays.asList(3, 2, 1, 6, 7, 8, 5);
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedListResult(LIST_FIELD_NAME, expectedItemsResult));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedListResult(LIST_FIELD_NAME, expectedItemsResult));
   }
 
   @Test
@@ -96,10 +98,11 @@ public class ListCollectionMergeTest extends SortBasedCollectionFieldOperationHa
         new PutListOperation(3L, COLO_ID_2, Arrays.asList(3, 2, 1), LIST_FIELD_NAME),
         new MergeListOperation(6L, COLO_ID_1, Collections.emptyList(), Collections.singletonList(2), LIST_FIELD_NAME),
         new MergeListOperation(7L, COLO_ID_2, Collections.emptyList(), Collections.singletonList(3), LIST_FIELD_NAME),
-        new MergeListOperation(8L, COLO_ID_1, Collections.emptyList(), Collections.singletonList(1), LIST_FIELD_NAME)
-    );
+        new MergeListOperation(8L, COLO_ID_1, Collections.emptyList(), Collections.singletonList(1), LIST_FIELD_NAME));
     List<Integer> expectedItemsResult = Collections.emptyList();
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedListResult(LIST_FIELD_NAME, expectedItemsResult));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedListResult(LIST_FIELD_NAME, expectedItemsResult));
   }
 
   @Test
@@ -118,10 +121,11 @@ public class ListCollectionMergeTest extends SortBasedCollectionFieldOperationHa
         new PutListOperation(4L, COLO_ID_1, Arrays.asList(5, 6), LIST_FIELD_NAME),
         new DeleteListOperation(5L, COLO_ID_1, LIST_FIELD_NAME),
         new PutListOperation(3L, COLO_ID_2, Arrays.asList(3, 4), LIST_FIELD_NAME),
-        new PutListOperation(5L, COLO_ID_2, Arrays.asList(7, 8), LIST_FIELD_NAME)
-    );
+        new PutListOperation(5L, COLO_ID_2, Arrays.asList(7, 8), LIST_FIELD_NAME));
     List<Integer> expectedItemsResult = Arrays.asList(7, 8);
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedListResult(LIST_FIELD_NAME, expectedItemsResult));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedListResult(LIST_FIELD_NAME, expectedItemsResult));
   }
 
   @Test
@@ -144,10 +148,11 @@ public class ListCollectionMergeTest extends SortBasedCollectionFieldOperationHa
         new MergeListOperation(7L, COLO_ID_1, Collections.singletonList(6), Collections.emptyList(), LIST_FIELD_NAME),
         new MergeListOperation(3L, COLO_ID_2, Collections.singletonList(2), Collections.emptyList(), LIST_FIELD_NAME),
         new MergeListOperation(5L, COLO_ID_2, Collections.singletonList(4), Collections.emptyList(), LIST_FIELD_NAME),
-        new MergeListOperation(6L, COLO_ID_2, Collections.emptyList(), Collections.singletonList(5), LIST_FIELD_NAME)
-    );
+        new MergeListOperation(6L, COLO_ID_2, Collections.emptyList(), Collections.singletonList(5), LIST_FIELD_NAME));
     List<Integer> expectedItemsResult = Arrays.asList(1, 2, 3, 4, 6);
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedListResult(LIST_FIELD_NAME, expectedItemsResult));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedListResult(LIST_FIELD_NAME, expectedItemsResult));
   }
 
   @Test
@@ -168,10 +173,11 @@ public class ListCollectionMergeTest extends SortBasedCollectionFieldOperationHa
         new MergeListOperation(6L, COLO_ID_1, Collections.singletonList(5), Collections.emptyList(), LIST_FIELD_NAME),
         new MergeListOperation(3L, COLO_ID_2, Collections.singletonList(2), Collections.emptyList(), LIST_FIELD_NAME),
         new MergeListOperation(5L, COLO_ID_2, Collections.singletonList(4), Collections.emptyList(), LIST_FIELD_NAME),
-        new PutListOperation(6L, COLO_ID_2, Arrays.asList(7, 8, 9), LIST_FIELD_NAME)
-    );
+        new PutListOperation(6L, COLO_ID_2, Arrays.asList(7, 8, 9), LIST_FIELD_NAME));
     List<Integer> expectedItemsResult = Arrays.asList(7, 8, 9);
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedListResult(LIST_FIELD_NAME, expectedItemsResult));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedListResult(LIST_FIELD_NAME, expectedItemsResult));
   }
 
   @Test
@@ -192,10 +198,11 @@ public class ListCollectionMergeTest extends SortBasedCollectionFieldOperationHa
         new MergeListOperation(6L, COLO_ID_1, Collections.singletonList(5), Collections.emptyList(), LIST_FIELD_NAME),
         new MergeListOperation(3L, COLO_ID_2, Collections.singletonList(2), Collections.emptyList(), LIST_FIELD_NAME),
         new MergeListOperation(5L, COLO_ID_2, Collections.singletonList(4), Collections.emptyList(), LIST_FIELD_NAME),
-        new DeleteListOperation(6L, COLO_ID_2, LIST_FIELD_NAME)
-    );
+        new DeleteListOperation(6L, COLO_ID_2, LIST_FIELD_NAME));
     List<Integer> expectedItemsResult = Collections.emptyList();
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedListResult(LIST_FIELD_NAME, expectedItemsResult));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedListResult(LIST_FIELD_NAME, expectedItemsResult));
   }
 
   @Test
@@ -216,10 +223,11 @@ public class ListCollectionMergeTest extends SortBasedCollectionFieldOperationHa
         new MergeListOperation(7L, COLO_ID_1, Collections.singletonList(5), Collections.emptyList(), LIST_FIELD_NAME),
         new MergeListOperation(3L, COLO_ID_2, Collections.singletonList(2), Collections.emptyList(), LIST_FIELD_NAME),
         new MergeListOperation(5L, COLO_ID_2, Collections.singletonList(4), Collections.emptyList(), LIST_FIELD_NAME),
-        new DeleteListOperation(6L, COLO_ID_2, LIST_FIELD_NAME)
-    );
+        new DeleteListOperation(6L, COLO_ID_2, LIST_FIELD_NAME));
     List<Integer> expectedItemsResult = Collections.singletonList(5);
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedListResult(LIST_FIELD_NAME, expectedItemsResult));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedListResult(LIST_FIELD_NAME, expectedItemsResult));
   }
 
   @Test
@@ -240,9 +248,10 @@ public class ListCollectionMergeTest extends SortBasedCollectionFieldOperationHa
         new MergeListOperation(7L, COLO_ID_1, Collections.emptyList(), Collections.singletonList(5), LIST_FIELD_NAME),
         new MergeListOperation(3L, COLO_ID_2, Collections.emptyList(), Collections.singletonList(2), LIST_FIELD_NAME),
         new PutListOperation(5L, COLO_ID_2, Arrays.asList(1, 2, 3, 4, 5), LIST_FIELD_NAME),
-        new MergeListOperation(6L, COLO_ID_2, Collections.emptyList(), Collections.singletonList(4), LIST_FIELD_NAME)
-    );
+        new MergeListOperation(6L, COLO_ID_2, Collections.emptyList(), Collections.singletonList(4), LIST_FIELD_NAME));
     List<Integer> expectedItemsResult = Arrays.asList(1, 2, 3);
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedListResult(LIST_FIELD_NAME, expectedItemsResult));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedListResult(LIST_FIELD_NAME, expectedItemsResult));
   }
 }

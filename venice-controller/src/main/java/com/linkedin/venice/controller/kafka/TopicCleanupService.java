@@ -73,7 +73,8 @@ public class TopicCleanupService extends AbstractVeniceService {
 
   public TopicCleanupService(Admin admin, VeniceControllerMultiClusterConfig multiClusterConfigs) {
     this.admin = admin;
-    this.sleepIntervalBetweenTopicListFetchMs = multiClusterConfigs.getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
+    this.sleepIntervalBetweenTopicListFetchMs =
+        multiClusterConfigs.getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
     this.delayFactor = multiClusterConfigs.getTopicCleanupDelayFactor();
     this.minNumberOfUnusedKafkaTopicsToPreserve = multiClusterConfigs.getMinNumberOfUnusedKafkaTopicsToPreserve();
     this.cleanupThread = new Thread(new TopicCleanupTask(), "TopicCleanupTask");
@@ -101,7 +102,6 @@ public class TopicCleanupService extends AbstractVeniceService {
   }
 
   private class TopicCleanupTask implements Runnable {
-
     @Override
     public void run() {
       while (!stop.get()) {
@@ -147,7 +147,7 @@ public class TopicCleanupService extends AbstractVeniceService {
    * If version topic deletion takes more than certain time it refreshes the entire topic list and start deleting from RT topics again.
     */
   protected void cleanupVeniceTopics() {
-    PriorityQueue<String> allTopics =  new PriorityQueue<>((s1, s2) -> Version.isRealTimeTopic(s1) ? -1 : 0);
+    PriorityQueue<String> allTopics = new PriorityQueue<>((s1, s2) -> Version.isRealTimeTopic(s1) ? -1 : 0);
     populateDeprecatedTopicQueue(allTopics);
     long refreshTime = System.currentTimeMillis();
 
@@ -168,8 +168,9 @@ public class TopicCleanupService extends AbstractVeniceService {
           // Best effort to clean up staled replica statuses from meta system store.
           cleanupReplicaStatusesFromMetaSystemStore(topic);
         } catch (Exception e) {
-          LOGGER.error("Received exception while trying to clean up replica statuses from meta system store for topic: "
-              + topic + ", but topic deletion will continue");
+          LOGGER.error(
+              "Received exception while trying to clean up replica statuses from meta system store for topic: " + topic
+                  + ", but topic deletion will continue");
         }
         getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
       } catch (ExecutionException e) {
@@ -178,7 +179,8 @@ public class TopicCleanupService extends AbstractVeniceService {
       }
 
       if (!Version.isRealTimeTopic(topic)) {
-       // If Version topic deletion took long time, skip further VT deletion and check if we have new RT topic to delete
+        // If Version topic deletion took long time, skip further VT deletion and check if we have new RT topic to
+        // delete
         if (System.currentTimeMillis() - refreshTime > refreshQueueCycle) {
           allTopics.clear();
           populateDeprecatedTopicQueue(allTopics);
@@ -201,8 +203,8 @@ public class TopicCleanupService extends AbstractVeniceService {
         }
         topicRetentions.remove(realTimeTopic);
       }
-      List<String> oldTopicsToDelete = extractVersionTopicsToCleanup(admin, topicRetentions,
-          minNumberOfUnusedKafkaTopicsToPreserve, delayFactor);
+      List<String> oldTopicsToDelete =
+          extractVersionTopicsToCleanup(admin, topicRetentions, minNumberOfUnusedKafkaTopicsToPreserve, delayFactor);
       if (!oldTopicsToDelete.isEmpty()) {
         topics.addAll(oldTopicsToDelete);
       }
@@ -213,7 +215,7 @@ public class TopicCleanupService extends AbstractVeniceService {
     Map<String, Long> topicsWithRetention = topicManager.getAllTopicRetentions();
     Map<String, Map<String, Long>> allStoreTopics = new HashMap<>();
 
-    for (Map.Entry<String, Long> entry : topicsWithRetention.entrySet()) {
+    for (Map.Entry<String, Long> entry: topicsWithRetention.entrySet()) {
       String topic = entry.getKey();
       long retention = entry.getValue();
       String storeName = Version.parseStoreFromKafkaTopicName(topic);
@@ -232,8 +234,11 @@ public class TopicCleanupService extends AbstractVeniceService {
     return allStoreTopics;
   }
 
-  public static List<String> extractVersionTopicsToCleanup(Admin admin, Map<String, Long> topicRetentions,
-      int minNumberOfUnusedKafkaTopicsToPreserve, int delayFactor) {
+  public static List<String> extractVersionTopicsToCleanup(
+      Admin admin,
+      Map<String, Long> topicRetentions,
+      int minNumberOfUnusedKafkaTopicsToPreserve,
+      int delayFactor) {
     if (topicRetentions.isEmpty()) {
       return Collections.emptyList();
     }
@@ -250,8 +255,8 @@ public class TopicCleanupService extends AbstractVeniceService {
     boolean isStoreDeleted = !isStoreZkShared && !admin.getStoreConfigRepo().getStoreConfig(storeName).isPresent();
     // Do not preserve any VT for deleted user stores or zk shared system stores.
     // TODO revisit the behavior if we'd like to support rollback for zk shared system stores.
-    final long maxVersionNumberToDelete = isStoreDeleted || isStoreZkShared ?
-        maxVersion : maxVersion - minNumberOfUnusedKafkaTopicsToPreserve;
+    final long maxVersionNumberToDelete =
+        isStoreDeleted || isStoreZkShared ? maxVersion : maxVersion - minNumberOfUnusedKafkaTopicsToPreserve;
 
     return veniceTopics.stream()
         /** Consider only truncated topics */
@@ -272,7 +277,8 @@ public class TopicCleanupService extends AbstractVeniceService {
             return true;
           }
           // delay VT topic deletion as there could be a race condition where the resource is already deleted by venice
-          // but kafka still holding on to the deleted topic message in producer buffer which might cause infinite hang in kakfa
+          // but kafka still holding on to the deleted topic message in producer buffer which might cause infinite hang
+          // in kakfa
           int remainingFactor = storeToCountdownForDeletion.merge(t, delayFactor, (oldVal, givenVal) -> oldVal - 1);
           if (remainingFactor > 0) {
             return false;
@@ -320,7 +326,8 @@ public class TopicCleanupService extends AbstractVeniceService {
      * we won't have access to store repository for every Venice cluster, and the existence of RT topic for
      * meta System store is the way to check whether meta System store is enabled or not.
      */
-    String rtTopicForMetaSystemStore = Version.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName));
+    String rtTopicForMetaSystemStore =
+        Version.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName));
     TopicManager topicManager = getTopicManager();
     if (topicManager.containsTopic(rtTopicForMetaSystemStore)) {
       /**
@@ -332,8 +339,9 @@ public class TopicCleanupService extends AbstractVeniceService {
       for (int i = 0; i < partitionCount; ++i) {
         metaStoreWriter.deleteStoreReplicaStatus(clusterName, storeName, version, i);
       }
-      logger.info("Successfully removed store replica status from meta system store for store: " + storeName + ", version: "
-          + version + " with partition count: " + partitionCount + " in cluster: " + clusterName);
+      logger.info(
+          "Successfully removed store replica status from meta system store for store: " + storeName + ", version: "
+              + version + " with partition count: " + partitionCount + " in cluster: " + clusterName);
       return true;
     }
     return false;

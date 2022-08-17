@@ -19,7 +19,7 @@ public class LatestVersionPromoteToCurrentTimestampCorrectionRoutine implements 
 
   @Override
   public void execute(String clusterToInit) {
-    for (Store store : veniceHelixAdmin.getAllStores(clusterToInit)) {
+    for (Store store: veniceHelixAdmin.getAllStores(clusterToInit)) {
       /**
        * If latest version promotion to current timestamp field is smaller than the version creation of the current version,
        * update it with the version creation time of current version + 24 hours.
@@ -35,8 +35,9 @@ public class LatestVersionPromoteToCurrentTimestampCorrectionRoutine implements 
             return storeToUpdate;
           });
 
-          LOGGER.info("Correct the latest version promote to current timestamp to: " + createdTime + Time.MS_PER_DAY
-              + " for store: " + storeName);
+          LOGGER.info(
+              "Correct the latest version promote to current timestamp to: " + createdTime + Time.MS_PER_DAY
+                  + " for store: " + storeName);
         }
       }
     }
@@ -47,4 +48,3 @@ public class LatestVersionPromoteToCurrentTimestampCorrectionRoutine implements 
     return "LatestVersionPromoteToCurrentTimestampCorrectionRoutine{}";
   }
 }
-

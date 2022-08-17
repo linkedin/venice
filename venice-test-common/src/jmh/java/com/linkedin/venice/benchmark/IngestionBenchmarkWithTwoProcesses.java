@@ -1,5 +1,10 @@
 package com.linkedin.venice.benchmark;
 
+import static com.linkedin.davinci.kafka.consumer.KafkaConsumerService.*;
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.integration.utils.ServiceFactory.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.StorageClass;
@@ -42,11 +47,6 @@ import org.openjdk.jmh.runner.RunnerException;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
 import org.testng.Assert;
 
-import static com.linkedin.davinci.kafka.consumer.KafkaConsumerService.*;
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.integration.utils.ServiceFactory.*;
-import static org.testng.Assert.*;
-
 
 /**
  * Benchmark ingestion GC performance with JMH.
@@ -63,11 +63,11 @@ import static org.testng.Assert.*;
 @Warmup(iterations = 5)
 @Measurement(iterations = 5)
 public class IngestionBenchmarkWithTwoProcesses {
-
-  @Param({"DISABLED", "TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY", "PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY"})
+  @Param({ "DISABLED", "TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY",
+      "PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY" })
   private static String sharedConsumerAssignmentStrategy;
 
-  @Param({"1", "2", "4"})
+  @Param({ "1", "2", "4" })
   private static int drainerSize;
 
   private String storeName;
@@ -84,9 +84,13 @@ public class IngestionBenchmarkWithTwoProcesses {
   public void setUp() throws Exception {
     clusterInfoFilePath = File.createTempFile("temp-cluster-info", null).getAbsolutePath();
     ServiceFactory.startVeniceClusterInAnotherProcess(clusterInfoFilePath);
-    // We need ot make sure Venice cluster in forked process is up and store has been created before we run our benchmark.
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () ->
-        assertTrue(parseClusterInfoFile(), "The cluster info file should be parsable."));
+    // We need ot make sure Venice cluster in forked process is up and store has been created before we run our
+    // benchmark.
+    TestUtils.waitForNonDeterministicAssertion(
+        60,
+        TimeUnit.SECONDS,
+        true,
+        () -> assertTrue(parseClusterInfoFile(), "The cluster info file should be parsable."));
 
     if (forkedProcessException != null) {
       Assert.fail("Got an exception in the forked process: " + forkedProcessException);
@@ -125,7 +129,10 @@ public class IngestionBenchmarkWithTwoProcesses {
       backendConfig.put(UNSORTED_INPUT_DRAINER_SIZE, drainerSize);
 
       DaVinciClient<String, String> client = getGenericAvroDaVinciClientWithRetries(
-          storeName, zkAddress, new DaVinciConfig().setStorageClass(StorageClass.DISK), backendConfig);
+          storeName,
+          zkAddress,
+          new DaVinciConfig().setStorageClass(StorageClass.DISK),
+          backendConfig);
       // Ingest data to local folder.
       client.subscribeAll().get(120, TimeUnit.SECONDS);
       client.close();
@@ -153,11 +160,11 @@ public class IngestionBenchmarkWithTwoProcesses {
   }
 
   public static void main(String[] args) throws RunnerException {
-    org.openjdk.jmh.runner.options.Options opt = new OptionsBuilder()
-        .include(IngestionBenchmarkWithTwoProcesses.class.getSimpleName())
-        .addProfiler(GCProfiler.class)
-        .shouldDoGC(true)
-        .build();
+    org.openjdk.jmh.runner.options.Options opt =
+        new OptionsBuilder().include(IngestionBenchmarkWithTwoProcesses.class.getSimpleName())
+            .addProfiler(GCProfiler.class)
+            .shouldDoGC(true)
+            .build();
     new Runner(opt).run();
   }
 }

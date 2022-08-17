@@ -1,22 +1,20 @@
 package com.linkedin.venice.router.api;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.AggHostHealthStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
-import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static org.mockito.Mockito.*;
-
 
 public class TestVeniceHostHealth {
-
   private StorageNodeClient mockStorageNodeClient(boolean ret) {
-    StorageNodeClient client =  mock(StorageNodeClient.class);
+    StorageNodeClient client = mock(StorageNodeClient.class);
     doReturn(ret).when(client).isInstanceReadyToServe(anyString());
     return client;
   }
@@ -38,9 +36,15 @@ public class TestVeniceHostHealth {
     doReturn(2).when(config).getRouterPendingConnResumeThresholdPerRoute();
     doReturn(10l).when(config).getFullPendingQueueServerOORMs();
 
-    VeniceHostHealth hostHealth = new VeniceHostHealth(mockLiveInstanceMonitor, mockStorageNodeClient(true), config, routeHttpRequestStats,
-         mockAggHostHealthStats);
-    Assert.assertFalse(hostHealth.isHostHealthy(deadInstance, fakePartition), "Host should be unhealthy when it is dead.");
+    VeniceHostHealth hostHealth = new VeniceHostHealth(
+        mockLiveInstanceMonitor,
+        mockStorageNodeClient(true),
+        config,
+        routeHttpRequestStats,
+        mockAggHostHealthStats);
+    Assert.assertFalse(
+        hostHealth.isHostHealthy(deadInstance, fakePartition),
+        "Host should be unhealthy when it is dead.");
     Assert.assertTrue(hostHealth.isHostHealthy(liveInstance, fakePartition), "Host should be healthy when it is alive");
     verify(mockAggHostHealthStats, times(1)).recordUnhealthyHostOfflineInstance(deadInstance.getNodeId());
   }
@@ -67,11 +71,19 @@ public class TestVeniceHostHealth {
     doReturn(4).when(config).getRouterUnhealthyPendingConnThresholdPerRoute();
     doReturn(2).when(config).getRouterPendingConnResumeThresholdPerRoute();
     doReturn(10l).when(config).getFullPendingQueueServerOORMs();
-    VeniceHostHealth hostHealth = new VeniceHostHealth(mockLiveInstanceMonitor, mockStorageNodeClient(true),  config, routeHttpRequestStats,
-         mockAggHostHealthStats);
-    Assert.assertFalse(hostHealth.isHostHealthy(deadInstance, fakePartition), "Host should be unhealthy when it is dead.");
+    VeniceHostHealth hostHealth = new VeniceHostHealth(
+        mockLiveInstanceMonitor,
+        mockStorageNodeClient(true),
+        config,
+        routeHttpRequestStats,
+        mockAggHostHealthStats);
+    Assert.assertFalse(
+        hostHealth.isHostHealthy(deadInstance, fakePartition),
+        "Host should be unhealthy when it is dead.");
     Assert.assertTrue(hostHealth.isHostHealthy(liveInstance, fakePartition), "Host should be healthy when it is alive");
-    Assert.assertFalse(hostHealth.isHostHealthy(slowInstance, fakePartition), "Host should be unhealthy when it has lots of pending connection.");
+    Assert.assertFalse(
+        hostHealth.isHostHealthy(slowInstance, fakePartition),
+        "Host should be unhealthy when it has lots of pending connection.");
     verify(mockAggHostHealthStats, times(1)).recordUnhealthyHostOfflineInstance(deadInstance.getNodeId());
     verify(mockAggHostHealthStats, times(1)).recordUnhealthyHostTooManyPendingRequest(slowInstance.getNodeId());
     verify(mockAggHostHealthStats, times(1)).recordPendingRequestCount(slowInstance.getNodeId(), 10);
@@ -96,19 +108,39 @@ public class TestVeniceHostHealth {
     doReturn(4).when(config).getRouterUnhealthyPendingConnThresholdPerRoute();
     doReturn(2).when(config).getRouterPendingConnResumeThresholdPerRoute();
 
-    VeniceHostHealth hostHealth = new VeniceHostHealth(mockLiveInstanceMonitor, mockStorageNodeClient(true),  config, routeHttpRequestStats,
+    VeniceHostHealth hostHealth = new VeniceHostHealth(
+        mockLiveInstanceMonitor,
+        mockStorageNodeClient(true),
+        config,
+        routeHttpRequestStats,
         mockAggHostHealthStats);
-    Assert.assertFalse(hostHealth.isHostHealthy(slowInstance, fakePartition), "Host should be unhealthy when it has lots of pending connection.");
-    Assert.assertFalse(hostHealth.isHostHealthy(slowInstance, fakePartition), "Host should be unhealthy when the current pending request count is above resume threshold.");
-    Assert.assertTrue(hostHealth.isHostHealthy(slowInstance, fakePartition), "Host should be healthy when the current pending request count is below resume threshold.");
+    Assert.assertFalse(
+        hostHealth.isHostHealthy(slowInstance, fakePartition),
+        "Host should be unhealthy when it has lots of pending connection.");
+    Assert.assertFalse(
+        hostHealth.isHostHealthy(slowInstance, fakePartition),
+        "Host should be unhealthy when the current pending request count is above resume threshold.");
+    Assert.assertTrue(
+        hostHealth.isHostHealthy(slowInstance, fakePartition),
+        "Host should be healthy when the current pending request count is below resume threshold.");
     doReturn(true).when(config).isStatefulRouterHealthCheckEnabled();
     doReturn(4).when(config).getRouterUnhealthyPendingConnThresholdPerRoute();
     doReturn(2).when(config).getRouterPendingConnResumeThresholdPerRoute();
     doReturn(100l).when(config).getFullPendingQueueServerOORMs();
-    hostHealth = new VeniceHostHealth(mockLiveInstanceMonitor, mockStorageNodeClient(true), config, routeHttpRequestStats,
+    hostHealth = new VeniceHostHealth(
+        mockLiveInstanceMonitor,
+        mockStorageNodeClient(true),
+        config,
+        routeHttpRequestStats,
         mockAggHostHealthStats);
-    Assert.assertFalse(hostHealth.isHostHealthy(slowInstance, fakePartition), "Host should be unhealthy when it has lots of pending connection.");
-    Assert.assertFalse(hostHealth.isHostHealthy(slowInstance, fakePartition), "Host should be unhealthy when the current pending request count is above resume threshold.");
-    Assert.assertFalse(hostHealth.isHostHealthy(slowInstance, fakePartition), "Host should be unhealthy when the OOR period is not over yet.");
+    Assert.assertFalse(
+        hostHealth.isHostHealthy(slowInstance, fakePartition),
+        "Host should be unhealthy when it has lots of pending connection.");
+    Assert.assertFalse(
+        hostHealth.isHostHealthy(slowInstance, fakePartition),
+        "Host should be unhealthy when the current pending request count is above resume threshold.");
+    Assert.assertFalse(
+        hostHealth.isHostHealthy(slowInstance, fakePartition),
+        "Host should be unhealthy when the OOR period is not over yet.");
   }
 }

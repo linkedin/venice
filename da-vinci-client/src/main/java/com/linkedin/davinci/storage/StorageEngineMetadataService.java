@@ -17,13 +17,15 @@ import org.apache.logging.log4j.Logger;
  * StorageEngineMetadataService is wrapper service on top of storageEngineRepository to serve read/write to storage metadata.
  * It contains methods to read/write/clear the store version state and partition offset that are stored in metadata partition.
  */
-public class StorageEngineMetadataService extends AbstractVeniceService implements StorageMetadataService  {
+public class StorageEngineMetadataService extends AbstractVeniceService implements StorageMetadataService {
   private static final Logger logger = LogManager.getLogger(StorageEngineMetadataService.class);
 
   private final StorageEngineRepository storageEngineRepository;
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
 
-  public StorageEngineMetadataService(StorageEngineRepository storageEngineRepository, InternalAvroSpecificSerializer<PartitionState> serializer) {
+  public StorageEngineMetadataService(
+      StorageEngineRepository storageEngineRepository,
+      InternalAvroSpecificSerializer<PartitionState> serializer) {
     this.storageEngineRepository = storageEngineRepository;
     this.partitionStateSerializer = serializer;
   }

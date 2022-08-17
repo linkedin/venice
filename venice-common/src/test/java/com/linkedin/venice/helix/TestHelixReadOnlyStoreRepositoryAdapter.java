@@ -1,5 +1,8 @@
 package com.linkedin.venice.helix;
 
+import static org.mockito.Mockito.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -22,11 +25,8 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
 
-
-@Test (singleThreaded = true)
+@Test(singleThreaded = true)
 public class TestHelixReadOnlyStoreRepositoryAdapter {
   private ZkClient zkClient;
   private final String cluster = "test-metadata-cluster";
@@ -51,22 +51,32 @@ public class TestHelixReadOnlyStoreRepositoryAdapter {
     String storesPath = "/stores";
     zkClient.create(clusterPath + storesPath, null, CreateMode.PERSISTENT);
 
-    HelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository = new HelixReadOnlyZKSharedSystemStoreRepository(zkClient, adapter, cluster);
-    HelixReadOnlyStoreRepository storeRepository = new HelixReadOnlyStoreRepository(zkClient, adapter, cluster, 1, 1000);
+    HelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository =
+        new HelixReadOnlyZKSharedSystemStoreRepository(zkClient, adapter, cluster);
+    HelixReadOnlyStoreRepository storeRepository =
+        new HelixReadOnlyStoreRepository(zkClient, adapter, cluster, 1, 1000);
     zkSharedSystemStoreRepository.refresh();
     storeRepository.refresh();
     repo = new HelixReadOnlyStoreRepositoryAdapter(zkSharedSystemStoreRepository, storeRepository, cluster);
-    writeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, Optional.empty(), new ClusterLockManager(cluster));
+    writeRepo = new HelixReadWriteStoreRepository(
+        zkClient,
+        adapter,
+        cluster,
+        Optional.empty(),
+        new ClusterLockManager(cluster));
     repo.refresh();
     writeRepo.refresh();
     // Create zk shared store first
-    Store zkSharedStore = TestUtils.createTestStore(newRepositorySupportedSystemStoreType.getZkSharedStoreName(), "test_system_store_owner", 1);
+    Store zkSharedStore = TestUtils
+        .createTestStore(newRepositorySupportedSystemStoreType.getZkSharedStoreName(), "test_system_store_owner", 1);
     zkSharedStore.setLeaderFollowerModelEnabled(true);
     zkSharedStore.setBatchGetLimit(1);
     zkSharedStore.setReadComputationEnabled(false);
     writeRepo.addStore(zkSharedStore);
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> assertTrue(writeRepo.hasStore(
-        newRepositorySupportedSystemStoreType.getZkSharedStoreName())));
+    TestUtils.waitForNonDeterministicAssertion(
+        10,
+        TimeUnit.SECONDS,
+        () -> assertTrue(writeRepo.hasStore(newRepositorySupportedSystemStoreType.getZkSharedStoreName())));
     // Create one regular store
     regularStoreName = Utils.getUniqueString("test_store");
     Store s1 = TestUtils.createTestStore(regularStoreName, "owner", System.currentTimeMillis());
@@ -77,7 +87,8 @@ public class TestHelixReadOnlyStoreRepositoryAdapter {
     writeRepo.addStore(s1);
     // Create another regular store with meta system store enabled explicitly
     regularStoreNameWithMetaSystemStoreEnabled = Utils.getUniqueString("test_store_with_meta_system_store_enabled");
-    Store s2 = TestUtils.createTestStore(regularStoreNameWithMetaSystemStoreEnabled, "owner", System.currentTimeMillis());
+    Store s2 =
+        TestUtils.createTestStore(regularStoreNameWithMetaSystemStoreEnabled, "owner", System.currentTimeMillis());
     s2.increaseVersion();
     s2.setReadQuotaInCU(100);
     s2.setBatchGetLimit(100);
@@ -105,11 +116,16 @@ public class TestHelixReadOnlyStoreRepositoryAdapter {
       // metadata system store for the existing regular store can be fetched
       assertNotNull(repo.getStore(newRepositorySupportedSystemStoreType.getSystemStoreName(regularStoreName)));
       // metadata system store for the unknown store should be null
-      assertNull(repo.getStore(newRepositorySupportedSystemStoreType.getSystemStoreName(Utils.getUniqueString("unknown_store"))));
+      assertNull(
+          repo.getStore(
+              newRepositorySupportedSystemStoreType.getSystemStoreName(Utils.getUniqueString("unknown_store"))));
 
       // check some details of the retrieved metadata system store
-      Store metadataSystemStore = repo.getStore(newRepositorySupportedSystemStoreType.getSystemStoreName(regularStoreName));
-      assertTrue(metadataSystemStore instanceof SystemStore, "The returned store should be an instance of 'SystemStore'");
+      Store metadataSystemStore =
+          repo.getStore(newRepositorySupportedSystemStoreType.getSystemStoreName(regularStoreName));
+      assertTrue(
+          metadataSystemStore instanceof SystemStore,
+          "The returned store should be an instance of 'SystemStore'");
       assertTrue(metadataSystemStore.isLeaderFollowerModelEnabled());
     });
   }
@@ -125,7 +141,9 @@ public class TestHelixReadOnlyStoreRepositoryAdapter {
       // metadata system store for the existing regular store can be fetched
       assertTrue(repo.hasStore(newRepositorySupportedSystemStoreType.getSystemStoreName(regularStoreName)));
       // metadata system store for the unknown store should be null
-      assertFalse(repo.hasStore(newRepositorySupportedSystemStoreType.getSystemStoreName(Utils.getUniqueString("unknown_store"))));
+      assertFalse(
+          repo.hasStore(
+              newRepositorySupportedSystemStoreType.getSystemStoreName(Utils.getUniqueString("unknown_store"))));
     });
   }
 
@@ -133,19 +151,26 @@ public class TestHelixReadOnlyStoreRepositoryAdapter {
   public void testGetAllStores() {
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       List<Store> allStores = repo.getAllStores();
-      assertEquals(allStores.size(), 4, "'getAllStores' should return regular stores and the corresponding meta system store if enabled");
+      assertEquals(
+          allStores.size(),
+          4,
+          "'getAllStores' should return regular stores and the corresponding meta system store if enabled");
       Set<String> storeNameSet = allStores.stream().map(Store::getName).collect(Collectors.toSet());
       assertTrue(storeNameSet.contains(newRepositorySupportedSystemStoreType.getZkSharedStoreName()));
       assertTrue(storeNameSet.contains(regularStoreName));
       assertTrue(storeNameSet.contains(regularStoreNameWithMetaSystemStoreEnabled));
-      assertTrue(storeNameSet.contains(VeniceSystemStoreType.META_STORE.getSystemStoreName(regularStoreNameWithMetaSystemStoreEnabled)));
+      assertTrue(
+          storeNameSet.contains(
+              VeniceSystemStoreType.META_STORE.getSystemStoreName(regularStoreNameWithMetaSystemStoreEnabled)));
     });
   }
 
   @Test
   public void testGetBatchGetLimit() {
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      assertEquals(repo.getBatchGetLimit(newRepositorySupportedSystemStoreType.getSystemStoreName(regularStoreName)), 1);
+      assertEquals(
+          repo.getBatchGetLimit(newRepositorySupportedSystemStoreType.getSystemStoreName(regularStoreName)),
+          1);
       assertEquals(repo.getBatchGetLimit(regularStoreName), 100);
       assertThrows(() -> repo.getBatchGetLimit(Utils.getUniqueString("unknown_store")));
     });
@@ -154,7 +179,8 @@ public class TestHelixReadOnlyStoreRepositoryAdapter {
   @Test
   public void testIsReadComputationEnabled() {
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      assertFalse(repo.isReadComputationEnabled(newRepositorySupportedSystemStoreType.getSystemStoreName(regularStoreName)));
+      assertFalse(
+          repo.isReadComputationEnabled(newRepositorySupportedSystemStoreType.getSystemStoreName(regularStoreName)));
       assertTrue(repo.isReadComputationEnabled(regularStoreName));
       assertThrows(() -> repo.isReadComputationEnabled(Utils.getUniqueString("unknown_store")));
     });
@@ -172,14 +198,19 @@ public class TestHelixReadOnlyStoreRepositoryAdapter {
       Store zkSharedStore = writeRepo.getStoreOrThrow(zkSharedStoreName);
       zkSharedStore.setBatchGetLimit(100);
       writeRepo.updateStore(zkSharedStore);
-      String systemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(regularStoreNameWithMetaSystemStoreEnabled);
+      String systemStoreName =
+          VeniceSystemStoreType.META_STORE.getSystemStoreName(regularStoreNameWithMetaSystemStoreEnabled);
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         // Will receive notification for both zk shared system store and the system store
         verify(storeDataChangedListener, times(2)).handleStoreChanged(storeArgumentCaptor.capture());
         List<Store> notifiedStores = storeArgumentCaptor.getAllValues();
         Set<String> notifiedStoreNames = notifiedStores.stream().map(Store::getName).collect(Collectors.toSet());
-        assertTrue(notifiedStoreNames.contains(zkSharedStoreName), "ZK Shared store: " + zkSharedStoreName + " should be notified");
-        assertTrue(notifiedStoreNames.contains(systemStoreName), "The corresponding system store: " + systemStoreName + " should be notified");
+        assertTrue(
+            notifiedStoreNames.contains(zkSharedStoreName),
+            "ZK Shared store: " + zkSharedStoreName + " should be notified");
+        assertTrue(
+            notifiedStoreNames.contains(systemStoreName),
+            "The corresponding system store: " + systemStoreName + " should be notified");
       });
     } finally {
       repo.unregisterStoreDataChangedListener(storeDataChangedListener);
@@ -197,15 +228,20 @@ public class TestHelixReadOnlyStoreRepositoryAdapter {
       Store regularStore = writeRepo.getStore(regularStoreNameWithMetaSystemStoreEnabled);
       regularStore.setBackupStrategy(BackupStrategy.KEEP_MIN_VERSIONS);
       writeRepo.updateStore(regularStore);
-      String systemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(regularStoreNameWithMetaSystemStoreEnabled);
+      String systemStoreName =
+          VeniceSystemStoreType.META_STORE.getSystemStoreName(regularStoreNameWithMetaSystemStoreEnabled);
 
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         // Will receive notification for both the regular store and the corresponding system store
         verify(storeDataChangedListener, times(2)).handleStoreChanged(storeArgumentCaptor.capture());
         List<Store> notifiedStores = storeArgumentCaptor.getAllValues();
         Set<String> notifiedStoreNames = notifiedStores.stream().map(Store::getName).collect(Collectors.toSet());
-        assertTrue(notifiedStoreNames.contains(regularStoreNameWithMetaSystemStoreEnabled), "Venice store: " + regularStoreNameWithMetaSystemStoreEnabled + " should be notified");
-        assertTrue(notifiedStoreNames.contains(systemStoreName), "The corresponding system store: " + systemStoreName + " should be notified");
+        assertTrue(
+            notifiedStoreNames.contains(regularStoreNameWithMetaSystemStoreEnabled),
+            "Venice store: " + regularStoreNameWithMetaSystemStoreEnabled + " should be notified");
+        assertTrue(
+            notifiedStoreNames.contains(systemStoreName),
+            "The corresponding system store: " + systemStoreName + " should be notified");
       });
     } finally {
       repo.unregisterStoreDataChangedListener(storeDataChangedListener);
@@ -231,8 +267,12 @@ public class TestHelixReadOnlyStoreRepositoryAdapter {
         verify(storeDataChangedListener, times(2)).handleStoreCreated(storeArgumentCaptorForCreation.capture());
         List<Store> notifiedStores = storeArgumentCaptorForCreation.getAllValues();
         Set<String> notifiedStoreNames = notifiedStores.stream().map(Store::getName).collect(Collectors.toSet());
-        assertTrue(notifiedStoreNames.contains(newStoreName), "Venice store: " + regularStoreNameWithMetaSystemStoreEnabled + " should be notified");
-        assertTrue(notifiedStoreNames.contains(systemStoreName), "The corresponding system store: " + systemStoreName + " should be notified");
+        assertTrue(
+            notifiedStoreNames.contains(newStoreName),
+            "Venice store: " + regularStoreNameWithMetaSystemStoreEnabled + " should be notified");
+        assertTrue(
+            notifiedStoreNames.contains(systemStoreName),
+            "The corresponding system store: " + systemStoreName + " should be notified");
       });
 
       // Test store deletion
@@ -242,10 +282,14 @@ public class TestHelixReadOnlyStoreRepositoryAdapter {
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         // Will receive notification for both the regular store and the corresponding system store
         verify(storeDataChangedListener, times(2)).handleStoreDeleted(storeArgumentCaptorForDeletion.capture());
-        List<String> notifiedStoreNames = storeArgumentCaptorForDeletion.getAllValues().stream().map(Store::getName).collect(
-            Collectors.toList());
-        assertTrue(notifiedStoreNames.contains(newStoreName), "Venice store: " + regularStoreNameWithMetaSystemStoreEnabled + " should be notified");
-        assertTrue(notifiedStoreNames.contains(systemStoreName), "The corresponding system store: " + systemStoreName + " should be notified");
+        List<String> notifiedStoreNames =
+            storeArgumentCaptorForDeletion.getAllValues().stream().map(Store::getName).collect(Collectors.toList());
+        assertTrue(
+            notifiedStoreNames.contains(newStoreName),
+            "Venice store: " + regularStoreNameWithMetaSystemStoreEnabled + " should be notified");
+        assertTrue(
+            notifiedStoreNames.contains(systemStoreName),
+            "The corresponding system store: " + systemStoreName + " should be notified");
       });
     } finally {
       repo.unregisterStoreDataChangedListener(storeDataChangedListener);

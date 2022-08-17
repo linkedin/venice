@@ -19,7 +19,6 @@ import spark.Route;
  * @param <T>
  */
 public abstract class VeniceRouteHandler<T extends ControllerResponse> implements Route {
-
   public static final String ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX = "Only admin users are allowed to run ";
 
   private Class<T> responseType;
@@ -34,7 +33,7 @@ public abstract class VeniceRouteHandler<T extends ControllerResponse> implement
     try {
       internalHandle(request, veniceResponse);
     } catch (Throwable e) {
-       if (e.getMessage() != null) {
+      if (e.getMessage() != null) {
         veniceResponse.setError(e);
       } else {
         veniceResponse.setError(ExceptionUtils.stackTraceToString(e));
@@ -54,7 +53,10 @@ public abstract class VeniceRouteHandler<T extends ControllerResponse> implement
     return AdminSparkServer.mapper.writeValueAsString(veniceResponse);
   }
 
-  protected boolean checkIsAllowListUser(Request request, ControllerResponse veniceResponse, BooleanSupplier isAllowListUser) {
+  protected boolean checkIsAllowListUser(
+      Request request,
+      ControllerResponse veniceResponse,
+      BooleanSupplier isAllowListUser) {
     if (!isAllowListUser.getAsBoolean()) {
       veniceResponse.setError(ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX + request.url());
       veniceResponse.setErrorType(ErrorType.BAD_REQUEST);

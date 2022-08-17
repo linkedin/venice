@@ -43,9 +43,7 @@ public class KafkaDataIntegrityValidator {
   }
 
   public void clearPartition(int partition) {
-    producerTrackerMap.values().forEach(
-        producerTracker -> producerTracker.clearPartition(partition)
-    );
+    producerTrackerMap.values().forEach(producerTracker -> producerTracker.clearPartition(partition));
   }
 
   /**
@@ -53,7 +51,8 @@ public class KafkaDataIntegrityValidator {
    */
   public void validateMessage(
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      boolean endOfPushReceived, boolean tolerateMissingMsgs) throws DataValidationException {
+      boolean endOfPushReceived,
+      boolean tolerateMissingMsgs) throws DataValidationException {
     final GUID producerGUID = consumerRecord.value().producerMetadata.producerGUID;
     ProducerTracker producerTracker = registerProducer(producerGUID);
     producerTracker.validateMessage(consumerRecord, endOfPushReceived, tolerateMissingMsgs);
@@ -64,7 +63,7 @@ public class KafkaDataIntegrityValidator {
   }
 
   public void cloneProducerStates(int partition, KafkaDataIntegrityValidator newValidator) {
-    for (Map.Entry<GUID, ProducerTracker> entry : producerTrackerMap.entrySet()) {
+    for (Map.Entry<GUID, ProducerTracker> entry: producerTrackerMap.entrySet()) {
       GUID producerGUID = entry.getKey();
       ProducerTracker sourceProducerTracker = entry.getValue();
       ProducerTracker destProducerTracker = newValidator.registerProducer(producerGUID);

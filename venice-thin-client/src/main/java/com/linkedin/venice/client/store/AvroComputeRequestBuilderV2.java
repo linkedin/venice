@@ -1,5 +1,7 @@
 package com.linkedin.venice.client.store;
 
+import static com.linkedin.venice.VeniceConstants.*;
+
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
@@ -13,8 +15,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
 
-import static com.linkedin.venice.VeniceConstants.*;
-
 
 /**
  * This class is used to build a {@link ComputeRequestWrapper} object according to the specification,
@@ -25,23 +25,44 @@ import static com.linkedin.venice.VeniceConstants.*;
  * @param <K>
  */
 public class AvroComputeRequestBuilderV2<K> extends AbstractAvroComputeRequestBuilder<K> {
-
   private static final int computeRequestVersion = COMPUTE_REQUEST_VERSION_V2;
 
-  public AvroComputeRequestBuilderV2(Schema latestValueSchema, InternalAvroStoreClient storeClient,
-      Optional<ClientStats> stats, Optional<ClientStats> streamingStats) {
+  public AvroComputeRequestBuilderV2(
+      Schema latestValueSchema,
+      InternalAvroStoreClient storeClient,
+      Optional<ClientStats> stats,
+      Optional<ClientStats> streamingStats) {
     this(latestValueSchema, storeClient, stats, streamingStats, new SystemTime(), false, null, null);
   }
 
-  public AvroComputeRequestBuilderV2(Schema latestValueSchema, InternalAvroStoreClient storeClient,
-      Optional<ClientStats> stats, Optional<ClientStats> streamingStats, boolean reuseObjects,
-      BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) {
-    this(latestValueSchema, storeClient, stats, streamingStats, new SystemTime(), reuseObjects, reusedEncoder, reusedOutputStream);
+  public AvroComputeRequestBuilderV2(
+      Schema latestValueSchema,
+      InternalAvroStoreClient storeClient,
+      Optional<ClientStats> stats,
+      Optional<ClientStats> streamingStats,
+      boolean reuseObjects,
+      BinaryEncoder reusedEncoder,
+      ByteArrayOutputStream reusedOutputStream) {
+    this(
+        latestValueSchema,
+        storeClient,
+        stats,
+        streamingStats,
+        new SystemTime(),
+        reuseObjects,
+        reusedEncoder,
+        reusedOutputStream);
   }
 
-  public AvroComputeRequestBuilderV2(Schema latestValueSchema, InternalAvroStoreClient storeClient,
-      Optional<ClientStats> stats, Optional<ClientStats> streamingStats, Time time, boolean reuseObjects,
-      BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) {
+  public AvroComputeRequestBuilderV2(
+      Schema latestValueSchema,
+      InternalAvroStoreClient storeClient,
+      Optional<ClientStats> stats,
+      Optional<ClientStats> streamingStats,
+      Time time,
+      boolean reuseObjects,
+      BinaryEncoder reusedEncoder,
+      ByteArrayOutputStream reusedOutputStream) {
     super(latestValueSchema, storeClient, stats, streamingStats, time, reuseObjects, reusedEncoder, reusedOutputStream);
   }
 

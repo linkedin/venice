@@ -3,8 +3,8 @@ package com.linkedin.venice.kafka.admin;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.HashMap;
@@ -44,7 +44,8 @@ public class ScalaAdminUtils implements KafkaAdminWrapper {
   private ZkClient zkClient;
   private Lazy<ZkUtils> zkUtilsLazy;
 
-  public ScalaAdminUtils() {}
+  public ScalaAdminUtils() {
+  }
 
   @Override
   public void initialize(Properties properties) {
@@ -61,7 +62,8 @@ public class ScalaAdminUtils implements KafkaAdminWrapper {
 
   @Override
   public void createTopic(String topicName, int numPartitions, int replication, Properties topicProperties) {
-    AdminUtils.createTopic(getZkUtils(), topicName, numPartitions, replication, topicProperties, RackAwareMode.Safe$.MODULE$);
+    AdminUtils
+        .createTopic(getZkUtils(), topicName, numPartitions, replication, topicProperties, RackAwareMode.Safe$.MODULE$);
   }
 
   @Override
@@ -78,7 +80,7 @@ public class ScalaAdminUtils implements KafkaAdminWrapper {
   public Set<String> listAllTopics() {
     Set<String> topics = scala.collection.JavaConversions.setAsJavaSet(getZkUtils().getAllTopics().toSet());
     Set<String> allButNoInternalTopics = new HashSet<>(topics.size());
-    for (String topic : topics) {
+    for (String topic: topics) {
       if (!Topic.isInternal(topic)) {
         allButNoInternalTopics.add(topic);
       }
@@ -99,7 +101,7 @@ public class ScalaAdminUtils implements KafkaAdminWrapper {
     Map<String, Long> topicRetentions = new HashMap<>();
     scala.collection.Map<String, Properties> allTopicConfigs = AdminUtils.fetchAllTopicConfigs(getZkUtils());
     Map<String, Properties> allTopicConfigsJavaMap = scala.collection.JavaConversions.mapAsJavaMap(allTopicConfigs);
-    allTopicConfigsJavaMap.forEach( (topic, topicProperties) -> {
+    allTopicConfigsJavaMap.forEach((topic, topicProperties) -> {
       if (Topic.isInternal(topic)) {
         return;
       }
@@ -135,7 +137,6 @@ public class ScalaAdminUtils implements KafkaAdminWrapper {
     // same behavior as containsTopic as scala client soon to be deprecated
     return AdminUtils.topicExists(getZkUtils(), topic);
   }
-
 
   @Override
   public Map<String, Properties> getSomeTopicConfigs(Set<String> topicNames) {
@@ -189,7 +190,11 @@ public class ScalaAdminUtils implements KafkaAdminWrapper {
   private synchronized ZkClient getZkClient() {
     if (this.zkClient == null) {
       String zkConnection = properties.getProperty(ConfigKeys.KAFKA_ZK_ADDRESS);
-      this.zkClient = new ZkClient(zkConnection, DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS, ZKStringSerializer$.MODULE$);
+      this.zkClient = new ZkClient(
+          zkConnection,
+          DEFAULT_SESSION_TIMEOUT_MS,
+          DEFAULT_CONNECTION_TIMEOUT_MS,
+          ZKStringSerializer$.MODULE$);
     }
     return this.zkClient;
   }

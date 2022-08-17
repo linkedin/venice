@@ -10,19 +10,19 @@ import java.util.concurrent.TimeUnit;
 
 
 public class DefaultLingeringStoreVersionChecker implements LingeringStoreVersionChecker {
+  public DefaultLingeringStoreVersionChecker() {
+  }
 
-    public DefaultLingeringStoreVersionChecker() { }
-
-    @Override
-    public boolean isStoreVersionLingering(
-        Store store,
-        Version version,
-        Time time,
-        Admin controllerAdmin,
-        Optional<X509Certificate> requesterCert,
-        IdentityParser identityParser
-    ) {
-        final long bootstrapDeadlineMs = version.getCreatedTime() + TimeUnit.HOURS.toMillis(store.getBootstrapToOnlineTimeoutInHours());
-        return time.getMilliseconds() > bootstrapDeadlineMs;
-    }
+  @Override
+  public boolean isStoreVersionLingering(
+      Store store,
+      Version version,
+      Time time,
+      Admin controllerAdmin,
+      Optional<X509Certificate> requesterCert,
+      IdentityParser identityParser) {
+    final long bootstrapDeadlineMs =
+        version.getCreatedTime() + TimeUnit.HOURS.toMillis(store.getBootstrapToOnlineTimeoutInHours());
+    return time.getMilliseconds() > bootstrapDeadlineMs;
+  }
 }

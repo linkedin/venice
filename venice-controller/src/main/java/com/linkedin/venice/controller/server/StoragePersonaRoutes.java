@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -15,12 +18,8 @@ import java.util.Set;
 import spark.Request;
 import spark.Route;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
-
 
 public class StoragePersonaRoutes extends AbstractRoute {
-
   public StoragePersonaRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
     super(sslEnabled, accessController);
   }
@@ -44,7 +43,9 @@ public class StoragePersonaRoutes extends AbstractRoute {
         try {
           admin.createStoragePersona(clusterName, name, quota, storesToEnforce, owners);
         } catch (Exception e) {
-          veniceResponse.setError("Failed when creating persona " + name + ". Exception type: " + e.getClass().toString() + ". Detailed message = " + e.getMessage());
+          veniceResponse.setError(
+              "Failed when creating persona " + name + ". Exception type: " + e.getClass().toString()
+                  + ". Detailed message = " + e.getMessage());
         }
       }
     };
@@ -61,7 +62,9 @@ public class StoragePersonaRoutes extends AbstractRoute {
           StoragePersona persona = admin.getStoragePersona(clusterName, personaName);
           veniceResponse.setStoragePersona(persona);
         } catch (Exception e) {
-          veniceResponse.setError("Failed when getting persona " + personaName + ". Exception type: " + e.getClass().toString() + ". Detailed message = " + e.getMessage());
+          veniceResponse.setError(
+              "Failed when getting persona " + personaName + ". Exception type: " + e.getClass().toString()
+                  + ". Detailed message = " + e.getMessage());
         }
       }
     };
@@ -77,9 +80,12 @@ public class StoragePersonaRoutes extends AbstractRoute {
         try {
           admin.deleteStoragePersona(clusterName, personaName);
         } catch (Exception e) {
-          veniceResponse.setError("Failed when deleting persona " + personaName + ".  Exception type: " + e.getClass().toString() + ".  Detailed message = " + e.getMessage());
           veniceResponse.setError(
-              "Failed when deleting persona " + personaName + ".  Exception type: " + e.getClass().toString() + ".  Detailed message = " + e.getMessage());
+              "Failed when deleting persona " + personaName + ".  Exception type: " + e.getClass().toString()
+                  + ".  Detailed message = " + e.getMessage());
+          veniceResponse.setError(
+              "Failed when deleting persona " + personaName + ".  Exception type: " + e.getClass().toString()
+                  + ".  Detailed message = " + e.getMessage());
         }
       }
     };
@@ -96,7 +102,9 @@ public class StoragePersonaRoutes extends AbstractRoute {
         try {
           admin.updateStoragePersona(clusterName, personaName, new UpdateStoragePersonaQueryParams(params));
         } catch (Exception e) {
-          veniceResponse.setError("Failed when updating persona " + personaName + ".  Exception type: " + e.getClass().toString() + ".  Detailed message = " + e.getMessage());
+          veniceResponse.setError(
+              "Failed when updating persona " + personaName + ".  Exception type: " + e.getClass().toString()
+                  + ".  Detailed message = " + e.getMessage());
         }
       }
     };
@@ -113,7 +121,9 @@ public class StoragePersonaRoutes extends AbstractRoute {
           StoragePersona persona = admin.getPersonaAssociatedWithStore(clusterName, storeName);
           veniceResponse.setStoragePersona(persona);
         } catch (Exception e) {
-          veniceResponse.setError("Failed when getting persona for store " + storeName + ".  Exception type: " + e.getClass().toString() + ".  Detailed message = " + e.getMessage());
+          veniceResponse.setError(
+              "Failed when getting persona for store " + storeName + ".  Exception type: " + e.getClass().toString()
+                  + ".  Detailed message = " + e.getMessage());
         }
       }
     };
@@ -129,11 +139,12 @@ public class StoragePersonaRoutes extends AbstractRoute {
           List<StoragePersona> personaList = admin.getClusterStoragePersonas(clusterName);
           veniceResponse.setStoragePersonas(personaList);
         } catch (Exception e) {
-          veniceResponse.setError("Failed when getting all personas for cluster " + clusterName + ".  Exception type: " + e.getClass().toString() + ".  Detailed message = " + e.getMessage());
+          veniceResponse.setError(
+              "Failed when getting all personas for cluster " + clusterName + ".  Exception type: "
+                  + e.getClass().toString() + ".  Detailed message = " + e.getMessage());
         }
       }
     };
   }
-
 
 }

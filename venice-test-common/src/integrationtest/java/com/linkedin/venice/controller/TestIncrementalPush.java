@@ -30,8 +30,14 @@ public class TestIncrementalPush {
     int numberOfController = 1;
     int numberOfRouter = 1;
 
-    cluster = ServiceFactory.getVeniceCluster(numberOfController, numberOfServer, numberOfRouter, replicaFactor,
-        partitionSize, false, false);
+    cluster = ServiceFactory.getVeniceCluster(
+        numberOfController,
+        numberOfServer,
+        numberOfRouter,
+        replicaFactor,
+        partitionSize,
+        false,
+        false);
   }
 
   @AfterMethod
@@ -46,7 +52,9 @@ public class TestIncrementalPush {
     int dataSize = partitionCount * partitionSize;
     cluster.getNewStore(storeName);
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
-    params.setIncrementalPushEnabled(true).setHybridRewindSeconds(1).setHybridOffsetLagThreshold(1)
+    params.setIncrementalPushEnabled(true)
+        .setHybridRewindSeconds(1)
+        .setHybridOffsetLagThreshold(1)
         .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
     cluster.updateStore(storeName, params);
 
@@ -63,7 +71,6 @@ public class TestIncrementalPush {
     veniceWriter.broadcastStartOfIncrementalPush(incPushVerison, new HashMap<>());
     veniceWriter.broadcastEndOfIncrementalPush(incPushVerison, new HashMap<>());
 
-
     params = new UpdateStoreQueryParams();
     // set up store for inc push to rt
 
@@ -79,7 +86,9 @@ public class TestIncrementalPush {
     String finalTopicName1 = topicName;
     // validate it still returns valid status from backup version
     String finalIncPushVerison1 = incPushVerison;
-    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS,
+    TestUtils.waitForNonDeterministicCompletion(
+        3,
+        TimeUnit.SECONDS,
         () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()
             .getOffLinePushStatus(cluster.getClusterName(), finalTopicName1, Optional.of(finalIncPushVerison1))
@@ -91,7 +100,9 @@ public class TestIncrementalPush {
     String finalTopicName = topicName;
     String finalIncPushVerison = incPushVerison;
     // validate current version query works
-    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS,
+    TestUtils.waitForNonDeterministicCompletion(
+        3,
+        TimeUnit.SECONDS,
         () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()
             .getOffLinePushStatus(cluster.getClusterName(), finalTopicName, Optional.of(finalIncPushVerison))

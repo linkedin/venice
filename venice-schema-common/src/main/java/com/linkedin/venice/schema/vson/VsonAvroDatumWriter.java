@@ -1,6 +1,7 @@
 package com.linkedin.venice.schema.vson;
 
-import com.linkedin.venice.serializer.VsonSerializationException;
+import static com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter.stripFromUnion;
+
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
@@ -8,47 +9,68 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.Encoder;
 
-import static com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter.stripFromUnion;
 
 public class VsonAvroDatumWriter<K> extends GenericDatumWriter<K> {
   private Map<Schema, Schema> cachedStrippedSchema;
+
   public VsonAvroDatumWriter(Schema root) {
     super(root);
     cachedStrippedSchema = new HashMap<>();
   }
 
   @Override
-  protected void write(Schema schema, Object datum, Encoder out)
-      throws IOException {
-      switch (schema.getType()) {
-        case RECORD:  writeRecord(schema, datum, out);  break;
-        case ARRAY:   writeArray(schema, datum, out);   break;
-        case UNION:   writeUnion(schema, datum, out);   break;
-        case STRING:  writeString(schema, datum, out);  break;
-        case BYTES:   writeBytes(datum, out);           break;
-        case FIXED:   writeFixed(schema, datum, out);   break;
-        case INT:     out.writeInt((Integer)datum);     break;
-        case LONG:
-          if (datum instanceof Integer){
-            out.writeLong(((Integer)datum).longValue());
-          } else {
-            out.writeLong((Long) datum);
-          }
-          break;
-        case FLOAT:   out.writeFloat((Float)datum);     break;
-        case DOUBLE:  out.writeDouble((Double)datum);   break;
-        case BOOLEAN: out.writeBoolean((Boolean)datum); break;
-        case NULL:    out.writeNull();                  break;
-        case MAP:
-        case ENUM:
-        default:
-          throw VsonAvroDatumReader.notSupportType(schema.getType());
-      }
+  protected void write(Schema schema, Object datum, Encoder out) throws IOException {
+    switch (schema.getType()) {
+      case RECORD:
+        writeRecord(schema, datum, out);
+        break;
+      case ARRAY:
+        writeArray(schema, datum, out);
+        break;
+      case UNION:
+        writeUnion(schema, datum, out);
+        break;
+      case STRING:
+        writeString(schema, datum, out);
+        break;
+      case BYTES:
+        writeBytes(datum, out);
+        break;
+      case FIXED:
+        writeFixed(schema, datum, out);
+        break;
+      case INT:
+        out.writeInt((Integer) datum);
+        break;
+      case LONG:
+        if (datum instanceof Integer) {
+          out.writeLong(((Integer) datum).longValue());
+        } else {
+          out.writeLong((Long) datum);
+        }
+        break;
+      case FLOAT:
+        out.writeFloat((Float) datum);
+        break;
+      case DOUBLE:
+        out.writeDouble((Double) datum);
+        break;
+      case BOOLEAN:
+        out.writeBoolean((Boolean) datum);
+        break;
+      case NULL:
+        out.writeNull();
+        break;
+      case MAP:
+      case ENUM:
+      default:
+        throw VsonAvroDatumReader.notSupportType(schema.getType());
+    }
   }
 
   @Override
-  protected void writeRecord(Schema schema, Object datum, Encoder out) throws IOException{
-    for (Schema.Field field : schema.getFields()) {
+  protected void writeRecord(Schema schema, Object datum, Encoder out) throws IOException {
+    for (Schema.Field field: schema.getFields()) {
       Object value = ((Map) datum).get(field.name());
       write(field.schema(), value, out);
     }
@@ -59,7 +81,7 @@ public class VsonAvroDatumWriter<K> extends GenericDatumWriter<K> {
    * 'single byte' or 'short'.
    */
   @Override
-  protected void writeFixed(Schema schema, Object datum, Encoder out) throws IOException{
+  protected void writeFixed(Schema schema, Object datum, Encoder out) throws IOException {
     if (schema.getFixedSize() == 1) {
       writeFixedByte(datum, out);
     } else if (schema.getFixedSize() == 2) {
@@ -70,13 +92,13 @@ public class VsonAvroDatumWriter<K> extends GenericDatumWriter<K> {
   }
 
   private void writeFixedByte(Object datum, Encoder out) throws IOException {
-    byte[] byteArray = {(byte) datum};
+    byte[] byteArray = { (byte) datum };
     out.writeFixed(byteArray, 0, 1);
   }
 
   private void writeFixedShort(Object datum, Encoder out) throws IOException {
     Short s = (Short) datum;
-    byte[] byteArray = {(byte) ((s >>> 8) & 0xff), (byte) (s & 0xff)};
+    byte[] byteArray = { (byte) ((s >>> 8) & 0xff), (byte) (s & 0xff) };
     out.writeFixed(byteArray, 0, 2);
   }
 

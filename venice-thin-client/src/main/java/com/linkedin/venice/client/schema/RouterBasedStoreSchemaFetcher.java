@@ -1,5 +1,7 @@
 package com.linkedin.venice.client.schema;
 
+import static com.linkedin.venice.schema.AvroSchemaParseUtils.*;
+
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -18,8 +20,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
 import org.apache.commons.lang.Validate;
-
-import static com.linkedin.venice.schema.AvroSchemaParseUtils.*;
 
 
 /**
@@ -61,7 +61,7 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
     MultiSchemaResponse multiSchemaResponse = fetchAllValueSchemas(valueSchemaRequestPath);
     int latestSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
     String schemaStr = null;
-    for (MultiSchemaResponse.Schema schema : multiSchemaResponse.getSchemas()) {
+    for (MultiSchemaResponse.Schema schema: multiSchemaResponse.getSchemas()) {
       if (SchemaData.INVALID_VALUE_SCHEMA_ID == latestSchemaId || latestSchemaId < schema.getId()) {
         latestSchemaId = schema.getId();
       }
@@ -105,14 +105,15 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
   private int getValueSchemaId(Schema valueSchema) {
     Validate.notNull(valueSchema, "Input value schema is null.");
     if (!valueSchema.getType().equals(Schema.Type.RECORD)) {
-      throw new InvalidVeniceSchemaException("Input value schema is not a record type schema. Update schema can only be derived from record schema.");
+      throw new InvalidVeniceSchemaException(
+          "Input value schema is not a record type schema. Update schema can only be derived from record schema.");
     }
     // Locate value schema ID for input value schema.
     String valueSchemaRequestPath = TYPE_VALUE_SCHEMA + "/" + storeClient.getStoreName();
     MultiSchemaResponse multiSchemaResponse = fetchAllValueSchemas(valueSchemaRequestPath);
     Schema retrievedValueSchema;
     int valueSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
-    for (MultiSchemaResponse.Schema schema : multiSchemaResponse.getSchemas()) {
+    for (MultiSchemaResponse.Schema schema: multiSchemaResponse.getSchemas()) {
       try {
         // Use loose validation for old value schema that does not set default value as the first branch of union field.
         retrievedValueSchema = parseSchemaFromJSONLooseValidation(schema.getSchemaStr());
@@ -125,7 +126,8 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
     }
 
     if (valueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
-      throw new InvalidVeniceSchemaException("Input value schema not found in Venice backend for store: " + storeClient.getStoreName());
+      throw new InvalidVeniceSchemaException(
+          "Input value schema not found in Venice backend for store: " + storeClient.getStoreName());
     }
 
     return valueSchemaId;
@@ -140,8 +142,9 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
       throw new VeniceException("Got exception while deserializing response", e);
     }
     if (multiSchemaResponse.isError()) {
-      throw new VeniceException("Received an error while fetching value schemas from path: " + requestPath
-          + ", error message: " + multiSchemaResponse.getError());
+      throw new VeniceException(
+          "Received an error while fetching value schemas from path: " + requestPath + ", error message: "
+              + multiSchemaResponse.getError());
     }
     if (multiSchemaResponse.getSchemas() == null) {
       throw new VeniceException("Received bad schema response with null schema string");
@@ -158,8 +161,9 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
       throw new VeniceException("Got exception while deserializing response", e);
     }
     if (schemaResponse.isError()) {
-      throw new VeniceException("Received an error while fetching schema from path: " + requestPath
-          + ", error message: " + schemaResponse.getError());
+      throw new VeniceException(
+          "Received an error while fetching schema from path: " + requestPath + ", error message: "
+              + schemaResponse.getError());
     }
     if (schemaResponse.getSchemaStr() == null) {
       throw new VeniceException("Received bad schema response with null schema string");
@@ -174,8 +178,7 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
           () -> ((CompletableFuture<byte[]>) storeClient.getRaw(requestPath)).get(),
           3,
           Duration.ofSeconds(5),
-          Collections.singletonList(ExecutionException.class)
-      );
+          Collections.singletonList(ExecutionException.class));
     } catch (Exception e) {
       throw new VeniceException("Failed to fetch schema from path " + requestPath, e);
     }

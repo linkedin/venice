@@ -5,14 +5,11 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
-
 import com.linkedin.venice.utils.Utils;
-
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Properties;
 import java.util.Set;
-
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.TopicPartition;
@@ -89,6 +86,7 @@ public class ApacheKafkaConsumerTest {
   }
 
   private void assertConsumerHasSpecificNumberOfAssignmedPartitions(ApacheKafkaConsumer c, int expected) {
-    Assert.assertEquals(c.getAssignment().size(), expected, "Consumer should have exactly " + expected + " assignments!");
+    Assert
+        .assertEquals(c.getAssignment().size(), expected, "Consumer should have exactly " + expected + " assignments!");
   }
 }

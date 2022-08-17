@@ -27,10 +27,10 @@ import org.apache.logging.log4j.Logger;
  * operations that can be performed on the cache
  */
 public class ObjectCacheBackend {
-
   private static final Logger logger = LogManager.getLogger(ObjectCacheBackend.class);
 
-  private final VeniceConcurrentHashMap<String, VeniceStoreCacheStorageEngine> versionTopicToCacheEngineMap = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<String, VeniceStoreCacheStorageEngine> versionTopicToCacheEngineMap =
+      new VeniceConcurrentHashMap<>();
   private final ObjectCacheConfig storeCacheConfig;
   private final StoreCacheStats storeCacheStats;
   private final ReadOnlySchemaRepository schemaRepository;
@@ -40,7 +40,10 @@ public class ObjectCacheBackend {
    *                     store information (such as the store name that is being cached).
    * @param cacheConfig configurations that configure the cache policy (TTL, size, etc.)
    */
-  public ObjectCacheBackend(ClientConfig clientConfig, ObjectCacheConfig cacheConfig, ReadOnlySchemaRepository schemaRepository) {
+  public ObjectCacheBackend(
+      ClientConfig clientConfig,
+      ObjectCacheConfig cacheConfig,
+      ReadOnlySchemaRepository schemaRepository) {
     this.storeCacheConfig = cacheConfig;
     this.schemaRepository = schemaRepository;
     MetricsRepository metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
@@ -63,27 +66,33 @@ public class ObjectCacheBackend {
   }
 
   public void clearCachedPartitions(Version version) {
-      versionTopicToCacheEngineMap.get(version.kafkaTopicName()).drop();
+    versionTopicToCacheEngineMap.get(version.kafkaTopicName()).drop();
   }
 
-  // TODO: This is a very confusing function for general use.  One would expect the cacheLoader function passed to this
-  // method would be honored every call (kind of like the get with a mapping function).  But it's only conditionally
-  // honored if it's the first get called.  The best way to remedy this is to define an AsyncCacheLoader factory which
-  // is parameterized by the serving version and key.  With that we could have a more sane interface.
-  public <K, V> CompletableFuture<V> get(K key, Version version, AsyncCacheLoader<K,V> cacheLoader) {
-    VeniceStoreCacheStorageEngine engine = versionTopicToCacheEngineMap.computeIfAbsent(version.kafkaTopicName(), (k) -> buildCacheEngine(version, cacheLoader));
+  // TODO: This is a very confusing function for general use. One would expect the cacheLoader function passed to this
+  // method would be honored every call (kind of like the get with a mapping function). But it's only conditionally
+  // honored if it's the first get called. The best way to remedy this is to define an AsyncCacheLoader factory which
+  // is parameterized by the serving version and key. With that we could have a more sane interface.
+  public <K, V> CompletableFuture<V> get(K key, Version version, AsyncCacheLoader<K, V> cacheLoader) {
+    VeniceStoreCacheStorageEngine engine = versionTopicToCacheEngineMap
+        .computeIfAbsent(version.kafkaTopicName(), (k) -> buildCacheEngine(version, cacheLoader));
     if (engine != null) {
       return engine.getCache().get(key);
     }
     return CompletableFuture.completedFuture(null);
   }
 
-  public <K, V> CompletableFuture<Map<K,V>> getAll(Iterable<K> keys, Version version, Function<Iterable<K>, Map<K, V>> mappingFunction, AsyncCacheLoader<K,V> cacheLoader) {
-    VeniceStoreCacheStorageEngine engine = versionTopicToCacheEngineMap.computeIfAbsent(version.kafkaTopicName(), (k) -> buildCacheEngine(version, cacheLoader));
+  public <K, V> CompletableFuture<Map<K, V>> getAll(
+      Iterable<K> keys,
+      Version version,
+      Function<Iterable<K>, Map<K, V>> mappingFunction,
+      AsyncCacheLoader<K, V> cacheLoader) {
+    VeniceStoreCacheStorageEngine engine = versionTopicToCacheEngineMap
+        .computeIfAbsent(version.kafkaTopicName(), (k) -> buildCacheEngine(version, cacheLoader));
     if (engine != null) {
       return engine.getCache().getAll(keys, mappingFunction);
     }
-    return CompletableFuture.completedFuture(new HashMap<K,V>());
+    return CompletableFuture.completedFuture(new HashMap<K, V>());
   }
 
   public AbstractStorageEngine getStorageEngine(String topicName) {
@@ -95,30 +104,35 @@ public class ObjectCacheBackend {
   }
 
   private VeniceStoreCacheStorageEngine buildCacheEngine(Version version, AsyncCacheLoader cacheLoader) {
-    VeniceStoreCacheStorageEngine cacheStorageEngine = new VeniceStoreCacheStorageEngine(version.kafkaTopicName(), storeCacheConfig, schemaRepository.getKeySchema(version.getStoreName()).getSchema(), cacheLoader);
+    VeniceStoreCacheStorageEngine cacheStorageEngine = new VeniceStoreCacheStorageEngine(
+        version.kafkaTopicName(),
+        storeCacheConfig,
+        schemaRepository.getKeySchema(version.getStoreName()).getSchema(),
+        cacheLoader);
     // register the stats for this engine as it's now serving traffic
     storeCacheStats.registerServingCache(cacheStorageEngine.getCache());
     return cacheStorageEngine;
   }
 
-  public <K, V> void update(K key, V val, Version version, AsyncCacheLoader<K,V> cacheLoader) {
-    VeniceStoreCacheStorageEngine engine = versionTopicToCacheEngineMap.computeIfAbsent(version.kafkaTopicName(), k -> buildCacheEngine(version, cacheLoader));
+  public <K, V> void update(K key, V val, Version version, AsyncCacheLoader<K, V> cacheLoader) {
+    VeniceStoreCacheStorageEngine engine = versionTopicToCacheEngineMap
+        .computeIfAbsent(version.kafkaTopicName(), k -> buildCacheEngine(version, cacheLoader));
     if (engine != null) {
       engine.putDeserializedValue(key, val);
     }
   }
 
   private final StoreDataChangedListener cacheInvalidatingStoreChangeListener = new StoreDataChangedListener() {
-
     @Override
     public void handleStoreChanged(Store store) {
       // new updates will register new cache engines, but we are on the hook to clean up any old versions
       String storeName = store.getName();
-      Set<String> upToDateVersionsSet = store.getVersions().stream().map(Version::kafkaTopicName).collect(Collectors.toSet());
-      for(String key :versionTopicToCacheEngineMap.keySet()) {
+      Set<String> upToDateVersionsSet =
+          store.getVersions().stream().map(Version::kafkaTopicName).collect(Collectors.toSet());
+      for (String key: versionTopicToCacheEngineMap.keySet()) {
         if (!upToDateVersionsSet.contains(key)) {
           // This is no longer in the version list, so clean it out
-          logger.info(String.format("Closing VeniceStoreCacheBackend for store:%s version:%s",storeName,key));
+          logger.info(String.format("Closing VeniceStoreCacheBackend for store:%s version:%s", storeName, key));
           VeniceStoreCacheStorageEngine cache = versionTopicToCacheEngineMap.remove(store.getName());
           cache.drop();
           cache.close();
@@ -129,7 +143,7 @@ public class ObjectCacheBackend {
     @Override
     public void handleStoreDeleted(Store store) {
       synchronized (versionTopicToCacheEngineMap) {
-        for(VeniceStoreCacheStorageEngine cache : versionTopicToCacheEngineMap.values()) {
+        for (VeniceStoreCacheStorageEngine cache: versionTopicToCacheEngineMap.values()) {
           cache.drop();
           cache.close();
         }

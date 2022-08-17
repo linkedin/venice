@@ -13,6 +13,7 @@ import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 
+
 /**
  * TDOO: Consider merging with AvroProtocolDefinition
  */
@@ -35,7 +36,9 @@ public enum ReadAvroProtocolDefinition {
   /**
    * Router request key for multi-get v1.
    */
-  MULTI_GET_ROUTER_REQUEST_V1(1, Optional.of(MultiGetRouterRequestKeyV1.class), Optional.of(MultiGetRouterRequestKeyV1.SCHEMA$)),
+  MULTI_GET_ROUTER_REQUEST_V1(
+      1, Optional.of(MultiGetRouterRequestKeyV1.class), Optional.of(MultiGetRouterRequestKeyV1.SCHEMA$)
+  ),
 
   /**
    * Response record for multi-get v1.
@@ -81,7 +84,9 @@ public enum ReadAvroProtocolDefinition {
   /**
    * Router request key for read compute v1.
    */
-  COMPUTE_ROUTER_REQUEST_V1(1, Optional.of(ComputeRouterRequestKeyV1.class), Optional.of(ComputeRouterRequestKeyV1.SCHEMA$));
+  COMPUTE_ROUTER_REQUEST_V1(
+      1, Optional.of(ComputeRouterRequestKeyV1.class), Optional.of(ComputeRouterRequestKeyV1.SCHEMA$)
+  );
 
   /**
    * Current version being used.
@@ -95,7 +100,10 @@ public enum ReadAvroProtocolDefinition {
 
   final Optional<Schema> schema;
 
-  ReadAvroProtocolDefinition(int protocolVersion, Optional<Class<? extends SpecificRecord>> specificRecordClass, Optional<Schema> schema) {
+  ReadAvroProtocolDefinition(
+      int protocolVersion,
+      Optional<Class<? extends SpecificRecord>> specificRecordClass,
+      Optional<Schema> schema) {
     this.protocolVersion = protocolVersion;
     this.specificRecordClass = specificRecordClass;
     this.schema = schema;

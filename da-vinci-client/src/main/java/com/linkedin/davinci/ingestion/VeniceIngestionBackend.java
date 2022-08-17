@@ -6,11 +6,14 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 
 
 public interface VeniceIngestionBackend extends IngestionBackendBase {
-
-  void promoteToLeader(VeniceStoreVersionConfig storeConfig, int partition,
+  void promoteToLeader(
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker);
 
-  void demoteToStandby(VeniceStoreVersionConfig storeConfig, int partition,
+  void demoteToStandby(
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker);
 
   void addOnlineOfflineIngestionNotifier(VeniceNotifier ingestionListener);

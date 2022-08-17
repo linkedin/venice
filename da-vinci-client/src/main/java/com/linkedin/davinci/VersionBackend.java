@@ -1,5 +1,7 @@
 package com.linkedin.davinci;
 
+import static com.linkedin.venice.ConfigKeys.*;
+
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -39,8 +41,6 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.ConfigKeys.*;
 
 
 public class VersionBackend {
@@ -85,13 +85,12 @@ public class VersionBackend {
     Store store = backend.getStoreRepository().getStoreOrThrow(version.getStoreName());
     this.storeBackendStats = storeBackendStats;
     // push status store must be enabled both in Da Vinci and the store
-    this.reportPushStatus = store.isDaVinciPushStatusStoreEnabled() &&
-      this.config.getClusterProperties().getBoolean(PUSH_STATUS_STORE_ENABLED, false);
-    this.heartbeatInterval = this.config.getClusterProperties().getInt(
-        PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS,
-        DEFAULT_PUSH_STATUS_HEARTBEAT_INTERVAL_IN_SECONDS);
-    this.stopConsumptionWaitRetriesNum = backend.getConfigLoader().getCombinedProperties().getInt(
-        SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM, 60);
+    this.reportPushStatus = store.isDaVinciPushStatusStoreEnabled()
+        && this.config.getClusterProperties().getBoolean(PUSH_STATUS_STORE_ENABLED, false);
+    this.heartbeatInterval = this.config.getClusterProperties()
+        .getInt(PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS, DEFAULT_PUSH_STATUS_HEARTBEAT_INTERVAL_IN_SECONDS);
+    this.stopConsumptionWaitRetriesNum =
+        backend.getConfigLoader().getCombinedProperties().getInt(SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM, 60);
     backend.getVersionByTopicMap().put(version.kafkaTopicName(), this);
   }
 
@@ -101,7 +100,7 @@ public class VersionBackend {
     if (heartbeat != null) {
       heartbeat.cancel(true);
     }
-    for (Map.Entry<Integer, CompletableFuture<Void>> entry : partitionFutures.entrySet()) {
+    for (Map.Entry<Integer, CompletableFuture<Void>> entry: partitionFutures.entrySet()) {
       entry.getValue().cancel(true);
     }
     try {
@@ -146,17 +145,13 @@ public class VersionBackend {
 
   synchronized void tryStartHeartbeat() {
     if (isReportingPushStatus() && heartbeat == null) {
-      heartbeat = backend.getExecutor().scheduleAtFixedRate(
-          () -> {
-            try {
-              backend.getPushStatusStoreWriter().writeHeartbeat(version.getStoreName());
-            } catch (Throwable t) {
-              logger.error("Unable to send heartbeat for " + this);
-            }
-          },
-          0,
-          heartbeatInterval,
-          TimeUnit.SECONDS);
+      heartbeat = backend.getExecutor().scheduleAtFixedRate(() -> {
+        try {
+          backend.getPushStatusStoreWriter().writeHeartbeat(version.getStoreName());
+        } catch (Throwable t) {
+          logger.error("Unable to send heartbeat for " + this);
+        }
+      }, 0, heartbeatInterval, TimeUnit.SECONDS);
     }
   }
 
@@ -220,8 +215,13 @@ public class VersionBackend {
         null,
         backend.getCompressorFactory());
 
-    return getResultOfComputeOperations(computeRequestWrapper.getOperations(), computeRequestWrapper.getValueSchema(), reusableValueRecord, globalContext,
-        computeRequestWrapper.getComputeRequestVersion(), computeResultSchema);
+    return getResultOfComputeOperations(
+        computeRequestWrapper.getOperations(),
+        computeRequestWrapper.getValueSchema(),
+        reusableValueRecord,
+        globalContext,
+        computeRequestWrapper.getComputeRequestVersion(),
+        computeResultSchema);
   }
 
   public void computeWithKeyPrefixFilter(
@@ -234,24 +234,29 @@ public class VersionBackend {
       GenericRecord reusableValueRecord,
       BinaryDecoder reusableBinaryDecoder,
       Map<String, Object> globalContext,
-      Schema computeResultSchema){
+      Schema computeResultSchema) {
 
-    StreamingCallback<GenericRecord, GenericRecord> computingCallback = new StreamingCallback<GenericRecord, GenericRecord>() {
-      @Override
-      public void onRecordReceived(GenericRecord key, GenericRecord value) {
-        GenericRecord computeResult = getResultOfComputeOperations(
-            computeRequestWrapper.getOperations(), computeRequestWrapper.getValueSchema(), value, globalContext,
-            computeRequestWrapper.getComputeRequestVersion(), computeResultSchema);
-        callback.onRecordReceived(key, computeResult);
-      }
+    StreamingCallback<GenericRecord, GenericRecord> computingCallback =
+        new StreamingCallback<GenericRecord, GenericRecord>() {
+          @Override
+          public void onRecordReceived(GenericRecord key, GenericRecord value) {
+            GenericRecord computeResult = getResultOfComputeOperations(
+                computeRequestWrapper.getOperations(),
+                computeRequestWrapper.getValueSchema(),
+                value,
+                globalContext,
+                computeRequestWrapper.getComputeRequestVersion(),
+                computeResultSchema);
+            callback.onRecordReceived(key, computeResult);
+          }
 
-      @Override
-      public void onCompletion(Optional<Exception> exception) {
-        if (exception.isPresent()) {
-          throw new VeniceException(exception.get().getMessage());
-        }
-      }
-    };
+          @Override
+          public void onCompletion(Optional<Exception> exception) {
+            if (exception.isPresent()) {
+              throw new VeniceException(exception.get().getMessage());
+            }
+          }
+        };
 
     chunkingAdaptor.getByPartialKey(
         version.getStoreName(),
@@ -271,8 +276,13 @@ public class VersionBackend {
         computingCallback);
   }
 
-  private GenericRecord getResultOfComputeOperations(List<ComputeOperation> operations, Schema valueSchema, GenericRecord valueRecord,
-      Map<String, Object> globalContext, int computeRequestVersion, Schema computeResultSchema) {
+  private GenericRecord getResultOfComputeOperations(
+      List<ComputeOperation> operations,
+      Schema valueSchema,
+      GenericRecord valueRecord,
+      Map<String, Object> globalContext,
+      int computeRequestVersion,
+      Schema computeResultSchema) {
 
     if (null == valueRecord) {
       return null;
@@ -281,28 +291,36 @@ public class VersionBackend {
     Map<String, String> computationErrorMap = new HashMap<>();
     GenericRecord resultRecord = new GenericData.Record(computeResultSchema);
 
-    //execute each operation
-    for (ComputeOperation computeOperation : operations) {
+    // execute each operation
+    for (ComputeOperation computeOperation: operations) {
       ReadComputeOperator operator = ComputeOperationType.valueOf(computeOperation).getOperator();
       String operatorFieldName = operator.getOperatorFieldName(computeOperation);
-      String errorMessage = ComputeOperationUtils.validateNullableFieldAndGetErrorMsg(operator, valueRecord, operatorFieldName).orElse(null);
+      String errorMessage =
+          ComputeOperationUtils.validateNullableFieldAndGetErrorMsg(operator, valueRecord, operatorFieldName)
+              .orElse(null);
       if (errorMessage != null) {
         operator.putDefaultResult(resultRecord, operator.getResultFieldName(computeOperation));
         computationErrorMap.put(operator.getResultFieldName(computeOperation), errorMessage);
         continue;
       }
-      operator.compute(computeRequestVersion, computeOperation, valueRecord, resultRecord,
-          computationErrorMap, globalContext);
+      operator.compute(
+          computeRequestVersion,
+          computeOperation,
+          valueRecord,
+          resultRecord,
+          computationErrorMap,
+          globalContext);
     }
 
-    Schema.Field computationErrorMapField = computeResultSchema.getField(VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME);
-    if (null != computationErrorMapField && null == resultRecord.get(computationErrorMapField.pos())){
+    Schema.Field computationErrorMapField =
+        computeResultSchema.getField(VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME);
+    if (null != computationErrorMapField && null == resultRecord.get(computationErrorMapField.pos())) {
       resultRecord.put(computationErrorMapField.pos(), computationErrorMap);
     }
 
-    //fill empty fields in result schema
-    for (Schema.Field field : computeResultSchema.getFields()){
-      if (null == resultRecord.get(field.pos())){
+    // fill empty fields in result schema
+    for (Schema.Field field: computeResultSchema.getFields()) {
+      if (null == resultRecord.get(field.pos())) {
         resultRecord.put(field.pos(), valueRecord.get(field.name()));
       }
     }
@@ -335,11 +353,12 @@ public class VersionBackend {
     List<Integer> partitionList = getPartitions(partitions);
     logger.info("Subscribing to partitions " + partitionList + " of " + this);
     List<CompletableFuture<Void>> futures = new ArrayList<>(partitionList.size());
-    for (int partition : partitionList) {
+    for (int partition: partitionList) {
       AbstractStorageEngine engine = storageEngine.get();
       if (partitionFutures.containsKey(partition)) {
         logger.info("Partition " + partition + " of " + this + " is subscribed, ignoring subscribe request.");
-      } else if (suppressLiveUpdates && engine != null && engine.containsPartition(partition, version.getPartitionerConfig())) {
+      } else if (suppressLiveUpdates && engine != null
+          && engine.containsPartition(partition, version.getPartitionerConfig())) {
         // If live update suppression is enabled and local data exists, don't start ingestion and report ready to serve.
         partitionFutures.computeIfAbsent(partition, k -> CompletableFuture.completedFuture(null));
       } else {
@@ -351,17 +370,16 @@ public class VersionBackend {
       futures.add(partitionFutures.get(partition));
     }
 
-    return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-        .whenComplete((v, e) -> {
-          storeBackendStats.recordSubscribeDuration(Duration.between(startTime, Instant.now()));
-        });
+    return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).whenComplete((v, e) -> {
+      storeBackendStats.recordSubscribeDuration(Duration.between(startTime, Instant.now()));
+    });
   }
 
   synchronized void unsubscribe(ComplementSet<Integer> partitions) {
     List<Integer> partitionList = getPartitions(partitions);
     logger.info("Unsubscribing from partitions " + partitions + " of " + this);
 
-    for (int partition : partitionList) {
+    for (int partition: partitionList) {
       if (!partitionFutures.containsKey(partition)) {
         logger.warn("Partition " + partition + " of " + this + " is not subscribed, ignoring unsubscribe request.");
         return;

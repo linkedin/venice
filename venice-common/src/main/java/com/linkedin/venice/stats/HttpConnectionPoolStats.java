@@ -1,8 +1,5 @@
 package com.linkedin.venice.stats;
 
-import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.Gauge;
-import com.linkedin.venice.stats.LambdaStat;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -55,33 +52,33 @@ public class HttpConnectionPoolStats extends AbstractVeniceStats {
      *
      * Check {@link PoolStats#getLeased()} to get more details.
      */
-    registerSensor("total_active_connection_count", new LambdaStat(
-        () -> getAggStats(connectionManager -> connectionManager.getTotalStats().getLeased())
-    ));
+    registerSensor(
+        "total_active_connection_count",
+        new LambdaStat(() -> getAggStats(connectionManager -> connectionManager.getTotalStats().getLeased())));
     /**
      * Total idle connections
      *
      * Check {@link PoolStats#getAvailable()} to get more details.
      */
-    registerSensor("total_idle_connection_count", new LambdaStat(
-        () -> getAggStats(connectionManager -> connectionManager.getTotalStats().getAvailable())
-    ));
+    registerSensor(
+        "total_idle_connection_count",
+        new LambdaStat(() -> getAggStats(connectionManager -> connectionManager.getTotalStats().getAvailable())));
     /**
      * Total max connections
      *
      * Check {@link PoolStats#getMax()} to get more details.
      */
-    registerSensor("total_max_connection_count", new LambdaStat(
-        () -> getAggStats(connectionManager -> connectionManager.getTotalStats().getMax())
-    ));
+    registerSensor(
+        "total_max_connection_count",
+        new LambdaStat(() -> getAggStats(connectionManager -> connectionManager.getTotalStats().getMax())));
     /**
      * Total number of connection requests being blocked awaiting a free connection
      *
      * Check {@link PoolStats#getPending()} to get more details.
      */
-    registerSensor("total_pending_connection_request_count", new LambdaStat(
-        () -> getAggStats(connectionManager -> connectionManager.getTotalStats().getPending())
-    ));
+    registerSensor(
+        "total_pending_connection_request_count",
+        new LambdaStat(() -> getAggStats(connectionManager -> connectionManager.getTotalStats().getPending())));
   }
 
   public void addConnectionPoolManager(PoolingNHttpClientConnectionManager connectionManager) {
@@ -107,14 +104,15 @@ public class HttpConnectionPoolStats extends AbstractVeniceStats {
    * @param hostName
    */
   public void addStatsForRoute(String hostName) {
-    routeConnectionPoolStatsMap.computeIfAbsent(hostName, k -> new RouteHttpConnectionPoolStats(getMetricsRepository(), hostName));
+    routeConnectionPoolStatsMap
+        .computeIfAbsent(hostName, k -> new RouteHttpConnectionPoolStats(getMetricsRepository(), hostName));
   }
 
   private Long getAggStats(Function<PoolingNHttpClientConnectionManager, Integer> func) {
     rwLock.readLock().lock();
     try {
       long total = 0;
-      for (PoolingNHttpClientConnectionManager connectionManager : connectionManagerList) {
+      for (PoolingNHttpClientConnectionManager connectionManager: connectionManagerList) {
         total += func.apply(connectionManager);
       }
       return total;
@@ -152,35 +150,29 @@ public class HttpConnectionPoolStats extends AbstractVeniceStats {
        *
        * Check {@link PoolStats#getLeased()} to get more details.
        */
-      registerSensor("active_connection_count", new Gauge(
-          () -> getRouteAggStats(poolStats -> poolStats.getLeased())
-      ));
+      registerSensor("active_connection_count", new Gauge(() -> getRouteAggStats(poolStats -> poolStats.getLeased())));
       /**
        * Total idle connections
        *
        * Check {@link PoolStats#getAvailable()} to get more details.
        */
-      registerSensor("idle_connection_count", new Gauge(
-          () -> getRouteAggStats(poolStats -> poolStats.getAvailable())
-      ));
+      registerSensor("idle_connection_count", new Gauge(() -> getRouteAggStats(poolStats -> poolStats.getAvailable())));
 
       /**
        * Total max connections
        *
        * Check {@link PoolStats#getMax()} to get more details.
        */
-      registerSensor("max_connection_count", new Gauge(
-          () -> getRouteAggStats(poolStats -> poolStats.getMax())
-      ));
+      registerSensor("max_connection_count", new Gauge(() -> getRouteAggStats(poolStats -> poolStats.getMax())));
 
       /**
        * Total number of connection requests being blocked awaiting a free connection
        *
        * Check {@link PoolStats#getPending()} to get more details.
        */
-      registerSensor("pending_connection_request_count", new Gauge(
-          () -> getRouteAggStats(poolStats -> poolStats.getPending())
-      ));
+      registerSensor(
+          "pending_connection_request_count",
+          new Gauge(() -> getRouteAggStats(poolStats -> poolStats.getPending())));
     }
 
     /**
@@ -195,9 +187,9 @@ public class HttpConnectionPoolStats extends AbstractVeniceStats {
       rwLock.readLock().lock();
       try {
         long total = 0;
-        for (PoolingNHttpClientConnectionManager connectionManager : connectionManagerList) {
+        for (PoolingNHttpClientConnectionManager connectionManager: connectionManagerList) {
           Set<HttpRoute> routeSet = connectionManager.getRoutes();
-          for (HttpRoute route : routeSet) {
+          for (HttpRoute route: routeSet) {
             if (route.getTargetHost().getHostName().equals(hostName)) {
               PoolStats poolStats = connectionManager.getStats(route);
               total += func.apply(poolStats);

@@ -1,14 +1,14 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.venice.ConfigKeys.*;
+
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Optional;
 import java.util.Properties;
-
-import static com.linkedin.venice.ConfigKeys.*;
 
 
 /**
@@ -16,12 +16,10 @@ import static com.linkedin.venice.ConfigKeys.*;
  * admin client. Note that the Kafka admin client it creates is the Java admin client instead of the Scala admin client.
  */
 public class ServerJavaKafkaClientFactory extends ServerKafkaClientFactory {
-
   public ServerJavaKafkaClientFactory(
       VeniceServerConfig serverConfig,
       Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
-      Optional<MetricsParameters> metricsParameters
-  ) {
+      Optional<MetricsParameters> metricsParameters) {
     super(serverConfig, kafkaMessageEnvelopeSchemaReader, metricsParameters);
   }
 
@@ -41,14 +39,16 @@ public class ServerJavaKafkaClientFactory extends ServerKafkaClientFactory {
   }
 
   @Override
-  protected KafkaClientFactory clone(String kafkaBootstrapServers, String kafkaZkAddress, Optional<MetricsParameters> metricsParameters) {
+  protected KafkaClientFactory clone(
+      String kafkaBootstrapServers,
+      String kafkaZkAddress,
+      Optional<MetricsParameters> metricsParameters) {
     Properties clonedProperties = this.serverConfig.getClusterProperties().toProperties();
     clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
     clonedProperties.setProperty(KAFKA_ZK_ADDRESS, kafkaZkAddress);
     return new ServerJavaKafkaClientFactory(
         new VeniceServerConfig(new VeniceProperties(clonedProperties)),
         kafkaMessageEnvelopeSchemaReader,
-        metricsParameters
-    );
+        metricsParameters);
   }
 }

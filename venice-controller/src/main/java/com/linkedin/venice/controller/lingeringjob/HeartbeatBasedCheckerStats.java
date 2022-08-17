@@ -7,7 +7,6 @@ import io.tehuti.metrics.stats.Count;
 
 
 public class HeartbeatBasedCheckerStats extends AbstractVeniceStats {
-
   private static final String STATS_NAME = "controller-batch-job-heartbeat-checker";
 
   // Error sensors

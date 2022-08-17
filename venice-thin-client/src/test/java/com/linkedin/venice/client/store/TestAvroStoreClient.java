@@ -1,5 +1,7 @@
 package com.linkedin.venice.client.store;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
@@ -26,7 +28,6 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import static org.mockito.Mockito.*;
 
 @Test
 public class TestAvroStoreClient {
@@ -42,10 +43,10 @@ public class TestAvroStoreClient {
     mockTransportClient = mock(TransportClient.class);
     doReturn(mockTransportClient).when(mockTransportClient).getCopyIfNotUsableInCallback();
 
-    byte[] schemaResponseInBytes =
-        StoreClientTestUtils.constructSchemaResponseInBytes(STORE_NAME, 1, KEY_SCHEMA_STR);
+    byte[] schemaResponseInBytes = StoreClientTestUtils.constructSchemaResponseInBytes(STORE_NAME, 1, KEY_SCHEMA_STR);
     setupSchemaResponse(schemaResponseInBytes, RouterBackedSchemaReader.TYPE_KEY_SCHEMA + "/" + STORE_NAME);
-    genericStoreClient = new AvroGenericStoreClientImpl(mockTransportClient, ClientConfig.defaultGenericClientConfig(STORE_NAME));
+    genericStoreClient =
+        new AvroGenericStoreClientImpl(mockTransportClient, ClientConfig.defaultGenericClientConfig(STORE_NAME));
   }
 
   @BeforeMethod
@@ -72,13 +73,16 @@ public class TestAvroStoreClient {
     testKey.long_field = 0l;
     testKey.string_field = "";
 
-    String b64key = Base64.getUrlEncoder()
-        .encodeToString(StoreClientTestUtils.serializeRecord(testKey, TestKeyRecord.SCHEMA$));
+    String b64key =
+        Base64.getUrlEncoder().encodeToString(StoreClientTestUtils.serializeRecord(testKey, TestKeyRecord.SCHEMA$));
     CompletableFuture<TransportClientResponse> transportFuture = new CompletableFuture();
     transportFuture.complete(new TransportClientResponse(-1, CompressionStrategy.NO_OP, null));
     doReturn(transportFuture).when(mockTransportClient)
-        .get(eq(AbstractAvroStoreClient.TYPE_STORAGE + "/" + STORE_NAME + "/" +
-            b64key + AbstractAvroStoreClient.B64_FORMAT), any());
+        .get(
+            eq(
+                AbstractAvroStoreClient.TYPE_STORAGE + "/" + STORE_NAME + "/" + b64key
+                    + AbstractAvroStoreClient.B64_FORMAT),
+            any());
 
     genericStoreClient.get(testKey);
     // schema queries + key lookup
@@ -100,7 +104,8 @@ public class TestAvroStoreClient {
 
     genericStoreClient.start();
 
-    AvroSpecificStoreClientImpl specificStoreClient = new AvroSpecificStoreClientImpl(mockTransportClient,
+    AvroSpecificStoreClientImpl specificStoreClient = new AvroSpecificStoreClientImpl(
+        mockTransportClient,
         ClientConfig.defaultSpecificClientConfig(STORE_NAME, TestValueRecord.class));
 
     specificStoreClient.start();
@@ -118,7 +123,9 @@ public class TestAvroStoreClient {
     RecordDeserializer genericRecordDeserializer = genericStoreClient.getDataRecordDeserializer(1);
     Object genericTestValue = genericRecordDeserializer.deserialize(testValueInBytes);
     Assert.assertTrue(genericTestValue instanceof GenericData.Record);
-    Assert.assertEquals(((GenericData.Record) genericTestValue).get("int_field"), 10,
+    Assert.assertEquals(
+        ((GenericData.Record) genericTestValue).get("int_field"),
+        10,
         "we are supposed to get the default value for the missing field");
 
     Assert.assertTrue(specificRecordDeserializer.deserialize(testValueInBytes) instanceof TestValueRecord);
@@ -126,11 +133,12 @@ public class TestAvroStoreClient {
     specificStoreClient.close();
   }
 
-  private void setupSchemaResponse(int schemaId, Schema schema)
-      throws IOException {
+  private void setupSchemaResponse(int schemaId, Schema schema) throws IOException {
     byte[] schemaResponseInBytes =
         StoreClientTestUtils.constructSchemaResponseInBytes(STORE_NAME, schemaId, schema.toString());
-    setupSchemaResponse(schemaResponseInBytes, RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME + "/" + schemaId);
+    setupSchemaResponse(
+        schemaResponseInBytes,
+        RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME + "/" + schemaId);
   }
 
   private void setupSchemaResponse(byte[] response, String path) {
@@ -140,28 +148,31 @@ public class TestAvroStoreClient {
   }
 
   @Test
-  public void testDeserializeWriterSchemaMissingReaderNamespace()
-      throws IOException {
+  public void testDeserializeWriterSchemaMissingReaderNamespace() throws IOException {
     Schema schemaWithoutNamespace = Utils.getSchemaFromResource("testSchemaWithoutNamespace.avsc");
     Map schemas = new HashMap<>();
     schemas.put(1, schemaWithoutNamespace.toString());
     byte[] multiSchemasInBytes = StoreClientTestUtils.constructMultiSchemaResponseInBytes(STORE_NAME, schemas);
     setupSchemaResponse(multiSchemasInBytes, RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME);
-    AvroSpecificStoreClientImpl specificStoreClient = new AvroSpecificStoreClientImpl(mockTransportClient,
+    AvroSpecificStoreClientImpl specificStoreClient = new AvroSpecificStoreClientImpl(
+        mockTransportClient,
         ClientConfig.defaultSpecificClientConfig(STORE_NAME, NamespaceTest.class));
     specificStoreClient.start();
 
     RecordDeserializer<NamespaceTest> deserializer = specificStoreClient.getDataRecordDeserializer(1);
     SpecificData.Record record = new SpecificData.Record(schemaWithoutNamespace);
-    record.put("foo", AvroCompatibilityHelper.newEnumSymbol(
-        schemaWithoutNamespace.getField("foo").schema(), "B"));
+    record.put("foo", AvroCompatibilityHelper.newEnumSymbol(schemaWithoutNamespace.getField("foo").schema(), "B"));
     String testString = "test";
     record.put("boo", testString);
     byte[] bytes = StoreClientTestUtils.serializeRecord(record, schemaWithoutNamespace);
     NamespaceTest result = deserializer.deserialize(bytes);
-    Assert.assertEquals(result.getFoo(), EnumType.B,
+    Assert.assertEquals(
+        result.getFoo(),
+        EnumType.B,
         "Deserialized object field value should match with the value that was originally set");
-    Assert.assertEquals(result.getBoo().toString(), testString,
+    Assert.assertEquals(
+        result.getBoo().toString(),
+        testString,
         "Deserialized object field value should match with the value that was originally set");
   }
 }

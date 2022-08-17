@@ -22,17 +22,15 @@ import org.apache.logging.log4j.Logger;
 */
 
 public abstract class HelixPartitionStateAccessor {
-
   private static final Logger logger = LogManager.getLogger(HelixPartitionStateAccessor.class);
   CustomizedStateProvider customizedStateProvider;
 
   public HelixPartitionStateAccessor(HelixManager helixManager, String instanceId) {
-    this.customizedStateProvider = CustomizedStateProviderFactory.getInstance()
-        .buildCustomizedStateProvider(helixManager, instanceId);
+    this.customizedStateProvider =
+        CustomizedStateProviderFactory.getInstance().buildCustomizedStateProvider(helixManager, instanceId);
   }
 
-  public void updateReplicaStatus(HelixPartitionState stateType, String topic, String partitionName,
-      String status) {
+  public void updateReplicaStatus(HelixPartitionState stateType, String topic, String partitionName, String status) {
     customizedStateProvider.updateCustomizedState(stateType.name(), topic, partitionName, status);
   }
 
@@ -40,20 +38,17 @@ public abstract class HelixPartitionStateAccessor {
     customizedStateProvider.deletePerPartitionCustomizedState(stateType.name(), topic, partitionName);
   }
 
-  public String getReplicaStatus(HelixPartitionState stateType, String topic,
-      String partitionName) {
+  public String getReplicaStatus(HelixPartitionState stateType, String topic, String partitionName) {
     try {
-      return customizedStateProvider.getPerPartitionCustomizedState(stateType.name(), topic,
-          partitionName).get(CustomizedState.CustomizedStateProperty.CURRENT_STATE.name());
+      return customizedStateProvider.getPerPartitionCustomizedState(stateType.name(), topic, partitionName)
+          .get(CustomizedState.CustomizedStateProperty.CURRENT_STATE.name());
     } catch (NullPointerException e) {
       String errorMsg = String
-          .format("The partition %s does not have " + "state %s available in ZK", partitionName,
-              stateType.name());
+          .format("The partition %s does not have " + "state %s available in ZK", partitionName, stateType.name());
       logger.error(errorMsg, e);
       throw new VeniceException(errorMsg, e);
     } catch (HelixMetaDataAccessException e) {
-      String errorMsg = String
-          .format("Failed to get state %s for partition " + "%s", stateType.name(), partitionName);
+      String errorMsg = String.format("Failed to get state %s for partition " + "%s", stateType.name(), partitionName);
       logger.error(errorMsg, e);
       throw new VeniceException(errorMsg, e);
     }
@@ -64,11 +59,11 @@ public abstract class HelixPartitionStateAccessor {
       return customizedStateProvider.getCustomizedState(stateType.name(), topic)
           .getPartitionStateMap(CustomizedState.CustomizedStateProperty.CURRENT_STATE);
     } catch (NullPointerException e) {
-      throw new VeniceException(String.format("The topic %s does not have "
-          + "state %s available in ZK", topic, stateType.name()), e);
+      throw new VeniceException(
+          String.format("The topic %s does not have " + "state %s available in ZK", topic, stateType.name()),
+          e);
     } catch (HelixMetaDataAccessException e) {
-      throw new VeniceException(String.format("Failed to get state %s for topic "
-          + "%s", stateType.name(), topic), e);
+      throw new VeniceException(String.format("Failed to get state %s for topic " + "%s", stateType.name(), topic), e);
     }
   }
 

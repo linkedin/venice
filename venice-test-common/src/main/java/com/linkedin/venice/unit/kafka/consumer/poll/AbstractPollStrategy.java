@@ -19,11 +19,11 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.record.TimestampType;
 
+
 /**
  * A base class which encapsulates the common plumbing needed by all {@link PollStrategy} implementations.
  */
 public abstract class AbstractPollStrategy implements PollStrategy {
-
   private static final int DEFAULT_MAX_MESSAGES_PER_POLL = 3; // We can make this configurable later on if need be...
   private final int maxMessagePerPoll;
   protected final boolean keepPollingWhenEmpty;
@@ -32,14 +32,17 @@ public abstract class AbstractPollStrategy implements PollStrategy {
     this(keepPollingWhenEmpty, DEFAULT_MAX_MESSAGES_PER_POLL);
   }
 
-  public AbstractPollStrategy(boolean keepPollingWhenEmpty, int maxMessagePerPoll){
+  public AbstractPollStrategy(boolean keepPollingWhenEmpty, int maxMessagePerPoll) {
     this.keepPollingWhenEmpty = keepPollingWhenEmpty;
     this.maxMessagePerPoll = maxMessagePerPoll;
   }
 
   protected abstract Pair<TopicPartition, Long> getNextPoll(Map<TopicPartition, Long> offsets);
 
-  public synchronized ConsumerRecords poll(InMemoryKafkaBroker broker, Map<TopicPartition, Long> offsets, long timeout) {
+  public synchronized ConsumerRecords poll(
+      InMemoryKafkaBroker broker,
+      Map<TopicPartition, Long> offsets,
+      long timeout) {
 
     Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> records = new HashMap<>();
 
@@ -67,7 +70,7 @@ public abstract class AbstractPollStrategy implements PollStrategy {
       long nextOffset = offset + 1;
       Optional<InMemoryKafkaMessage> message = broker.consume(topic, partition, nextOffset);
       if (message.isPresent()) {
-        if (! AdminTopicUtils.isAdminTopic(topic)) {
+        if (!AdminTopicUtils.isAdminTopic(topic)) {
           /**
            * Skip putValue adjustment since admin consumer is still using {@link com.linkedin.venice.serialization.avro.KafkaValueSerializer}.
            */

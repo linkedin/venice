@@ -1,12 +1,13 @@
 package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
-import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import org.apache.avro.Schema;
+
 
 /**
  * {@link AvroGenericStoreClient} implementation for Avro generic type.
@@ -16,7 +17,10 @@ public class AvroGenericStoreClientImpl<K, V> extends AbstractAvroStoreClient<K,
     this(transportClient, true, clientConfig);
   }
 
-  public AvroGenericStoreClientImpl(TransportClient transportClient, boolean needSchemaReader, ClientConfig clientConfig) {
+  public AvroGenericStoreClientImpl(
+      TransportClient transportClient,
+      boolean needSchemaReader,
+      ClientConfig clientConfig) {
     super(transportClient, needSchemaReader, clientConfig);
 
     if (isUseFastAvro()) {
@@ -29,8 +33,10 @@ public class AvroGenericStoreClientImpl<K, V> extends AbstractAvroStoreClient<K,
    */
   @Override
   protected AbstractAvroStoreClient<K, V> getStoreClientForSchemaReader() {
-    return new AvroGenericStoreClientImpl<K, V>(getTransportClient().getCopyIfNotUsableInCallback(),
-        false, ClientConfig.defaultGenericClientConfig(getStoreName()));
+    return new AvroGenericStoreClientImpl<K, V>(
+        getTransportClient().getCopyIfNotUsableInCallback(),
+        false,
+        ClientConfig.defaultGenericClientConfig(getStoreName()));
   }
 
   @Override
@@ -45,7 +51,8 @@ public class AvroGenericStoreClientImpl<K, V> extends AbstractAvroStoreClient<K,
 
     Schema writerSchema = schemaReader.getValueSchema(writerSchemaId);
     if (null == writerSchema) {
-      throw new VeniceClientException("Failed to get value schema for store: " + getStoreName() + " and id: " + writerSchemaId);
+      throw new VeniceClientException(
+          "Failed to get value schema for store: " + getStoreName() + " and id: " + writerSchemaId);
     }
 
     /**

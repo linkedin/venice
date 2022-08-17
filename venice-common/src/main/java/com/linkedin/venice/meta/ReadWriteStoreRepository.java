@@ -1,6 +1,5 @@
 package com.linkedin.venice.meta;
 
-
 /**
  * Interface defined read and write operations to access stores.
  */

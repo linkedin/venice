@@ -64,9 +64,9 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
   @Override
   public void sendToController(StatusMessage message, int retryCount, long retryDurationMs) {
     Message helixMessage = convertVeniceMessageToHelixMessage(message);
-    //TODO will confirm with Helix team that do we need to specify session Id here.
-    //TODO If we assign a session Id of participant here, when this session be expired/changed by any reason,
-    //TODO the message will be ignored by controller. SO use arbitrary value here at first.
+    // TODO will confirm with Helix team that do we need to specify session Id here.
+    // TODO If we assign a session Id of participant here, when this session be expired/changed by any reason,
+    // TODO the message will be ignored by controller. SO use arbitrary value here at first.
     helixMessage.setTgtSessionId("*");
     Criteria criteria = new Criteria();
     criteria.setRecipientInstanceType(InstanceType.CONTROLLER);
@@ -81,13 +81,14 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
         logger.info("Wait " + retryDurationMs + "ms to retry.");
         Utils.sleep(retryDurationMs);
         logger.info("Attempt #" + attempt + ": Sending message to controller.");
-        // Use a new message Id, otherwise controller will not handle the retry message because it think it had already failed.
+        // Use a new message Id, otherwise controller will not handle the retry message because it think it had already
+        // failed.
         // It a new issue introduced by new helix version 0.6.6.1
         helixMessage.setMsgId(StatusMessage.generateMessageId());
       }
       try {
         ControlMessageCallback callBack = new ControlMessageCallback();
-        //Send and wait until getting response or time out.
+        // Send and wait until getting response or time out.
         int numMsg = messageService.sendAndWait(criteria, helixMessage, callBack, sendMessageTimeOut);
         if (numMsg == 0) {
           logger.error("No controller could be found to send messages " + message.getMessageId());
@@ -101,8 +102,9 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
         String result = replyMessage.getResultMap().get("SUCCESS");
         isSuccess = Boolean.valueOf(result);
         if (!isSuccess) {
-          logger.error("Error: controller can not handle this message correctly. " + replyMessage.getResultMap()
-              .get("ERRORINFO"));
+          logger.error(
+              "Error: controller can not handle this message correctly. "
+                  + replyMessage.getResultMap().get("ERRORINFO"));
         }
         continue;
       } catch (Exception e) {
@@ -137,7 +139,7 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
     criteria.setClusterName(clusterName);
 
     ControlMessageCallback callBack = new ControlMessageCallback();
-    //Send and wait until getting response or time out.
+    // Send and wait until getting response or time out.
     int numMsgSent = messageService.sendAndWait(criteria, helixMessage, callBack, sendMessageTimeOut, retryCount);
     if (numMsgSent == 0) {
       String errorMsg = "No storage node is found to send message to. Message:" + message.toString();
@@ -153,15 +155,14 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
     stats.recordMissedStorageNodesReplyCount(numMsgSent - callBack.getMessageReplied().size());
 
     if (callBack.isTimeOut) {
-      String errorMsg =
-          "Sending messages to storage node is time out. Resource:" + resourceName + ". Message sent:" + numMsgSent
-              + ". Message replied:" + callBack.getMessageReplied().size();
+      String errorMsg = "Sending messages to storage node is time out. Resource:" + resourceName + ". Message sent:"
+          + numMsgSent + ". Message replied:" + callBack.getMessageReplied().size();
       logger.error(errorMsg);
       throw new VeniceException(errorMsg);
     }
 
     boolean isSuccessful = true;
-    for (Message replyMessage : callBack.getMessageReplied()) {
+    for (Message replyMessage: callBack.getMessageReplied()) {
       String result = replyMessage.getResultMap().get("SUCCESS");
       if (!Boolean.valueOf(result)) {
         // message is not processed by storage node successfully.
@@ -173,7 +174,8 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
       logger.info(numMsgSent + " messages have been send and processed. Message:" + message.toString());
     } else {
       // We have printed the detail error information before for each of message.
-      throw new VeniceException("Some of storage node did not process message successfully. Message:" + message.toString());
+      throw new VeniceException(
+          "Some of storage node did not process message successfully. Message:" + message.toString());
     }
   }
 
@@ -207,16 +209,16 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
    * @return
    */
   protected StatusMessage convertHelixMessageToVeniceMessage(Message helixMessage) {
-      String className = helixMessage.getRecord().getSimpleField(VENICE_MESSAGE_CLASS);
-      Map<String, String> fields = helixMessage.getRecord().getMapField(VENICE_MESSAGE_FIELD);
+    String className = helixMessage.getRecord().getSimpleField(VENICE_MESSAGE_CLASS);
+    Map<String, String> fields = helixMessage.getRecord().getMapField(VENICE_MESSAGE_FIELD);
 
-      if(StoreStatusMessage.class.getName().equals(className)) {
-        return new StoreStatusMessage(fields);
-      } else if (KillOfflinePushMessage.class.getName().equals(className)) {
-        return new KillOfflinePushMessage(fields);
-      } else {
-        throw new VeniceException("Message handler not implemented yet for class." + className);
-      }
+    if (StoreStatusMessage.class.getName().equals(className)) {
+      return new StoreStatusMessage(fields);
+    } else if (KillOfflinePushMessage.class.getName().equals(className)) {
+      return new KillOfflinePushMessage(fields);
+    } else {
+      throw new VeniceException("Message handler not implemented yet for class." + className);
+    }
   }
 
   /**
@@ -254,7 +256,6 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
    * Helix message handler factory to create handler to deal with Helix message.
    */
   private class HelixStatusMessageHandleFactory implements MessageHandlerFactory {
-
     @Override
     public MessageHandler createHandler(Message message, NotificationContext context) {
       if (message.getMsgType().equals(HELIX_MESSAGE_TYPE)) {
@@ -272,7 +273,7 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
 
     @Override
     public void reset() {
-      //Ignore. We don't need reset in this factory.
+      // Ignore. We don't need reset in this factory.
     }
   }
 
@@ -294,7 +295,7 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
     public HelixTaskResult handleMessage() {
       StatusMessage msg = convertHelixMessageToVeniceMessage(_message);
       HelixTaskResult result = new HelixTaskResult();
-      //Dispatch venice message to related hander.
+      // Dispatch venice message to related hander.
       // Do no need to handle exception here, Helix will help to catch and set success of result to false.
       try {
         getHandler(msg.getClass()).handleMessage(msg);
@@ -327,7 +328,7 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
 
     @Override
     public void onReplyMessage(Message message) {
-      //ignore
+      // ignore
       stats.recordOnReplyFromStorageNodesCount();
     }
   }

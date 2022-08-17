@@ -32,7 +32,7 @@ public enum BufferReplayPolicy {
 
   private static Map<Integer, BufferReplayPolicy> getBufferReplayPolicyMap() {
     final Map<Integer, BufferReplayPolicy> intToTypeMap = new HashMap<>();
-    for (BufferReplayPolicy style : BufferReplayPolicy.values()) {
+    for (BufferReplayPolicy style: BufferReplayPolicy.values()) {
       intToTypeMap.put(style.value, style);
     }
 

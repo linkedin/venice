@@ -5,6 +5,7 @@ import java.util.Map;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
 
+
 /**
  * This interface is used inside of the {@link com.linkedin.venice.unit.kafka.consumer.MockInMemoryConsumer}
  * in order to mess around with the way messages are delivered to the consuming code.

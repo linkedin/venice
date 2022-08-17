@@ -1,5 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static java.util.concurrent.TimeUnit.*;
+
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.stats.StatsErrorCode;
@@ -7,8 +9,6 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
-
-import static java.util.concurrent.TimeUnit.*;
 
 
 /**
@@ -41,10 +41,10 @@ class CachedKafkaMetadataGetter {
       return fetchMetadata(
           new KafkaMetadataCacheKey(sourceKafkaServer, topicName, partitionId),
           offsetCache,
-          () -> topicManager.getPartitionLatestOffsetAndRetry(topicName, partitionId, DEFAULT_MAX_RETRY)
-      );
+          () -> topicManager.getPartitionLatestOffsetAndRetry(topicName, partitionId, DEFAULT_MAX_RETRY));
     } catch (TopicDoesNotExistException e) {
-      //It's observed in production that with java based admin client the topic may not be found temporarily, return error code
+      // It's observed in production that with java based admin client the topic may not be found temporarily, return
+      // error code
       return StatsErrorCode.LAG_MEASUREMENT_FAILURE.code;
     }
   }
@@ -54,10 +54,10 @@ class CachedKafkaMetadataGetter {
       return fetchMetadata(
           new KafkaMetadataCacheKey(topicManager.getKafkaBootstrapServers(), topicName, partitionId),
           lastProducerTimestampCache,
-          () -> topicManager.getProducerTimestampOfLastDataRecord(topicName, partitionId, DEFAULT_MAX_RETRY)
-      );
+          () -> topicManager.getProducerTimestampOfLastDataRecord(topicName, partitionId, DEFAULT_MAX_RETRY));
     } catch (TopicDoesNotExistException e) {
-      //It's observed in production that with java based admin client the topic may not be found temporarily, return error code
+      // It's observed in production that with java based admin client the topic may not be found temporarily, return
+      // error code
       return StatsErrorCode.LAG_MEASUREMENT_FAILURE.code;
     }
   }
@@ -66,8 +66,7 @@ class CachedKafkaMetadataGetter {
     return fetchMetadata(
         new KafkaMetadataCacheKey(topicManager.getKafkaBootstrapServers(), topicName, -1),
         topicExistenceCache,
-        () -> topicManager.containsTopic(topicName)
-    );
+        () -> topicManager.containsTopic(topicName));
   }
 
   /**
@@ -131,8 +130,7 @@ class CachedKafkaMetadataGetter {
       }
 
       final KafkaMetadataCacheKey other = (KafkaMetadataCacheKey) o;
-      return partitionId == other.partitionId
-          && Objects.equals(topicName, other.topicName)
+      return partitionId == other.partitionId && Objects.equals(topicName, other.topicName)
           && Objects.equals(kafkaServer, other.kafkaServer);
     }
   }

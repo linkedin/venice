@@ -19,17 +19,16 @@ import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
-
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
-import org.apache.avro.Schema;
-import org.apache.avro.specific.SpecificData;
-import org.apache.avro.specific.SpecificRecord;
-
 import java.nio.ByteBuffer;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
+import org.apache.avro.Schema;
+import org.apache.avro.specific.SpecificData;
+import org.apache.avro.specific.SpecificRecord;
+
 
 /**
  * This enum lays out the basic specs of the various stateful protocols used in Venice.
@@ -96,12 +95,12 @@ public enum AvroProtocolDefinition {
   /**
    * Used to encode various kinds of ingestion task commands, which are used to control ingestion task in child process.
    */
-  INGESTION_TASK_COMMAND(28,1, IngestionTaskCommand.class),
+  INGESTION_TASK_COMMAND(28, 1, IngestionTaskCommand.class),
 
   /**
    * Used to encode status of ingestion task, that are reported backed from child process to Storage Node / Da Vinci backend.
    */
-  INGESTION_TASK_REPORT(29,1, IngestionTaskReport.class),
+  INGESTION_TASK_REPORT(29, 1, IngestionTaskReport.class),
 
   /**
    * Used to encode metrics collected from ingestion task, that are reported backed from child process to Storage Node / Da Vinci backend.
@@ -145,12 +144,11 @@ public enum AvroProtocolDefinition {
    */
   SERVER_ADMIN_RESPONSE_V1(1, AdminResponseRecord.class);
 
-
   private static final Set<Byte> magicByteSet = validateMagicBytes();
 
   private static Set<Byte> validateMagicBytes() {
     Set<Byte> magicByteSet = new HashSet<>();
-    for (AvroProtocolDefinition avroProtocolDefinition : AvroProtocolDefinition.values()) {
+    for (AvroProtocolDefinition avroProtocolDefinition: AvroProtocolDefinition.values()) {
       if (avroProtocolDefinition.magicByte.isPresent()) {
         if (magicByteSet.contains(avroProtocolDefinition.magicByte.get())) {
           throw new VeniceException("Duplicate magic byte found for: " + avroProtocolDefinition.name());
@@ -197,7 +195,10 @@ public enum AvroProtocolDefinition {
    * Constructor for protocols where the Avro record is prepended by a protocol
    * definition header, which includes a magic byte and protocol version.
    */
-  AvroProtocolDefinition(int magicByte, int currentProtocolVersion, Class<? extends SpecificRecord> specificRecordClass) {
+  AvroProtocolDefinition(
+      int magicByte,
+      int currentProtocolVersion,
+      Class<? extends SpecificRecord> specificRecordClass) {
     this.magicByte = Optional.of((byte) magicByte);
     this.currentProtocolVersion = Optional.of(currentProtocolVersion);
     this.protocolVersionStoredInHeader = true;

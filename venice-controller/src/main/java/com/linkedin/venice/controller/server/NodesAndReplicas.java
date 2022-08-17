@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
@@ -27,13 +30,11 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import spark.Route;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
-
 
 public class NodesAndReplicas extends AbstractRoute {
   private static final Logger LOGGER = LogManager.getLogger(NodesAndReplicas.class);
-  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = RedundantExceptionFilter.getRedundantExceptionFilter();
+  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   /**
    * TODO: Make sure services "venice-hooks-deployable" is also in allowlist
@@ -54,7 +55,7 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObject.setCluster(request.queryParams(CLUSTER));
         List<String> nodeList = admin.getStorageNodes(responseObject.getCluster());
         String[] nodeListArray = new String[nodeList.size()];
-        for (int i=0; i<nodeList.size(); i++){
+        for (int i = 0; i < nodeList.size(); i++) {
           nodeListArray[i] = nodeList.get(i);
         }
         responseObject.setNodes(nodeListArray);
@@ -100,7 +101,7 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObject.setVersion(Utils.parseIntFromString(request.queryParams(VERSION), "VERSION"));
         List<Replica> replicaList = admin.getReplicas(responseObject.getCluster(), responseObject.getTopic());
         Replica[] replicaArray = new Replica[replicaList.size()];
-        for (int i=0; i<replicaList.size(); i++){
+        for (int i = 0; i < replicaList.size(); i++) {
           replicaArray[i] = replicaList.get(i);
         }
         responseObject.setReplicas(replicaArray);
@@ -115,7 +116,7 @@ public class NodesAndReplicas extends AbstractRoute {
   /**
    * No ACL check; any user is allowed to list replicas in a node.
    */
-  public Route listReplicasForStorageNode(Admin admin){
+  public Route listReplicasForStorageNode(Admin admin) {
     return (request, response) -> {
       MultiReplicaResponse responseObject = new MultiReplicaResponse();
       response.type(HttpConstants.JSON);
@@ -125,7 +126,7 @@ public class NodesAndReplicas extends AbstractRoute {
         String nodeId = request.queryParams(STORAGE_NODE_ID);
         List<Replica> replicaList = admin.getReplicasOfStorageNode(responseObject.getCluster(), nodeId);
         Replica[] replicaArray = new Replica[replicaList.size()];
-        for (int i=0; i<replicaList.size(); i++){
+        for (int i = 0; i < replicaList.size(); i++) {
           replicaArray[i] = replicaList.get(i);
         }
         responseObject.setReplicas(replicaArray);
@@ -140,7 +141,7 @@ public class NodesAndReplicas extends AbstractRoute {
   /**
    * No ACL check; any user is allowed to check whether a node is removable.
    */
-  public Route isNodeRemovable(Admin admin){
+  public Route isNodeRemovable(Admin admin) {
     return (request, response) -> {
       NodeStatusResponse responseObject = new NodeStatusResponse();
       response.type(HttpConstants.JSON);
@@ -150,9 +151,12 @@ public class NodesAndReplicas extends AbstractRoute {
         String nodeId = request.queryParams(STORAGE_NODE_ID);
 
         String lockedNodeIds = AdminSparkServer.getOptionalParameterValue(request, LOCKED_STORAGE_NODE_IDS);
-        List<String> lockedNodes = lockedNodeIds == null ? Collections.emptyList()
-            : Arrays.asList(lockedNodeIds.split(LOCKED_NODE_ID_LIST_SEPARATOR)).stream().map(String::trim).collect(
-                Collectors.toList());
+        List<String> lockedNodes = lockedNodeIds == null
+            ? Collections.emptyList()
+            : Arrays.asList(lockedNodeIds.split(LOCKED_NODE_ID_LIST_SEPARATOR))
+                .stream()
+                .map(String::trim)
+                .collect(Collectors.toList());
         String[] instanceView = request.queryMap().toMap().get(INSTANCE_VIEW);
         NodeRemovableResult result;
         boolean isFromInstanceView = instanceView != null && Boolean.valueOf(instanceView[0]);
@@ -162,14 +166,14 @@ public class NodesAndReplicas extends AbstractRoute {
         if (!result.isRemovable()) {
           StringBuilder msgBuilder = new StringBuilder();
           msgBuilder.append(nodeId)
-                    .append(" could not be removed from cluster: ")
-                    .append(responseObject.getCluster())
-                    .append(", because resource: ")
-                    .append(result.getBlockingResource())
-                    .append(" will ")
-                    .append(result.getBlockingReason())
-                    .append(" after removing this node. Details: ")
-                    .append(result.getDetails());
+              .append(" could not be removed from cluster: ")
+              .append(responseObject.getCluster())
+              .append(", because resource: ")
+              .append(result.getBlockingResource())
+              .append(" will ")
+              .append(result.getBlockingReason())
+              .append(" after removing this node. Details: ")
+              .append(result.getDetails());
           String errorResponseMessage = msgBuilder.toString();
           if (!REDUNDANT_LOGGING_FILTER.isRedundantException(nodeId)) {
             LOGGER.warn(errorResponseMessage);
@@ -234,7 +238,7 @@ public class NodesAndReplicas extends AbstractRoute {
     };
   }
 
-  public Route removeNodeFromAllowList(Admin admin){
+  public Route removeNodeFromAllowList(Admin admin) {
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
       response.type(HttpConstants.JSON);
@@ -271,7 +275,8 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObj.setCluster(request.queryParams(CLUSTER));
         String nodeId = request.queryParams(STORAGE_NODE_ID);
 
-        Pair<NodeReplicasReadinessState, List<Replica>> result = admin.nodeReplicaReadiness(responseObj.getCluster(), nodeId);
+        Pair<NodeReplicasReadinessState, List<Replica>> result =
+            admin.nodeReplicaReadiness(responseObj.getCluster(), nodeId);
         responseObj.setNodeState(result.getFirst());
         responseObj.setUnreadyReplicas(result.getSecond());
       } catch (Throwable e) {

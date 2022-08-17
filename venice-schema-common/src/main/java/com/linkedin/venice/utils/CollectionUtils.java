@@ -12,7 +12,6 @@ import java.util.RandomAccess;
 
 
 public class CollectionUtils {
-
   /**
    * A manual implementation of list equality.
    *
@@ -39,20 +38,18 @@ public class CollectionUtils {
 
   public static List<Float> asUnmodifiableList(float[] array) {
     Objects.requireNonNull(array);
-    class ResultList extends AbstractList<Float> implements RandomAccess
-    {
+    class ResultList extends AbstractList<Float> implements RandomAccess {
       @Override
-      public Float get(int index)
-      {
+      public Float get(int index) {
         return array[index];
       }
 
       @Override
-      public int size()
-      {
+      public int size() {
         return array.length;
       }
-    };
+    }
+    ;
     return new ResultList();
   }
 
@@ -85,7 +82,7 @@ public class CollectionUtils {
 
   public static Map<CharSequence, CharSequence> convertStringMapToCharSequenceMap(Map<String, String> stringMap) {
     Map<CharSequence, CharSequence> res = new HashMap<>();
-    stringMap.forEach( (k, v) -> res.put(k, v));
+    stringMap.forEach((k, v) -> res.put(k, v));
     return res;
   }
 

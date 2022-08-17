@@ -10,9 +10,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.apache.avro.Schema;
 import org.apache.commons.lang3.Validate;
 
+
 @Threadsafe
 public class MergeResultValueSchemaResolverImpl implements MergeResultValueSchemaResolver {
-
   private final ReadOnlySchemaRepository schemaRepository;
   private final String storeName;
   private final Map<String, SchemaEntry> resolvedSchemaCache;
@@ -60,7 +60,8 @@ public class MergeResultValueSchemaResolverImpl implements MergeResultValueSchem
       if (AvroSupersetSchemaUtils.isSupersetSchema(firstValueSchema, secondValueSchema)) {
         return firstValueSchemaEntry;
       }
-      // Neither old value schema nor new value schema is the superset schema. So there must be superset schema registered.
+      // Neither old value schema nor new value schema is the superset schema. So there must be superset schema
+      // registered.
       final SchemaEntry registeredSupersetSchema = schemaRepository.getSupersetSchema(storeName).orElse(null);
       if (registeredSupersetSchema == null) {
         throw new VeniceException("Got null superset schema for store " + storeName);
@@ -73,23 +74,32 @@ public class MergeResultValueSchemaResolverImpl implements MergeResultValueSchem
   private void validateRegisteredSupersetSchema(
       SchemaEntry registeredSupersetSchema,
       SchemaEntry firstValueSchemaEntry,
-      SchemaEntry secondValueSchemaEntry
-  ) {
-    if (!AvroSupersetSchemaUtils.isSupersetSchema(registeredSupersetSchema.getSchema(), firstValueSchemaEntry.getSchema())) {
-      throw new VeniceException(String.format("For store %s, the registered superset schema is NOT a superset schema for "
-              + "a given value schema. Got registered superset schema ID: %d and given value schema ID: %d",
-          storeName, registeredSupersetSchema.getId(), firstValueSchemaEntry.getId()));
+      SchemaEntry secondValueSchemaEntry) {
+    if (!AvroSupersetSchemaUtils
+        .isSupersetSchema(registeredSupersetSchema.getSchema(), firstValueSchemaEntry.getSchema())) {
+      throw new VeniceException(
+          String.format(
+              "For store %s, the registered superset schema is NOT a superset schema for "
+                  + "a given value schema. Got registered superset schema ID: %d and given value schema ID: %d",
+              storeName,
+              registeredSupersetSchema.getId(),
+              firstValueSchemaEntry.getId()));
     }
-    if (!AvroSupersetSchemaUtils.isSupersetSchema(registeredSupersetSchema.getSchema(), secondValueSchemaEntry.getSchema())) {
-      throw new VeniceException(String.format("For store %s, the registered superset schema is NOT a superset schema for "
-              + "a given value schema. Got registered superset schema ID: %d and given value schema ID: %d",
-          storeName, registeredSupersetSchema.getId(), secondValueSchemaEntry.getId()));
+    if (!AvroSupersetSchemaUtils
+        .isSupersetSchema(registeredSupersetSchema.getSchema(), secondValueSchemaEntry.getSchema())) {
+      throw new VeniceException(
+          String.format(
+              "For store %s, the registered superset schema is NOT a superset schema for "
+                  + "a given value schema. Got registered superset schema ID: %d and given value schema ID: %d",
+              storeName,
+              registeredSupersetSchema.getId(),
+              secondValueSchemaEntry.getId()));
     }
   }
 
   private String createSchemaPairString(final int firstValueSchemaID, final int secondValueSchemaID) {
-    return firstValueSchemaID <= secondValueSchemaID ?
-        firstValueSchemaID + "-" + secondValueSchemaID :
-        secondValueSchemaID + "-" + firstValueSchemaID;
+    return firstValueSchemaID <= secondValueSchemaID
+        ? firstValueSchemaID + "-" + secondValueSchemaID
+        : secondValueSchemaID + "-" + firstValueSchemaID;
   }
 }

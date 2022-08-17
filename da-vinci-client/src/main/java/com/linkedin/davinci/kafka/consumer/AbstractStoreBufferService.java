@@ -10,9 +10,11 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
  * Abstract class capturing the responsibilities of drainers threads doing store ingestion.
  */
 public abstract class AbstractStoreBufferService extends AbstractVeniceService {
-
-  public abstract void putConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      StoreIngestionTask ingestionTask, LeaderProducedRecordContext leaderProducedRecordContext, int subPartition,
+  public abstract void putConsumerRecord(
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      StoreIngestionTask ingestionTask,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      int subPartition,
       String kafkaUrl) throws InterruptedException;
 
   /**
@@ -33,4 +35,3 @@ public abstract class AbstractStoreBufferService extends AbstractVeniceService {
 
   public abstract long getMinMemoryUsagePerDrainer();
 }
-

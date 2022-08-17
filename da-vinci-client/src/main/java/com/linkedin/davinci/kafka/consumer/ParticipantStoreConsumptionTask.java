@@ -47,7 +47,7 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
       long participantMessageConsumptionDelayMs,
       ICProvider icProvider) {
 
-    this.stats =  stats;
+    this.stats = stats;
     this.storeIngestionService = storeIngestionService;
     this.clusterInfoProvider = clusterInfoProvider;
     this.clientConfig = clientConfig;
@@ -64,7 +64,7 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
       try {
         Thread.sleep(participantMessageConsumptionDelayMs);
 
-        for (String topic : storeIngestionService.getIngestingTopicsWithVersionStatusNotOnline()) {
+        for (String topic: storeIngestionService.getIngestingTopicsWithVersionStatusNotOnline()) {
           try {
             ParticipantMessageKey key = new ParticipantMessageKey();
             key.messageType = ParticipantMessageType.KILL_PUSH_JOB.getValue();
@@ -74,7 +74,8 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
             if (clusterName != null) {
               ParticipantMessageValue value;
               if (icProvider != null) {
-                CompletableFuture<ParticipantMessageValue> future = icProvider.call(this.getClass().getCanonicalName(), () -> getParticipantStoreClient(clusterName).get(key));
+                CompletableFuture<ParticipantMessageValue> future = icProvider
+                    .call(this.getClass().getCanonicalName(), () -> getParticipantStoreClient(clusterName).get(key));
                 value = future.get();
               } else {
                 value = getParticipantStoreClient(clusterName).get(key).get();
@@ -84,7 +85,8 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
                 if (storeIngestionService.killConsumptionTask(topic)) {
                   // emit metrics only when a confirmed kill is made
                   stats.recordKilledPushJobs();
-                  stats.recordKillPushJobLatency(Long.max(0, System.currentTimeMillis() - killPushJobMessage.timestamp));
+                  stats
+                      .recordKillPushJobLatency(Long.max(0, System.currentTimeMillis() - killPushJobMessage.timestamp));
                 }
               }
             }
@@ -115,7 +117,8 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
     logger.info("Stopped running " + getClass().getSimpleName());
   }
 
-  private AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue> getParticipantStoreClient(String clusterName) {
+  private AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue> getParticipantStoreClient(
+      String clusterName) {
     try {
       clientMap.computeIfAbsent(clusterName, k -> {
         ClientConfig<ParticipantMessageValue> newClientConfig = ClientConfig.cloneConfig(clientConfig)

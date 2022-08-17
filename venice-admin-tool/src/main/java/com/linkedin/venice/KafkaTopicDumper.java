@@ -69,7 +69,16 @@ public class KafkaTopicDumper {
   private final int maxConsumeAttempts;
   private final boolean logMetadataOnly;
 
-  public KafkaTopicDumper(ControllerClient controllerClient, Properties consumerProps, String topic, int partitionNumber,  long startingOffset, int messageCount, String parentDir, int maxConsumeAttempts, boolean logMetadataOnly) {
+  public KafkaTopicDumper(
+      ControllerClient controllerClient,
+      Properties consumerProps,
+      String topic,
+      int partitionNumber,
+      long startingOffset,
+      int messageCount,
+      String parentDir,
+      int maxConsumeAttempts,
+      boolean logMetadataOnly) {
     this.maxConsumeAttempts = maxConsumeAttempts;
     if (Version.isVersionTopic(topic)) {
       this.storeName = Version.parseStoreFromKafkaTopicName(topic);
@@ -91,7 +100,7 @@ public class KafkaTopicDumper {
       this.latestValueSchemaStr = schemas[schemas.length - 1].getSchemaStr();
       allValueSchemas = new Schema[schemas.length];
       int i = 0;
-      for (MultiSchemaResponse.Schema valueSchema : schemas) {
+      for (MultiSchemaResponse.Schema valueSchema: schemas) {
         this.allValueSchemas[i] = Schema.parse(valueSchema.getSchemaStr());
         i++;
       }
@@ -113,10 +122,8 @@ public class KafkaTopicDumper {
     } else {
       this.messageCount = messageCount;
     }
-    this.kafkaRecordList = new ArrayList<>((int)this.messageCount);
+    this.kafkaRecordList = new ArrayList<>((int) this.messageCount);
   }
-
-
 
   /**
    * 1. Fetch up to {@link KafkaTopicDumper#messageCount} messages in this partition.
@@ -142,18 +149,20 @@ public class KafkaTopicDumper {
       }
 
       if (currentMessageCount - lastReportedConsumedCount > 1000) {
-        logger.info("Consumed " + currentMessageCount + " messages; last consumed message offset: " + lastProcessRecord.offset());
+        logger.info(
+            "Consumed " + currentMessageCount + " messages; last consumed message offset: "
+                + lastProcessRecord.offset());
         lastReportedConsumedCount = currentMessageCount;
       }
       countdownBeforeStop = records.count() == 0 ? countdownBeforeStop - 1 : maxConsumeAttempts;
       if (lastProcessRecord.offset() >= (this.endOffset - 2)) {
         return this;
       }
-    } while (currentMessageCount < messageCount && countdownBeforeStop > 0 && lastProcessRecord.offset() < (this.endOffset - 2));
+    } while (currentMessageCount < messageCount && countdownBeforeStop > 0
+        && lastProcessRecord.offset() < (this.endOffset - 2));
 
     return this;
   }
-
 
   /**
    *  Display control messages from each producer
@@ -162,17 +171,20 @@ public class KafkaTopicDumper {
     // build file
     File file = new File(this.parentDirectory + this.topicName + "_" + this.partition + ".avro");
     List<Schema.Field> outputSchemaFields = new ArrayList<>();
-    for (Schema.Field field : VeniceKafkaDecodedRecord.SCHEMA$.getFields()) {
+    for (Schema.Field field: VeniceKafkaDecodedRecord.SCHEMA$.getFields()) {
       if (field.name().equals(VENICE_ETL_KEY_FIELD)) {
-        outputSchemaFields.add(AvroCompatibilityHelper.newField(field).setSchema(Schema.parse(this.keySchemaStr)).build());
+        outputSchemaFields
+            .add(AvroCompatibilityHelper.newField(field).setSchema(Schema.parse(this.keySchemaStr)).build());
       } else if (field.name().equals(VENICE_ETL_VALUE_FIELD)) {
-        outputSchemaFields.add(AvroCompatibilityHelper.newField(field)
-                                  .setSchema(Schema.createUnion(Arrays.asList(
-                                           Schema.create(Schema.Type.NULL),
-                                           Schema.parse(this.latestValueSchemaStr))))
-                                  .build());
+        outputSchemaFields.add(
+            AvroCompatibilityHelper.newField(field)
+                .setSchema(
+                    Schema.createUnion(
+                        Arrays.asList(Schema.create(Schema.Type.NULL), Schema.parse(this.latestValueSchemaStr))))
+                .build());
       } else {
-        // any fields except key and value will be added using the original schemas, like the offset field and the DELETED_TS field
+        // any fields except key and value will be added using the original schemas, like the offset field and the
+        // DELETED_TS field
         outputSchemaFields.add(AvroCompatibilityHelper.newField(field).build());
       }
     }
@@ -195,11 +207,12 @@ public class KafkaTopicDumper {
       int valueSchemaNum = allValueSchemas.length;
       valueReaders = new GenericDatumReader[valueSchemaNum];
       for (int schemaId = 0; schemaId < valueSchemaNum; schemaId++) {
-        valueReaders[schemaId] = new GenericDatumReader<>(allValueSchemas[schemaId], allValueSchemas[valueSchemaNum - 1]);
+        valueReaders[schemaId] =
+            new GenericDatumReader<>(allValueSchemas[schemaId], allValueSchemas[valueSchemaNum - 1]);
       }
 
       DecoderFactory decoderFactory = new DecoderFactory();
-      for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : kafkaRecordList) {
+      for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record: kafkaRecordList) {
         try {
           KafkaKey kafkaKey = record.key();
           KafkaMessageEnvelope kafkaMessageEnvelope = record.value();
@@ -218,8 +231,12 @@ public class KafkaTopicDumper {
           Map<CharSequence, CharSequence> metadataMap = new HashMap<>();
 
           metadataMap.put(VENICE_ETL_PARTITION_FIELD, String.valueOf(record.partition()));
-          metadataMap.put(VENICE_ETL_PRODUCER_TIMESTAMP_FIELD, String.valueOf(kafkaMessageEnvelope.producerMetadata.messageTimestamp));
-          metadataMap.put(VENICE_ETL_BROKER_TIMESTAMP_FIELD, String.valueOf(TimestampType.LOG_APPEND_TIME.equals(record.timestampType()) ? record.timestamp() : 0));
+          metadataMap.put(
+              VENICE_ETL_PRODUCER_TIMESTAMP_FIELD,
+              String.valueOf(kafkaMessageEnvelope.producerMetadata.messageTimestamp));
+          metadataMap.put(
+              VENICE_ETL_BROKER_TIMESTAMP_FIELD,
+              String.valueOf(TimestampType.LOG_APPEND_TIME.equals(record.timestampType()) ? record.timestamp() : 0));
 
           convertedRecord.put(VENICE_ETL_METADATA_FIELD, metadataMap);
 
@@ -256,21 +273,29 @@ public class KafkaTopicDumper {
    * Log the metadata for each kafka message.
    */
   public void logMetadata() {
-    for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : kafkaRecordList) {
+    for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record: kafkaRecordList) {
       try {
         KafkaKey kafkaKey = record.key();
         KafkaMessageEnvelope kafkaMessageEnvelope = record.value();
 
         ProducerMetadata producerMetadata = kafkaMessageEnvelope.producerMetadata;
 
-        String msg = kafkaKey.isControlMessage() ? ControlMessageType.valueOf((ControlMessage) kafkaMessageEnvelope.payloadUnion)
-            .toString() : MessageType.valueOf(kafkaMessageEnvelope).toString();
-        logger.info("KafkaOffset: " + record.offset() + " ControlMsg: " + (kafkaKey.isControlMessage() ? "Yes" : "No")
-            + " msgType: " + msg + " ProducerMetadata:(" + "guid: " + producerMetadata.producerGUID.toString()
-            + " seq: " + producerMetadata.messageSequenceNumber + " segment: " + producerMetadata.segmentNumber
-            + " upstreamOffset: " + producerMetadata.upstreamOffset+ " messageTimestamp: " + producerMetadata.messageTimestamp
-            + ") footer hostname: " + (kafkaMessageEnvelope.leaderMetadataFooter == null ? "" : kafkaMessageEnvelope.leaderMetadataFooter.hostName)
-            + " footer offset: " + (kafkaMessageEnvelope.leaderMetadataFooter == null ? "" : kafkaMessageEnvelope.leaderMetadataFooter.upstreamOffset));
+        String msg = kafkaKey.isControlMessage()
+            ? ControlMessageType.valueOf((ControlMessage) kafkaMessageEnvelope.payloadUnion).toString()
+            : MessageType.valueOf(kafkaMessageEnvelope).toString();
+        logger.info(
+            "KafkaOffset: " + record.offset() + " ControlMsg: " + (kafkaKey.isControlMessage() ? "Yes" : "No")
+                + " msgType: " + msg + " ProducerMetadata:(" + "guid: " + producerMetadata.producerGUID.toString()
+                + " seq: " + producerMetadata.messageSequenceNumber + " segment: " + producerMetadata.segmentNumber
+                + " upstreamOffset: " + producerMetadata.upstreamOffset + " messageTimestamp: "
+                + producerMetadata.messageTimestamp + ") footer hostname: "
+                + (kafkaMessageEnvelope.leaderMetadataFooter == null
+                    ? ""
+                    : kafkaMessageEnvelope.leaderMetadataFooter.hostName)
+                + " footer offset: "
+                + (kafkaMessageEnvelope.leaderMetadataFooter == null
+                    ? ""
+                    : kafkaMessageEnvelope.leaderMetadataFooter.upstreamOffset));
       } catch (Exception e) {
         logger.error("Failed when building record for offset " + record.offset(), e);
       }

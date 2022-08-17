@@ -14,6 +14,7 @@ import java.util.Set;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
 
+
 /**
  * A {@link KafkaConsumerWrapper} implementation which reads messages from the {@link InMemoryKafkaBroker}.
  *
@@ -64,7 +65,7 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
   @Override
   public void batchUnsubscribe(Set<TopicPartition> topicPartitionSet) {
     delegate.batchUnsubscribe(topicPartitionSet);
-    for (TopicPartition topicPartition : topicPartitionSet) {
+    for (TopicPartition topicPartition: topicPartitionSet) {
       offsets.remove(topicPartition);
       pausedTopicPartitions.remove(topicPartition);
     }
@@ -94,7 +95,7 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
     }
 
     Map<TopicPartition, Long> offsetsToPoll = new HashMap<>();
-    for (Map.Entry<TopicPartition, Long> entry : offsets.entrySet()) {
+    for (Map.Entry<TopicPartition, Long> entry: offsets.entrySet()) {
       TopicPartition topicPartition = entry.getKey();
       Long offset = entry.getValue();
       if (!pausedTopicPartitions.contains(entry.getKey())) {
@@ -103,7 +104,7 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
     }
 
     ConsumerRecords consumerRecords = pollStrategy.poll(broker, offsetsToPoll, timeout);
-    for (Map.Entry<TopicPartition, Long> entry : offsetsToPoll.entrySet()) {
+    for (Map.Entry<TopicPartition, Long> entry: offsetsToPoll.entrySet()) {
       TopicPartition topicPartition = entry.getKey();
       Long offsetToPoll = entry.getValue();
       if (offsets.containsKey(topicPartition)) {
@@ -120,7 +121,7 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
 
   @Override
   public boolean hasSubscribedAnyTopic(Set<String> topics) {
-    for (TopicPartition subscribedTopicPartition : offsets.keySet()) {
+    for (TopicPartition subscribedTopicPartition: offsets.keySet()) {
       if (topics.contains(subscribedTopicPartition.topic())) {
         return true;
       }

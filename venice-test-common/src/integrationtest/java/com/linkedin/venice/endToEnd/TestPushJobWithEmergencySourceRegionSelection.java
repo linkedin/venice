@@ -1,5 +1,10 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.utils.TestPushUtils.*;
+
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -31,11 +36,6 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.utils.TestPushUtils.*;
-
 
 /**
  * This test case enables A/A config flag for a store in all regions and then verifies that emergency source fabric takes
@@ -48,7 +48,10 @@ public class TestPushJobWithEmergencySourceRegionSelection {
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 3;
   private static final int NUMBER_OF_CLUSTERS = 1;
-  private static final String[] CLUSTER_NAMES = IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new); // ["venice-cluster0", "venice-cluster1", ...];
+  private static final String[] CLUSTER_NAMES =
+      IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new); // ["venice-cluster0",
+                                                                                                         // "venice-cluster1",
+                                                                                                         // ...];
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
@@ -56,7 +59,7 @@ public class TestPushJobWithEmergencySourceRegionSelection {
 
   @DataProvider(name = "storeSize")
   public static Object[][] storeSize() {
-    return new Object[][]{{50, 2}};
+    return new Object[][] { { 50, 2 } };
   }
 
   @BeforeClass(alwaysRun = true)
@@ -81,20 +84,19 @@ public class TestPushJobWithEmergencySourceRegionSelection {
     controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
     controllerProps.put(EMERGENCY_SOURCE_REGION, "dc-2");
 
-    multiColoMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
-            NUMBER_OF_CHILD_DATACENTERS,
-            NUMBER_OF_CLUSTERS,
-            1,
-            1,
-            2,
-            1,
-            2,
-            Optional.of(new VeniceProperties(controllerProps)),
-            Optional.of(controllerProps),
-            Optional.of(new VeniceProperties(serverProperties)),
-            false,
-            false);
+    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+        NUMBER_OF_CHILD_DATACENTERS,
+        NUMBER_OF_CLUSTERS,
+        1,
+        1,
+        2,
+        1,
+        2,
+        Optional.of(new VeniceProperties(controllerProps)),
+        Optional.of(controllerProps),
+        Optional.of(new VeniceProperties(serverProperties)),
+        false,
+        false);
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
   }
@@ -108,20 +110,22 @@ public class TestPushJobWithEmergencySourceRegionSelection {
    * Verify that emergency source fabric override config overrides the store level NR source fabric
    */
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
-  public void testNativeReplicationForBatchPushWithEmergencySourceOverride(int recordCount, int partitionCount) throws Exception {
+  public void testNativeReplicationForBatchPushWithEmergencySourceOverride(int recordCount, int partitionCount)
+      throws Exception {
     String clusterName = CLUSTER_NAMES[0];
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    String parentControllerUrls = parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(
-        Collectors.joining(","));
+    String parentControllerUrls =
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
     Properties props = defaultH2VProps(parentControllerUrls, inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
     String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
-    String valueSchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
+    String valueSchemaStr =
+        recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
 
-    //Enable L/F and native replication features.
+    // Enable L/F and native replication features.
     UpdateStoreQueryParams updateStoreParams =
         new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
             .setPartitionCount(partitionCount)
@@ -132,17 +136,18 @@ public class TestPushJobWithEmergencySourceRegionSelection {
 
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
 
-    //Print all the kafka cluster URL's
+    // Print all the kafka cluster URL's
     LOGGER.info("KafkaURL dc-0:" + childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
     LOGGER.info("KafkaURL dc-1:" + childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
     LOGGER.info("KafkaURL dc-2:" + childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
 
-    try (ControllerClient dc0Client = new ControllerClient(clusterName,
-        childDatacenters.get(0).getControllerConnectString());
-        ControllerClient dc1Client = new ControllerClient(clusterName,
-            childDatacenters.get(1).getControllerConnectString());
-        ControllerClient dc2Client = new ControllerClient(clusterName,
-            childDatacenters.get(2).getControllerConnectString())) {
+    try (
+        ControllerClient dc0Client =
+            new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+        ControllerClient dc1Client =
+            new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
+        ControllerClient dc2Client =
+            new ControllerClient(clusterName, childDatacenters.get(2).getControllerConnectString())) {
       /**
        * Check the update store command in parent controller has been propagated into child controllers, before
        * sending any commands directly into child controllers, which can help avoid race conditions.
@@ -155,22 +160,22 @@ public class TestPushJobWithEmergencySourceRegionSelection {
     try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
       job.run();
 
-      //Verify the kafka URL being returned to the push job is the same as dc-2 kafka url.
+      // Verify the kafka URL being returned to the push job is the same as dc-2 kafka url.
       Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
     }
-    try (ControllerClient parentControllerClient = ControllerClient.constructClusterControllerClient(clusterName,
-        parentControllerUrls)) {
+    try (ControllerClient parentControllerClient =
+        ControllerClient.constructClusterControllerClient(clusterName, parentControllerUrls)) {
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         // Current version should become 1
-        for (int version : parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions().values()) {
+        for (int version: parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions().values()) {
           Assert.assertEquals(version, 1);
         }
 
         // Verify the data in the second child fabric which consumes remotely
         VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(1);
         String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
-        try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
-            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+        try (AvroGenericStoreClient<String, Object> client = ClientFactory
+            .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
           for (int i = 1; i <= recordCount; ++i) {
             String expected = "test_name_" + i;
             String actual = client.get(Integer.toString(i)).get().toString();

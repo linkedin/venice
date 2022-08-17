@@ -1,5 +1,9 @@
 package com.linkedin.davinci.ingestion;
 
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.VeniceConstants.*;
+
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer;
 import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
@@ -18,10 +22,6 @@ import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-
-import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.VeniceConstants.*;
 
 
 public class IsolatedIngestionServerTest {
@@ -42,14 +42,20 @@ public class IsolatedIngestionServerTest {
   public void testShutdownAfterHeartbeatTimeout() {
     int servicePort = Utils.getFreePort();
     VeniceConfigLoader configLoader = getConfigLoader(servicePort);
-    try (MainIngestionRequestClient client = new MainIngestionRequestClient(IsolatedIngestionUtils.getSSLEngineComponentFactory(configLoader), servicePort)) {
+    try (MainIngestionRequestClient client = new MainIngestionRequestClient(
+        IsolatedIngestionUtils.getSSLEngineComponentFactory(configLoader),
+        servicePort)) {
       Process isolatedIngestionService = client.startForkedIngestionProcess(configLoader);
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true,
-          () -> Assert.assertTrue(client.sendHeartbeatRequest())
-      );
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true,
-          () -> Assert.assertFalse(isolatedIngestionService.isAlive())
-      );
+      TestUtils.waitForNonDeterministicAssertion(
+          10,
+          TimeUnit.SECONDS,
+          true,
+          () -> Assert.assertTrue(client.sendHeartbeatRequest()));
+      TestUtils.waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          true,
+          () -> Assert.assertFalse(isolatedIngestionService.isAlive()));
     }
   }
 
@@ -57,14 +63,16 @@ public class IsolatedIngestionServerTest {
   public void testReleaseTargetPortBinding() {
     int servicePort = Utils.getFreePort();
     VeniceConfigLoader configLoader = getConfigLoader(servicePort);
-    try (MainIngestionRequestClient client = new MainIngestionRequestClient(IsolatedIngestionUtils.getSSLEngineComponentFactory(configLoader), servicePort)) {
+    try (MainIngestionRequestClient client = new MainIngestionRequestClient(
+        IsolatedIngestionUtils.getSSLEngineComponentFactory(configLoader),
+        servicePort)) {
       // Make sure the process is forked successfully.
       ForkedJavaProcess isolatedIngestionService = (ForkedJavaProcess) client.startForkedIngestionProcess(configLoader);
       Assert.assertTrue(isolatedIngestionService.isAlive());
       // Make sure we have exactly 1 forked process.
       int matchIsolatedIngestionProcessCount = 0;
       String processIds = executeShellCommand("/usr/sbin/lsof -t -i :" + servicePort);
-      for (String processId : processIds.split("\n")) {
+      for (String processId: processIds.split("\n")) {
         if (!processId.equals("")) {
           int pid = Integer.parseInt(processId);
           String fullProcessName = executeShellCommand("ps -p " + pid + " -o command");

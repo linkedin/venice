@@ -1,5 +1,7 @@
 package com.linkedin.venice.hadoop;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -30,91 +32,86 @@ import org.apache.hadoop.mapred.RunningJob;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static org.mockito.Mockito.*;
-
 
 public class TestVenicePushJobWithReporterCounters {
-
   private static final int PARTITION_COUNT = 10;
-  private static final String SCHEMA_STR = "{" +
-      "  \"namespace\" : \"example.avro\",  " +
-      "  \"type\": \"record\",   " +
-      "  \"name\": \"User\",     " +
-      "  \"fields\": [           " +
-      "       { \"name\": \"id\", \"type\": \"string\" },  " +
-      "       { \"name\": \"name\", \"type\": \"string\" },  " +
-      "       { \"name\": \"age\", \"type\": \"int\" },  " +
-      "       { \"name\": \"company\", \"type\": \"string\" }  " +
-      "  ] " +
-      " } ";
-  private static final String SIMPLE_FILE_SCHEMA_STR = "{\n" +
-          "    \"type\": \"record\",\n" +
-          "    \"name\": \"Type1\",\n" +
-          "    \"fields\": [\n" +
-          "        {\n" +
-          "            \"name\": \"something\",\n" +
-          "            \"type\": \"string\"\n" +
-          "        }\n" +
-          "    ]\n" +
-          "}";
+  private static final String SCHEMA_STR = "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   "
+      + "  \"name\": \"User\",     " + "  \"fields\": [           "
+      + "       { \"name\": \"id\", \"type\": \"string\" },  "
+      + "       { \"name\": \"name\", \"type\": \"string\" },  " + "       { \"name\": \"age\", \"type\": \"int\" },  "
+      + "       { \"name\": \"company\", \"type\": \"string\" }  " + "  ] " + " } ";
+  private static final String SIMPLE_FILE_SCHEMA_STR = "{\n" + "    \"type\": \"record\",\n"
+      + "    \"name\": \"Type1\",\n" + "    \"fields\": [\n" + "        {\n" + "            \"name\": \"something\",\n"
+      + "            \"type\": \"string\"\n" + "        }\n" + "    ]\n" + "}";
 
-  @Test (expectedExceptions = { VeniceException.class })
+  @Test(expectedExceptions = { VeniceException.class })
   public void testHandleQuotaExceeded() throws Exception {
     testHandleErrorsInCounter(
         Arrays.asList(
             new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1001), // Quota exceeded
             new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
             new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0),
-            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT) // All reducers closed
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT) // All
+                                                                                                             // reducers
+                                                                                                             // closed
         ),
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.QUOTA_EXCEEDED)
-    );
+            VenicePushJob.PushJobCheckpoints.QUOTA_EXCEEDED));
   }
 
-  @Test (expectedExceptions = { VeniceException.class })
+  @Test(expectedExceptions = { VeniceException.class })
   public void testHandleWriteAclFailed() throws Exception {
     testHandleErrorsInCounter(
         Arrays.asList(
             new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1),
             new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 1), // Write ACL failed
             new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0),
-            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT) // All reducers closed
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT) // All
+                                                                                                             // reducers
+                                                                                                             // closed
         ),
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.WRITE_ACL_FAILED)
-    );
+            VenicePushJob.PushJobCheckpoints.WRITE_ACL_FAILED));
   }
 
-  @Test (expectedExceptions = { VeniceException.class })
+  @Test(expectedExceptions = { VeniceException.class })
   public void testHandleDuplicatedKeyWithDistinctValue() throws Exception {
     testHandleErrorsInCounter(
         Arrays.asList(
             new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1),
             new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
-            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 1), // Duplicated key with distinct value
-            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT) // All reducers closed
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 1), // Duplicated key
+                                                                                                       // with distinct
+                                                                                                       // value
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT) // All
+                                                                                                             // reducers
+                                                                                                             // closed
         ),
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.DUP_KEY_WITH_DIFF_VALUE)
-    );
+            VenicePushJob.PushJobCheckpoints.DUP_KEY_WITH_DIFF_VALUE));
   }
 
-  @Test (expectedExceptions = { VeniceException.class })
+  @Test(expectedExceptions = { VeniceException.class })
   public void testHandleZeroClosedReducersFailure() throws Exception {
     testHandleErrorsInCounter(
         Arrays.asList(
-            new MockCounterInfo(MRJobCounterHelper.MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT_NAME, 1), // Spray all partitions gets triggered
+            new MockCounterInfo(MRJobCounterHelper.MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT_NAME, 1), // Spray all
+                                                                                                         // partitions
+                                                                                                         // gets
+                                                                                                         // triggered
             new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1), // Quota not exceeded
             new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0), // No authorization error
-            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0), // No duplicated key with distinct value
-            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 0) // No reducers at all closed
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0), // No duplicated
+                                                                                                       // key with
+                                                                                                       // distinct value
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 0) // No reducers at all
+                                                                                               // closed
         ),
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
@@ -124,20 +121,26 @@ public class TestVenicePushJobWithReporterCounters {
     );
   }
 
-  @Test (expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = "MR job counter is not reliable.*")
+  @Test(expectedExceptions = {
+      VeniceException.class }, expectedExceptionsMessageRegExp = "MR job counter is not reliable.*")
   public void testUnreliableMapReduceCounter() throws Exception {
     testHandleErrorsInCounter(
         Arrays.asList(
-            new MockCounterInfo(MRJobCounterHelper.MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT_NAME, 1), // Spray all partitions gets triggered
+            new MockCounterInfo(MRJobCounterHelper.MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT_NAME, 1), // Spray all
+                                                                                                         // partitions
+                                                                                                         // gets
+                                                                                                         // triggered
             new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 0), // Quota not exceeded
             new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0), // No authorization error
-            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0), // No duplicated key with distinct value
-            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 0) // No reducers at all closed
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0), // No duplicated
+                                                                                                       // key with
+                                                                                                       // distinct value
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 0) // No reducers at all
+                                                                                               // closed
         ),
         Collections.emptyList(),
         10L, // Non-empty input data file
-           true
-    );
+        true);
   }
 
   @Test
@@ -146,8 +149,11 @@ public class TestVenicePushJobWithReporterCounters {
         Arrays.asList(
             new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 0), // No quota not exceeded
             new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0), // No authorization error
-            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0), // No duplicated key with distinct value
-            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 0) // No reducers at all closed
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0), // No duplicated
+                                                                                                       // key with
+                                                                                                       // distinct value
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 0) // No reducers at all
+                                                                                               // closed
         ),
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
@@ -156,55 +162,72 @@ public class TestVenicePushJobWithReporterCounters {
             VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED // Expect the job to finish successfully
         ),
         10L,
-           false // Input data file has no record
+        false // Input data file has no record
     );
   }
 
-  @Test (expectedExceptions = { IllegalArgumentException.class })
+  @Test(expectedExceptions = { IllegalArgumentException.class })
   public void testInitInputDataInfoWithIllegalArguments() {
     VenicePushJob.SchemaInfo schemaInfo = new VenicePushJob.SchemaInfo();
     // Input file size cannot be zero.
     new InputDataInfoProvider.InputDataInfo(schemaInfo, 0, false);
   }
 
-  @Test (expectedExceptions = { VeniceException.class })
+  @Test(expectedExceptions = { VeniceException.class })
   public void testHandleInsufficientClosedReducersFailure() throws Exception { // Successful workflow
     testHandleErrorsInCounter(
         Arrays.asList(
-            new MockCounterInfo(MRJobCounterHelper.MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT_NAME, 1), // Spray all partitions gets triggered
+            new MockCounterInfo(MRJobCounterHelper.MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT_NAME, 1), // Spray all
+                                                                                                         // partitions
+                                                                                                         // gets
+                                                                                                         // triggered
             new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1), // Quota not exceeded
             new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0), // No authorization error
-            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0), // No duplicated key with distinct value
-            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT - 1) // Some but not all reducers closed
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0), // No duplicated
+                                                                                                       // key with
+                                                                                                       // distinct value
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT - 1) // Some
+                                                                                                                 // but
+                                                                                                                 // not
+                                                                                                                 // all
+                                                                                                                 // reducers
+                                                                                                                 // closed
 
         ),
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
             VenicePushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
-            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED
-        )
-    );
+            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED));
   }
 
   @Test
-  public void testCounterValidationWhenSprayAllPartitionsNotTriggeredButWithMismatchedReducerCount() throws Exception { // Successful workflow
+  public void testCounterValidationWhenSprayAllPartitionsNotTriggeredButWithMismatchedReducerCount() throws Exception { // Successful
+                                                                                                                        // workflow
     testHandleErrorsInCounter(
         Arrays.asList(
-            new MockCounterInfo(MRJobCounterHelper.MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT_NAME, 0), // Spray all partitions isn't triggered
+            new MockCounterInfo(MRJobCounterHelper.MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT_NAME, 0), // Spray all
+                                                                                                         // partitions
+                                                                                                         // isn't
+                                                                                                         // triggered
             new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1), // Quota not exceeded
             new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0), // No authorization error
-            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0), // No duplicated key with distinct value
-            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT - 1) // Some but not all reducers closed
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0), // No duplicated
+                                                                                                       // key with
+                                                                                                       // distinct value
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT - 1) // Some
+                                                                                                                 // but
+                                                                                                                 // not
+                                                                                                                 // all
+                                                                                                                 // reducers
+                                                                                                                 // closed
 
         ),
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
             VenicePushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
-            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED
-        )
-    );
+            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED));
   }
 
   @Test
@@ -213,45 +236,47 @@ public class TestVenicePushJobWithReporterCounters {
         Arrays.asList(
             new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1), // Quota not exceeded
             new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0), // No authorization error
-            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0), // No duplicated key with distinct value
-            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT) // All reducers closed
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0), // No duplicated
+                                                                                                       // key with
+                                                                                                       // distinct value
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT) // All
+                                                                                                             // reducers
+                                                                                                             // closed
         ),
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
             VenicePushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
-            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED
-        )
-    );
+            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED));
   }
 
   private void testHandleErrorsInCounter(
       List<MockCounterInfo> mockCounterInfos,
-      List<VenicePushJob.PushJobCheckpoints> expectedReportedCheckpoints
-  ) throws Exception {
+      List<VenicePushJob.PushJobCheckpoints> expectedReportedCheckpoints) throws Exception {
     testHandleErrorsInCounter(mockCounterInfos, expectedReportedCheckpoints, 10L);
   }
 
   private void testHandleErrorsInCounter(
       List<MockCounterInfo> mockCounterInfos,
       List<VenicePushJob.PushJobCheckpoints> expectedReportedCheckpoints,
-      long inputFileDataSizeInBytes
-  ) throws Exception {
-    testHandleErrorsInCounter(mockCounterInfos, expectedReportedCheckpoints, inputFileDataSizeInBytes, inputFileDataSizeInBytes > 0);
+      long inputFileDataSizeInBytes) throws Exception {
+    testHandleErrorsInCounter(
+        mockCounterInfos,
+        expectedReportedCheckpoints,
+        inputFileDataSizeInBytes,
+        inputFileDataSizeInBytes > 0);
   }
 
   private void testHandleErrorsInCounter(
       List<MockCounterInfo> mockCounterInfos,
       List<VenicePushJob.PushJobCheckpoints> expectedReportedCheckpoints,
       long inputFileDataSizeInBytes,
-      boolean inputFileHasRecords
-  ) throws Exception {
+      boolean inputFileHasRecords) throws Exception {
     VenicePushJob venicePushJob = new VenicePushJob(
-            "job-id",
-            getH2VProps(),
-            createControllerClientMock(),
-            createClusterDiscoverControllerClient()
-    );
+        "job-id",
+        getH2VProps(),
+        createControllerClientMock(),
+        createClusterDiscoverControllerClient());
     venicePushJob.setSystemKMEStoreControllerClient(createControllerClientMock());
 
     venicePushJob.setJobClientWrapper(createJobClientWrapperMock(mockCounterInfos));
@@ -265,11 +290,12 @@ public class TestVenicePushJobWithReporterCounters {
     List<Integer> actualReportedCheckpointValues =
         new ArrayList<>(pushJobDetailsTracker.getRecordedPushJobDetails().size());
 
-    for (PushJobDetails pushJobDetails : pushJobDetailsTracker.getRecordedPushJobDetails()) {
+    for (PushJobDetails pushJobDetails: pushJobDetailsTracker.getRecordedPushJobDetails()) {
       actualReportedCheckpointValues.add(pushJobDetails.pushJobLatestCheckpoint);
     }
-    List<Integer> expectedCheckpointValues =
-        expectedReportedCheckpoints.stream().map(VenicePushJob.PushJobCheckpoints::getValue).collect(Collectors.toList());
+    List<Integer> expectedCheckpointValues = expectedReportedCheckpoints.stream()
+        .map(VenicePushJob.PushJobCheckpoints::getValue)
+        .collect(Collectors.toList());
 
     Assert.assertEquals(actualReportedCheckpointValues, expectedCheckpointValues);
   }
@@ -285,17 +311,15 @@ public class TestVenicePushJobWithReporterCounters {
     props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 500);
     props.put(VenicePushJob.POLL_JOB_STATUS_INTERVAL_MS, 1000);
     props.setProperty(VenicePushJob.SSL_KEY_STORE_PROPERTY_NAME, "test");
-    props.setProperty(VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME,"test");
-    props.setProperty(VenicePushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME,"test");
-    props.setProperty(VenicePushJob.SSL_KEY_PASSWORD_PROPERTY_NAME,"test");
+    props.setProperty(VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME, "test");
+    props.setProperty(VenicePushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, "test");
+    props.setProperty(VenicePushJob.SSL_KEY_PASSWORD_PROPERTY_NAME, "test");
     props.setProperty(VenicePushJob.PUSH_JOB_STATUS_UPLOAD_ENABLE, "true");
     return props;
   }
 
-  private InputDataInfoProvider getInputDataInfoProviderMock(
-      long inputFileDataSizeInBytes,
-      boolean inputFileHasRecords
-  ) throws Exception {
+  private InputDataInfoProvider getInputDataInfoProviderMock(long inputFileDataSizeInBytes, boolean inputFileHasRecords)
+      throws Exception {
     InputDataInfoProvider inputDataInfoProvider = mock(InputDataInfoProvider.class);
     VenicePushJob.SchemaInfo schemaInfo = new VenicePushJob.SchemaInfo();
     schemaInfo.keySchemaString = SCHEMA_STR;
@@ -334,7 +358,8 @@ public class TestVenicePushJobWithReporterCounters {
 
     when(controllerClient.getValueSchema(anyString(), anyInt())).thenReturn(mock(SchemaResponse.class));
 
-    StorageEngineOverheadRatioResponse storageEngineOverheadRatioResponse = mock(StorageEngineOverheadRatioResponse.class);
+    StorageEngineOverheadRatioResponse storageEngineOverheadRatioResponse =
+        mock(StorageEngineOverheadRatioResponse.class);
     when(storageEngineOverheadRatioResponse.isError()).thenReturn(false);
     when(storageEngineOverheadRatioResponse.getStorageEngineOverheadRatio()).thenReturn(1.0);
 
@@ -355,8 +380,21 @@ public class TestVenicePushJobWithReporterCounters {
     when(controllerClient.getStorageEngineOverheadRatio(anyString())).thenReturn(storageEngineOverheadRatioResponse);
     when(controllerClient.getKeySchema(anyString())).thenReturn(keySchemaResponse);
     when(controllerClient.getValueSchemaID(anyString(), anyString())).thenReturn(valueSchemaResponse);
-    when(controllerClient.requestTopicForWrites(anyString(), anyLong(), any(),
-        anyString(), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), anyBoolean(), anyLong(), anyBoolean())).thenReturn(versionCreationResponse);
+    when(
+        controllerClient.requestTopicForWrites(
+            anyString(),
+            anyLong(),
+            any(),
+            anyString(),
+            anyBoolean(),
+            anyBoolean(),
+            anyBoolean(),
+            any(),
+            any(),
+            any(),
+            anyBoolean(),
+            anyLong(),
+            anyBoolean())).thenReturn(versionCreationResponse);
     JobStatusQueryResponse jobStatusQueryResponse = createJobStatusQueryResponseMock();
     when(controllerClient.queryOverallJobStatus(anyString(), any())).thenReturn(jobStatusQueryResponse);
 
@@ -395,7 +433,7 @@ public class TestVenicePushJobWithReporterCounters {
     Counters counters = mock(Counters.class);
 
     Map<String, Counters.Group> groupMap = new HashMap<>();
-    for (MockCounterInfo mockCounterInfo : mockCounterInfos) {
+    for (MockCounterInfo mockCounterInfo: mockCounterInfos) {
       Counters.Group group = groupMap.computeIfAbsent(mockCounterInfo.getGroupName(), k -> mock(Counters.Group.class));
       when(group.getCounter(mockCounterInfo.getCounterName())).thenReturn(mockCounterInfo.getCounterValue());
       when(counters.getGroup(mockCounterInfo.getGroupName())).thenReturn(group);
@@ -422,9 +460,11 @@ public class TestVenicePushJobWithReporterCounters {
     String getGroupName() {
       return groupAndCounterNames.getGroupName();
     }
+
     String getCounterName() {
       return groupAndCounterNames.getCounterName();
     }
+
     long getCounterValue() {
       return counterValue;
     }

@@ -7,7 +7,6 @@ import java.security.cert.X509Certificate;
  * A StaticAccessController is an AccessController with an immutable resource list.
  */
 public interface StaticAccessController extends AccessController {
-
   /**
    * Check if client has permission to access a particular resource.
    * This method is invoked by every single request, therefore

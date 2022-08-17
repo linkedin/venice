@@ -1,8 +1,7 @@
 package com.linkedin.venice.schema.merge;
 
-import org.apache.avro.generic.GenericRecord;
-
 import javax.annotation.concurrent.ThreadSafe;
+import org.apache.avro.generic.GenericRecord;
 
 
 /**
@@ -19,13 +18,11 @@ public interface MergeRecordHelper {
       String fieldName,
       Object newFieldValue,
       long putTimestamp,
-      int putOperationColoID
-  );
+      int putOperationColoID);
 
   UpdateResultStatus deleteRecord(
       GenericRecord currRecord,
       GenericRecord currTimestampRecord,
       long deleteTimestamp,
-      int deleteOperationColoID
-  );
+      int deleteOperationColoID);
 }

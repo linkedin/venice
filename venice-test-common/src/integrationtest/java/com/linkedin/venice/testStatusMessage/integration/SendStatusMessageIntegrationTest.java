@@ -42,29 +42,27 @@ public class SendStatusMessageIntegrationTest {
   private HelixMessageChannelStats helixMessageChannelStats;
 
   @BeforeClass(alwaysRun = true)
-  public void setUp()
-      throws Exception {
+  public void setUp() throws Exception {
     zkServerWrapper = ServiceFactory.getZkServer();
     zkAddress = zkServerWrapper.getAddress();
     admin = new ZKHelixAdmin(zkAddress);
     admin.addCluster(cluster);
-    HelixConfigScope configScope = new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).
-        forCluster(cluster).build();
+    HelixConfigScope configScope =
+        new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(cluster).build();
     Map<String, String> helixClusterProperties = new HashMap<String, String>();
     helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
     admin.setConfig(configScope, helixClusterProperties);
-    admin.addStateModelDef(cluster, MockTestStateModel.UNIT_TEST_STATE_MODEL,
-        MockTestStateModel.getDefinition());
+    admin.addStateModelDef(cluster, MockTestStateModel.UNIT_TEST_STATE_MODEL, MockTestStateModel.getDefinition());
     helixMessageChannelStats = new HelixMessageChannelStats(new MetricsRepository(), cluster);
 
     controller = new SafeHelixManager(
-        HelixControllerMain.startHelixController(
-            zkAddress, cluster, "integrationController", HelixControllerMain.STANDALONE));
+        HelixControllerMain
+            .startHelixController(zkAddress, cluster, "integrationController", HelixControllerMain.STANDALONE));
     controller.connect();
   }
 
   @AfterClass(alwaysRun = true)
-  public void cleanUp(){
+  public void cleanUp() {
     controller.disconnect();
     zkServerWrapper.close();
   }
@@ -72,7 +70,11 @@ public class SendStatusMessageIntegrationTest {
   private HelixStatusMessageChannel getParticipantDelayedChannel(int port, long lowerDelay, long upperDelay)
       throws Exception {
     DelayedZkClientUtils.startDelayingSocketIoForNewZkClients(lowerDelay, upperDelay);
-    SafeHelixManager participant = TestUtils.getParticipant(cluster, Utils.getHelixNodeIdentifier(port), zkAddress, port,
+    SafeHelixManager participant = TestUtils.getParticipant(
+        cluster,
+        Utils.getHelixNodeIdentifier(port),
+        zkAddress,
+        port,
         MockTestStateModel.UNIT_TEST_STATE_MODEL);
     participant.connect();
     DelayedZkClientUtils.stopDelayingSocketIoForNewZkClients();
@@ -81,7 +83,7 @@ public class SendStatusMessageIntegrationTest {
   }
 
   private void cleanUpParticipants() {
-    for (SafeHelixManager participant : participants) {
+    for (SafeHelixManager participant: participants) {
       participant.disconnect();
     }
   }
@@ -91,9 +93,8 @@ public class SendStatusMessageIntegrationTest {
    *
    * @throws Exception
    */
-  @Test(groups = {"flaky"}, timeOut = 60 * Time.MS_PER_SECOND)
-  public void testReceiveMessageFromThreeParticipants()
-      throws Exception {
+  @Test(groups = { "flaky" }, timeOut = 60 * Time.MS_PER_SECOND)
+  public void testReceiveMessageFromThreeParticipants() throws Exception {
     // Enlarge the delay to fix the flaky test.
     // channel1 delay 40ms
     final HelixStatusMessageChannel channel1 = getParticipantDelayedChannel(50123, 10, 2);
@@ -148,7 +149,7 @@ public class SendStatusMessageIntegrationTest {
                 + "timeout we setup for message channel is 1000ms, so sending should be timeout.");
       } catch (VeniceException e) {
 
-        //expected time out
+        // expected time out
       }
     } finally {
       cleanUpParticipants();

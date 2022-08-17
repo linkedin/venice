@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -24,9 +27,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import spark.Route;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
-
 
 public class JobRoutes extends AbstractRoute {
   private static final Logger logger = LogManager.getLogger(JobRoutes.class);
@@ -48,7 +48,11 @@ public class JobRoutes extends AbstractRoute {
         String store = request.queryParams(NAME);
         int versionNumber = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
         String incrementalPushVersion = AdminSparkServer.getOptionalParameterValue(request, INCREMENTAL_PUSH_VERSION);
-        responseObject = populateJobStatus(cluster, store, versionNumber, admin,
+        responseObject = populateJobStatus(
+            cluster,
+            store,
+            versionNumber,
+            admin,
             incrementalPushVersion == null ? Optional.empty() : Optional.of(incrementalPushVersion));
       } catch (Throwable e) {
         responseObject.setError(e);
@@ -58,7 +62,11 @@ public class JobRoutes extends AbstractRoute {
     };
   }
 
-  protected JobStatusQueryResponse populateJobStatus(String cluster, String store, int versionNumber, Admin admin,
+  protected JobStatusQueryResponse populateJobStatus(
+      String cluster,
+      String store,
+      int versionNumber,
+      Admin admin,
       Optional<String> incrementalPushVersion) {
     JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
 
@@ -101,8 +109,8 @@ public class JobRoutes extends AbstractRoute {
         // Also allow allowlist users to run this command
         if (!isAllowListUser(request) && !hasWriteAccessToTopic(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
-          responseObject.setError(
-              "You don't have permission to kill this push job; please grant write ACL for yourself.");
+          responseObject
+              .setError("You don't have permission to kill this push job; please grant write ACL for yourself.");
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, KILL_OFFLINE_PUSH_JOB.getParams(), admin);
@@ -148,16 +156,25 @@ public class JobRoutes extends AbstractRoute {
         // TODO remove passing PushJobDetails as JSON string once all H2V plugins are updated.
         if (request.queryParams().contains(PUSH_JOB_DETAILS)) {
           String pushJobDetailsString = request.queryParams(PUSH_JOB_DETAILS);
-          DatumReader<PushJobDetails> reader = new SpecificDatumReader<>(PushJobDetails.SCHEMA$, PushJobDetails.SCHEMA$);
-          pushJobDetails = reader.read(null, AvroCompatibilityHelper.newCompatibleJsonDecoder(PushJobDetails.SCHEMA$, pushJobDetailsString));
+          DatumReader<PushJobDetails> reader =
+              new SpecificDatumReader<>(PushJobDetails.SCHEMA$, PushJobDetails.SCHEMA$);
+          pushJobDetails = reader.read(
+              null,
+              AvroCompatibilityHelper.newCompatibleJsonDecoder(PushJobDetails.SCHEMA$, pushJobDetailsString));
         } else {
           pushJobDetails = pushJobDetailsSerializer.deserialize(null, request.bodyAsBytes());
         }
         admin.sendPushJobDetails(key, pushJobDetails);
 
         if (pushJobDetails.sendLivenessHeartbeatFailureDetails != null) {
-          logger.warn(String.format("Sending push job liveness heartbeats for store %s with version %d failed due to "
-              + "%s. Push job ID is: %s", storeName, versionNumber, pushJobDetails.failureDetails.toString(), pushJobDetails.pushId.toString()));
+          logger.warn(
+              String.format(
+                  "Sending push job liveness heartbeats for store %s with version %d failed due to "
+                      + "%s. Push job ID is: %s",
+                  storeName,
+                  versionNumber,
+                  pushJobDetails.failureDetails.toString(),
+                  pushJobDetails.pushId.toString()));
         }
 
       } catch (Throwable e) {

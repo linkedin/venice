@@ -10,7 +10,6 @@ import com.linkedin.venice.systemstore.schemas.StoreHybridConfig;
  */
 @JsonDeserialize(as = HybridStoreConfigImpl.class)
 public interface HybridStoreConfig extends DataModelBackedStructure<StoreHybridConfig> {
-
   long getRewindTimeInSeconds();
 
   long getOffsetLagThresholdToGoOnline();

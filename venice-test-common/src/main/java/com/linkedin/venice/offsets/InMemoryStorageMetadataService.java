@@ -20,7 +20,9 @@ public class InMemoryStorageMetadataService extends InMemoryOffsetManager implem
 
   @Override
   public void put(String topicName, StoreVersionState record) throws VeniceException {
-    LOGGER.info("InMemoryStorageMetadataService.put(StoreVersionState) called with topicName: " + topicName + ", record: " + record);
+    LOGGER.info(
+        "InMemoryStorageMetadataService.put(StoreVersionState) called with topicName: " + topicName + ", record: "
+            + record);
     topicToStoreVersionStateMap.put(topicName, record);
   }
 
@@ -33,8 +35,9 @@ public class InMemoryStorageMetadataService extends InMemoryOffsetManager implem
   @Override
   public Optional<StoreVersionState> getStoreVersionState(String topicName) throws VeniceException {
     Optional<StoreVersionState> recordToReturn = Optional.ofNullable(topicToStoreVersionStateMap.get(topicName));
-    LOGGER.info("InMemoryStorageMetadataService.getStoreVersionState called with topicName: " + topicName +
-        ", recordToReturn: " + recordToReturn);
+    LOGGER.info(
+        "InMemoryStorageMetadataService.getStoreVersionState called with topicName: " + topicName + ", recordToReturn: "
+            + recordToReturn);
     return recordToReturn;
   }
 }

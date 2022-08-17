@@ -36,9 +36,9 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
    * ignore hdfs files with prefix "_" and "."
    */
   public static final PathFilter PATH_FILTER = p -> !p.getName().startsWith("_") && !p.getName().startsWith(".");
-  //Vson input configs
-  //Vson files store key/value schema on file header. key / value fields are optional
-  //and should be specified only when key / value schema is the partial of the files.
+  // Vson input configs
+  // Vson files store key/value schema on file header. key / value fields are optional
+  // and should be specified only when key / value schema is the partial of the files.
   public final static String FILE_KEY_SCHEMA = "key.schema";
   public final static String FILE_VALUE_SCHEMA = "value.schema";
   public static final String KEY_FIELD_PROP = "key.field";
@@ -69,8 +69,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
   DefaultInputDataInfoProvider(
       VenicePushJob.StoreSetting storeSetting,
       VenicePushJob.PushJobSetting pushJobSetting,
-      VeniceProperties props
-  ) {
+      VeniceProperties props) {
     this.storeSetting = storeSetting;
     this.pushJobSetting = pushJobSetting;
     this.props = props;
@@ -103,7 +102,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     }
 
     VenicePushJob.SchemaInfo schemaInfo = new VenicePushJob.SchemaInfo();
-    //try reading the file via sequence file reader. It indicates Vson input if it is succeeded.
+    // try reading the file via sequence file reader. It indicates Vson input if it is succeeded.
     Map<String, String> fileMetadata = getMetadataFromSequenceFile(fs, fileStatuses[0].getPath(), false);
     if (fileMetadata.containsKey(FILE_KEY_SCHEMA) && fileMetadata.containsKey(FILE_VALUE_SCHEMA)) {
       schemaInfo.isAvro = false;
@@ -113,7 +112,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     // Check the first file type prior to check schema consistency to make sure a schema can be obtained from it.
     if (fileStatuses[0].isDirectory()) {
       throw new VeniceException(
-          "Input directory: " + fileStatuses[0].getPath().getParent().getName() + " should not have sub directory: " + fileStatuses[0].getPath().getName());
+          "Input directory: " + fileStatuses[0].getPath().getParent().getName() + " should not have sub directory: "
+              + fileStatuses[0].getPath().getName());
     }
 
     final AtomicLong inputFileDataSize = new AtomicLong(0);
@@ -132,34 +132,37 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       schemaInfo.valueSchemaString = extractAvroSubSchema(storeSchema, schemaInfo.valueField).toString();
     } else {
       LOGGER.info("Detected Vson input format, will convert to Avro automatically.");
-      //key / value fields are optional for Vson input
+      // key / value fields are optional for Vson input
       schemaInfo.keyField = props.getString(KEY_FIELD_PROP, "");
       schemaInfo.valueField = props.getString(VALUE_FIELD_PROP, "");
 
       Pair<VsonSchema, VsonSchema> vsonSchemaPair = checkVsonSchemaConsistency(fs, fileStatuses, inputFileDataSize);
 
-      VsonSchema vsonKeySchema = StringUtils.isEmpty(schemaInfo.keyField) ? vsonSchemaPair.getFirst()
+      VsonSchema vsonKeySchema = StringUtils.isEmpty(schemaInfo.keyField)
+          ? vsonSchemaPair.getFirst()
           : vsonSchemaPair.getFirst().recordSubtype(schemaInfo.keyField);
-      VsonSchema vsonValueSchema = StringUtils.isEmpty(schemaInfo.valueField) ? vsonSchemaPair.getSecond()
+      VsonSchema vsonValueSchema = StringUtils.isEmpty(schemaInfo.valueField)
+          ? vsonSchemaPair.getSecond()
           : vsonSchemaPair.getSecond().recordSubtype(schemaInfo.valueField);
 
       schemaInfo.keySchemaString = VsonAvroSchemaAdapter.parse(vsonKeySchema.toString()).toString();
       schemaInfo.valueSchemaString = VsonAvroSchemaAdapter.parse(vsonValueSchema.toString()).toString();
     }
 
-    // Since the job is calculating the raw data file size, which is not accurate because of compression, key/value schema and backend storage overhead,
+    // Since the job is calculating the raw data file size, which is not accurate because of compression, key/value
+    // schema and backend storage overhead,
     // we are applying this factor to provide a more reasonable estimation.
     return new InputDataInfo(
         schemaInfo,
         inputFileDataSize.get() * INPUT_DATA_SIZE_FACTOR,
-        hasRecords(schemaInfo.isAvro, fs, fileStatuses)
-    );
+        hasRecords(schemaInfo.isAvro, fs, fileStatuses));
   }
 
   private boolean hasRecords(boolean isAvroFile, FileSystem fs, FileStatus[] fileStatusList) {
-    for (FileStatus fileStatus : fileStatusList) {
-      AbstractVeniceRecordReader recordReader = isAvroFile ?
-          getVeniceAvroRecordReader(fs, fileStatus.getPath()) : getVeniceVsonRecordReader(fs, fileStatus.getPath());
+    for (FileStatus fileStatus: fileStatusList) {
+      AbstractVeniceRecordReader recordReader = isAvroFile
+          ? getVeniceAvroRecordReader(fs, fileStatus.getPath())
+          : getVeniceVsonRecordReader(fs, fileStatus.getPath());
       if (recordReader.iterator().hasNext()) {
         return true;
       }
@@ -173,29 +176,38 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       return;
     }
     zstdConfig = new VenicePushJob.ZstdConfig();
-    zstdConfig.dictSize = props.getInt(COMPRESSION_DICTIONARY_SIZE_LIMIT, VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES);
+    zstdConfig.dictSize = props
+        .getInt(COMPRESSION_DICTIONARY_SIZE_LIMIT, VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES);
     zstdConfig.sampleSize = props.getInt(COMPRESSION_DICTIONARY_SAMPLE_SIZE, 200 * 1024 * 1024); // 200 MB samples
     zstdConfig.maxBytesPerFile = zstdConfig.sampleSize / numFiles;
     zstdConfig.zstdDictTrainer = new ZstdDictTrainer(zstdConfig.sampleSize, zstdConfig.dictSize);
   }
 
-
-  //Vson-based file store key / value schema string as separated properties in file header
-  private Pair<VsonSchema, VsonSchema> checkVsonSchemaConsistency(FileSystem fs, FileStatus[] fileStatusList,
+  // Vson-based file store key / value schema string as separated properties in file header
+  private Pair<VsonSchema, VsonSchema> checkVsonSchemaConsistency(
+      FileSystem fs,
+      FileStatus[] fileStatusList,
       AtomicLong inputFileDataSize) {
     Pair<VsonSchema, VsonSchema> vsonSchema = getVsonFileHeader(fs, fileStatusList[0].getPath(), false);
     parallelExecuteHDFSOperation(fileStatusList, "checkVsonSchemaConsistency", fileStatus -> {
       if (fileStatus.isDirectory()) {
         throw new VeniceException(
-            "Input directory: " + fileStatus.getPath().getParent().getName() + " should not have sub directory: " + fileStatus.getPath().getName());
+            "Input directory: " + fileStatus.getPath().getParent().getName() + " should not have sub directory: "
+                + fileStatus.getPath().getName());
       }
       inputFileDataSize.addAndGet(fileStatus.getLen());
       Pair<VsonSchema, VsonSchema> newSchema = getVsonFileHeader(fs, fileStatus.getPath(), true);
-      if (!vsonSchema.getFirst().equals(newSchema.getFirst()) || !vsonSchema.getSecond().equals(newSchema.getSecond())) {
-        throw new VeniceInconsistentSchemaException(String.format(
-            "Inconsistent file Vson schema found. File: %s.\n Expected key schema: %s.\n"
-                + "Expected value schema: %s.\n File key schema: %s.\n File value schema: %s.", fileStatus.getPath().getName(),
-            vsonSchema.getFirst().toString(), vsonSchema.getSecond().toString(), newSchema.getFirst().toString(), newSchema.getSecond().toString()));
+      if (!vsonSchema.getFirst().equals(newSchema.getFirst())
+          || !vsonSchema.getSecond().equals(newSchema.getSecond())) {
+        throw new VeniceInconsistentSchemaException(
+            String.format(
+                "Inconsistent file Vson schema found. File: %s.\n Expected key schema: %s.\n"
+                    + "Expected value schema: %s.\n File key schema: %s.\n File value schema: %s.",
+                fileStatus.getPath().getName(),
+                vsonSchema.getFirst().toString(),
+                vsonSchema.getSecond().toString(),
+                newSchema.getFirst().toString(),
+                newSchema.getSecond().toString()));
       }
     });
 
@@ -208,19 +220,24 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       throw new VeniceException("Can't find Vson schema from file: " + path.getName());
     }
 
-    return new Pair<>(VsonSchema.parse(fileMetadata.get(FILE_KEY_SCHEMA)),
+    return new Pair<>(
+        VsonSchema.parse(fileMetadata.get(FILE_KEY_SCHEMA)),
         VsonSchema.parse(fileMetadata.get(FILE_VALUE_SCHEMA)));
   }
 
   /**
    * This function is to execute HDFS operation in parallel
    */
-  private void parallelExecuteHDFSOperation(final FileStatus[] fileStatusList, String operation, Consumer<FileStatus> fileStatusConsumer) {
+  private void parallelExecuteHDFSOperation(
+      final FileStatus[] fileStatusList,
+      String operation,
+      Consumer<FileStatus> fileStatusConsumer) {
     if (hdfsExecutorService == null) {
       throw new VeniceException("Unable to execute HDFS operations in parallel, the executor is uninitialized");
     }
     if (hdfsExecutorService.isShutdown()) {
-      throw new VeniceException("Unable to execute HDFS operations in parallel, the executor has already been shutdown");
+      throw new VeniceException(
+          "Unable to execute HDFS operations in parallel, the executor has already been shutdown");
     }
     int len = fileStatusList.length;
     CompletableFuture<Void>[] futures = new CompletableFuture[len];
@@ -276,7 +293,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       }
 
       if (fileSampleSize + data.length > this.zstdConfig.maxBytesPerFile) {
-        String perFileLimitErrorMsg = String.format("Read %s to build dictionary. Reached limit per file of %s.",
+        String perFileLimitErrorMsg = String.format(
+            "Read %s to build dictionary. Reached limit per file of %s.",
             ByteUtils.generateHumanReadableByteCountString(fileSampleSize),
             ByteUtils.generateHumanReadableByteCountString(this.zstdConfig.maxBytesPerFile));
         LOGGER.debug(perFileLimitErrorMsg);
@@ -285,7 +303,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
 
       // addSample returns false when the data read no longer fits in the 'sample' buffer limit
       if (!this.zstdConfig.zstdDictTrainer.addSample(data)) {
-        String maxSamplesReadErrorMsg = String.format("Read %s to build dictionary. Reached sample limit of %s.",
+        String maxSamplesReadErrorMsg = String.format(
+            "Read %s to build dictionary. Reached sample limit of %s.",
             ByteUtils.generateHumanReadableByteCountString(fileSampleSize),
             ByteUtils.generateHumanReadableByteCountString(this.zstdConfig.sampleSize));
         LOGGER.debug(maxSamplesReadErrorMsg);
@@ -294,7 +313,10 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       fileSampleSize += data.length;
     }
 
-    LOGGER.debug(String.format("Read %s to build dictionary. Reached EOF.", ByteUtils.generateHumanReadableByteCountString(fileSampleSize)));
+    LOGGER.debug(
+        String.format(
+            "Read %s to build dictionary. Reached EOF.",
+            ByteUtils.generateHumanReadableByteCountString(fileSampleSize)));
   }
 
   @Override
@@ -307,27 +329,37 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     Schema.Field field = origin.getField(fieldName);
 
     if (field == null) {
-      throw new VeniceSchemaFieldNotFoundException(fieldName, "Could not find field: " + fieldName + " from " + origin.toString());
+      throw new VeniceSchemaFieldNotFoundException(
+          fieldName,
+          "Could not find field: " + fieldName + " from " + origin.toString());
     }
 
     return field.schema();
   }
 
-  //Avro-based file composes key and value schema as a whole
-  private Pair<Schema, Schema> checkAvroSchemaConsistency(FileSystem fs, FileStatus[] fileStatusList, AtomicLong inputFileDataSize) {
+  // Avro-based file composes key and value schema as a whole
+  private Pair<Schema, Schema> checkAvroSchemaConsistency(
+      FileSystem fs,
+      FileStatus[] fileStatusList,
+      AtomicLong inputFileDataSize) {
     Pair<Schema, Schema> avroSchema = getAvroFileHeader(fs, fileStatusList[0].getPath(), false);
     parallelExecuteHDFSOperation(fileStatusList, "checkAvroSchemaConsistency", fileStatus -> {
       if (fileStatus.isDirectory()) {
         // Map-reduce job will fail if the input directory has sub-directory and 'recursive' is not specified.
-        throw new VeniceException("Input directory: " + fileStatus.getPath().getParent().getName() +
-            " should not have sub directory: " + fileStatus.getPath().getName());
+        throw new VeniceException(
+            "Input directory: " + fileStatus.getPath().getParent().getName() + " should not have sub directory: "
+                + fileStatus.getPath().getName());
       }
       inputFileDataSize.addAndGet(fileStatus.getLen());
       Pair<Schema, Schema> newSchema = getAvroFileHeader(fs, fileStatus.getPath(), true);
       if (!avroSchema.equals(newSchema)) {
-        throw new VeniceInconsistentSchemaException(String.format("Inconsistent file Avro schema found. File: %s.\n"
-                + "Expected file schema: %s.\n Real File schema: %s.", fileStatus.getPath().getName(),
-            avroSchema.toString(), newSchema.toString()));
+        throw new VeniceInconsistentSchemaException(
+            String.format(
+                "Inconsistent file Avro schema found. File: %s.\n"
+                    + "Expected file schema: %s.\n Real File schema: %s.",
+                fileStatus.getPath().getName(),
+                avroSchema.toString(),
+                newSchema.toString()));
       }
     });
     return avroSchema;
@@ -346,7 +378,13 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
   private VeniceAvroRecordReader getVeniceAvroRecordReader(FileSystem fs, Path path) {
     String keyField = props.getString(KEY_FIELD_PROP);
     String valueField = props.getString(VALUE_FIELD_PROP);
-    return new VeniceAvroRecordReader(null, keyField, valueField, fs, path, pushJobSetting.etlValueSchemaTransformation);
+    return new VeniceAvroRecordReader(
+        null,
+        keyField,
+        valueField,
+        fs,
+        path,
+        pushJobSetting.etlValueSchemaTransformation);
   }
 
   @Override
@@ -362,8 +400,9 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     hdfsExecutorService.shutdownNow();
     try {
       if (!hdfsExecutorService.awaitTermination(30, TimeUnit.SECONDS)) {
-        LOGGER.warn("Unable to shutdown the executor service used for HDFS operations. "
-            + "The job may hang with leaked resources.");
+        LOGGER.warn(
+            "Unable to shutdown the executor service used for HDFS operations. "
+                + "The job may hang with leaked resources.");
       }
     } catch (InterruptedException e) {
       LOGGER.error(e);

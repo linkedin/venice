@@ -19,10 +19,11 @@ import org.testng.annotations.Test;
 
 
 public class UpdateBuilderImplTest {
-
   private static final Logger logger = LogManager.getLogger(UpdateBuilderImplTest.class);
-  private static final Schema VALUE_SCHEMA = AvroCompatibilityHelper.parse(loadFileAsString("TestWriteComputeBuilder.avsc"));
-  private static final Schema UPDATE_SCHEMA = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(VALUE_SCHEMA);
+  private static final Schema VALUE_SCHEMA =
+      AvroCompatibilityHelper.parse(loadFileAsString("TestWriteComputeBuilder.avsc"));
+  private static final Schema UPDATE_SCHEMA =
+      WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(VALUE_SCHEMA);
 
   @Test
   public void testUpdateWholeField() {
@@ -135,10 +136,7 @@ public class UpdateBuilderImplTest {
   @Test
   public void testBuildWithNoUpdate() {
     UpdateBuilder builder = new UpdateBuilderImpl(UPDATE_SCHEMA);
-    Assert.assertThrows(
-        IllegalStateException.class,
-        builder::build
-    );
+    Assert.assertThrows(IllegalStateException.class, builder::build);
   }
 
   /**
@@ -159,24 +157,20 @@ public class UpdateBuilderImplTest {
 
     Assert.assertThrows(
         IllegalStateException.class,
-        () -> builder.setElementsToAddToListField("intArray", Arrays.asList(5, 6, 7))
-    );
+        () -> builder.setElementsToAddToListField("intArray", Arrays.asList(5, 6, 7)));
     Assert.assertThrows(
         IllegalStateException.class,
-        () -> builder.setElementsToRemoveFromListField("intArray", Arrays.asList(1, 2))
-    );
+        () -> builder.setElementsToRemoveFromListField("intArray", Arrays.asList(1, 2)));
 
     Map<String, String> mapEntriesToAdd = new LinkedHashMap<>();
     expectedStringMap.put("3", "three");
     expectedStringMap.put("4", "four");
     Assert.assertThrows(
         IllegalStateException.class,
-        () -> builder.setEntriesToAddToMapField("stringMap", mapEntriesToAdd)
-    );
+        () -> builder.setEntriesToAddToMapField("stringMap", mapEntriesToAdd));
     Assert.assertThrows(
         IllegalStateException.class,
-        () -> builder.setKeysToRemoveFromMapField("stringMap", Arrays.asList("3", "4"))
-    );
+        () -> builder.setKeysToRemoveFromMapField("stringMap", Arrays.asList("3", "4")));
   }
 
   /**
@@ -202,15 +196,9 @@ public class UpdateBuilderImplTest {
     expectedStringMap.put("1", "one");
     expectedStringMap.put("2", "two");
 
-    Assert.assertThrows(
-        IllegalStateException.class,
-        () -> builder.setNewFieldValue("intArray", expectedIntArray)
-    );
+    Assert.assertThrows(IllegalStateException.class, () -> builder.setNewFieldValue("intArray", expectedIntArray));
 
-    Assert.assertThrows(
-        IllegalStateException.class,
-        () -> builder.setNewFieldValue("stringMap", expectedStringMap)
-    );
+    Assert.assertThrows(IllegalStateException.class, () -> builder.setNewFieldValue("stringMap", expectedStringMap));
   }
 
   private GenericRecord createAddressRecord(String street, String city) {
@@ -230,8 +218,7 @@ public class UpdateBuilderImplTest {
     try {
       return IOUtils.toString(
           Objects.requireNonNull(Thread.currentThread().getContextClassLoader().getResourceAsStream(fileName)),
-          StandardCharsets.UTF_8
-      );
+          StandardCharsets.UTF_8);
     } catch (Exception e) {
       logger.error(e);
       return null;

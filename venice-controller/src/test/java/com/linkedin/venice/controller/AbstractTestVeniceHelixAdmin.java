@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.SSLConfig.*;
+
 import com.linkedin.venice.VeniceStateModel;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -16,7 +19,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
-import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -33,9 +35,6 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
-
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.SSLConfig.*;
 
 
 class AbstractTestVeniceHelixAdmin {
@@ -68,7 +67,7 @@ class AbstractTestVeniceHelixAdmin {
   Map<String, SafeHelixManager> helixManagerByNodeID = new ConcurrentHashMap<>();
 
   VeniceProperties controllerProps;
-  Map<String,MockTestStateModelFactory> stateModelFactoryByNodeID = new ConcurrentHashMap<>();
+  Map<String, MockTestStateModelFactory> stateModelFactoryByNodeID = new ConcurrentHashMap<>();
   HelixMessageChannelStats helixMessageChannelStats;
   VeniceControllerMultiClusterConfig multiClusterConfig;
 
@@ -93,7 +92,8 @@ class AbstractTestVeniceHelixAdmin {
     helixMessageChannelStats = new HelixMessageChannelStats(new MetricsRepository(), clusterName);
     controllerConfig = new VeniceControllerConfig(controllerProps);
     multiClusterConfig = TestUtils.getMultiClusterConfigFromOneCluster(controllerConfig);
-    veniceAdmin = new VeniceHelixAdmin(multiClusterConfig, new MetricsRepository(), D2TestUtils.getAndStartD2Client(zkAddress));
+    veniceAdmin =
+        new VeniceHelixAdmin(multiClusterConfig, new MetricsRepository(), D2TestUtils.getAndStartD2Client(zkAddress));
     veniceAdmin.initStorageCluster(clusterName);
     startParticipant();
     waitUntilIsLeader(veniceAdmin, clusterName, LEADER_CHANGE_TIMEOUT_MS);
@@ -128,11 +128,14 @@ class AbstractTestVeniceHelixAdmin {
 
   void startParticipant(boolean isDelay, String nodeId, String stateModel) throws Exception {
 
-    VeniceOfflinePushMonitorAccessor offlinePushStatusAccessor = new VeniceOfflinePushMonitorAccessor(clusterName, new ZkClient(zkAddress),
-        new HelixAdapterSerializer(), 3, 1000);
+    VeniceOfflinePushMonitorAccessor offlinePushStatusAccessor = new VeniceOfflinePushMonitorAccessor(
+        clusterName,
+        new ZkClient(zkAddress),
+        new HelixAdapterSerializer(),
+        3,
+        1000);
 
-
-      MockTestStateModelFactory stateModelFactory;
+    MockTestStateModelFactory stateModelFactory;
 
     if (stateModelFactoryByNodeID.containsKey(nodeId)) {
       stateModelFactory = stateModelFactoryByNodeID.get(nodeId);
@@ -141,15 +144,15 @@ class AbstractTestVeniceHelixAdmin {
       stateModelFactoryByNodeID.put(nodeId, stateModelFactory);
     }
     stateModelFactory.setBlockTransition(isDelay);
-    helixManager = TestUtils.getParticipant(clusterName, nodeId, zkAddress, SERVER_LISTENING_PORT, stateModelFactory,
-        stateModel);
+    helixManager =
+        TestUtils.getParticipant(clusterName, nodeId, zkAddress, SERVER_LISTENING_PORT, stateModelFactory, stateModel);
     helixManager.connect();
     helixManagerByNodeID.put(nodeId, helixManager);
     HelixUtils.setupInstanceConfig(clusterName, nodeId, zkAddress);
   }
 
   void stopAllParticipants() {
-    for (String nodeID : stateModelFactoryByNodeID.keySet()) {
+    for (String nodeID: stateModelFactoryByNodeID.keySet()) {
       stopParticipant(nodeID);
     }
     stateModelFactoryByNodeID.clear();
@@ -192,7 +195,7 @@ class AbstractTestVeniceHelixAdmin {
   void waitForALeader(List<VeniceHelixAdmin> admins, String cluster, long timeout) {
     int sleepDuration = 100;
     for (long i = 0; i < timeout; i += sleepDuration) {
-      for (VeniceHelixAdmin admin : admins) {
+      for (VeniceHelixAdmin admin: admins) {
         if (admin.isLeaderControllerFor(cluster)) {
           return;
         }
@@ -209,7 +212,7 @@ class AbstractTestVeniceHelixAdmin {
   }
 
   VeniceHelixAdmin getLeader(List<VeniceHelixAdmin> admins, String cluster) {
-    for (VeniceHelixAdmin admin : admins) {
+    for (VeniceHelixAdmin admin: admins) {
       if (admin.isLeaderControllerFor(cluster)) {
         return admin;
       }
@@ -218,7 +221,7 @@ class AbstractTestVeniceHelixAdmin {
   }
 
   VeniceHelixAdmin getFollower(List<VeniceHelixAdmin> admins, String cluster) {
-    for (VeniceHelixAdmin admin : admins) {
+    for (VeniceHelixAdmin admin: admins) {
       if (!admin.isLeaderControllerFor(cluster)) {
         return admin;
       }
@@ -236,8 +239,11 @@ class AbstractTestVeniceHelixAdmin {
       Assert.assertNotNull(store);
       Assert.assertEquals(store.getVersions().size(), 1);
     });
-    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS,
-        () -> Assert.assertEquals(veniceAdmin.getRealTimeTopic(clusterName, participantStoreName),
+    TestUtils.waitForNonDeterministicAssertion(
+        3,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(
+            veniceAdmin.getRealTimeTopic(clusterName, participantStoreName),
             Version.composeRealTimeTopic(participantStoreName)));
   }
 }

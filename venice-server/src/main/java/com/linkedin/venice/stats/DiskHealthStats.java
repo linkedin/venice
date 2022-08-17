@@ -5,11 +5,15 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 
 
-public class DiskHealthStats extends AbstractVeniceStats  {
+public class DiskHealthStats extends AbstractVeniceStats {
   private DiskHealthCheckService diskHealthCheckService;
 
   private Sensor diskHealthSensor;
-  public DiskHealthStats(MetricsRepository metricsRepository, DiskHealthCheckService diskHealthCheckService, String name) {
+
+  public DiskHealthStats(
+      MetricsRepository metricsRepository,
+      DiskHealthCheckService diskHealthCheckService,
+      String name) {
     super(metricsRepository, name);
     this.diskHealthCheckService = diskHealthCheckService;
 

@@ -1,5 +1,10 @@
 package com.linkedin.venice.router;
 
+import static com.linkedin.davinci.config.BlockingQueueType.*;
+import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
+import static com.linkedin.venice.router.api.VenicePathParser.*;
+import static org.testng.Assert.*;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.transport.http.common.HttpProtocolVersion;
@@ -66,11 +71,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.davinci.config.BlockingQueueType.*;
-import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
-import static com.linkedin.venice.router.api.VenicePathParser.*;
-import static org.testng.Assert.*;
-
 
 @Test(singleThreaded = true)
 public abstract class TestRead {
@@ -91,13 +91,16 @@ public abstract class TestRead {
 
   private static final String KEY_SCHEMA_STR = "\"string\"";
   private static final String VALUE_FIELD_NAME = "int_field";
-  private static final String VALUE_SCHEMA_STR = "{\n" + "\"type\": \"record\",\n" + "\"name\": \"test_value_schema\",\n"
-      + "\"fields\": [\n" + "  {\"name\": \"" + VALUE_FIELD_NAME + "\", \"type\": \"int\"}]\n" + "}";
+  private static final String VALUE_SCHEMA_STR =
+      "{\n" + "\"type\": \"record\",\n" + "\"name\": \"test_value_schema\",\n" + "\"fields\": [\n" + "  {\"name\": \""
+          + VALUE_FIELD_NAME + "\", \"type\": \"int\"}]\n" + "}";
   private static final Schema VALUE_SCHEMA = new Schema.Parser().parse(VALUE_SCHEMA_STR);
 
   protected abstract StorageNodeClientType getStorageNodeClientType();
 
-  protected boolean isHttp2Enabled() { return false;}
+  protected boolean isHttp2Enabled() {
+    return false;
+  }
 
   protected boolean isTestEnabled() {
     return true;
@@ -135,7 +138,8 @@ public abstract class TestRead {
     // Add the following specific configs for Router
     // To trigger long-tail retry
     extraProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 1);
-    extraProperties.put(ConfigKeys.ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, MAX_KEY_LIMIT); // 20 keys at most in a batch-get request
+    extraProperties.put(ConfigKeys.ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, MAX_KEY_LIMIT); // 20 keys at most in a
+                                                                                         // batch-get request
     extraProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-:1");
     extraProperties.put(ConfigKeys.ROUTER_SMART_LONG_TAIL_RETRY_ENABLED, false);
     // set config for whether use Netty client in Router or not
@@ -180,37 +184,47 @@ public abstract class TestRead {
     keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STR);
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STR);
 
-    veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress()).createVeniceWriter(storeVersionName, keySerializer, valueSerializer);
+    veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress())
+        .createVeniceWriter(storeVersionName, keySerializer, valueSerializer);
 
-    d2Client = D2TestUtils.getD2Client(veniceCluster.getZk().getAddress(), true, isRouterHttp2Enabled() ? HttpProtocolVersion.HTTP_2 : HttpProtocolVersion.HTTP_1_1);
+    d2Client = D2TestUtils.getD2Client(
+        veniceCluster.getZk().getAddress(),
+        true,
+        isRouterHttp2Enabled() ? HttpProtocolVersion.HTTP_2 : HttpProtocolVersion.HTTP_1_1);
     D2TestUtils.startD2Client(d2Client);
 
     // Create a read-disabled store
     veniceCluster.useControllerClient(cc -> {
-      NewStoreResponse newStoreResponse = cc.createNewStore(readDisabledStoreName, "test", KEY_SCHEMA_STR, VALUE_SCHEMA_STR);
+      NewStoreResponse newStoreResponse =
+          cc.createNewStore(readDisabledStoreName, "test", KEY_SCHEMA_STR, VALUE_SCHEMA_STR);
       if (newStoreResponse.isError()) {
-        throw new VeniceException("Failed to create a store: " + readDisabledStoreName + " with error: " + newStoreResponse.getError());
+        throw new VeniceException(
+            "Failed to create a store: " + readDisabledStoreName + " with error: " + newStoreResponse.getError());
       }
-      VersionCreationResponse versionCreationResponse =  cc.emptyPush(readDisabledStoreName, "test_push", 10000);
+      VersionCreationResponse versionCreationResponse = cc.emptyPush(readDisabledStoreName, "test_push", 10000);
       if (versionCreationResponse.isError()) {
-        throw new VeniceException("Failed to execute an empty push to store: " + readDisabledStoreName + " with error: " + versionCreationResponse.getError());
+        throw new VeniceException(
+            "Failed to execute an empty push to store: " + readDisabledStoreName + " with error: "
+                + versionCreationResponse.getError());
       }
-      ControllerResponse updateStoreResponse = cc.updateStore(readDisabledStoreName, new UpdateStoreQueryParams().setEnableReads(false));
+      ControllerResponse updateStoreResponse =
+          cc.updateStore(readDisabledStoreName, new UpdateStoreQueryParams().setEnableReads(false));
       if (updateStoreResponse.isError()) {
-        throw new VeniceException("Failed to update store: " + readDisabledStoreName + " with error: " + updateStoreResponse.getError());
+        throw new VeniceException(
+            "Failed to update store: " + readDisabledStoreName + " with error: " + updateStoreResponse.getError());
       }
 
       // Force router refresh metadata to reflect config update.
-      for (VeniceRouterWrapper r : getVeniceCluster().getVeniceRouters()) {
+      for (VeniceRouterWrapper r: getVeniceCluster().getVeniceRouters()) {
         r.refresh();
       }
     });
   }
 
-
   private void updateStore(long readQuota, int maxKeyLimit) {
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
-            .setReadQuotaInCU(readQuota)
+    controllerClient.updateStore(
+        storeName,
+        new UpdateStoreQueryParams().setReadQuotaInCU(readQuota)
             .setReadComputationEnabled(true)
             .setBatchGetLimit(maxKeyLimit));
   }
@@ -227,7 +241,7 @@ public abstract class TestRead {
     }
   }
 
-  @Test(timeOut = 50000, groups = {"flaky"})
+  @Test(timeOut = 50000, groups = { "flaky" })
   public void testRead() throws Exception {
     if (!isTestEnabled()) {
       return;
@@ -249,7 +263,9 @@ public abstract class TestRead {
     // Wait for storage node to finish consuming, and new version to be activated
     String controllerUrl = veniceCluster.getAllControllersURLs();
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
-      int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName).getStore().getCurrentVersion();
+      int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName)
+          .getStore()
+          .getCurrentVersion();
       return currentVersion == pushVersion;
     });
 
@@ -264,9 +280,7 @@ public abstract class TestRead {
     AvroGenericStoreClient<String, GenericRecord> storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setD2Client(d2Client)
-            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
-    );
-
+            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME));
 
     // Run multiple rounds
     int rounds = 100;
@@ -307,37 +321,53 @@ public abstract class TestRead {
     Assert.assertTrue(maxInflightRequestCountAfterQueries > 0.0, "There should be in-flight requests now!");
 
     // Check retry requests
-    Assert.assertTrue(getAggregateRouterMetricValue(".total--retry_count.LambdaStat") > 0,
+    Assert.assertTrue(
+        getAggregateRouterMetricValue(".total--retry_count.LambdaStat") > 0,
         "After " + rounds + " reads, there should be some single-get retry requests");
-    Assert.assertTrue(getAggregateRouterMetricValue(".total--multiget_streaming_retry_count.LambdaStat") > 0,
+    Assert.assertTrue(
+        getAggregateRouterMetricValue(".total--multiget_streaming_retry_count.LambdaStat") > 0,
         "After " + rounds + " reads, there should be some batch-get retry requests");
 
     // Check Router connection pool metrics
     if (getStorageNodeClientType() == StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT) {
       // TODO: add connection pool stats for netty client
-      Assert.assertTrue(getAggregateRouterMetricValue(".connection_pool--total_max_connection_count.LambdaStat") > 0,
+      Assert.assertTrue(
+          getAggregateRouterMetricValue(".connection_pool--total_max_connection_count.LambdaStat") > 0,
           "Max connection count must be positive");
-      Assert.assertTrue(getMaxRouterMetricValue(".connection_pool--connection_lease_request_latency.Max") > 0,
+      Assert.assertTrue(
+          getMaxRouterMetricValue(".connection_pool--connection_lease_request_latency.Max") > 0,
           "Connection lease max latency should be positive");
-      assertEquals(getAggregateRouterMetricValue(".connection_pool--total_active_connection_count.LambdaStat"), 0,
+      assertEquals(
+          getAggregateRouterMetricValue(".connection_pool--total_active_connection_count.LambdaStat"),
+          0,
           "Active connection count should be 0 since test queries are finished");
-      assertEquals(getAggregateRouterMetricValue(".connection_pool--total_pending_connection_request_count.LambdaStat"),
-          0, "Pending connection request count should be 0 since test queries are finished");
-      Assert.assertTrue(getAggregateRouterMetricValue(".connection_pool--total_idle_connection_count.LambdaStat") > 0,
+      assertEquals(
+          getAggregateRouterMetricValue(".connection_pool--total_pending_connection_request_count.LambdaStat"),
+          0,
+          "Pending connection request count should be 0 since test queries are finished");
+      Assert.assertTrue(
+          getAggregateRouterMetricValue(".connection_pool--total_idle_connection_count.LambdaStat") > 0,
           "There should be some idle connections since test queries are finished");
 
-      Assert.assertTrue(getAggregateRouterMetricValue(".localhost--max_connection_count.Gauge") > 0,
+      Assert.assertTrue(
+          getAggregateRouterMetricValue(".localhost--max_connection_count.Gauge") > 0,
           "Max connection count must be positive");
-      assertEquals(getAggregateRouterMetricValue(".localhost--active_connection_count.Gauge"), 0,
+      assertEquals(
+          getAggregateRouterMetricValue(".localhost--active_connection_count.Gauge"),
+          0,
           "Active connection count should be 0 since test queries are finished");
-      assertEquals(getAggregateRouterMetricValue(".localhost--pending_connection_request_count.Gauge"), 0,
+      assertEquals(
+          getAggregateRouterMetricValue(".localhost--pending_connection_request_count.Gauge"),
+          0,
           "Pending connection request count should be 0 since test queries are finished");
-      Assert.assertTrue(getAggregateRouterMetricValue(".localhost--idle_connection_count.Gauge") > 0,
+      Assert.assertTrue(
+          getAggregateRouterMetricValue(".localhost--idle_connection_count.Gauge") > 0,
           "There should be some idle connections since test queries are finished");
     }
 
     Assert.assertTrue(getAggregateRouterMetricValue(".localhost--response_waiting_time.50thPercentile") > 0);
-    Assert.assertTrue(getAggregateRouterMetricValue(".localhost--multiget_streaming_response_waiting_time.50thPercentile") > 0);
+    Assert.assertTrue(
+        getAggregateRouterMetricValue(".localhost--multiget_streaming_response_waiting_time.50thPercentile") > 0);
 
     Assert.assertTrue(getAggregateRouterMetricValue(".localhost--request.Count") > 0);
     Assert.assertTrue(getAggregateRouterMetricValue(".localhost--multiget_streaming_request.Count") > 0);
@@ -347,7 +377,8 @@ public abstract class TestRead {
     // 2. And then + 2 because we also do two single get requests
     double expectedLookupCount = rounds * (MAX_KEY_LIMIT * 2 + 2.0);
     Assert.assertEquals(getAggregateRouterMetricValue(".total--request_usage.Total"), expectedLookupCount, 0.0001);
-    Assert.assertEquals(getAggregateRouterMetricValue(".total--read_quota_usage_kps.Total"), expectedLookupCount, 0.0001);
+    Assert
+        .assertEquals(getAggregateRouterMetricValue(".total--read_quota_usage_kps.Total"), expectedLookupCount, 0.0001);
 
     // following 2 asserts fails with HTTP/2 probably due to http2 frames, needs to validate on venice-p
     if (!isHttp2Enabled()) {
@@ -357,13 +388,17 @@ public abstract class TestRead {
     // Verify storage node metrics
     Assert.assertTrue(getMaxServerMetricValue(".total--multiget_request_size_in_bytes.Max") > 0.0);
     Assert.assertTrue(getMaxServerMetricValue(".total--compute_request_size_in_bytes.Max") > 0.0);
-    for (VeniceServerWrapper veniceServerWrapper : veniceCluster.getVeniceServers()) {
+    for (VeniceServerWrapper veniceServerWrapper: veniceCluster.getVeniceServers()) {
       Map<String, ? extends Metric> metrics = veniceServerWrapper.getMetricsRepository().metrics();
-      metrics.forEach( (mName, metric) -> {
+      metrics.forEach((mName, metric) -> {
         if (mName.startsWith(String.format(".%s_current--disk_usage_in_bytes.", storeName))) {
           double value = metric.value();
-          Assert.assertNotEquals(value, (double) StatsErrorCode.NULL_BDB_ENVIRONMENT.code, "Got a NULL_BDB_ENVIRONMENT!");
-          Assert.assertNotEquals(value, (double) StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code, "Got NULL_STORAGE_ENGINE_STATS!");
+          Assert
+              .assertNotEquals(value, (double) StatsErrorCode.NULL_BDB_ENVIRONMENT.code, "Got a NULL_BDB_ENVIRONMENT!");
+          Assert.assertNotEquals(
+              value,
+              (double) StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code,
+              "Got NULL_STORAGE_ENGINE_STATS!");
           Assert.assertTrue(value > 0.0, "Disk usage for current version should be positive. Got: " + value);
         }
       });
@@ -396,10 +431,16 @@ public abstract class TestRead {
     // Single get quota test
 
     int throttledRequestsForSingleGet = (int) getAggregateRouterMetricValue(".total--multiget_throttled_request.Count");
-    Assert.assertEquals(throttledRequestsForSingleGet, 0, "The throttled_request metric should be at zero before the test.");
+    Assert.assertEquals(
+        throttledRequestsForSingleGet,
+        0,
+        "The throttled_request metric should be at zero before the test.");
 
     double throttledRequestLatencyForSingleGet = getAggregateRouterMetricValue(".total--throttled_request_latency.Max");
-    Assert.assertEquals(throttledRequestLatencyForSingleGet, 0.0, "There should be no single get throttled request latency yet!");
+    Assert.assertEquals(
+        throttledRequestLatencyForSingleGet,
+        0.0,
+        "There should be no single get throttled request latency yet!");
 
     updateStore(1L, MAX_KEY_LIMIT);
     int quotaExceptionsCount = 0;
@@ -411,31 +452,45 @@ public abstract class TestRead {
       } catch (ExecutionException e) {
         Throwable cause = e.getCause();
         Assert.assertTrue(cause instanceof VeniceClientHttpException);
-        Assert.assertEquals(((VeniceClientHttpException)cause).getHttpStatus(), HttpResponseStatus.TOO_MANY_REQUESTS.code());
+        Assert.assertEquals(
+            ((VeniceClientHttpException) cause).getHttpStatus(),
+            HttpResponseStatus.TOO_MANY_REQUESTS.code());
         quotaExceptionsCount++;
       }
     }
     long runTimeMs = System.currentTimeMillis() - startTime;
-    Assert.assertTrue(quotaExceptionsCount > 0,
-        "There were no quota exceptions at all for single gets! "
-            + "(Test too slow? " + runTimeMs + " ms for " + numberOfRequests + " requests)");
+    Assert.assertTrue(
+        quotaExceptionsCount > 0,
+        "There were no quota exceptions at all for single gets! " + "(Test too slow? " + runTimeMs + " ms for "
+            + numberOfRequests + " requests)");
 
-    int throttledRequestsForSingleGetAfterQueries = (int) getAggregateRouterMetricValue(".total--throttled_request.Count");
-    Assert.assertEquals(throttledRequestsForSingleGetAfterQueries, quotaExceptionsCount,
+    int throttledRequestsForSingleGetAfterQueries =
+        (int) getAggregateRouterMetricValue(".total--throttled_request.Count");
+    Assert.assertEquals(
+        throttledRequestsForSingleGetAfterQueries,
+        quotaExceptionsCount,
         "The throttled_request metric is inconsistent with the number of quota exceptions received by the client!");
 
-    double throttledRequestLatencyForSingleGetAfterQueries = getAggregateRouterMetricValue(".total--throttled_request_latency.Max");
+    double throttledRequestLatencyForSingleGetAfterQueries =
+        getAggregateRouterMetricValue(".total--throttled_request_latency.Max");
     /** TODO Re-enable this assertion once we stop throwing batch get quota exceptions from {@link com.linkedin.venice.router.api.VeniceDelegateMode} */
-    //Assert.assertTrue(throttledRequestLatencyForSingleGetAfterQueries > 0.0, "There should be single get throttled request latency now!");
-
+    // Assert.assertTrue(throttledRequestLatencyForSingleGetAfterQueries > 0.0, "There should be single get throttled
+    // request latency now!");
 
     // Batch get quota test
 
     int throttledRequestsForBatchGet = (int) getAggregateRouterMetricValue(".total--multiget_throttled_request.Count");
-    Assert.assertEquals(throttledRequestsForBatchGet, 0, "The throttled_request metric should be at zero before the test.");
+    Assert.assertEquals(
+        throttledRequestsForBatchGet,
+        0,
+        "The throttled_request metric should be at zero before the test.");
 
-    double throttledRequestLatencyForBatchGet = getAggregateRouterMetricValue(".total--multiget_throttled_request_latency.Max");
-    Assert.assertEquals(throttledRequestLatencyForBatchGet, 0.0, "There should be no batch get throttled request latency yet!");
+    double throttledRequestLatencyForBatchGet =
+        getAggregateRouterMetricValue(".total--multiget_throttled_request_latency.Max");
+    Assert.assertEquals(
+        throttledRequestLatencyForBatchGet,
+        0.0,
+        "There should be no batch get throttled request latency yet!");
 
     keySet.clear();
     for (int i = 0; i < MAX_KEY_LIMIT; ++i) {
@@ -449,22 +504,30 @@ public abstract class TestRead {
       } catch (ExecutionException e) {
         Throwable cause = e.getCause();
         Assert.assertTrue(cause instanceof VeniceClientHttpException);
-        Assert.assertTrue(cause.getMessage().contains("Quota exceeded"), "Did not get the expected exception message: " + cause.getMessage());
+        Assert.assertTrue(
+            cause.getMessage().contains("Quota exceeded"),
+            "Did not get the expected exception message: " + cause.getMessage());
         quotaExceptionsCountForBatchGet++;
       }
     }
     long runTimeForBatchGetMs = System.currentTimeMillis() - startTimeForBatchGet;
-    Assert.assertTrue(quotaExceptionsCountForBatchGet > 0,
-        "There were no quota exceptions at all for batch gets! "
-            + "(Test too slow? " + runTimeForBatchGetMs + " ms for " + numberOfRequests + " requests)");
+    Assert.assertTrue(
+        quotaExceptionsCountForBatchGet > 0,
+        "There were no quota exceptions at all for batch gets! " + "(Test too slow? " + runTimeForBatchGetMs
+            + " ms for " + numberOfRequests + " requests)");
 
-    int throttledRequestsForBatchGetAfterQueries = (int) getAggregateRouterMetricValue(".total--multiget_streaming_throttled_request.Count");
-    Assert.assertEquals(throttledRequestsForBatchGetAfterQueries, quotaExceptionsCountForBatchGet,
+    int throttledRequestsForBatchGetAfterQueries =
+        (int) getAggregateRouterMetricValue(".total--multiget_streaming_throttled_request.Count");
+    Assert.assertEquals(
+        throttledRequestsForBatchGetAfterQueries,
+        quotaExceptionsCountForBatchGet,
         "The throttled_request metric is inconsistent with the number of quota exceptions received by the client!");
 
-    double throttledRequestLatencyForBatchGetAfterQueries = getAggregateRouterMetricValue(".total--multiget_throttled_request_latency.Max");
+    double throttledRequestLatencyForBatchGetAfterQueries =
+        getAggregateRouterMetricValue(".total--multiget_throttled_request_latency.Max");
     /** TODO Re-enable this assertion once we stop throwing batch get quota exceptions from {@link com.linkedin.venice.router.api.VeniceDelegateMode} */
-//    Assert.assertTrue(throttledRequestLatencyForBatchGetAfterQueries > 0.0, "There should be batch get throttled request latency now!");
+    // Assert.assertTrue(throttledRequestLatencyForBatchGetAfterQueries > 0.0, "There should be batch get throttled
+    // request latency now!");
   }
 
   private double getMaxServerMetricValue(String metricName) {
@@ -489,8 +552,7 @@ public abstract class TestRead {
         .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(2000).build())
         .build()) {
       client.start();
-      HttpGet routerRequest =
-          new HttpGet(routerUrl + "/" + VenicePathParser.TYPE_CLUSTER_DISCOVERY + "/" + storeName);
+      HttpGet routerRequest = new HttpGet(routerUrl + "/" + VenicePathParser.TYPE_CLUSTER_DISCOVERY + "/" + storeName);
       HttpResponse response = client.execute(routerRequest, null).get();
       String responseBody;
       try (InputStream bodyStream = response.getEntity().getContent()) {
@@ -498,14 +560,17 @@ public abstract class TestRead {
       } catch (IOException e) {
         throw new VeniceException(e);
       }
-      Assert.assertEquals(response.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
+      Assert.assertEquals(
+          response.getStatusLine().getStatusCode(),
+          HttpStatus.SC_OK,
           "Could not get d2 service correctly. Response:" + responseBody);
 
       ObjectMapper mapper = ObjectMapperFactory.getInstance();
       D2ServiceDiscoveryResponse d2ServiceDiscoveryResponse =
           mapper.readValue(responseBody.getBytes(), D2ServiceDiscoveryResponse.class);
       Assert.assertFalse(d2ServiceDiscoveryResponse.isError());
-      Assert.assertEquals(d2ServiceDiscoveryResponse.getD2Service(),
+      Assert.assertEquals(
+          d2ServiceDiscoveryResponse.getD2Service(),
           veniceCluster.getRandomVeniceRouter().getD2Service());
       Assert.assertEquals(d2ServiceDiscoveryResponse.getCluster(), veniceCluster.getClusterName());
       Assert.assertEquals(d2ServiceDiscoveryResponse.getName(), storeName);
@@ -524,12 +589,16 @@ public abstract class TestRead {
       client.start();
       HttpOptions healthCheckRequest = new HttpOptions(routerUrl);
       HttpResponse response = client.execute(healthCheckRequest, null).get();
-      Assert.assertEquals(response.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
+      Assert.assertEquals(
+          response.getStatusLine().getStatusCode(),
+          HttpStatus.SC_OK,
           "Router fails to respond to health check.");
 
       HttpGet healthCheckGetRequest = new HttpGet(routerUrl + "/" + TYPE_HEALTH_CHECK);
       HttpResponse getResponse = client.execute(healthCheckGetRequest, null).get();
-      Assert.assertEquals(getResponse.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
+      Assert.assertEquals(
+          getResponse.getStatusLine().getStatusCode(),
+          HttpStatus.SC_OK,
           "Router fails to respond to health check.");
     } catch (Exception e) {
       fail("Met an exception:", e);
@@ -546,17 +615,19 @@ public abstract class TestRead {
         .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(2000).build())
         .build()) {
       client.start();
-      HttpGet routerRequest =
-          new HttpGet(routerURL + "/" + TYPE_RESOURCE_STATE + "/" + storeVersionName);
+      HttpGet routerRequest = new HttpGet(routerURL + "/" + TYPE_RESOURCE_STATE + "/" + storeVersionName);
       HttpResponse response = client.execute(routerRequest, null).get();
       String responseBody;
       try (InputStream bodyStream = response.getEntity().getContent()) {
         responseBody = IOUtils.toString(bodyStream);
       }
-      Assert.assertEquals(response.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
+      Assert.assertEquals(
+          response.getStatusLine().getStatusCode(),
+          HttpStatus.SC_OK,
           "Failed to get resource state for " + storeVersionName + ". Response: " + responseBody);
       ObjectMapper mapper = ObjectMapperFactory.getInstance();
-      ResourceStateResponse resourceStateResponse = mapper.readValue(responseBody.getBytes(), ResourceStateResponse.class);
+      ResourceStateResponse resourceStateResponse =
+          mapper.readValue(responseBody.getBytes(), ResourceStateResponse.class);
       Assert.assertEquals(resourceStateResponse.getName(), storeVersionName);
       logger.info(responseBody);
     } catch (Exception e) {
@@ -582,14 +653,12 @@ public abstract class TestRead {
     // Verify router metrics
     VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
     MetricsRepository metricsRepository = routerWrapper.getMetricsRepository();
-    String requestUsageMetric = new StringBuilder()
-        .append(".")
+    String requestUsageMetric = new StringBuilder().append(".")
         .append(readDisabledStoreName)
         .append("--")
         .append("request_usage.Total")
         .toString();
-    String badRequestMetric = new StringBuilder()
-        .append(".")
+    String badRequestMetric = new StringBuilder().append(".")
         .append(readDisabledStoreName)
         .append("--")
         .append("bad_request.Count")

@@ -21,8 +21,11 @@ public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceSt
   private final Supplier<STATS> statsInitiator;
   private final STATS totalStats;
 
-  public VeniceVersionedStats(MetricsRepository metricsRepository, String storeName,
-      Supplier<STATS>statsInitiator,  StatsSupplier<STATS_REPORTER> reporterSupplier) {
+  public VeniceVersionedStats(
+      MetricsRepository metricsRepository,
+      String storeName,
+      Supplier<STATS> statsInitiator,
+      StatsSupplier<STATS_REPORTER> reporterSupplier) {
     this.storeName = storeName;
     this.versionedStats = new Int2ObjectOpenHashMap<>();
     this.reporters = new VeniceVersionedStatsReporter<>(metricsRepository, storeName, reporterSupplier);
@@ -64,9 +67,9 @@ public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceSt
     reporters.setBackupStats(version, getStats(version));
   }
 
-    /**
-     * return a deep copy of all version numbers
-     */
+  /**
+   * return a deep copy of all version numbers
+   */
   public synchronized IntSet getAllVersionNumbers() {
     return new IntOpenHashSet(versionedStats.keySet());
   }
@@ -74,8 +77,9 @@ public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceSt
   protected STATS getStats(int version) {
     STATS stats = versionedStats.get(version);
     if (stats == null) {
-      logger.warn("Stats has not been created while trying to set it as current version. "
-          + "Store: " + storeName + " version: " + version);
+      logger.warn(
+          "Stats has not been created while trying to set it as current version. " + "Store: " + storeName
+              + " version: " + version);
       stats = addVersion(version);
     }
     return stats;
@@ -92,8 +96,9 @@ public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceSt
 
   public synchronized void removeVersion(int version) {
     if (versionedStats.remove(version) == null) {
-      logger.warn("Stats has already been removed. Something might be wrong. "
-          + "Store: " + storeName + " version: " + version);
+      logger.warn(
+          "Stats has already been removed. Something might be wrong. " + "Store: " + storeName + " version: "
+              + version);
     }
   }
 }

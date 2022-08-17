@@ -79,7 +79,6 @@ public class ByteBufferOptimizedBinaryDecoder extends BinaryDecoder {
     return delegate.readString(old);
   }
 
-
   @Override
   public void skipString() throws IOException {
     delegate.skipString();

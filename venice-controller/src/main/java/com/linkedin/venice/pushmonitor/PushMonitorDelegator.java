@@ -38,7 +38,7 @@ public class PushMonitorDelegator implements PushMonitor {
 
   private final PartitionStatusBasedPushMonitor partitionStatusBasedPushStatusMonitor;
 
-  //Cache the relationship between kafka topic and push monitor here.
+  // Cache the relationship between kafka topic and push monitor here.
   private final Map<String, AbstractPushMonitor> topicToPushMonitorMap;
 
   public PushMonitorDelegator(
@@ -56,9 +56,17 @@ public class PushMonitorDelegator implements PushMonitor {
     this.metadataRepository = metadataRepository;
     this.offlinePushAccessor = offlinePushAccessor;
 
-    this.partitionStatusBasedPushStatusMonitor = new PartitionStatusBasedPushMonitor(clusterName, offlinePushAccessor,
-        storeCleaner, metadataRepository, routingDataRepository, aggPushHealthStats, leaderFollowerTopicReplicator,
-        clusterLockManager, aggregateRealTimeSourceKafkaUrl, activeActiveRealTimeSourceKafkaURLs);
+    this.partitionStatusBasedPushStatusMonitor = new PartitionStatusBasedPushMonitor(
+        clusterName,
+        offlinePushAccessor,
+        storeCleaner,
+        metadataRepository,
+        routingDataRepository,
+        aggPushHealthStats,
+        leaderFollowerTopicReplicator,
+        clusterLockManager,
+        aggregateRealTimeSourceKafkaUrl,
+        activeActiveRealTimeSourceKafkaURLs);
     this.clusterLockManager = clusterLockManager;
 
     this.topicToPushMonitorMap = new VeniceConcurrentHashMap<>();
@@ -68,11 +76,13 @@ public class PushMonitorDelegator implements PushMonitor {
     return topicToPushMonitorMap.computeIfAbsent(kafkaTopic, topicName -> {
       Store store = metadataRepository.getStore(Version.parseStoreFromKafkaTopicName(kafkaTopic));
 
-      //WriteReadyStoreRepository is the source of truth. No need to refresh metadata repo here
+      // WriteReadyStoreRepository is the source of truth. No need to refresh metadata repo here
       if (store == null) {
-        throw new VeniceNoStoreException(Version.parseStoreFromKafkaTopicName(kafkaTopic),
-            Optional.of("Cannot find store metadata when tyring to allocate push status to push monitor."
-                + "It's likely that the store has been deleted. topic: " + topicName));
+        throw new VeniceNoStoreException(
+            Version.parseStoreFromKafkaTopicName(kafkaTopic),
+            Optional.of(
+                "Cannot find store metadata when tyring to allocate push status to push monitor."
+                    + "It's likely that the store has been deleted. topic: " + topicName));
       }
       return partitionStatusBasedPushStatusMonitor;
     });
@@ -88,7 +98,11 @@ public class PushMonitorDelegator implements PushMonitor {
   }
 
   @Override
-  public void startMonitorOfflinePush(String kafkaTopic, int numberOfPartition, int replicaFactor, OfflinePushStrategy strategy) {
+  public void startMonitorOfflinePush(
+      String kafkaTopic,
+      int numberOfPartition,
+      int replicaFactor,
+      OfflinePushStrategy strategy) {
     getPushMonitor(kafkaTopic).startMonitorOfflinePush(kafkaTopic, numberOfPartition, replicaFactor, strategy);
   }
 
@@ -102,9 +116,11 @@ public class PushMonitorDelegator implements PushMonitor {
     logger.info("Stopping all monitoring for cluster " + clusterName + "'s " + getClass().getSimpleName());
     try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       partitionStatusBasedPushStatusMonitor.stopAllMonitoring();
-      logger.info("Successfully stopped all monitoring for cluster " + clusterName + "'s " + getClass().getSimpleName());
+      logger
+          .info("Successfully stopped all monitoring for cluster " + clusterName + "'s " + getClass().getSimpleName());
     } catch (Exception e) {
-      logger.error("Error when stopping all monitoring for cluster " + clusterName + "'s " + getClass().getSimpleName());
+      logger
+          .error("Error when stopping all monitoring for cluster " + clusterName + "'s " + getClass().getSimpleName());
     }
   }
 
@@ -124,18 +140,25 @@ public class PushMonitorDelegator implements PushMonitor {
   }
 
   @Override
-  public Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusAndDetails(String kafkaTopic,
-      String incrementalPushVersion, HelixCustomizedViewOfflinePushRepository customizedViewRepo) {
+  public Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusAndDetails(
+      String kafkaTopic,
+      String incrementalPushVersion,
+      HelixCustomizedViewOfflinePushRepository customizedViewRepo) {
     return getPushMonitor(kafkaTopic)
         .getIncrementalPushStatusAndDetails(kafkaTopic, incrementalPushVersion, customizedViewRepo);
   }
 
   @Override
-  public Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusFromPushStatusStore(String kafkaTopic,
-      String incrementalPushVersion, HelixCustomizedViewOfflinePushRepository customizedViewRepo,
+  public Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusFromPushStatusStore(
+      String kafkaTopic,
+      String incrementalPushVersion,
+      HelixCustomizedViewOfflinePushRepository customizedViewRepo,
       PushStatusStoreReader pushStatusStoreReader) {
-    return getPushMonitor(kafkaTopic).getIncrementalPushStatusFromPushStatusStore(kafkaTopic,
-        incrementalPushVersion, customizedViewRepo, pushStatusStoreReader);
+    return getPushMonitor(kafkaTopic).getIncrementalPushStatusFromPushStatusStore(
+        kafkaTopic,
+        incrementalPushVersion,
+        customizedViewRepo,
+        pushStatusStoreReader);
   }
 
   @Override
@@ -169,7 +192,10 @@ public class PushMonitorDelegator implements PushMonitor {
   }
 
   @Override
-  public void refreshAndUpdatePushStatus(String kafkaTopic, ExecutionStatus newStatus, Optional<String> newStatusDetails) {
+  public void refreshAndUpdatePushStatus(
+      String kafkaTopic,
+      ExecutionStatus newStatus,
+      Optional<String> newStatusDetails) {
     getPushMonitor(kafkaTopic).refreshAndUpdatePushStatus(kafkaTopic, newStatus, newStatusDetails);
   }
 

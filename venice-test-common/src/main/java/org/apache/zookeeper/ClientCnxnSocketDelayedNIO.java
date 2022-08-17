@@ -3,10 +3,10 @@ package org.apache.zookeeper;
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.zookeeper.client.ZKClientConfig;
+
 
 /**
  * Customized zookeeper {@link ClientCnxnSocket} implementation that introduce the latency while reading and writing
@@ -40,8 +40,7 @@ public class ClientCnxnSocketDelayedNIO extends ClientCnxnSocketNIO {
 
   private final long socketIoDelayUpperBoundMS;
 
-  ClientCnxnSocketDelayedNIO(ZKClientConfig clientConfig)
-      throws IOException {
+  ClientCnxnSocketDelayedNIO(ZKClientConfig clientConfig) throws IOException {
     super(clientConfig);
     socketIoDelayLowerBoundMS = defaultSocketIoDelayLowerBoundMS;
     socketIoDelayUpperBoundMS = defaultSocketIoDelayUpperBoundMS;
@@ -73,8 +72,7 @@ public class ClientCnxnSocketDelayedNIO extends ClientCnxnSocketNIO {
   }
 
   @Override
-  void doIO(List<ClientCnxn.Packet> pendingQueue, ClientCnxn cnxn)
-      throws InterruptedException, IOException {
+  void doIO(List<ClientCnxn.Packet> pendingQueue, ClientCnxn cnxn) throws InterruptedException, IOException {
     if (socketIoDelayUpperBoundMS > 0) {
       long socketIoDelay =
           (long) (Math.random() * (socketIoDelayUpperBoundMS - socketIoDelayLowerBoundMS) + socketIoDelayLowerBoundMS);

@@ -21,9 +21,10 @@ import java.util.Optional;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+
 public class TestControllerClient {
   @Test
-  public static void clientReturnsErrorObjectOnConnectionFailure(){
+  public static void clientReturnsErrorObjectOnConnectionFailure() {
     ControllerClient client = new ControllerClient(Utils.getUniqueString("cluster"), "http://localhost:17079");
     StoreResponse r3 = client.getStore("mystore");
     Assert.assertTrue(r3.isError());
@@ -36,16 +37,20 @@ public class TestControllerClient {
     public String getField1() {
       return field1;
     }
+
     public String getField2() {
       return field2;
     }
+
     public void setField1(String fld) {
       field1 = fld;
     }
+
     public void setField2(String fld) {
       field2 = fld;
     }
   }
+
   @Test
   public void testObjectMapperIgnoringUnknownProperties() throws IOException {
     ObjectMapper objectMapper = ControllerTransport.getObjectMapper();
@@ -74,23 +79,28 @@ public class TestControllerClient {
       mockController.addResponseForUriPattern(ControllerRoute.MASTER_CONTROLLER.getPath() + ".*", response);
 
       String controllerUrlWithSpaceAtBeginning = "   http://" + mockController.getAddress();
-      ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(clusterName, controllerUrlWithSpaceAtBeginning);
+      ControllerClient controllerClient =
+          ControllerClient.constructClusterControllerClient(clusterName, controllerUrlWithSpaceAtBeginning);
       String leaderControllerUrl = controllerClient.getLeaderControllerUrl();
       Assert.assertEquals(leaderControllerUrl, fakeLeaderControllerUrl);
     }
   }
 
   @Test
-  public void testD2ControllerClient() throws Exception{
+  public void testD2ControllerClient() throws Exception {
     String d2ClusterName = "VeniceRouter";
     String d2ServiceName = "VeniceRouter";
     String veniceClusterName = Utils.getUniqueString("test-cluster");
     String fakeLeaderControllerUri = Utils.getUniqueString("http://fake_uri");
 
-    try (MockD2ServerWrapper mockController = ServiceFactory.getMockD2Server("test-controller", d2ClusterName, d2ServiceName)) {
+    try (MockD2ServerWrapper mockController =
+        ServiceFactory.getMockD2Server("test-controller", d2ClusterName, d2ServiceName)) {
       String uriPattern = ControllerRoute.MASTER_CONTROLLER.getPath() + ".*cluster_name=" + veniceClusterName + ".*";
-      mockController.addResponseForUriPattern(uriPattern, constructLeaderControllerResponse(veniceClusterName, fakeLeaderControllerUri));
-      try (D2ControllerClient d2ControllerClient = new D2ControllerClient(d2ServiceName, veniceClusterName, mockController.getZkAddress(), Optional.empty())) {
+      mockController.addResponseForUriPattern(
+          uriPattern,
+          constructLeaderControllerResponse(veniceClusterName, fakeLeaderControllerUri));
+      try (D2ControllerClient d2ControllerClient =
+          new D2ControllerClient(d2ServiceName, veniceClusterName, mockController.getZkAddress(), Optional.empty())) {
         String leaderControllerUrl = d2ControllerClient.getLeaderControllerUrl();
         Assert.assertEquals(fakeLeaderControllerUri, leaderControllerUrl);
       }
@@ -98,23 +108,23 @@ public class TestControllerClient {
   }
 
   @Test
-  public void testD2ControllerClientWithExternalD2Client() throws Exception{
+  public void testD2ControllerClientWithExternalD2Client() throws Exception {
     String d2ClusterName = "VeniceRouter";
     String d2ServiceName = "VeniceRouter";
     String veniceClusterName = Utils.getUniqueString("test-cluster");
     String fakeLeaderControllerUri = Utils.getUniqueString("http://fake_uri");
 
-    try (MockD2ServerWrapper mockController = ServiceFactory.getMockD2Server("test-controller", d2ClusterName, d2ServiceName))
-    {
+    try (MockD2ServerWrapper mockController =
+        ServiceFactory.getMockD2Server("test-controller", d2ClusterName, d2ServiceName)) {
       String uriPattern = ControllerRoute.MASTER_CONTROLLER.getPath() + ".*cluster_name=" + veniceClusterName + ".*";
-      mockController.addResponseForUriPattern(uriPattern, constructLeaderControllerResponse(veniceClusterName, fakeLeaderControllerUri));
-      D2Client d2Client = new D2ClientBuilder()
-                              .setZkHosts(mockController.getZkAddress())
-                              .build();
+      mockController.addResponseForUriPattern(
+          uriPattern,
+          constructLeaderControllerResponse(veniceClusterName, fakeLeaderControllerUri));
+      D2Client d2Client = new D2ClientBuilder().setZkHosts(mockController.getZkAddress()).build();
       try {
         D2ClientUtils.startClient(d2Client);
-        try (D2ControllerClient d2ControllerClient = new D2ControllerClient(d2ServiceName, veniceClusterName,
-            d2Client)) {
+        try (D2ControllerClient d2ControllerClient =
+            new D2ControllerClient(d2ServiceName, veniceClusterName, d2Client)) {
           String leaderControllerUrl = d2ControllerClient.getLeaderControllerUrl();
           Assert.assertEquals(fakeLeaderControllerUri, leaderControllerUrl);
         }
@@ -124,7 +134,7 @@ public class TestControllerClient {
     }
   }
 
-  private FullHttpResponse constructLeaderControllerResponse(String clusterName, String url) throws Exception{
+  private FullHttpResponse constructLeaderControllerResponse(String clusterName, String url) throws Exception {
     LeaderControllerResponse response = new LeaderControllerResponse();
     response.setCluster(clusterName);
     response.setUrl(url);

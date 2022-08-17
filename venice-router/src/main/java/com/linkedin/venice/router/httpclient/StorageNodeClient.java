@@ -10,7 +10,6 @@ import java.util.function.Consumer;
 
 
 public interface StorageNodeClient extends Closeable {
-
   /**
    * Start the client and prepare the required resources.
    */
@@ -39,7 +38,7 @@ public interface StorageNodeClient extends Closeable {
       BooleanSupplier cancelledCallBack,
       long queryStartTimeInNS) throws RouterException;
 
-  default boolean isInstanceReadyToServe(String instanceId)  {
+  default boolean isInstanceReadyToServe(String instanceId) {
     return true;
   }
 

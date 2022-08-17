@@ -1,7 +1,6 @@
 package com.linkedin.venice.controllerapi;
 
 public class ControllerApiConstants {
-
   public static final String HOSTNAME = "hostname";
   public static final String CLUSTER = "cluster_name";
   public static final String CLUSTER_SRC = "cluster_name_src";
@@ -149,7 +148,8 @@ public class ControllerApiConstants {
    * If the consume rate reached this quota, the consumption thread will be blocked until there is the available quota.
    * The value for this config is read from cluster configs in Zk.
    */
-  public static final String SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND = "server.kafka.fetch.quota.records.per.second";
+  public static final String SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND =
+      "server.kafka.fetch.quota.records.per.second";
 
   /**
    * An optional argument in list-store command; pass in a store config to select stores. If the config name argument is
@@ -173,7 +173,8 @@ public class ControllerApiConstants {
    * Whether admin consumption should be enabled. This config will only control the behavior in Child Controller.
    * The value for this config is read from cluster configs in Zk.
    */
-  public static final String CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED = "child.controller.admin.topic.consumption.enabled";
+  public static final String CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED =
+      "child.controller.admin.topic.consumption.enabled";
 
   /**
    * For Blueshift data copy over across fabrics.

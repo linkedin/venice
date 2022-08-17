@@ -3,16 +3,11 @@ package com.linkedin.davinci.store.cache.backend;
 import com.linkedin.davinci.store.cache.VeniceStoreCache;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.Gauge;
-import com.linkedin.venice.stats.TehutiUtils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
-import io.tehuti.metrics.stats.Count;
-import io.tehuti.metrics.stats.OccurrenceRate;
-import io.tehuti.metrics.stats.Rate;
 
 
 public class StoreCacheStats extends AbstractVeniceStats {
-
   private final Sensor cacheHitRate;
   private final Sensor cacheMissCount;
   private final Sensor cacheHitCount;

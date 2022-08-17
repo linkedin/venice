@@ -47,13 +47,21 @@ public class ParticipantStoreConsumptionStats extends AbstractVeniceStats {
     heartbeatSensor = registerSensorIfAbsent(HEARTBEAT, new OccurrenceRate());
   }
 
-  public void recordKillPushJobLatency(double latencyInMs) { killPushJobLatencySensor.record(latencyInMs); }
+  public void recordKillPushJobLatency(double latencyInMs) {
+    killPushJobLatencySensor.record(latencyInMs);
+  }
 
-  public void recordKilledPushJobs() { killedPushJobsSensor.record(); }
+  public void recordKilledPushJobs() {
+    killedPushJobsSensor.record();
+  }
 
-  public void recordFailedInitialization() { failedInitializationSensor.record(); }
+  public void recordFailedInitialization() {
+    failedInitializationSensor.record();
+  }
 
-  public void recordKillPushJobFailedConsumption() { killPushJobFailedConsumption.record(); }
+  public void recordKillPushJobFailedConsumption() {
+    killPushJobFailedConsumption.record();
+  }
 
   public void recordHeartbeat() {
     heartbeatSensor.record();

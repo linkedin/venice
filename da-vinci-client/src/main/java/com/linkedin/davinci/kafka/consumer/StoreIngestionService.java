@@ -17,14 +17,16 @@ import java.util.function.Consumer;
  * An interface for Store Ingestion Service for Venice.
  */
 public interface StoreIngestionService extends MetadataRetriever {
-
   /**
    * Starts consuming messages from Kafka Partition corresponding to Venice Partition.
    * @param veniceStore Venice Store for the partition.
    * @param partitionId Venice partition's id.
    * @param leaderState Initial L/F state.
    */
-  void startConsumption(VeniceStoreVersionConfig veniceStore, int partitionId, Optional<LeaderFollowerStateType> leaderState);
+  void startConsumption(
+      VeniceStoreVersionConfig veniceStore,
+      int partitionId,
+      Optional<LeaderFollowerStateType> leaderState);
 
   default void startConsumption(VeniceStoreVersionConfig veniceStore, int partitionId) {
     startConsumption(veniceStore, partitionId, Optional.empty());
@@ -61,9 +63,15 @@ public interface StoreIngestionService extends MetadataRetriever {
    */
   boolean killConsumptionTask(String topicName);
 
-  void promoteToLeader(VeniceStoreVersionConfig veniceStoreVersionConfig, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker);
+  void promoteToLeader(
+      VeniceStoreVersionConfig veniceStoreVersionConfig,
+      int partitionId,
+      LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker);
 
-  void demoteToStandby(VeniceStoreVersionConfig veniceStoreVersionConfig, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker);
+  void demoteToStandby(
+      VeniceStoreVersionConfig veniceStoreVersionConfig,
+      int partitionId,
+      LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker);
 
   /**
    * Adds Notifier to get Notifications for get various status of the consumption

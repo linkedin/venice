@@ -4,7 +4,6 @@ import java.util.Optional;
 
 
 public class ObjectCacheConfig {
-
   private Optional<Long> maxCacheSize = Optional.empty();
   private Optional<Long> ttlInMilliseconds = Optional.empty();
 
@@ -50,9 +49,6 @@ public class ObjectCacheConfig {
 
   @Override
   public String toString() {
-    return "ObjectCacheConfig{" +
-               "maxCacheSize=" + maxCacheSize +
-               ", ttlInMilliseconds=" + ttlInMilliseconds +
-               "}";
+    return "ObjectCacheConfig{" + "maxCacheSize=" + maxCacheSize + ", ttlInMilliseconds=" + ttlInMilliseconds + "}";
   }
 }

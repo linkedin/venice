@@ -1,5 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import java.util.ArrayList;
@@ -8,11 +10,8 @@ import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
-
 
 public class OfflinePushStatusTest {
-
   private String kafkaTopic = "testTopic";
   private int numberOfPartition = 3;
   private int replicationFactor = 2;
@@ -25,11 +24,17 @@ public class OfflinePushStatusTest {
     Assert.assertEquals(offlinePushStatus.getKafkaTopic(), kafkaTopic);
     Assert.assertEquals(offlinePushStatus.getNumberOfPartition(), numberOfPartition);
     Assert.assertEquals(offlinePushStatus.getReplicationFactor(), replicationFactor);
-    Assert.assertEquals(offlinePushStatus.getCurrentStatus(), STARTED,
+    Assert.assertEquals(
+        offlinePushStatus.getCurrentStatus(),
+        STARTED,
         "Once offline push status is created, it should in STARTED status by default.");
-    Assert.assertEquals(offlinePushStatus.getStatusHistory().get(0).getStatus(), STARTED,
+    Assert.assertEquals(
+        offlinePushStatus.getStatusHistory().get(0).getStatus(),
+        STARTED,
         "Once offline push status is created, it's in STARTED status and this status should be added into status history.");
-    Assert.assertEquals(offlinePushStatus.getPartitionStatuses().size(), numberOfPartition,
+    Assert.assertEquals(
+        offlinePushStatus.getPartitionStatuses().size(),
+        numberOfPartition,
         "Once offline push status is created, partition statuses should also be created too.");
   }
 
@@ -40,22 +45,23 @@ public class OfflinePushStatusTest {
     PartitionStatus partitionStatus = new PartitionStatus(1);
     partitionStatus.updateReplicaStatus("testInstance", PROGRESS);
     offlinePushStatus.setPartitionStatus(partitionStatus);
-    Assert.assertEquals(offlinePushStatus.getPartitionStatus(1),
+    Assert.assertEquals(
+        offlinePushStatus.getPartitionStatus(1),
         ReadOnlyPartitionStatus.fromPartitionStatus(partitionStatus));
 
     try {
       offlinePushStatus.setPartitionStatus(new PartitionStatus(1000));
       Assert.fail("Partition 1000 dose not exist.");
     } catch (IllegalArgumentException e) {
-      //expected
+      // expected
     }
   }
 
   @Test
   public void testIsReadyToStartBufferReplay() {
-    // Make sure buffer replay can be started in the case where current replica status is PROGRESS but END_OF_PUSH_RECEIVED was already received
-    OfflinePushStatus offlinePushStatus =
-        new OfflinePushStatus(kafkaTopic, 1, replicationFactor, strategy);
+    // Make sure buffer replay can be started in the case where current replica status is PROGRESS but
+    // END_OF_PUSH_RECEIVED was already received
+    OfflinePushStatus offlinePushStatus = new OfflinePushStatus(kafkaTopic, 1, replicationFactor, strategy);
     PartitionStatus partitionStatus = new PartitionStatus(0);
     List<ReplicaStatus> replicaStatuses = new ArrayList<>(replicationFactor);
     for (int i = 0; i < replicationFactor; i++) {
@@ -67,7 +73,8 @@ public class OfflinePushStatusTest {
       partitionStatus.updateReplicaStatus(Integer.toString(i), PROGRESS);
     }
     offlinePushStatus.setPartitionStatuses(Collections.singletonList(partitionStatus));
-    Assert.assertTrue(offlinePushStatus.isReadyToStartBufferReplay(false),
+    Assert.assertTrue(
+        offlinePushStatus.isReadyToStartBufferReplay(false),
         "Buffer replay should be allowed to start since END_OF_PUSH_RECEIVED was already received");
   }
 
@@ -78,7 +85,8 @@ public class OfflinePushStatusTest {
     PartitionStatus partitionStatus = new PartitionStatus(1);
     partitionStatus.updateReplicaStatus("testInstance", PROGRESS);
     offlinePushStatus.setPartitionStatus(partitionStatus);
-    Assert.assertEquals(offlinePushStatus.getPartitionStatus(1),
+    Assert.assertEquals(
+        offlinePushStatus.getPartitionStatus(1),
         ReadOnlyPartitionStatus.fromPartitionStatus(partitionStatus));
     List<PartitionStatus> partitionStatuses = new ArrayList<>();
 
@@ -86,7 +94,7 @@ public class OfflinePushStatusTest {
       offlinePushStatus.setPartitionStatus(new PartitionStatus(1000));
       Assert.fail("Partition 1000 dose not exist.");
     } catch (IllegalArgumentException e) {
-      //expected
+      // expected
     }
   }
 
@@ -111,7 +119,7 @@ public class OfflinePushStatusTest {
   }
 
   @Test
-  public void testUpdateStatusFromEndOfPushReceived(){
+  public void testUpdateStatusFromEndOfPushReceived() {
     testValidTargetStatuses(END_OF_PUSH_RECEIVED, COMPLETED, ERROR);
     testInvalidTargetStatuses(END_OF_PUSH_RECEIVED, STARTED, ARCHIVED);
   }
@@ -152,7 +160,7 @@ public class OfflinePushStatusTest {
   }
 
   private void testValidTargetStatuses(ExecutionStatus from, ExecutionStatus... statuses) {
-    for (ExecutionStatus status : statuses) {
+    for (ExecutionStatus status: statuses) {
       OfflinePushStatus offlinePushStatus =
           new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
       offlinePushStatus.setCurrentStatus(from);
@@ -162,7 +170,7 @@ public class OfflinePushStatusTest {
   }
 
   private void testInvalidTargetStatuses(ExecutionStatus from, ExecutionStatus... statuses) {
-    for (ExecutionStatus status : statuses) {
+    for (ExecutionStatus status: statuses) {
       OfflinePushStatus offlinePushStatus =
           new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
       offlinePushStatus.setCurrentStatus(from);
@@ -170,7 +178,7 @@ public class OfflinePushStatusTest {
         offlinePushStatus.updateStatus(status);
         Assert.fail(status + " is invalid from:" + from);
       } catch (VeniceException e) {
-        //expected.
+        // expected.
       }
     }
   }

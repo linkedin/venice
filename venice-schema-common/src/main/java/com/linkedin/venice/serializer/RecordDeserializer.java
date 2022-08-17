@@ -6,7 +6,6 @@ import org.apache.avro.io.BinaryDecoder;
 
 
 public interface RecordDeserializer<T> {
-
   T deserialize(byte[] bytes) throws VeniceSerializationException;
 
   T deserialize(ByteBuffer byteBuffer) throws VeniceSerializationException;

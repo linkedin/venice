@@ -18,7 +18,6 @@ import org.apache.logging.log4j.Logger;
  * so we're going for old hat to start with AbstractVeniceService.
  */
 public class RemoteIngestionRepairService extends AbstractVeniceService {
-
   private final Thread repairThread;
   private final Map<StoreIngestionTask, BlockingQueue<Runnable>> ingestionRepairTasks;
   // 30 minutes default sleep interval
@@ -48,14 +47,15 @@ public class RemoteIngestionRepairService extends AbstractVeniceService {
     if (!repairThread.isAlive()) {
       // We probably do want to bubble an exception up as the implication here is that
       // an important repair task that we would certainly want to complete simply won't because
-      // there is no running thread (as it has been killed).  Though potentially, there might be an attempt
-      // to queue a task while things are shutting down (and lead to exceptions).  So to that end, we need to be
-      // certain that shutdowns are well ordered (or calling classes have defensive measures for this case if it's somehow
+      // there is no running thread (as it has been killed). Though potentially, there might be an attempt
+      // to queue a task while things are shutting down (and lead to exceptions). So to that end, we need to be
+      // certain that shutdowns are well ordered (or calling classes have defensive measures for this case if it's
+      // somehow
       // valid).
       throw new IllegalStateException("RemoteIngestionRepairService is no longer running!  Rejecting repair task!!");
     }
-    BlockingQueue<Runnable> taskList = ingestionRepairTasks.computeIfAbsent(storeIngestionTask,
-        s -> new LinkedBlockingDeque<>());
+    BlockingQueue<Runnable> taskList =
+        ingestionRepairTasks.computeIfAbsent(storeIngestionTask, s -> new LinkedBlockingDeque<>());
     taskList.offer(repairTask);
   }
 
@@ -68,8 +68,9 @@ public class RemoteIngestionRepairService extends AbstractVeniceService {
   /*package private */ Map<StoreIngestionTask, BlockingQueue<Runnable>> getIngestionRepairTasks() {
     return ingestionRepairTasks;
   }
+
   /*package private */ void pollRepairTasks() {
-    for (Map.Entry<StoreIngestionTask, BlockingQueue<Runnable>> taskEntry : ingestionRepairTasks.entrySet()) {
+    for (Map.Entry<StoreIngestionTask, BlockingQueue<Runnable>> taskEntry: ingestionRepairTasks.entrySet()) {
       BlockingQueue<Runnable> taskQueue = taskEntry.getValue();
       // If there's nothing in the task queue, skip this iteration
       if (taskQueue.isEmpty()) {
@@ -84,8 +85,6 @@ public class RemoteIngestionRepairService extends AbstractVeniceService {
       }
     }
   }
-
-
 
   private class IngestionRepairServiceThread extends Thread {
     IngestionRepairServiceThread() {

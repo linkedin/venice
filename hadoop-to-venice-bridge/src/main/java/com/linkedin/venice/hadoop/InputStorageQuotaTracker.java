@@ -9,7 +9,6 @@ import javax.annotation.Nullable;
  * input data size exceeds the quota
  */
 class InputStorageQuotaTracker {
-
   private final Long storeStorageQuota;
 
   InputStorageQuotaTracker(Long storeStorageQuota) {
@@ -17,9 +16,7 @@ class InputStorageQuotaTracker {
   }
 
   boolean exceedQuota(long totalInputStorageSizeInBytes) {
-    if (storeStorageQuota == null
-        || storeStorageQuota == Store.UNLIMITED_STORAGE_QUOTA
-    ) {
+    if (storeStorageQuota == null || storeStorageQuota == Store.UNLIMITED_STORAGE_QUOTA) {
       return false;
     }
     return totalInputStorageSizeInBytes > storeStorageQuota;

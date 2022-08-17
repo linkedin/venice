@@ -9,16 +9,16 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
+
 /**
  * This is an abstraction of metadata maintained per Store.
  */
 public abstract class AbstractStore implements Store {
-
   public static final int DEFAULT_REPLICATION_FACTOR = 3;
   /**
    * Default storage quota 20GB
    */
-  public static final long DEFAULT_STORAGE_QUOTA = (long)20 * (1 << 30);
+  public static final long DEFAULT_STORAGE_QUOTA = (long) 20 * (1 << 30);
 
   /**
    * Default read quota 1800 QPS per node
@@ -26,7 +26,6 @@ public abstract class AbstractStore implements Store {
   public static final long DEFAULT_READ_QUOTA = 1800;
 
   protected interface StoreVersionSupplier {
-
     /**
      * This function will return a reference to the internal versions structure, and any change applying to the returned
      * object will be reflected in the referenced {@link Store}.
@@ -103,7 +102,7 @@ public abstract class AbstractStore implements Store {
   }
 
   @Override
-  public void forceAddVersion(Version version, boolean isClonedVersion){
+  public void forceAddVersion(Version version, boolean isClonedVersion) {
     addVersion(version, false, isClonedVersion);
   }
 
@@ -149,10 +148,10 @@ public abstract class AbstractStore implements Store {
        * config as well since they are referring to the same object.
        */
       // For new version, apply store level config on it.
-      //update version compression type
+      // update version compression type
       version.setCompressionStrategy(getCompressionStrategy());
 
-      //update version Helix state model
+      // update version Helix state model
       version.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled());
 
       version.setChunkingEnabled(isChunkingEnabled());
@@ -206,7 +205,7 @@ public abstract class AbstractStore implements Store {
   @Override
   public boolean containsVersion(int versionNumber) {
     checkVersionSupplier();
-    for (Version version : storeVersionsSupplier.getForRead()) {
+    for (Version version: storeVersionsSupplier.getForRead()) {
       if (version.getNumber() == versionNumber) {
         return true;
       }
@@ -292,13 +291,14 @@ public abstract class AbstractStore implements Store {
     }
     // when numVersionsToPreserve is less than 1, it usually means a config issue.
     // Setting it to zero, will cause the store to be deleted as soon as push completes.
-    if(curNumVersionsToPreserve < 1) {
-      throw new IllegalArgumentException("At least 1 version should be preserved. Parameter " + curNumVersionsToPreserve);
+    if (curNumVersionsToPreserve < 1) {
+      throw new IllegalArgumentException(
+          "At least 1 version should be preserved. Parameter " + curNumVersionsToPreserve);
     }
 
     List<Version> versions = storeVersionsSupplier.getForRead();
     int versionCnt = versions.size();
-    if(versionCnt == 0) {
+    if (versionCnt == 0) {
       return Collections.emptyList();
     }
 
@@ -318,7 +318,7 @@ public abstract class AbstractStore implements Store {
 
       if (version.getNumber() == getCurrentVersion()) { // currentVersion is always preserved
         curNumVersionsToPreserve--;
-      } else if (VersionStatus.canDelete(version.getStatus())) {  // ERROR versions are always deleted
+      } else if (VersionStatus.canDelete(version.getStatus())) { // ERROR versions are always deleted
         versionsToDelete.add(version);
       } else if (VersionStatus.ONLINE.equals(version.getStatus())) {
         if (curNumVersionsToPreserve > 0) { // keep the minimum number of version to preserve
@@ -330,10 +330,12 @@ public abstract class AbstractStore implements Store {
         // For the non-last started version, if it's not the current version(STARTED version should not be the current
         // version, just prevent some edge cases here.), we should delete it only if the store is not migrating
         // as during store migration are there are concurrent pushes with STARTED version.
-        // So if the store is not migrating, it's stuck in STARTED, it means somehow the controller did not update the version status properly.
+        // So if the store is not migrating, it's stuck in STARTED, it means somehow the controller did not update the
+        // version status properly.
         versionsToDelete.add(version);
       }
-      // TODO here we don't deal with the PUSHED version, just keep all of them, need to consider collect them too in the future.
+      // TODO here we don't deal with the PUSHED version, just keep all of them, need to consider collect them too in
+      // the future.
     }
     return versionsToDelete;
   }
@@ -346,7 +348,7 @@ public abstract class AbstractStore implements Store {
   @Override
   public void fixMissingFields() {
     checkVersionSupplier();
-    for (StoreVersion storeVersion : storeVersionsSupplier.getForUpdate()) {
+    for (StoreVersion storeVersion: storeVersionsSupplier.getForUpdate()) {
       Version version = new VersionImpl(storeVersion);
       if (version.getPartitionerConfig() == null) {
         version.setPartitionerConfig(getPartitionerConfig());

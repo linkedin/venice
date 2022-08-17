@@ -1,5 +1,9 @@
 package com.linkedin.venice.integration.utils;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.SSLConfig.*;
+import static com.linkedin.venice.integration.utils.D2TestUtils.*;
+
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.venice.authorization.AuthorizerService;
@@ -29,10 +33,6 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.SSLConfig.*;
-import static com.linkedin.venice.integration.utils.D2TestUtils.*;
 
 
 /**
@@ -89,8 +89,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       String clusterToD2,
       boolean sslToKafka,
       boolean d2Enabled,
-      Optional<AuthorizerService> authorizerService
-  ) {
+      Optional<AuthorizerService> authorizerService) {
 
     return (serviceName, dataDirectory) -> {
       int adminPort = Utils.getFreePort();
@@ -100,7 +99,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       VeniceProperties extraProps = new VeniceProperties(extraProperties);
       final boolean sslEnabled = extraProps.getBoolean(CONTROLLER_SSL_ENABLED, DEFAULT_CONTROLLER_SSL_ENABLED);
 
-      for(String clusterName : clusterNames) {
+      for (String clusterName: clusterNames) {
         VeniceProperties clusterProps =
             IntegrationTestUtils.getClusterProps(clusterName, dataDirectory, zkAddress, kafkaBroker, sslToKafka);
 
@@ -127,7 +126,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(MIN_ACTIVE_REPLICA, minActiveReplica)
             .put(TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS, 100)
             .put(STORAGE_ENGINE_OVERHEAD_RATIO, DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO)
-            .put(CLUSTER_TO_D2,
+            .put(
+                CLUSTER_TO_D2,
                 StringUtils.isEmpty(clusterToD2) ? TestUtils.getClusterToDefaultD2String(clusterName) : clusterToD2)
             .put(SSL_TO_KAFKA, sslToKafka)
             .put(SSL_KAFKA_BOOTSTRAP_SERVERS, kafkaBroker.getSSLAddress())
@@ -190,10 +190,14 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             }
             builder.put(CHILD_CLUSTER_URL_PREFIX + "." + dcName, childController.getControllerUrl());
             if (isParent) {
-              builder.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + dcName, childController.getKafkaBootstrapServers(sslToKafka));
+              builder.put(
+                  CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + dcName,
+                  childController.getKafkaBootstrapServers(sslToKafka));
               builder.put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + dcName, childController.getKafkaZkAddress());
-              logger.info("ControllerConfig: " + CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + dcName
-                  + " KafkaUrl: " +  childController.getKafkaBootstrapServers(sslToKafka) + " kafkaZk: " + childController.getKafkaZkAddress());
+              logger.info(
+                  "ControllerConfig: " + CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + dcName + " KafkaUrl: "
+                      + childController.getKafkaBootstrapServers(sslToKafka) + " kafkaZk: "
+                      + childController.getKafkaZkAddress());
             }
           }
         }
@@ -208,7 +212,9 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           String parentDataCenterName1 = DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
           String nativeReplicationSourceFabricAllowlist = fabricAllowList + "," + parentDataCenterName1;
           builder.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, nativeReplicationSourceFabricAllowlist);
-          builder.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + parentDataCenterName1, sslToKafka ? kafkaBroker.getSSLAddress() : kafkaBroker.getAddress());
+          builder.put(
+              CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + parentDataCenterName1,
+              sslToKafka ? kafkaBroker.getSSLAddress() : kafkaBroker.getAddress());
           builder.put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + parentDataCenterName1, kafkaBroker.getZkAddress());
           builder.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, parentDataCenterName1);
 
@@ -218,9 +224,12 @@ public class VeniceControllerWrapper extends ProcessWrapper {
            * of the extra Kafka cluster with the parent Kafka cluster created in the wrapper.
            */
           if (extraProps.containsKey(PARENT_KAFKA_CLUSTER_FABRIC_LIST)) {
-            nativeReplicationSourceFabricAllowlist = nativeReplicationSourceFabricAllowlist + "," + extraProps.getString(PARENT_KAFKA_CLUSTER_FABRIC_LIST);
+            nativeReplicationSourceFabricAllowlist =
+                nativeReplicationSourceFabricAllowlist + "," + extraProps.getString(PARENT_KAFKA_CLUSTER_FABRIC_LIST);
             builder.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, nativeReplicationSourceFabricAllowlist);
-            builder.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, parentDataCenterName1 + "," + extraProps.getString(PARENT_KAFKA_CLUSTER_FABRIC_LIST));
+            builder.put(
+                PARENT_KAFKA_CLUSTER_FABRIC_LIST,
+                parentDataCenterName1 + "," + extraProps.getString(PARENT_KAFKA_CLUSTER_FABRIC_LIST));
           }
 
           /**
@@ -245,7 +254,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       }
 
       D2Client d2Client = D2TestUtils.getAndStartD2Client(zkAddress);
-      MetricsRepository metricsRepository =  TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME);
+      MetricsRepository metricsRepository = TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME);
 
       Optional<ClientConfig> consumerClientConfig = Optional.empty();
       Object clientConfig = extraProperties.get(VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER);
@@ -260,9 +269,17 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           authorizerService,
           d2Client,
           consumerClientConfig,
-          Optional.empty()
-      );
-      return new VeniceControllerWrapper(serviceName, dataDirectory, veniceController, adminPort, adminSecurePort, propertiesList, d2ServerList, zkAddress, metricsRepository);
+          Optional.empty());
+      return new VeniceControllerWrapper(
+          serviceName,
+          dataDirectory,
+          veniceController,
+          adminPort,
+          adminSecurePort,
+          propertiesList,
+          d2ServerList,
+          zkAddress,
+          metricsRepository);
     };
   }
 
@@ -270,12 +287,34 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     return "dc-" + index;
   }
 
-  static StatefulServiceProvider<VeniceControllerWrapper> generateService(String[] clusterNames, String zkAddress,
-      KafkaBrokerWrapper kafkaBrokerWrapper, boolean isParent, int replicationFactor, int partitionSize,
-      long rebalanceDelayMs, int minActiveReplica, VeniceControllerWrapper[] childControllers,
-      Properties extraProperties, String clusterToD2, boolean sslToKafka, boolean d2Enable) {
-    return generateService(clusterNames, zkAddress, kafkaBrokerWrapper, isParent, replicationFactor, partitionSize,
-        rebalanceDelayMs, minActiveReplica, childControllers, extraProperties, clusterToD2, sslToKafka, d2Enable,
+  static StatefulServiceProvider<VeniceControllerWrapper> generateService(
+      String[] clusterNames,
+      String zkAddress,
+      KafkaBrokerWrapper kafkaBrokerWrapper,
+      boolean isParent,
+      int replicationFactor,
+      int partitionSize,
+      long rebalanceDelayMs,
+      int minActiveReplica,
+      VeniceControllerWrapper[] childControllers,
+      Properties extraProperties,
+      String clusterToD2,
+      boolean sslToKafka,
+      boolean d2Enable) {
+    return generateService(
+        clusterNames,
+        zkAddress,
+        kafkaBrokerWrapper,
+        isParent,
+        replicationFactor,
+        partitionSize,
+        rebalanceDelayMs,
+        minActiveReplica,
+        childControllers,
+        extraProperties,
+        clusterToD2,
+        sslToKafka,
+        d2Enable,
         Optional.empty());
   }
 

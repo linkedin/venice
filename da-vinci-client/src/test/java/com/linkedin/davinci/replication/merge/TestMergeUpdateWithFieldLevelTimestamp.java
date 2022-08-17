@@ -4,7 +4,6 @@ import org.testng.annotations.Test;
 
 
 public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeUpdate {
-
   @Test
   public void testUpdateIgnored() {
     // TODO

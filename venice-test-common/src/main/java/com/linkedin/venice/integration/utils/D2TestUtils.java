@@ -1,5 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
+import static com.linkedin.venice.client.store.ClientConfig.*;
+
 import com.linkedin.common.callback.Callback;
 import com.linkedin.common.util.None;
 import com.linkedin.d2.balancer.D2Client;
@@ -16,11 +18,7 @@ import com.linkedin.r2.transport.http.client.HttpClientFactory;
 import com.linkedin.r2.transport.http.common.HttpProtocolVersion;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.exceptions.VeniceException;
-
 import com.linkedin.venice.utils.SslUtils;
-
-import org.apache.commons.lang.StringUtils;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -29,8 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-
-import static com.linkedin.venice.client.store.ClientConfig.*;
+import org.apache.commons.lang.StringUtils;
 
 
 public class D2TestUtils {
@@ -40,12 +37,15 @@ public class D2TestUtils {
   public static final String CONTROLLER_CLUSTER_NAME = "VeniceController";
   public static final String CONTROLLER_SERVICE_NAME = "VeniceController";
 
-
-  public static void setupD2Config(String zkHosts, boolean https){
+  public static void setupD2Config(String zkHosts, boolean https) {
     setupD2Config(zkHosts, https, DEFAULT_TEST_CLUSTER_NAME, DEFAULT_TEST_SERVICE_NAME, false);
   }
 
-  public static void setupD2Config(String zkHosts, boolean https, String clusterName, String serviceName,
+  public static void setupD2Config(
+      String zkHosts,
+      boolean https,
+      String clusterName,
+      String serviceName,
       boolean stickyRoutingForSingleGet) {
     int sessionTimeout = 5000;
     String basePath = "/d2";
@@ -55,13 +55,22 @@ public class D2TestUtils {
     try {
       Map<String, Object> clusterDefaults = Collections.EMPTY_MAP;
       Map<String, Object> serviceDefaults = getD2ServiceDefaults();
-      Map<String, Object> clusterServiceConfigurations = getD2ServiceConfig(clusterName, serviceName, https, stickyRoutingForSingleGet);
+      Map<String, Object> clusterServiceConfigurations =
+          getD2ServiceConfig(clusterName, serviceName, https, stickyRoutingForSingleGet);
       Map<String, Object> extraClusterServiceConfigurations = Collections.EMPTY_MAP;
       Map<String, Object> serviceVariants = Collections.EMPTY_MAP;
 
-      d2Config =
-          new D2Config(zkHosts, sessionTimeout, basePath, sessionTimeout, retryLimit, clusterDefaults, serviceDefaults,
-              clusterServiceConfigurations, extraClusterServiceConfigurations, serviceVariants);
+      d2Config = new D2Config(
+          zkHosts,
+          sessionTimeout,
+          basePath,
+          sessionTimeout,
+          retryLimit,
+          clusterDefaults,
+          serviceDefaults,
+          clusterServiceConfigurations,
+          extraClusterServiceConfigurations,
+          serviceVariants);
 
       d2Config.configure();
     } catch (Exception e) {
@@ -85,7 +94,7 @@ public class D2TestUtils {
     return getD2Server(zkHosts, localUri, DEFAULT_TEST_CLUSTER_NAME);
   }
 
-  public static D2Server getD2Server(String zkHosts, String localUri, String clusterName){
+  public static D2Server getD2Server(String zkHosts, String localUri, String clusterName) {
     int sessionTimeout = 5000;
     String basePath = "/d2";
 
@@ -95,12 +104,8 @@ public class D2TestUtils {
     announcer.setCluster(clusterName);
     announcer.setUri(localUri);
     announcer.setWeight(1);
-    ZooKeeperConnectionManager zkManager = new ZooKeeperConnectionManager(
-        zkHosts,
-        sessionTimeout,
-        basePath,
-        storeFactory,
-        announcer);
+    ZooKeeperConnectionManager zkManager =
+        new ZooKeeperConnectionManager(zkHosts, sessionTimeout, basePath, storeFactory, announcer);
     long startupTimeoutMillis = 5000;
     boolean continueIfStartupFails = false;
     long shutdownTimeoutMillis = 5000;
@@ -139,18 +144,18 @@ public class D2TestUtils {
    * @param localUris varags if we want to announce on multiple uris (for example on an http port and https port)
    * @return
    */
-  public static List<D2Server> getD2Servers(String zkHosts, String... localUris){
+  public static List<D2Server> getD2Servers(String zkHosts, String... localUris) {
     List<D2Server> d2List = new ArrayList<>();
-    for (String localUri : localUris) {
+    for (String localUri: localUris) {
       D2Server d2 = getD2Server(zkHosts, localUri);
       d2List.add(d2);
     }
     return d2List;
   }
 
-  public static List<D2Server> getD2Servers(String zkHosts,  String[] localUris, String clusterName){
+  public static List<D2Server> getD2Servers(String zkHosts, String[] localUris, String clusterName) {
     List<D2Server> d2List = new ArrayList<>();
-    for (String localUri : localUris) {
+    for (String localUri: localUris) {
       D2Server d2 = getD2Server(zkHosts, localUri, clusterName);
       d2List.add(d2);
     }
@@ -177,13 +182,12 @@ public class D2TestUtils {
       throw new VeniceException("Param 'https' needs to be 'true' when enabling http/2");
     }
     Map<String, TransportClientFactory> transportClients = new HashMap<>();
-    TransportClientFactory httpTransport = new HttpClientFactory.Builder()
-        .setUsePipelineV2(true).setDefaultHttpVersion(httpProtocolVersion).build();
+    TransportClientFactory httpTransport =
+        new HttpClientFactory.Builder().setUsePipelineV2(true).setDefaultHttpVersion(httpProtocolVersion).build();
     transportClients.put("http", httpTransport);
     transportClients.put("https", httpTransport);
 
-    D2ClientBuilder builder = new D2ClientBuilder()
-        .setZkHosts(zkHosts)
+    D2ClientBuilder builder = new D2ClientBuilder().setZkHosts(zkHosts)
         .setZkSessionTimeout(sessionTimeout, TimeUnit.MILLISECONDS)
         .setZkStartupTimeout(sessionTimeout, TimeUnit.MILLISECONDS)
         .setLbWaitTimeout(sessionTimeout, TimeUnit.MILLISECONDS)
@@ -284,7 +288,11 @@ public class D2TestUtils {
    *
    * @see <a href="https://github.com/linkedin/rest.li/blob/master/examples/d2-quickstart/config/src/main/d2Config/d2Config.json">D2 Quickstart</a>
    */
-  public static Map<String, Object> getD2ServiceConfig(String cluster, String service, boolean https, boolean stickyRouting) {
+  public static Map<String, Object> getD2ServiceConfig(
+      String cluster,
+      String service,
+      boolean https,
+      boolean stickyRouting) {
     Map<String, Object> serviceMap = new HashMap<>();
     serviceMap.put("path", "/");
     if (https) {

@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller.kafka;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.kafka.TopicManager;
@@ -8,8 +10,6 @@ import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
-
-import static org.mockito.Mockito.*;
 
 
 public class TestTopicCleanupServiceForParentController {

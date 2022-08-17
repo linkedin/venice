@@ -1,6 +1,7 @@
 package com.linkedin.venice.controllerapi;
 
-public class MultiStoreResponse extends ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */
+public class MultiStoreResponse
+    extends ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */
   private String[] stores;
 
   public String[] getStores() {

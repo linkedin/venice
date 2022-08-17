@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -11,11 +14,8 @@ import java.util.Optional;
 import spark.Request;
 import spark.Route;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
-
-public class ClusterRoutes  extends AbstractRoute {
+public class ClusterRoutes extends AbstractRoute {
   public ClusterRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
     super(sslEnabled, accessController);
   }
@@ -38,7 +38,9 @@ public class ClusterRoutes  extends AbstractRoute {
         try {
           admin.updateClusterConfig(clusterName, new UpdateClusterConfigQueryParams(params));
         } catch (Exception e) {
-          veniceResponse.setError("Failed when updating configs for cluster: " + clusterName + ". Exception type: " + e.getClass().toString() + ". Detailed message = " + e.getMessage());
+          veniceResponse.setError(
+              "Failed when updating configs for cluster: " + clusterName + ". Exception type: "
+                  + e.getClass().toString() + ". Detailed message = " + e.getMessage());
         }
       }
     };

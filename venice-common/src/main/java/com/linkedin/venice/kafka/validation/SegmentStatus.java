@@ -2,9 +2,9 @@ package com.linkedin.venice.kafka.validation;
 
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
-
 import java.util.HashMap;
 import java.util.Map;
+
 
 public enum SegmentStatus {
   /** Did not receive {@link ControlMessageType#START_OF_SEGMENT} */
@@ -35,7 +35,7 @@ public enum SegmentStatus {
 
   private static Map<Integer, SegmentStatus> getTypeMap() {
     Map<Integer, SegmentStatus> intToTypeMap = new HashMap<>();
-    for (SegmentStatus type : SegmentStatus.values()) {
+    for (SegmentStatus type: SegmentStatus.values()) {
       intToTypeMap.put(type.value, type);
     }
     return intToTypeMap;

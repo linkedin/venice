@@ -71,7 +71,8 @@ public class SystemStoreAttributesImpl implements SystemStoreAttributes {
 
   @Override
   public void setVersions(List<Version> versions) {
-    this.dataModel.versions = versions.stream().map(Version::dataModel).collect(Collectors.toList());;
+    this.dataModel.versions = versions.stream().map(Version::dataModel).collect(Collectors.toList());
+    ;
   }
 
   @Override

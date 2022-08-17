@@ -15,25 +15,40 @@ import org.apache.avro.Schema;
 
 
 public class VeniceStoreCacheStoragePartition extends AbstractStoragePartition {
-
   private final VeniceStoreCache veniceCache;
   private RecordDeserializer keyDeserializer;
 
   // TODO: AsyncCacheLoader is a caffeine interface, should come up with a generic one at some point
-  public VeniceStoreCacheStoragePartition(Integer partitionId, ObjectCacheConfig cacheConfig, Schema keySchema, AsyncCacheLoader cacheLoader) {
-    this(partitionId, cacheConfig, FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(keySchema, keySchema), cacheLoader);
+  public VeniceStoreCacheStoragePartition(
+      Integer partitionId,
+      ObjectCacheConfig cacheConfig,
+      Schema keySchema,
+      AsyncCacheLoader cacheLoader) {
+    this(
+        partitionId,
+        cacheConfig,
+        FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(keySchema, keySchema),
+        cacheLoader);
   }
 
-  // To be used if a specific deserializer should be passed.  The deserializer of the keys should match up in order to invalidate records.
+  // To be used if a specific deserializer should be passed. The deserializer of the keys should match up in order to
+  // invalidate records.
   // most cases used the generic deserializer for key deserialization.
-  public VeniceStoreCacheStoragePartition(Integer partitionId, ObjectCacheConfig cacheConfig, RecordDeserializer keyRecordDeserializer, AsyncCacheLoader cacheLoader) {
+  public VeniceStoreCacheStoragePartition(
+      Integer partitionId,
+      ObjectCacheConfig cacheConfig,
+      RecordDeserializer keyRecordDeserializer,
+      AsyncCacheLoader cacheLoader) {
     super(partitionId);
-    // TODO: At some point we may want other cache implementations aside from caffeine.  The config should inform this assignment.
+    // TODO: At some point we may want other cache implementations aside from caffeine. The config should inform this
+    // assignment.
     // TODO: We should also consult the cacheConfig to determine if we should be caching nulls with ttl
     veniceCache = new CaffeineVeniceStoreCache(cacheConfig, cacheLoader);
 
-    // We could use a specific record deserializer here, but wiring in the specific key class value is a bit confusing in the interface.  Since
-    // the scenarios where we need to deserialize the key aren't in the hot path, we ues a generic deserializer to keep it simple.
+    // We could use a specific record deserializer here, but wiring in the specific key class value is a bit confusing
+    // in the interface. Since
+    // the scenarios where we need to deserialize the key aren't in the hot path, we ues a generic deserializer to keep
+    // it simple.
     keyDeserializer = keyRecordDeserializer;
   }
 
@@ -45,10 +60,10 @@ public class VeniceStoreCacheStoragePartition extends AbstractStoragePartition {
   @Override
   public void put(byte[] key, ByteBuffer value) {
     // This is the method called by the store ingestion task. If the update policy is to purge, purge.
-    // If in the future we want to store the data, store it.  Anything that wants to guarantee
+    // If in the future we want to store the data, store it. Anything that wants to guarantee
     // that something is stored irregardless should call the putDeserializedValue method.
 
-    // Everything in the cache itself is stored deserialized in order to keep look ups fast.  So
+    // Everything in the cache itself is stored deserialized in order to keep look ups fast. So
     // in order to find the key that we want to invalidate, we need to deserialize it on the ingestion
     // path.
     veniceCache.invalidate(keyDeserializer.deserialize(key));
@@ -71,12 +86,14 @@ public class VeniceStoreCacheStoragePartition extends AbstractStoragePartition {
 
   @Override
   public byte[] get(ByteBuffer key, boolean skipCache) {
-    throw new UnsupportedOperationException("Reading via a serialized key for a serialized record unsupported by this implementation!!");
+    throw new UnsupportedOperationException(
+        "Reading via a serialized key for a serialized record unsupported by this implementation!!");
   }
 
   @Override
   public void getByKeyPrefix(byte[] keyPrefix, BytesStreamingCallback callback) {
-    throw new UnsupportedOperationException("Reading via a serialized key for a serialized record unsupported by this implementation!!");
+    throw new UnsupportedOperationException(
+        "Reading via a serialized key for a serialized record unsupported by this implementation!!");
   }
 
   @Override

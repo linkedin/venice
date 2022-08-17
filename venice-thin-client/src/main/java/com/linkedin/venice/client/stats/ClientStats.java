@@ -11,7 +11,6 @@ import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
-
 import io.tehuti.metrics.stats.Rate;
 import java.util.Map;
 
@@ -47,10 +46,13 @@ public class ClientStats extends AbstractVeniceHttpStats {
 
   private final Rate requestRate;
 
-  public static ClientStats getClientStats(MetricsRepository metricsRepository, String storeName,
-      RequestType requestType, ClientConfig clientConfig) {
+  public static ClientStats getClientStats(
+      MetricsRepository metricsRepository,
+      String storeName,
+      RequestType requestType,
+      ClientConfig clientConfig) {
     String prefix = clientConfig == null ? null : clientConfig.getStatsPrefix();
-    String metricName = prefix == null || prefix.isEmpty() ?  storeName : prefix + "." + storeName;
+    String metricName = prefix == null || prefix.isEmpty() ? storeName : prefix + "." + storeName;
     return new ClientStats(metricsRepository, metricName, requestType);
   }
 
@@ -72,33 +74,38 @@ public class ClientStats extends AbstractVeniceHttpStats {
     healthyRequestLatencySensor = registerSensorWithDetailedPercentiles("healthy_request_latency", new Avg());
     unhealthyRequestLatencySensor = registerSensorWithDetailedPercentiles("unhealthy_request_latency", new Avg());
 
-    successRequestRatioSensor = registerSensor("success_request_ratio",
-        new TehutiUtils.SimpleRatioStat(healthyRequestRate, requestRate));
+    successRequestRatioSensor =
+        registerSensor("success_request_ratio", new TehutiUtils.SimpleRatioStat(healthyRequestRate, requestRate));
     Rate requestKeyCount = new Rate();
     Rate successRequestKeyCount = new Rate();
     requestKeyCountSensor = registerSensor("request_key_count", requestKeyCount, new Avg(), new Max());
-    successRequestKeyCountSensor = registerSensor("success_request_key_count", successRequestKeyCount,
-        new Avg(), new Max());
+    successRequestKeyCountSensor =
+        registerSensor("success_request_key_count", successRequestKeyCount, new Avg(), new Max());
     successRequestDuplicateKeyCountSensor = registerSensor("success_request_duplicate_key_count", new Rate());
-    successRequestKeyRatioSensor = registerSensor("success_request_key_ratio",
+    successRequestKeyRatioSensor = registerSensor(
+        "success_request_key_ratio",
         new TehutiUtils.SimpleRatioStat(successRequestKeyCount, requestKeyCount));
     /**
      * The time it took to serialize the request, to be sent to the router. This is done in a blocking fashion
      * on the caller's thread.
      */
-    requestSerializationTime = registerSensorWithDetailedPercentiles("request_serialization_time", new Avg(), new Max());
+    requestSerializationTime =
+        registerSensorWithDetailedPercentiles("request_serialization_time", new Avg(), new Max());
 
     /**
      * The time it took between sending the request to the router and beginning to process the response.
      */
-    requestSubmissionToResponseHandlingTime = registerSensorWithDetailedPercentiles("request_submission_to_response_handling_time", new Avg(), new Max());
+    requestSubmissionToResponseHandlingTime =
+        registerSensorWithDetailedPercentiles("request_submission_to_response_handling_time", new Avg(), new Max());
 
     /**
      * The total time it took to process the response.
      */
-    responseDeserializationTime = registerSensorWithDetailedPercentiles("response_deserialization_time", new Avg(), new Max());
+    responseDeserializationTime =
+        registerSensorWithDetailedPercentiles("response_deserialization_time", new Avg(), new Max());
 
-    responseDecompressionTimeSensor = registerSensorWithDetailedPercentiles("response_decompression_time", new Avg(), new Max());
+    responseDecompressionTimeSensor =
+        registerSensorWithDetailedPercentiles("response_decompression_time", new Avg(), new Max());
 
     /**
      * Metrics to track the latency of each proportion of results received.
@@ -118,15 +125,17 @@ public class ClientStats extends AbstractVeniceHttpStats {
      * This timeout behavior could actually happen before the D2 timeout, which is specified/configured in a different way.
      */
     appTimedOutRequestSensor = registerSensor("app_timed_out_request", new OccurrenceRate());
-    appTimedOutRequestResultRatioSensor = registerSensorWithDetailedPercentiles("app_timed_out_request_result_ratio",
-        new Avg(), new Min(), new Max());
+    appTimedOutRequestResultRatioSensor =
+        registerSensorWithDetailedPercentiles("app_timed_out_request_result_ratio", new Avg(), new Min(), new Max());
     clientFutureTimeoutSensor = registerSensor("client_future_timeout", new Avg(), new Min(), new Max());
     /* Metrics relevant to track long tail retry efficacy for batch get*/
     Rate retryRequestKeyCount = new Rate();
     retryRequestKeyCountSensor = registerSensor("retry_request_key_count", retryRequestKeyCount, new Avg(), new Max());
     Rate retryRequestSuccessKeyCount = new Rate();
-    retryRequestSuccessKeyCountSensor = registerSensor("retry_request_success_key_count", retryRequestKeyCount, new Avg(), new Max());
-    retryKeySuccessRatioSensor = registerSensor("retry_key_success_ratio",
+    retryRequestSuccessKeyCountSensor =
+        registerSensor("retry_request_success_key_count", retryRequestKeyCount, new Avg(), new Max());
+    retryKeySuccessRatioSensor = registerSensor(
+        "retry_key_success_ratio",
         new TehutiUtils.SimpleRatioStat(retryRequestSuccessKeyCount, successRequestKeyCount));
 
   }
@@ -150,9 +159,9 @@ public class ClientStats extends AbstractVeniceHttpStats {
   }
 
   public void recordHttpRequest(int httpStatus) {
-    httpStatusSensorMap.computeIfAbsent(httpStatus,
-        status -> registerSensor("http_" + httpStatus + "_request", new OccurrenceRate()))
-    .record();
+    httpStatusSensorMap
+        .computeIfAbsent(httpStatus, status -> registerSensor("http_" + httpStatus + "_request", new OccurrenceRate()))
+        .record();
   }
 
   public void recordHealthyLatency(double latency) {
@@ -223,7 +232,7 @@ public class ClientStats extends AbstractVeniceHttpStats {
     appTimedOutRequestResultRatioSensor.record(ratio);
   }
 
-  public void recordClientFutureTimeout(long clientFutureTimeout){
+  public void recordClientFutureTimeout(long clientFutureTimeout) {
     clientFutureTimeoutSensor.record(clientFutureTimeout);
   }
 

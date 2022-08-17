@@ -60,8 +60,10 @@ import org.apache.avro.io.BinaryDecoder;
  *    a chunked value.
  */
 public class ChunkingUtils {
-  final static ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER = new ChunkedValueManifestSerializer(false);
-  public final static KeyWithChunkingSuffixSerializer KEY_WITH_CHUNKING_SUFFIX_SERIALIZER = new KeyWithChunkingSuffixSerializer();
+  final static ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER =
+      new ChunkedValueManifestSerializer(false);
+  public final static KeyWithChunkingSuffixSerializer KEY_WITH_CHUNKING_SUFFIX_SERIALIZER =
+      new KeyWithChunkingSuffixSerializer();
 
   /**
    * Fills in default values for the unused parameters of the single get and batch get paths.
@@ -85,7 +87,8 @@ public class ChunkingUtils {
         false,
         null,
         null,
-        null, false);
+        null,
+        false);
   }
 
   static <VALUE, CHUNKS_CONTAINER> VALUE getFromStorage(
@@ -108,9 +111,22 @@ public class ChunkingUtils {
       return null;
     }
     return getFromStorage(
-        reusedRawValue.array(), reusedRawValue.limit(), databaseLookupStartTimeInNS, adapter, store,
-        schemaRepo.getLatestValueSchema(storeName).getId(), partition, response, reusedValue, reusedDecoder,
-        compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory, false);
+        reusedRawValue.array(),
+        reusedRawValue.limit(),
+        databaseLookupStartTimeInNS,
+        adapter,
+        store,
+        schemaRepo.getLatestValueSchema(storeName).getId(),
+        partition,
+        response,
+        reusedValue,
+        reusedDecoder,
+        compressionStrategy,
+        fastAvroEnabled,
+        schemaRepo,
+        storeName,
+        compressorFactory,
+        false);
   }
 
   static <CHUNKS_CONTAINER, VALUE> void getFromStorageByPartialKey(
@@ -133,6 +149,7 @@ public class ChunkingUtils {
 
     BytesStreamingCallback callback = new BytesStreamingCallback() {
       GenericRecord deserializedValueRecord;
+
       @Override
       public void onRecordReceived(byte[] key, byte[] value) {
         if (null == key || null == value) {
@@ -150,9 +167,20 @@ public class ChunkingUtils {
 
           GenericRecord deserializedKey = keyRecordDeserializer.deserialize(key);
 
-          deserializedValueRecord = (GenericRecord) adapter.constructValue(writerSchemaId,
-              schemaRepo.getLatestValueSchema(storeName).getId(), value, value.length, reusedValue, reusedDecoder,
-              response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory, store.getStoreName());
+          deserializedValueRecord = (GenericRecord) adapter.constructValue(
+              writerSchemaId,
+              schemaRepo.getLatestValueSchema(storeName).getId(),
+              value,
+              value.length,
+              reusedValue,
+              reusedDecoder,
+              response,
+              compressionStrategy,
+              fastAvroEnabled,
+              schemaRepo,
+              storeName,
+              compressorFactory,
+              store.getStoreName());
 
           computingCallback.onRecordReceived(deserializedKey, deserializedValueRecord);
         } else if (writerSchemaId != AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
@@ -203,8 +231,21 @@ public class ChunkingUtils {
     byte[] value = store.get(partition, keyBuffer, skipCache);
 
     return getFromStorage(
-        value, (null == value ? 0 : value.length), databaseLookupStartTimeInNS, adapter, store, readerSchemaID, partition,
-        response, reusedValue, reusedDecoder, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory,
+        value,
+        (null == value ? 0 : value.length),
+        databaseLookupStartTimeInNS,
+        adapter,
+        store,
+        readerSchemaID,
+        partition,
+        response,
+        reusedValue,
+        reusedDecoder,
+        compressionStrategy,
+        fastAvroEnabled,
+        schemaRepo,
+        storeName,
+        compressorFactory,
         skipCache);
   }
 
@@ -251,8 +292,20 @@ public class ChunkingUtils {
         response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
       }
 
-      return adapter.constructValue(writerSchemaId, readerSchemaId, value, valueLength, reusedValue, reusedDecoder,
-          response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory, store.getStoreName());
+      return adapter.constructValue(
+          writerSchemaId,
+          readerSchemaId,
+          value,
+          valueLength,
+          reusedValue,
+          reusedDecoder,
+          response,
+          compressionStrategy,
+          fastAvroEnabled,
+          schemaRepo,
+          storeName,
+          compressorFactory,
+          store.getStoreName());
     } else if (writerSchemaId != AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
       throw new VeniceException("Found a record with invalid schema ID: " + writerSchemaId);
     }
@@ -269,15 +322,15 @@ public class ChunkingUtils {
       // optimize large value retrieval in the future, it's unclear whether the concurrent retrieval approach
       // is optimal (as opposed to streaming the response out incrementally, for example). Since this is a
       // premature optimization, we are not addressing it right now.
-      byte[] valueChunk = store.get(partition, chunkedValueManifest.keysWithChunkIdSuffix.get(chunkIndex).array(), skipCache);
+      byte[] valueChunk =
+          store.get(partition, chunkedValueManifest.keysWithChunkIdSuffix.get(chunkIndex).array(), skipCache);
 
       if (null == valueChunk) {
-        throw new VeniceException(
-            "Chunk not found in " + getExceptionMessageDetails(store, partition, chunkIndex));
+        throw new VeniceException("Chunk not found in " + getExceptionMessageDetails(store, partition, chunkIndex));
       } else if (ValueRecord.parseSchemaId(valueChunk) != AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()) {
         throw new VeniceException(
-            "Did not get the chunk schema ID while attempting to retrieve a chunk! "
-                + "Instead, got schema ID: " + ValueRecord.parseSchemaId(valueChunk) + " from "
+            "Did not get the chunk schema ID while attempting to retrieve a chunk! " + "Instead, got schema ID: "
+                + ValueRecord.parseSchemaId(valueChunk) + " from "
                 + getExceptionMessageDetails(store, partition, chunkIndex));
       }
 
@@ -288,9 +341,9 @@ public class ChunkingUtils {
     // Sanity check based on size...
     if (actualSize != chunkedValueManifest.size) {
       throw new VeniceException(
-          "The fully assembled large value does not have the expected size! "
-              + "actualSize: " + actualSize + ", chunkedValueManifest.size: " + chunkedValueManifest.size
-              + ", " + getExceptionMessageDetails(store, partition, null));
+          "The fully assembled large value does not have the expected size! " + "actualSize: " + actualSize
+              + ", chunkedValueManifest.size: " + chunkedValueManifest.size + ", "
+              + getExceptionMessageDetails(store, partition, null));
     }
 
     if (null != response) {
@@ -298,7 +351,18 @@ public class ChunkingUtils {
       response.incrementMultiChunkLargeValueCount();
     }
 
-    return adapter.constructValue(chunkedValueManifest.schemaId, assembledValueContainer, reusedValue, reusedDecoder, response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory, store.getStoreName());
+    return adapter.constructValue(
+        chunkedValueManifest.schemaId,
+        assembledValueContainer,
+        reusedValue,
+        reusedDecoder,
+        response,
+        compressionStrategy,
+        fastAvroEnabled,
+        schemaRepo,
+        storeName,
+        compressorFactory,
+        store.getStoreName());
   }
 
   private static String getExceptionMessageDetails(AbstractStorageEngine store, int partition, Integer chunkIndex) {

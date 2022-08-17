@@ -1,5 +1,7 @@
 package com.linkedin.venice.listener;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.GetRouterRequest;
@@ -19,16 +21,13 @@ import java.util.Base64;
 import java.util.Collections;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
-import static org.mockito.Mockito.*;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class RouterRequestHttpHandlerTest {
-
   @Test
-  public void parsesRequests()
-      throws Exception {
+  public void parsesRequests() throws Exception {
     testRequestParsing("/storage/store_v1/1/key1", "store_v1", 1, "key1".getBytes(StandardCharsets.UTF_8));
     testBadRequest("/nopath", HttpMethod.GET);
     testBadRequest("/read/store_v1/1/key1", HttpMethod.GET);
@@ -39,8 +38,8 @@ public class RouterRequestHttpHandlerTest {
 
   @Test
   public void respondsToHealthCheck() throws Exception {
-    RouterRequestHttpHandler testHander = new RouterRequestHttpHandler(Mockito.mock(StatsHandler.class), false,
-        Collections.emptyMap());
+    RouterRequestHttpHandler testHander =
+        new RouterRequestHttpHandler(Mockito.mock(StatsHandler.class), false, Collections.emptyMap());
     ChannelHandlerContext mockContext = Mockito.mock(ChannelHandlerContext.class);
     ArgumentCaptor<HealthCheckRequest> argumentCaptor = ArgumentCaptor.forClass(HealthCheckRequest.class);
     HttpRequest healthMsg = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/health");
@@ -54,31 +53,43 @@ public class RouterRequestHttpHandlerTest {
       throws Exception {
 
     // Test handler
-    RouterRequestHttpHandler testHander = new RouterRequestHttpHandler(Mockito.mock(StatsHandler.class), false, Collections.emptyMap());
+    RouterRequestHttpHandler testHander =
+        new RouterRequestHttpHandler(Mockito.mock(StatsHandler.class), false, Collections.emptyMap());
     ChannelHandlerContext mockContext = Mockito.mock(ChannelHandlerContext.class);
     ArgumentCaptor<GetRouterRequest> argumentCaptor = ArgumentCaptor.forClass(GetRouterRequest.class);
     HttpRequest msg = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, path);
     testHander.channelRead(mockContext, msg);
     verify(mockContext).fireChannelRead(argumentCaptor.capture());
     GetRouterRequest requestObject = argumentCaptor.getValue();
-    Assert.assertEquals(requestObject.getResourceName(), expectedStore,
+    Assert.assertEquals(
+        requestObject.getResourceName(),
+        expectedStore,
         "Store from path: " + path + " should be parsed as: " + expectedStore);
-    Assert.assertEquals(requestObject.getPartition(), expectedPartition,
+    Assert.assertEquals(
+        requestObject.getPartition(),
+        expectedPartition,
         "Partition from path: " + path + " should be parsed as: " + expectedPartition);
     Assert.assertEquals(requestObject.getKeyBytes(), expectedKey, "Key from path: " + path + " was parsed incorrectly");
 
-    //Test parse method
+    // Test parse method
     GetRouterRequest getRouterRequest = GetRouterRequest.parseGetHttpRequest(msg);
-    Assert.assertEquals(getRouterRequest.getResourceName(), expectedStore,
+    Assert.assertEquals(
+        getRouterRequest.getResourceName(),
+        expectedStore,
         "Store from path: " + path + " should be parsed as: " + expectedStore);
-    Assert.assertEquals(getRouterRequest.getPartition(), expectedPartition,
+    Assert.assertEquals(
+        getRouterRequest.getPartition(),
+        expectedPartition,
         "Partition from path: " + path + " should be parsed as: " + expectedPartition);
-    Assert.assertEquals(getRouterRequest.getKeyBytes(), expectedKey, "Key from path: " + path + " was parsed incorrectly");
+    Assert.assertEquals(
+        getRouterRequest.getKeyBytes(),
+        expectedKey,
+        "Key from path: " + path + " was parsed incorrectly");
   }
 
-  public void testBadRequest(String path, HttpMethod method)
-      throws Exception {
-    RouterRequestHttpHandler testHander = new RouterRequestHttpHandler(Mockito.mock(StatsHandler.class), false, Collections.emptyMap());
+  public void testBadRequest(String path, HttpMethod method) throws Exception {
+    RouterRequestHttpHandler testHander =
+        new RouterRequestHttpHandler(Mockito.mock(StatsHandler.class), false, Collections.emptyMap());
     ChannelHandlerContext mockContext = Mockito.mock(ChannelHandlerContext.class);
     ArgumentCaptor<HttpShortcutResponse> argumentCaptor = ArgumentCaptor.forClass(HttpShortcutResponse.class);
     HttpRequest msg = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, method, path);
@@ -89,7 +100,7 @@ public class RouterRequestHttpHandlerTest {
   }
 
   @Test
-  public void parsesKeys(){
+  public void parsesKeys() {
     String b64Key = "bWF0dCB3aXNlIGlzIGF3ZXNvbWU=";
     Base64.Decoder d = Base64.getUrlDecoder();
     doKeyTest("myKey", "myKey".getBytes());
@@ -101,48 +112,49 @@ public class RouterRequestHttpHandlerTest {
     doKeyTest(b64Key + "?f=b64&a=b", d.decode(b64Key.getBytes()));
   }
 
-  public void doKeyTest(String urlString, byte[] expectedKey){
+  public void doKeyTest(String urlString, byte[] expectedKey) {
     byte[] parsedKey = GetRouterRequest.getKeyBytesFromUrlKeyString(urlString);
-    Assert.assertEquals(parsedKey, expectedKey,
+    Assert.assertEquals(
+        parsedKey,
+        expectedKey,
         urlString + " not parsed correctly as key.  Parsed: " + new String(parsedKey));
   }
 
   @Test(expectedExceptions = VeniceException.class)
-  public void parsesActionBadMethod(){
+  public void parsesActionBadMethod() {
     doActionTest("/storage/suffix", HttpMethod.HEAD, QueryAction.STORAGE);
   }
 
   @Test(expectedExceptions = VeniceException.class)
-  public void parsesActionBadAction(){
+  public void parsesActionBadAction() {
     doActionTest("/get/suffix", HttpMethod.GET, QueryAction.STORAGE);
   }
 
   @Test
-  public void parsesAction(){
+  public void parsesAction() {
     doActionTest("/storage/suffix", HttpMethod.GET, QueryAction.STORAGE);
   }
 
-  public void doActionTest(String urlString, HttpMethod method, QueryAction expectedAction){
+  public void doActionTest(String urlString, HttpMethod method, QueryAction expectedAction) {
     HttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, method, urlString);
     QueryAction parsedAction = RouterRequestHttpHandler.getQueryActionFromRequest(request);
     Assert.assertEquals(parsedAction, expectedAction, "parsed wrong query action from string: " + urlString);
   }
 
   @Test(expectedExceptions = VeniceException.class)
-  public void verifyBadApiVersionIsCaught(){
+  public void verifyBadApiVersionIsCaught() {
     HttpHeaders headers = new DefaultHttpHeaders();
     headers.add(HttpConstants.VENICE_API_VERSION, "2");
     GetRouterRequest.verifyApiVersion(headers, "1");
   }
 
   @Test
-  public void verifyGoodApiVersionOk(){
+  public void verifyGoodApiVersionOk() {
     HttpHeaders headers = new DefaultHttpHeaders();
     GetRouterRequest.verifyApiVersion(headers, "1"); /* missing header parsed as current version */
 
     headers.add(HttpConstants.VENICE_API_VERSION, "1");
     GetRouterRequest.verifyApiVersion(headers, "1");
   }
-
 
 }

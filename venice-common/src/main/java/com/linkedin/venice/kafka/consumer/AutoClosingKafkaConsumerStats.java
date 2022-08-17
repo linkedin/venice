@@ -29,35 +29,40 @@ public class AutoClosingKafkaConsumerStats extends AbstractVeniceStats {
   private Map<AutoClosingKafkaConsumer, Boolean> autoClosingKafkaConsumerCollection = new WeakHashMap<>();
 
   public AutoClosingKafkaConsumerStats(MetricsRepository metricsRepository, String name) {
-    // The replace is to avoid: javax.management.MalformedObjectNameException: Invalid character ':' in value part of property
+    // The replace is to avoid: javax.management.MalformedObjectNameException: Invalid character ':' in value part of
+    // property
     super(metricsRepository, name.replace(':', '_'));
-    this.autoClose = registerSensor("auto_close",
-        new OccurrenceRate(), new Count(), new SampledCount());
-    this.autoCreate = registerSensor("auto_create",
-        new OccurrenceRate(), new Count(), new SampledCount());
+    this.autoClose = registerSensor("auto_close", new OccurrenceRate(), new Count(), new SampledCount());
+    this.autoCreate = registerSensor("auto_create", new OccurrenceRate(), new Count(), new SampledCount());
 
-    this.durationFromCloseToCreate = registerSensor("duration_from_close_to_create_ms",
-        new Sensor[]{this.autoCreate}, new Min(), new Max(), new Avg());
-    this.durationFromCreateToClose = registerSensor("duration_from_create_to_close_ms",
-        new Sensor[]{this.autoClose}, new Min(), new Max(), new Avg());
+    this.durationFromCloseToCreate = registerSensor(
+        "duration_from_close_to_create_ms",
+        new Sensor[] { this.autoCreate },
+        new Min(),
+        new Max(),
+        new Avg());
+    this.durationFromCreateToClose = registerSensor(
+        "duration_from_create_to_close_ms",
+        new Sensor[] { this.autoClose },
+        new Min(),
+        new Max(),
+        new Avg());
 
-    this.createdConsumersCount = registerSensor("created_consumers_count",
-        new Gauge(() -> autoClosingKafkaConsumerCollection
-            .keySet()
-            .stream()
-            .filter(consumer -> !consumer.assignment().isEmpty())
-            .count()
-        )
-    );
+    this.createdConsumersCount = registerSensor(
+        "created_consumers_count",
+        new Gauge(
+            () -> autoClosingKafkaConsumerCollection.keySet()
+                .stream()
+                .filter(consumer -> !consumer.assignment().isEmpty())
+                .count()));
 
-    this.closedConsumersCount = registerSensor("closed_consumers_count",
-        new Gauge(() -> autoClosingKafkaConsumerCollection
-            .keySet()
-            .stream()
-            .filter(consumer -> consumer.assignment().isEmpty())
-            .count()
-        )
-    );
+    this.closedConsumersCount = registerSensor(
+        "closed_consumers_count",
+        new Gauge(
+            () -> autoClosingKafkaConsumerCollection.keySet()
+                .stream()
+                .filter(consumer -> consumer.assignment().isEmpty())
+                .count()));
   }
 
   public void recordAutoCreate() {

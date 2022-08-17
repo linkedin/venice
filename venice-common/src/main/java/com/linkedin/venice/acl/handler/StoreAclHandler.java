@@ -32,13 +32,11 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private final ReadOnlyStoreRepository metadataRepository;
   private final DynamicAccessController accessController;
 
-  public StoreAclHandler(DynamicAccessController accessController,
-      ReadOnlyStoreRepository metadataRepository) {
+  public StoreAclHandler(DynamicAccessController accessController, ReadOnlyStoreRepository metadataRepository) {
     this.metadataRepository = metadataRepository;
-    this.accessController = accessController.init(
-        metadataRepository.getAllStores().stream().map(Store::getName).collect(Collectors.toList()));
-    this.metadataRepository.registerStoreDataChangedListener(
-        new AclCreationDeletionListener(accessController));
+    this.accessController = accessController
+        .init(metadataRepository.getAllStores().stream().map(Store::getName).collect(Collectors.toList()));
+    this.metadataRepository.registerStoreDataChangedListener(new AclCreationDeletionListener(accessController));
   }
 
   /**
@@ -74,7 +72,11 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
     // Parse resource type and store name
     String[] requestParts = URI.create(uri).getPath().split("/");
     if (requestParts.length < 3) {
-      NettyUtils.setupResponseAndFlush(HttpResponseStatus.BAD_REQUEST, ("Invalid request  uri: " + uri).getBytes(), false, ctx);
+      NettyUtils.setupResponseAndFlush(
+          HttpResponseStatus.BAD_REQUEST,
+          ("Invalid request  uri: " + uri).getBytes(),
+          false,
+          ctx);
       return;
     }
     String storeName = extractStoreName(requestParts[2]);
@@ -83,7 +85,8 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
     try {
       Store store = metadataRepository.getStoreOrThrow(storeName);
       if (store.isSystemStore()) {
-        // Ignore ACL for Venice system stores. System stores should be world readable and only contain public information.
+        // Ignore ACL for Venice system stores. System stores should be world readable and only contain public
+        // information.
         ReferenceCountUtil.retain(req);
         ctx.fireChannelRead(req);
       } else {
@@ -94,63 +97,73 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
             ctx.fireChannelRead(req);
           } else {
             // Fact:
-            //   Request gets rejected.
+            // Request gets rejected.
             // Possible Reasons:
-            //   A. ACL not found. OR,
-            //   B. ACL exists but caller does not have permission.
+            // A. ACL not found. OR,
+            // B. ACL exists but caller does not have permission.
 
-            String client = ctx.channel().remoteAddress().toString(); //ip and port
+            String client = ctx.channel().remoteAddress().toString(); // ip and port
             String errLine = String.format("%s requested %s %s", client, method, req.uri());
 
-            if (!accessController.isFailOpen() && !accessController.hasAcl(storeName)) {  // short circuit, order matters
+            if (!accessController.isFailOpen() && !accessController.hasAcl(storeName)) { // short circuit, order matters
               // Case A
               // Conditions:
-              //   0. (outside) Store exists and is being access controlled. AND,
-              //   1. (left) The following policy is applied: if ACL not found, reject the request. AND,
-              //   2. (right) ACL not found.
+              // 0. (outside) Store exists and is being access controlled. AND,
+              // 1. (left) The following policy is applied: if ACL not found, reject the request. AND,
+              // 2. (right) ACL not found.
               // Result:
-              //   Request is rejected by DynamicAccessController#hasAccess()
+              // Request is rejected by DynamicAccessController#hasAccess()
               // Root cause:
-              //   Requested resource exists but does not have ACL.
+              // Requested resource exists but does not have ACL.
               // Action:
-              //   return 401 Unauthorized
+              // return 401 Unauthorized
               logger.warn("Requested store does not have ACL: " + errLine);
-              logger.debug("Existing stores: "
-                  + metadataRepository.getAllStores().stream().map(Store::getName).sorted().collect(Collectors.toList()));
-              logger.debug("Access-controlled stores: "
-                  + accessController.getAccessControlledResources().stream().sorted().collect(Collectors.toList()));
-              NettyUtils.setupResponseAndFlush(HttpResponseStatus.UNAUTHORIZED,
-                  ("ACL not found!\n"
-                      + "Either it has not been created, or can not be loaded.\n"
+              logger.debug(
+                  "Existing stores: " + metadataRepository.getAllStores()
+                      .stream()
+                      .map(Store::getName)
+                      .sorted()
+                      .collect(Collectors.toList()));
+              logger.debug(
+                  "Access-controlled stores: "
+                      + accessController.getAccessControlledResources().stream().sorted().collect(Collectors.toList()));
+              NettyUtils.setupResponseAndFlush(
+                  HttpResponseStatus.UNAUTHORIZED,
+                  ("ACL not found!\n" + "Either it has not been created, or can not be loaded.\n"
                       + "Please create the ACL, or report the error if you know for sure that ACL exists for this store: "
-                      + storeName).getBytes(), false, ctx);
+                      + storeName).getBytes(),
+                  false,
+                  ctx);
             } else {
               // Case B
               // Conditions:
-              //   1. Fail closed, and ACL found. OR,
-              //   2. Fail open, and ACL found. OR,
-              //   3. Fail open, and ACL not found.
+              // 1. Fail closed, and ACL found. OR,
+              // 2. Fail open, and ACL found. OR,
+              // 3. Fail open, and ACL not found.
               // Analyses:
-              //   (1) ACL exists, therefore result is determined by ACL.
-              //       Since the request has been rejected, it must be due to lack of permission.
-              //   (2) ACL exists, therefore result is determined by ACL.
-              //       Since the request has been rejected, it must be due to lack of permission.
-              //   (3) In such case, request would NOT be rejected in the first place,
-              //       according to the definition of hasAccess() in DynamicAccessController interface.
-              //       Contradiction to the fact, therefore this case is impossible.
+              // (1) ACL exists, therefore result is determined by ACL.
+              // Since the request has been rejected, it must be due to lack of permission.
+              // (2) ACL exists, therefore result is determined by ACL.
+              // Since the request has been rejected, it must be due to lack of permission.
+              // (3) In such case, request would NOT be rejected in the first place,
+              // according to the definition of hasAccess() in DynamicAccessController interface.
+              // Contradiction to the fact, therefore this case is impossible.
               // Root cause:
-              //   Caller does not have permission to access the resource.
+              // Caller does not have permission to access the resource.
               // Action:
-              //   return 403 Forbidden
+              // return 403 Forbidden
               logger.debug("Unauthorized access rejected: " + errLine);
-              NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN,
+              NettyUtils.setupResponseAndFlush(
+                  HttpResponseStatus.FORBIDDEN,
                   ("Access denied!\n"
                       + "If you are the store owner, add this application (or your own username for Venice shell client) to the store ACL.\n"
-                      + "Otherwise, ask the store owner for read permission.").getBytes(), false, ctx);
+                      + "Otherwise, ask the store owner for read permission.").getBytes(),
+                  false,
+                  ctx);
             }
           }
         } catch (AclException e) {
-          String client = ctx.channel().remoteAddress().toString(); //ip and port
+          String client = ctx.channel().remoteAddress().toString(); // ip and port
           String errLine = String.format("%s requested %s %s", client, method, req.uri());
 
           if (accessController.isFailOpen()) {
@@ -164,11 +177,14 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
         }
       }
     } catch (VeniceNoStoreException noStoreException) {
-      String client = ctx.channel().remoteAddress().toString(); //ip and port
+      String client = ctx.channel().remoteAddress().toString(); // ip and port
       String errLine = String.format("%s requested %s %s", client, method, req.uri());
       logger.debug("Requested store does not exist: " + errLine);
-      NettyUtils.setupResponseAndFlush(HttpResponseStatus.BAD_REQUEST,
-          ("Invalid Venice store name: " + storeName).getBytes(), false, ctx);
+      NettyUtils.setupResponseAndFlush(
+          HttpResponseStatus.BAD_REQUEST,
+          ("Invalid Venice store name: " + storeName).getBytes(),
+          false,
+          ctx);
     }
   }
 }

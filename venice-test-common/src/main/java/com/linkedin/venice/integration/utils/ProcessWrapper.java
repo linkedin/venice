@@ -10,6 +10,7 @@ import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+
 /**
  * A class used for wrapping external systems and Venice components and
  * taking care of cleaning up after them when finished.
@@ -26,7 +27,6 @@ public abstract class ProcessWrapper implements Closeable {
   private boolean isStarted;
 
   private boolean isRunning;
-
 
   private final Exception constructionCallstack;
   private final Thread shutdownHook;
@@ -90,7 +90,7 @@ public abstract class ProcessWrapper implements Closeable {
   public String getAddressForLogging() {
     try {
       return getAddress();
-    } catch (Exception e){ /* VeniceClusterWrapper throws exceptions on getHost() and getPort() */
+    } catch (Exception e) { /* VeniceClusterWrapper throws exceptions on getHost() and getPort() */
       return "No Address: " + e.getMessage();
     }
   }
@@ -108,7 +108,7 @@ public abstract class ProcessWrapper implements Closeable {
       LOGGER.info(String.format("%s startup took %d ms.", serviceName, System.currentTimeMillis() - startTime));
       isRunning = true;
     } else {
-      LOGGER.info(serviceName +" service has already started.");
+      LOGGER.info(serviceName + " service has already started.");
     }
   }
 
@@ -151,13 +151,15 @@ public abstract class ProcessWrapper implements Closeable {
    */
   protected abstract void newProcess() throws Exception;
 
-  public synchronized boolean isRunning(){
+  public synchronized boolean isRunning() {
     return isRunning;
   }
 
   public synchronized void close() {
     if (closeCalled) {
-      LOGGER.error("Ignore duplicate attempt to close " + serviceName + " service running at " + getAddressForLogging(), new VeniceException("Duplicate close attempt."));
+      LOGGER.error(
+          "Ignore duplicate attempt to close " + serviceName + " service running at " + getAddressForLogging(),
+          new VeniceException("Duplicate close attempt."));
       return;
     }
     closeCalled = true;
@@ -179,13 +181,14 @@ public abstract class ProcessWrapper implements Closeable {
 
   private void closeAudit(String context) {
     if (!closeCalled) {
-      System.out.println(getClass().getSimpleName() + " was not closed! Constructed at:\n" + ExceptionUtils.stackTraceToString(constructionCallstack));
+      System.out.println(
+          getClass().getSimpleName() + " was not closed! Constructed at:\n"
+              + ExceptionUtils.stackTraceToString(constructionCallstack));
     } else if (null != closeThrowable) {
-      System.err.println(context + ": " + getClass().getSimpleName()
-          + " was closed but failed to stop! Constructed at:\n"
-          + ExceptionUtils.stackTraceToString(constructionCallstack)
-          + "\n\nClose failure details:\n"
-          + ExceptionUtils.stackTraceToString(closeThrowable));
+      System.err.println(
+          context + ": " + getClass().getSimpleName() + " was closed but failed to stop! Constructed at:\n"
+              + ExceptionUtils.stackTraceToString(constructionCallstack) + "\n\nClose failure details:\n"
+              + ExceptionUtils.stackTraceToString(closeThrowable));
     }
   }
 }

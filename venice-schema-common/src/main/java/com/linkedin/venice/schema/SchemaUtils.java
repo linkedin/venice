@@ -1,5 +1,7 @@
 package com.linkedin.venice.schema;
 
+import static org.apache.avro.Schema.Type.*;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.ArrayList;
@@ -8,11 +10,8 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 
-import static org.apache.avro.Schema.Type.*;
-
 
 public class SchemaUtils {
-
   private SchemaUtils() {
     // Utility class
   }
@@ -27,14 +26,14 @@ public class SchemaUtils {
   public static void containsOnlyOneCollection(Schema unionSchema) {
     List<Schema> types = unionSchema.getTypes();
     boolean hasCollectionType = false;
-    for (Schema type : types) {
+    for (Schema type: types) {
       switch (type.getType()) {
         case ARRAY:
         case MAP:
           if (hasCollectionType) {
             // More then one collection type found, this won't work.
-            throw new VeniceException("Multiple collection types in a union are not allowedSchema: "
-                + unionSchema.toString(true));
+            throw new VeniceException(
+                "Multiple collection types in a union are not allowedSchema: " + unionSchema.toString(true));
           }
           hasCollectionType = true;
           continue;
@@ -59,15 +58,14 @@ public class SchemaUtils {
       return false;
     }
 
-    return types.get(0).getType() == Schema.Type.NULL
-        || types.get(1).getType() == Schema.Type.NULL;
+    return types.get(0).getType() == Schema.Type.NULL || types.get(1).getType() == Schema.Type.NULL;
   }
 
   public static Schema createFlattenedUnionSchema(List<Schema> schemasInUnion) {
     List<Schema> flattenedSchemaList = new ArrayList<>(schemasInUnion.size());
-    for (Schema schemaInUnion : schemasInUnion) {
-      //if the origin schema is union, we'd like to flatten it
-      //we don't need to do it recursively because Avro doesn't support nested union
+    for (Schema schemaInUnion: schemasInUnion) {
+      // if the origin schema is union, we'd like to flatten it
+      // we don't need to do it recursively because Avro doesn't support nested union
       if (schemaInUnion.getType() == UNION) {
         flattenedSchemaList.addAll(schemaInUnion.getTypes());
       } else {
@@ -84,14 +82,19 @@ public class SchemaUtils {
    */
   public static GenericRecord createGenericRecord(Schema originalSchema) {
     final GenericData.Record newRecord = new GenericData.Record(originalSchema);
-    for (Schema.Field originalField : originalSchema.getFields()) {
+    for (Schema.Field originalField: originalSchema.getFields()) {
       if (AvroCompatibilityHelper.fieldHasDefault(originalField)) {
-        //make a deep copy here since genericData caches each default value internally. If we
-        //use what it returns, we will mutate the cache.
-        newRecord.put(originalField.name(), GenericData.get().deepCopy(originalField.schema(), AvroCompatibilityHelper.getGenericDefaultValue(originalField)));
+        // make a deep copy here since genericData caches each default value internally. If we
+        // use what it returns, we will mutate the cache.
+        newRecord.put(
+            originalField.name(),
+            GenericData.get()
+                .deepCopy(originalField.schema(), AvroCompatibilityHelper.getGenericDefaultValue(originalField)));
       } else {
-        throw new VeniceException(String.format("Cannot apply updates because Field: %s is null and "
-            + "default value is not defined", originalField.name()));
+        throw new VeniceException(
+            String.format(
+                "Cannot apply updates because Field: %s is null and " + "default value is not defined",
+                originalField.name()));
       }
     }
 

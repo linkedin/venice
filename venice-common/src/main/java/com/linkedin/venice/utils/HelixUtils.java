@@ -16,14 +16,12 @@ import org.apache.helix.AccessOption;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
-import org.apache.helix.manager.zk.ZKHelixDataAccessor;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.model.CustomizedStateConfig;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.LiveInstance;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
-import org.apache.helix.zookeeper.datamodel.ZNRecord;
 import org.apache.helix.zookeeper.zkclient.DataUpdater;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -33,7 +31,6 @@ import org.apache.logging.log4j.Logger;
  * Helper functions for Helix.
  */
 public class HelixUtils {
-
   private static final Logger logger = LogManager.getLogger(HelixUtils.class);
 
   /**
@@ -48,31 +45,33 @@ public class HelixUtils {
    */
   public static final String TOPOLOGY_CONSTRAINT = "instance";
 
-  public static String getHelixClusterZkPath(String clusterName){
-    return "/"+clusterName;
+  public static String getHelixClusterZkPath(String clusterName) {
+    return "/" + clusterName;
   }
 
   private final static Character SEPARATOR = '_';
+
   public static int getPartitionId(String helixPartitionName) {
     int lastUnderscoreIdx = helixPartitionName.lastIndexOf(SEPARATOR);
-    if(lastUnderscoreIdx == -1) {
+    if (lastUnderscoreIdx == -1) {
       throw new IllegalArgumentException("Incorrect Helix Partition Name " + helixPartitionName);
     }
-    return Integer.parseInt(helixPartitionName.substring(lastUnderscoreIdx+1));
+    return Integer.parseInt(helixPartitionName.substring(lastUnderscoreIdx + 1));
   }
 
   public static String getPartitionName(String resourceName, int partitionId) {
     return resourceName + SEPARATOR + partitionId;
   }
 
-  public static String getResourceName(String helixPartitionName){
+  public static String getResourceName(String helixPartitionName) {
     int lastUnderscoreIdx = helixPartitionName.lastIndexOf(SEPARATOR);
     if (lastUnderscoreIdx == -1) {
       throw new IllegalArgumentException("Incorrect Helix Partition Name " + helixPartitionName);
     }
     String resourceName = helixPartitionName.substring(0, lastUnderscoreIdx);
     if (resourceName.isEmpty()) {
-      throw new IllegalArgumentException("Could not determine resource name from Helix Partition Id " + helixPartitionName);
+      throw new IllegalArgumentException(
+          "Could not determine resource name from Helix Partition Id " + helixPartitionName);
     }
     return resourceName;
   }
@@ -81,7 +80,7 @@ public class HelixUtils {
    * @param helixInstanceName of form host_port.
    * @return Instance object with correct host and port.
    */
-  public static Instance getInstanceFromHelixInstanceName(String helixInstanceName){
+  public static Instance getInstanceFromHelixInstanceName(String helixInstanceName) {
     String hostname = Utils.parseHostFromHelixNodeIdentifier(helixInstanceName);
     int port = Utils.parsePortFromHelixNodeIdentifier(helixInstanceName);
     return new Instance(helixInstanceName, hostname, port);
@@ -91,7 +90,10 @@ public class HelixUtils {
    * @param path parent path
    * @return a list of objects that are under parent path. It will return null if parent path is not existing
    */
-  public static <T> List<T> getChildren(ZkBaseDataAccessor<T> dataAccessor, String path, int retryCount,
+  public static <T> List<T> getChildren(
+      ZkBaseDataAccessor<T> dataAccessor,
+      String path,
+      int retryCount,
       long retryInterval) {
     int attempt = 1;
     while (attempt <= retryCount) {
@@ -107,9 +109,10 @@ public class HelixUtils {
       if (children.size() != expectedCount) {
         // Data is inconsistent
         if (attempt < retryCount) {
-          logger.info("dataAccessor.getChildNames() did not return the expected number of elements from path: " + path
-              + "\nExpected: " + expectedCount + ", but got: " + children.size() + ". Attempt:" + attempt + "/"
-              + retryCount + ", will sleep " + retryInterval + " and retry.");
+          logger.info(
+              "dataAccessor.getChildNames() did not return the expected number of elements from path: " + path
+                  + "\nExpected: " + expectedCount + ", but got: " + children.size() + ". Attempt:" + attempt + "/"
+                  + retryCount + ", will sleep " + retryInterval + " and retry.");
           Utils.sleep(retryInterval);
         }
       } else {
@@ -129,7 +132,7 @@ public class HelixUtils {
     }
   }
 
-  public static <T> void create(ZkBaseDataAccessor<T> dataAccessor, String path, T data){
+  public static <T> void create(ZkBaseDataAccessor<T> dataAccessor, String path, T data) {
     create(dataAccessor, path, data, DEFAULT_HELIX_OP_RETRY_COUNT);
   }
 
@@ -159,18 +162,22 @@ public class HelixUtils {
     throw new ZkDataAccessException(path, "set", retryCount);
   }
 
-  public static <T> void updateChildren(ZkBaseDataAccessor<T> dataAccessor, List<String> pathes, List<T> data){
-    updateChildren(dataAccessor,pathes, data, DEFAULT_HELIX_OP_RETRY_COUNT);
+  public static <T> void updateChildren(ZkBaseDataAccessor<T> dataAccessor, List<String> pathes, List<T> data) {
+    updateChildren(dataAccessor, pathes, data, DEFAULT_HELIX_OP_RETRY_COUNT);
   }
 
-  //TODO there is not atomic operations to update multiple node to ZK. We should ask Helix library to rollback if it's only partial successful.
-  public static <T> void updateChildren(ZkBaseDataAccessor<T> dataAccessor, List<String> pathes, List<T> data,
+  // TODO there is not atomic operations to update multiple node to ZK. We should ask Helix library to rollback if it's
+  // only partial successful.
+  public static <T> void updateChildren(
+      ZkBaseDataAccessor<T> dataAccessor,
+      List<String> pathes,
+      List<T> data,
       int retryCount) {
     int retry = 0;
     while (retry < retryCount) {
       boolean[] results = dataAccessor.setChildren(pathes, data, AccessOption.PERSISTENT);
       boolean isAllSuccessful = true;
-      for (Boolean r : results) {
+      for (Boolean r: results) {
         if (!r) {
           isAllSuccessful = false;
           break;
@@ -181,7 +188,9 @@ public class HelixUtils {
       }
       retry++;
       if (retry == retryCount) {
-        throw new ZkDataAccessException(pathes.get(0).substring(0, pathes.get(0).lastIndexOf('/')), "update children",
+        throw new ZkDataAccessException(
+            pathes.get(0).substring(0, pathes.get(0).lastIndexOf('/')),
+            "update children",
             retryCount);
       }
     }
@@ -206,7 +215,10 @@ public class HelixUtils {
     compareAndUpdate(dataAccessor, path, DEFAULT_HELIX_OP_RETRY_COUNT, dataUpdater);
   }
 
-  public static <T> void compareAndUpdate(ZkBaseDataAccessor<T> dataAccessor, String path, int retryCount,
+  public static <T> void compareAndUpdate(
+      ZkBaseDataAccessor<T> dataAccessor,
+      String path,
+      int retryCount,
       DataUpdater<T> dataUpdater) {
     int retry = 0;
     while (retry < retryCount) {
@@ -236,13 +248,16 @@ public class HelixUtils {
         isSuccess = true;
       } catch (Exception e) {
         if (attempt <= maxRetries) {
-          logger.warn("failed to connect " + manager.toString() + " on attempt " + attempt + "/" + maxRetries +
-              ". Will retry in " + sleepTimeSeconds + " seconds.");
+          logger.warn(
+              "failed to connect " + manager.toString() + " on attempt " + attempt + "/" + maxRetries
+                  + ". Will retry in " + sleepTimeSeconds + " seconds.");
           attempt++;
           Utils.sleep(sleepTimeSeconds * 1000);
         } else {
-          throw new VeniceException("Error connecting to Helix Manager for Cluster '" +
-              manager.getClusterName() + "' after " + maxRetries + " attempts.", e);
+          throw new VeniceException(
+              "Error connecting to Helix Manager for Cluster '" + manager.getClusterName() + "' after " + maxRetries
+                  + " attempts.",
+              e);
         }
       }
     }
@@ -261,8 +276,9 @@ public class HelixUtils {
         break;
       } else {
         if (attempt <= maxRetry) {
-          logger.warn("Cluster has not been initialized by controller. attempt: " + attempt + ". Will retry in "
-              + retryIntervalSec + " seconds.");
+          logger.warn(
+              "Cluster has not been initialized by controller. attempt: " + attempt + ". Will retry in "
+                  + retryIntervalSec + " seconds.");
           attempt++;
           Utils.sleep(retryIntervalSec * Time.MS_PER_SECOND);
         } else {
@@ -271,7 +287,6 @@ public class HelixUtils {
       }
     }
   }
-
 
   public static void setupInstanceConfig(String clusterName, String instanceId, String zkAddress) {
     HelixConfigScope instanceScope =

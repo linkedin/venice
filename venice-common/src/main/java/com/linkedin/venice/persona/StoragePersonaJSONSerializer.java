@@ -19,8 +19,11 @@ public class StoragePersonaJSONSerializer extends VeniceJsonSerializer<StoragePe
    * See the Jackson documentation for more information about property-based creators. */
   public static class StoragePersonaSerializerMixin {
     @JsonCreator
-    public StoragePersonaSerializerMixin(@JsonProperty("name") String name, @JsonProperty("quotaNumber") long quotaNumber,
-        @JsonProperty("storesToEnforce") Set<String> storesToEnforce, @JsonProperty("owners") Set<String> owners) {
+    public StoragePersonaSerializerMixin(
+        @JsonProperty("name") String name,
+        @JsonProperty("quotaNumber") long quotaNumber,
+        @JsonProperty("storesToEnforce") Set<String> storesToEnforce,
+        @JsonProperty("owners") Set<String> owners) {
     }
   }
 }

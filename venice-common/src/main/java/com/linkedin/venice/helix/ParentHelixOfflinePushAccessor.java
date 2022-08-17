@@ -39,8 +39,8 @@ public class ParentHelixOfflinePushAccessor {
   }
 
   public List<String> getAllPushNames(String clusterName) {
-    return offlinePushStatusAccessor.getChildNames(getOfflinePushStatuesParentPath(clusterName),
-        AccessOption.PERSISTENT);
+    return offlinePushStatusAccessor
+        .getChildNames(getOfflinePushStatuesParentPath(clusterName), AccessOption.PERSISTENT);
   }
 
   private String getOfflinePushStatuesParentPath(String clusterName) {

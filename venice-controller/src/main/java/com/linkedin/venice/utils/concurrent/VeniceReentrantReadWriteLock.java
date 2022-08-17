@@ -97,16 +97,11 @@ public class VeniceReentrantReadWriteLock extends ReentrantReadWriteLock {
     String ownerStackTrace = ExceptionUtils.threadToThrowableToString(getOwner());
     /** Beginning with the hex hashcode, like in {@link Object#toString()}, to differentiate instances */
     return this.getClass().getSimpleName() + "@" + Integer.toHexString(hashCode()) + " {\n"
-        + "getQueuedWriterThreads(): " + getQueuedWriterThreads() + ",\n\t"
-        + "getQueuedReaderThreads(): " + getQueuedReaderThreads() + ",\n\t"
-        + "getReadLockCount(): " + getReadLockCount() + ",\n\t"
-        + "isWriteLocked(): " + isWriteLocked() + ",\n\t"
-        + "isWriteLockedByCurrentThread(): " + isWriteLockedByCurrentThread() + ",\n\t"
-        + "getWriteHoldCount(): " + getWriteHoldCount() + ",\n\t"
-        + "getReadHoldCount(): " + getReadHoldCount() + ",\n\t"
-        + "getQueueLength(): " + getQueueLength() + ",\n\t"
-        + "getOwner(): " + getOwner() + ",\n\t"
-        + "ownerStackTrace:\n\n" + ownerStackTrace + "\n"
-        + "}";
+        + "getQueuedWriterThreads(): " + getQueuedWriterThreads() + ",\n\t" + "getQueuedReaderThreads(): "
+        + getQueuedReaderThreads() + ",\n\t" + "getReadLockCount(): " + getReadLockCount() + ",\n\t"
+        + "isWriteLocked(): " + isWriteLocked() + ",\n\t" + "isWriteLockedByCurrentThread(): "
+        + isWriteLockedByCurrentThread() + ",\n\t" + "getWriteHoldCount(): " + getWriteHoldCount() + ",\n\t"
+        + "getReadHoldCount(): " + getReadHoldCount() + ",\n\t" + "getQueueLength(): " + getQueueLength() + ",\n\t"
+        + "getOwner(): " + getOwner() + ",\n\t" + "ownerStackTrace:\n\n" + ownerStackTrace + "\n" + "}";
   }
 }

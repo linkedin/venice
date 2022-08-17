@@ -3,15 +3,14 @@ package com.linkedin.venice.message;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.utils.ByteUtils;
-
 import javax.annotation.Nonnull;
+
 
 /**
  * Class which stores the components of a Kafka Key, and is the format specified in the
  * {@link com.linkedin.venice.serialization.KafkaKeySerializer}.
  */
 public class KafkaKey {
-
   private final byte keyHeaderByte;
   private final byte[] key; // TODO: Consider whether we may want to use a ByteBuffer here
   private final ChunkId chunkId;
@@ -58,6 +57,7 @@ public class KafkaKey {
   public boolean hasChunkId() {
     return null != chunkId;
   }
+
   /**
    * @return the content of the key (everything beyond the first byte)
    */
@@ -70,12 +70,11 @@ public class KafkaKey {
   }
 
   public int getKeyLength() {
-    return key == null ?  0 : key.length;
+    return key == null ? 0 : key.length;
   }
 
   public String toString() {
-    return getClass().getSimpleName() + "(" +
-        (isControlMessage() ? "CONTROL_MESSAGE" : "PUT or DELETE")
-        + ", " + ByteUtils.toHexString(key) + ")";
+    return getClass().getSimpleName() + "(" + (isControlMessage() ? "CONTROL_MESSAGE" : "PUT or DELETE") + ", "
+        + ByteUtils.toHexString(key) + ")";
   }
 }

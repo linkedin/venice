@@ -10,7 +10,6 @@ import org.testng.annotations.Test;
 
 
 public class MultiGetResponseRecordV1ChunkedDeserializerTest {
-
   @Test
   public void testDeserialize() {
     MultiGetResponseRecordV1 record1 = new MultiGetResponseRecordV1();

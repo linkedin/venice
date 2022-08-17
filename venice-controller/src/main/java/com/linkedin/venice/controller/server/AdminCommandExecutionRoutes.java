@@ -1,5 +1,9 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.EXECUTION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.LAST_SUCCEED_EXECUTION_ID;
+
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -7,14 +11,8 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
-import com.linkedin.venice.exceptions.ExceptionType;
 import java.util.Optional;
-import org.apache.http.HttpStatus;
 import spark.Route;
-
-import static com.linkedin.venice.controllerapi.ControllerRoute.EXECUTION;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.LAST_SUCCEED_EXECUTION_ID;
 
 
 public class AdminCommandExecutionRoutes extends AbstractRoute {
@@ -35,12 +33,13 @@ public class AdminCommandExecutionRoutes extends AbstractRoute {
       String cluster = request.queryParams(CLUSTER);
       long executionId = Long.parseLong(request.queryParams(EXECUTION_ID));
       responseObject.setCluster(cluster);
-      Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker = admin.getAdminCommandExecutionTracker(cluster);
+      Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker =
+          admin.getAdminCommandExecutionTracker(cluster);
       if (adminCommandExecutionTracker.isPresent()) {
         AdminCommandExecution execution = adminCommandExecutionTracker.get().checkExecutionStatus(executionId);
         if (execution == null) {
-          responseObject.setError(
-              "Could not find the execution by given id: " + executionId + " in cluster: " + cluster);
+          responseObject
+              .setError("Could not find the execution by given id: " + executionId + " in cluster: " + cluster);
         } else {
           responseObject.setExecution(execution);
         }

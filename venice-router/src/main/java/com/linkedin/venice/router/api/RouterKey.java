@@ -23,22 +23,25 @@ public class RouterKey implements Comparable<RouterKey> {
 
   private int keySize;
 
-  public RouterKey(byte[] key){
+  public RouterKey(byte[] key) {
     this(ByteBuffer.wrap(key));
   }
+
   public RouterKey(ByteBuffer key) {
     this.keyBuffer = key;
     this.hashCode = this.keyBuffer.hashCode();
     this.keySize = key.remaining();
   }
-  public static RouterKey fromString(String s){
+
+  public static RouterKey fromString(String s) {
     return new RouterKey(s.getBytes(StandardCharsets.UTF_8));
   }
-  public static RouterKey fromBase64(String s){
+
+  public static RouterKey fromBase64(String s) {
     return new RouterKey(EncodingUtils.base64DecodeFromString(s));
   }
 
-  public String base64Encoded(){
+  public String base64Encoded() {
     return EncodingUtils.base64EncodeToString(keyBuffer);
   }
 
@@ -51,7 +54,7 @@ public class RouterKey implements Comparable<RouterKey> {
   }
 
   @Override
-  public int compareTo(RouterKey other){
+  public int compareTo(RouterKey other) {
     return keyBuffer.compareTo(other.keyBuffer);
   }
 

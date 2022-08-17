@@ -27,19 +27,27 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
   public DualReadAvroGenericStoreClient(InternalAvroStoreClient<K, V> delegate, ClientConfig config) {
     this(delegate, config, config.getGenericThinClient());
     if (config.getGenericThinClient() == null) {
-      throw new VeniceClientException("GenericThinClient in ClientConfig shouldn't be null when constructing a generic dual-read store client");
+      throw new VeniceClientException(
+          "GenericThinClient in ClientConfig shouldn't be null when constructing a generic dual-read store client");
     }
   }
 
-  protected DualReadAvroGenericStoreClient(InternalAvroStoreClient<K, V> delegate, ClientConfig config, AvroGenericStoreClient<K, V> thinClient) {
+  protected DualReadAvroGenericStoreClient(
+      InternalAvroStoreClient<K, V> delegate,
+      ClientConfig config,
+      AvroGenericStoreClient<K, V> thinClient) {
     super(delegate);
     this.thinClient = thinClient;
     this.clientStatsForSingleGet = config.getStats(RequestType.SINGLE_GET);
     this.clientStatsForMultiGet = config.getStats(RequestType.MULTI_GET);
   }
 
-  private static <T> CompletableFuture<T> sendRequest(Supplier<CompletableFuture<T>> supplier, long startTimeNS,
-      AtomicBoolean error, AtomicReference<Double> latency, CompletableFuture<T> valueFuture) {
+  private static <T> CompletableFuture<T> sendRequest(
+      Supplier<CompletableFuture<T>> supplier,
+      long startTimeNS,
+      AtomicBoolean error,
+      AtomicReference<Double> latency,
+      CompletableFuture<T> valueFuture) {
     CompletableFuture<T> requestFuture;
     try {
       requestFuture = supplier.get();
@@ -59,7 +67,7 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
       if (throwable != null) {
         error.set(true);
         if (throwable instanceof VeniceClientException) {
-          throw (VeniceClientException)throwable;
+          throw (VeniceClientException) throwable;
         }
         throw new VeniceClientException(throwable);
       }
@@ -79,24 +87,27 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
     return latencyFuture;
   }
 
-  private static <T> CompletableFuture<T> dualExecute(Supplier<CompletableFuture<T>> fastClientFutureSupplier,
-      Supplier<CompletableFuture<T>> thinClientFutureSupplier, ClientStats clientStats) {
+  private static <T> CompletableFuture<T> dualExecute(
+      Supplier<CompletableFuture<T>> fastClientFutureSupplier,
+      Supplier<CompletableFuture<T>> thinClientFutureSupplier,
+      ClientStats clientStats) {
     CompletableFuture<T> valueFuture = new CompletableFuture<>();
     long startTimeNS = System.nanoTime();
     AtomicBoolean fastClientError = new AtomicBoolean(false);
     AtomicBoolean thinClientError = new AtomicBoolean(false);
     AtomicReference<Double> fastClientLatency = new AtomicReference<>();
     AtomicReference<Double> thinClientLatency = new AtomicReference<>();
-    CompletableFuture<T> fastClientFuture = sendRequest(fastClientFutureSupplier,
-        startTimeNS, fastClientError, fastClientLatency, valueFuture);
-    CompletableFuture<T> thinClientFuture = sendRequest(thinClientFutureSupplier,
-        startTimeNS, thinClientError, thinClientLatency, valueFuture);
+    CompletableFuture<T> fastClientFuture =
+        sendRequest(fastClientFutureSupplier, startTimeNS, fastClientError, fastClientLatency, valueFuture);
+    CompletableFuture<T> thinClientFuture =
+        sendRequest(thinClientFutureSupplier, startTimeNS, thinClientError, thinClientLatency, valueFuture);
 
-    CompletableFuture.allOf(fastClientFuture, thinClientFuture).whenComplete( (response, throwable) -> {
+    CompletableFuture.allOf(fastClientFuture, thinClientFuture).whenComplete((response, throwable) -> {
       /**
        * Throw exception only if both fast-client and thin-client return error.
        */
-      if (throwable != null && fastClientFuture.isCompletedExceptionally() && thinClientFuture.isCompletedExceptionally()) {
+      if (throwable != null && fastClientFuture.isCompletedExceptionally()
+          && thinClientFuture.isCompletedExceptionally()) {
         valueFuture.completeExceptionally(throwable);
       }
 

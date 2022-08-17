@@ -35,11 +35,13 @@ public class ZkAllowlistAccessorTest {
 
   @Test
   public void testAddInstanceIntoAllowlist() {
-    String helixNodeId= Utils.getHelixNodeIdentifier(port);
-    Assert.assertFalse(accessor.isInstanceInAllowlist(cluster, helixNodeId),
+    String helixNodeId = Utils.getHelixNodeIdentifier(port);
+    Assert.assertFalse(
+        accessor.isInstanceInAllowlist(cluster, helixNodeId),
         "Instance has not been added into the allowlist.");
     accessor.addInstanceToAllowList(cluster, helixNodeId);
-    Assert.assertTrue(accessor.isInstanceInAllowlist(cluster, helixNodeId),
+    Assert.assertTrue(
+        accessor.isInstanceInAllowlist(cluster, helixNodeId),
         "Instance should have been added into the allowlist.");
   }
 
@@ -48,11 +50,13 @@ public class ZkAllowlistAccessorTest {
     String helixNodeId = Utils.getHelixNodeIdentifier(port);
     accessor.removeInstanceFromAllowList(cluster, helixNodeId);
     accessor.addInstanceToAllowList(cluster, helixNodeId);
-    Assert.assertTrue(accessor.isInstanceInAllowlist(cluster, helixNodeId),
+    Assert.assertTrue(
+        accessor.isInstanceInAllowlist(cluster, helixNodeId),
         "Instance should have been added into the allowlist.");
 
     accessor.removeInstanceFromAllowList(cluster, helixNodeId);
-    Assert.assertFalse(accessor.isInstanceInAllowlist(cluster, helixNodeId),
+    Assert.assertFalse(
+        accessor.isInstanceInAllowlist(cluster, helixNodeId),
         "Instance should have been removed from the allowlist.");
   }
 

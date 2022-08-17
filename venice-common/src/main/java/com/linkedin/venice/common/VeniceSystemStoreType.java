@@ -25,18 +25,25 @@ import java.util.List;
  * store types should be added here especially if they also would like to share metadata in Zookeeper.
  */
 public enum VeniceSystemStoreType {
-  DAVINCI_PUSH_STATUS_STORE(String.format(Store.SYSTEM_STORE_FORMAT, "davinci_push_status_store"), true,
-      PushStatusKey.SCHEMA$.toString(), PushStatusValue.SCHEMA$.toString(), AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getSystemStoreName(), true, Method.WRITE_SYSTEM_STORE),
+  DAVINCI_PUSH_STATUS_STORE(
+      String.format(Store.SYSTEM_STORE_FORMAT, "davinci_push_status_store"), true, PushStatusKey.SCHEMA$.toString(),
+      PushStatusValue.SCHEMA$.toString(), AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getSystemStoreName(),
+      true, Method.WRITE_SYSTEM_STORE
+  ),
 
   // New Metadata system store
-  META_STORE(String.format(Store.SYSTEM_STORE_FORMAT, "meta_store"), true, StoreMetaKey.SCHEMA$.toString(),
-      StoreMetaValue.SCHEMA$.toString(), AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName(),
-      true, Method.READ_SYSTEM_STORE),
+  META_STORE(
+      String.format(Store.SYSTEM_STORE_FORMAT, "meta_store"), true, StoreMetaKey.SCHEMA$.toString(),
+      StoreMetaValue.SCHEMA$.toString(), AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName(), true,
+      Method.READ_SYSTEM_STORE
+  ),
 
   // This system store's prefix is used as its full name since it is not a per-user-store system store
-  BATCH_JOB_HEARTBEAT_STORE(String.format(Store.SYSTEM_STORE_FORMAT, AvroProtocolDefinition.BATCH_JOB_HEARTBEAT), false, BatchJobHeartbeatKey.SCHEMA$.toString(),
-          BatchJobHeartbeatValue.SCHEMA$.toString(), "",
-          false, Method.WRITE_SYSTEM_STORE);
+  BATCH_JOB_HEARTBEAT_STORE(
+      String.format(Store.SYSTEM_STORE_FORMAT, AvroProtocolDefinition.BATCH_JOB_HEARTBEAT), false,
+      BatchJobHeartbeatKey.SCHEMA$.toString(), BatchJobHeartbeatValue.SCHEMA$.toString(), "", false,
+      Method.WRITE_SYSTEM_STORE
+  );
 
   private final String prefix;
   private final boolean isStoreZkShared;
@@ -63,9 +70,14 @@ public enum VeniceSystemStoreType {
 
   public static final List<VeniceSystemStoreType> VALUES = Collections.unmodifiableList(Arrays.asList(values()));
 
-
-  VeniceSystemStoreType(String prefix, boolean isStoreZkShared, String keySchema, String valueSchema, String zkSharedStoreName,
-      boolean newMedataRepositoryAdopted, Method clientAccessMethod) {
+  VeniceSystemStoreType(
+      String prefix,
+      boolean isStoreZkShared,
+      String keySchema,
+      String valueSchema,
+      String zkSharedStoreName,
+      boolean newMedataRepositoryAdopted,
+      Method clientAccessMethod) {
     this.prefix = prefix;
     this.isStoreZkShared = isStoreZkShared;
     this.keySchema = keySchema;
@@ -100,7 +112,9 @@ public enum VeniceSystemStoreType {
   }
 
   public String getZkSharedStoreNameInCluster(String clusterName) {
-    return isNewMedataRepositoryAdopted() ? zkSharedStoreName : zkSharedStoreName + VeniceSystemStoreUtils.SEPARATOR + clusterName;
+    return isNewMedataRepositoryAdopted()
+        ? zkSharedStoreName
+        : zkSharedStoreName + VeniceSystemStoreUtils.SEPARATOR + clusterName;
   }
 
   public boolean isNewMedataRepositoryAdopted() {
@@ -134,7 +148,8 @@ public enum VeniceSystemStoreType {
     if (isSystemStore(systemStoreName)) {
       return systemStoreName.substring((getPrefix() + VeniceSystemStoreUtils.SEPARATOR).length());
     }
-    throw new IllegalArgumentException("Invalid system store name: " + systemStoreName + " for system store type: " + name());
+    throw new IllegalArgumentException(
+        "Invalid system store name: " + systemStoreName + " for system store type: " + name());
   }
 
   public Method getClientAccessMethod() {
@@ -151,19 +166,19 @@ public enum VeniceSystemStoreType {
   public AclBinding generateSystemStoreAclBinding(AclBinding regularStoreAclBinding) {
     String regularStoreName = regularStoreAclBinding.getResource().getName();
     if (!Store.isValidStoreName(regularStoreName)) {
-      throw new UnsupportedOperationException("Cannot generate system store AclBinding for a non-store resource: "
-          + regularStoreName);
+      throw new UnsupportedOperationException(
+          "Cannot generate system store AclBinding for a non-store resource: " + regularStoreName);
     }
     if (VeniceSystemStoreType.getSystemStoreType(regularStoreName) != null) {
-      throw new UnsupportedOperationException("Cannot generate system store AclBinding for a Venice system store: "
-          + regularStoreName);
+      throw new UnsupportedOperationException(
+          "Cannot generate system store AclBinding for a Venice system store: " + regularStoreName);
     }
     Resource systemStoreResource = new Resource(getSystemStoreName(regularStoreName));
     AclBinding systemStoreAclBinding = new AclBinding(systemStoreResource);
-    for (AceEntry aceEntry : regularStoreAclBinding.getAceEntries()) {
+    for (AceEntry aceEntry: regularStoreAclBinding.getAceEntries()) {
       if (aceEntry.getMethod() == Method.Read && aceEntry.getPermission() == Permission.ALLOW) {
-        AceEntry systemStoreAceEntry = new AceEntry(aceEntry.getPrincipal(), getClientAccessMethod(),
-            aceEntry.getPermission());
+        AceEntry systemStoreAceEntry =
+            new AceEntry(aceEntry.getPrincipal(), getClientAccessMethod(), aceEntry.getPermission());
         systemStoreAclBinding.addAceEntry(systemStoreAceEntry);
       }
     }
@@ -179,7 +194,7 @@ public enum VeniceSystemStoreType {
    */
   public static AclBinding getSystemStoreAclFromTopicAcl(AclBinding systemStoreTopicAclBinding) {
     AclBinding systemStoreAclBinding = new AclBinding(systemStoreTopicAclBinding.getResource());
-    for (AceEntry aceEntry : systemStoreTopicAclBinding.getAceEntries()) {
+    for (AceEntry aceEntry: systemStoreTopicAclBinding.getAceEntries()) {
       Method method = aceEntry.getMethod();
       if (method == Method.Read) {
         method = Method.READ_SYSTEM_STORE;
@@ -195,7 +210,7 @@ public enum VeniceSystemStoreType {
     if (storeName == null) {
       return null;
     }
-    for (VeniceSystemStoreType systemStoreType : VALUES) {
+    for (VeniceSystemStoreType systemStoreType: VALUES) {
       if (storeName.startsWith(systemStoreType.getPrefix())) {
         return systemStoreType;
       }

@@ -13,7 +13,6 @@ import com.linkedin.venice.annotation.NotThreadsafe;
  */
 @NotThreadsafe
 public interface ConsumedDataReceiver<MESSAGE> {
-
   /**
    * This method accepts data consumed from a queue and it should be non-blocking. This method may throw an exception
    * if write is not successful. No exception being thrown means write is successful.

@@ -1,5 +1,9 @@
 package com.linkedin.venice.router.api;
 
+import static com.linkedin.venice.router.api.TestRouterHeartbeat.*;
+import static org.apache.commons.httpclient.HttpStatus.*;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.ddsstorage.router.api.HostHealthMonitor;
 import com.linkedin.venice.integration.utils.MockHttpServerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -7,7 +11,6 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.RoutingDataRepository;
-import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.AggHostHealthStats;
@@ -21,10 +24,8 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -38,14 +39,12 @@ import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.router.api.TestRouterHeartbeat.*;
-import static org.apache.commons.httpclient.HttpStatus.*;
-import static org.mockito.Mockito.*;
 
 public class TestHostFinder {
   public static final HostHealthMonitor NULL_HOST_HEALTH_MONITOR = (hostName, partitionName) -> true;
+
   @Test
-  public void hostFinderShouldFindHosts(){
+  public void hostFinderShouldFindHosts() {
     RoutingDataRepository mockRepo = Mockito.mock(RoutingDataRepository.class);
     Instance dummyInstance1 = new Instance("0", "localhost1", 1234);
     Instance dummyInstance2 = new Instance("0", "localhost2", 1234);
@@ -66,7 +65,8 @@ public class TestHostFinder {
     Assert.assertTrue(hostNames.contains("localhost2"), "\"localhost2\" not found in " + hostNames.toString());
 
     // Mark dummyInstance1 as unhealthy
-    HostHealthMonitor<Instance> anotherHostHealthyMonitor = ((hostName, partitionName) -> !hostName.equals(dummyInstance1));
+    HostHealthMonitor<Instance> anotherHostHealthyMonitor =
+        ((hostName, partitionName) -> !hostName.equals(dummyInstance1));
     hosts = finder.findHosts("get", "store_v0", "store_v0_3", anotherHostHealthyMonitor, null);
     Assert.assertEquals(hosts.size(), 1);
     Assert.assertEquals(hosts.get(0).getHost(), "localhost2");
@@ -89,7 +89,8 @@ public class TestHostFinder {
 
       Set<String> unhealthyHostsSet = getMockSetWithRealFunctionality();
       // mock VeniceHostHealth
-      VeniceHostHealthTest healthMon = new VeniceHostHealthTest(mockLiveInstanceMonitor, routeHttpRequestStats, mockVeniceRouterConfig());
+      VeniceHostHealthTest healthMon =
+          new VeniceHostHealthTest(mockLiveInstanceMonitor, routeHttpRequestStats, mockVeniceRouterConfig());
       healthMon.setUnhealthyHostSet(unhealthyHostsSet);
 
       // mock VeniceHostFinder
@@ -109,23 +110,28 @@ public class TestHostFinder {
       VeniceRouterConfig mockConfig = mockVeniceRouterConfig();
 
       // server response unhealthy for the heartbeat check
-      FullHttpResponse badHealthResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.INTERNAL_SERVER_ERROR);
+      FullHttpResponse badHealthResponse =
+          new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.INTERNAL_SERVER_ERROR);
       badHealthResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, 0);
 
       server.addResponseForUri(uri, badHealthResponse);
 
       StorageNodeClient storageNodeClient = mockStorageNodeClient(SC_OK);
 
-      RouterHeartbeat heartbeat = new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, mockConfig, Optional.empty(), storageNodeClient);
+      RouterHeartbeat heartbeat =
+          new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, mockConfig, Optional.empty(), storageNodeClient);
       heartbeat.start();
 
       // the HostFinder should find host now
-      TestUtils.waitForNonDeterministicAssertion(4, TimeUnit.SECONDS,
+      TestUtils.waitForNonDeterministicAssertion(
+          4,
+          TimeUnit.SECONDS,
           () -> Assert.assertEquals(1, finder.findHosts("get", "store_v0", "store_v0_3", healthMon, null).size()));
 
-
       // the HostFinder should find nothing now because heartbeat marks host as unhealthy in the VeniceHostHealth
-      TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS,
+      TestUtils.waitForNonDeterministicAssertion(
+          15,
+          TimeUnit.SECONDS,
           () -> Assert.assertEquals(0, finder.findHosts("get", "store_v0", "store_v0_3", healthMon, null).size()));
 
       /**
@@ -177,10 +183,11 @@ public class TestHostFinder {
   }
 
   private StorageNodeClient mockStorageNodeClient(boolean ret) {
-    StorageNodeClient client =  mock(StorageNodeClient.class);
+    StorageNodeClient client = mock(StorageNodeClient.class);
     doReturn(ret).when(client).isInstanceReadyToServe(anyString());
     return client;
   }
+
   /**
    * VeniceHostHealthTest extends the actual VeniceHostHealth;
    * the purpose of this subclass is to override the unhealthy host
@@ -188,8 +195,16 @@ public class TestHostFinder {
    * keep track of whether some APIs inside the set have been invoked.
    */
   private class VeniceHostHealthTest extends VeniceHostHealth {
-    public VeniceHostHealthTest(LiveInstanceMonitor liveInstanceMonitor, RouteHttpRequestStats routeHttpRequestStats, VeniceRouterConfig config) {
-      super(liveInstanceMonitor, mockStorageNodeClient(true), config,  routeHttpRequestStats,  mock(AggHostHealthStats.class));
+    public VeniceHostHealthTest(
+        LiveInstanceMonitor liveInstanceMonitor,
+        RouteHttpRequestStats routeHttpRequestStats,
+        VeniceRouterConfig config) {
+      super(
+          liveInstanceMonitor,
+          mockStorageNodeClient(true),
+          config,
+          routeHttpRequestStats,
+          mock(AggHostHealthStats.class));
     }
 
     /**

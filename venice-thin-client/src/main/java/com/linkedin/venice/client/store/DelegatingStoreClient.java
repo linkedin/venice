@@ -28,7 +28,8 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   }
 
   @Override
-  public CompletableFuture<V> get(K key, Optional<ClientStats> stats, long preRequestTimeInNS) throws VeniceClientException {
+  public CompletableFuture<V> get(K key, Optional<ClientStats> stats, long preRequestTimeInNS)
+      throws VeniceClientException {
     return innerStoreClient.get(key, stats, preRequestTimeInNS);
   }
 
@@ -48,28 +49,49 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   }
 
   @Override
-  public ComputeRequestBuilder<K> compute(Optional<ClientStats> stats, Optional<ClientStats> streamingStats, long preRequestTimeInNS)
-      throws VeniceClientException {
+  public ComputeRequestBuilder<K> compute(
+      Optional<ClientStats> stats,
+      Optional<ClientStats> streamingStats,
+      long preRequestTimeInNS) throws VeniceClientException {
     return innerStoreClient.compute(stats, streamingStats, preRequestTimeInNS);
   }
 
   @Override
-  public ComputeRequestBuilder<K> compute(Optional<ClientStats> stats, Optional<ClientStats> streamingStats,
-      InternalAvroStoreClient computeStoreClient, long preRequestTimeInNS) throws VeniceClientException {
+  public ComputeRequestBuilder<K> compute(
+      Optional<ClientStats> stats,
+      Optional<ClientStats> streamingStats,
+      InternalAvroStoreClient computeStoreClient,
+      long preRequestTimeInNS) throws VeniceClientException {
     return innerStoreClient.compute(stats, streamingStats, computeStoreClient, preRequestTimeInNS);
   }
 
   @Override
-  public void compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys, Schema resultSchema,
-      StreamingCallback<K, GenericRecord> callback, final long preRequestTimeInNS) throws VeniceClientException {
+  public void compute(
+      ComputeRequestWrapper computeRequestWrapper,
+      Set<K> keys,
+      Schema resultSchema,
+      StreamingCallback<K, GenericRecord> callback,
+      final long preRequestTimeInNS) throws VeniceClientException {
     innerStoreClient.compute(computeRequestWrapper, keys, resultSchema, callback, preRequestTimeInNS);
   }
 
   @Override
-  public void compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys, Schema resultSchema,
-      StreamingCallback<K, GenericRecord> callback, final long preRequestTimeInNS, BinaryEncoder reusedEncoder,
+  public void compute(
+      ComputeRequestWrapper computeRequestWrapper,
+      Set<K> keys,
+      Schema resultSchema,
+      StreamingCallback<K, GenericRecord> callback,
+      final long preRequestTimeInNS,
+      BinaryEncoder reusedEncoder,
       ByteArrayOutputStream reusedOutputStream) throws VeniceClientException {
-    innerStoreClient.compute(computeRequestWrapper, keys, resultSchema, callback, preRequestTimeInNS, reusedEncoder, reusedOutputStream);
+    innerStoreClient.compute(
+        computeRequestWrapper,
+        keys,
+        resultSchema,
+        callback,
+        preRequestTimeInNS,
+        reusedEncoder,
+        reusedOutputStream);
   }
 
   @Override

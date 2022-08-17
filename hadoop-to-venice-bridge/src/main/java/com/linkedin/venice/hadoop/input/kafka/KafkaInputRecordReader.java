@@ -52,7 +52,7 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
   private static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.wrap(new byte[0]);
   private static final Logger LOGGER = LogManager.getLogger(KafkaInputRecordReader.class);
   private static final Long CONSUMER_POLL_TIMEOUT = TimeUnit.SECONDS.toMillis(1); // 1 second
-  private static final long LOG_RECORD_INTERVAL = 100000; //100K
+  private static final long LOG_RECORD_INTERVAL = 100000; // 100K
   /**
    * Retry when the poll is returning empty result.
    */
@@ -80,7 +80,6 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
       throw new VeniceException("InputSplit for RecordReader is not valid split type.");
     }
 
-
     KafkaInputSplit inputSplit = (KafkaInputSplit) split;
     KafkaClientFactory kafkaClientFactory = KafkaInputUtils.getConsumerFactory(job);
     this.consumer = kafkaClientFactory.getConsumer(KafkaInputUtils.getConsumerProperties());
@@ -91,7 +90,8 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
     this.isChunkingEnabled = job.getBoolean(VeniceWriter.ENABLE_CHUNKING, false);
     String keySchemaString = job.get(VenicePushJob.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP);
     if (keySchemaString == null) {
-      throw new VeniceException("Expect a value for the config property: " + VenicePushJob.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP);
+      throw new VeniceException(
+          "Expect a value for the config property: " + VenicePushJob.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP);
     }
     this.keySchema = Schema.parse(keySchemaString);
     /**
@@ -100,7 +100,9 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
     this.maxNumberOfRecords = endingOffset - startingOffset;
     this.consumer.subscribe(topicPartition.topic(), topicPartition.partition(), currentOffset);
     this.reporter = reporter;
-    LOGGER.info("KafkaInputRecordReader started for TopicPartition: " + this.topicPartition + " starting offset: " + this.startingOffset + " ending offset: " + this.endingOffset);
+    LOGGER.info(
+        "KafkaInputRecordReader started for TopicPartition: " + this.topicPartition + " starting offset: "
+            + this.startingOffset + " ending offset: " + this.endingOffset);
   }
 
   /**
@@ -112,7 +114,9 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
       try {
         loadRecords();
       } catch (InterruptedException e) {
-        throw new IOException("Got interrupted while loading records from topic partition: " + topicPartition + " with current offset: " + currentOffset);
+        throw new IOException(
+            "Got interrupted while loading records from topic partition: " + topicPartition + " with current offset: "
+                + currentOffset);
       }
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = recordIterator.hasNext() ? recordIterator.next() : null;
       if (record != null) {
@@ -129,11 +133,8 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
         MessageType messageType = MessageType.valueOf(kafkaMessageEnvelope);
 
         if (isChunkingEnabled) {
-          RawKeyBytesAndChunkedKeySuffix rawKeyAndChunkedKeySuffix = splitCompositeKey(
-              kafkaKey.getKey(),
-              messageType,
-              getSchemaIdFromValue(kafkaMessageEnvelope)
-          );
+          RawKeyBytesAndChunkedKeySuffix rawKeyAndChunkedKeySuffix =
+              splitCompositeKey(kafkaKey.getKey(), messageType, getSchemaIdFromValue(kafkaMessageEnvelope));
           ByteBuffer keyBytes = rawKeyAndChunkedKeySuffix.getRawKeyBytes();
           key.set(keyBytes.array(), keyBytes.position(), keyBytes.remaining());
           value.chunkedKeySuffix = rawKeyAndChunkedKeySuffix.getChunkedKeySuffixBytes();
@@ -152,7 +153,7 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
             value.replicationMetadataVersionId = put.replicationMetadataVersionId;
             break;
           case DELETE:
-            Delete delete = (Delete)kafkaMessageEnvelope.payloadUnion;
+            Delete delete = (Delete) kafkaMessageEnvelope.payloadUnion;
             value.valueType = MapperValueType.DELETE;
             value.value = EMPTY_BYTE_BUFFER;
             value.replicationMetadataPayload = delete.replicationMetadataPayload;
@@ -160,18 +161,23 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
             value.schemaId = delete.schemaId;
             break;
           default:
-            throw new IOException("Unexpected '" + messageType + "' message from Kafka topic partition: " + topicPartition + " with offset: " + record.offset());
+            throw new IOException(
+                "Unexpected '" + messageType + "' message from Kafka topic partition: " + topicPartition
+                    + " with offset: " + record.offset());
         }
         MRJobCounterHelper.incrTotalPutOrDeleteRecordCount(reporter, 1);
         long recordCount = MRJobCounterHelper.getTotalPutOrDeleteRecordsCount(reporter);
         if (recordCount % LOG_RECORD_INTERVAL == 0) {
-          LOGGER.info("KafkaInputRecordReader for TopicPartition: " + this.topicPartition + " has processed " + recordCount + " records");
+          LOGGER.info(
+              "KafkaInputRecordReader for TopicPartition: " + this.topicPartition + " has processed " + recordCount
+                  + " records");
         }
         return true;
       } else {
         // We have pending data but we are unable to fetch any records so throw an exception and stop the job
-        throw new IOException("Unable to read additional data from Kafka. See logs for details. Partition " +
-            topicPartition + " Current Offset: " + currentOffset + " End Offset: " + endingOffset);
+        throw new IOException(
+            "Unable to read additional data from Kafka. See logs for details. Partition " + topicPartition
+                + " Current Offset: " + currentOffset + " End Offset: " + endingOffset);
       }
     }
     return false;
@@ -190,7 +196,10 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
     }
   }
 
-  private RawKeyBytesAndChunkedKeySuffix splitCompositeKey(byte[] compositeKeyBytes, MessageType messageType, final int schemaId) {
+  private RawKeyBytesAndChunkedKeySuffix splitCompositeKey(
+      byte[] compositeKeyBytes,
+      MessageType messageType,
+      final int schemaId) {
     if (this.chunkKeyValueTransformer == null) {
       this.chunkKeyValueTransformer = new ChunkKeyValueTransformerImpl(keySchema);
     }
@@ -206,7 +215,6 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
     }
     return chunkKeyValueTransformer.splitChunkedKey(compositeKeyBytes, keyType);
   }
-
 
   @Override
   public BytesWritable createKey() {
@@ -230,7 +238,7 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
 
   @Override
   public float getProgress() {
-    //not most accurate but gives reasonable estimate
+    // not most accurate but gives reasonable estimate
     return ((float) (currentOffset - startingOffset + 1)) / maxNumberOfRecords;
   }
 
@@ -259,9 +267,12 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
       if (records.isEmpty()) {
         StringBuilder sb = new StringBuilder();
         sb.append("Consumer#poll still returns empty result after retrying ")
-            .append(CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES).append(" times, ")
-            .append("topic partition: ").append(topicPartition)
-            .append(" and current offset: ").append(currentOffset);
+            .append(CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES)
+            .append(" times, ")
+            .append("topic partition: ")
+            .append(topicPartition)
+            .append(" and current offset: ")
+            .append(currentOffset);
         throw new VeniceException(sb.toString());
       }
 

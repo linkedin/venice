@@ -4,7 +4,6 @@ import java.util.List;
 
 
 public interface ClientRoutingStrategy {
-
   List<String> getReplicas(long requestId, List<String> replicas, int requiredReplicaCount);
 
 }

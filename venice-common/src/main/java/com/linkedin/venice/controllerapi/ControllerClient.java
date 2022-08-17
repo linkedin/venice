@@ -1,5 +1,8 @@
 package com.linkedin.venice.controllerapi;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.meta.Version.*;
+
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
@@ -29,14 +32,10 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-
 import org.apache.commons.lang.StringUtils;
 import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.meta.Version.*;
 
 
 public class ControllerClient implements Closeable {
@@ -58,7 +57,9 @@ public class ControllerClient implements Closeable {
    * where url is either a set of discoveryUrls or a D2 service name.
    */
 
-  public static Map<String, ControllerClient> getClusterToClientMap() { return Collections.unmodifiableMap(clusterToClientMap); }
+  public static Map<String, ControllerClient> getClusterToClientMap() {
+    return Collections.unmodifiableMap(clusterToClientMap);
+  }
 
   public static void addClusterToClientMapEntry(String clusterName, String url, ControllerClient value) {
     clusterToClientMap.computeIfAbsent(clusterName + url, k -> value);
@@ -90,7 +91,8 @@ public class ControllerClient implements Closeable {
 
     this.sslFactory = sslFactory;
     this.clusterName = clusterName;
-    this.controllerDiscoveryUrls = Arrays.stream(discoveryUrls.split(",")).map(String::trim).collect(Collectors.toList());
+    this.controllerDiscoveryUrls =
+        Arrays.stream(discoveryUrls.split(",")).map(String::trim).collect(Collectors.toList());
     if (this.controllerDiscoveryUrls.isEmpty()) {
       throw new VeniceException("Controller discovery url list is empty");
     }
@@ -103,7 +105,10 @@ public class ControllerClient implements Closeable {
       int retryAttempts) {
     String clusterName = discoverCluster(discoveryUrls, storeName, sslFactory, retryAttempts).getCluster();
     if (!clusterToClientMapContains(clusterName, discoveryUrls))
-      addClusterToClientMapEntry(clusterName, discoveryUrls, new ControllerClient(clusterName, discoveryUrls, sslFactory));
+      addClusterToClientMapEntry(
+          clusterName,
+          discoveryUrls,
+          new ControllerClient(clusterName, discoveryUrls, sslFactory));
     return getClusterToClientMapEntry(clusterName, discoveryUrls);
   }
 
@@ -111,9 +116,15 @@ public class ControllerClient implements Closeable {
     return constructClusterControllerClient(clusterName, discoveryUrls, Optional.empty());
   }
 
-  public static ControllerClient constructClusterControllerClient(String clusterName, String discoveryUrls, Optional<SSLFactory> sslFactory) {
+  public static ControllerClient constructClusterControllerClient(
+      String clusterName,
+      String discoveryUrls,
+      Optional<SSLFactory> sslFactory) {
     if (!clusterToClientMapContains(clusterName, discoveryUrls)) {
-      addClusterToClientMapEntry(clusterName, discoveryUrls, new ControllerClient(clusterName, discoveryUrls, sslFactory));
+      addClusterToClientMapEntry(
+          clusterName,
+          discoveryUrls,
+          new ControllerClient(clusterName, discoveryUrls, sslFactory));
     }
     return getClusterToClientMapEntry(clusterName, discoveryUrls);
   }
@@ -129,10 +140,13 @@ public class ControllerClient implements Closeable {
 
     Exception lastException = null;
     try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
-      for (String url : urls) {
+      for (String url: urls) {
         try {
-          // TODO: Change this to LEADER_CONTROLLER after backend components with inclusive endpoints are deployed completely
-          String leaderControllerUrl = transport.request(url, ControllerRoute.MASTER_CONTROLLER, newParams(), LeaderControllerResponse.class).getUrl();
+          // TODO: Change this to LEADER_CONTROLLER after backend components with inclusive endpoints are deployed
+          // completely
+          String leaderControllerUrl =
+              transport.request(url, ControllerRoute.MASTER_CONTROLLER, newParams(), LeaderControllerResponse.class)
+                  .getUrl();
           logger.info("Discovered leader controller " + leaderControllerUrl + " from " + url);
           return leaderControllerUrl;
         } catch (Exception e) {
@@ -158,9 +172,7 @@ public class ControllerClient implements Closeable {
   }
 
   public MultiStoreStatusResponse getFutureVersions(String clusterName, String storeName) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(CLUSTER, clusterName);
+    QueryParams params = newParams().add(NAME, storeName).add(CLUSTER, clusterName);
     return request(ControllerRoute.FUTURE_VERSION, params, MultiStoreStatusResponse.class);
   }
 
@@ -177,12 +189,32 @@ public class ControllerClient implements Closeable {
   }
 
   public VersionCreationResponse requestTopicForWrites(
-      String storeName, long storeSize, PushType pushType, String pushJobId, boolean sendStartOfPush,
-      boolean sorted, boolean wcEnabled, Optional<String> partitioners, Optional<String> compressionDictionary,
-      Optional<String> sourceGridFabric, boolean batchJobHeartbeatEnabled, long rewindTimeInSecondsOverride
-  ) {
-    return requestTopicForWrites(storeName, storeSize, pushType, pushJobId, sendStartOfPush, sorted, wcEnabled, partitioners,
-        compressionDictionary, sourceGridFabric, batchJobHeartbeatEnabled, rewindTimeInSecondsOverride, false);
+      String storeName,
+      long storeSize,
+      PushType pushType,
+      String pushJobId,
+      boolean sendStartOfPush,
+      boolean sorted,
+      boolean wcEnabled,
+      Optional<String> partitioners,
+      Optional<String> compressionDictionary,
+      Optional<String> sourceGridFabric,
+      boolean batchJobHeartbeatEnabled,
+      long rewindTimeInSecondsOverride) {
+    return requestTopicForWrites(
+        storeName,
+        storeSize,
+        pushType,
+        pushJobId,
+        sendStartOfPush,
+        sorted,
+        wcEnabled,
+        partitioners,
+        compressionDictionary,
+        sourceGridFabric,
+        batchJobHeartbeatEnabled,
+        rewindTimeInSecondsOverride,
+        false);
   }
 
   /**
@@ -207,12 +239,20 @@ public class ControllerClient implements Closeable {
    * @return VersionCreationResponse includes topic and partitioning
    */
   public VersionCreationResponse requestTopicForWrites(
-          String storeName, long storeSize, PushType pushType, String pushJobId, boolean sendStartOfPush,
-          boolean sorted, boolean wcEnabled, Optional<String> partitioners, Optional<String> compressionDictionary,
-          Optional<String> sourceGridFabric, boolean batchJobHeartbeatEnabled, long rewindTimeInSecondsOverride, boolean deferVersionSwap
-  ) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
+      String storeName,
+      long storeSize,
+      PushType pushType,
+      String pushJobId,
+      boolean sendStartOfPush,
+      boolean sorted,
+      boolean wcEnabled,
+      Optional<String> partitioners,
+      Optional<String> compressionDictionary,
+      Optional<String> sourceGridFabric,
+      boolean batchJobHeartbeatEnabled,
+      long rewindTimeInSecondsOverride,
+      boolean deferVersionSwap) {
+    QueryParams params = newParams().add(NAME, storeName)
         .add(STORE_SIZE, Long.toString(storeSize))
         .add(PUSH_JOB_ID, pushJobId)
         .add(PUSH_TYPE, pushType.toString())
@@ -243,11 +283,16 @@ public class ControllerClient implements Closeable {
    * @param replicationMetadataVersionId of the original push.
    * @return
    */
-  public VersionResponse addVersionAndStartIngestion(String storeName, String pushJobId, int version,
-      int partitionCount, Version.PushType pushType, String remoteKafkaBootstrapServers, long rewindTimeInSecondsOverride,
+  public VersionResponse addVersionAndStartIngestion(
+      String storeName,
+      String pushJobId,
+      int version,
+      int partitionCount,
+      Version.PushType pushType,
+      String remoteKafkaBootstrapServers,
+      long rewindTimeInSecondsOverride,
       int replicationMetadataVersionId) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
+    QueryParams params = newParams().add(NAME, storeName)
         .add(PUSH_JOB_ID, pushJobId)
         .add(VERSION, version)
         .add(PARTITION_COUNT, partitionCount)
@@ -261,9 +306,7 @@ public class ControllerClient implements Closeable {
   }
 
   public ControllerResponse writeEndOfPush(String storeName, int version) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(VERSION, version);
+    QueryParams params = newParams().add(NAME, storeName).add(VERSION, version);
     return request(ControllerRoute.END_OF_PUSH, params, ControllerResponse.class);
   }
 
@@ -301,7 +344,8 @@ public class ControllerClient implements Closeable {
         }
         if (System.currentTimeMillis() > endTime) {
           throw new VeniceException(
-              "sendEmptyPushAndWait did not succeed in the allotted time (" + timeOut + " ms). Last status: " + jobStatusQueryResponse.toString());
+              "sendEmptyPushAndWait did not succeed in the allotted time (" + timeOut + " ms). Last status: "
+                  + jobStatusQueryResponse.toString());
         }
         Thread.sleep(1 * Time.MS_PER_SECOND);
       }
@@ -312,7 +356,7 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  //TODO: Refactor this to work in the controller once system store has become available.
+  // TODO: Refactor this to work in the controller once system store has become available.
 
   /**
    * Simplified API that wraps together the store create and update functionalities with some clean up functionality
@@ -324,9 +368,14 @@ public class ControllerClient implements Closeable {
    * @param updateStoreQueryParams What parameters should be applied to this store after it's creation
    * @return The response from the first failed operation of store creation or modification
    */
-  public ControllerResponse createNewStoreWithParameters(String storeName, String owner, String keySchema, String valueSchema, UpdateStoreQueryParams updateStoreQueryParams) {
+  public ControllerResponse createNewStoreWithParameters(
+      String storeName,
+      String owner,
+      String keySchema,
+      String valueSchema,
+      UpdateStoreQueryParams updateStoreQueryParams) {
     NewStoreResponse creationResponse = this.createNewStore(storeName, owner, keySchema, valueSchema);
-    if(creationResponse.isError()) {
+    if (creationResponse.isError()) {
       // Return the error
       return creationResponse;
     }
@@ -334,16 +383,16 @@ public class ControllerClient implements Closeable {
     ControllerResponse updateResponse = null;
     try {
       updateResponse = updateStore(storeName, updateStoreQueryParams);
-      if(updateResponse.isError()) {
+      if (updateResponse.isError()) {
         // update failed. Let's clean up and return the error
-        if(!this.getStore(storeName).isError()) {
+        if (!this.getStore(storeName).isError()) {
           return updateResponse;
         }
       }
     } finally {
-      if(creationResponse == null || updateResponse == null) {
+      if (creationResponse == null || updateResponse == null) {
         // If any step in this process failed (that is, the store was created in some inconsistent state, clean up.
-        if(!this.getStore(storeName).isError()) {
+        if (!this.getStore(storeName).isError()) {
           this.disableAndDeleteStore(storeName);
         }
       }
@@ -352,25 +401,24 @@ public class ControllerClient implements Closeable {
   }
 
   public VersionCreationResponse emptyPush(String storeName, String pushJobId, long storeSize) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(PUSH_JOB_ID, pushJobId)
-        .add(STORE_SIZE, Long.toString(storeSize));
+    QueryParams params =
+        newParams().add(NAME, storeName).add(PUSH_JOB_ID, pushJobId).add(STORE_SIZE, Long.toString(storeSize));
     return request(ControllerRoute.EMPTY_PUSH, params, VersionCreationResponse.class);
   }
 
   public NewStoreResponse createNewStore(String storeName, String owner, String keySchema, String valueSchema) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(OWNER, owner)
-        .add(KEY_SCHEMA, keySchema)
-        .add(VALUE_SCHEMA, valueSchema);
+    QueryParams params =
+        newParams().add(NAME, storeName).add(OWNER, owner).add(KEY_SCHEMA, keySchema).add(VALUE_SCHEMA, valueSchema);
     return request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
   }
 
-  public NewStoreResponse createNewStore(String storeName, String owner, String keySchema, String valueSchema, String accessPermissions) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
+  public NewStoreResponse createNewStore(
+      String storeName,
+      String owner,
+      String keySchema,
+      String valueSchema,
+      String accessPermissions) {
+    QueryParams params = newParams().add(NAME, storeName)
         .add(OWNER, owner)
         .add(KEY_SCHEMA, keySchema)
         .add(VALUE_SCHEMA, valueSchema)
@@ -383,16 +431,12 @@ public class ControllerClient implements Closeable {
   }
 
   public StoreMigrationResponse migrateStore(String storeName, String destClusterName) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(CLUSTER_DEST, destClusterName);
+    QueryParams params = newParams().add(NAME, storeName).add(CLUSTER_DEST, destClusterName);
     return request(ControllerRoute.MIGRATE_STORE, params, StoreMigrationResponse.class);
   }
 
   public StoreMigrationResponse completeMigration(String storeName, String destClusterName) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(CLUSTER_DEST, destClusterName);
+    QueryParams params = newParams().add(NAME, storeName).add(CLUSTER_DEST, destClusterName);
     return request(ControllerRoute.COMPLETE_MIGRATION, params, StoreMigrationResponse.class);
   }
 
@@ -400,9 +444,7 @@ public class ControllerClient implements Closeable {
    * This commmand should be sent to src controller, not dest controler
    */
   public StoreMigrationResponse abortMigration(String storeName, String destClusterName) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(CLUSTER_DEST, destClusterName);
+    QueryParams params = newParams().add(NAME, storeName).add(CLUSTER_DEST, destClusterName);
     return request(ControllerRoute.ABORT_MIGRATION, params, StoreMigrationResponse.class);
   }
 
@@ -424,59 +466,47 @@ public class ControllerClient implements Closeable {
   }
 
   public StoreResponse copyOverStoreMetadata(String sourceFabric, String destFabric, String storeName) {
-    QueryParams params = newParams()
-        .add(SOURCE_FABRIC, sourceFabric)
-        .add(DEST_FABRIC, destFabric)
-        .add(NAME, storeName);
+    QueryParams params = newParams().add(SOURCE_FABRIC, sourceFabric).add(DEST_FABRIC, destFabric).add(NAME, storeName);
     return request(ControllerRoute.REPLICATE_META_DATA, params, StoreResponse.class);
   }
 
   public ControllerResponse disableAndDeleteStore(String storeName) {
-    UpdateStoreQueryParams updateParams = new UpdateStoreQueryParams()
-            .setEnableWrites(false)
-            .setEnableReads(false);
+    UpdateStoreQueryParams updateParams = new UpdateStoreQueryParams().setEnableWrites(false).setEnableReads(false);
     ControllerResponse response = updateStore(storeName, updateParams);
-    if(!response.isError()) {
+    if (!response.isError()) {
       response = deleteStore(storeName);
     }
     return response;
   }
 
   public VersionResponse overrideSetActiveVersion(String storeName, int version) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(VERSION, version);
+    QueryParams params = newParams().add(NAME, storeName).add(VERSION, version);
     return request(ControllerRoute.SET_VERSION, params, VersionResponse.class);
   }
 
   public ControllerResponse killOfflinePushJob(String kafkaTopic) {
     String store = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int versionNumber = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-    QueryParams params = newParams()
-        .add(TOPIC, kafkaTopic) // TODO: remove once the controller is deployed to handle store and version instead
+    QueryParams params = newParams().add(TOPIC, kafkaTopic) // TODO: remove once the controller is deployed to handle
+                                                            // store and version instead
         .add(NAME, store)
         .add(VERSION, versionNumber);
     return request(ControllerRoute.KILL_OFFLINE_PUSH_JOB, params, ControllerResponse.class);
   }
 
   public ControllerResponse skipAdminMessage(String offset, boolean skipDIV) {
-    QueryParams params = newParams()
-        .add(OFFSET, offset)
-        .add(SKIP_DIV, skipDIV);
+    QueryParams params = newParams().add(OFFSET, offset).add(SKIP_DIV, skipDIV);
     return request(ControllerRoute.SKIP_ADMIN, params, ControllerResponse.class);
   }
 
   public ControllerResponse updateKafkaTopicLogCompaction(String kafkaTopicName, boolean logCompactionEnabled) {
-    QueryParams params = newParams()
-        .add(TOPIC, kafkaTopicName)
-        .add(KAFKA_TOPIC_LOG_COMPACTION_ENABLED, logCompactionEnabled);
+    QueryParams params =
+        newParams().add(TOPIC, kafkaTopicName).add(KAFKA_TOPIC_LOG_COMPACTION_ENABLED, logCompactionEnabled);
     return request(ControllerRoute.UPDATE_KAFKA_TOPIC_LOG_COMPACTION, params, ControllerResponse.class);
   }
 
   public ControllerResponse updateKafkaTopicRetention(String kafkaTopicName, long retentionInMs) {
-    QueryParams params = newParams()
-        .add(TOPIC, kafkaTopicName)
-        .add(KAFKA_TOPIC_RETENTION_IN_MS, retentionInMs);
+    QueryParams params = newParams().add(TOPIC, kafkaTopicName).add(KAFKA_TOPIC_RETENTION_IN_MS, retentionInMs);
     return request(ControllerRoute.UPDATE_KAFKA_TOPIC_RETENTION, params, ControllerResponse.class);
   }
 
@@ -487,18 +517,25 @@ public class ControllerClient implements Closeable {
   /**
    * Useful for pieces of code which want to have a test mocking the result of the function that's passed in...
    */
-  public static <R extends ControllerResponse> R retryableRequest(ControllerClient client, int totalAttempts, Function<ControllerClient, R> request) {
+  public static <R extends ControllerResponse> R retryableRequest(
+      ControllerClient client,
+      int totalAttempts,
+      Function<ControllerClient, R> request) {
     if (totalAttempts < 1) {
-      throw new VeniceException("Querying with retries requires at least one attempt, called with " + totalAttempts + " attempts");
+      throw new VeniceException(
+          "Querying with retries requires at least one attempt, called with " + totalAttempts + " attempts");
     }
     int currentAttempt = 1;
     while (true) {
       R response = request.apply(client);
-      // Do not retry if value schema is not found. TODO: Ideally response should not be an error but should return INVALID schema ID in the response.
+      // Do not retry if value schema is not found. TODO: Ideally response should not be an error but should return
+      // INVALID schema ID in the response.
       if (!response.isError() || currentAttempt == totalAttempts || valueSchemaNotFoundSchemaResponse(response)) {
         return response;
       } else {
-        logger.warn("Error on attempt " + currentAttempt + "/" + totalAttempts + " of querying the Controller: " + response.getError());
+        logger.warn(
+            "Error on attempt " + currentAttempt + "/" + totalAttempts + " of querying the Controller: "
+                + response.getError());
         currentAttempt++;
         Utils.sleep(2000);
       }
@@ -506,7 +543,8 @@ public class ControllerClient implements Closeable {
   }
 
   private static <R> boolean valueSchemaNotFoundSchemaResponse(R response) {
-    return (response instanceof SchemaResponse && ((SchemaResponse) response).getError().contains("Can not find any registered value schema for the store"));
+    return (response instanceof SchemaResponse
+        && ((SchemaResponse) response).getError().contains("Can not find any registered value schema for the store"));
   }
 
   /**
@@ -532,30 +570,26 @@ public class ControllerClient implements Closeable {
     return queryJobStatus(kafkaTopic, incrementalPushVersion, QUERY_JOB_STATUS_TIMEOUT);
   }
 
-  public JobStatusQueryResponse queryJobStatus(String kafkaTopic, Optional<String> incrementalPushVersion,
+  public JobStatusQueryResponse queryJobStatus(
+      String kafkaTopic,
+      Optional<String> incrementalPushVersion,
       int timeoutMs) {
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(VERSION, version)
-        .add(INCREMENTAL_PUSH_VERSION, incrementalPushVersion);
+    QueryParams params =
+        newParams().add(NAME, storeName).add(VERSION, version).add(INCREMENTAL_PUSH_VERSION, incrementalPushVersion);
     return request(ControllerRoute.JOB, params, JobStatusQueryResponse.class, timeoutMs, 1, null);
   }
 
   // TODO remove passing PushJobDetails as JSON string once all H2V plugins are updated.
   public ControllerResponse sendPushJobDetails(String storeName, int version, String pushJobDetailsString) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(VERSION, version)
-        .add(PUSH_JOB_DETAILS, pushJobDetailsString);
+    QueryParams params =
+        newParams().add(NAME, storeName).add(VERSION, version).add(PUSH_JOB_DETAILS, pushJobDetailsString);
     return request(ControllerRoute.SEND_PUSH_JOB_DETAILS, params, ControllerResponse.class);
   }
 
   public ControllerResponse sendPushJobDetails(String storeName, int version, byte[] pushJobDetails) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(VERSION, version);
+    QueryParams params = newParams().add(NAME, storeName).add(VERSION, version);
     return request(ControllerRoute.SEND_PUSH_JOB_DETAILS, params, ControllerResponse.class, pushJobDetails);
   }
 
@@ -567,11 +601,15 @@ public class ControllerClient implements Closeable {
     return queryStoreList(includeSystemStores, Optional.empty(), Optional.empty());
   }
 
-  public MultiStoreResponse queryStoreList(boolean includeSystemStores, Optional<String> configNameFilter, Optional<String> configValueFilter) {
-    QueryParams queryParams = newParams()
-        .add(INCLUDE_SYSTEM_STORES, includeSystemStores);
-    if (configNameFilter.isPresent()^configValueFilter.isPresent()) {
-      throw new VeniceException("Missing argument: " + (configNameFilter.isPresent() ? "store-config-value-filter" : "store-config-name-filter"));
+  public MultiStoreResponse queryStoreList(
+      boolean includeSystemStores,
+      Optional<String> configNameFilter,
+      Optional<String> configValueFilter) {
+    QueryParams queryParams = newParams().add(INCLUDE_SYSTEM_STORES, includeSystemStores);
+    if (configNameFilter.isPresent() ^ configValueFilter.isPresent()) {
+      throw new VeniceException(
+          "Missing argument: "
+              + (configNameFilter.isPresent() ? "store-config-value-filter" : "store-config-name-filter"));
     }
     if (includeSystemStores && configNameFilter.isPresent()) {
       throw new VeniceException("Doesn't support config filtering on system store yet.");
@@ -582,7 +620,7 @@ public class ControllerClient implements Closeable {
   }
 
   public MultiStoreStatusResponse listStoresStatuses() {
-    return request(ControllerRoute.CLUSTER_HEALTH_STORES, newParams(),  MultiStoreStatusResponse.class);
+    return request(ControllerRoute.CLUSTER_HEALTH_STORES, newParams(), MultiStoreStatusResponse.class);
   }
 
   public ControllerResponse enableStoreWrites(String storeName, boolean enable) {
@@ -598,10 +636,7 @@ public class ControllerClient implements Closeable {
   }
 
   private ControllerResponse enableStore(String storeName, boolean enable, String operation) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(STATUS, enable)
-        .add(OPERATION, operation);
+    QueryParams params = newParams().add(NAME, storeName).add(STATUS, enable).add(OPERATION, operation);
     return request(ControllerRoute.ENABLE_STORE, params, ControllerResponse.class);
   }
 
@@ -611,9 +646,7 @@ public class ControllerClient implements Closeable {
   }
 
   public VersionResponse deleteOldVersion(String storeName, int versionNum) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(VERSION, versionNum);
+    QueryParams params = newParams().add(NAME, storeName).add(VERSION, versionNum);
     return request(ControllerRoute.DELETE_OLD_VERSION, params, VersionResponse.class);
   }
 
@@ -652,9 +685,7 @@ public class ControllerClient implements Closeable {
   }
 
   public MultiReplicaResponse listReplicas(String storeName, int version) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(VERSION, version);
+    QueryParams params = newParams().add(NAME, storeName).add(VERSION, version);
     return request(ControllerRoute.LIST_REPLICAS, params, MultiReplicaResponse.class);
   }
 
@@ -679,32 +710,28 @@ public class ControllerClient implements Closeable {
   }
 
   public SchemaResponse addValueSchema(String storeName, String valueSchemaStr) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(VALUE_SCHEMA, valueSchemaStr);
+    QueryParams params = newParams().add(NAME, storeName).add(VALUE_SCHEMA, valueSchemaStr);
     return request(ControllerRoute.ADD_VALUE_SCHEMA, params, SchemaResponse.class);
   }
 
   public SchemaResponse addValueSchema(String storeName, String valueSchemaStr, int valueSchemaId) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(VALUE_SCHEMA, valueSchemaStr)
-        .add(SCHEMA_ID, valueSchemaId);
+    QueryParams params =
+        newParams().add(NAME, storeName).add(VALUE_SCHEMA, valueSchemaStr).add(SCHEMA_ID, valueSchemaId);
     return request(ControllerRoute.ADD_VALUE_SCHEMA, params, SchemaResponse.class);
   }
 
   public SchemaResponse addDerivedSchema(String storeName, int valueSchemaId, String derivedSchemaStr) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(SCHEMA_ID, valueSchemaId)
-        .add(DERIVED_SCHEMA, derivedSchemaStr);
+    QueryParams params =
+        newParams().add(NAME, storeName).add(SCHEMA_ID, valueSchemaId).add(DERIVED_SCHEMA, derivedSchemaStr);
     return request(ControllerRoute.ADD_DERIVED_SCHEMA, params, SchemaResponse.class);
   }
 
-  public SchemaResponse addDerivedSchema(String storeName, int valueSchemaId, String derivedSchemaStr,
+  public SchemaResponse addDerivedSchema(
+      String storeName,
+      int valueSchemaId,
+      String derivedSchemaStr,
       int derivedSchemaId) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
+    QueryParams params = newParams().add(NAME, storeName)
         .add(SCHEMA_ID, valueSchemaId)
         .add(DERIVED_SCHEMA, derivedSchemaStr)
         .add(DERIVED_SCHEMA_ID, derivedSchemaId);
@@ -712,24 +739,18 @@ public class ControllerClient implements Closeable {
   }
 
   public SchemaResponse removeDerivedSchema(String storeName, int valueSchemaId, int derivedSchemaId) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(SCHEMA_ID, valueSchemaId)
-        .add(DERIVED_SCHEMA_ID, derivedSchemaId);
+    QueryParams params =
+        newParams().add(NAME, storeName).add(SCHEMA_ID, valueSchemaId).add(DERIVED_SCHEMA_ID, derivedSchemaId);
     return request(ControllerRoute.REMOVE_DERIVED_SCHEMA, params, SchemaResponse.class);
   }
 
   public PartitionResponse setStorePartitionCount(String storeName, String partitionNum) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(PARTITION_COUNT, partitionNum);
+    QueryParams params = newParams().add(NAME, storeName).add(PARTITION_COUNT, partitionNum);
     return request(ControllerRoute.SET_PARTITION_COUNT, params, PartitionResponse.class);
   }
 
   public OwnerResponse setStoreOwner(String storeName, String owner) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(OWNER, owner);
+    QueryParams params = newParams().add(NAME, storeName).add(OWNER, owner);
     return request(ControllerRoute.SET_OWNER, params, OwnerResponse.class);
   }
 
@@ -739,23 +760,17 @@ public class ControllerClient implements Closeable {
   }
 
   public SchemaResponse getValueSchema(String storeName, int valueSchemaId) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(SCHEMA_ID, valueSchemaId);
+    QueryParams params = newParams().add(NAME, storeName).add(SCHEMA_ID, valueSchemaId);
     return request(ControllerRoute.GET_VALUE_SCHEMA, params, SchemaResponse.class);
   }
 
   public SchemaResponse getValueSchemaID(String storeName, String valueSchemaStr) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(VALUE_SCHEMA, valueSchemaStr);
+    QueryParams params = newParams().add(NAME, storeName).add(VALUE_SCHEMA, valueSchemaStr);
     return request(ControllerRoute.GET_VALUE_SCHEMA_ID, params, SchemaResponse.class);
   }
 
   public SchemaResponse getValueOrDerivedSchemaId(String storeName, String derivedSchemaStr) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(DERIVED_SCHEMA, derivedSchemaStr);
+    QueryParams params = newParams().add(NAME, storeName).add(DERIVED_SCHEMA, derivedSchemaStr);
     return request(ControllerRoute.GET_VALUE_OR_DERIVED_SCHEMA_ID, params, SchemaResponse.class);
   }
 
@@ -794,9 +809,7 @@ public class ControllerClient implements Closeable {
   }
 
   public ControllerResponse enableQuotaRebalanced(boolean isQuotaRebalanced, int expectRouterCount) {
-    QueryParams params = newParams()
-        .add(STATUS, isQuotaRebalanced)
-        .add(EXPECTED_ROUTER_COUNT, expectRouterCount);
+    QueryParams params = newParams().add(STATUS, isQuotaRebalanced).add(EXPECTED_ROUTER_COUNT, expectRouterCount);
     return request(ControllerRoute.ENABLE_QUOTA_REBALANCED, params, ControllerResponse.class);
   }
 
@@ -809,9 +822,7 @@ public class ControllerClient implements Closeable {
   }
 
   public ControllerResponse setMigrationPushStrategy(String voldemortStoreName, String pushStrategy) {
-    QueryParams params = newParams()
-        .add(VOLDEMORT_STORE_NAME, voldemortStoreName)
-        .add(PUSH_STRATEGY, pushStrategy);
+    QueryParams params = newParams().add(VOLDEMORT_STORE_NAME, voldemortStoreName).add(PUSH_STRATEGY, pushStrategy);
     return request(ControllerRoute.SET_MIGRATION_PUSH_STRATEGY, params, MigrationPushStrategyResponse.class);
   }
 
@@ -824,9 +835,7 @@ public class ControllerClient implements Closeable {
   }
 
   public MultiStoreResponse enableLFModel(boolean isLFEnabled, String storeType) {
-    QueryParams params = newParams()
-        .add(STATUS, isLFEnabled)
-        .add(STORE_TYPE, storeType);
+    QueryParams params = newParams().add(STATUS, isLFEnabled).add(STORE_TYPE, storeType);
     return request(ControllerRoute.ENABLE_LF_MODEL, params, MultiStoreResponse.class);
   }
 
@@ -845,27 +854,30 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.DELETE_ACL, params, AclResponse.class);
   }
 
-  public ControllerResponse configureNativeReplicationForCluster(boolean enableNativeReplication, String storeType,
-      Optional<String> sourceFabric, Optional<String> regionsFilter) {
+  public ControllerResponse configureNativeReplicationForCluster(
+      boolean enableNativeReplication,
+      String storeType,
+      Optional<String> sourceFabric,
+      Optional<String> regionsFilter) {
     // Verify the input storeType is valid
     VeniceUserStoreType.valueOf(storeType.toUpperCase());
-    QueryParams params = newParams()
-        .add(STATUS, enableNativeReplication)
-        .add(STORE_TYPE, storeType);
+    QueryParams params = newParams().add(STATUS, enableNativeReplication).add(STORE_TYPE, storeType);
     sourceFabric.ifPresent(s -> params.add(NATIVE_REPLICATION_SOURCE_FABRIC, s));
     regionsFilter.ifPresent(f -> params.add(REGIONS_FILTER, f));
     return request(ControllerRoute.CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER, params, ControllerResponse.class);
   }
 
-  public ControllerResponse configureActiveActiveReplicationForCluster(boolean enableActiveActiveReplication, String storeType, Optional<String> regionsFilter) {
+  public ControllerResponse configureActiveActiveReplicationForCluster(
+      boolean enableActiveActiveReplication,
+      String storeType,
+      Optional<String> regionsFilter) {
     // Verify the input storeType is valid
     VeniceUserStoreType.valueOf(storeType.toUpperCase());
-    QueryParams params = newParams()
-        .add(STATUS, enableActiveActiveReplication)
-        .add(STORE_TYPE, storeType);
+    QueryParams params = newParams().add(STATUS, enableActiveActiveReplication).add(STORE_TYPE, storeType);
     regionsFilter.ifPresent(f -> params.add(REGIONS_FILTER, f));
     return request(ControllerRoute.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER, params, ControllerResponse.class);
   }
+
   public ControllerResponse checkResourceCleanupForStoreCreation(String storeName) {
     QueryParams params = newParams().add(NAME, storeName);
     return request(ControllerRoute.CHECK_RESOURCE_CLEANUP_FOR_STORE_CREATION, params, ControllerResponse.class);
@@ -884,12 +896,18 @@ public class ControllerClient implements Closeable {
   }
 
   public ClusterStaleDataAuditResponse getClusterStaleStores(String clusterName, String parentControllerUrl) {
-    QueryParams params = newParams()
-        .add(CLUSTER, clusterName);
+    QueryParams params = newParams().add(CLUSTER, clusterName);
     try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
-      return transport.request(parentControllerUrl, ControllerRoute.GET_STALE_STORES_IN_CLUSTER, params, ClusterStaleDataAuditResponse.class);
+      return transport.request(
+          parentControllerUrl,
+          ControllerRoute.GET_STALE_STORES_IN_CLUSTER,
+          params,
+          ClusterStaleDataAuditResponse.class);
     } catch (Exception e) {
-      return makeErrorResponse("controllerapi:ControllerClient:getClusterStaleStores - ", e, ClusterStaleDataAuditResponse.class);
+      return makeErrorResponse(
+          "controllerapi:ControllerClient:getClusterStaleStores - ",
+          e,
+          ClusterStaleDataAuditResponse.class);
     }
   }
 
@@ -904,26 +922,28 @@ public class ControllerClient implements Closeable {
   }
 
   public RegionPushDetailsResponse getRegionPushDetails(String storeName, String clusterName) {
-    QueryParams params = newParams()
-        .add(CLUSTER, clusterName)
-        .add(NAME, storeName);
+    QueryParams params = newParams().add(CLUSTER, clusterName).add(NAME, storeName);
     return request(ControllerRoute.GET_REGION_PUSH_DETAILS, params, RegionPushDetailsResponse.class);
   }
 
   public StoreHealthAuditResponse listStorePushInfo(String clusterName, String parentControllerUrl, String storeName) {
-    QueryParams params = newParams()
-        .add(CLUSTER, clusterName)
-        .add(NAME, storeName);
+    QueryParams params = newParams().add(CLUSTER, clusterName).add(NAME, storeName);
     try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
-      return transport.request(parentControllerUrl, ControllerRoute.LIST_STORE_PUSH_INFO, params, StoreHealthAuditResponse.class);
+      return transport
+          .request(parentControllerUrl, ControllerRoute.LIST_STORE_PUSH_INFO, params, StoreHealthAuditResponse.class);
     } catch (Exception e) {
-      return makeErrorResponse("controllerapi:ControllerClient:listStorePushInfo - " + e.toString(), e, StoreHealthAuditResponse.class);
+      return makeErrorResponse(
+          "controllerapi:ControllerClient:listStorePushInfo - " + e.toString(),
+          e,
+          StoreHealthAuditResponse.class);
     }
   }
 
-  public ControllerResponse configureIncrementalPushForCluster(IncrementalPushPolicy incrementalPushPolicyToApply, Optional<IncrementalPushPolicy> incrementalPushPolicyToFilter, Optional<String> regionsFilter) {
-    QueryParams params = newParams()
-        .add(INCREMENTAL_PUSH_POLICY, incrementalPushPolicyToApply.name());
+  public ControllerResponse configureIncrementalPushForCluster(
+      IncrementalPushPolicy incrementalPushPolicyToApply,
+      Optional<IncrementalPushPolicy> incrementalPushPolicyToFilter,
+      Optional<String> regionsFilter) {
+    QueryParams params = newParams().add(INCREMENTAL_PUSH_POLICY, incrementalPushPolicyToApply.name());
     incrementalPushPolicyToFilter.ifPresent(f -> params.add(INCREMENTAL_PUSH_POLICY_TO_FILTER, f.name()));
     regionsFilter.ifPresent(f -> params.add(REGIONS_FILTER, f));
     return request(ControllerRoute.CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER, params, ControllerResponse.class);
@@ -945,10 +965,12 @@ public class ControllerClient implements Closeable {
 
     Exception lastException = null;
     try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
-      for (String url : urls) {
+      for (String url: urls) {
         try {
-          // Because the way to get parameter is different between controller and router, in order to support query cluster
-          // from both cluster and router, we send the path "/discover_cluster?storename=$storeName" at first, if it does
+          // Because the way to get parameter is different between controller and router, in order to support query
+          // cluster
+          // from both cluster and router, we send the path "/discover_cluster?storename=$storeName" at first, if it
+          // does
           // not work, try "/discover_cluster/$storeName"
           try {
             QueryParams params = getQueryParamsToDiscoverCluster(storeName);
@@ -975,10 +997,13 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.UPDATE_CLUSTER_CONFIG, params, ControllerResponse.class);
   }
 
-  public ControllerResponse prepareDataRecovery(String sourceFabric, String destinationFabric, String storeName,
-      int versionNumber, Optional<Integer> sourceAmplificationFactor) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
+  public ControllerResponse prepareDataRecovery(
+      String sourceFabric,
+      String destinationFabric,
+      String storeName,
+      int versionNumber,
+      Optional<Integer> sourceAmplificationFactor) {
+    QueryParams params = newParams().add(NAME, storeName)
         .add(SOURCE_FABRIC, sourceFabric)
         .add(FABRIC, destinationFabric)
         .add(VERSION, versionNumber);
@@ -986,26 +1011,36 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.PREPARE_DATA_RECOVERY, params, ControllerResponse.class);
   }
 
-  public ReadyForDataRecoveryResponse isStoreVersionReadyForDataRecovery(String sourceFabric, String destinationFabric,
-      String storeName, int versionNumber, Optional<Integer> sourceAmplificationFactor) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
+  public ReadyForDataRecoveryResponse isStoreVersionReadyForDataRecovery(
+      String sourceFabric,
+      String destinationFabric,
+      String storeName,
+      int versionNumber,
+      Optional<Integer> sourceAmplificationFactor) {
+    QueryParams params = newParams().add(NAME, storeName)
         .add(SOURCE_FABRIC, sourceFabric)
         .add(FABRIC, destinationFabric)
         .add(VERSION, versionNumber);
     sourceAmplificationFactor.ifPresent(integer -> params.add(AMPLIFICATION_FACTOR, integer));
-    return request(ControllerRoute.IS_STORE_VERSION_READY_FOR_DATA_RECOVERY, params, ReadyForDataRecoveryResponse.class);
+    return request(
+        ControllerRoute.IS_STORE_VERSION_READY_FOR_DATA_RECOVERY,
+        params,
+        ReadyForDataRecoveryResponse.class);
   }
 
-  public ControllerResponse dataRecovery(String sourceFabric, String destinationFabric, String storeName,
-      int versionNumber, boolean sourceVersionIncluded, boolean copyAllVersionConfigs,
+  public ControllerResponse dataRecovery(
+      String sourceFabric,
+      String destinationFabric,
+      String storeName,
+      int versionNumber,
+      boolean sourceVersionIncluded,
+      boolean copyAllVersionConfigs,
       Optional<Version> sourceVersion) {
     if (sourceVersionIncluded && !sourceVersion.isPresent()) {
       throw new VeniceException("Missing source Version but sourceVersionConfigIsIncluded is set to true");
     }
     QueryParams params = newParams();
-    params
-        .add(NAME, storeName)
+    params.add(NAME, storeName)
         .add(SOURCE_FABRIC, sourceFabric)
         .add(FABRIC, destinationFabric)
         .add(VERSION, versionNumber)
@@ -1028,10 +1063,12 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.GET_ADMIN_TOPIC_METADATA, params, AdminTopicMetadataResponse.class);
   }
 
-  public ControllerResponse updateAdminTopicMetadata(long executionId, Optional<String> storeName,
-      Optional<Long> offset, Optional<Long> upstreamOffset) {
-    QueryParams params = newParams()
-        .add(EXECUTION_ID, executionId)
+  public ControllerResponse updateAdminTopicMetadata(
+      long executionId,
+      Optional<String> storeName,
+      Optional<Long> offset,
+      Optional<Long> upstreamOffset) {
+    QueryParams params = newParams().add(EXECUTION_ID, executionId)
         .add(NAME, storeName)
         .add(OFFSET, offset)
         .add(UPSTREAM_OFFSET, upstreamOffset);
@@ -1039,14 +1076,16 @@ public class ControllerClient implements Closeable {
   }
 
   public ControllerResponse deleteKafkaTopic(String topicName) {
-    QueryParams params = newParams()
-        .add(TOPIC, topicName);
+    QueryParams params = newParams().add(TOPIC, topicName);
     return request(ControllerRoute.DELETE_KAFKA_TOPIC, params, ControllerResponse.class);
   }
 
-  public ControllerResponse createStoragePersona(String name, long quota, Set<String> storesToEnforce, Set<String> owners) {
-    QueryParams params = newParams()
-        .add(PERSONA_NAME, name)
+  public ControllerResponse createStoragePersona(
+      String name,
+      long quota,
+      Set<String> storesToEnforce,
+      Set<String> owners) {
+    QueryParams params = newParams().add(PERSONA_NAME, name)
         .add(PERSONA_QUOTA, quota)
         .putStringSet(PERSONA_STORES, storesToEnforce)
         .putStringSet(PERSONA_OWNERS, owners);
@@ -1054,26 +1093,22 @@ public class ControllerClient implements Closeable {
   }
 
   public StoragePersonaResponse getStoragePersona(String name) {
-    QueryParams params = newParams()
-        .add(PERSONA_NAME, name);
+    QueryParams params = newParams().add(PERSONA_NAME, name);
     return request(ControllerRoute.GET_STORAGE_PERSONA, params, StoragePersonaResponse.class);
   }
 
   public ControllerResponse deleteStoragePersona(String name) {
-    QueryParams params = newParams()
-        .add(PERSONA_NAME, name);
+    QueryParams params = newParams().add(PERSONA_NAME, name);
     return request(ControllerRoute.DELETE_STORAGE_PERSONA, params, ControllerResponse.class);
   }
 
   public ControllerResponse updateStoragePersona(String name, UpdateStoragePersonaQueryParams queryParams) {
-    QueryParams params = addCommonParams(queryParams)
-        .add(PERSONA_NAME, name);
+    QueryParams params = addCommonParams(queryParams).add(PERSONA_NAME, name);
     return request(ControllerRoute.UPDATE_STORAGE_PERSONA, params, ControllerResponse.class);
   }
 
   public StoragePersonaResponse getStoragePersonaAssociatedWithStore(String name) {
-    QueryParams params = newParams()
-        .add(NAME, name);
+    QueryParams params = newParams().add(NAME, name);
     return request(ControllerRoute.GET_STORAGE_PERSONA_ASSOCIATED_WITH_STORE, params, StoragePersonaResponse.class);
   }
 
@@ -1092,8 +1127,7 @@ public class ControllerClient implements Closeable {
   }
 
   private QueryParams addCommonParams(QueryParams params) {
-    return params
-        .add(CLUSTER, this.clusterName);
+    return params.add(CLUSTER, this.clusterName);
   }
 
   protected static String encodeQueryParams(QueryParams params) {
@@ -1104,13 +1138,21 @@ public class ControllerClient implements Closeable {
     return request(route, params, responseType, DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_MAX_ATTEMPTS, null);
   }
 
-  private <T extends ControllerResponse> T request(ControllerRoute route, QueryParams params, Class<T> responseType,
+  private <T extends ControllerResponse> T request(
+      ControllerRoute route,
+      QueryParams params,
+      Class<T> responseType,
       byte[] data) {
     return request(route, params, responseType, DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_MAX_ATTEMPTS, data);
   }
 
-  private <T extends ControllerResponse> T request(ControllerRoute route, QueryParams params, Class<T> responseType,
-      int timeoutMs, int maxAttempts, byte[] data) {
+  private <T extends ControllerResponse> T request(
+      ControllerRoute route,
+      QueryParams params,
+      Class<T> responseType,
+      int timeoutMs,
+      int maxAttempts,
+      byte[] data) {
     Exception lastException = null;
     try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
       for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
@@ -1129,12 +1171,10 @@ public class ControllerClient implements Closeable {
         }
 
         if (attempt < maxAttempts) {
-          logger.info("Retrying controller request" +
-                  ", attempt = " + attempt + "/" + maxAttempts +
-                  ", controller = " + this.leaderControllerUrl +
-                  ", route = " + route.getPath() +
-                  ", params = " + params.getNameValuePairs() +
-                  ", timeout = " + timeoutMs,
+          logger.info(
+              "Retrying controller request" + ", attempt = " + attempt + "/" + maxAttempts + ", controller = "
+                  + this.leaderControllerUrl + ", route = " + route.getPath() + ", params = "
+                  + params.getNameValuePairs() + ", timeout = " + timeoutMs,
               lastException);
           Utils.sleep(5 * Time.MS_PER_SECOND);
         }
@@ -1143,15 +1183,16 @@ public class ControllerClient implements Closeable {
       lastException = e;
     }
 
-    String message = "An error occurred during controller request." +
-        " controller = " + this.leaderControllerUrl +
-        ", route = " + route.getPath() +
-        ", params = " + params.getAbbreviatedNameValuePairs() +
-        ", timeout = " + timeoutMs;
+    String message =
+        "An error occurred during controller request." + " controller = " + this.leaderControllerUrl + ", route = "
+            + route.getPath() + ", params = " + params.getAbbreviatedNameValuePairs() + ", timeout = " + timeoutMs;
     return makeErrorResponse(message, lastException, responseType);
   }
 
-  private <T extends ControllerResponse> T makeErrorResponse(String message, Exception exception, Class<T> responseType) {
+  private <T extends ControllerResponse> T makeErrorResponse(
+      String message,
+      Exception exception,
+      Class<T> responseType) {
     logger.error(message, exception);
     try {
       T response = responseType.newInstance();

@@ -12,7 +12,9 @@ public class MockD2ServerWrapper extends MockHttpServerWrapper {
   private final D2Server d2Server;
 
   static StatefulServiceProvider<MockD2ServerWrapper> generateService(String d2ClusterName, String d2ServiceName) {
-    return (serviceName, dataDirectory) -> new MockD2ServerWrapper(serviceName, Utils.getFreePort(), d2ClusterName, d2ServiceName);
+    return (
+        serviceName,
+        dataDirectory) -> new MockD2ServerWrapper(serviceName, Utils.getFreePort(), d2ClusterName, d2ServiceName);
   }
 
   public MockD2ServerWrapper(String serviceName, int port, String d2ClusterName, String d2ServiceName) {

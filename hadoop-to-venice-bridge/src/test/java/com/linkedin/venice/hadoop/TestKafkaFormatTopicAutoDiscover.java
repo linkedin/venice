@@ -1,13 +1,14 @@
 package com.linkedin.venice.hadoop;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.StoreInfo;
@@ -20,16 +21,13 @@ import java.util.Properties;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static org.mockito.Mockito.*;
-
 
 public class TestKafkaFormatTopicAutoDiscover {
   private static final String JOB_ID = "some-job-ID";
   private static final String STORE_NAME = "store-name";
   private static final String STORE_NAME_2 = "store-name-2";
 
-  @Test (expectedExceptions = UndefinedPropertyException.class, expectedExceptionsMessageRegExp = "Missing required property 'venice.store.name'.")
+  @Test(expectedExceptions = UndefinedPropertyException.class, expectedExceptionsMessageRegExp = "Missing required property 'venice.store.name'.")
   public void testMissingStoreNameInConfig() {
     new VenicePushJob(JOB_ID, getJobProperties(Collections.emptyMap()));
   }
@@ -46,7 +44,10 @@ public class TestKafkaFormatTopicAutoDiscover {
 
     Map<String, String> overrideProperties = Collections.singletonMap(VENICE_STORE_NAME_PROP, STORE_NAME);
     VenicePushJob venicePushJob = new VenicePushJob(
-            JOB_ID, getJobProperties(overrideProperties), controllerClient, getClusterDiscoveryControllerClient());
+        JOB_ID,
+        getJobProperties(overrideProperties),
+        controllerClient,
+        getClusterDiscoveryControllerClient());
     String expectedTopicName = Version.composeKafkaTopic(STORE_NAME, singleColoCurrentVersion);
     Assert.assertEquals(venicePushJob.getPushJobSetting().kafkaInputTopic, expectedTopicName);
   }
@@ -56,7 +57,8 @@ public class TestKafkaFormatTopicAutoDiscover {
     final int singleColoCurrentVersion = 1;
     ControllerClient controllerClient = mock(ControllerClient.class);
     Map<String, Integer> coloToVersionMap = Collections.emptyMap();
-    StoreResponse storeResponse = getMockHybridStoreResponse(coloToVersionMap, singleColoCurrentVersion, BufferReplayPolicy.REWIND_FROM_SOP);
+    StoreResponse storeResponse =
+        getMockHybridStoreResponse(coloToVersionMap, singleColoCurrentVersion, BufferReplayPolicy.REWIND_FROM_SOP);
     when(controllerClient.getStore(STORE_NAME)).thenReturn(storeResponse);
     RepushInfoResponse repushInfo = getMockRepushResponse(1);
     when(controllerClient.getRepushInfo(STORE_NAME, Optional.empty())).thenReturn(repushInfo);
@@ -64,7 +66,10 @@ public class TestKafkaFormatTopicAutoDiscover {
     overrideProperties.put(VENICE_STORE_NAME_PROP, STORE_NAME);
     overrideProperties.put(REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE, "1637016606");
     VenicePushJob venicePushJob = new VenicePushJob(
-        JOB_ID, getJobProperties(overrideProperties), controllerClient, getClusterDiscoveryControllerClient());
+        JOB_ID,
+        getJobProperties(overrideProperties),
+        controllerClient,
+        getClusterDiscoveryControllerClient());
 
     venicePushJob.setControllerClient(controllerClient);
     venicePushJob.validateRemoteHybridSettings();
@@ -75,7 +80,8 @@ public class TestKafkaFormatTopicAutoDiscover {
     final int singleColoCurrentVersion = 1;
     ControllerClient controllerClient = mock(ControllerClient.class);
     Map<String, Integer> coloToVersionMap = Collections.emptyMap();
-    StoreResponse storeResponse = getMockHybridStoreResponse(coloToVersionMap, singleColoCurrentVersion, BufferReplayPolicy.REWIND_FROM_EOP);
+    StoreResponse storeResponse =
+        getMockHybridStoreResponse(coloToVersionMap, singleColoCurrentVersion, BufferReplayPolicy.REWIND_FROM_EOP);
     when(controllerClient.getStore(STORE_NAME)).thenReturn(storeResponse);
     RepushInfoResponse repushInfo = getMockRepushResponse(1);
     when(controllerClient.getRepushInfo(STORE_NAME, Optional.empty())).thenReturn(repushInfo);
@@ -83,7 +89,10 @@ public class TestKafkaFormatTopicAutoDiscover {
     overrideProperties.put(VENICE_STORE_NAME_PROP, STORE_NAME);
     overrideProperties.put(REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE, "1637016606");
     VenicePushJob venicePushJob = new VenicePushJob(
-        JOB_ID, getJobProperties(overrideProperties), controllerClient, getClusterDiscoveryControllerClient());
+        JOB_ID,
+        getJobProperties(overrideProperties),
+        controllerClient,
+        getClusterDiscoveryControllerClient());
 
     venicePushJob.setControllerClient(controllerClient);
     Assert.assertThrows(() -> venicePushJob.validateRemoteHybridSettings());
@@ -104,7 +113,10 @@ public class TestKafkaFormatTopicAutoDiscover {
 
     Map<String, String> overrideProperties = Collections.singletonMap(VENICE_STORE_NAME_PROP, STORE_NAME);
     VenicePushJob venicePushJob = new VenicePushJob(
-            JOB_ID, getJobProperties(overrideProperties), controllerClient, getClusterDiscoveryControllerClient());
+        JOB_ID,
+        getJobProperties(overrideProperties),
+        controllerClient,
+        getClusterDiscoveryControllerClient());
     String expectedTopicName = Version.composeKafkaTopic(STORE_NAME, multipleColoCurrentVersion);
     Assert.assertEquals(venicePushJob.getPushJobSetting().kafkaInputTopic, expectedTopicName);
   }
@@ -124,7 +136,11 @@ public class TestKafkaFormatTopicAutoDiscover {
     RepushInfoResponse repushInfo = getMockRepushResponse(multipleColoCurrentVersion2);
     when(controllerClient.getRepushInfo(STORE_NAME, Optional.empty())).thenReturn(repushInfo);
     Map<String, String> overrideProperties = Collections.singletonMap(VENICE_STORE_NAME_PROP, STORE_NAME);
-    VenicePushJob venicePushJob = new VenicePushJob(JOB_ID, getJobProperties(overrideProperties), controllerClient, getClusterDiscoveryControllerClient());
+    VenicePushJob venicePushJob = new VenicePushJob(
+        JOB_ID,
+        getJobProperties(overrideProperties),
+        controllerClient,
+        getClusterDiscoveryControllerClient());
     String expectedTopicName = Version.composeKafkaTopic(STORE_NAME, multipleColoCurrentVersion2);
     Assert.assertEquals(venicePushJob.getPushJobSetting().kafkaInputTopic, expectedTopicName);
   }
@@ -147,11 +163,14 @@ public class TestKafkaFormatTopicAutoDiscover {
     overrideProperties.put(VENICE_STORE_NAME_PROP, STORE_NAME);
     overrideProperties.put(KAFKA_INPUT_TOPIC, userProvidedTopicName);
     VenicePushJob venicePushJob = new VenicePushJob(
-            JOB_ID, getJobProperties(overrideProperties), controllerClient, getClusterDiscoveryControllerClient());
+        JOB_ID,
+        getJobProperties(overrideProperties),
+        controllerClient,
+        getClusterDiscoveryControllerClient());
     Assert.assertEquals(venicePushJob.getPushJobSetting().kafkaInputTopic, userProvidedTopicName);
   }
 
-  @Test (expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Store user-provided name mismatch with the derived store name.*")
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Store user-provided name mismatch with the derived store name.*")
   public void testUserProvidedTopicNameNotValid() {
     ControllerClient controllerClient = mock(ControllerClient.class);
     StoreResponse storeResponse = getMockStoreResponse(Collections.emptyMap(), -1);
@@ -161,7 +180,11 @@ public class TestKafkaFormatTopicAutoDiscover {
     Map<String, String> overrideProperties = new HashMap<>();
     overrideProperties.put(VENICE_STORE_NAME_PROP, STORE_NAME);
     overrideProperties.put(KAFKA_INPUT_TOPIC, userProvidedTopicName);
-    new VenicePushJob(JOB_ID, getJobProperties(overrideProperties), controllerClient, getClusterDiscoveryControllerClient());
+    new VenicePushJob(
+        JOB_ID,
+        getJobProperties(overrideProperties),
+        controllerClient,
+        getClusterDiscoveryControllerClient());
   }
 
   @Test
@@ -180,12 +203,15 @@ public class TestKafkaFormatTopicAutoDiscover {
     overrideProperties.put(VENICE_STORE_NAME_PROP, STORE_NAME);
     overrideProperties.put(KAFKA_INPUT_TOPIC, userProvidedTopicName);
     VenicePushJob venicePushJob = new VenicePushJob(
-            JOB_ID, getJobProperties(overrideProperties), controllerClient, getClusterDiscoveryControllerClient());
+        JOB_ID,
+        getJobProperties(overrideProperties),
+        controllerClient,
+        getClusterDiscoveryControllerClient());
     String expectedTopicName = userProvidedTopicName;
     Assert.assertEquals(venicePushJob.getPushJobSetting().kafkaInputTopic, expectedTopicName);
   }
 
-  @Test (expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Store user-provided name mismatch with the derived store name.*")
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Store user-provided name mismatch with the derived store name.*")
   public void testUserProvidedTopicNameMismatchDiscoveredTopicName() {
     final int multipleColoCurrentVersion = 1;
     ControllerClient controllerClient = mock(ControllerClient.class);
@@ -201,7 +227,10 @@ public class TestKafkaFormatTopicAutoDiscover {
     overrideProperties.put(VENICE_STORE_NAME_PROP, STORE_NAME);
     overrideProperties.put(KAFKA_INPUT_TOPIC, userProvidedTopicName);
     VenicePushJob venicePushJob = new VenicePushJob(
-            JOB_ID, getJobProperties(overrideProperties), controllerClient, getClusterDiscoveryControllerClient());
+        JOB_ID,
+        getJobProperties(overrideProperties),
+        controllerClient,
+        getClusterDiscoveryControllerClient());
     String expectedTopicName = userProvidedTopicName;
     Assert.assertEquals(venicePushJob.getPushJobSetting().kafkaInputTopic, expectedTopicName);
   }
@@ -224,7 +253,10 @@ public class TestKafkaFormatTopicAutoDiscover {
     return storeResponse;
   }
 
-  private StoreResponse getMockHybridStoreResponse(Map<String, Integer> coloToVersionMap, int currentVersion, BufferReplayPolicy bufferReplayPolicy) {
+  private StoreResponse getMockHybridStoreResponse(
+      Map<String, Integer> coloToVersionMap,
+      int currentVersion,
+      BufferReplayPolicy bufferReplayPolicy) {
     StoreResponse storeResponse = mock(StoreResponse.class);
     HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
     StoreInfo storeInfo = mock(StoreInfo.class);

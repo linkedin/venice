@@ -51,8 +51,7 @@ public class StoreIngestionTaskFactory {
       int partitionId,
       boolean isIsolatedIngestion,
       StorageEngineBackedCompressorFactory compressorFactory,
-      Optional<ObjectCacheBackend> cacheBackend
-  ) {
+      Optional<ObjectCacheBackend> cacheBackend) {
     if (version.isActiveActiveReplicationEnabled()) {
       return new ActiveActiveStoreIngestionTask(
           builder,
@@ -243,7 +242,8 @@ public class StoreIngestionTaskFactory {
       return kafkaClusterBasedRecordThrottler;
     }
 
-    public Builder setKafkaClusterBasedRecordThrottler(KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler) {
+    public Builder setKafkaClusterBasedRecordThrottler(
+        KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler) {
       return set(() -> this.kafkaClusterBasedRecordThrottler = kafkaClusterBasedRecordThrottler);
     }
 
@@ -356,14 +356,15 @@ public class StoreIngestionTaskFactory {
     }
 
     public Builder setStartReportingReadyToServeTimestamp(long timestamp) {
-      return set(() -> this.startReportingReadyToServeTimestamp =  timestamp);
+      return set(() -> this.startReportingReadyToServeTimestamp = timestamp);
     }
 
     public InternalAvroSpecificSerializer<PartitionState> getPartitionStateSerializer() {
       return partitionStateSerializer;
     }
 
-    public Builder setPartitionStateSerializer(InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
+    public Builder setPartitionStateSerializer(
+        InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
       return set(() -> this.partitionStateSerializer = partitionStateSerializer);
     }
 

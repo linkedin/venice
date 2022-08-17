@@ -9,16 +9,19 @@ import org.testng.annotations.Test;
 
 
 public class MetaStoreWriteComputeTest {
-
-  private static final String TEST_PATH = "venice-common/src/test/java/com/linkedin/venice/system/store/MetaStoreWriteComputeTest.java";
+  private static final String TEST_PATH =
+      "venice-common/src/test/java/com/linkedin/venice/system/store/MetaStoreWriteComputeTest.java";
 
   @Test
   void validateWriteComputeSchema() {
-    Schema writeOpSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(
-        AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema()
-    );
-    Assert.assertEquals(StoreMetaValueWriteOpRecord.getClassSchema(), writeOpSchema,
+    Schema writeOpSchema = WriteComputeSchemaConverter.getInstance()
+        .convertFromValueRecordSchema(
+            AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema());
+    Assert.assertEquals(
+        StoreMetaValueWriteOpRecord.getClassSchema(),
+        writeOpSchema,
         "The " + StoreMetaValueWriteOpRecord.class.getSimpleName()
-            + " specific record is not compiled from the expected schema. Please copy the expected schema into: " + TEST_PATH);
+            + " specific record is not compiled from the expected schema. Please copy the expected schema into: "
+            + TEST_PATH);
   }
 }

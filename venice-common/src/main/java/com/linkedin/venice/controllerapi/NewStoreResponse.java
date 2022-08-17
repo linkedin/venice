@@ -1,6 +1,7 @@
 package com.linkedin.venice.controllerapi;
 
-public class NewStoreResponse extends ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */
+public class NewStoreResponse
+    extends ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */
   String owner;
 
   public String getOwner() {

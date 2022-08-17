@@ -1,7 +1,6 @@
 package com.linkedin.venice.router.api.routing.helix;
 
 public interface HelixGroupSelectionStrategy {
-
   /**
    * Select a Helix Group for the current request.
    */

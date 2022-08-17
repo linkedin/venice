@@ -24,11 +24,12 @@ import org.apache.avro.io.Encoder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+
 public class StoreClientTestUtils {
   private static Logger LOGGER = LogManager.getLogger(StoreClientTestUtils.class);
 
   public static FullHttpResponse constructHttpSchemaResponse(String storeName, int schemaId, String schemaStr)
-  throws IOException {
+      throws IOException {
     ByteBuf body = Unpooled.wrappedBuffer(constructSchemaResponseInBytes(storeName, schemaId, schemaStr));
     FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, body);
     response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
@@ -39,8 +40,10 @@ public class StoreClientTestUtils {
     return response;
   }
 
-  public static FullHttpResponse constructHttpClusterDiscoveryResponse(String storeName, String clusterName, String d2Service)
-      throws IOException {
+  public static FullHttpResponse constructHttpClusterDiscoveryResponse(
+      String storeName,
+      String clusterName,
+      String d2Service) throws IOException {
     D2ServiceDiscoveryResponse responseObject = new D2ServiceDiscoveryResponse();
     responseObject.setCluster(clusterName);
     responseObject.setName(storeName);
@@ -57,7 +60,7 @@ public class StoreClientTestUtils {
     return response;
   }
 
-  public static byte[] constructSchemaResponseInBytes(String storeName, int schemaId, String  schemaStr)
+  public static byte[] constructSchemaResponseInBytes(String storeName, int schemaId, String schemaStr)
       throws IOException {
     SchemaResponse responseObject = new SchemaResponse();
     responseObject.setCluster("test_cluster");
@@ -68,8 +71,9 @@ public class StoreClientTestUtils {
     return mapper.writeValueAsBytes(responseObject);
   }
 
-  public static FullHttpResponse constructHttpMultiSchemaResponse(String storeName, Map<Integer, String> valueSchemaEntries)
-      throws IOException {
+  public static FullHttpResponse constructHttpMultiSchemaResponse(
+      String storeName,
+      Map<Integer, String> valueSchemaEntries) throws IOException {
     ByteBuf body = Unpooled.wrappedBuffer(constructMultiSchemaResponseInBytes(storeName, valueSchemaEntries));
     FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, body);
     response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
@@ -81,14 +85,14 @@ public class StoreClientTestUtils {
   }
 
   public static byte[] constructMultiSchemaResponseInBytes(String storeName, Map<Integer, String> valueSchemaEntries)
-      throws IOException{
+      throws IOException {
     MultiSchemaResponse responseObject = new MultiSchemaResponse();
     responseObject.setCluster("test_cluster");
     responseObject.setName(storeName);
     int schemaNum = valueSchemaEntries.size();
     MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[schemaNum];
     int cur = 0;
-    for (Map.Entry<Integer, String> entry : valueSchemaEntries.entrySet()) {
+    for (Map.Entry<Integer, String> entry: valueSchemaEntries.entrySet()) {
       schemas[cur] = new MultiSchemaResponse.Schema();
       schemas[cur].setId(entry.getKey());
       schemas[cur].setSchemaStr(entry.getValue());
@@ -120,13 +124,13 @@ public class StoreClientTestUtils {
       datumWriter = new GenericDatumWriter<>(schema);
       datumWriter.write(object, encoder);
       encoder.flush();
-    } catch(IOException e) {
+    } catch (IOException e) {
       throw new VeniceClientException("Could not serialize the Avro object" + e);
     } finally {
-      if(output != null) {
+      if (output != null) {
         try {
           output.close();
-        } catch(IOException e) {
+        } catch (IOException e) {
           LOGGER.error("Failed to close stream", e);
         }
       }

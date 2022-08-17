@@ -30,7 +30,9 @@ public class NodeRemovableResult {
     return new NodeRemovableResult();
   }
 
-  public static NodeRemovableResult nonremoveableResult(String blockingResource, BlockingRemoveReason blockingReason,
+  public static NodeRemovableResult nonremoveableResult(
+      String blockingResource,
+      BlockingRemoveReason blockingReason,
       String details) {
     NodeRemovableResult result = new NodeRemovableResult();
     result.isRemovable = false;
@@ -41,8 +43,6 @@ public class NodeRemovableResult {
   }
 
   public enum BlockingRemoveReason {
-    WILL_LOSE_DATA,
-    WILL_TRIGGER_LOAD_REBALANCE,
-    WILL_FAIL_PUSH;
+    WILL_LOSE_DATA, WILL_TRIGGER_LOAD_REBALANCE, WILL_FAIL_PUSH;
   }
 }

@@ -44,25 +44,19 @@ public class DaVinciConfig {
   }
 
   public DaVinciConfig clone() {
-    return new DaVinciConfig()
-            .setManaged(isManaged())
-            .setIsolated(isIsolated())
-            .setStorageClass(getStorageClass())
-            .setNonLocalAccessPolicy(getNonLocalAccessPolicy())
-            .setMemoryLimit(getMemoryLimit())
-            .setCacheConfig(getCacheConfig());
+    return new DaVinciConfig().setManaged(isManaged())
+        .setIsolated(isIsolated())
+        .setStorageClass(getStorageClass())
+        .setNonLocalAccessPolicy(getNonLocalAccessPolicy())
+        .setMemoryLimit(getMemoryLimit())
+        .setCacheConfig(getCacheConfig());
   }
 
   @Override
   public String toString() {
-    return "DaVinciConfig{" +
-               "managed=" + managed +
-               ", isolated=" + isolated +
-               ", storageClass=" + storageClass +
-               ", nonLocalAccessPolicy=" + nonLocalAccessPolicy +
-               ", memoryLimit=" + memoryLimit +
-               ", cacheConfig=" + cacheConfig +
-               "}";
+    return "DaVinciConfig{" + "managed=" + managed + ", isolated=" + isolated + ", storageClass=" + storageClass
+        + ", nonLocalAccessPolicy=" + nonLocalAccessPolicy + ", memoryLimit=" + memoryLimit + ", cacheConfig="
+        + cacheConfig + "}";
   }
 
   public boolean isManaged() {

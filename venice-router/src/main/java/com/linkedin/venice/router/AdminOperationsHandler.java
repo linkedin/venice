@@ -1,5 +1,10 @@
 package com.linkedin.venice.router;
 
+import static com.linkedin.venice.router.api.VenicePathParser.*;
+import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
+import static com.linkedin.venice.utils.NettyUtils.*;
+import static io.netty.handler.codec.http.HttpResponseStatus.*;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.RequestConstants;
@@ -30,11 +35,6 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.router.api.VenicePathParser.*;
-import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
-import static com.linkedin.venice.utils.NettyUtils.*;
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
-
 
 @ChannelHandler.Sharable
 public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequest> {
@@ -56,7 +56,10 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
   private final boolean initialReadThrottlingEnabled;
   private final boolean initialEarlyThrottleEnabled;
 
-  public AdminOperationsHandler(AccessController accessController, RouterServer server, AdminOperationsStats adminOperationsStats) {
+  public AdminOperationsHandler(
+      AccessController accessController,
+      RouterServer server,
+      AdminOperationsStats adminOperationsStats) {
     this.accessController = accessController;
     this.adminOperationsStats = adminOperationsStats;
     routerServer = server;
@@ -106,10 +109,11 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
         }
         X509Certificate clientCert = (X509Certificate) sslHandler.engine().getSession().getPeerCertificates()[0];
         if (!accessController.hasAccessToAdminOperation(clientCert, adminTask)) {
-          throw new AclException(accessController.getPrincipalId(clientCert) + " does not have access to admin operation: " + adminTask);
+          throw new AclException(
+              accessController.getPrincipalId(clientCert) + " does not have access to admin operation: " + adminTask);
         }
       } catch (AclException e) {
-        String client = ctx.channel().remoteAddress().toString(); //ip and port
+        String client = ctx.channel().remoteAddress().toString(); // ip and port
         String errLine = String.format("%s requested %s %s", client, method, req.uri());
 
         logger.warn("Exception occurred! Access rejected: " + errLine + "\n" + e);
@@ -118,7 +122,9 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
       }
     }
 
-    logger.info("Received admin operation request from " + ctx.channel().remoteAddress() + ". Method: " + method + " Task: " + adminTask + " Action: " + pathHelper.getKey());
+    logger.info(
+        "Received admin operation request from " + ctx.channel().remoteAddress() + ". Method: " + method + " Task: "
+            + adminTask + " Action: " + pathHelper.getKey());
 
     if (HttpMethod.GET.equals(method)) {
       handleGet(pathHelper, ctx);
@@ -132,10 +138,11 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable e) {
     adminOperationsStats.recordErrorAdminRequest();
-    InetSocketAddress sockAddr = (InetSocketAddress)(ctx.channel().remoteAddress());
+    InetSocketAddress sockAddr = (InetSocketAddress) (ctx.channel().remoteAddress());
     String remoteAddr = sockAddr.getHostName() + ":" + sockAddr.getPort();
     if (!filter.isRedundantException(sockAddr.getHostName(), e)) {
-      logger.error("Got exception while handling admin operation request from " + remoteAddr + ", and error: " + e.getMessage());
+      logger.error(
+          "Got exception while handling admin operation request from " + remoteAddr + ", and error: " + e.getMessage());
     }
     setupResponseAndFlush(INTERNAL_SERVER_ERROR, EMPTY_BYTES, false, ctx);
     ctx.close();
@@ -156,7 +163,8 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
     }
   }
 
-  private void handlePost(VenicePathParserHelper pathHelper, ChannelHandlerContext ctx, Map<String, String> queryParams) throws IOException {
+  private void handlePost(VenicePathParserHelper pathHelper, ChannelHandlerContext ctx, Map<String, String> queryParams)
+      throws IOException {
     final String task = pathHelper.getResourceName();
     final String action = pathHelper.getKey();
 
@@ -189,7 +197,8 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
         routerReadQuotaThrottlingLeaseFuture.cancel(true);
       }
 
-      routerReadQuotaThrottlingLeaseFuture = executor.schedule((Runnable) this::resetReadQuotaThrottling, Long.parseLong(delay), TimeUnit.MILLISECONDS);
+      routerReadQuotaThrottlingLeaseFuture =
+          executor.schedule((Runnable) this::resetReadQuotaThrottling, Long.parseLong(delay), TimeUnit.MILLISECONDS);
     } else {
       resetReadQuotaThrottling();
     }
@@ -216,8 +225,10 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
     routerConfig.setEarlyThrottleEnabled(false);
 
     if (initialReadThrottlingEnabled || initialEarlyThrottleEnabled) {
-      routerReadQuotaThrottlingLeaseFuture =
-          executor.schedule((Runnable) this::resetReadQuotaThrottling, routerConfig.getReadQuotaThrottlingLeaseTimeoutMs(), TimeUnit.MILLISECONDS);
+      routerReadQuotaThrottlingLeaseFuture = executor.schedule(
+          (Runnable) this::resetReadQuotaThrottling,
+          routerConfig.getReadQuotaThrottlingLeaseTimeoutMs(),
+          TimeUnit.MILLISECONDS);
     }
   }
 
@@ -249,7 +260,8 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
     sendErrorResponse(status, errorPrefix + errorDesc, ctx);
   }
 
-  private void sendErrorResponse(HttpResponseStatus status, String errorMsg, ChannelHandlerContext ctx) throws IOException {
+  private void sendErrorResponse(HttpResponseStatus status, String errorMsg, ChannelHandlerContext ctx)
+      throws IOException {
     adminOperationsStats.recordErrorAdminRequest();
     Map<String, String> payload = new HashMap<>();
     payload.put("error", errorMsg);

@@ -10,6 +10,7 @@ import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 
+
 /**
  * Zookeeper accessor for {@link StoragePersona} objects, allowing for read/write to persona paths.
  * <p>
@@ -17,7 +18,6 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
  * Nothing in the accessor is cached locally.
  */
 public class StoragePersonaAccessor {
-
   public static final String STORAGE_PERSONA_SUB_PATH = "StoragePersona";
   private static final String PERSONA_SUB_PATH = "Persona";
 
@@ -42,7 +42,11 @@ public class StoragePersonaAccessor {
 
   /** Note that this method does not return an error if the persona already exists.  It is up to the caller, i.e.
    * {@link com.linkedin.venice.helix.StoragePersonaRepository} to throw an error in this case.  */
-  public synchronized void createPersona(String name, long quotaNumber, Set<String> storesToEnforce, Set<String> owners) {
+  public synchronized void createPersona(
+      String name,
+      long quotaNumber,
+      Set<String> storesToEnforce,
+      Set<String> owners) {
     StoragePersona persona = new StoragePersona(name, quotaNumber, storesToEnforce, owners);
     HelixUtils.create(personaAccessor, getPersonaPath(name), persona);
   }
@@ -55,9 +59,13 @@ public class StoragePersonaAccessor {
     HelixUtils.update(personaAccessor, getPersonaPath(persona.getName()), persona);
   }
 
-  public synchronized void deletePersona(StoragePersona persona) { deletePersona(persona.getName()); }
+  public synchronized void deletePersona(StoragePersona persona) {
+    deletePersona(persona.getName());
+  }
 
-  public synchronized void deletePersona(String personaName) { HelixUtils.remove(personaAccessor, getPersonaPath(personaName)); }
+  public synchronized void deletePersona(String personaName) {
+    HelixUtils.remove(personaAccessor, getPersonaPath(personaName));
+  }
 
   public synchronized boolean containsPersona(String name) {
     return personaAccessor.exists(getPersonaPath(name), AccessOption.PERSISTENT);

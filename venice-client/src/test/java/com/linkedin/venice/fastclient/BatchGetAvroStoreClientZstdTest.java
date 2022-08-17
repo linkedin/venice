@@ -1,5 +1,7 @@
 package com.linkedin.venice.fastclient;
 
+import static com.linkedin.venice.utils.ByteUtils.*;
+
 import com.github.luben.zstd.ZstdDictTrainer;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
@@ -12,10 +14,8 @@ import java.util.stream.Stream;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 
-import static com.linkedin.venice.utils.ByteUtils.*;
 
-public class BatchGetAvroStoreClientZstdTest extends BatchGetAvroStoreClientTest{
-
+public class BatchGetAvroStoreClientZstdTest extends BatchGetAvroStoreClientTest {
   protected void prepareData() throws Exception {
     keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STR);
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STR);
@@ -30,18 +30,22 @@ public class BatchGetAvroStoreClientZstdTest extends BatchGetAvroStoreClientTest
       return new AbstractMap.SimpleEntry<>(keyPrefix + i, record);
     });
 
-    storeName = veniceCluster.createStore(KEY_SCHEMA_STR, VALUE_SCHEMA_STR, genericRecordStream, CompressionStrategy.ZSTD_WITH_DICT,
+    storeName = veniceCluster.createStore(
+        KEY_SCHEMA_STR,
+        VALUE_SCHEMA_STR,
+        genericRecordStream,
+        CompressionStrategy.ZSTD_WITH_DICT,
         topic -> {
-      storeVersionName = topic;
-      ZstdDictTrainer trainer = new ZstdDictTrainer(1 * BYTES_PER_MB, 10 * BYTES_PER_KB);
-      for (int i = 0; i < 100000; i++) {
-        GenericRecord record = new GenericData.Record(VALUE_SCHEMA);
-        record.put(VALUE_FIELD_NAME, i);
-        trainer.addSample(valueSerializer.serialize(topic, record));
-      }
-      byte[] compressionDictionaryBytes = trainer.trainSamples();
-      return ByteBuffer.wrap(compressionDictionaryBytes);
-    });
+          storeVersionName = topic;
+          ZstdDictTrainer trainer = new ZstdDictTrainer(1 * BYTES_PER_MB, 10 * BYTES_PER_KB);
+          for (int i = 0; i < 100000; i++) {
+            GenericRecord record = new GenericData.Record(VALUE_SCHEMA);
+            record.put(VALUE_FIELD_NAME, i);
+            trainer.addSample(valueSerializer.serialize(topic, record));
+          }
+          byte[] compressionDictionaryBytes = trainer.trainSamples();
+          return ByteBuffer.wrap(compressionDictionaryBytes);
+        });
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
   }
 

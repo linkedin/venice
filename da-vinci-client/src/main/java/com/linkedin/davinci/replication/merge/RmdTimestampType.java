@@ -5,7 +5,7 @@ package com.linkedin.davinci.replication.merge;
  */
 enum RmdTimestampType {
   VALUE_LEVEL_TIMESTAMP(0), // Value level timestamp.
-  PER_FIELD_TIMESTAMP(1);   // If a value is an Avro Record and it has per-record-field timestamp(s).
+  PER_FIELD_TIMESTAMP(1); // If a value is an Avro Record and it has per-record-field timestamp(s).
 
   private final int val;
 

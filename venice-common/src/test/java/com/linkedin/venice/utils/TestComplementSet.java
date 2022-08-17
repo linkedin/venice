@@ -13,10 +13,11 @@ import org.testng.annotations.Test;
  */
 public class TestComplementSet {
   private static final Set<Integer> universalSet = new HashSet<Integer>(Arrays.asList(0, 1, 2, 3, 4, 5, 6, 7, 8, 9));
+
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testAddAllForNonComplementSet(boolean addComplementSet) {
-    ComplementSet<Integer> nonComplementSourceSet = ComplementSet.newSet(
-        Collections.unmodifiableSet(new HashSet<Integer>(Arrays.asList(0, 1, 2, 3))));
+    ComplementSet<Integer> nonComplementSourceSet =
+        ComplementSet.newSet(Collections.unmodifiableSet(new HashSet<Integer>(Arrays.asList(0, 1, 2, 3))));
 
     ComplementSet<Integer> newData;
     if (addComplementSet) {
@@ -65,8 +66,8 @@ public class TestComplementSet {
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testRemoveAllForNonComplementSet(boolean removeComplementSet) {
-    ComplementSet<Integer> nonComplementSourceSet = ComplementSet.newSet(
-        Collections.unmodifiableSet(new HashSet<Integer>(Arrays.asList(0, 1, 2, 3, 4, 5))));
+    ComplementSet<Integer> nonComplementSourceSet =
+        ComplementSet.newSet(Collections.unmodifiableSet(new HashSet<Integer>(Arrays.asList(0, 1, 2, 3, 4, 5))));
 
     ComplementSet<Integer> removedData;
     if (removeComplementSet) {

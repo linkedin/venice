@@ -1,5 +1,7 @@
 package com.linkedin.venice.utils;
 
+import static org.testng.Assert.*;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -16,7 +18,6 @@ import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import static org.testng.Assert.*;
 
 /**
  * Tests adapted from the OpenJDK and refactored to test multiple Map implementations.
@@ -24,12 +25,13 @@ import static org.testng.Assert.*;
 public class MapTest {
   @DataProvider
   Object[][] mapImplementations() {
-    return new Object[][]{{new HashMap<>()}, {new TreeMap<>()}, {new LinkedHashMap<>()}, {new IndexedHashMap<>()}};
+    return new Object[][] { { new HashMap<>() }, { new TreeMap<>() }, { new LinkedHashMap<>() },
+        { new IndexedHashMap<>() } };
   }
 
   @DataProvider
   Object[][] hashMapImplementations() {
-    return new Object[][]{{new HashMap<>()}, {new LinkedHashMap<>()}, {new IndexedHashMap<>()}};
+    return new Object[][] { { new HashMap<>() }, { new LinkedHashMap<>() }, { new IndexedHashMap<>() } };
   }
 
   @DataProvider
@@ -70,7 +72,8 @@ public class MapTest {
       }
     }
 
-    return new Object[][]{{new NotEmptyHashMap()}, {new NotEmptyLinkedHashMap()}, {new NotEmptyIndexedHashMap()}};
+    return new Object[][] { { new NotEmptyHashMap() }, { new NotEmptyLinkedHashMap() },
+        { new NotEmptyIndexedHashMap() } };
   }
 
   @DataProvider
@@ -83,21 +86,21 @@ public class MapTest {
     // A value 1.0 will ensure that a new threshold == capacity
     final float LOAD_FACTOR = 1.0f;
 
-    return new Object[][]{
-        {new HashMap(INITIAL_CAPACITY, LOAD_FACTOR)},
-        {new LinkedHashMap(INITIAL_CAPACITY, LOAD_FACTOR)},
-        {new IndexedHashMap(INITIAL_CAPACITY, LOAD_FACTOR)}
-    };
+    return new Object[][] { { new HashMap(INITIAL_CAPACITY, LOAD_FACTOR) },
+        { new LinkedHashMap(INITIAL_CAPACITY, LOAD_FACTOR) }, { new IndexedHashMap(INITIAL_CAPACITY, LOAD_FACTOR) } };
   }
 
   private static class KeyWithSameHashCode implements Comparable<KeyWithSameHashCode> {
     final int i;
+
     KeyWithSameHashCode(int i) {
       this.i = i;
     }
 
     @Override
-    public int hashCode() { return 0; } //Returning same hashcode so that all keys landup to same bucket
+    public int hashCode() {
+      return 0;
+    } // Returning same hashcode so that all keys landup to same bucket
 
     @Override
     public int compareTo(KeyWithSameHashCode x) {
@@ -111,7 +114,6 @@ public class MapTest {
   }
 
   private static final class CollidingHash implements Comparable<CollidingHash> {
-
     private final int value;
 
     public CollidingHash(int value) {
@@ -147,6 +149,7 @@ public class MapTest {
   Object[][] mapImplementationSupplier() {
     class SupplierWithToString implements Supplier<Map<?, Object>> {
       final Supplier<Map<?, Object>> supplier;
+
       SupplierWithToString(Supplier<Map<?, Object>> supplier) {
         this.supplier = supplier;
       }
@@ -165,7 +168,8 @@ public class MapTest {
     Supplier<Map<?, Object>> linkedHashMapSupplier = new SupplierWithToString(LinkedHashMap::new);
     Supplier<Map<?, Object>> treeMapSupplier = new SupplierWithToString(TreeMap::new);
     Supplier<Map<?, Object>> indexedHashMapSupplier = new SupplierWithToString(IndexedHashMap::new);
-    return new Object[][]{{hashMapSupplier}, {linkedHashMapSupplier}, {treeMapSupplier}, {indexedHashMapSupplier}};
+    return new Object[][] { { hashMapSupplier }, { linkedHashMapSupplier }, { treeMapSupplier },
+        { indexedHashMapSupplier } };
   }
 
   /*
@@ -177,7 +181,8 @@ public class MapTest {
   @Test(dataProvider = "mapImplementations")
   public void testKeySetRemove(Map<String, Object> m) {
     m.put("bananas", null);
-    if (!m.keySet().remove("bananas")) Assert.fail("Yes, we have no bananas: " + m.getClass().getSimpleName());
+    if (!m.keySet().remove("bananas"))
+      Assert.fail("Yes, we have no bananas: " + m.getClass().getSimpleName());
   }
 
   /**
@@ -299,7 +304,8 @@ public class MapTest {
     map.put(key, oldValue);
     Map.Entry e = (Map.Entry) map.entrySet().iterator().next();
     Object returnVal = e.setValue(newValue);
-    if (!returnVal.equals(oldValue)) throw new RuntimeException("Return value: " + returnVal);
+    if (!returnVal.equals(oldValue))
+      throw new RuntimeException("Return value: " + returnVal);
   }
 
   /*
@@ -332,20 +338,20 @@ public class MapTest {
     final int size = 11;
     List<KeyWithSameHashCode> keys = new ArrayList<>();
 
-    for (int i = 0; i < size; i++){
+    for (int i = 0; i < size; i++) {
       keys.add(new KeyWithSameHashCode(i));
     }
 
     KeyWithSameHashCode keyToFrob = keys.get(9);
     Map<KeyWithSameHashCode, Object> m = mapSupplier.get();
-    for (KeyWithSameHashCode key : keys) m.put(key, null);
+    for (KeyWithSameHashCode key: keys)
+      m.put(key, null);
 
-    for (Iterator<Map.Entry<KeyWithSameHashCode, Object>> it = m.entrySet().iterator(); it.hasNext(); ){
+    for (Iterator<Map.Entry<KeyWithSameHashCode, Object>> it = m.entrySet().iterator(); it.hasNext();) {
       Map.Entry<KeyWithSameHashCode, Object> entry = it.next();
-      if (entry.getKey() == keyToFrob){
+      if (entry.getKey() == keyToFrob) {
         entry.setValue(2);
-      }
-      else{
+      } else {
         it.remove();
       }
     }
@@ -360,7 +366,8 @@ public class MapTest {
       assertTrue(m.containsValue(null), failureMessage);
       assertFalse(m.containsValue(2), failureMessage);
     } else {
-      String failureMessage = "Not expect to see JDK Bug-8186171 with JKD version " + version + " and " + mapSupplierName;
+      String failureMessage =
+          "Not expect to see JDK Bug-8186171 with JKD version " + version + " and " + mapSupplierName;
       assertFalse(m.containsValue(null), failureMessage);
       assertTrue(m.containsValue(2), failureMessage);
     }

@@ -22,8 +22,11 @@ public class InternalRTStoreInitializationRoutine implements ClusterLeaderInitia
   private final String keySchema;
   private final String valueSchema;
 
-  public InternalRTStoreInitializationRoutine(Function<String, String> storeNameSupplier,
-      VeniceControllerMultiClusterConfig multiClusterConfigs, VeniceHelixAdmin admin, String keySchema,
+  public InternalRTStoreInitializationRoutine(
+      Function<String, String> storeNameSupplier,
+      VeniceControllerMultiClusterConfig multiClusterConfigs,
+      VeniceHelixAdmin admin,
+      String keySchema,
       String valueSchema) {
     this.storeNameSupplier = storeNameSupplier;
     this.multiClusterConfigs = multiClusterConfigs;
@@ -31,6 +34,7 @@ public class InternalRTStoreInitializationRoutine implements ClusterLeaderInitia
     this.keySchema = keySchema;
     this.valueSchema = valueSchema;
   }
+
   @Override
   public void execute(String clusterName) {
     String storeName = storeNameSupplier.apply(clusterName);
@@ -46,8 +50,7 @@ public class InternalRTStoreInitializationRoutine implements ClusterLeaderInitia
     }
 
     if (!store.isHybrid()) {
-      UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams()
-          .setHybridOffsetLagThreshold(100L)
+      UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams().setHybridOffsetLagThreshold(100L)
           .setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(7));
       admin.updateStore(clusterName, storeName, updateStoreQueryParams);
       store = admin.getStore(clusterName, storeName);
@@ -60,8 +63,12 @@ public class InternalRTStoreInitializationRoutine implements ClusterLeaderInitia
     if (store.getCurrentVersion() <= 0) {
       int partitionCount = multiClusterConfigs.getControllerConfig(clusterName).getNumberOfPartition();
       int replicationFactor = admin.getReplicationFactor(clusterName, storeName);
-      Version version = admin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
-          partitionCount, replicationFactor);
+      Version version = admin.incrementVersionIdempotent(
+          clusterName,
+          storeName,
+          Version.guidBasedDummyPushId(),
+          partitionCount,
+          replicationFactor);
       admin.writeEndOfPush(clusterName, storeName, version.getNumber(), true);
       store = admin.getStore(clusterName, storeName);
       if (store.getVersions().isEmpty()) {

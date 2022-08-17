@@ -26,7 +26,8 @@ public enum LeaderFollowerStateType {
   PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER(3);
 
   private final int value;
-  private static final Map<Integer, LeaderFollowerStateType> LEADER_FOLLOWER_STATES_TYPE_MAP = getLeaderFollowerStatesTypeMap();
+  private static final Map<Integer, LeaderFollowerStateType> LEADER_FOLLOWER_STATES_TYPE_MAP =
+      getLeaderFollowerStatesTypeMap();
 
   LeaderFollowerStateType(int value) {
     this.value = value;
@@ -46,7 +47,7 @@ public enum LeaderFollowerStateType {
 
   private static Map<Integer, LeaderFollowerStateType> getLeaderFollowerStatesTypeMap() {
     Map<Integer, LeaderFollowerStateType> intToTypeMap = new HashMap<>();
-    for (LeaderFollowerStateType type : LeaderFollowerStateType.values()) {
+    for (LeaderFollowerStateType type: LeaderFollowerStateType.values()) {
       intToTypeMap.put(type.value, type);
     }
     return intToTypeMap;

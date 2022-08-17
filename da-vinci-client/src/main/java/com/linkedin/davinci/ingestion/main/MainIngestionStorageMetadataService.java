@@ -47,8 +47,13 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
   private final MetadataUpdateStats metadataUpdateStats;
   private final MetadataUpdateWorker metadataUpdateWorker;
 
-  public MainIngestionStorageMetadataService(int targetPort, InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer, MetadataUpdateStats metadataUpdateStats, VeniceConfigLoader configLoader) {
-    this.client = new MainIngestionRequestClient(IsolatedIngestionUtils.getSSLEngineComponentFactory(configLoader), targetPort);
+  public MainIngestionStorageMetadataService(
+      int targetPort,
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
+      MetadataUpdateStats metadataUpdateStats,
+      VeniceConfigLoader configLoader) {
+    this.client =
+        new MainIngestionRequestClient(IsolatedIngestionUtils.getSSLEngineComponentFactory(configLoader), targetPort);
     this.partitionStateSerializer = partitionStateSerializer;
     this.metadataUpdateStats = metadataUpdateStats;
     this.metadataUpdateWorker = new MetadataUpdateWorker();
@@ -74,8 +79,8 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
     IngestionStorageMetadata ingestionStorageMetadata = new IngestionStorageMetadata();
     ingestionStorageMetadata.metadataUpdateType = IngestionMetadataUpdateType.PUT_STORE_VERSION_STATE.getValue();
     ingestionStorageMetadata.topicName = topicName;
-    ingestionStorageMetadata.payload = ByteBuffer.wrap(
-        IsolatedIngestionUtils.serializeStoreVersionState(topicName, record));
+    ingestionStorageMetadata.payload =
+        ByteBuffer.wrap(IsolatedIngestionUtils.serializeStoreVersionState(topicName, record));
     updateRemoteStorageMetadataService(ingestionStorageMetadata);
   }
 
@@ -142,8 +147,10 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
    * putOffsetRecord will only put OffsetRecord into in-memory state, without persisting into metadata RocksDB partition.
    */
   public void putOffsetRecord(String topicName, int partitionId, OffsetRecord record) {
-    logger.info("Updating OffsetRecord for " + topicName + " " + partitionId + " " + record.getLocalVersionTopicOffset());
-    Map<Integer, OffsetRecord> partitionOffsetRecordMap = topicPartitionOffsetRecordMap.getOrDefault(topicName, new VeniceConcurrentHashMap<>());
+    logger
+        .info("Updating OffsetRecord for " + topicName + " " + partitionId + " " + record.getLocalVersionTopicOffset());
+    Map<Integer, OffsetRecord> partitionOffsetRecordMap =
+        topicPartitionOffsetRecordMap.getOrDefault(topicName, new VeniceConcurrentHashMap<>());
     partitionOffsetRecordMap.put(partitionId, record);
     topicPartitionOffsetRecordMap.put(topicName, partitionOffsetRecordMap);
   }

@@ -1,5 +1,9 @@
 package com.linkedin.venice.kafka;
 
+import static com.linkedin.venice.kafka.TopicManager.*;
+import static com.linkedin.venice.utils.TestUtils.*;
+import static org.mockito.Mockito.*;
+
 import com.github.benmanes.caffeine.cache.Cache;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.AggKafkaConsumerService;
@@ -53,12 +57,8 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.kafka.TopicManager.*;
-import static com.linkedin.venice.utils.TestUtils.*;
-import static org.mockito.Mockito.*;
 
 public class KafkaConsumptionTest {
-
   /** Wait time for {@link #topicManager} operations, in seconds */
   private static final int WAIT_TIME_IN_SECONDS = 10;
   private static final long MIN_COMPACTION_LAG = 24 * Time.MS_PER_HOUR;
@@ -81,10 +81,14 @@ public class KafkaConsumptionTest {
     int partitions = 1;
     int replicas = 1;
     topicManager.createTopic(topicName, partitions, replicas, false);
-    TestUtils.waitForNonDeterministicAssertion(WAIT_TIME_IN_SECONDS, TimeUnit.SECONDS,
+    TestUtils.waitForNonDeterministicAssertion(
+        WAIT_TIME_IN_SECONDS,
+        TimeUnit.SECONDS,
         () -> Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topicName)));
     remoteTopicManager.createTopic(topicName, partitions, replicas, false);
-    TestUtils.waitForNonDeterministicAssertion(WAIT_TIME_IN_SECONDS, TimeUnit.SECONDS,
+    TestUtils.waitForNonDeterministicAssertion(
+        WAIT_TIME_IN_SECONDS,
+        TimeUnit.SECONDS,
         () -> Assert.assertTrue(remoteTopicManager.containsTopicAndAllPartitionsAreOnline(topicName)));
     return topicName;
   }
@@ -95,8 +99,8 @@ public class KafkaConsumptionTest {
     localZkServer = ServiceFactory.getZkServer();
     localKafka = ServiceFactory.getKafkaBroker(localZkServer, Optional.of(mockTime));
     localKafkaClientFactory = TestUtils.getVeniceConsumerFactory(localKafka);
-    topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG,
-        localKafkaClientFactory);
+    topicManager =
+        new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, localKafkaClientFactory);
     Cache cacheNothingCache = mock(Cache.class);
     Mockito.when(cacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
     topicManager.setTopicConfigCache(cacheNothingCache);
@@ -105,8 +109,8 @@ public class KafkaConsumptionTest {
     remoteMockTime = new MockTime();
     remoteKafka = ServiceFactory.getKafkaBroker(remoteZkServer, Optional.of(remoteMockTime));
     remoteKafkaClientFactory = TestUtils.getVeniceConsumerFactory(remoteKafka);
-    remoteTopicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG,
-        remoteKafkaClientFactory);
+    remoteTopicManager =
+        new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, remoteKafkaClientFactory);
     Cache remoteCacheNothingCache = mock(Cache.class);
     Mockito.when(remoteCacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
     remoteTopicManager.setTopicConfigCache(remoteCacheNothingCache);
@@ -124,12 +128,14 @@ public class KafkaConsumptionTest {
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testLocalAndRemoteConsumption(boolean isTopicWiseSharedConsumerAssignmentStrategy) throws ExecutionException, InterruptedException {
+  public void testLocalAndRemoteConsumption(boolean isTopicWiseSharedConsumerAssignmentStrategy)
+      throws ExecutionException, InterruptedException {
     // Prepare Aggregate Kafka Consumer Service.
     EventThrottler mockBandwidthThrottler = mock(EventThrottler.class);
     EventThrottler mockRecordsThrottler = mock(EventThrottler.class);
     Map<String, EventThrottler> kafkaUrlToRecordsThrottler = new HashMap<>();
-    KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler = new KafkaClusterBasedRecordThrottler(kafkaUrlToRecordsThrottler);
+    KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler =
+        new KafkaClusterBasedRecordThrottler(kafkaUrlToRecordsThrottler);
     MetricsRepository metricsRepository = TehutiUtils.getMetricsRepository(this.getClass().getName());
     VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
 
@@ -139,10 +145,12 @@ public class KafkaConsumptionTest {
     doReturn(true).when(veniceServerConfig).isLiveConfigBasedKafkaThrottlingEnabled();
     if (isTopicWiseSharedConsumerAssignmentStrategy) {
       doReturn(KafkaConsumerService.ConsumerAssignmentStrategy.TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY)
-          .when(veniceServerConfig).getSharedConsumerAssignmentStrategy();
+          .when(veniceServerConfig)
+          .getSharedConsumerAssignmentStrategy();
     } else {
       doReturn(KafkaConsumerService.ConsumerAssignmentStrategy.PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY)
-          .when(veniceServerConfig).getSharedConsumerAssignmentStrategy();
+          .when(veniceServerConfig)
+          .getSharedConsumerAssignmentStrategy();
     }
 
     String localKafkaUrl = localKafka.getAddress();
@@ -154,8 +162,14 @@ public class KafkaConsumptionTest {
 
     TopicExistenceChecker topicExistenceChecker = mock(TopicExistenceChecker.class);
     KafkaClientFactory kafkaClientFactory = new KafkaConsumerFactoryImpl(new VeniceProperties());
-    AggKafkaConsumerService aggKafkaConsumerService = new AggKafkaConsumerService(kafkaClientFactory, veniceServerConfig,
-        mockBandwidthThrottler, mockRecordsThrottler, kafkaClusterBasedRecordThrottler, metricsRepository, topicExistenceChecker);
+    AggKafkaConsumerService aggKafkaConsumerService = new AggKafkaConsumerService(
+        kafkaClientFactory,
+        veniceServerConfig,
+        mockBandwidthThrottler,
+        mockRecordsThrottler,
+        kafkaClusterBasedRecordThrottler,
+        metricsRepository,
+        topicExistenceChecker);
 
     versionTopic = getTopic();
     int partition = 0;
@@ -163,15 +177,16 @@ public class KafkaConsumptionTest {
     doReturn(versionTopic).when(storeIngestionTask).getVersionTopic();
 
     // Local consumer subscription.
-    Properties consumerProperties  = new Properties();
+    Properties consumerProperties = new Properties();
     consumerProperties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, localKafkaUrl);
     consumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
     aggKafkaConsumerService.createKafkaConsumerService(consumerProperties);
-    StorePartitionDataReceiver localDataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerService.subscribeConsumerFor(
-        localKafkaUrl, storeIngestionTask, versionTopic, partition, -1);
-    Assert.assertTrue(aggKafkaConsumerService.hasConsumerAssignedFor(localKafkaUrl, versionTopic, versionTopic, partition));
+    StorePartitionDataReceiver localDataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerService
+        .subscribeConsumerFor(localKafkaUrl, storeIngestionTask, versionTopic, partition, -1);
+    Assert.assertTrue(
+        aggKafkaConsumerService.hasConsumerAssignedFor(localKafkaUrl, versionTopic, versionTopic, partition));
 
     // Remote consumer subscription.
     consumerProperties = new Properties();
@@ -180,9 +195,10 @@ public class KafkaConsumptionTest {
     consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
     aggKafkaConsumerService.createKafkaConsumerService(consumerProperties);
-    StorePartitionDataReceiver remoteDataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerService.subscribeConsumerFor(
-        remoteKafkaUrl, storeIngestionTask, versionTopic, partition, -1);
-    Assert.assertTrue(aggKafkaConsumerService.hasConsumerAssignedFor(remoteKafkaUrl, versionTopic, versionTopic, partition));
+    StorePartitionDataReceiver remoteDataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerService
+        .subscribeConsumerFor(remoteKafkaUrl, storeIngestionTask, versionTopic, partition, -1);
+    Assert.assertTrue(
+        aggKafkaConsumerService.hasConsumerAssignedFor(remoteKafkaUrl, versionTopic, versionTopic, partition));
 
     long timestamp = System.currentTimeMillis();
     int dataRecordsNum = 10;
@@ -196,7 +212,9 @@ public class KafkaConsumptionTest {
       produceToKafka(versionTopic, false, timestamp, localKafkaUrl);
     }
     final int localExpectedRecordsNum = dataRecordsNum + controlRecordsNum;
-    waitForNonDeterministicCompletion(1000, TimeUnit.MILLISECONDS,
+    waitForNonDeterministicCompletion(
+        1000,
+        TimeUnit.MILLISECONDS,
         () -> localDataReceiver.receivedRecordsCount() == localExpectedRecordsNum);
 
     timestamp = System.currentTimeMillis();
@@ -211,7 +229,9 @@ public class KafkaConsumptionTest {
       produceToKafka(versionTopic, false, timestamp, remoteKafkaUrl);
     }
     final int remoteExpectedRecordsNum = dataRecordsNum + controlRecordsNum;
-    waitForNonDeterministicCompletion(1000, TimeUnit.MILLISECONDS,
+    waitForNonDeterministicCompletion(
+        1000,
+        TimeUnit.MILLISECONDS,
         () -> remoteDataReceiver.receivedRecordsCount() == remoteExpectedRecordsNum);
   }
 
@@ -232,13 +252,10 @@ public class KafkaConsumptionTest {
     props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
     props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaUrl);
     KafkaProducer<KafkaKey, KafkaMessageEnvelope> producer = new KafkaProducer(props);
-    final byte[] randomBytes = new byte[]{0, 1};
+    final byte[] randomBytes = new byte[] { 0, 1 };
 
     // Prepare record key
-    KafkaKey recordKey = new KafkaKey(
-        isDataRecord ? MessageType.PUT : MessageType.CONTROL_MESSAGE,
-        randomBytes
-    );
+    KafkaKey recordKey = new KafkaKey(isDataRecord ? MessageType.PUT : MessageType.CONTROL_MESSAGE, randomBytes);
 
     // Prepare record value
     KafkaMessageEnvelope recordValue = new KafkaMessageEnvelope();
@@ -250,7 +267,7 @@ public class KafkaConsumptionTest {
 
     if (isDataRecord) {
       Put put = new Put();
-      put.putValue = ByteBuffer.wrap(new byte[]{0, 1});
+      put.putValue = ByteBuffer.wrap(new byte[] { 0, 1 });
       put.replicationMetadataPayload = ByteBuffer.wrap(randomBytes);
       recordValue.payloadUnion = put;
     } else {

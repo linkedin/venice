@@ -17,6 +17,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class ExceptionUtils {
   private static final Logger logger = LogManager.getLogger(ExceptionUtils.class);
+
   /**
    * Inspects a given {@link Throwable} as well as its nested causes, in order to look
    * for a specific set of exception classes. The function also detects if the throwable
@@ -27,7 +28,7 @@ public class ExceptionUtils {
    * @return true if a the throwableToInspect corresponds to or is caused by any of the throwableClassesToLookFor
    */
   public static boolean recursiveClassEquals(Throwable throwableToInspect, Class... throwableClassesToLookFor) {
-    if (null == throwableToInspect){
+    if (null == throwableToInspect) {
       return false;
     }
     for (Class clazz: throwableClassesToLookFor) {
@@ -50,7 +51,7 @@ public class ExceptionUtils {
    * @return true if a the throwableToInspect contains the message parameter
    */
   public static boolean recursiveMessageContains(Throwable throwableToInspect, String message) {
-    if (null == throwableToInspect){
+    if (null == throwableToInspect) {
       return false;
     }
     String throwableToInspectMessage = throwableToInspect.getMessage();
@@ -85,7 +86,7 @@ public class ExceptionUtils {
 
   public static void logClassLoaderContent(String packageName) {
     ClassLoader cl = ClassLoader.getSystemClassLoader();
-    URL[] urls = ((URLClassLoader)cl).getURLs();
+    URL[] urls = ((URLClassLoader) cl).getURLs();
     Arrays.asList(urls).stream().filter(url -> url.getFile().contains(packageName)).forEach(logger::warn);
   }
 }

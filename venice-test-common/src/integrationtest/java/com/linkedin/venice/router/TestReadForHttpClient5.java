@@ -1,5 +1,8 @@
 package com.linkedin.venice.router;
 
+import static com.linkedin.venice.HttpConstants.*;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.integration.utils.H2SSLUtils;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -18,12 +21,10 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.HttpConstants.*;
-import static org.mockito.Mockito.*;
-
 
 public class TestReadForHttpClient5 extends TestRead {
   private final Logger LOGGER = LogManager.getLogger(this.getClass());
+
   @Override
   protected StorageNodeClientType getStorageNodeClientType() {
     return StorageNodeClientType.HTTP_CLIENT_5_CLIENT;
@@ -38,8 +39,9 @@ public class TestReadForHttpClient5 extends TestRead {
   protected boolean isTestEnabled() {
     boolean testEnabled = Utils.getJavaMajorVersion() >= 11;
     if (!testEnabled) {
-      LOGGER.info("All the tests are disabled since StorageNodeClientType: {} with HTTP/2 enabled"
-          + " requires JDK11 or above", StorageNodeClientType.HTTP_CLIENT_5_CLIENT);
+      LOGGER.info(
+          "All the tests are disabled since StorageNodeClientType: {} with HTTP/2 enabled" + " requires JDK11 or above",
+          StorageNodeClientType.HTTP_CLIENT_5_CLIENT);
     }
     return testEnabled;
   }
@@ -54,8 +56,11 @@ public class TestReadForHttpClient5 extends TestRead {
     Instance serverInstance = Instance.fromHostAndPort(serverWrapper.getHost(), serverWrapper.getPort());
     Optional<SSLEngineComponentFactory> sslFactory = Optional.of(H2SSLUtils.getLocalHttp2SslFactory());
     // Form a heartbeat request
-    VeniceMetaDataRequest
-        request = new VeniceMetaDataRequest(serverInstance, QueryAction.HEALTH.toString().toLowerCase(), HTTP_GET, sslFactory.isPresent());
+    VeniceMetaDataRequest request = new VeniceMetaDataRequest(
+        serverInstance,
+        QueryAction.HEALTH.toString().toLowerCase(),
+        HTTP_GET,
+        sslFactory.isPresent());
     // Don't setup the request timeout
 
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);

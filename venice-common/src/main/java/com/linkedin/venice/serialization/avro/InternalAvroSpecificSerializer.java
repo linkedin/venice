@@ -1,9 +1,9 @@
 package com.linkedin.venice.serialization.avro;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
@@ -39,15 +39,15 @@ import org.apache.logging.log4j.Logger;
  */
 public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificRecord>
     implements VeniceKafkaSerializer<SPECIFIC_RECORD> {
-
   private static class ReusableObjects {
     final BinaryDecoder binaryDecoder = AvroCompatibilityHelper.newBinaryDecoder(new byte[16]);
-    final BinaryEncoder binaryEncoder = AvroCompatibilityHelper.newBinaryEncoder(new ByteArrayOutputStream(), true, null);
+    final BinaryEncoder binaryEncoder =
+        AvroCompatibilityHelper.newBinaryEncoder(new ByteArrayOutputStream(), true, null);
     final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
   }
 
-  private static final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(
-      ReusableObjects::new);
+  private static final ThreadLocal<ReusableObjects> threadLocalReusableObjects =
+      ThreadLocal.withInitial(ReusableObjects::new);
 
   /** Used to configure the {@link #schemaReader}. */
   public static final String VENICE_SCHEMA_READER_CONFIG = "venice.schema-reader";
@@ -113,10 +113,11 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
     }
     if (protocolDef.currentProtocolVersion.isPresent()) {
       int currentProtocolVersionAsInt = protocolDef.currentProtocolVersion.get();
-      if (currentProtocolVersionAsInt == SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA ||
-          currentProtocolVersionAsInt == SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL ||
-          currentProtocolVersionAsInt > Byte.MAX_VALUE) {
-        throw new IllegalArgumentException("Improperly defined protocol! Invalid currentProtocolVersion: " + currentProtocolVersionAsInt);
+      if (currentProtocolVersionAsInt == SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA
+          || currentProtocolVersionAsInt == SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL
+          || currentProtocolVersionAsInt > Byte.MAX_VALUE) {
+        throw new IllegalArgumentException(
+            "Improperly defined protocol! Invalid currentProtocolVersion: " + currentProtocolVersionAsInt);
       }
       this.currentProtocolVersion = (byte) currentProtocolVersionAsInt;
     } else {
@@ -128,8 +129,9 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
       this.PAYLOAD_OFFSET = PROTOCOL_VERSION_OFFSET + PROTOCOL_VERSION_LENGTH;
     } else {
       if (protocolDef.magicByte.isPresent() || protocolDef.protocolVersionStoredInHeader) {
-        throw new VeniceMessageException("The payload offset override is not intended to be used for protocols "
-            + "which have explicitly defined magic bytes or which have protocol versions stored in their header.");
+        throw new VeniceMessageException(
+            "The payload offset override is not intended to be used for protocols "
+                + "which have explicitly defined magic bytes or which have protocol versions stored in their header.");
       }
       this.PAYLOAD_OFFSET = payloadOffsetOverride;
     }
@@ -187,11 +189,12 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
   @Override
   public byte[] serialize(String topic, SPECIFIC_RECORD object) {
     // re-use both the ByteArrayOutputStream and Encoder.
-    try  {
+    try {
       ReusableObjects reusableObjects = threadLocalReusableObjects.get();
       ByteArrayOutputStream byteArrayOutputStream = reusableObjects.byteArrayOutputStream;
       byteArrayOutputStream.reset();
-      Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(byteArrayOutputStream, true, reusableObjects.binaryEncoder);
+      Encoder encoder =
+          AvroCompatibilityHelper.newBinaryEncoder(byteArrayOutputStream, true, reusableObjects.binaryEncoder);
 
       // We write according to the latest protocol version.
       if (MAGIC_BYTE_LENGTH == 1) {
@@ -214,7 +217,9 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
       encoder.flush();
       return byteArrayOutputStream.toByteArray();
     } catch (IOException e) {
-      throw new VeniceMessageException(this.getClass().getSimpleName() + " failed to encode message: " + object.toString(), e);
+      throw new VeniceMessageException(
+          this.getClass().getSimpleName() + " failed to encode message: " + object.toString(),
+          e);
     }
   }
 
@@ -236,7 +241,8 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
     }
 
     if (magicByte == 0) {
-      throw new VeniceMessageException("This protocol cannot be used as a Kafka deserializer: " + this.getClass().getSimpleName());
+      throw new VeniceMessageException(
+          "This protocol cannot be used as a Kafka deserializer: " + this.getClass().getSimpleName());
     }
 
     // Sanity check on the magic byte to make sure we understand the protocol itself
@@ -248,7 +254,8 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
     }
 
     if (PROTOCOL_VERSION_LENGTH == 0) {
-      throw new VeniceMessageException("This protocol cannot be used as a Kafka deserializer: " + this.getClass().getSimpleName());
+      throw new VeniceMessageException(
+          "This protocol cannot be used as a Kafka deserializer: " + this.getClass().getSimpleName());
     }
 
     // If the data looks valid, then we deploy the Avro machinery to decode the payload
@@ -265,36 +272,42 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
     // Sanity check to make sure the writer's protocol (i.e.: Avro schema) version is known to us
     if (!readerMap.containsKey(protocolVersion)) {
       if (null == schemaReader) {
-        throw new VeniceMessageException("Received Protocol Version '" + protocolVersion
-            + "' which is not supported by " + this.getClass().getSimpleName()
-            + ". Protocol forward compatibility is not enabled"
-            + ". The only supported Protocol Versions are: " + getCurrentlyLoadedProtocolVersions() + ".");
+        throw new VeniceMessageException(
+            "Received Protocol Version '" + protocolVersion + "' which is not supported by "
+                + this.getClass().getSimpleName() + ". Protocol forward compatibility is not enabled"
+                + ". The only supported Protocol Versions are: " + getCurrentlyLoadedProtocolVersions() + ".");
       }
 
       for (int attempt = 1; attempt <= MAX_ATTEMPTS_FOR_SCHEMA_READER; attempt++) {
         try {
           Schema newProtocolSchema = schemaReader.getValueSchema(protocolVersion);
           if (null == newProtocolSchema) {
-            throw new VeniceMessageException("Received Protocol Version '" + protocolVersion
-                + "' which is not currently known by " + this.getClass().getSimpleName()
-                + ". A remote fetch was attempted, but the " + SchemaReader.class.getSimpleName() + " returned null"
-                + ". The currently known Protocol Versions are: " + getCurrentlyLoadedProtocolVersions() + ".");
+            throw new VeniceMessageException(
+                "Received Protocol Version '" + protocolVersion + "' which is not currently known by "
+                    + this.getClass().getSimpleName() + ". A remote fetch was attempted, but the "
+                    + SchemaReader.class.getSimpleName() + " returned null"
+                    + ". The currently known Protocol Versions are: " + getCurrentlyLoadedProtocolVersions() + ".");
           }
 
           cacheDatumReader(protocolVersion, newProtocolSchema);
 
-          logger.info("Discovered new protocol version '" + protocolVersion + "', and successfully retrieved it. Schema:\n"
-              + newProtocolSchema.toString(true));
+          logger.info(
+              "Discovered new protocol version '" + protocolVersion + "', and successfully retrieved it. Schema:\n"
+                  + newProtocolSchema.toString(true));
 
           break;
         } catch (Exception e) {
           if (attempt == MAX_ATTEMPTS_FOR_SCHEMA_READER) {
-            throw new VeniceException("Failed to retrieve new protocol schema version (" + protocolVersion + ") after "
-                + MAX_ATTEMPTS_FOR_SCHEMA_READER + " attempts.", e);
+            throw new VeniceException(
+                "Failed to retrieve new protocol schema version (" + protocolVersion + ") after "
+                    + MAX_ATTEMPTS_FOR_SCHEMA_READER + " attempts.",
+                e);
           }
-          logger.error("Caught an exception while trying to fetch a new protocol schema version (" + protocolVersion
-              + "). Attempt #" + attempt + "/" + MAX_ATTEMPTS_FOR_SCHEMA_READER + ". Will sleep "
-              + WAIT_TIME_BETWEEN_SCHEMA_READER_ATTEMPTS_IN_MS + " ms and try again.", e);
+          logger.error(
+              "Caught an exception while trying to fetch a new protocol schema version (" + protocolVersion
+                  + "). Attempt #" + attempt + "/" + MAX_ATTEMPTS_FOR_SCHEMA_READER + ". Will sleep "
+                  + WAIT_TIME_BETWEEN_SCHEMA_READER_ATTEMPTS_IN_MS + " ms and try again.",
+              e);
           Utils.sleep(WAIT_TIME_BETWEEN_SCHEMA_READER_ATTEMPTS_IN_MS);
         }
       }
@@ -317,25 +330,25 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
       ReusableObjects reusableObjects = threadLocalReusableObjects.get();
 
       Decoder decoder = createBinaryDecoder(
-          bytes,                         // The bytes array we wish to decode
-          PAYLOAD_OFFSET,                // Where to start reading from in the bytes array
+          bytes, // The bytes array we wish to decode
+          PAYLOAD_OFFSET, // Where to start reading from in the bytes array
           bytes.length - PAYLOAD_OFFSET, // The length to read in the bytes array
-          reusableObjects.binaryDecoder        // This param is to re-use a Decoder instance.
+          reusableObjects.binaryDecoder // This param is to re-use a Decoder instance.
       );
 
       SPECIFIC_RECORD record = specificDatumReader.read(
           null, // This param is to re-use a SPECIFIC_RECORD instance. TODO: explore GC tuning later.
-          decoder
-      );
+          decoder);
 
       return record;
     } catch (IOException e) {
-      throw new VeniceMessageException(this.getClass().getSimpleName() + " failed to decode message from: " + ByteUtils.toHexString(bytes), e);
+      throw new VeniceMessageException(
+          this.getClass().getSimpleName() + " failed to decode message from: " + ByteUtils.toHexString(bytes),
+          e);
     }
   }
 
-  protected BinaryDecoder createBinaryDecoder(byte[] bytes, int offset,
-      int length, BinaryDecoder reuse) {
+  protected BinaryDecoder createBinaryDecoder(byte[] bytes, int offset, int length, BinaryDecoder reuse) {
     return DECODER_FACTORY.createBinaryDecoder(bytes, offset, length, reuse);
   }
 
@@ -354,15 +367,12 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
   }
 
   private void cacheDatumReader(int protocolVersion, Schema protocolSchema) {
-    VeniceSpecificDatumReader<SPECIFIC_RECORD> datumReader = new VeniceSpecificDatumReader<>(protocolSchema, compiledProtocol);
+    VeniceSpecificDatumReader<SPECIFIC_RECORD> datumReader =
+        new VeniceSpecificDatumReader<>(protocolSchema, compiledProtocol);
     this.readerMap.put(protocolVersion, datumReader);
   }
 
   private String getCurrentlyLoadedProtocolVersions() {
-    return "[" + readerMap.keySet()
-        .stream()
-        .sorted()
-        .map(b -> b.toString())
-        .collect(Collectors.joining(", ")) + "]";
+    return "[" + readerMap.keySet().stream().sorted().map(b -> b.toString()).collect(Collectors.joining(", ")) + "]";
   }
 }

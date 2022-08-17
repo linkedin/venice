@@ -1,9 +1,9 @@
 package com.linkedin.davinci.storage.chunking;
 
 import com.linkedin.davinci.listener.response.ReadResponse;
+import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
-import com.linkedin.davinci.store.AbstractStorageEngine;
 import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
 import java.nio.ByteBuffer;
@@ -16,7 +16,8 @@ public class SingleGetChunkingAdapter implements ChunkingAdapter<CompositeByteBu
   private static final SingleGetChunkingAdapter SINGLE_GET_CHUNKING_ADAPTER = new SingleGetChunkingAdapter();
 
   /** Singleton */
-  private SingleGetChunkingAdapter() {}
+  private SingleGetChunkingAdapter() {
+  }
 
   @Override
   public void addChunkIntoContainer(CompositeByteBuf byteBufs, int chunkIndex, byte[] valueChunk) {

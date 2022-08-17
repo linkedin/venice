@@ -34,6 +34,7 @@ import org.apache.http.nio.conn.ssl.SSLIOSessionStrategy;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+
 public class TestRouter {
   private static final boolean SSL_TO_STORAGE_NODES = false;
 
@@ -48,7 +49,7 @@ public class TestRouter {
       testRouterWithD2(false, true);
       Assert.fail("Cannot connect with secure router with http.");
     } catch (Exception e) {
-      //expected
+      // expected
     }
   }
 
@@ -66,7 +67,8 @@ public class TestRouter {
         extraConfigs.put(ConfigKeys.ENFORCE_SECURE_ROUTER, true);
       }
 
-      try (MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES, extraConfigs)) {
+      try (MockVeniceRouterWrapper router =
+          ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES, extraConfigs)) {
         D2Client d2Client = null;
         if (https) {
           d2Client = D2TestUtils.getAndStartHttpsD2Client(zk.getAddress());
@@ -74,7 +76,9 @@ public class TestRouter {
           d2Client = D2TestUtils.getAndStartD2Client(zk.getAddress());
         }
 
-        URI requestUri = new URI("d2://" + D2TestUtils.DEFAULT_TEST_SERVICE_NAME + "/storage/myStore/myKey"); /* D2 client only supports d2:// scheme */
+        URI requestUri = new URI(
+            "d2://" + D2TestUtils.DEFAULT_TEST_SERVICE_NAME
+                + "/storage/myStore/myKey"); /* D2 client only supports d2:// scheme */
         // "get" method name is put on purpose, since we would like Venice Router to support both 'get' and 'GET'
         RestRequest request = new RestRequestBuilder(requestUri).setMethod("get").build();
         RestResponse response;
@@ -88,16 +92,22 @@ public class TestRouter {
           }
         }
         if (secureOnly) {
-          Assert.assertEquals(response.getStatus(), HttpStatus.SC_FORBIDDEN,
+          Assert.assertEquals(
+              response.getStatus(),
+              HttpStatus.SC_FORBIDDEN,
               "SecureRouter should return a 403 forbidden error");
         } else {
-          Assert.assertEquals(response.getStatus(), HttpStatus.SC_SERVICE_UNAVAILABLE,
+          Assert.assertEquals(
+              response.getStatus(),
+              HttpStatus.SC_SERVICE_UNAVAILABLE,
               "Router with Mock components should return a 503 service unavailable error");
         }
 
         try (InternalAvroStoreClient<Object, Object> storeClient =
-            (InternalAvroStoreClient<Object, Object>) ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(
-                "myStore").setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME).setD2Client(d2Client))) {
+            (InternalAvroStoreClient<Object, Object>) ClientFactory.getAndStartGenericAvroClient(
+                ClientConfig.defaultGenericClientConfig("myStore")
+                    .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+                    .setD2Client(d2Client))) {
           byte[] value = storeClient.getRaw("storage/myStore/myKey").get();
           Assert.fail("Router with Mock components should trigger VeniceClientHttpException");
         } catch (ExecutionException e) {
@@ -113,21 +123,21 @@ public class TestRouter {
 
   @Test
   public void testRouterWithSsl() throws ExecutionException, InterruptedException, IOException {
-    try (
-        ZkServerWrapper zk = ServiceFactory.getZkServer();
-        MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES, new Properties())) {
+    try (ZkServerWrapper zk = ServiceFactory.getZkServer();
+        MockVeniceRouterWrapper router =
+            ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES, new Properties())) {
 
       SSLContext sslContext = SslUtils.getLocalSslFactory().getSSLContext();
       SSLIOSessionStrategy sslSessionStrategy = new SSLIOSessionStrategy(sslContext);
       try (CloseableHttpAsyncClient httpClient = HttpAsyncClients.custom().setSSLStrategy(sslSessionStrategy).build()) {
 
         httpClient.start();
-        HttpGet request = new HttpGet("https://" + router.getHost() + ":" + router.getSslPort() + ControllerRoute.LEADER_CONTROLLER
-            .getPath());
+        HttpGet request = new HttpGet(
+            "https://" + router.getHost() + ":" + router.getSslPort() + ControllerRoute.LEADER_CONTROLLER.getPath());
         HttpResponse response = httpClient.execute(request, null).get();
         String jsonContent = IOUtils.toString(response.getEntity().getContent());
-        LeaderControllerResponse
-            controllerResponse = ObjectMapperFactory.getInstance().readValue(jsonContent, LeaderControllerResponse.class);
+        LeaderControllerResponse controllerResponse =
+            ObjectMapperFactory.getInstance().readValue(jsonContent, LeaderControllerResponse.class);
         Assert.assertEquals(controllerResponse.getCluster(), router.getClusterName());
       }
 
@@ -137,15 +147,16 @@ public class TestRouter {
   }
 
   @Test
-  public void routerWithSslRefusesNonSecureCommunication() throws ExecutionException, InterruptedException, IOException {
-    try (
-        ZkServerWrapper zk = ServiceFactory.getZkServer();
-        MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES, new Properties())) {
+  public void routerWithSslRefusesNonSecureCommunication()
+      throws ExecutionException, InterruptedException, IOException {
+    try (ZkServerWrapper zk = ServiceFactory.getZkServer();
+        MockVeniceRouterWrapper router =
+            ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES, new Properties())) {
 
       try (CloseableHttpAsyncClient httpClient = HttpAsyncClients.createDefault()) {
         httpClient.start();
-        HttpGet request = new HttpGet("http://" + router.getHost() + ":" + router.getSslPort() + ControllerRoute.LEADER_CONTROLLER
-            .getPath());
+        HttpGet request = new HttpGet(
+            "http://" + router.getHost() + ":" + router.getSslPort() + ControllerRoute.LEADER_CONTROLLER.getPath());
         HttpResponse response = httpClient.execute(request, null).get();
         Assert.assertEquals(response.getStatusLine().getStatusCode(), HttpStatus.SC_FORBIDDEN);
       }
@@ -157,16 +168,17 @@ public class TestRouter {
 
   @Test
   public void testRouterRespondsToAdminOperations() throws ExecutionException, InterruptedException, IOException {
-    try (
-        ZkServerWrapper zk = ServiceFactory.getZkServer();
-        MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES, new Properties())) {
+    try (ZkServerWrapper zk = ServiceFactory.getZkServer();
+        MockVeniceRouterWrapper router =
+            ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES, new Properties())) {
 
       SSLContext sslContext = SslUtils.getLocalSslFactory().getSSLContext();
       SSLIOSessionStrategy sslSessionStrategy = new SSLIOSessionStrategy(sslContext);
       try (CloseableHttpAsyncClient httpClient = HttpAsyncClients.custom().setSSLStrategy(sslSessionStrategy).build()) {
 
         httpClient.start();
-        HttpGet request = new HttpGet("https://" + router.getHost() + ":" + router.getSslPort() + "/admin/readQuotaThrottle");
+        HttpGet request =
+            new HttpGet("https://" + router.getHost() + ":" + router.getSslPort() + "/admin/readQuotaThrottle");
         HttpResponse response = httpClient.execute(request, null).get();
         Assert.assertEquals(response.getStatusLine().getStatusCode(), HttpStatus.SC_OK);
       }

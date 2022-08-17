@@ -23,7 +23,6 @@ import java.security.cert.X509Certificate;
  * }
  */
 public interface AuthorizerService {
-
   /**
    * Check if the principal has the permission to perform the method on the resource. Implementation should define how to handle
    * duplicate/conflicting ACE entries present for the resource and also how to handle presence of no AceEntries for a resource.
@@ -96,7 +95,8 @@ public interface AuthorizerService {
    * Implementation should mandate if this needs to be called before start provisioning any ACL's for the resource.
    * @param resource
    */
-  public default void setupResource(Resource resource) {};
+  public default void setupResource(Resource resource) {
+  };
 
   /**
    * This may perform any finalization steps that may be necessary after all ACL's for a resource is deleted and the resource will
@@ -107,6 +107,7 @@ public interface AuthorizerService {
    * Implementation should mandate if this needs to be called after deleting all ACL's for the resource.
    * @param resource
    */
-  public default void clearResource(Resource resource) {};
+  public default void clearResource(Resource resource) {
+  };
 
 }

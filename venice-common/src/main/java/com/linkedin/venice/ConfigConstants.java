@@ -1,12 +1,11 @@
 package com.linkedin.venice;
 
 import com.linkedin.venice.utils.Time;
+import java.util.function.Supplier;
 import org.apache.kafka.common.config.SslConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.conscrypt.Conscrypt;
-
-import java.util.function.Supplier;
 
 
 public class ConfigConstants {
@@ -21,7 +20,6 @@ public class ConfigConstants {
   public static final int DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS = 2 * Time.MS_PER_SECOND;
 
   public static final long DEFAULT_KAFKA_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS = 600;
-
 
   /**
    * End of controller config default value

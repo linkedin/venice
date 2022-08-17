@@ -9,13 +9,13 @@ import java.text.StringCharacterIterator;
 import org.apache.commons.codec.DecoderException;
 import org.apache.commons.codec.binary.Hex;
 
+
 /**
  * Utility functions for munging on bytes
  *
  * N.B.: Most functions taken from Voldemort's ByteUtils class.
  */
 public class ByteUtils {
-
   public static final int BYTES_PER_KB = 1024;
   public static final int BYTES_PER_MB = BYTES_PER_KB * 1024;
   public static final long BYTES_PER_GB = BYTES_PER_MB * 1024;
@@ -106,10 +106,10 @@ public class ByteUtils {
    * @return The long read
    */
   public static long readLong(byte[] bytes, int offset) {
-    return (((long) (bytes[offset + 0] & 0xff) << 56) | ((long) (bytes[offset + 1] & 0xff) << 48) | (
-        (long) (bytes[offset + 2] & 0xff) << 40) | ((long) (bytes[offset + 3] & 0xff) << 32) | (
-        (long) (bytes[offset + 4] & 0xff) << 24) | ((long) (bytes[offset + 5] & 0xff) << 16) | (
-        (long) (bytes[offset + 6] & 0xff) << 8) | ((long) bytes[offset + 7] & 0xff));
+    return (((long) (bytes[offset + 0] & 0xff) << 56) | ((long) (bytes[offset + 1] & 0xff) << 48)
+        | ((long) (bytes[offset + 2] & 0xff) << 40) | ((long) (bytes[offset + 3] & 0xff) << 32)
+        | ((long) (bytes[offset + 4] & 0xff) << 24) | ((long) (bytes[offset + 5] & 0xff) << 16)
+        | ((long) (bytes[offset + 6] & 0xff) << 8) | ((long) bytes[offset + 7] & 0xff));
   }
 
   /**
@@ -134,8 +134,8 @@ public class ByteUtils {
    * @return The int read
    */
   public static int readInt(byte[] bytes, int offset) {
-    return (((bytes[offset + 0] & 0xff) << 24) | ((bytes[offset + 1] & 0xff) << 16)
-        | ((bytes[offset + 2] & 0xff) << 8) | (bytes[offset + 3] & 0xff));
+    return (((bytes[offset + 0] & 0xff) << 24) | ((bytes[offset + 1] & 0xff) << 16) | ((bytes[offset + 2] & 0xff) << 8)
+        | (bytes[offset + 3] & 0xff));
   }
 
   /**
@@ -289,11 +289,12 @@ public class ByteUtils {
 
     // TODO: ByteUtils.extractByteArray does an extra copy in some of the compressor compress implementations.
     // We 'might' be able to avoid this in the future but unfortunately ZSTD compression requires direct memory buffers
-    // if you want to leverage the byte buffer interface to compress.  A good refactor in the future might be to keep a
+    // if you want to leverage the byte buffer interface to compress. A good refactor in the future might be to keep a
     // pool of direct memory buffers and use them as a means to hold temporary copys of data like this for compression
     // and avoid heap GC additionally, we're not always sure that the resulting compressed data is always smaller then
-    // the data we're compressing.  This means we can't always rely on the original bytebuffer array to hold the resulting
-    // compressed data.  To accommodate this, we'd have to make a copy of the compressed data in another byte array,
+    // the data we're compressing. This means we can't always rely on the original bytebuffer array to hold the
+    // resulting
+    // compressed data. To accommodate this, we'd have to make a copy of the compressed data in another byte array,
     // check it's size, and then store or resize the buffer in the originalBuffer, which would negate any savings that
     // might be had trying to squeeze the result back into the original array.
     return compressor.compress(originalBuffer);
@@ -323,10 +324,14 @@ public class ByteUtils {
    * @return The ByteBuffer that has the header prepended. If {@param reuseOriginalBuffer} is true, then return object is
    * the same as original buffer.
    */
-  public static ByteBuffer prependIntHeaderToByteBuffer(ByteBuffer originalBuffer, int header, boolean reuseOriginalBuffer) {
+  public static ByteBuffer prependIntHeaderToByteBuffer(
+      ByteBuffer originalBuffer,
+      int header,
+      boolean reuseOriginalBuffer) {
     if (reuseOriginalBuffer) {
       if (originalBuffer.position() < SIZE_OF_INT) {
-        throw new VeniceException("Start position of 'originalBuffer' ByteBuffer shouldn't be less than " + SIZE_OF_INT);
+        throw new VeniceException(
+            "Start position of 'originalBuffer' ByteBuffer shouldn't be less than " + SIZE_OF_INT);
       }
 
       originalBuffer.position(originalBuffer.position() - SIZE_OF_INT);

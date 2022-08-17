@@ -2,6 +2,7 @@ package com.linkedin.davinci.client;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 
+
 public class NonLocalAccessException extends VeniceClientException {
   public NonLocalAccessException() {
   }

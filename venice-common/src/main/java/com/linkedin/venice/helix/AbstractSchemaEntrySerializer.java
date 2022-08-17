@@ -1,14 +1,13 @@
 package com.linkedin.venice.helix;
 
+import static com.linkedin.venice.helix.HelixSchemaAccessor.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.VeniceSerializer;
 import com.linkedin.venice.schema.GeneratedSchemaEntry;
 
-import static com.linkedin.venice.helix.HelixSchemaAccessor.*;
-
 
 public abstract class AbstractSchemaEntrySerializer<T extends GeneratedSchemaEntry> implements VeniceSerializer<T> {
-
   protected abstract T getInstance(int schemaVersion, int protocolVersion, byte[] schemaBytes);
 
   @Override

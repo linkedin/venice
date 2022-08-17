@@ -10,7 +10,6 @@ import com.linkedin.venice.systemstore.schemas.DataRecoveryConfig;
  */
 @JsonDeserialize(as = DataRecoveryVersionConfigImpl.class)
 public interface DataRecoveryVersionConfig extends DataModelBackedStructure<DataRecoveryConfig> {
-
   String getDataRecoverySourceFabric();
 
   void setDataRecoverySourceFabric(String dataRecoverySourceFabric);

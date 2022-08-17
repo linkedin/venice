@@ -1,5 +1,9 @@
 package com.linkedin.venice.router;
 
+import static com.linkedin.venice.router.AdminOperationsHandler.*;
+import static com.linkedin.venice.router.api.VenicePathParser.*;
+import static org.mockito.Mockito.*;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.acl.AccessController;
 import com.linkedin.venice.acl.AclException;
@@ -31,10 +35,6 @@ import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.router.AdminOperationsHandler.*;
-import static com.linkedin.venice.router.api.VenicePathParser.*;
-import static org.mockito.Mockito.*;
-
 
 public class TestAdminOperationsHandler {
   private RouterServer router;
@@ -46,10 +46,12 @@ public class TestAdminOperationsHandler {
   private static final String BASE_ADMIN_URI = String.join("/", "", TYPE_ADMIN);
   private static final String READ_QUOTA_THROTTLE_URI = String.join("/", BASE_ADMIN_URI, TASK_READ_QUOTA_THROTTLE);
   private static final String READ_QUOTA_THROTTLE_ENABLE_URI = String.join("/", READ_QUOTA_THROTTLE_URI, ACTION_ENABLE);
-  private static final String READ_QUOTA_THROTTLE_DISABLE_URI = String.join("/", READ_QUOTA_THROTTLE_URI, ACTION_DISABLE);
+  private static final String READ_QUOTA_THROTTLE_DISABLE_URI =
+      String.join("/", READ_QUOTA_THROTTLE_URI, ACTION_DISABLE);
 
   private static final String INCORRECT_ADMIN_TASK = String.join("/", BASE_ADMIN_URI, "incorrect");
-  private static final String READ_QUOTA_THROTTLE_INCORRECT_ACTION_URI = String.join("/", READ_QUOTA_THROTTLE_URI, "incorrect");
+  private static final String READ_QUOTA_THROTTLE_INCORRECT_ACTION_URI =
+      String.join("/", READ_QUOTA_THROTTLE_URI, "incorrect");
 
   private static final ObjectMapper objectMapper = ObjectMapperFactory.getInstance();
 
@@ -85,7 +87,8 @@ public class TestAdminOperationsHandler {
     accessController = null;
   }
 
-  private void setupAccessController(boolean accessControllerPresent, boolean adminOperationAuthorized) throws AclException {
+  private void setupAccessController(boolean accessControllerPresent, boolean adminOperationAuthorized)
+      throws AclException {
     if (accessControllerPresent) {
       accessController = mock(AccessController.class);
       doReturn(adminOperationAuthorized).when(accessController).hasAccessToAdminOperation(any(), any());
@@ -115,7 +118,7 @@ public class TestAdminOperationsHandler {
       SSLSession sslSession = mock(SSLSession.class);
       when(sslEngine.getSession()).thenReturn(sslSession);
       X509Certificate cert = mock(X509Certificate.class);
-      when(sslSession.getPeerCertificates()).thenReturn(new Certificate[]{cert});
+      when(sslSession.getPeerCertificates()).thenReturn(new Certificate[] { cert });
     }
 
     FullHttpRequest httpRequest = mock(FullHttpRequest.class);
@@ -131,8 +134,13 @@ public class TestAdminOperationsHandler {
     return response;
   }
 
-  private void verifyReadThrottlingStatus(FullHttpResponse response, boolean isSSL, boolean accessControllerPresent, boolean readThrottlingEnabled, boolean earlyThrottleEnabled, boolean adminOperationAuthorized)
-      throws IOException, AclException {
+  private void verifyReadThrottlingStatus(
+      FullHttpResponse response,
+      boolean isSSL,
+      boolean accessControllerPresent,
+      boolean readThrottlingEnabled,
+      boolean earlyThrottleEnabled,
+      boolean adminOperationAuthorized) throws IOException, AclException {
     Map responseContent = objectMapper.readValue(response.content().toString(StandardCharsets.UTF_8), Map.class);
     if (accessControllerPresent && isSSL) {
       verify(accessController, times(1)).hasAccessToAdminOperation(any(), eq(TASK_READ_QUOTA_THROTTLE));
@@ -149,8 +157,12 @@ public class TestAdminOperationsHandler {
     }
   }
 
-  private void verifyErrorResponse(FullHttpResponse response, boolean isSSL, boolean accessControllerPresent, boolean adminOperationAuthorized, HttpResponseStatus expectedResponseStatus)
-      throws IOException, AclException {
+  private void verifyErrorResponse(
+      FullHttpResponse response,
+      boolean isSSL,
+      boolean accessControllerPresent,
+      boolean adminOperationAuthorized,
+      HttpResponseStatus expectedResponseStatus) throws IOException, AclException {
     Map responseContent = objectMapper.readValue(response.content().toString(StandardCharsets.UTF_8), Map.class);
     if (accessControllerPresent && isSSL) {
       verify(accessController, times(1)).hasAccessToAdminOperation(any(), anyString());
@@ -166,40 +178,92 @@ public class TestAdminOperationsHandler {
   }
 
   @Test(dataProvider = "Five-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testRouterReadQuotaThrottleControl(boolean initialReadThrottlingEnabled, boolean initialEarlyThrottleEnabled, boolean isSSL, boolean accessControllerPresent, boolean adminOperationAuthorized)
-      throws IOException, AclException {
+  public void testRouterReadQuotaThrottleControl(
+      boolean initialReadThrottlingEnabled,
+      boolean initialEarlyThrottleEnabled,
+      boolean isSSL,
+      boolean accessControllerPresent,
+      boolean adminOperationAuthorized) throws IOException, AclException {
     setInitialConfig(initialReadThrottlingEnabled, initialEarlyThrottleEnabled);
     setupAccessController(accessControllerPresent, adminOperationAuthorized);
     adminOperationsHandler = new AdminOperationsHandler(accessController, router, stats);
 
-    FullHttpResponse initialResponse = passRequestToAdminOperationsHandler(HttpMethod.GET, READ_QUOTA_THROTTLE_URI, isSSL);
-    verifyReadThrottlingStatus(initialResponse, isSSL, accessControllerPresent, initialReadThrottlingEnabled, initialEarlyThrottleEnabled, adminOperationAuthorized);
+    FullHttpResponse initialResponse =
+        passRequestToAdminOperationsHandler(HttpMethod.GET, READ_QUOTA_THROTTLE_URI, isSSL);
+    verifyReadThrottlingStatus(
+        initialResponse,
+        isSSL,
+        accessControllerPresent,
+        initialReadThrottlingEnabled,
+        initialEarlyThrottleEnabled,
+        adminOperationAuthorized);
 
-    FullHttpResponse disableThrottleResponse = passRequestToAdminOperationsHandler(HttpMethod.POST, READ_QUOTA_THROTTLE_DISABLE_URI, isSSL);
-    verifyReadThrottlingStatus(disableThrottleResponse, isSSL, accessControllerPresent, false, false, adminOperationAuthorized);
+    FullHttpResponse disableThrottleResponse =
+        passRequestToAdminOperationsHandler(HttpMethod.POST, READ_QUOTA_THROTTLE_DISABLE_URI, isSSL);
+    verifyReadThrottlingStatus(
+        disableThrottleResponse,
+        isSSL,
+        accessControllerPresent,
+        false,
+        false,
+        adminOperationAuthorized);
 
-    FullHttpResponse enableThrottleResponse = passRequestToAdminOperationsHandler(HttpMethod.POST, READ_QUOTA_THROTTLE_ENABLE_URI, isSSL);
-    verifyReadThrottlingStatus(enableThrottleResponse, isSSL, accessControllerPresent, initialReadThrottlingEnabled, initialEarlyThrottleEnabled, adminOperationAuthorized);
+    FullHttpResponse enableThrottleResponse =
+        passRequestToAdminOperationsHandler(HttpMethod.POST, READ_QUOTA_THROTTLE_ENABLE_URI, isSSL);
+    verifyReadThrottlingStatus(
+        enableThrottleResponse,
+        isSSL,
+        accessControllerPresent,
+        initialReadThrottlingEnabled,
+        initialEarlyThrottleEnabled,
+        adminOperationAuthorized);
 
-    FullHttpResponse disableThrottleResponseLease = passRequestToAdminOperationsHandler(HttpMethod.POST, READ_QUOTA_THROTTLE_DISABLE_URI, isSSL);
-    verifyReadThrottlingStatus(disableThrottleResponseLease, isSSL, accessControllerPresent, false, false, adminOperationAuthorized);
+    FullHttpResponse disableThrottleResponseLease =
+        passRequestToAdminOperationsHandler(HttpMethod.POST, READ_QUOTA_THROTTLE_DISABLE_URI, isSSL);
+    verifyReadThrottlingStatus(
+        disableThrottleResponseLease,
+        isSSL,
+        accessControllerPresent,
+        false,
+        false,
+        adminOperationAuthorized);
 
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       FullHttpResponse response = passRequestToAdminOperationsHandler(HttpMethod.GET, READ_QUOTA_THROTTLE_URI, isSSL);
-      verifyReadThrottlingStatus(response, isSSL, accessControllerPresent, initialReadThrottlingEnabled, initialEarlyThrottleEnabled, adminOperationAuthorized);
+      verifyReadThrottlingStatus(
+          response,
+          isSSL,
+          accessControllerPresent,
+          initialReadThrottlingEnabled,
+          initialEarlyThrottleEnabled,
+          adminOperationAuthorized);
     });
   }
 
   @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testIncorrectAdminOperations(boolean isSSL, boolean accessControllerPresent, boolean adminOperationAuthorized)
-      throws IOException, AclException {
+  public void testIncorrectAdminOperations(
+      boolean isSSL,
+      boolean accessControllerPresent,
+      boolean adminOperationAuthorized) throws IOException, AclException {
     setupAccessController(accessControllerPresent, adminOperationAuthorized);
     adminOperationsHandler = new AdminOperationsHandler(accessController, router, stats);
 
-    FullHttpResponse incorrectAdminTaskResponse = passRequestToAdminOperationsHandler(HttpMethod.GET, INCORRECT_ADMIN_TASK, isSSL);
-    verifyErrorResponse(incorrectAdminTaskResponse, isSSL, accessControllerPresent, adminOperationAuthorized, HttpResponseStatus.NOT_IMPLEMENTED);
+    FullHttpResponse incorrectAdminTaskResponse =
+        passRequestToAdminOperationsHandler(HttpMethod.GET, INCORRECT_ADMIN_TASK, isSSL);
+    verifyErrorResponse(
+        incorrectAdminTaskResponse,
+        isSSL,
+        accessControllerPresent,
+        adminOperationAuthorized,
+        HttpResponseStatus.NOT_IMPLEMENTED);
 
-    FullHttpResponse readQuotaThrottleIncorrectActionResponse = passRequestToAdminOperationsHandler(HttpMethod.GET, READ_QUOTA_THROTTLE_INCORRECT_ACTION_URI, isSSL);
-    verifyErrorResponse(readQuotaThrottleIncorrectActionResponse, isSSL, accessControllerPresent, adminOperationAuthorized, HttpResponseStatus.BAD_REQUEST);
+    FullHttpResponse readQuotaThrottleIncorrectActionResponse =
+        passRequestToAdminOperationsHandler(HttpMethod.GET, READ_QUOTA_THROTTLE_INCORRECT_ACTION_URI, isSSL);
+    verifyErrorResponse(
+        readQuotaThrottleIncorrectActionResponse,
+        isSSL,
+        accessControllerPresent,
+        adminOperationAuthorized,
+        HttpResponseStatus.BAD_REQUEST);
   }
 }

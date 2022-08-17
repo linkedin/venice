@@ -30,15 +30,27 @@ public class TopicWiseSharedKafkaConsumer extends SharedKafkaConsumer {
    */
   private final Map<String, StoreIngestionTask> topicToIngestionTaskMap = new VeniceConcurrentHashMap<>();
 
-  public TopicWiseSharedKafkaConsumer(KafkaConsumerWrapper delegate, KafkaConsumerService service,
-      long nonExistingTopicCleanupDelayMS, TopicExistenceChecker topicExistenceChecker) {
+  public TopicWiseSharedKafkaConsumer(
+      KafkaConsumerWrapper delegate,
+      KafkaConsumerService service,
+      long nonExistingTopicCleanupDelayMS,
+      TopicExistenceChecker topicExistenceChecker) {
     super(delegate, service, nonExistingTopicCleanupDelayMS, topicExistenceChecker);
   }
 
-  TopicWiseSharedKafkaConsumer(KafkaConsumerWrapper delegate, KafkaConsumerService service,
-      int sanitizeTopicSubscriptionAfterPollTimes, long nonExistingTopicCleanupDelayMS, Time time,
+  TopicWiseSharedKafkaConsumer(
+      KafkaConsumerWrapper delegate,
+      KafkaConsumerService service,
+      int sanitizeTopicSubscriptionAfterPollTimes,
+      long nonExistingTopicCleanupDelayMS,
+      Time time,
       TopicExistenceChecker topicExistenceChecker) {
-    super(delegate, service, sanitizeTopicSubscriptionAfterPollTimes, nonExistingTopicCleanupDelayMS, time,
+    super(
+        delegate,
+        service,
+        sanitizeTopicSubscriptionAfterPollTimes,
+        nonExistingTopicCleanupDelayMS,
+        time,
         topicExistenceChecker);
   }
 
@@ -52,9 +64,12 @@ public class TopicWiseSharedKafkaConsumer extends SharedKafkaConsumer {
       }
     }
     if (!topicsWithoutCorrespondingIngestionTask.isEmpty()) {
-      LOGGER.error("Detected the following topics without attached ingestion task, and will unsubscribe them: " + topicsWithoutCorrespondingIngestionTask);
+      LOGGER.error(
+          "Detected the following topics without attached ingestion task, and will unsubscribe them: "
+              + topicsWithoutCorrespondingIngestionTask);
       close(topicsWithoutCorrespondingIngestionTask);
-      kafkaConsumerService.getStats().recordDetectedNoRunningIngestionTopicNum(topicsWithoutCorrespondingIngestionTask.size());
+      kafkaConsumerService.getStats()
+          .recordDetectedNoRunningIngestionTopicNum(topicsWithoutCorrespondingIngestionTask.size());
     }
   }
 
@@ -77,8 +92,9 @@ public class TopicWiseSharedKafkaConsumer extends SharedKafkaConsumer {
    */
   public void attach(String topic, StoreIngestionTask ingestionTask) {
     topicToIngestionTaskMap.put(topic, ingestionTask);
-    LOGGER.info("Attached the message processing of topic: " + topic + " to the ingestion task belonging to version topic: "
-        + ingestionTask.getVersionTopic());
+    LOGGER.info(
+        "Attached the message processing of topic: " + topic + " to the ingestion task belonging to version topic: "
+            + ingestionTask.getVersionTopic());
   }
 
   @Override

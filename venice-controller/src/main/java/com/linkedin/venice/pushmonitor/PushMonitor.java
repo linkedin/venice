@@ -42,7 +42,11 @@ public interface PushMonitor {
    *
    * Start monitoring a new push
    */
-  void startMonitorOfflinePush(String kafkaTopic, int numberOfPartition, int replicaFactor, OfflinePushStrategy strategy);
+  void startMonitorOfflinePush(
+      String kafkaTopic,
+      int numberOfPartition,
+      int replicaFactor,
+      OfflinePushStrategy strategy);
 
   /**
    * Stop monitoring a push.
@@ -73,14 +77,16 @@ public interface PushMonitor {
   /**
    * Returns incremental push's status read from (ZooKeeper backed) OfflinePushStatus
    */
-  Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusAndDetails(String kafkaTopic,
+  Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusAndDetails(
+      String kafkaTopic,
       String incrementalPushVersion,
       HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository);
 
   /**
    * Returns incremental push's status read from push status store
    */
-  Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusFromPushStatusStore(String kafkaTopic,
+  Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusFromPushStatusStore(
+      String kafkaTopic,
       String incrementalPushVersion,
       HelixCustomizedViewOfflinePushRepository customizedViewRepo,
       PushStatusStoreReader pushStatusStoreReader);

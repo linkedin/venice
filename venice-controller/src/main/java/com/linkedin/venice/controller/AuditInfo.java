@@ -7,22 +7,21 @@ import spark.Request;
 
 
 public class AuditInfo {
-
   private String url;
   private Map<String, String> params;
   private String method;
 
-  public AuditInfo(Request request){
+  public AuditInfo(Request request) {
     this.url = request.url();
     this.params = new HashMap<>();
-    for (String param : request.queryParams()){
+    for (String param: request.queryParams()) {
       this.params.put(param, request.queryParams(param));
     }
     this.method = request.requestMethod();
   }
 
   @Override
-  public String toString(){
+  public String toString() {
     StringJoiner joiner = new StringJoiner(" ");
     joiner.add("[AUDIT]");
     joiner.add(method);
@@ -31,22 +30,22 @@ public class AuditInfo {
     return joiner.toString();
   }
 
-  public String successString(){
+  public String successString() {
     return toString(true, null);
   }
 
-  public String failureString(String errMsg){
+  public String failureString(String errMsg) {
     return toString(false, errMsg);
   }
 
-  private String toString(boolean success, String errMsg){
+  private String toString(boolean success, String errMsg) {
     StringJoiner joiner = new StringJoiner(" ");
     joiner.add("[AUDIT]");
-    if (success){
+    if (success) {
       joiner.add("SUCCESS");
     } else {
       joiner.add("FAILURE: ");
-      if (null != errMsg){
+      if (null != errMsg) {
         joiner.add(errMsg);
       }
     }

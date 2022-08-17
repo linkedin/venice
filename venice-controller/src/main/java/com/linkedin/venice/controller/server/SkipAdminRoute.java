@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
@@ -10,8 +13,6 @@ import java.util.Optional;
 import org.apache.http.HttpStatus;
 import spark.Route;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 public class SkipAdminRoute extends AbstractRoute {
   public SkipAdminRoute(boolean sslEnabled, Optional<DynamicAccessController> accessController) {

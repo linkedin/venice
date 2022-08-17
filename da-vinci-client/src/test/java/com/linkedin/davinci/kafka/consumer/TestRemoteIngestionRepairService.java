@@ -1,23 +1,23 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static org.testng.Assert.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
-import java.util.concurrent.TimeUnit;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static org.testng.Assert.*;
-
 
 public class TestRemoteIngestionRepairService {
-
   @Test
   public void testIngestionRepairService() throws Exception {
     RemoteIngestionRepairService repairService = new RemoteIngestionRepairService(1000000);
     repairService.start();
     StoreIngestionTask mockBrockenIngestionTask = Mockito.mock(StoreIngestionTask.class);
     StoreIngestionTask mockWorkingIngestionTask = Mockito.mock(StoreIngestionTask.class);
-    repairService.registerRepairTask(mockBrockenIngestionTask, () -> {throw new VeniceException("AAAAHHH!!!!");});
+    repairService.registerRepairTask(mockBrockenIngestionTask, () -> {
+      throw new VeniceException("AAAAHHH!!!!");
+    });
     repairService.registerRepairTask(mockWorkingIngestionTask, () -> {});
     repairService.registerRepairTask(mockBrockenIngestionTask, () -> {/* This task works and should clear */});
     repairService.stop();

@@ -5,7 +5,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.TestUtils;
-
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -35,15 +34,14 @@ public class CachedResourceZKStateListenerTest {
   }
 
   @Test
-  public void testReconnectWithRefreshFailed()
-      throws Exception {
-    MockVeniceResourceWillThrowExceptionWhileRefreshing
-        resource = new MockVeniceResourceWillThrowExceptionWhileRefreshing();
+  public void testReconnectWithRefreshFailed() throws Exception {
+    MockVeniceResourceWillThrowExceptionWhileRefreshing resource =
+        new MockVeniceResourceWillThrowExceptionWhileRefreshing();
     int retryAttempts = 3;
     CachedResourceZkStateListener listener = new CachedResourceZkStateListener(resource, retryAttempts, 100);
     zkClient.subscribeStateChanges(listener);
     // zkClient.close();
-    //zkClient.connect(WAIT_TIME, zkClient);
+    // zkClient.connect(WAIT_TIME, zkClient);
     WatchedEvent disconnectEvent = new WatchedEvent(null, Watcher.Event.KeeperState.Disconnected, null);
     WatchedEvent connectEvent = new WatchedEvent(null, Watcher.Event.KeeperState.SyncConnected, null);
     // process disconnect event
@@ -58,13 +56,16 @@ public class CachedResourceZKStateListenerTest {
     });
     Assert.assertFalse(listener.isDisconnected(), "Client should be reconnected");
     Assert.assertFalse(resource.isRefreshed, "Reconnected, resource should not be refreshed correctly.");
-    Assert.assertEquals(resource.refreshCount, retryAttempts, "Should retry +" + retryAttempts
-        + " to avoid non-deterministic issue that zk could return partial result after getting reconnected. ");
+    Assert.assertEquals(
+        resource.refreshCount,
+        retryAttempts,
+        "Should retry +" + retryAttempts
+            + " to avoid non-deterministic issue that zk could return partial result after getting reconnected. ");
   }
 
   @Test
-  public void testReconnectWithRefresh(){
-     MockVeniceResource resource = new MockVeniceResource();
+  public void testReconnectWithRefresh() {
+    MockVeniceResource resource = new MockVeniceResource();
     int retryAttempts = 3;
     CachedResourceZkStateListener listener = new CachedResourceZkStateListener(resource, retryAttempts, 100);
     zkClient.subscribeStateChanges(listener);
@@ -82,14 +83,16 @@ public class CachedResourceZKStateListenerTest {
     });
     Assert.assertFalse(listener.isDisconnected(), "Client should be reconnected");
     Assert.assertTrue(resource.isRefreshed, "Reconnected, resource should be refreshed.");
-    Assert.assertEquals(resource.refreshCount, 1, "Should only refresh once. Because is refresh succeed, we should not keep retrying. ");
+    Assert.assertEquals(
+        resource.refreshCount,
+        1,
+        "Should only refresh once. Because is refresh succeed, we should not keep retrying. ");
   }
 
   @Test
-  public void testHandleStateChanged()
-      throws Exception {
-    MockVeniceResourceWillThrowExceptionWhileRefreshing
-        resource = new MockVeniceResourceWillThrowExceptionWhileRefreshing();
+  public void testHandleStateChanged() throws Exception {
+    MockVeniceResourceWillThrowExceptionWhileRefreshing resource =
+        new MockVeniceResourceWillThrowExceptionWhileRefreshing();
     CachedResourceZkStateListener listener = new CachedResourceZkStateListener(resource, 1, 100);
 
     listener.handleStateChanged(Watcher.Event.KeeperState.SyncConnected);
@@ -119,7 +122,6 @@ public class CachedResourceZKStateListenerTest {
   }
 
   private static class MockVeniceResourceWillThrowExceptionWhileRefreshing extends MockVeniceResource {
-
     @Override
     public void refresh() {
       super.refresh();

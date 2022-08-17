@@ -9,7 +9,6 @@ import org.apache.avro.generic.GenericRecord;
  */
 @Experimental
 public interface Predicate {
-
   @Experimental
   boolean evaluate(GenericRecord genericRecord);
 

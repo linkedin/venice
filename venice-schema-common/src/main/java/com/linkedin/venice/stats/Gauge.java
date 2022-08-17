@@ -13,11 +13,11 @@ import io.tehuti.metrics.MetricConfig;
  * store and ratio.
  */
 public class Gauge implements MeasurableStat {
-
   public interface SimpleMeasurable extends Measurable {
     default double measure(MetricConfig config, long now) {
       return measure();
     }
+
     double measure();
   }
 

@@ -5,12 +5,13 @@ import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.Version;
 
 
-public class MultiReplicaResponse extends ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */
+public class MultiReplicaResponse
+    extends ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */
   private Replica[] replicas;
   private int version;
 
   @JsonIgnore
-  public String getTopic(){
+  public String getTopic() {
     return Version.composeKafkaTopic(getName(), getVersion());
   }
 

@@ -3,7 +3,8 @@ package com.linkedin.venice.controllerapi;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 
-public class StorageEngineOverheadRatioResponse extends ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */
+public class StorageEngineOverheadRatioResponse
+    extends ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */
   double storageEngineOverheadRatio;
 
   public double getStorageEngineOverheadRatio() {
@@ -16,6 +17,7 @@ public class StorageEngineOverheadRatioResponse extends ControllerResponse { /* 
 
   @JsonIgnore
   public String toString() {
-    return this.getClass().getSimpleName() + "(storage_engine_overhead_ratio: " + storageEngineOverheadRatio + super.toString() + ")";
+    return this.getClass().getSimpleName() + "(storage_engine_overhead_ratio: " + storageEngineOverheadRatio
+        + super.toString() + ")";
   }
 }

@@ -1,5 +1,7 @@
 package com.linkedin.venice.helix;
 
+import static org.mockito.Mockito.*;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -9,16 +11,15 @@ import org.apache.helix.zookeeper.datamodel.ZNRecord;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static org.mockito.Mockito.*;
-
 
 public class HelixInstanceConfigRepositoryTest {
-
   private List<InstanceConfig> mockInstanceConfigs(Map<String, String> instanceGroupMapping) {
     List<InstanceConfig> instanceConfigs = new ArrayList<>();
-    instanceGroupMapping.forEach( (instanceId, group) -> {
+    instanceGroupMapping.forEach((instanceId, group) -> {
       ZNRecord record = new ZNRecord(instanceId);
-      record.setSimpleField(InstanceConfig.InstanceConfigProperty.DOMAIN.name(), HelixInstanceConfigRepository.GROUP_FIELD_NAME_IN_DOMAIN + "=" + group);
+      record.setSimpleField(
+          InstanceConfig.InstanceConfigProperty.DOMAIN.name(),
+          HelixInstanceConfigRepository.GROUP_FIELD_NAME_IN_DOMAIN + "=" + group);
       InstanceConfig instanceConfig = new InstanceConfig(record);
       instanceConfigs.add(instanceConfig);
     });

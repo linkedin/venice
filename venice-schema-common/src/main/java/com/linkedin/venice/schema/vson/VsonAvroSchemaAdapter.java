@@ -19,7 +19,7 @@ public class VsonAvroSchemaAdapter extends AbstractVsonSchemaAdapter<Schema> {
   public static final String DEFAULT_NAMESPACE = null;
   private static final Object DEFAULT_VALUE = null;
 
-  //both vson int8 and int16 would be wrapped as Avro fixed.
+  // both vson int8 and int16 would be wrapped as Avro fixed.
   public static final String BYTE_WRAPPER = "byteWrapper";
   public static final String SHORT_WRAPPER = "shortWrapper";
 
@@ -37,23 +37,25 @@ public class VsonAvroSchemaAdapter extends AbstractVsonSchemaAdapter<Schema> {
   @Override
   Schema readMap(Map<String, Object> vsonMap) {
     List<Schema.Field> fields = new ArrayList<>();
-    vsonMap.forEach((key, value) ->
-                        fields.add(AvroCompatibilityHelper.newField(null)
-                            .setName(key)
-                            .setSchema(fromVsonObjects(value))
-                            .setOrder(Schema.Field.Order.ASCENDING)
-                            .setDoc(DEFAULT_DOC)
-                            .setDefault(DEFAULT_VALUE)
-                            .build()));
+    vsonMap.forEach(
+        (key, value) -> fields.add(
+            AvroCompatibilityHelper.newField(null)
+                .setName(key)
+                .setSchema(fromVsonObjects(value))
+                .setOrder(Schema.Field.Order.ASCENDING)
+                .setDoc(DEFAULT_DOC)
+                .setDefault(DEFAULT_VALUE)
+                .build()));
 
-    Schema recordSchema = Schema.createRecord(DEFAULT_RECORD_NAME + (recordCount++), DEFAULT_DOC, DEFAULT_NAMESPACE, false);
+    Schema recordSchema =
+        Schema.createRecord(DEFAULT_RECORD_NAME + (recordCount++), DEFAULT_DOC, DEFAULT_NAMESPACE, false);
     recordSchema.setFields(fields);
 
     return nullableUnion(recordSchema);
   }
 
   @Override
-  Schema readList(List<Schema> vsonList){
+  Schema readList(List<Schema> vsonList) {
     return nullableUnion(Schema.createArray(fromVsonObjects(vsonList.get(0))));
   }
 
@@ -62,7 +64,7 @@ public class VsonAvroSchemaAdapter extends AbstractVsonSchemaAdapter<Schema> {
     Schema avroSchema;
     VsonTypes type = VsonTypes.fromDisplay(vsonString);
 
-    switch(type) {
+    switch (type) {
       case BOOLEAN:
         avroSchema = nullableUnion(Schema.create(Schema.Type.BOOLEAN));
         break;
@@ -93,8 +95,8 @@ public class VsonAvroSchemaAdapter extends AbstractVsonSchemaAdapter<Schema> {
       case DATE:
         throw new VsonSerializationException("Vson type: " + type.toDisplay() + " is not supported to convert to Avro");
       default:
-        throw new VsonSerializationException("Can't parse string to Avro schema. String: "
-            + vsonString + " is not a valid Vson String.");
+        throw new VsonSerializationException(
+            "Can't parse string to Avro schema. String: " + vsonString + " is not a valid Vson String.");
     }
 
     return avroSchema;

@@ -6,13 +6,15 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import java.util.Collections;
 import java.util.Map;
 
+
 public class VersionCreationResponse extends VersionResponse {
   /* Uses Json Reflective Serializer, get without set may break things */
   private int partitions = 0;
   private int replicas = 0;
   private String kafkaTopic = null;
   private String kafkaBootstrapServers = null;
-  // As controller client will ignore the unknown field in json so we could add a field here without break the backward compatibility.
+  // As controller client will ignore the unknown field in json so we could add a field here without break the backward
+  // compatibility.
   private boolean enableSSL = false;
 
   private CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
@@ -117,17 +119,11 @@ public class VersionCreationResponse extends VersionResponse {
 
   @JsonIgnore
   public String toString() {
-    return VersionCreationResponse.class.getSimpleName() + "(partitions: " + partitions +
-        ", replicas: " + replicas +
-        ", kafkaTopic: " + kafkaTopic +
-        ", kafkaBootstrapServers: " + kafkaBootstrapServers +
-        ", enableSSL: " + enableSSL +
-        ", compressionStrategy: " + compressionStrategy.toString() +
-        ", partitionerClass: " + partitionerClass +
-        ", partitionerParams: " + partitionerParams +
-        ", amplificationFactor: " + amplificationFactor +
-        ", daVinciPushStatusStoreEnabled: " + daVinciPushStatusStoreEnabled +
-        ", targetVersionForIncPush: " + targetVersionForIncPush +
-        ", super: " + super.toString() + ")";
+    return VersionCreationResponse.class.getSimpleName() + "(partitions: " + partitions + ", replicas: " + replicas
+        + ", kafkaTopic: " + kafkaTopic + ", kafkaBootstrapServers: " + kafkaBootstrapServers + ", enableSSL: "
+        + enableSSL + ", compressionStrategy: " + compressionStrategy.toString() + ", partitionerClass: "
+        + partitionerClass + ", partitionerParams: " + partitionerParams + ", amplificationFactor: "
+        + amplificationFactor + ", daVinciPushStatusStoreEnabled: " + daVinciPushStatusStoreEnabled
+        + ", targetVersionForIncPush: " + targetVersionForIncPush + ", super: " + super.toString() + ")";
   }
 }

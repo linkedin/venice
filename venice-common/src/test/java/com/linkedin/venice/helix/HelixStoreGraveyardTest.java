@@ -17,15 +17,15 @@ public class HelixStoreGraveyardTest {
   private HelixStoreGraveyard graveyard;
   private ZkServerWrapper zkServerWrapper;
   private ZkClient zkClient;
-  private String[] clusterNames = new String[]{"HelixStoreGraveyardTest1", "HelixStoreGraveyardTest2","HelixStoreGraveyardTest3"};
+  private String[] clusterNames =
+      new String[] { "HelixStoreGraveyardTest1", "HelixStoreGraveyardTest2", "HelixStoreGraveyardTest3" };
   private String storeName = "HelixStoreGraveyardTestStore";
 
   @BeforeMethod
   public void setUp() {
     zkServerWrapper = ServiceFactory.getZkServer();
     zkClient = ZkClientFactory.newZkClient(zkServerWrapper.getAddress());
-    graveyard =
-        new HelixStoreGraveyard(zkClient, new HelixAdapterSerializer(), Arrays.asList(clusterNames));
+    graveyard = new HelixStoreGraveyard(zkClient, new HelixAdapterSerializer(), Arrays.asList(clusterNames));
   }
 
   @AfterMethod
@@ -44,14 +44,18 @@ public class HelixStoreGraveyardTest {
     // put the second cluster.
     store.setLargestUsedVersionNumber(largestUsedVersionNumber);
     graveyard.putStoreIntoGraveyard(clusterNames[1], store);
-    Assert.assertEquals(graveyard.getLargestUsedVersionNumber(storeName), largestUsedVersionNumber,
+    Assert.assertEquals(
+        graveyard.getLargestUsedVersionNumber(storeName),
+        largestUsedVersionNumber,
         "Store should be put in to graveyard with the updated largestUsedVersionNumber.");
 
     // Store already exists in graveyard.
     largestUsedVersionNumber++;
     store.setLargestUsedVersionNumber(largestUsedVersionNumber);
     graveyard.putStoreIntoGraveyard(clusterNames[0], store);
-    Assert.assertEquals(graveyard.getLargestUsedVersionNumber(storeName), largestUsedVersionNumber,
+    Assert.assertEquals(
+        graveyard.getLargestUsedVersionNumber(storeName),
+        largestUsedVersionNumber,
         "Store should be put in to graveyard with the updated largestUsedVersionNumber.");
 
     // Store already exists and the largestUsedVersionNumber is smaller than the one in graveyard.
@@ -61,19 +65,23 @@ public class HelixStoreGraveyardTest {
       graveyard.putStoreIntoGraveyard(clusterNames[0], store);
       Assert.fail("Invalid largestUsedVersionNumber, put operation should fail.");
     } catch (VeniceException e) {
-      //expected
+      // expected
     }
   }
 
   @Test
   public void testGetLargestUsedVersionNumber() {
-    Assert.assertEquals(graveyard.getLargestUsedVersionNumber(storeName), Store.NON_EXISTING_VERSION,
+    Assert.assertEquals(
+        graveyard.getLargestUsedVersionNumber(storeName),
+        Store.NON_EXISTING_VERSION,
         "Store has not been deleted. This method should return 0.");
     int largestUsedVersionNumber = 100;
     Store store = TestUtils.createTestStore(storeName, "", System.currentTimeMillis());
     store.setLargestUsedVersionNumber(largestUsedVersionNumber);
     graveyard.putStoreIntoGraveyard(clusterNames[0], store);
-    Assert.assertEquals(graveyard.getLargestUsedVersionNumber(storeName), largestUsedVersionNumber,
+    Assert.assertEquals(
+        graveyard.getLargestUsedVersionNumber(storeName),
+        largestUsedVersionNumber,
         "Store should be put in to graveyard with the updated largestUsedVersionNumber.");
   }
 }

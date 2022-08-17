@@ -57,8 +57,7 @@ public class TopicPartitionWithURL {
       return false;
     }
     TopicPartitionWithURL other = (TopicPartitionWithURL) o;
-    return this.owner.equals(other.owner) &&
-        this.kafkaServerURL.equals(other.kafkaServerURL) &&
-        this.topicPartition.equals(other.topicPartition);
+    return this.owner.equals(other.owner) && this.kafkaServerURL.equals(other.kafkaServerURL)
+        && this.topicPartition.equals(other.topicPartition);
   }
 }

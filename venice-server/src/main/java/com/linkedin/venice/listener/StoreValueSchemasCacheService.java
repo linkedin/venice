@@ -8,7 +8,6 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataVersionId;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -65,7 +64,9 @@ public class StoreValueSchemasCacheService extends AbstractVeniceService impleme
   private final Thread refreshThread;
   private boolean refreshThreadStop = false;
 
-  public StoreValueSchemasCacheService(ReadOnlyStoreRepository storeRepository, ReadOnlySchemaRepository schemaRepository) {
+  public StoreValueSchemasCacheService(
+      ReadOnlyStoreRepository storeRepository,
+      ReadOnlySchemaRepository schemaRepository) {
     this.storeRepository = storeRepository;
     this.schemaRepository = schemaRepository;
     refreshAllStores();
@@ -101,7 +102,8 @@ public class StoreValueSchemasCacheService extends AbstractVeniceService impleme
 
   @Override
   public SchemaEntry getValueSchema(String storeName, int valueSchemaId) {
-    StoreValueSchemas storeValueSchemas = storeValueSchemasMap.computeIfAbsent(storeName, s -> refreshStoreValueSchemas(storeName));
+    StoreValueSchemas storeValueSchemas =
+        storeValueSchemasMap.computeIfAbsent(storeName, s -> refreshStoreValueSchemas(storeName));
     SchemaEntry valueSchemaEntry = storeValueSchemas.valueSchemaMap.get(valueSchemaId);
     if (null == valueSchemaEntry) {
       /**
@@ -124,12 +126,13 @@ public class StoreValueSchemasCacheService extends AbstractVeniceService impleme
 
   @Override
   public SchemaEntry getLatestValueSchema(String storeName) {
-    StoreValueSchemas storeValueSchemas = storeValueSchemasMap.computeIfAbsent(storeName, s -> refreshStoreValueSchemas(storeName));
+    StoreValueSchemas storeValueSchemas =
+        storeValueSchemasMap.computeIfAbsent(storeName, s -> refreshStoreValueSchemas(storeName));
     return storeValueSchemas.latestValueSchema;
   }
 
   private StoreValueSchemas refreshStoreValueSchemas(String storeName) {
-    if (! storeRepository.hasStore(storeName)) {
+    if (!storeRepository.hasStore(storeName)) {
       throw new VeniceNoStoreException(storeName);
     }
     // fetch the latest value schema and all the value schemas
@@ -139,19 +142,21 @@ public class StoreValueSchemasCacheService extends AbstractVeniceService impleme
     if (null == storeValueSchemas) {
       storeValueSchemas = new StoreValueSchemas();
     }
-    for (SchemaEntry schemaEntry : valueSchemas) {
+    for (SchemaEntry schemaEntry: valueSchemas) {
       /**
        * Try to use the same Schema object all the time, and the assumption here is that the mapping between
        * schema id and schema content never changes.
        */
-      if (! storeValueSchemas.valueSchemaMap.containsKey(schemaEntry.getId())) {
+      if (!storeValueSchemas.valueSchemaMap.containsKey(schemaEntry.getId())) {
         storeValueSchemas.valueSchemaMap.put(schemaEntry.getId(), schemaEntry);
       }
     }
-    SchemaEntry latestValueSchemaEntryInValueSchemaMap = storeValueSchemas.valueSchemaMap.get(latestValueSchema.getId());
+    SchemaEntry latestValueSchemaEntryInValueSchemaMap =
+        storeValueSchemas.valueSchemaMap.get(latestValueSchema.getId());
     if (null == latestValueSchemaEntryInValueSchemaMap) {
-      LOGGER.warn("For store: " + storeName + ", the latest value schema: " + latestValueSchema.getId()
-          + " is not part of all the value schemas: " + storeValueSchemas.valueSchemaMap.keySet());
+      LOGGER.warn(
+          "For store: " + storeName + ", the latest value schema: " + latestValueSchema.getId()
+              + " is not part of all the value schemas: " + storeValueSchemas.valueSchemaMap.keySet());
       storeValueSchemas.latestValueSchema = latestValueSchema;
     } else {
       /**
@@ -162,7 +167,6 @@ public class StoreValueSchemasCacheService extends AbstractVeniceService impleme
 
     return storeValueSchemas;
   }
-
 
   @Override
   public SchemaEntry getKeySchema(String storeName) {
@@ -205,7 +209,10 @@ public class StoreValueSchemasCacheService extends AbstractVeniceService impleme
   }
 
   @Override
-  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(String storeName, int valueSchemaId, int replicationMetadataVersionId) {
+  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(
+      String storeName,
+      int valueSchemaId,
+      int replicationMetadataVersionId) {
     throw new VeniceException("Function: getReplicationMetadataSchema is not supported!");
   }
 
@@ -216,7 +223,7 @@ public class StoreValueSchemasCacheService extends AbstractVeniceService impleme
 
   private void refreshAllStores() {
     List<Store> storeList = storeRepository.getAllStores();
-    for (Store store : storeList) {
+    for (Store store: storeList) {
       try {
         refreshStoreValueSchemas(store.getName());
       } catch (Exception e) {

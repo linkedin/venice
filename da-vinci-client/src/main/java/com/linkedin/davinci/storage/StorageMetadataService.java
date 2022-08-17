@@ -4,9 +4,9 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.offsets.OffsetManager;
-
 import java.nio.ByteBuffer;
 import java.util.Optional;
+
 
 /**
  * This is a superset of the the OffsetManager APIs, which also provide functions
@@ -58,8 +58,7 @@ public interface StorageMetadataService extends OffsetManager {
    * Tailored function for retrieving version's compression dictionary.
    */
   default ByteBuffer getStoreVersionCompressionDictionary(String topicName) {
-    return getStoreVersionState(topicName)
-        .map(storeVersionState -> storeVersionState.compressionDictionary)
+    return getStoreVersionState(topicName).map(storeVersionState -> storeVersionState.compressionDictionary)
         .orElse(null);
   }
 }

@@ -3,23 +3,24 @@ package com.linkedin.venice.exceptions;
 import com.linkedin.venice.meta.Version;
 import org.apache.http.HttpStatus;
 
+
 public class VeniceNoHelixResourceException extends VeniceRouterException {
   private final String resource;
   private final int version;
 
-  public VeniceNoHelixResourceException(String resource){
+  public VeniceNoHelixResourceException(String resource) {
     super(getMessageFromResourceName(resource));
     this.resource = resource;
     this.version = getVersionFromResourceName(resource);
   }
 
-  public VeniceNoHelixResourceException(String resource, Throwable t){
+  public VeniceNoHelixResourceException(String resource, Throwable t) {
     super(getMessageFromResourceName(resource), t);
     this.resource = resource;
     this.version = getVersionFromResourceName(resource);
   }
 
-  public String getResource(){
+  public String getResource() {
     return resource;
   }
 
@@ -36,16 +37,18 @@ public class VeniceNoHelixResourceException extends VeniceRouterException {
     }
   }
 
-  private static String getMessageFromResourceName(String resource){
-    if (Version.isVersionTopicOrStreamReprocessingTopic(resource) && (Version.parseVersionFromKafkaTopicName(resource)==0)) {
-      return "There is no version for store '" + Version.parseStoreFromKafkaTopicName(resource) + "'.  Please push data to that store";
+  private static String getMessageFromResourceName(String resource) {
+    if (Version.isVersionTopicOrStreamReprocessingTopic(resource)
+        && (Version.parseVersionFromKafkaTopicName(resource) == 0)) {
+      return "There is no version for store '" + Version.parseStoreFromKafkaTopicName(resource)
+          + "'.  Please push data to that store";
     } else {
       return "Resource '" + resource + "' does not exist";
     }
   }
 
-  private static int getVersionFromResourceName(String resource){
-    if (Version.isVersionTopicOrStreamReprocessingTopic(resource)){
+  private static int getVersionFromResourceName(String resource) {
+    if (Version.isVersionTopicOrStreamReprocessingTopic(resource)) {
       return Version.parseVersionFromKafkaTopicName(resource);
     } else {
       return -1;

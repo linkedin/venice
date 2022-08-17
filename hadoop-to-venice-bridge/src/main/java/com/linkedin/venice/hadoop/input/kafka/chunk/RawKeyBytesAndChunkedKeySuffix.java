@@ -1,11 +1,9 @@
 package com.linkedin.venice.hadoop.input.kafka.chunk;
 
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
-
-import org.apache.commons.lang.Validate;
-
-import javax.annotation.Nonnull;
 import java.nio.ByteBuffer;
+import javax.annotation.Nonnull;
+import org.apache.commons.lang.Validate;
 
 
 /**

@@ -1,13 +1,13 @@
 package com.linkedin.davinci.compression;
 
+import static com.linkedin.venice.compression.CompressionStrategy.*;
+
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.utils.ByteUtils;
 import java.nio.ByteBuffer;
-
-import static com.linkedin.venice.compression.CompressionStrategy.*;
 
 
 public class StorageEngineBackedCompressorFactory extends CompressorFactory {
@@ -24,7 +24,10 @@ public class StorageEngineBackedCompressorFactory extends CompressorFactory {
       }
 
       ByteBuffer dictionary = metadataService.getStoreVersionCompressionDictionary(kafkaTopic);
-      return super.createVersionSpecificCompressorIfNotExist(compressionStrategy, kafkaTopic, ByteUtils.extractByteArray(dictionary));
+      return super.createVersionSpecificCompressorIfNotExist(
+          compressionStrategy,
+          kafkaTopic,
+          ByteUtils.extractByteArray(dictionary));
     } else {
       return getCompressor(compressionStrategy);
     }

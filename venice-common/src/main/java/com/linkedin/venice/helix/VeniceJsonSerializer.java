@@ -23,8 +23,7 @@ public class VeniceJsonSerializer<T> implements VeniceSerializer<T> {
   }
 
   @Override
-  public byte[] serialize(T object, String path)
-      throws IOException {
+  public byte[] serialize(T object, String path) throws IOException {
     // Use pretty JSON format, easy to read.
     byte[] serializedObject = mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(object);
     if (serializedObject.length > serializedMapSizeLimit) {
@@ -34,8 +33,7 @@ public class VeniceJsonSerializer<T> implements VeniceSerializer<T> {
   }
 
   @Override
-  public T deserialize(byte[] bytes, String path)
-      throws IOException {
+  public T deserialize(byte[] bytes, String path) throws IOException {
     return mapper.readValue(bytes, type);
   }
 }

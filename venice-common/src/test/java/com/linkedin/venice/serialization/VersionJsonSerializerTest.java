@@ -17,7 +17,6 @@ import org.testng.annotations.Test;
 
 
 public class VersionJsonSerializerTest {
-
   @Test
   public void testSerializeAndDeserializeVersion() throws IOException {
     VeniceJsonSerializer<Version> versionVeniceJsonSerializer = new VeniceJsonSerializer<>(Version.class);

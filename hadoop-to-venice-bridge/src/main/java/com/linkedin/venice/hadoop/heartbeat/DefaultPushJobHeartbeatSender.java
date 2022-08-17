@@ -54,8 +54,7 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
       @Nonnull Schema heartbeatKeySchema,
       @Nonnull Map<Integer, Schema> valueSchemasById,
       @Nonnull String heartbeatKafkaTopicName,
-      boolean sendDeleteAsLasHeartbeat
-  ) {
+      boolean sendDeleteAsLasHeartbeat) {
     Validate.notNull(initialDelay);
     Validate.notNull(interval);
     Validate.notNull(veniceWriter);
@@ -70,14 +69,15 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
     this.keySerializer = new VeniceAvroKafkaSerializer(heartbeatKeySchema);
     this.valueSerializer = new VeniceAvroKafkaSerializer(BatchJobHeartbeatValue.SCHEMA$);
     this.running = false;
-    this.executorService = Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("push-job-heartbeat-thread"));
+    this.executorService =
+        Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("push-job-heartbeat-thread"));
     this.successfulHeartbeatCount = 0;
     this.failedHeartbeatCount = 0;
     this.sendDeleteAsLasHeartbeat = sendDeleteAsLasHeartbeat;
   }
 
   private int getSchemaIdForSchemaOrFail(Schema expectedSchema, Map<Integer, Schema> valueSchemasById) {
-    for (Map.Entry<Integer, Schema> schemaIdAndSchema : valueSchemasById.entrySet()) {
+    for (Map.Entry<Integer, Schema> schemaIdAndSchema: valueSchemasById.entrySet()) {
       if (Objects.equals(expectedSchema, schemaIdAndSchema.getValue())) {
         return schemaIdAndSchema.getKey();
       }
@@ -87,8 +87,8 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
 
   private void validateSchemasMatch(Schema expectedSchema, Schema actualSchema) {
     if (!Objects.equals(expectedSchema, actualSchema)) {
-      throw new IllegalArgumentException(String.format("Expected schema %s and actual schema %s",
-              expectedSchema.toString(), actualSchema.toString()));
+      throw new IllegalArgumentException(
+          String.format("Expected schema %s and actual schema %s", expectedSchema.toString(), actualSchema.toString()));
     }
   }
 
@@ -103,8 +103,14 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
     this.storeName = storeName;
     this.storeVersion = storeVersion;
     this.heartbeatStartTime = Instant.now();
-    LOGGER.info(String.format("Start sending liveness heartbeats for [store=%s, version=%s] with initial delay %d ms and " +
-            "interval %d ms...", this.storeName, this.storeVersion, this.initialDelay.toMillis(), this.interval.toMillis()));
+    LOGGER.info(
+        String.format(
+            "Start sending liveness heartbeats for [store=%s, version=%s] with initial delay %d ms and "
+                + "interval %d ms...",
+            this.storeName,
+            this.storeVersion,
+            this.initialDelay.toMillis(),
+            this.interval.toMillis()));
     executorService.scheduleAtFixedRate(this, initialDelay.toMillis(), interval.toMillis(), TimeUnit.MILLISECONDS);
   }
 
@@ -122,11 +128,15 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
     sendHeartbeat(createHeartbeatKey(), createHeartbeatValue(), DEFAULT_SEND_CALLBACK_AWAIT_TIMEOUT, true);
     LOGGER.info("Closing the heartbeat VeniceWriter");
     veniceWriter.close();
-    LOGGER.info(String.format("Liveness heartbeat stopped for [store=%s, version=%s] " +
-            "with %d successful heartbeat(s) and %d failed heartbeat(s) and in total took %d second(s)",
-            this.storeName, this.storeVersion, successfulHeartbeatCount, failedHeartbeatCount,
-            Duration.between(this.heartbeatStartTime, Instant.now()).getSeconds())
-    );
+    LOGGER.info(
+        String.format(
+            "Liveness heartbeat stopped for [store=%s, version=%s] "
+                + "with %d successful heartbeat(s) and %d failed heartbeat(s) and in total took %d second(s)",
+            this.storeName,
+            this.storeVersion,
+            successfulHeartbeatCount,
+            failedHeartbeatCount,
+            Duration.between(this.heartbeatStartTime, Instant.now()).getSeconds()));
   }
 
   @Override
@@ -148,7 +158,7 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
 
   @Override
   public Optional<Exception> getFirstSendHeartbeatException() {
-   return Optional.ofNullable(firstSendHeartbeatException);
+    return Optional.ofNullable(firstSendHeartbeatException);
   }
 
   private BatchJobHeartbeatKey createHeartbeatKey() {
@@ -165,11 +175,10 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
   }
 
   private void sendHeartbeat(
-          BatchJobHeartbeatKey batchJobHeartbeatKey,
-          BatchJobHeartbeatValue BatchJobHeartbeatValue,
-          Duration sendTimeout,
-          boolean isLastHeartbeat
-  ) {
+      BatchJobHeartbeatKey batchJobHeartbeatKey,
+      BatchJobHeartbeatValue BatchJobHeartbeatValue,
+      Duration sendTimeout,
+      boolean isLastHeartbeat) {
     byte[] keyBytes = keySerializer.serialize(heartbeatKafkaTopicName, batchJobHeartbeatKey);
     byte[] valueBytes = valueSerializer.serialize(heartbeatKafkaTopicName, BatchJobHeartbeatValue);
     CountDownLatch sendComplete = new CountDownLatch(1);
@@ -198,7 +207,8 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
 
     try {
       if (!sendComplete.await(sendTimeout.toMillis(), TimeUnit.MILLISECONDS)) {
-        LOGGER.warn("Liveness heartbeat sent did not get ack-ed by remote server after " + sendTimeout.toMillis() + " ms");
+        LOGGER.warn(
+            "Liveness heartbeat sent did not get ack-ed by remote server after " + sendTimeout.toMillis() + " ms");
       }
     } catch (InterruptedException e) {
       LOGGER.warn("Liveness heartbeat sent was interrupted", e);

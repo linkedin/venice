@@ -18,6 +18,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.specific.SpecificRecord;
 
+
 public class ClientConfig<K, V, T extends SpecificRecord> {
   private final Client r2Client;
   private final String statsPrefix;
@@ -58,7 +59,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final int longTailRetryThresholdForSingletGetInMicroSeconds;
   private final int longTailRetryThresholdForBatchGetInMicroSeconds;
   private final ClusterStats clusterStats;
-  private ClientConfig(String storeName,
+
+  private ClientConfig(
+      String storeName,
       Client r2Client,
       MetricsRepository metricsRepository,
       String statsPrefix,
@@ -80,8 +83,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       boolean longTailRetryEnabledForSingleGet,
       int longTailRetryThresholdForSingletGetInMicroSeconds,
       boolean longTailRetryEnabledForBatchGet,
-      int longTailRetryThresholdForBatchGetInMicroSeconds
-      ) {
+      int longTailRetryThresholdForBatchGetInMicroSeconds) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
@@ -94,9 +96,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     if (metricsRepository == null) {
       metricsRepository = new MetricsRepository();
     }
-    // TODO consider changing the implementation or make it explicit that the config builder can only build once with the same metricsRepository
-    for (RequestType requestType : RequestType.values()) {
-      clientStatsMap.put(requestType, ClientStats.getClientStats(metricsRepository, this.statsPrefix, storeName, requestType));
+    // TODO consider changing the implementation or make it explicit that the config builder can only build once with
+    // the same metricsRepository
+    for (RequestType requestType: RequestType.values()) {
+      clientStatsMap
+          .put(requestType, ClientStats.getClientStats(metricsRepository, this.statsPrefix, storeName, requestType));
     }
     this.clusterStats = new ClusterStats(metricsRepository, storeName);
     this.speculativeQueryEnabled = speculativeQueryEnabled;
@@ -107,20 +111,28 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.genericThinClient = genericThinClient;
     this.specificThinClient = specificThinClient;
     if (this.dualReadEnabled && this.specificThinClient == null && this.genericThinClient == null) {
-      throw new VeniceClientException("Either param: specificThinClient or param: genericThinClient"
-          + " should be specified when dual read is enabled");
+      throw new VeniceClientException(
+          "Either param: specificThinClient or param: genericThinClient"
+              + " should be specified when dual read is enabled");
     }
 
-    this.routingLeakedRequestCleanupThresholdMS = routingLeakedRequestCleanupThresholdMS > 0 ?
-        routingLeakedRequestCleanupThresholdMS : TimeUnit.SECONDS.toMillis(30); // 30 seconds by default
-    this.routingQuotaExceededRequestCounterResetDelayMS = routingQuotaExceededRequestCounterResetDelayMS > 0 ?
-        routingQuotaExceededRequestCounterResetDelayMS : 50; // 50 ms by default
-    this.routingErrorRequestCounterResetDelayMS = routingErrorRequestCounterResetDelayMS > 0 ?
-        routingErrorRequestCounterResetDelayMS : TimeUnit.SECONDS.toMillis(10); // 10 seconds
-    this.routingUnavailableRequestCounterResetDelayMS = routingUnavailableRequestCounterResetDelayMS > 0 ?
-        routingUnavailableRequestCounterResetDelayMS : TimeUnit.MINUTES.toMicros(1); // 1 min
-    this.routingPendingRequestCounterInstanceBlockThreshold = routingPendingRequestCounterInstanceBlockThreshold > 0 ?
-        routingPendingRequestCounterInstanceBlockThreshold : 50;
+    this.routingLeakedRequestCleanupThresholdMS = routingLeakedRequestCleanupThresholdMS > 0
+        ? routingLeakedRequestCleanupThresholdMS
+        : TimeUnit.SECONDS.toMillis(30); // 30 seconds by default
+    this.routingQuotaExceededRequestCounterResetDelayMS =
+        routingQuotaExceededRequestCounterResetDelayMS > 0 ? routingQuotaExceededRequestCounterResetDelayMS : 50; // 50
+                                                                                                                  // ms
+                                                                                                                  // by
+                                                                                                                  // default
+    this.routingErrorRequestCounterResetDelayMS = routingErrorRequestCounterResetDelayMS > 0
+        ? routingErrorRequestCounterResetDelayMS
+        : TimeUnit.SECONDS.toMillis(10); // 10 seconds
+    this.routingUnavailableRequestCounterResetDelayMS = routingUnavailableRequestCounterResetDelayMS > 0
+        ? routingUnavailableRequestCounterResetDelayMS
+        : TimeUnit.MINUTES.toMicros(1); // 1 min
+    this.routingPendingRequestCounterInstanceBlockThreshold = routingPendingRequestCounterInstanceBlockThreshold > 0
+        ? routingPendingRequestCounterInstanceBlockThreshold
+        : 50;
 
     this.maxAllowedKeyCntInBatchGetReq = maxAllowedKeyCntInBatchGetReq;
 
@@ -134,17 +146,20 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.longTailRetryThresholdForBatchGetInMicroSeconds = longTailRetryThresholdForBatchGetInMicroSeconds;
 
     if (this.longTailRetryThresholdForSingletGetInMicroSeconds <= 0) {
-      throw new VeniceClientException("longTailRetryThresholdForSingletGetInMicroSeconds must be positive, but got: "
-          + this.longTailRetryThresholdForSingletGetInMicroSeconds);
+      throw new VeniceClientException(
+          "longTailRetryThresholdForSingletGetInMicroSeconds must be positive, but got: "
+              + this.longTailRetryThresholdForSingletGetInMicroSeconds);
     }
 
     if (this.longTailRetryThresholdForBatchGetInMicroSeconds <= 0) {
-      throw new VeniceClientException("longTailRetryThresholdForBatchGetInMicroSeconds must be positive, but got: "
-          + this.longTailRetryThresholdForBatchGetInMicroSeconds);
+      throw new VeniceClientException(
+          "longTailRetryThresholdForBatchGetInMicroSeconds must be positive, but got: "
+              + this.longTailRetryThresholdForBatchGetInMicroSeconds);
     }
 
     if (this.speculativeQueryEnabled && this.longTailRetryEnabledForSingleGet) {
-      throw new VeniceClientException("Speculative query feature can't be enabled together with long-tail retry for single-get");
+      throw new VeniceClientException(
+          "Speculative query feature can't be enabled together with long-tail retry for single-get");
     }
   }
 
@@ -326,22 +341,26 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setRoutingLeakedRequestCleanupThresholdMS(long routingLeakedRequestCleanupThresholdMS) {
+    public ClientConfigBuilder<K, V, T> setRoutingLeakedRequestCleanupThresholdMS(
+        long routingLeakedRequestCleanupThresholdMS) {
       this.routingLeakedRequestCleanupThresholdMS = routingLeakedRequestCleanupThresholdMS;
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setRoutingQuotaExceededRequestCounterResetDelayMS(long routingQuotaExceededRequestCounterResetDelayMS) {
+    public ClientConfigBuilder<K, V, T> setRoutingQuotaExceededRequestCounterResetDelayMS(
+        long routingQuotaExceededRequestCounterResetDelayMS) {
       this.routingQuotaExceededRequestCounterResetDelayMS = routingQuotaExceededRequestCounterResetDelayMS;
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setRoutingErrorRequestCounterResetDelayMS(long routingErrorRequestCounterResetDelayMS) {
+    public ClientConfigBuilder<K, V, T> setRoutingErrorRequestCounterResetDelayMS(
+        long routingErrorRequestCounterResetDelayMS) {
       this.routingErrorRequestCounterResetDelayMS = routingErrorRequestCounterResetDelayMS;
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setRoutingUnavailableRequestCounterResetDelayMS(long routingUnavailableRequestCounterResetDelayMS) {
+    public ClientConfigBuilder<K, V, T> setRoutingUnavailableRequestCounterResetDelayMS(
+        long routingUnavailableRequestCounterResetDelayMS) {
       this.routingUnavailableRequestCounterResetDelayMS = routingUnavailableRequestCounterResetDelayMS;
       return this;
     }
@@ -352,7 +371,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setDaVinciClientForMetaStore(DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore) {
+    public ClientConfigBuilder<K, V, T> setDaVinciClientForMetaStore(
+        DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore) {
       this.daVinciClientForMetaStore = daVinciClientForMetaStore;
       return this;
     }
@@ -390,8 +410,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     }
 
     public ClientConfigBuilder<K, V, T> clone() {
-      return new ClientConfigBuilder()
-          .setStoreName(storeName)
+      return new ClientConfigBuilder().setStoreName(storeName)
           .setR2Client(r2Client)
           .setMetricsRepository(metricsRepository)
           .setStatsPrefix(statsPrefix)
@@ -417,7 +436,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     }
 
     public ClientConfig<K, V, T> build() {
-      return new ClientConfig<>(storeName,
+      return new ClientConfig<>(
+          storeName,
           r2Client,
           metricsRepository,
           statsPrefix,
@@ -434,7 +454,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           routingUnavailableRequestCounterResetDelayMS,
           routingPendingRequestCounterInstanceBlockThreshold,
           maxAllowedKeyCntInBatchGetReq,
-          daVinciClientForMetaStore, metadataRefreshIntervalInSeconds,
+          daVinciClientForMetaStore,
+          metadataRefreshIntervalInSeconds,
           longTailRetryEnabledForSingleGet,
           longTailRetryThresholdForSingletGetInMicroSeconds,
           longTailRetryEnabledForBatchGet,

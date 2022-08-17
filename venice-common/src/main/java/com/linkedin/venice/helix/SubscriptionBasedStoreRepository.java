@@ -13,12 +13,16 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class SubscriptionBasedStoreRepository extends HelixReadOnlyStoreRepository implements SubscriptionBasedReadOnlyStoreRepository {
+public class SubscriptionBasedStoreRepository extends HelixReadOnlyStoreRepository
+    implements SubscriptionBasedReadOnlyStoreRepository {
   private static final Logger logger = LogManager.getLogger(HelixReadOnlyStoreRepository.class);
 
   private final Set<String> subscription = new HashSet<>();
 
-  public SubscriptionBasedStoreRepository(ZkClient zkClient, HelixAdapterSerializer compositeSerializer, String clusterName) {
+  public SubscriptionBasedStoreRepository(
+      ZkClient zkClient,
+      HelixAdapterSerializer compositeSerializer,
+      String clusterName) {
     super(zkClient, compositeSerializer, clusterName, 0, 0);
   }
 

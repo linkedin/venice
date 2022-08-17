@@ -1,5 +1,7 @@
 package com.linkedin.venice.fastclient;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.ddsstorage.base.concurrency.TimeoutProcessor;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
@@ -18,8 +20,6 @@ import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-
-import static org.mockito.Mockito.*;
 
 
 public class RetriableAvroGenericStoreClientTest {
@@ -41,20 +41,37 @@ public class RetriableAvroGenericStoreClientTest {
     TestUtils.shutdownExecutor(scheduledExecutor);
   }
 
-  private InternalAvroStoreClient prepareDispatchingClient(boolean originalRequestThrowException,
-      long originalRequestDelayMs, boolean retryRequestThrowException, long retryRequestDelayMs) {
+  private InternalAvroStoreClient prepareDispatchingClient(
+      boolean originalRequestThrowException,
+      long originalRequestDelayMs,
+      boolean retryRequestThrowException,
+      long retryRequestDelayMs) {
     return new InternalAvroStoreClient() {
       private int requestCnt = 0;
+
       @Override
-      public void start() throws VeniceClientException {}
+      public void start() throws VeniceClientException {
+      }
+
       @Override
-      public void close() {}
+      public void close() {
+      }
+
       @Override
-      public String getStoreName() { return null; }
+      public String getStoreName() {
+        return null;
+      }
+
       @Override
-      public Schema getKeySchema() { return null; }
+      public Schema getKeySchema() {
+        return null;
+      }
+
       @Override
-      public Schema getLatestValueSchema() { return null; }
+      public Schema getLatestValueSchema() {
+        return null;
+      }
+
       @Override
       protected CompletableFuture get(GetRequestContext requestContext, Object key) throws VeniceClientException {
         InstanceHealthMonitor instanceHealthMonitor = mock(InstanceHealthMonitor.class);
@@ -88,14 +105,23 @@ public class RetriableAvroGenericStoreClientTest {
           throw new VeniceClientException("Unexpected request cnt: " + requestCnt);
         }
       }
+
       @Override
       protected CompletableFuture<Map> batchGet(BatchGetRequestContext requestContext, Set keys)
-          throws VeniceClientException { return null; }
+          throws VeniceClientException {
+        return null;
+      }
+
       @Override
-      protected void streamingBatchGet(BatchGetRequestContext requestContext, Set keys, StreamingCallback callback) {}
+      protected void streamingBatchGet(BatchGetRequestContext requestContext, Set keys, StreamingCallback callback) {
+      }
+
       @Override
-      protected CompletableFuture<VeniceResponseMap> streamingBatchGet(BatchGetRequestContext requestContext,
-          Set keys) { return null; }
+      protected CompletableFuture<VeniceResponseMap> streamingBatchGet(
+          BatchGetRequestContext requestContext,
+          Set keys) {
+        return null;
+      }
     };
   }
 
@@ -103,15 +129,19 @@ public class RetriableAvroGenericStoreClientTest {
   public void testGet() throws ExecutionException, InterruptedException {
     ClientConfig clientConfig = mock(ClientConfig.class);
     doReturn(true).when(clientConfig).isLongTailRetryEnabledForSingleGet();
-    doReturn((int)TimeUnit.MILLISECONDS.toMicros(LONG_TAIL_RETRY_THRESHOLD_IN_MS)).when(clientConfig).getLongTailRetryThresholdForSingletGetInMicroSeconds();
+    doReturn((int) TimeUnit.MILLISECONDS.toMicros(LONG_TAIL_RETRY_THRESHOLD_IN_MS)).when(clientConfig)
+        .getLongTailRetryThresholdForSingletGetInMicroSeconds();
     String value;
     GetRequestContext getRequestContext;
 
     // Original request is faster than retry threshold.
     RetriableAvroGenericStoreClient<String, String> retriableClient = new RetriableAvroGenericStoreClient<>(
-        prepareDispatchingClient(false, LONG_TAIL_RETRY_THRESHOLD_IN_MS / 2, false, LONG_TAIL_RETRY_THRESHOLD_IN_MS * 2),
-        clientConfig
-    );
+        prepareDispatchingClient(
+            false,
+            LONG_TAIL_RETRY_THRESHOLD_IN_MS / 2,
+            false,
+            LONG_TAIL_RETRY_THRESHOLD_IN_MS * 2),
+        clientConfig);
     getRequestContext = new GetRequestContext();
     value = retriableClient.get(getRequestContext, "test_key").get();
     Assert.assertEquals(value, VALUE_RESPONSE);
@@ -119,12 +149,14 @@ public class RetriableAvroGenericStoreClientTest {
     Assert.assertFalse(getRequestContext.longTailRetryRequestTriggered);
     Assert.assertFalse(getRequestContext.retryWin);
 
-
     // Original request latency is higher than retry threshold, but still faster than retry request
     retriableClient = new RetriableAvroGenericStoreClient<>(
-        prepareDispatchingClient(false, LONG_TAIL_RETRY_THRESHOLD_IN_MS * 10, false, LONG_TAIL_RETRY_THRESHOLD_IN_MS * 50),
-        clientConfig
-    );
+        prepareDispatchingClient(
+            false,
+            LONG_TAIL_RETRY_THRESHOLD_IN_MS * 10,
+            false,
+            LONG_TAIL_RETRY_THRESHOLD_IN_MS * 50),
+        clientConfig);
     getRequestContext = new GetRequestContext();
     value = retriableClient.get(getRequestContext, "test_key").get();
     Assert.assertEquals(value, VALUE_RESPONSE);
@@ -132,40 +164,44 @@ public class RetriableAvroGenericStoreClientTest {
     Assert.assertTrue(getRequestContext.longTailRetryRequestTriggered);
     Assert.assertFalse(getRequestContext.retryWin);
 
-
     // Original request latency is higher than retry threshold, but slower than retry request
     retriableClient = new RetriableAvroGenericStoreClient<>(
-        prepareDispatchingClient(false, LONG_TAIL_RETRY_THRESHOLD_IN_MS * 10, false, LONG_TAIL_RETRY_THRESHOLD_IN_MS / 2),
-        clientConfig
-    );
+        prepareDispatchingClient(
+            false,
+            LONG_TAIL_RETRY_THRESHOLD_IN_MS * 10,
+            false,
+            LONG_TAIL_RETRY_THRESHOLD_IN_MS / 2),
+        clientConfig);
     getRequestContext = new GetRequestContext();
     value = retriableClient.get(getRequestContext, "test_key").get();
     Assert.assertEquals(value, VALUE_RESPONSE);
     Assert.assertFalse(getRequestContext.errorRetryRequestTriggered);
     Assert.assertTrue(getRequestContext.longTailRetryRequestTriggered);
     final GetRequestContext finalGetRequestContext1 = getRequestContext;
-    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> Assert.assertTrue(finalGetRequestContext1.retryWin));
-
+    TestUtils.waitForNonDeterministicAssertion(
+        1,
+        TimeUnit.SECONDS,
+        () -> Assert.assertTrue(finalGetRequestContext1.retryWin));
 
     // Original request fails and retry succeeds.
     retriableClient = new RetriableAvroGenericStoreClient<>(
         prepareDispatchingClient(true, 0, false, LONG_TAIL_RETRY_THRESHOLD_IN_MS),
-        clientConfig
-    );
+        clientConfig);
     getRequestContext = new GetRequestContext();
     value = retriableClient.get(getRequestContext, "test_key").get();
     Assert.assertEquals(value, VALUE_RESPONSE);
     Assert.assertTrue(getRequestContext.errorRetryRequestTriggered);
     Assert.assertFalse(getRequestContext.longTailRetryRequestTriggered);
     final GetRequestContext finalGetRequestContext2 = getRequestContext;
-    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> Assert.assertTrue(finalGetRequestContext2.retryWin));
-
+    TestUtils.waitForNonDeterministicAssertion(
+        1,
+        TimeUnit.SECONDS,
+        () -> Assert.assertTrue(finalGetRequestContext2.retryWin));
 
     // Original request latency exceeds the retry threshold, and the retry fails.
     retriableClient = new RetriableAvroGenericStoreClient<>(
         prepareDispatchingClient(false, 10 * LONG_TAIL_RETRY_THRESHOLD_IN_MS, true, 0),
-        clientConfig
-    );
+        clientConfig);
     getRequestContext = new GetRequestContext();
     value = retriableClient.get(getRequestContext, "test_key").get();
     Assert.assertEquals(value, VALUE_RESPONSE);
@@ -176,8 +212,7 @@ public class RetriableAvroGenericStoreClientTest {
     // Original request latency exceeds the retry threshold, and both the original request and the retry fails.
     retriableClient = new RetriableAvroGenericStoreClient<>(
         prepareDispatchingClient(true, 10 * LONG_TAIL_RETRY_THRESHOLD_IN_MS, true, 0),
-        clientConfig
-    );
+        clientConfig);
     getRequestContext = new GetRequestContext();
     try {
       retriableClient.get(getRequestContext, "test_key").get();
@@ -190,10 +225,7 @@ public class RetriableAvroGenericStoreClientTest {
     Assert.assertFalse(getRequestContext.retryWin);
 
     // Original request latency is lower than the retry threshold, and both the original request and the retry fails.
-    retriableClient = new RetriableAvroGenericStoreClient<>(
-        prepareDispatchingClient(true, 0, true, 0),
-        clientConfig
-    );
+    retriableClient = new RetriableAvroGenericStoreClient<>(prepareDispatchingClient(true, 0, true, 0), clientConfig);
     getRequestContext = new GetRequestContext();
     try {
       retriableClient.get(getRequestContext, "test_key").get();

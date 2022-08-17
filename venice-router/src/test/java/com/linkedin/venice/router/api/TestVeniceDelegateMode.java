@@ -1,5 +1,8 @@
 package com.linkedin.venice.router.api;
 
+import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.ddsstorage.base.concurrency.TimeoutProcessor;
 import com.linkedin.ddsstorage.base.misc.Metrics;
 import com.linkedin.ddsstorage.router.api.HostFinder;
@@ -24,7 +27,6 @@ import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
-
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpMethod;
@@ -38,7 +40,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.SortedSet;
 import javax.annotation.Nonnull;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.testng.Assert;
@@ -46,20 +47,21 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
-import static org.mockito.Mockito.*;
-
 
 public class TestVeniceDelegateMode {
-
   private VenicePath getVenicePath(String resourceName, RequestType requestType, List<RouterKey> keys) {
     return getVenicePath(resourceName, requestType, keys, Collections.emptySet());
   }
 
-  private VenicePath getVenicePath(String resourceName, RequestType requestType, List<RouterKey> keys, Set<String> slowStorageNodeSet) {
+  private VenicePath getVenicePath(
+      String resourceName,
+      RequestType requestType,
+      List<RouterKey> keys,
+      Set<String> slowStorageNodeSet) {
     return new VenicePath(resourceName, false, -1) {
-      private final String ROUTER_REQUEST_VERSION = Integer.toString(
-          ReadAvroProtocolDefinition.SINGLE_GET_ROUTER_REQUEST_V1.getProtocolVersion());
+      private final String ROUTER_REQUEST_VERSION =
+          Integer.toString(ReadAvroProtocolDefinition.SINGLE_GET_ROUTER_REQUEST_V1.getProtocolVersion());
+
       @Override
       public RequestType getRequestType() {
         return requestType;
@@ -150,8 +152,11 @@ public class TestVeniceDelegateMode {
     return new HostFinder<Instance, VeniceRole>() {
       @Nonnull
       @Override
-      public List<Instance> findHosts(@Nonnull String requestMethod, @Nonnull String resourceName,
-          @Nonnull String partitionName, @Nonnull HostHealthMonitor<Instance> hostHealthMonitor,
+      public List<Instance> findHosts(
+          @Nonnull String requestMethod,
+          @Nonnull String resourceName,
+          @Nonnull String partitionName,
+          @Nonnull HostHealthMonitor<Instance> hostHealthMonitor,
           @Nonnull VeniceRole roles) throws RouterException {
         if (partitionHostMap.containsKey(partitionName)) {
           return partitionHostMap.get(partitionName);
@@ -163,7 +168,7 @@ public class TestVeniceDelegateMode {
       @Override
       public Collection<Instance> findAllHosts(VeniceRole roles) throws RouterException {
         Set<Instance> instanceSet = new HashSet<>();
-        partitionHostMap.values().stream().forEach( value -> instanceSet.addAll(value));
+        partitionHostMap.values().stream().forEach(value -> instanceSet.addAll(value));
         return new ArrayList<>(instanceSet);
       }
     };
@@ -189,7 +194,8 @@ public class TestVeniceDelegateMode {
 
   @BeforeClass
   public void setUp() {
-    RouterExceptionAndTrackingUtils.setRouterStats(new RouterStats<>( requestType -> new AggRouterHttpRequestStats(new MetricsRepository(), requestType)));
+    RouterExceptionAndTrackingUtils.setRouterStats(
+        new RouterStats<>(requestType -> new AggRouterHttpRequestStats(new MetricsRepository(), requestType)));
   }
 
   @AfterClass
@@ -226,16 +232,20 @@ public class TestVeniceDelegateMode {
 
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
     doReturn(LEAST_LOADED_ROUTING).when(config).getMultiKeyRoutingStrategy();
-    VeniceDelegateMode scatterMode = new VeniceDelegateMode(
-        config,
-        mock(RouterStats.class),
-        mock(RouteHttpRequestStats.class)
-    );
+    VeniceDelegateMode scatterMode =
+        new VeniceDelegateMode(config, mock(RouterStats.class), mock(RouteHttpRequestStats.class));
 
     scatterMode.initReadRequestThrottler(throttler);
 
-    Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode.scatter(scatter, requestMethod, resourceName,
-        partitionFinder, hostFinder, monitor, VeniceRole.REPLICA, new Metrics());
+    Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode.scatter(
+        scatter,
+        requestMethod,
+        resourceName,
+        partitionFinder,
+        hostFinder,
+        monitor,
+        VeniceRole.REPLICA,
+        new Metrics());
 
     // Throttling for single-get request is not happening in VeniceDelegateMode
     verify(throttler, never()).mayThrottleRead(eq(storeName), eq(1), any());
@@ -248,7 +258,7 @@ public class TestVeniceDelegateMode {
     Assert.assertTrue(instanceList.contains(selectedHost));
   }
 
-  @Test (expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*not available for store.*")
+  @Test(expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*not available for store.*")
   public void testScatterWithSingleGetWithNotAvailablePartition() throws RouterException {
     String storeName = Utils.getUniqueString("test_store");
     String resourceName = storeName + "_v1";
@@ -271,15 +281,19 @@ public class TestVeniceDelegateMode {
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
     doReturn(LEAST_LOADED_ROUTING).when(config).getMultiKeyRoutingStrategy();
 
-    VeniceDelegateMode scatterMode = new VeniceDelegateMode(
-        config,
-        mock(RouterStats.class),
-        mock(RouteHttpRequestStats.class)
-    );
+    VeniceDelegateMode scatterMode =
+        new VeniceDelegateMode(config, mock(RouterStats.class), mock(RouteHttpRequestStats.class));
     scatterMode.initReadRequestThrottler(throttler);
 
-    scatterMode.scatter(scatter, requestMethod, resourceName,
-        partitionFinder, hostFinder, monitor, VeniceRole.REPLICA, new Metrics());
+    scatterMode.scatter(
+        scatter,
+        requestMethod,
+        resourceName,
+        partitionFinder,
+        hostFinder,
+        monitor,
+        VeniceRole.REPLICA,
+        new Metrics());
   }
 
   /**
@@ -367,15 +381,19 @@ public class TestVeniceDelegateMode {
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
     doReturn(GROUP_BY_PRIMARY_HOST_ROUTING).when(config).getMultiKeyRoutingStrategy();
 
-    VeniceDelegateMode scatterMode = new VeniceDelegateMode(
-       config,
-        mock(RouterStats.class),
-        mock(RouteHttpRequestStats.class)
-    );
+    VeniceDelegateMode scatterMode =
+        new VeniceDelegateMode(config, mock(RouterStats.class), mock(RouteHttpRequestStats.class));
     scatterMode.initReadRequestThrottler(throttler);
 
-    Scatter<Instance, VenicePath, RouterKey> finalScatter =
-        scatterMode.scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA, new Metrics());
+    Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode.scatter(
+        scatter,
+        requestMethod,
+        resourceName,
+        partitionFinder,
+        hostFinder,
+        monitor,
+        VeniceRole.REPLICA,
+        new Metrics());
 
     Collection<ScatterGatherRequest<Instance, RouterKey>> requests = finalScatter.getOnlineRequests();
     Assert.assertEquals(requests.size(), 3);
@@ -385,14 +403,18 @@ public class TestVeniceDelegateMode {
     verify(throttler, times(2)).mayThrottleRead(eq(storeName), eq(1.0d), any());
 
     // each request should only have one 'Instance'
-    requests.stream().forEach(request -> Assert.assertEquals(request.getHosts().size(), 1,
-        "There should be only one host for each request"));
+    requests.stream()
+        .forEach(
+            request -> Assert
+                .assertEquals(request.getHosts().size(), 1, "There should be only one host for each request"));
     Set<Instance> instanceSet = new HashSet<>();
     requests.stream().forEach(request -> instanceSet.add(request.getHosts().get(0)));
     Assert.assertTrue(instanceSet.contains(instance1), "instance1 must be selected");
-    Assert.assertTrue(instanceSet.contains(instance2) || instanceSet.contains(instance4),
+    Assert.assertTrue(
+        instanceSet.contains(instance2) || instanceSet.contains(instance4),
         "One of instance2/instance4 should be selected");
-    Assert.assertTrue(instanceSet.contains(instance3) || instanceSet.contains(instance5),
+    Assert.assertTrue(
+        instanceSet.contains(instance3) || instanceSet.contains(instance5),
         "One of instance3/instance5 should be selected");
   }
 
@@ -473,15 +495,19 @@ public class TestVeniceDelegateMode {
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
     doReturn(LEAST_LOADED_ROUTING).when(config).getMultiKeyRoutingStrategy();
 
-    VeniceDelegateMode scatterMode = new VeniceDelegateMode(
-        config,
-        mock(RouterStats.class),
-        mock(RouteHttpRequestStats.class)
-    );
+    VeniceDelegateMode scatterMode =
+        new VeniceDelegateMode(config, mock(RouterStats.class), mock(RouteHttpRequestStats.class));
     scatterMode.initReadRequestThrottler(throttler);
 
-    Scatter<Instance, VenicePath, RouterKey> finalScatter =
-        scatterMode.scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA, new Metrics());
+    Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode.scatter(
+        scatter,
+        requestMethod,
+        resourceName,
+        partitionFinder,
+        hostFinder,
+        monitor,
+        VeniceRole.REPLICA,
+        new Metrics());
 
     Collection<ScatterGatherRequest<Instance, RouterKey>> requests = finalScatter.getOfflineRequests();
     Assert.assertEquals(requests.size(), 1);
@@ -565,11 +591,8 @@ public class TestVeniceDelegateMode {
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
     doReturn(HELIX_ASSISTED_ROUTING).when(config).getMultiKeyRoutingStrategy();
 
-    VeniceDelegateMode scatterMode = new VeniceDelegateMode(
-        config,
-        mock(RouterStats.class),
-        mock(RouteHttpRequestStats.class)
-    );
+    VeniceDelegateMode scatterMode =
+        new VeniceDelegateMode(config, mock(RouterStats.class), mock(RouteHttpRequestStats.class));
     scatterMode.initReadRequestThrottler(throttler);
 
     HelixInstanceConfigRepository helixInstanceConfigRepository = mock(HelixInstanceConfigRepository.class);
@@ -580,34 +603,55 @@ public class TestVeniceDelegateMode {
     doReturn(1).when(helixInstanceConfigRepository).getInstanceGroupId(instance3.getNodeId());
     doReturn(1).when(helixInstanceConfigRepository).getInstanceGroupId(instance4.getNodeId());
 
-    HelixGroupSelector helixGroupSelector = new HelixGroupSelector(new MetricsRepository(), helixInstanceConfigRepository, HelixGroupSelectionStrategyEnum.ROUND_ROBIN,
+    HelixGroupSelector helixGroupSelector = new HelixGroupSelector(
+        new MetricsRepository(),
+        helixInstanceConfigRepository,
+        HelixGroupSelectionStrategyEnum.ROUND_ROBIN,
         mock(TimeoutProcessor.class));
     scatterMode.initHelixGroupSelector(helixGroupSelector);
 
-    Scatter<Instance, VenicePath, RouterKey> finalScatter =
-        scatterMode.scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA, new Metrics());
+    Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode.scatter(
+        scatter,
+        requestMethod,
+        resourceName,
+        partitionFinder,
+        hostFinder,
+        monitor,
+        VeniceRole.REPLICA,
+        new Metrics());
 
     Collection<ScatterGatherRequest<Instance, RouterKey>> requests = finalScatter.getOnlineRequests();
     Assert.assertEquals(requests.size(), 2);
 
     // each request should only have one 'Instance'
-    requests.stream().forEach(request -> Assert.assertEquals(request.getHosts().size(), 1,
-        "There should be only one host for each request"));
+    requests.stream()
+        .forEach(
+            request -> Assert
+                .assertEquals(request.getHosts().size(), 1, "There should be only one host for each request"));
     Set<Instance> instanceSet = new HashSet<>();
     requests.stream().forEach(request -> instanceSet.add(request.getHosts().get(0)));
     Assert.assertTrue(instanceSet.contains(instance1) && instanceSet.contains(instance2));
 
     // The second request should pick up another group
     scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
-    finalScatter =
-        scatterMode.scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA, new Metrics());
+    finalScatter = scatterMode.scatter(
+        scatter,
+        requestMethod,
+        resourceName,
+        partitionFinder,
+        hostFinder,
+        monitor,
+        VeniceRole.REPLICA,
+        new Metrics());
 
     requests = finalScatter.getOnlineRequests();
     Assert.assertEquals(requests.size(), 2);
 
     // each request should only have one 'Instance'
-    requests.stream().forEach(request -> Assert.assertEquals(request.getHosts().size(), 1,
-        "There should be only one host for each request"));
+    requests.stream()
+        .forEach(
+            request -> Assert
+                .assertEquals(request.getHosts().size(), 1, "There should be only one host for each request"));
     instanceSet.clear();
     requests.stream().forEach(request -> instanceSet.add(request.getHosts().get(0)));
     Assert.assertTrue(instanceSet.contains(instance1) && instanceSet.contains(instance2));
@@ -617,10 +661,18 @@ public class TestVeniceDelegateMode {
     Set<String> slowStorageNodeSet = new HashSet<>();
     slowStorageNodeSet.add(instance1.getNodeId());
     slowStorageNodeSet.add(instance3.getNodeId());
-    VenicePath pathForAllSlowReplicas = getVenicePath(resourceName, RequestType.MULTI_GET_STREAMING, keys, slowStorageNodeSet);
+    VenicePath pathForAllSlowReplicas =
+        getVenicePath(resourceName, RequestType.MULTI_GET_STREAMING, keys, slowStorageNodeSet);
     scatter = new Scatter(pathForAllSlowReplicas, getPathParser(), VeniceRole.REPLICA);
-    finalScatter =
-        scatterMode.scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA, new Metrics());
+    finalScatter = scatterMode.scatter(
+        scatter,
+        requestMethod,
+        resourceName,
+        partitionFinder,
+        hostFinder,
+        monitor,
+        VeniceRole.REPLICA,
+        new Metrics());
 
     requests = finalScatter.getOnlineRequests();
     Assert.assertEquals(requests.size(), 1);

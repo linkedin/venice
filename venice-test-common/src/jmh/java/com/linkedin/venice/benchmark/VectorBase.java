@@ -13,7 +13,7 @@ public class VectorBase implements Closeable {
   private int _size;
 
   protected VectorBase(int size, int typeWidth) {
-    this (size, typeWidth, FlatBufferBuilder.HeapByteBufferFactory.INSTANCE);
+    this(size, typeWidth, FlatBufferBuilder.HeapByteBufferFactory.INSTANCE);
   }
 
   protected VectorBase(int size, int typeWidth, FlatBufferBuilder.ByteBufferFactory byteBufferFactory) {

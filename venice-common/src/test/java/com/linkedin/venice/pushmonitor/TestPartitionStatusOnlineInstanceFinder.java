@@ -51,15 +51,19 @@ public class TestPartitionStatusOnlineInstanceFinder {
     PartitionStatusOnlineInstanceFinder finder = initFinder();
     List<ReplicaState> replicaStates = finder.getReplicaStates(testTopic, testPartition);
     Assert.assertEquals(replicaStates.size(), 2, "Unexpected replication factor");
-    List<String> veniceStatuses = Stream.of(ExecutionStatus.values()).map(ExecutionStatus::toString).collect(Collectors.toList());
-    for (ReplicaState replicaState : replicaStates) {
+    List<String> veniceStatuses =
+        Stream.of(ExecutionStatus.values()).map(ExecutionStatus::toString).collect(Collectors.toList());
+    for (ReplicaState replicaState: replicaStates) {
       Assert.assertEquals(replicaState.getPartition(), 0, "Unexpected partition number");
-      Assert.assertTrue(replicaState.getParticipantId().equals("host0_1")
-          || replicaState.getParticipantId().equals("host1_1"));
-      Assert.assertTrue(replicaState.getExternalViewStatus().equals(HelixState.LEADER_STATE)
-          || replicaState.getExternalViewStatus().equals(HelixState.STANDBY_STATE));
+      Assert.assertTrue(
+          replicaState.getParticipantId().equals("host0_1") || replicaState.getParticipantId().equals("host1_1"));
+      Assert.assertTrue(
+          replicaState.getExternalViewStatus().equals(HelixState.LEADER_STATE)
+              || replicaState.getExternalViewStatus().equals(HelixState.STANDBY_STATE));
       Assert.assertTrue(veniceStatuses.contains(replicaState.getVenicePushStatus()));
-      Assert.assertEquals(replicaState.isReadyToServe(), replicaState.getVenicePushStatus().equals(ExecutionStatus.COMPLETED.toString()));
+      Assert.assertEquals(
+          replicaState.isReadyToServe(),
+          replicaState.getVenicePushStatus().equals(ExecutionStatus.COMPLETED.toString()));
     }
   }
 
@@ -79,7 +83,7 @@ public class TestPartitionStatusOnlineInstanceFinder {
     finder.onPartitionStatusChange(testTopic, ReadOnlyPartitionStatus.fromPartitionStatus(partitionStatus));
     List<Instance> onlineInstanceList = finder.getReadyToServeInstances(testTopic, testPartition);
 
-    //since host2 is not listed in RoutingDataRepo, it's supposed to be excluded from online instance list
+    // since host2 is not listed in RoutingDataRepo, it's supposed to be excluded from online instance list
     Assert.assertEquals(onlineInstanceList.size(), 1);
     Assert.assertEquals(onlineInstanceList.get(0).getNodeId(), "host0_1");
 
@@ -96,9 +100,15 @@ public class TestPartitionStatusOnlineInstanceFinder {
     int versionNumber = 1;
     String topic = Version.composeKafkaTopic(storeName, versionNumber);
     OfflinePushStatus offlinePushStatus = getMockPushStatus(topic).get(0);
-    Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY,
-            RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE,
-            OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 1);
+    Store store = new ZKStore(
+        storeName,
+        "owner",
+        System.currentTimeMillis(),
+        PersistenceType.IN_MEMORY,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
     store.setLeaderFollowerModelEnabled(true);
     Version version = new VersionImpl(storeName, versionNumber, "pushJobId");
     version.setLeaderFollowerModelEnabled(true);
@@ -116,9 +126,15 @@ public class TestPartitionStatusOnlineInstanceFinder {
     storeName = "testDeletedStoreVersion";
     topic = Version.composeKafkaTopic(storeName, versionNumber);
     offlinePushStatus = getMockPushStatus(topic).get(0);
-    store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY,
-            RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE,
-            OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 1);
+    store = new ZKStore(
+        storeName,
+        "owner",
+        System.currentTimeMillis(),
+        PersistenceType.IN_MEMORY,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
     store.setLeaderFollowerModelEnabled(true);
     version = new VersionImpl(storeName, versionNumber, "pushJobId");
     version.setLeaderFollowerModelEnabled(true);
@@ -159,7 +175,9 @@ public class TestPartitionStatusOnlineInstanceFinder {
     partitionAssignment.addPartition(new Partition(0, instances));
     Mockito.doReturn(partitionAssignment).when(routingDataRepo).getPartitionAssignments(testTopic);
     Mockito.doReturn(instances).when(routingDataRepo).getAllInstances(testTopic, 0);
-    Mockito.doReturn(getMockPushStatus(testTopic)).when(offlinePushAccessor).loadOfflinePushStatusesAndPartitionStatuses();
+    Mockito.doReturn(getMockPushStatus(testTopic))
+        .when(offlinePushAccessor)
+        .loadOfflinePushStatusesAndPartitionStatuses();
     Mockito.doReturn(partitionCount).when(routingDataRepo).getNumberOfPartitions(testTopic);
 
     finder.refresh();
@@ -172,13 +190,12 @@ public class TestPartitionStatusOnlineInstanceFinder {
     instanceMap.put(HelixState.LEADER_STATE, Arrays.asList(new Instance("host0_1", "host0", 1)));
     instanceMap.put(HelixState.STANDBY_STATE, Arrays.asList(new Instance("host1_1", "host1", 1)));
 
-
     return instanceMap;
   }
 
   private List<OfflinePushStatus> getMockPushStatus(String topic) {
-    OfflinePushStatus offlinePushStatus = new OfflinePushStatus(topic,
-        partitionCount, 2, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    OfflinePushStatus offlinePushStatus =
+        new OfflinePushStatus(topic, partitionCount, 2, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     PartitionStatus partitionStatus = new PartitionStatus(0);
     ReplicaStatus host0 = new ReplicaStatus("host0_1");
     ReplicaStatus host1 = new ReplicaStatus("host1_1");

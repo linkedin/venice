@@ -1,5 +1,7 @@
 package com.linkedin.venice.hadoop;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+
 import com.github.luben.zstd.Zstd;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
@@ -19,8 +21,6 @@ import org.apache.hadoop.mapred.Reporter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-
 
 /**
  * An abstraction of the mapper that would return serialized, and potentially
@@ -30,8 +30,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.*;
  * @param <INPUT_VALUE> type of the input value read from InputFormat
  */
 
-public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
-    extends AbstractMapReduceTask
+public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE> extends AbstractMapReduceTask
     implements Mapper<INPUT_KEY, INPUT_VALUE, BytesWritable, BytesWritable> {
   private static final Logger LOGGER = LogManager.getLogger(AbstractVeniceMapper.class);
   private static final int TASK_ID_WHICH_SHOULD_SPRAY_ALL_PARTITIONS = 0;
@@ -44,8 +43,11 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
   protected AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> veniceRecordReader;
 
   @Override
-  public void map(INPUT_KEY inputKey, INPUT_VALUE inputValue, OutputCollector<BytesWritable, BytesWritable> output, Reporter reporter)
-      throws IOException {
+  public void map(
+      INPUT_KEY inputKey,
+      INPUT_VALUE inputValue,
+      OutputCollector<BytesWritable, BytesWritable> output,
+      Reporter reporter) throws IOException {
     if (recordKey == null) {
       maybeSprayAllPartitions(output, reporter);
     }
@@ -55,7 +57,8 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
     }
   }
 
-  private void maybeSprayAllPartitions(OutputCollector<BytesWritable, BytesWritable> output, Reporter reporter) throws IOException {
+  private void maybeSprayAllPartitions(OutputCollector<BytesWritable, BytesWritable> output, Reporter reporter)
+      throws IOException {
     /** First map invocation, since the {@link recordKey} will be set after this. */
     if (TASK_ID_NOT_SET == getTaskId()) {
       throw new IllegalStateException("attemptID not set!");
@@ -71,14 +74,20 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
       output.collect(keyBW, valueBW);
     }
     MRJobCounterHelper.incrMapperSprayAllPartitionsTriggeredCount(reporter, 1);
-    LOGGER.info("Map Task ID " + TASK_ID_WHICH_SHOULD_SPRAY_ALL_PARTITIONS
+    LOGGER.info(
+        "Map Task ID " + TASK_ID_WHICH_SHOULD_SPRAY_ALL_PARTITIONS
             + " successfully sprayed all partitions, to ensure that all Reducers come up.");
   }
 
   /**
    * This function will return true if the input key/value pair is valid.
    */
-  protected boolean process(INPUT_KEY inputKey, INPUT_VALUE inputValue, BytesWritable keyBW, BytesWritable valueBW, Reporter reporter) {
+  protected boolean process(
+      INPUT_KEY inputKey,
+      INPUT_VALUE inputValue,
+      BytesWritable keyBW,
+      BytesWritable valueBW,
+      Reporter reporter) {
     recordKey = veniceRecordReader.getKeyBytes(inputKey, inputValue);
     recordValue = veniceRecordReader.getValueBytes(inputKey, inputValue);
 
@@ -95,8 +104,10 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
     try {
       recordValue = compressor.compress(recordValue);
     } catch (IOException e) {
-      throw new VeniceException("Caught an IO exception while trying to to use compression strategy: " +
-          compressor.getCompressionStrategy().name(), e);
+      throw new VeniceException(
+          "Caught an IO exception while trying to to use compression strategy: "
+              + compressor.getCompressionStrategy().name(),
+          e);
     }
     MRJobCounterHelper.incrTotalKeySize(reporter, recordKey.length);
     MRJobCounterHelper.incrTotalValueSize(reporter, recordValue.length);
@@ -124,8 +135,10 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
       int compressionLevel = props.getInt(ZSTD_COMPRESSION_LEVEL, Zstd.maxCompressionLevel());
 
       if (compressionDictionary != null && compressionDictionary.limit() > 0) {
-        this.compressor =
-            compressorFactory.createCompressorWithDictionary(CompressionStrategy.ZSTD_WITH_DICT, compressionDictionary.array(), compressionLevel);
+        this.compressor = compressorFactory.createCompressorWithDictionary(
+            CompressionStrategy.ZSTD_WITH_DICT,
+            compressionDictionary.array(),
+            compressionLevel);
       }
     } else {
       this.compressor =

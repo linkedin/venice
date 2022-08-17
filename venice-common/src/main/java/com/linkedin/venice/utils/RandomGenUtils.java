@@ -40,6 +40,6 @@ public class RandomGenUtils {
    * @return Integer between min and max, inclusive.
    */
   public static int getRandomIntInRange(int min, int max) {
-    return min + ThreadLocalRandom.current().nextInt((max - min) + 1) ;
+    return min + ThreadLocalRandom.current().nextInt((max - min) + 1);
   }
 }

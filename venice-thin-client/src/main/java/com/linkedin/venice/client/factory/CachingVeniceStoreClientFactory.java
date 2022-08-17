@@ -48,8 +48,11 @@ public class CachingVeniceStoreClientFactory implements VeniceStoreClientFactory
   }
 
   @Override
-  public synchronized <K, V> AvroGenericStoreClient<K, V> getAndStartAvroGenericStoreClient(String storeName, ClientConfigUpdater configUpdater) {
-    ClientConfig updatedClientConfig = configUpdater.update(ClientConfig.cloneConfig(clientConfig).setStoreName(storeName));
+  public synchronized <K, V> AvroGenericStoreClient<K, V> getAndStartAvroGenericStoreClient(
+      String storeName,
+      ClientConfigUpdater configUpdater) {
+    ClientConfig updatedClientConfig =
+        configUpdater.update(ClientConfig.cloneConfig(clientConfig).setStoreName(storeName));
     checkDupStoreClient(storeName, updatedClientConfig);
 
     return genericStoreClientMap.computeIfAbsent(storeName, name -> {
@@ -69,15 +72,18 @@ public class CachingVeniceStoreClientFactory implements VeniceStoreClientFactory
 
   @Override
   public synchronized <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartAvroSpecificStoreClient(
-      String storeName, Class<V> specificRecordClass) {
+      String storeName,
+      Class<V> specificRecordClass) {
     return getAndStartAvroSpecificStoreClient(storeName, specificRecordClass, (clientConfig) -> clientConfig);
   }
 
   @Override
   public synchronized <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartAvroSpecificStoreClient(
-      String storeName, Class<V> specificRecordClass, ClientConfigUpdater configUpdater) {
-    ClientConfig updatedClientConfig = configUpdater.update(ClientConfig.cloneConfig(clientConfig)
-        .setStoreName(storeName).setSpecificValueClass(specificRecordClass));
+      String storeName,
+      Class<V> specificRecordClass,
+      ClientConfigUpdater configUpdater) {
+    ClientConfig updatedClientConfig = configUpdater.update(
+        ClientConfig.cloneConfig(clientConfig).setStoreName(storeName).setSpecificValueClass(specificRecordClass));
     checkDupStoreClient(storeName, updatedClientConfig);
 
     return specificStoreClientMap.computeIfAbsent(storeName, name -> {
@@ -88,8 +94,9 @@ public class CachingVeniceStoreClientFactory implements VeniceStoreClientFactory
 
   private void checkDupStoreClient(String storeName, ClientConfig clientConfig) {
     if (storeToConfigMap.containsKey(storeName) && !storeToConfigMap.get(storeName).equals(clientConfig)) {
-      throw new VeniceClientException("Duplicate store client creation. VeniceStoreClientFactory doesn't support"
-          + " to create duplicate clients that have the same store name. If it's intent, try creating multiple client factory");
+      throw new VeniceClientException(
+          "Duplicate store client creation. VeniceStoreClientFactory doesn't support"
+              + " to create duplicate clients that have the same store name. If it's intent, try creating multiple client factory");
     } else {
       storeToConfigMap.put(storeName, clientConfig);
     }
@@ -104,4 +111,3 @@ public class CachingVeniceStoreClientFactory implements VeniceStoreClientFactory
     LOGGER.info("Closed store client factory");
   }
 }
-

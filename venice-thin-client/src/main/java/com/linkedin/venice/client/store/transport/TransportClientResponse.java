@@ -1,8 +1,9 @@
 package com.linkedin.venice.client.store.transport;
 
-import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.schema.SchemaData;
 import java.util.Arrays;
+
 
 /**
  * This class is used to capture the result returned by {@link TransportClient}
@@ -44,7 +45,8 @@ public class TransportClientResponse {
     }
 
     TransportClientResponse that = (TransportClientResponse) o;
-    return schemaId == that.schemaId && compressionStrategy == that.compressionStrategy && Arrays.equals(body, that.body);
+    return schemaId == that.schemaId && compressionStrategy == that.compressionStrategy
+        && Arrays.equals(body, that.body);
   }
 
   @Override

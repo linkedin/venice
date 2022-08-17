@@ -7,13 +7,13 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
-
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class OptimizedBinaryDecoderTest {
   private static final OptimizedBinaryDecoderFactory FACTORY = OptimizedBinaryDecoderFactory.defaultFactory();
+
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testHappyPath(boolean buffered) throws IOException {
     BinaryEncoder encoder = testHappyPath(null, buffered);
@@ -32,7 +32,8 @@ public class OptimizedBinaryDecoderTest {
     float randomFloat2 = random.nextFloat();
 
     ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream(wholeArraySize);
-    BinaryEncoder encoder = AvroCompatibilityHelper.newBinaryEncoder(byteArrayOutputStream, bufferedEncoder, reusedEncoder);
+    BinaryEncoder encoder =
+        AvroCompatibilityHelper.newBinaryEncoder(byteArrayOutputStream, bufferedEncoder, reusedEncoder);
     encoder.writeFloat(randomFloat1);
     encoder.writeBytes(byteBuffer);
     encoder.writeFloat(randomFloat2);
@@ -44,23 +45,32 @@ public class OptimizedBinaryDecoderTest {
     ByteBuffer deserializedByteBuffer = decoder.readBytes(null);
     float deserializedFloat2 = decoder.readFloat();
 
-    String assertionMessagePrefix = bufferedEncoder
-        ? "Buffered encoder. "
-        : "Non-Buffered encoder. ";
-    assertionMessagePrefix += null == reusedEncoder
-        ? "First run: "
-        : "Reused encoder: ";
-    Assert.assertEquals(deserializedFloat1, randomFloat1,
+    String assertionMessagePrefix = bufferedEncoder ? "Buffered encoder. " : "Non-Buffered encoder. ";
+    assertionMessagePrefix += null == reusedEncoder ? "First run: " : "Reused encoder: ";
+    Assert.assertEquals(
+        deserializedFloat1,
+        randomFloat1,
         assertionMessagePrefix + "The deserialized float 1 does not have the expected value");
-    Assert.assertEquals(deserializedFloat2, randomFloat2,
+    Assert.assertEquals(
+        deserializedFloat2,
+        randomFloat2,
         assertionMessagePrefix + "The deserialized float 2 does not have the expected value");
-    Assert.assertEquals(deserializedByteBuffer.array(), wholeArray,
-        assertionMessagePrefix + "The deserializedByteBuffer should be backed by the same wholeArray instance as was passed to the decoder");
-    Assert.assertEquals(deserializedByteBuffer.position(), Float.BYTES + 1,
+    Assert.assertEquals(
+        deserializedByteBuffer.array(),
+        wholeArray,
+        assertionMessagePrefix
+            + "The deserializedByteBuffer should be backed by the same wholeArray instance as was passed to the decoder");
+    Assert.assertEquals(
+        deserializedByteBuffer.position(),
+        Float.BYTES + 1,
         assertionMessagePrefix + "The position of the deserializedByteBuffer should be offset");
-    Assert.assertEquals(byteBuffer.limit(), byteBufferSize,
+    Assert.assertEquals(
+        byteBuffer.limit(),
+        byteBufferSize,
         assertionMessagePrefix + "The limit of the deserializedByteBuffer should be equal byteBufferSize");
-    Assert.assertEquals(byteBuffer, deserializedByteBuffer,
+    Assert.assertEquals(
+        byteBuffer,
+        deserializedByteBuffer,
         assertionMessagePrefix + "The content of the deserialized byte buffer is not as expected");
 
     return encoder;
@@ -77,7 +87,7 @@ public class OptimizedBinaryDecoderTest {
      * proper defensive code to catch this improper usage...
      */
     OptimizedBinaryDecoder decoder = new OptimizedBinaryDecoder();
-    decoder.configure(wholeArray1, 0 , wholeArray1.length);
+    decoder.configure(wholeArray1, 0, wholeArray1.length);
     Assert.assertThrows(IllegalStateException.class, () -> decoder.readFloat());
   }
 }

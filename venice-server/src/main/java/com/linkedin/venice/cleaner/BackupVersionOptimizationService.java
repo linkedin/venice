@@ -1,5 +1,7 @@
 package com.linkedin.venice.cleaner;
 
+import static com.linkedin.venice.meta.VersionStatus.*;
+
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -19,8 +21,6 @@ import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.meta.VersionStatus.*;
-
 
 /**
  * This class is used to periodically scan inactive store versions and perform optimization if the inactive period
@@ -39,7 +39,6 @@ import static com.linkedin.venice.meta.VersionStatus.*;
  *    the past read requests.
  */
 public class BackupVersionOptimizationService extends AbstractVeniceService implements ResourceReadUsageTracker {
-
   /**
    * This object is used to track the per-resource state.
    */
@@ -81,7 +80,8 @@ public class BackupVersionOptimizationService extends AbstractVeniceService impl
 
   private final Map<String, ResourceState> resourceStateMap = new VeniceConcurrentHashMap<>();
 
-  private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("BackupVersionCleanupService"));
+  private final ScheduledExecutorService executor =
+      Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("BackupVersionCleanupService"));
 
   private boolean stop = false;
 
@@ -107,7 +107,7 @@ public class BackupVersionOptimizationService extends AbstractVeniceService impl
        * Optimize the storage engine for inactive storage partitions
        */
       final Set<String> validResourceSet = new HashSet<>();
-      for (AbstractStorageEngine engine : storageEngineRepository.getAllLocalStorageEngines()) {
+      for (AbstractStorageEngine engine: storageEngineRepository.getAllLocalStorageEngines()) {
         String resourceName = engine.getStoreName();
         validResourceSet.add(resourceName);
         String storeName = Version.parseStoreFromVersionTopic(resourceName);
@@ -123,11 +123,14 @@ public class BackupVersionOptimizationService extends AbstractVeniceService impl
           continue;
         }
         Optional<Version> versionInfo = store.getVersion(versionNumber);
-        if (! versionInfo.isPresent()) {
-          LOGGER.warn("Failed to find out the version info for store: {}, version: {} from ReadOnlyStoreRepository", storeName, versionNumber);
+        if (!versionInfo.isPresent()) {
+          LOGGER.warn(
+              "Failed to find out the version info for store: {}, version: {} from ReadOnlyStoreRepository",
+              storeName,
+              versionNumber);
           continue;
         }
-        if (! versionInfo.get().getStatus().equals(ONLINE)) {
+        if (!versionInfo.get().getStatus().equals(ONLINE)) {
           // Skip the non-online version
           continue;
         }
@@ -138,19 +141,23 @@ public class BackupVersionOptimizationService extends AbstractVeniceService impl
           final Set<Integer> partitionIdSet = engine.getPartitionIds();
           LOGGER.info("Start optimizing database for resource: {}, partition ids: {}", resourceName, partitionIdSet);
           boolean errored = false;
-          for (int partitionId : partitionIdSet) {
+          for (int partitionId: partitionIdSet) {
             try {
               engine.reopenStoragePartition(partitionId);
               stats.recordBackupVersionDatabaseOptimization();
             } catch (Exception e) {
-              LOGGER.error("Failed to optimize database for resource: " + resourceName + ", partition: " + partitionId, e);
+              LOGGER.error(
+                  "Failed to optimize database for resource: " + resourceName + ", partition: " + partitionId,
+                  e);
               errored = true;
             }
           }
           if (errored) {
             stats.recordBackupVersionDatabaseOptimizationError();
-            LOGGER.warn("Encountered issue when optimizing database for resource: {}, "
-                + "and please check the above logs to find more details, and will retry the optimization in next iteration", resourceName);
+            LOGGER.warn(
+                "Encountered issue when optimizing database for resource: {}, "
+                    + "and please check the above logs to find more details, and will retry the optimization in next iteration",
+                resourceName);
           } else {
             resourceState.recordDatabaseOptimization();
             LOGGER.info("Finished optimizing database for resource: {}", resourceName);

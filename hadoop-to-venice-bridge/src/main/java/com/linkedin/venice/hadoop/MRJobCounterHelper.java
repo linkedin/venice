@@ -26,7 +26,8 @@ public class MRJobCounterHelper {
 
   private static final String MR_JOB_STATUS = "MapReduce job status";
   private static final String REDUCER_JOB_CLOSED_COUNT = "Reducer job closed count";
-  private static final String MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT = "Mapper spray all partitions triggered count";
+  private static final String MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT =
+      "Mapper spray all partitions triggered count";
 
   private static final String COUNTER_GROUP_KAFKA_INPUT_FORMAT = "KafkaInputFormat";
   private static final String COUNTER_PUT_OR_DELETE_RECORDS = "put or delete records";
@@ -66,7 +67,6 @@ public class MRJobCounterHelper {
 
   static final GroupAndCounterNames TOTAL_PUT_OR_DELETE_COUNT_GROUP_COUNTER_NAME =
       new GroupAndCounterNames(COUNTER_GROUP_KAFKA_INPUT_FORMAT, COUNTER_PUT_OR_DELETE_RECORDS);
-
 
   private MRJobCounterHelper() {
     // Util class
@@ -198,7 +198,10 @@ public class MRJobCounterHelper {
     return reporter.getCounter(groupAndCounterNames.getGroupName(), groupAndCounterNames.getCounterName()).getCounter();
   }
 
-  private static void incrAmountWithGroupCounterName(Reporter reporter, GroupAndCounterNames groupAndCounterNames, long amount) {
+  private static void incrAmountWithGroupCounterName(
+      Reporter reporter,
+      GroupAndCounterNames groupAndCounterNames,
+      long amount) {
     if (reporter == null || amount == 0) {
       return;
     }
@@ -216,9 +219,11 @@ public class MRJobCounterHelper {
       this.groupName = groupName;
       this.counterName = counterName;
     }
+
     String getGroupName() {
       return groupName;
     }
+
     String getCounterName() {
       return counterName;
     }

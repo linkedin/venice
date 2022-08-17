@@ -54,8 +54,7 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
     throw new UnsupportedOperationException("Method not implemented!!");
   }
 
-  public byte[] get(byte[] key, boolean skipCache)
-      throws PersistenceFailureException {
+  public byte[] get(byte[] key, boolean skipCache) throws PersistenceFailureException {
     ByteArray k = new ByteArray(key);
     if (partitionDb.containsKey(k)) {
       return partitionDb.get(k).get();
@@ -75,7 +74,7 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
 
   @Override
   public void getByKeyPrefix(byte[] keyPrefix, BytesStreamingCallback callback) {
-    for (Map.Entry<ByteArray, ByteArray> entry : partitionDb.entrySet()) {
+    for (Map.Entry<ByteArray, ByteArray> entry: partitionDb.entrySet()) {
       if (keyPrefix == null || entry.getKey().startsWith(keyPrefix)) {
         callback.onRecordReceived(entry.getKey().get(), entry.getValue().get());
       }

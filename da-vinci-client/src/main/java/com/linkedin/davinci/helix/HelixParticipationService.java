@@ -1,5 +1,7 @@
 package com.linkedin.davinci.helix;
 
+import static com.linkedin.venice.ConfigKeys.*;
+
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -51,14 +53,12 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.ConfigKeys.*;
-
 
 /**
  * Venice Participation Service wrapping Helix Participant.
  */
-public class HelixParticipationService extends AbstractVeniceService implements StatusMessageHandler<KillOfflinePushMessage> {
-
+public class HelixParticipationService extends AbstractVeniceService
+    implements StatusMessageHandler<KillOfflinePushMessage> {
   private static final Logger logger = LogManager.getLogger(HelixParticipationService.class);
 
   private static final int MAX_RETRY = 30;
@@ -74,7 +74,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   private final ReadOnlyStoreRepository helixReadOnlyStoreRepository;
   private final MetricsRepository metricsRepository;
   private final VeniceIngestionBackend ingestionBackend;
-  private final CompletableFuture<SafeHelixManager> managerFuture; //complete this future when the manager is connected
+  private final CompletableFuture<SafeHelixManager> managerFuture; // complete this future when the manager is connected
   private final CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture;
 
   private ZkClient zkClient;
@@ -88,14 +88,21 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     return leaderFollowerHelixStateTransitionThreadPool;
   }
 
-  public HelixParticipationService(StoreIngestionService storeIngestionService, StorageService storageService,
-      StorageMetadataService storageMetadataService, VeniceConfigLoader veniceConfigLoader,
-      ReadOnlyStoreRepository helixReadOnlyStoreRepository, MetricsRepository metricsRepository, String zkAddress,
-      String clusterName, int port, CompletableFuture<SafeHelixManager> managerFuture) {
+  public HelixParticipationService(
+      StoreIngestionService storeIngestionService,
+      StorageService storageService,
+      StorageMetadataService storageMetadataService,
+      VeniceConfigLoader veniceConfigLoader,
+      ReadOnlyStoreRepository helixReadOnlyStoreRepository,
+      MetricsRepository metricsRepository,
+      String zkAddress,
+      String clusterName,
+      int port,
+      CompletableFuture<SafeHelixManager> managerFuture) {
     this.ingestionService = storeIngestionService;
     this.storageService = storageService;
     this.clusterName = clusterName;
-    //The format of instance name must be "$host_$port", otherwise Helix can not get these information correctly.
+    // The format of instance name must be "$host_$port", otherwise Helix can not get these information correctly.
     this.participantName = Utils.getHelixNodeIdentifier(port);
     this.zkAddress = zkAddress;
     this.veniceConfigLoader = veniceConfigLoader;
@@ -108,22 +115,39 @@ public class HelixParticipationService extends AbstractVeniceService implements 
       throw new VeniceException("Expecting " + KafkaStoreIngestionService.class.getName() + " for ingestion backend!");
     }
     if (veniceConfigLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)) {
-      this.ingestionBackend = new IsolatedIngestionBackend(veniceConfigLoader, helixReadOnlyStoreRepository, metricsRepository, storageMetadataService, (KafkaStoreIngestionService) storeIngestionService, storageService);
+      this.ingestionBackend = new IsolatedIngestionBackend(
+          veniceConfigLoader,
+          helixReadOnlyStoreRepository,
+          metricsRepository,
+          storageMetadataService,
+          (KafkaStoreIngestionService) storeIngestionService,
+          storageService);
     } else {
-      this.ingestionBackend = new DefaultIngestionBackend(storageMetadataService, (KafkaStoreIngestionService) storeIngestionService, storageService);
+      this.ingestionBackend = new DefaultIngestionBackend(
+          storageMetadataService,
+          (KafkaStoreIngestionService) storeIngestionService,
+          storageService);
     }
   }
 
-  //Set corePoolSize and maxPoolSize as the same value, but enable allowCoreThreadTimeOut. So the expected
-  //behavior is pool will create a new thread if the number of running threads is fewer than corePoolSize, otherwise
-  //add this task into queue. If a thread is idle for more than 300 seconds, pool will collect this thread.
-  private ThreadPoolExecutor initHelixStateTransitionThreadPool(int size, String threadName,
-      MetricsRepository metricsRepository, String statsName) {
-    ThreadPoolExecutor helixStateTransitionThreadPool = new ThreadPoolExecutor(size, size, 300L,
-        TimeUnit.SECONDS, new LinkedBlockingQueue<>(), new DaemonThreadFactory(threadName));
+  // Set corePoolSize and maxPoolSize as the same value, but enable allowCoreThreadTimeOut. So the expected
+  // behavior is pool will create a new thread if the number of running threads is fewer than corePoolSize, otherwise
+  // add this task into queue. If a thread is idle for more than 300 seconds, pool will collect this thread.
+  private ThreadPoolExecutor initHelixStateTransitionThreadPool(
+      int size,
+      String threadName,
+      MetricsRepository metricsRepository,
+      String statsName) {
+    ThreadPoolExecutor helixStateTransitionThreadPool = new ThreadPoolExecutor(
+        size,
+        size,
+        300L,
+        TimeUnit.SECONDS,
+        new LinkedBlockingQueue<>(),
+        new DaemonThreadFactory(threadName));
     helixStateTransitionThreadPool.allowCoreThreadTimeOut(true);
 
-    //register stats that tracks the thread pool
+    // register stats that tracks the thread pool
     new ThreadPoolStats(metricsRepository, helixStateTransitionThreadPool, statsName);
 
     return helixStateTransitionThreadPool;
@@ -136,33 +160,45 @@ public class HelixParticipationService extends AbstractVeniceService implements 
         HelixManagerFactory.getZKHelixManager(clusterName, this.participantName, InstanceType.PARTICIPANT, zkAddress));
 
     VeniceServerConfig config = veniceConfigLoader.getVeniceServerConfig();
-    leaderFollowerHelixStateTransitionThreadPool =
-        initHelixStateTransitionThreadPool(config.getMaxLeaderFollowerStateTransitionThreadNumber(),
-            "Venice-L/F-state-transition", metricsRepository, "Venice_L/F_ST_thread_pool");
+    leaderFollowerHelixStateTransitionThreadPool = initHelixStateTransitionThreadPool(
+        config.getMaxLeaderFollowerStateTransitionThreadNumber(),
+        "Venice-L/F-state-transition",
+        metricsRepository,
+        "Venice_L/F_ST_thread_pool");
 
     if (config.getLeaderFollowerThreadPoolStrategy()
         .equals(LeaderFollowerPartitionStateModelFactory.LeaderFollowerThreadPoolStrategy.DUAL_POOL_STRATEGY)) {
-      leaderFollowerParticipantModelFactory =
-          new LeaderFollowerPartitionStateModelDualPoolFactory(ingestionBackend, veniceConfigLoader,
-              leaderFollowerHelixStateTransitionThreadPool,
-              initHelixStateTransitionThreadPool(config.getMaxFutureVersionLeaderFollowerStateTransitionThreadNumber(),
-                  "venice-L/F-state-transition-future-version", metricsRepository,
-                  "Venice_L/F_ST_thread_pool_future_version"), helixReadOnlyStoreRepository,
-              partitionPushStatusAccessorFuture, instance.getNodeId());
+      leaderFollowerParticipantModelFactory = new LeaderFollowerPartitionStateModelDualPoolFactory(
+          ingestionBackend,
+          veniceConfigLoader,
+          leaderFollowerHelixStateTransitionThreadPool,
+          initHelixStateTransitionThreadPool(
+              config.getMaxFutureVersionLeaderFollowerStateTransitionThreadNumber(),
+              "venice-L/F-state-transition-future-version",
+              metricsRepository,
+              "Venice_L/F_ST_thread_pool_future_version"),
+          helixReadOnlyStoreRepository,
+          partitionPushStatusAccessorFuture,
+          instance.getNodeId());
     } else {
-      leaderFollowerParticipantModelFactory =
-          new LeaderFollowerPartitionStateModelFactory(ingestionBackend, veniceConfigLoader,
-              leaderFollowerHelixStateTransitionThreadPool, helixReadOnlyStoreRepository,
-              partitionPushStatusAccessorFuture, instance.getNodeId());
+      leaderFollowerParticipantModelFactory = new LeaderFollowerPartitionStateModelFactory(
+          ingestionBackend,
+          veniceConfigLoader,
+          leaderFollowerHelixStateTransitionThreadPool,
+          helixReadOnlyStoreRepository,
+          partitionPushStatusAccessorFuture,
+          instance.getNodeId());
     }
-    logger.info("LeaderFollower threadPool info: strategy = {}, max future state transition thread = {}",
+    logger.info(
+        "LeaderFollower threadPool info: strategy = {}, max future state transition thread = {}",
         config.getLeaderFollowerThreadPoolStrategy(),
         config.getMaxFutureVersionLeaderFollowerStateTransitionThreadNumber());
 
-    helixManager.getStateMachineEngine().registerStateModelFactory(LeaderStandbySMD.name, leaderFollowerParticipantModelFactory);
-    //TODO Now Helix instance config only support host and port. After talking to Helix team, they will add
+    helixManager.getStateMachineEngine()
+        .registerStateModelFactory(LeaderStandbySMD.name, leaderFollowerParticipantModelFactory);
+    // TODO Now Helix instance config only support host and port. After talking to Helix team, they will add
     // customize k-v data support soon. Then we don't need LiveInstanceInfoProvider here. Use the instance config
-    // is a better way because it reduce the communication times to Helix. Other wise client need to get  thsi
+    // is a better way because it reduce the communication times to Helix. Other wise client need to get thsi
     // information from ZK in the extra request and response.
     LiveInstanceInfoProvider liveInstanceInfoProvider = () -> {
       // serialize serviceMetadata to ZNRecord
@@ -175,7 +211,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
         new HelixStatusMessageChannel(helixManager, new HelixMessageChannelStats(metricsRepository, clusterName));
     messageChannel.registerHandler(KillOfflinePushMessage.class, this);
 
-    //TODO Venice Listener should not be started, until the HelixService is started.
+    // TODO Venice Listener should not be started, until the HelixService is started.
     asyncStart();
 
     // The start up process may not be finished yet, because it is continuing asynchronously.
@@ -190,7 +226,9 @@ public class HelixParticipationService extends AbstractVeniceService implements 
         helixManager.disconnect();
         logger.info("Disconnected Helix Manager.");
       } catch (Exception e) {
-        logger.error("Swallowed an exception while trying to disconnect the " + helixManager.getClass().getSimpleName(), e);
+        logger.error(
+            "Swallowed an exception while trying to disconnect the " + helixManager.getClass().getSimpleName(),
+            e);
       }
     } else {
       logger.info("Helix Manager is null.");
@@ -225,14 +263,15 @@ public class HelixParticipationService extends AbstractVeniceService implements 
       }
       // Could not get instance from helix cluster. So it's a new machine or the machine which had been removed from
       // this cluster. In order to prevent resource leaking, we need to clean up all legacy stores.
-      logger.info(instance.getNodeId() + " is a new node or had been removed from cluster: " + clusterName + " start cleaning up local storage.");
+      logger.info(
+          instance.getNodeId() + " is a new node or had been removed from cluster: " + clusterName
+              + " start cleaning up local storage.");
       storageService.cleanupAllStores(veniceConfigLoader);
       logger.info("Cleaning up complete, " + instance.getNodeId() + " can now join cluster:" + clusterName);
     } finally {
       admin.close();
     }
   }
-
 
   /**
    * check RouterServer#asyncStart() for details about asyncStart
@@ -246,14 +285,19 @@ public class HelixParticipationService extends AbstractVeniceService implements 
 
     // we use push status store for persisting incremental push statuses
     VeniceProperties veniceProperties = veniceConfigLoader.getVeniceServerConfig().getClusterProperties();
-    VeniceWriterFactory writerFactory =new VeniceWriterFactory(veniceProperties.toProperties());
+    VeniceWriterFactory writerFactory = new VeniceWriterFactory(veniceProperties.toProperties());
     PushStatusStoreWriter statusStoreWriter = new PushStatusStoreWriter(
-        writerFactory, instance.getNodeId(), veniceProperties.getInt(PUSH_STATUS_STORE_DERIVED_SCHEMA_ID, 1));
+        writerFactory,
+        instance.getNodeId(),
+        veniceProperties.getInt(PUSH_STATUS_STORE_DERIVED_SCHEMA_ID, 1));
 
     // Record replica status in Zookeeper.
     // Need to be started before connecting to ZK, otherwise some notification will not be sent by this notifier.
     PushMonitorNotifier pushMonitorNotifier = new PushMonitorNotifier(
-        new VeniceOfflinePushMonitorAccessor(clusterName, zkClient, new HelixAdapterSerializer(),
+        new VeniceOfflinePushMonitorAccessor(
+            clusterName,
+            zkClient,
+            new HelixAdapterSerializer(),
             veniceConfigLoader.getVeniceClusterConfig().getRefreshAttemptsForZkReconnect(),
             veniceConfigLoader.getVeniceClusterConfig().getRefreshIntervalForZkReconnectInMs()),
         statusStoreWriter,
@@ -266,7 +310,8 @@ public class HelixParticipationService extends AbstractVeniceService implements 
       try {
         // Check node status before joining the cluster.
         // TODO Helix team will provide a way to let us do some checking after connecting to Helix.
-        // TODO In that case, it's guaranteed that the node would not be assigned with any resource before we completed our
+        // TODO In that case, it's guaranteed that the node would not be assigned with any resource before we completed
+        // our
         // TODO checking, so we could use HelixManager to get some metadata instead of creating a new zk connection.
         checkBeforeJoinInCluster();
         helixManager.connect();
@@ -280,9 +325,10 @@ public class HelixParticipationService extends AbstractVeniceService implements 
       /**
        * The accessor can only get created successfully after helix manager is created.
        */
-      partitionPushStatusAccessor =
-          new HelixPartitionStatusAccessor(helixManager.getOriginalManager(), instance.getNodeId(),
-              veniceConfigLoader.getVeniceServerConfig().isHelixHybridStoreQuotaEnabled());
+      partitionPushStatusAccessor = new HelixPartitionStatusAccessor(
+          helixManager.getOriginalManager(),
+          instance.getNodeId(),
+          veniceConfigLoader.getVeniceServerConfig().isHelixHybridStoreQuotaEnabled());
       PartitionPushStatusNotifier partitionPushStatusNotifier =
           new PartitionPushStatusNotifier(partitionPushStatusAccessor);
       ingestionBackend.addPushStatusNotifier(partitionPushStatusNotifier);
@@ -303,9 +349,10 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   public void handleMessage(KillOfflinePushMessage message) {
     VeniceStoreVersionConfig storeConfig = veniceConfigLoader.getStoreConfig(message.getKafkaTopic());
     if (ingestionService.containsRunningConsumption(storeConfig)) {
-      //push is failed, stop consumption.
-      logger.info("Receive the message to kill consumption for topic:" + message.getKafkaTopic() + ", msgId: " + message
-          .getMessageId());
+      // push is failed, stop consumption.
+      logger.info(
+          "Receive the message to kill consumption for topic:" + message.getKafkaTopic() + ", msgId: "
+              + message.getMessageId());
       ingestionService.killConsumptionTask(storeConfig.getStoreVersionName());
       logger.info("Killed Consumption for topic:" + message.getKafkaTopic() + ", msgId: " + message.getMessageId());
     } else {

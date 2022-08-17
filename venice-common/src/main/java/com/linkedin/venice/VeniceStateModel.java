@@ -14,10 +14,9 @@ import org.apache.helix.model.StateModelDefinition;
  * Offline -> Dropped
  */
 public class VeniceStateModel {
-
   public static final String PARTITION_ONLINE_OFFLINE_STATE_MODEL = "PartitionOnlineOfflineModel";
 
-  public static final String PARTITION_LEADER_FOLLOWER_STATE_MODEL= "LeaderStandby";
+  public static final String PARTITION_LEADER_FOLLOWER_STATE_MODEL = "LeaderStandby";
 
   private static final String UPPER_BOUND_REPLICATION_FACTOR = "R";
 
@@ -43,7 +42,7 @@ public class VeniceStateModel {
      * Any -> DROPPED
      */
     builder.addState(HelixState.ONLINE.toString(), 1);
-    builder.addState(HelixState.BOOTSTRAP.toString() ,2);
+    builder.addState(HelixState.BOOTSTRAP.toString(), 2);
     builder.addState(HelixState.OFFLINE.toString(), 2);
     builder.addState(HelixDefinedState.ERROR.toString(), 3);
     builder.addState(HelixDefinedState.DROPPED.toString(), 4);

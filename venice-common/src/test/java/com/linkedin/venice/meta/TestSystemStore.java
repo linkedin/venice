@@ -1,36 +1,60 @@
 package com.linkedin.venice.meta;
 
+import static org.testng.Assert.*;
+
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import java.util.Optional;
 import org.testng.annotations.Test;
 
-import static org.testng.Assert.*;
-
 
 public class TestSystemStore {
-
   @Test
   public void testSystemStoreAccessor() {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.META_STORE;
     // Setup zk shared store
-    Store zkSharedSystemStore = new ZKStore(systemStoreType.getZkSharedStoreName(), "test_zk_shared_store_owner", 10L,
-        PersistenceType.IN_MEMORY, RoutingStrategy.HASH, ReadStrategy.FASTER_OF_TWO_ONLINE,
-        OfflinePushStrategy.WAIT_ALL_REPLICAS, -1, 10000L,
-        10000L, null, null, 3);
+    Store zkSharedSystemStore = new ZKStore(
+        systemStoreType.getZkSharedStoreName(),
+        "test_zk_shared_store_owner",
+        10L,
+        PersistenceType.IN_MEMORY,
+        RoutingStrategy.HASH,
+        ReadStrategy.FASTER_OF_TWO_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        -1,
+        10000L,
+        10000L,
+        null,
+        null,
+        3);
     zkSharedSystemStore.setLargestUsedVersionNumber(-1);
-    zkSharedSystemStore.setHybridStoreConfig(new HybridStoreConfigImpl(100, 100, 100, DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP));
+    zkSharedSystemStore.setHybridStoreConfig(
+        new HybridStoreConfigImpl(
+            100,
+            100,
+            100,
+            DataReplicationPolicy.NON_AGGREGATE,
+            BufferReplayPolicy.REWIND_FROM_EOP));
     zkSharedSystemStore.setLeaderFollowerModelEnabled(true);
     zkSharedSystemStore.setWriteComputationEnabled(true);
     zkSharedSystemStore.setPartitionCount(1);
     // Setup a regular Venice store
     String testStoreName = "test_store";
-    Store veniceStore = new ZKStore(testStoreName, "test_customer", 0L,
-        PersistenceType.ROCKS_DB, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE,
-        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 0, 1000L,
-        1000L, null, null, 1);
+    Store veniceStore = new ZKStore(
+        testStoreName,
+        "test_customer",
+        0L,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        0,
+        1000L,
+        1000L,
+        null,
+        null,
+        1);
 
     SystemStore systemStore = new SystemStore(zkSharedSystemStore, systemStoreType, veniceStore);
 

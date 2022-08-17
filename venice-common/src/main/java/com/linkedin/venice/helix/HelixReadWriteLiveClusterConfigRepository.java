@@ -11,10 +11,14 @@ import org.apache.logging.log4j.Logger;
 /**
  * This class is used to modify live cluster configs. The expected user is Venice Controller.
  */
-public class HelixReadWriteLiveClusterConfigRepository extends HelixReadOnlyLiveClusterConfigRepository implements ReadWriteLiveClusterConfigRepository {
+public class HelixReadWriteLiveClusterConfigRepository extends HelixReadOnlyLiveClusterConfigRepository
+    implements ReadWriteLiveClusterConfigRepository {
   private final Logger logger = LogManager.getLogger(HelixReadWriteLiveClusterConfigRepository.class);
 
-  public HelixReadWriteLiveClusterConfigRepository(ZkClient zkClient, HelixAdapterSerializer adapter, String clusterName) {
+  public HelixReadWriteLiveClusterConfigRepository(
+      ZkClient zkClient,
+      HelixAdapterSerializer adapter,
+      String clusterName) {
     super(zkClient, adapter, clusterName);
   }
 

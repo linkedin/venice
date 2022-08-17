@@ -1,5 +1,9 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static java.util.Collections.reverseOrder;
+import static java.util.Comparator.*;
+import static java.util.stream.Collectors.*;
+
 import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -22,10 +26,6 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static java.util.Collections.reverseOrder;
-import static java.util.Comparator.*;
-import static java.util.stream.Collectors.*;
 
 
 /**
@@ -81,7 +81,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
       return this.ingestionTask;
     }
 
-    public LeaderProducedRecordContext getLeaderProducedRecordContext() { return this.leaderProducedRecordContext; }
+    public LeaderProducedRecordContext getLeaderProducedRecordContext() {
+      return this.leaderProducedRecordContext;
+    }
 
     public Optional<CompletableFuture<Void>> getQueuedRecordPersistedFuture() {
       return queuedRecordPersistedFuture;
@@ -106,19 +108,18 @@ public class StoreBufferService extends AbstractStoreBufferService {
       if (getClass() != o.getClass())
         return false;
 
-      QueueNode node = (QueueNode)o;
-      return this.consumerRecord.topic().equals(node.consumerRecord.topic()) &&
-          this.consumerRecord.partition() == node.consumerRecord.partition();
+      QueueNode node = (QueueNode) o;
+      return this.consumerRecord.topic().equals(node.consumerRecord.topic())
+          && this.consumerRecord.partition() == node.consumerRecord.partition();
 
     }
 
     @Override
     public int getSize() {
-      //TODO:This should not be a big issue but ideally it should calculate the size from leaderProducedRecordContext if present.
-      return this.consumerRecord.serializedKeySize() +
-          this.consumerRecord.serializedValueSize() +
-          this.consumerRecord.topic().length() +
-          QUEUE_NODE_OVERHEAD_IN_BYTE;
+      // TODO:This should not be a big issue but ideally it should calculate the size from leaderProducedRecordContext
+      // if present.
+      return this.consumerRecord.serializedKeySize() + this.consumerRecord.serializedValueSize()
+          + this.consumerRecord.topic().length() + QUEUE_NODE_OVERHEAD_IN_BYTE;
     }
 
     @Override
@@ -137,6 +138,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     private final AtomicBoolean isRunning = new AtomicBoolean(true);
     private final int drainerIndex;
     private final ConcurrentMap<TopicPartition, Long> topicToTimeSpent = new ConcurrentHashMap<>();
+
     public StoreBufferDrainer(BlockingQueue<QueueNode> blockingQueue, int drainerIndex) {
       this.blockingQueue = blockingQueue;
       this.drainerIndex = drainerIndex;
@@ -167,7 +169,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
           ingestionTask.processConsumerRecord(consumerRecord, leaderProducedRecordContext, node.getKafkaUrl());
 
-          //complete the leaderProducedRecordContext future as processing for this leaderProducedRecordContext is done here.
+          // complete the leaderProducedRecordContext future as processing for this leaderProducedRecordContext is done
+          // here.
           if (leaderProducedRecordContext != null) {
             leaderProducedRecordContext.completePersistedToDBFuture(null);
           }
@@ -180,7 +183,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
           }
 
           TopicPartition topicPartition = new TopicPartition(consumerRecord.topic(), consumerRecord.partition());
-          topicToTimeSpent.compute(topicPartition, (K,V) ->  (V == null ? 0 : V) + System.currentTimeMillis() - startTime );
+          topicToTimeSpent
+              .compute(topicPartition, (K, V) -> (V == null ? 0 : V) + System.currentTimeMillis() - startTime);
         } catch (Throwable e) {
           if (e instanceof InterruptedException) {
             LOGGER.error("Drainer " + drainerIndex + " received InterruptedException, will exit");
@@ -191,8 +195,10 @@ public class StoreBufferService extends AbstractStoreBufferService {
             String consumerRecordString = consumerRecord.toString();
             if (consumerRecordString.length() > 1024) {
               // Careful not to flood the logs with too much content...
-              LOGGER.error("Got exception during processing consumer record (truncated at 1024 characters) : "
-                  + consumerRecordString.substring(0, 1024), e);
+              LOGGER.error(
+                  "Got exception during processing consumer record (truncated at 1024 characters) : "
+                      + consumerRecordString.substring(0, 1024),
+                  e);
             } else {
               LOGGER.error("Got exception during processing consumer record: " + consumerRecord, e);
             }
@@ -278,7 +284,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
     blockingQueueArr.get(drainerIndex)
         .put(new QueueNode(consumerRecord, ingestionTask, leaderProducedRecordContext, recordFuture, kafkaUrl));
     // Setup the last queued record's future
-    Optional<PartitionConsumptionState> partitionConsumptionState = ingestionTask.getPartitionConsumptionState(consumerRecord.partition());
+    Optional<PartitionConsumptionState> partitionConsumptionState =
+        ingestionTask.getPartitionConsumptionState(consumerRecord.partition());
     if (partitionConsumptionState.isPresent() && recordFuture.isPresent()) {
       partitionConsumptionState.get().setLastQueuedRecordPersistedFuture(recordFuture.get());
     }
@@ -298,14 +305,17 @@ public class StoreBufferService extends AbstractStoreBufferService {
     internalDrainBufferedRecordsFromTopicPartition(topic, partition, retryNum, sleepIntervalInMS);
   }
 
-  protected void internalDrainBufferedRecordsFromTopicPartition(String topic, int partition,int retryNum,
+  protected void internalDrainBufferedRecordsFromTopicPartition(
+      String topic,
+      int partition,
+      int retryNum,
       int sleepIntervalInMS) throws InterruptedException {
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope>
-        fakeRecord = new ConsumerRecord<>(topic, partition, -1, null, null);
+    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> fakeRecord = new ConsumerRecord<>(topic, partition, -1, null, null);
     int workerIndex = getDrainerIndexForConsumerRecord(fakeRecord, partition);
     BlockingQueue<QueueNode> blockingQueue = blockingQueueArr.get(workerIndex);
     if (!drainerList.get(workerIndex).isRunning.get()) {
-      throw new VeniceException("Drainer thread " + workerIndex + " has stopped running, cannot drain the topic " + topic);
+      throw new VeniceException(
+          "Drainer thread " + workerIndex + " has stopped running, cannot drain the topic " + topic);
     }
 
     QueueNode fakeNode = new QueueNode(fakeRecord, null, null, Optional.empty(), "dummyKafkaUrl");
@@ -313,14 +323,15 @@ public class StoreBufferService extends AbstractStoreBufferService {
     int cur = 0;
     while (cur++ < retryNum) {
       if (!blockingQueue.contains(fakeNode)) {
-        LOGGER.info("The blocking queue of store writer thread: " + workerIndex + " doesn't contain any record for topic: "
-            + topic + " partition: " + partition);
+        LOGGER.info(
+            "The blocking queue of store writer thread: " + workerIndex + " doesn't contain any record for topic: "
+                + topic + " partition: " + partition);
         return;
       }
       Thread.sleep(sleepIntervalInMS);
     }
-    String errorMessage = "There are still some records left in the blocking queue of store writer thread: " +
-        workerIndex + " for topic: " + topic + " partition after retry for " + retryNum + " times";
+    String errorMessage = "There are still some records left in the blocking queue of store writer thread: "
+        + workerIndex + " for topic: " + topic + " partition after retry for " + retryNum + " times";
     LOGGER.error(errorMessage);
     throw new VeniceException(errorMessage);
   }
@@ -362,7 +373,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   @Override
   public long getTotalMemoryUsage() {
     long totalUsage = 0;
-    for (MemoryBoundBlockingQueue<QueueNode> queue : blockingQueueArr) {
+    for (MemoryBoundBlockingQueue<QueueNode> queue: blockingQueueArr) {
       totalUsage += queue.getMemoryUsage();
     }
     return totalUsage;
@@ -371,7 +382,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   @Override
   public long getTotalRemainingMemory() {
     long totalRemaining = 0;
-    for (MemoryBoundBlockingQueue<QueueNode> queue : blockingQueueArr) {
+    for (MemoryBoundBlockingQueue<QueueNode> queue: blockingQueueArr) {
       totalRemaining += queue.remainingMemoryCapacityInByte();
     }
     return totalRemaining;
@@ -382,7 +393,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     long maxUsage = 0;
     boolean slowDrainerExists = false;
 
-    for (MemoryBoundBlockingQueue<QueueNode> queue : blockingQueueArr) {
+    for (MemoryBoundBlockingQueue<QueueNode> queue: blockingQueueArr) {
       maxUsage = Math.max(maxUsage, queue.getMemoryUsage());
       if (queue.getMemoryUsage() > 0.8 * bufferCapacityPerDrainer) {
         slowDrainerExists = true;
@@ -402,9 +413,13 @@ public class StoreBufferService extends AbstractStoreBufferService {
             .collect(toList());
 
         int finalIndex = index;
-        slowestEntries.forEach(entry -> LOGGER.info(
-            "In drainer number " + finalIndex + ", time spent on topic " + entry.getKey().topic() + ", partition " + entry.getKey().partition() + " : " + entry.getValue() + " ms"));
-        LOGGER.info("Drainer number " + index + " hosting " + drainer.topicToTimeSpent.size() + " partitions, has memory usage of " + queue.getMemoryUsage());
+        slowestEntries.forEach(
+            entry -> LOGGER.info(
+                "In drainer number " + finalIndex + ", time spent on topic " + entry.getKey().topic() + ", partition "
+                    + entry.getKey().partition() + " : " + entry.getValue() + " ms"));
+        LOGGER.info(
+            "Drainer number " + index + " hosting " + drainer.topicToTimeSpent.size()
+                + " partitions, has memory usage of " + queue.getMemoryUsage());
       }
       drainer.topicToTimeSpent.clear();
     }
@@ -420,7 +435,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   @Override
   public long getMinMemoryUsagePerDrainer() {
     long minUsage = Long.MAX_VALUE;
-    for (MemoryBoundBlockingQueue<QueueNode> queue : blockingQueueArr) {
+    for (MemoryBoundBlockingQueue<QueueNode> queue: blockingQueueArr) {
       minUsage = Math.min(minUsage, queue.getMemoryUsage());
     }
     return minUsage;

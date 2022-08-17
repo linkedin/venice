@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -8,9 +11,6 @@ import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
 import spark.Request;
 import spark.Route;
-
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
 public class RoutersClusterConfigRoutes extends AbstractRoute {
@@ -30,7 +30,11 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
         String clusterName = request.queryParams(CLUSTER);
         veniceResponse.setCluster(clusterName);
         boolean status = Utils.parseBooleanFromString(request.queryParams(STATUS), "enableThrottling");
-        admin.updateRoutersClusterConfig(clusterName, Optional.of(status), Optional.empty(), Optional.empty(),
+        admin.updateRoutersClusterConfig(
+            clusterName,
+            Optional.of(status),
+            Optional.empty(),
+            Optional.empty(),
             Optional.empty());
       }
     };
@@ -48,7 +52,11 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
         String clusterName = request.queryParams(CLUSTER);
         veniceResponse.setCluster(clusterName);
         boolean status = Utils.parseBooleanFromString(request.queryParams(STATUS), "enableMaxCapacityProtection");
-        admin.updateRoutersClusterConfig(clusterName, Optional.empty(), Optional.empty(), Optional.of(status),
+        admin.updateRoutersClusterConfig(
+            clusterName,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of(status),
             Optional.empty());
       }
     };
@@ -68,7 +76,11 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
         boolean status = Utils.parseBooleanFromString(request.queryParams(STATUS), "enableQuotaRebalance");
         int expectedRouterCount =
             Utils.parseIntFromString(request.queryParams(EXPECTED_ROUTER_COUNT), "expectedRouterCount");
-        admin.updateRoutersClusterConfig(clusterName, Optional.empty(), Optional.of(status), Optional.empty(),
+        admin.updateRoutersClusterConfig(
+            clusterName,
+            Optional.empty(),
+            Optional.of(status),
+            Optional.empty(),
             Optional.of(expectedRouterCount));
       }
     };

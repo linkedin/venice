@@ -1,5 +1,7 @@
 package com.linkedin.venice.stats;
 
+import static org.apache.zookeeper.Watcher.Event.*;
+
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
@@ -9,8 +11,6 @@ import io.tehuti.metrics.stats.Min;
 import org.apache.helix.zookeeper.zkclient.IZkStateListener;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static org.apache.zookeeper.Watcher.Event.*;
 
 
 /**
@@ -26,7 +26,7 @@ public class ZkClientStatusStats extends AbstractVeniceStats implements IZkState
   private final Sensor zkClientDisconnectedSensor, zkClientExpiredSensor, zkClientSyncConnectedSensor,
       zkClientNewSessionSensor, zkClientSessionEstablishmentErrorSensor, zkClientReconnectionLatencySensor;
 
-  //since ZKClient establish the connection during CTOR, it's likely to miss the first state update
+  // since ZKClient establish the connection during CTOR, it's likely to miss the first state update
   private KeeperState clientState = KeeperState.Unknown;
   private long disconnectionTime;
 
@@ -39,7 +39,8 @@ public class ZkClientStatusStats extends AbstractVeniceStats implements IZkState
     zkClientSyncConnectedSensor = registerSensor("zk_client_SyncConnected", new Count());
     zkClientNewSessionSensor = registerSensor("zk_client_NewSession", new Count());
     zkClientSessionEstablishmentErrorSensor = registerSensor("zk_client_SessionEstablishmentError", new Count());
-    zkClientReconnectionLatencySensor = registerSensor("zk_client_reconnection_latency", new Avg(), new Min(), new Max());
+    zkClientReconnectionLatencySensor =
+        registerSensor("zk_client_reconnection_latency", new Avg(), new Min(), new Max());
     registerSensor("zk_client_status", new Gauge(() -> clientState.getIntValue()));
   }
 

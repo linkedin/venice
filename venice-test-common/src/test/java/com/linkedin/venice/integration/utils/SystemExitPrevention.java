@@ -3,6 +3,7 @@ package com.linkedin.venice.integration.utils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+
 public class SystemExitPrevention {
   @Test
   public void testSystemExitPrevention() {

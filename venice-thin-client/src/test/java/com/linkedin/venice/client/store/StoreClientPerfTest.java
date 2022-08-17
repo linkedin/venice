@@ -70,21 +70,27 @@ public class StoreClientPerfTest {
   private void setupSchemaAndRequest(int valueSchemaId, String valueSchemaStr) throws IOException {
     routerServer.clearResponseMapping();
     // Push key schema: string
-    FullHttpResponse schemaResponse = StoreClientTestUtils.constructHttpSchemaResponse(storeName, 1, defaultKeySchemaStr);
+    FullHttpResponse schemaResponse =
+        StoreClientTestUtils.constructHttpSchemaResponse(storeName, 1, defaultKeySchemaStr);
     String keySchemaPath = "/" + RouterBackedSchemaReader.TYPE_KEY_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(keySchemaPath, schemaResponse);
-    String clusterDiscoveryPath = "/"+ D2ServiceDiscovery.TYPE_D2_SERVICE_DISCOVERY+"/"+storeName;
+    String clusterDiscoveryPath = "/" + D2ServiceDiscovery.TYPE_D2_SERVICE_DISCOVERY + "/" + storeName;
 
-    routerServer.addResponseForUri(clusterDiscoveryPath, StoreClientTestUtils.constructHttpClusterDiscoveryResponse(storeName, "test_cluster", D2TestUtils.DEFAULT_TEST_SERVICE_NAME));
+    routerServer.addResponseForUri(
+        clusterDiscoveryPath,
+        StoreClientTestUtils
+            .constructHttpClusterDiscoveryResponse(storeName, "test_cluster", D2TestUtils.DEFAULT_TEST_SERVICE_NAME));
 
     Map<Integer, String> valueSchemaEntries = new HashMap<>();
     valueSchemaEntries.put(valueSchemaId, valueSchemaStr);
 
     // Push value schema
-    FullHttpResponse valueSchemaResponse = StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId, valueSchemaStr);
+    FullHttpResponse valueSchemaResponse =
+        StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId, valueSchemaStr);
     String valueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/" + valueSchemaId;
     routerServer.addResponseForUri(valueSchemaPath, valueSchemaResponse);
-    FullHttpResponse multiValueSchemaResponse = StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
+    FullHttpResponse multiValueSchemaResponse =
+        StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
     String multiValueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(multiValueSchemaPath, multiValueSchemaResponse);
   }
@@ -94,14 +100,13 @@ public class StoreClientPerfTest {
    */
   @Test(enabled = false)
   public void clientStressTest() throws InterruptedException, ExecutionException, IOException {
-    ClientConfig baseClientConfig = ClientConfig
-        .defaultGenericClientConfig(storeName)
+    ClientConfig baseClientConfig = ClientConfig.defaultGenericClientConfig(storeName)
         .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
         .setD2Client(d2Client);
 
     // Test variables
-    int[] concurrentCallsPerBatchArray = new int[]{1, 2, 10};
-    boolean[] yesAndNo = new boolean[]{true, false};
+    int[] concurrentCallsPerBatchArray = new int[] { 1, 2, 10 };
+    boolean[] yesAndNo = new boolean[] { true, false };
 
     int totalTests = yesAndNo.length * 2 * concurrentCallsPerBatchArray.length;
     List<ResultsContainer> resultsContainers = new ArrayList<>();
@@ -109,8 +114,8 @@ public class StoreClientPerfTest {
     boolean warmedUp = false;
 
     for (boolean compute: yesAndNo) {
-      for (boolean fastAvro : yesAndNo) {
-        for (int concurrentCallsPerBatch : concurrentCallsPerBatchArray) {
+      for (boolean fastAvro: yesAndNo) {
+        for (int concurrentCallsPerBatch: concurrentCallsPerBatchArray) {
           MetricsRepository metricsRepository = new MetricsRepository();
           ClientConfig newClientConfig = ClientConfig.cloneConfig(baseClientConfig)
               .setUseFastAvro(fastAvro)
@@ -131,11 +136,10 @@ public class StoreClientPerfTest {
           resultsContainers.add(clientStressTest(newClientConfig, concurrentCallsPerBatch, compute));
           testNumber++;
           LOGGER.info("\n\n");
-          LOGGER.info("Finished "
-              + (compute ? "compute" : "batch get") + " requests"
-              + " with" + (fastAvro ? "" : "out") + " fast-avro"
-              + " at " + concurrentCallsPerBatch + " concurrentCallsPerBatch."
-              + " All results so far:\n\n");
+          LOGGER.info(
+              "Finished " + (compute ? "compute" : "batch get") + " requests" + " with" + (fastAvro ? "" : "out")
+                  + " fast-avro" + " at " + concurrentCallsPerBatch + " concurrentCallsPerBatch."
+                  + " All results so far:\n\n");
           printCSV(resultsContainers);
         }
       }
@@ -196,8 +200,12 @@ public class StoreClientPerfTest {
   }
 
   private static class TestComputeRequestBuilder extends AvroComputeRequestBuilderV3<String> {
-    public TestComputeRequestBuilder(Schema latestValueSchema, InternalAvroStoreClient storeClient,
-        Optional<ClientStats> stats, Optional<ClientStats> streamingStats, long preRequestTimeInNS) {
+    public TestComputeRequestBuilder(
+        Schema latestValueSchema,
+        InternalAvroStoreClient storeClient,
+        Optional<ClientStats> stats,
+        Optional<ClientStats> streamingStats,
+        long preRequestTimeInNS) {
       super(latestValueSchema, storeClient, stats, streamingStats);
     }
 
@@ -206,8 +214,12 @@ public class StoreClientPerfTest {
     }
   }
 
-  private ResultsContainer clientStressTest(ClientConfig clientConfig, int numberOfConcurrentCallsPerBatch, boolean compute) throws IOException, ExecutionException, InterruptedException {
-    try (AvroGenericStoreClient<String, GenericRecord> client = ClientFactory.getAndStartGenericAvroClient(clientConfig)) {
+  private ResultsContainer clientStressTest(
+      ClientConfig clientConfig,
+      int numberOfConcurrentCallsPerBatch,
+      boolean compute) throws IOException, ExecutionException, InterruptedException {
+    try (AvroGenericStoreClient<String, GenericRecord> client =
+        ClientFactory.getAndStartGenericAvroClient(clientConfig)) {
       MetricsRepository metricsRepository = clientConfig.getMetricsRepository();
 
       int valueSchemaId = 1;
@@ -218,7 +230,8 @@ public class StoreClientPerfTest {
       setupSchemaAndRequest(valueSchemaId, valueSchemaStr);
       // Construct response
 
-      RecordSerializer<Object> valueSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(valueSchemaStr));
+      RecordSerializer<Object> valueSerializer =
+          SerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(valueSchemaStr));
       List<MultiGetResponseRecordV1> records = new ArrayList<>();
 
       TestComputeRequestBuilder testComputeRequestBuilder = new TestComputeRequestBuilder(
@@ -227,14 +240,15 @@ public class StoreClientPerfTest {
           Optional.empty(),
           Optional.empty(),
           0);
-      Collection<String> fieldNames = valueSchema.getFields().stream()
-          .map(field -> field.name())
-          .collect(Collectors.toList());
+      Collection<String> fieldNames =
+          valueSchema.getFields().stream().map(field -> field.name()).collect(Collectors.toList());
       testComputeRequestBuilder.project(fieldNames);
       Pair<Schema, String> computeResultSchemaPair = testComputeRequestBuilder.getResultSchema();
       Schema computeResultSchema = computeResultSchemaPair.getFirst();
-      RecordSerializer<Object> computeResultSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(computeResultSchema);
-      RecordDeserializer<Object> computeResultDeserializer = SerializerDeserializerFactory.getAvroGenericDeserializer(computeResultSchema);
+      RecordSerializer<Object> computeResultSerializer =
+          SerializerDeserializerFactory.getAvroGenericSerializer(computeResultSchema);
+      RecordDeserializer<Object> computeResultDeserializer =
+          SerializerDeserializerFactory.getAvroGenericDeserializer(computeResultSchema);
       List<ComputeResponseRecordV1> computeRecords = new ArrayList<>();
       LOGGER.debug("computeResultSchema : \n" + computeResultSchema.toString(true));
 
@@ -242,38 +256,44 @@ public class StoreClientPerfTest {
         MultiGetResponseRecordV1 dataRecord = new MultiGetResponseRecordV1();
         dataRecord.keyIndex = k;
         dataRecord.schemaId = valueSchemaId;
-        dataRecord.value = ByteBuffer.wrap(valueSerializer.serialize(TestPushUtils.getRecordWithFloatArray(valueSchema, k, valueSizeInBytes)));
+        dataRecord.value = ByteBuffer
+            .wrap(valueSerializer.serialize(TestPushUtils.getRecordWithFloatArray(valueSchema, k, valueSizeInBytes)));
         records.add(dataRecord);
 
         ComputeResponseRecordV1 computeRecord = new ComputeResponseRecordV1();
         computeRecord.keyIndex = k;
-        GenericRecord computeResultRecord = TestPushUtils.getRecordWithFloatArray(computeResultSchema, k, valueSizeInBytes);
+        GenericRecord computeResultRecord =
+            TestPushUtils.getRecordWithFloatArray(computeResultSchema, k, valueSizeInBytes);
         computeResultRecord.put(VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME, new HashMap<String, String>());
         if (k == 0) {
-           LOGGER.debug("computeResultRecord: " + computeResultRecord.toString());
+          LOGGER.debug("computeResultRecord: " + computeResultRecord.toString());
         }
         computeRecord.value = ByteBuffer.wrap(computeResultSerializer.serialize(computeResultRecord));
         computeRecords.add(computeRecord);
 
         // Just to see if Avro will choke on it...
-        GenericRecord deserializedComputeResultRecord = (GenericRecord) computeResultDeserializer.deserialize(computeRecord.value);
+        GenericRecord deserializedComputeResultRecord =
+            (GenericRecord) computeResultDeserializer.deserialize(computeRecord.value);
         Assert.assertEquals(deserializedComputeResultRecord, computeResultRecord);
 
         keys.add("key" + k);
       }
 
       // Serialize MultiGetResponse
-      RecordSerializer<MultiGetResponseRecordV1> responseSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
+      RecordSerializer<MultiGetResponseRecordV1> responseSerializer =
+          SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
       byte[] responseBytes = responseSerializer.serializeObjects(records);
       int responseSchemaId = 1;
       FullHttpResponse httpResponse = StoreClientTestUtils.constructStoreResponse(responseSchemaId, responseBytes);
       routerServer.addResponseForUri("/" + AbstractAvroStoreClient.TYPE_STORAGE + "/" + storeName, httpResponse);
 
       // Serialize ComputeResponse
-      RecordSerializer<ComputeResponseRecordV1> computeSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.SCHEMA$);
+      RecordSerializer<ComputeResponseRecordV1> computeSerializer =
+          SerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.SCHEMA$);
       byte[] computeResponseBytes = computeSerializer.serializeObjects(computeRecords);
-      FullHttpResponse computeHttpResponse = StoreClientTestUtils.constructStoreResponse(responseSchemaId, computeResponseBytes);
-      routerServer.addResponseForUri("/" + AbstractAvroStoreClient.TYPE_COMPUTE+ "/" + storeName, computeHttpResponse);
+      FullHttpResponse computeHttpResponse =
+          StoreClientTestUtils.constructStoreResponse(responseSchemaId, computeResponseBytes);
+      routerServer.addResponseForUri("/" + AbstractAvroStoreClient.TYPE_COMPUTE + "/" + storeName, computeHttpResponse);
 
       // Batch-get
 
@@ -337,25 +357,41 @@ public class StoreClientPerfTest {
         }
 
         Metric requestSerializationTimeMetric = metrics.get(metricPrefix + "request_serialization_time.Avg");
-        Metric requestSubmissionToResponseHandlingTimeMetric = metrics.get(metricPrefix + "request_submission_to_response_handling_time.Avg");
+        Metric requestSubmissionToResponseHandlingTimeMetric =
+            metrics.get(metricPrefix + "request_submission_to_response_handling_time.Avg");
         Metric responseDeserializationTimeMetric = metrics.get(metricPrefix + "response_deserialization_time.Avg");
-        Metric responseEnvelopeDeserializationTimeMetric = metrics.get(metricPrefix + "response_envelope_deserialization_time.Avg");
-        Metric responseRecordsDeserializationTimeMetric = metrics.get(metricPrefix + "response_records_deserialization_time.Avg");
-        Metric responseRecordsDeserializationSubmissionToStartTime = metrics.get(metricPrefix + "response_records_deserialization_submission_to_start_time.Avg");
+        Metric responseEnvelopeDeserializationTimeMetric =
+            metrics.get(metricPrefix + "response_envelope_deserialization_time.Avg");
+        Metric responseRecordsDeserializationTimeMetric =
+            metrics.get(metricPrefix + "response_records_deserialization_time.Avg");
+        Metric responseRecordsDeserializationSubmissionToStartTime =
+            metrics.get(metricPrefix + "response_records_deserialization_submission_to_start_time.Avg");
 
-        Metric requestSerializationTimeMetric50 = metrics.get(metricPrefix + "request_serialization_time.50thPercentile");
-        Metric requestSubmissionToResponseHandlingTimeMetric50 = metrics.get(metricPrefix + "request_submission_to_response_handling_time.50thPercentile");
-        Metric responseDeserializationTimeMetric50 = metrics.get(metricPrefix + "response_deserialization_time.50thPercentile");
-        Metric responseEnvelopeDeserializationTimeMetric50 = metrics.get(metricPrefix + "response_envelope_deserialization_time.50thPercentile");
-        Metric responseRecordsDeserializationTimeMetric50 = metrics.get(metricPrefix + "response_records_deserialization_time.50thPercentile");
-        Metric responseRecordsDeserializationSubmissionToStartTime50 = metrics.get(metricPrefix + "response_records_deserialization_submission_to_start_time.50thPercentile");
+        Metric requestSerializationTimeMetric50 =
+            metrics.get(metricPrefix + "request_serialization_time.50thPercentile");
+        Metric requestSubmissionToResponseHandlingTimeMetric50 =
+            metrics.get(metricPrefix + "request_submission_to_response_handling_time.50thPercentile");
+        Metric responseDeserializationTimeMetric50 =
+            metrics.get(metricPrefix + "response_deserialization_time.50thPercentile");
+        Metric responseEnvelopeDeserializationTimeMetric50 =
+            metrics.get(metricPrefix + "response_envelope_deserialization_time.50thPercentile");
+        Metric responseRecordsDeserializationTimeMetric50 =
+            metrics.get(metricPrefix + "response_records_deserialization_time.50thPercentile");
+        Metric responseRecordsDeserializationSubmissionToStartTime50 =
+            metrics.get(metricPrefix + "response_records_deserialization_submission_to_start_time.50thPercentile");
 
-        Metric requestSerializationTimeMetric99 = metrics.get(metricPrefix + "request_serialization_time.99thPercentile");
-        Metric requestSubmissionToResponseHandlingTimeMetric99 = metrics.get(metricPrefix + "request_submission_to_response_handling_time.99thPercentile");
-        Metric responseDeserializationTimeMetric99 = metrics.get(metricPrefix + "response_deserialization_time.99thPercentile");
-        Metric responseEnvelopeDeserializationTimeMetric99 = metrics.get(metricPrefix + "response_envelope_deserialization_time.99thPercentile");
-        Metric responseRecordsDeserializationTimeMetric99 = metrics.get(metricPrefix + "response_records_deserialization_time.99thPercentile");
-        Metric responseRecordsDeserializationSubmissionToStartTime99 = metrics.get(metricPrefix + "response_records_deserialization_submission_to_start_time.99thPercentile");
+        Metric requestSerializationTimeMetric99 =
+            metrics.get(metricPrefix + "request_serialization_time.99thPercentile");
+        Metric requestSubmissionToResponseHandlingTimeMetric99 =
+            metrics.get(metricPrefix + "request_submission_to_response_handling_time.99thPercentile");
+        Metric responseDeserializationTimeMetric99 =
+            metrics.get(metricPrefix + "response_deserialization_time.99thPercentile");
+        Metric responseEnvelopeDeserializationTimeMetric99 =
+            metrics.get(metricPrefix + "response_envelope_deserialization_time.99thPercentile");
+        Metric responseRecordsDeserializationTimeMetric99 =
+            metrics.get(metricPrefix + "response_records_deserialization_time.99thPercentile");
+        Metric responseRecordsDeserializationSubmissionToStartTime99 =
+            metrics.get(metricPrefix + "response_records_deserialization_submission_to_start_time.99thPercentile");
 
         Metric latencyMetricAvg = metrics.get(metricPrefix + "healthy_request_latency.Avg");
         Metric latencyMetric50 = metrics.get(metricPrefix + "healthy_request_latency.50thPercentile");
@@ -366,40 +402,42 @@ public class StoreClientPerfTest {
         Metric latencyMetric999 = metrics.get(metricPrefix + "healthy_request_latency.99_9thPercentile");
         DecimalFormat decimalFormat = new DecimalFormat("0.0");
 
-        LOGGER.info("Throughput: " + r.put((decimalFormat.format(numberOfCalls / (totalQueryTime / 1000.0)))) + " queries/sec");
+        LOGGER.info(
+            "Throughput: " + r.put((decimalFormat.format(numberOfCalls / (totalQueryTime / 1000.0)))) + " queries/sec");
         LOGGER.info("");
-        LOGGER.info("Request serialization time                       (Avg, p50, p99) : " +
-            r.round(requestSerializationTimeMetric) + " ms, \t" +
-            r.round(requestSerializationTimeMetric50) + " ms, \t" +
-            r.round(requestSerializationTimeMetric99) + " ms.");
-        LOGGER.info("Request submission to response time              (Avg, p50, p99) : " +
-            r.round(requestSubmissionToResponseHandlingTimeMetric) + " ms, \t" +
-            r.round(requestSubmissionToResponseHandlingTimeMetric50) + " ms, \t" +
-            r.round(requestSubmissionToResponseHandlingTimeMetric99) + " ms.");
-        LOGGER.info("Response deserialization time                    (Avg, p50, p99) : " +
-            r.round(responseDeserializationTimeMetric) + " ms, \t" +
-            r.round(responseDeserializationTimeMetric50) + " ms, \t" +
-            r.round(responseDeserializationTimeMetric99) + " ms.");
-        LOGGER.info("Response envelope deserialization time           (Avg, p50, p99) : " +
-            r.round(responseEnvelopeDeserializationTimeMetric) + " ms, \t" +
-            r.round(responseEnvelopeDeserializationTimeMetric50) + " ms, \t" +
-            r.round(responseEnvelopeDeserializationTimeMetric99) + " ms.");
-        LOGGER.info("Response records deserialization time            (Avg, p50, p99) : " +
-            r.round(responseRecordsDeserializationTimeMetric) + " ms, \t" +
-            r.round(responseRecordsDeserializationTimeMetric50) + " ms, \t" +
-            r.round(responseRecordsDeserializationTimeMetric99) + " ms.");
-        LOGGER.info("Response records deserialization submission time (Avg, p50, p99) : " +
-            r.round(responseRecordsDeserializationSubmissionToStartTime) + " ms, \t" +
-            r.round(responseRecordsDeserializationSubmissionToStartTime50) + " ms, \t" +
-            r.round(responseRecordsDeserializationSubmissionToStartTime99) + " ms.");
-        LOGGER.info("Latency                    (Avg, p50, p77, p90, p95, p99, p99.9) : " +
-            r.round(latencyMetricAvg) + " ms, \t" +
-            r.round(latencyMetric50) + " ms, \t" +
-            r.round(latencyMetric77) + " ms, \t" +
-            r.round(latencyMetric90) + " ms, \t" +
-            r.round(latencyMetric95) + " ms, \t" +
-            r.round(latencyMetric99) + " ms, \t" +
-            r.round(latencyMetric999) + " ms.");
+        LOGGER.info(
+            "Request serialization time                       (Avg, p50, p99) : "
+                + r.round(requestSerializationTimeMetric) + " ms, \t" + r.round(requestSerializationTimeMetric50)
+                + " ms, \t" + r.round(requestSerializationTimeMetric99) + " ms.");
+        LOGGER.info(
+            "Request submission to response time              (Avg, p50, p99) : "
+                + r.round(requestSubmissionToResponseHandlingTimeMetric) + " ms, \t"
+                + r.round(requestSubmissionToResponseHandlingTimeMetric50) + " ms, \t"
+                + r.round(requestSubmissionToResponseHandlingTimeMetric99) + " ms.");
+        LOGGER.info(
+            "Response deserialization time                    (Avg, p50, p99) : "
+                + r.round(responseDeserializationTimeMetric) + " ms, \t" + r.round(responseDeserializationTimeMetric50)
+                + " ms, \t" + r.round(responseDeserializationTimeMetric99) + " ms.");
+        LOGGER.info(
+            "Response envelope deserialization time           (Avg, p50, p99) : "
+                + r.round(responseEnvelopeDeserializationTimeMetric) + " ms, \t"
+                + r.round(responseEnvelopeDeserializationTimeMetric50) + " ms, \t"
+                + r.round(responseEnvelopeDeserializationTimeMetric99) + " ms.");
+        LOGGER.info(
+            "Response records deserialization time            (Avg, p50, p99) : "
+                + r.round(responseRecordsDeserializationTimeMetric) + " ms, \t"
+                + r.round(responseRecordsDeserializationTimeMetric50) + " ms, \t"
+                + r.round(responseRecordsDeserializationTimeMetric99) + " ms.");
+        LOGGER.info(
+            "Response records deserialization submission time (Avg, p50, p99) : "
+                + r.round(responseRecordsDeserializationSubmissionToStartTime) + " ms, \t"
+                + r.round(responseRecordsDeserializationSubmissionToStartTime50) + " ms, \t"
+                + r.round(responseRecordsDeserializationSubmissionToStartTime99) + " ms.");
+        LOGGER.info(
+            "Latency                    (Avg, p50, p77, p90, p95, p99, p99.9) : " + r.round(latencyMetricAvg)
+                + " ms, \t" + r.round(latencyMetric50) + " ms, \t" + r.round(latencyMetric77) + " ms, \t"
+                + r.round(latencyMetric90) + " ms, \t" + r.round(latencyMetric95) + " ms, \t" + r.round(latencyMetric99)
+                + " ms, \t" + r.round(latencyMetric999) + " ms.");
         LOGGER.info("");
 
         return r;

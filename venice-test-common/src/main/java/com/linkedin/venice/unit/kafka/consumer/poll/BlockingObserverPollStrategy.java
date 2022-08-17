@@ -1,11 +1,10 @@
 package com.linkedin.venice.unit.kafka.consumer.poll;
 
-import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.Pair;
+import java.util.Map;
 import java.util.function.Consumer;
 import org.apache.kafka.common.TopicPartition;
 
-import java.util.Map;
 
 /**
  * This {@link PollStrategy} delegates polling to another implementation, and also executes

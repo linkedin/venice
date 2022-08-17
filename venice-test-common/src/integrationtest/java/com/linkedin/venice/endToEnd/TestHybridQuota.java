@@ -1,11 +1,16 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.kafka.TopicManager.*;
+import static com.linkedin.venice.utils.TestPushUtils.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
+import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -32,11 +37,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.kafka.TopicManager.*;
-import static com.linkedin.venice.utils.TestPushUtils.*;
-import static org.testng.Assert.*;
 
 
 public class TestHybridQuota {
@@ -79,22 +79,14 @@ public class TestHybridQuota {
    */
   @DataProvider(name = "testHybridQuotaPermutations", parallel = false)
   public static Object[][] testHybridQuotaPermutations() {
-    return new Object[][]{
-        {false, false, true},
-        {false, true, true},
-        {true, true, true},
-        {true, false, true},
-        {false, false, false},
-        {false, true, false},
-        {false, false, false},
-        {true, true, false},
-        {true, false, false}
-    };
+    return new Object[][] { { false, false, true }, { false, true, true }, { true, true, true }, { true, false, true },
+        { false, false, false }, { false, true, false }, { false, false, false }, { true, true, false },
+        { true, false, false } };
   }
 
   @Test(dataProvider = "testHybridQuotaPermutations", timeOut = 180 * Time.MS_PER_SECOND)
-  public void testHybridStoreQuota(boolean chunkingEnabled, boolean isStreamReprocessing,
-    boolean recoverFromViolation) throws Exception {
+  public void testHybridStoreQuota(boolean chunkingEnabled, boolean isStreamReprocessing, boolean recoverFromViolation)
+      throws Exception {
     SystemProducer veniceProducer = null;
 
     long streamingRewindSeconds = 10L;
@@ -110,16 +102,23 @@ public class TestHybridQuota {
     SafeHelixManager readManager = null;
     HelixCustomizedViewOfflinePushRepository offlinePushRepository = null;
     HelixHybridStoreQuotaRepository hybridStoreQuotaOnlyRepository = null;
-    try (ControllerClient controllerClient = createStoreForJob(sharedVenice.getClusterName(), recordSchema, h2vProperties);
-        TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l,
+    try (
+        ControllerClient controllerClient =
+            createStoreForJob(sharedVenice.getClusterName(), recordSchema, h2vProperties);
+        TopicManager topicManager = new TopicManager(
+            DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+            100,
+            0l,
             TestUtils.getVeniceConsumerFactory(sharedVenice.getKafka()))) {
 
       // Setting the hybrid store quota here will cause the H2V push failed.
-      ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionCount(2)
-          .setHybridRewindSeconds(streamingRewindSeconds)
-          .setHybridOffsetLagThreshold(streamingMessageLag)
-          .setChunkingEnabled(chunkingEnabled)
-          .setHybridStoreDiskQuotaEnabled(true));
+      ControllerResponse response = controllerClient.updateStore(
+          storeName,
+          new UpdateStoreQueryParams().setPartitionCount(2)
+              .setHybridRewindSeconds(streamingRewindSeconds)
+              .setHybridOffsetLagThreshold(streamingMessageLag)
+              .setChunkingEnabled(chunkingEnabled)
+              .setHybridStoreDiskQuotaEnabled(true));
 
       HelixAdmin helixAdmin = null;
       try {
@@ -133,7 +132,10 @@ public class TestHybridQuota {
       Assert.assertFalse(response.isError());
 
       readManager = new SafeHelixManager(
-          HelixManagerFactory.getZKHelixManager(sharedVenice.getClusterName(), "reader", InstanceType.SPECTATOR,
+          HelixManagerFactory.getZKHelixManager(
+              sharedVenice.getClusterName(),
+              "reader",
+              InstanceType.SPECTATOR,
               sharedVenice.getZk().getAddress()));
       readManager.connect();
       offlinePushRepository = new HelixCustomizedViewOfflinePushRepository(readManager);
@@ -141,40 +143,50 @@ public class TestHybridQuota {
       offlinePushRepository.refresh();
       hybridStoreQuotaOnlyRepository.refresh();
 
-      //Do an H2V push
+      // Do an H2V push
       TestHybrid.runH2V(h2vProperties, 1, controllerClient);
       String topicForStoreVersion1 = Version.composeKafkaTopic(storeName, 1);
 
-      //Do an H2V push
+      // Do an H2V push
       TestHybrid.runH2V(h2vProperties, 2, controllerClient);
       String topicForStoreVersion2 = Version.composeKafkaTopic(storeName, 2);
-      Assert.assertTrue(topicManager.isTopicCompactionEnabled(topicForStoreVersion1),
+      Assert.assertTrue(
+          topicManager.isTopicCompactionEnabled(topicForStoreVersion1),
           "topic: " + topicForStoreVersion1 + " should have compaction enabled");
-      // We did not do any STREAM push here. For a version topic, it should have both hybrid store quota status and offline
+      // We did not do any STREAM push here. For a version topic, it should have both hybrid store quota status and
+      // offline
       // push status.
-      assertEquals(hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(topicForStoreVersion1),
+      assertEquals(
+          hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(topicForStoreVersion1),
           HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
       assertTrue(offlinePushRepository.containsKafkaTopic(topicForStoreVersion1));
-      assertEquals(hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(topicForStoreVersion2),
+      assertEquals(
+          hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(topicForStoreVersion2),
           HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
       assertTrue(offlinePushRepository.containsKafkaTopic(topicForStoreVersion2));
 
-      //Do an H2V push
+      // Do an H2V push
       TestHybrid.runH2V(h2vProperties, 3, controllerClient);
       String topicForStoreVersion3 = Version.composeKafkaTopic(storeName, 3);
       long storageQuotaInByte = 60000; // A small quota, easily violated.
 
-      //  Need to update store with quota here.
-      controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionCount(2)
-          .setHybridRewindSeconds(streamingRewindSeconds)
-          .setHybridOffsetLagThreshold(streamingMessageLag)
-          .setChunkingEnabled(chunkingEnabled)
-          .setHybridStoreDiskQuotaEnabled(true)
-          .setStorageQuotaInByte(storageQuotaInByte));
+      // Need to update store with quota here.
+      controllerClient.updateStore(
+          storeName,
+          new UpdateStoreQueryParams().setPartitionCount(2)
+              .setHybridRewindSeconds(streamingRewindSeconds)
+              .setHybridOffsetLagThreshold(streamingMessageLag)
+              .setChunkingEnabled(chunkingEnabled)
+              .setHybridStoreDiskQuotaEnabled(true)
+              .setStorageQuotaInByte(storageQuotaInByte));
       if (isStreamReprocessing) {
-        veniceProducer = getSamzaProducer(sharedVenice, storeName, Version.PushType.STREAM_REPROCESSING); // new producer, new DIV segment.
+        veniceProducer = getSamzaProducer(sharedVenice, storeName, Version.PushType.STREAM_REPROCESSING); // new
+                                                                                                          // producer,
+                                                                                                          // new DIV
+                                                                                                          // segment.
       } else {
-        veniceProducer = getSamzaProducer(sharedVenice, storeName, Version.PushType.STREAM); // new producer, new DIV segment.
+        veniceProducer = getSamzaProducer(sharedVenice, storeName, Version.PushType.STREAM); // new producer, new DIV
+                                                                                             // segment.
       }
       for (int i = 1; i <= 20; i++) {
         try {
@@ -189,7 +201,8 @@ public class TestHybridQuota {
       Utils.sleep(normalTimeForConsuming);
 
       String topicVersion = isStreamReprocessing ? Version.composeKafkaTopic(storeName, 4) : topicForStoreVersion3;
-      assertEquals(hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(topicVersion),
+      assertEquals(
+          hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(topicVersion),
           HybridStoreQuotaStatus.QUOTA_VIOLATED);
       assertTrue(offlinePushRepository.containsKafkaTopic(topicVersion));
 
@@ -200,32 +213,41 @@ public class TestHybridQuota {
         // Disable HybridStoreDiskQuota and verify quota status is changed to QUOTA_NOT_VIOLATED.
         controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridStoreDiskQuotaEnabled(false));
         Utils.sleep(normalTimeForConsuming);
-        assertEquals(hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(topicVersion),
+        assertEquals(
+            hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(topicVersion),
             HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
 
-        //  Re-enable HybridStoreDiskQuota and increase the quota to 100x so that disk quota is not violated.
-        controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridStoreDiskQuotaEnabled(true)
-            .setStorageQuotaInByte(storageQuotaInByte * 100));
+        // Re-enable HybridStoreDiskQuota and increase the quota to 100x so that disk quota is not violated.
+        controllerClient.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setHybridStoreDiskQuotaEnabled(true)
+                .setStorageQuotaInByte(storageQuotaInByte * 100));
         Utils.sleep(normalTimeForConsuming);
         // Previous venice producer get exception thrown by quota violation. Need to create a new venice producer.
         if (null != veniceProducer) {
           veniceProducer.stop();
         }
         if (isStreamReprocessing) {
-          veniceProducer = getSamzaProducer(sharedVenice, storeName, Version.PushType.STREAM_REPROCESSING); // new producer, new DIV segment.
+          veniceProducer = getSamzaProducer(sharedVenice, storeName, Version.PushType.STREAM_REPROCESSING); // new
+                                                                                                            // producer,
+                                                                                                            // new DIV
+                                                                                                            // segment.
         } else {
-          veniceProducer = getSamzaProducer(sharedVenice, storeName, Version.PushType.STREAM); // new producer, new DIV segment.
+          veniceProducer = getSamzaProducer(sharedVenice, storeName, Version.PushType.STREAM); // new producer, new DIV
+                                                                                               // segment.
         }
 
         sendStreamingRecord(veniceProducer, storeName, 21);
         if (isStreamReprocessing) {
           // Version 4 does not exist anymore, new version created.
           String topicForStoreVersion5 = Version.composeKafkaTopic(storeName, 5);
-          assertEquals(hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(topicForStoreVersion5),
+          assertEquals(
+              hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(topicForStoreVersion5),
               HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
           assertTrue(offlinePushRepository.containsKafkaTopic(topicForStoreVersion5));
         } else {
-          assertEquals(hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(topicForStoreVersion3),
+          assertEquals(
+              hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(topicForStoreVersion3),
               HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
           assertTrue(offlinePushRepository.containsKafkaTopic(topicForStoreVersion3));
         }

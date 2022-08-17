@@ -4,7 +4,6 @@ import java.util.Optional;
 
 
 public abstract class StreamingCallback<K, V> {
-
   /**
    * This function will be invoked when some records are ready to be consumed.
    *

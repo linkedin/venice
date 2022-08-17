@@ -2,18 +2,19 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.status.StoreStatusMessage;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Handler in controller side used to deal with status update message from storage node.
  */
 public class StoreStatusMessageHandler implements StatusMessageHandler<StoreStatusMessage> {
   private static final Logger logger = LogManager.getLogger(StatusMessageHandler.class);
-  //TODO will process the status in the further. Maybe here will become Map<KafkaTopic,Map<Partition,Map<Instance,Status>>>.
+  // TODO will process the status in the further. Maybe here will become
+  // Map<KafkaTopic,Map<Partition,Map<Instance,Status>>>.
   private Map<String, StoreStatusMessage> statusMap;
 
   public StoreStatusMessageHandler() {
@@ -22,14 +23,14 @@ public class StoreStatusMessageHandler implements StatusMessageHandler<StoreStat
 
   @Override
   public void handleMessage(StoreStatusMessage message) {
-    if(message == null) {
+    if (message == null) {
       throw new IllegalArgumentException(" Parameter message is null");
     }
     logger.info("Processing Message " + message);
     statusMap.put(message.getKafkaTopic(), message);
   }
 
-  //TODO will be changed to get the status from kafkaTopic+partition+instance later.
+  // TODO will be changed to get the status from kafkaTopic+partition+instance later.
   public StoreStatusMessage getStatus(String kafkaTopic) {
     return statusMap.get(kafkaTopic);
   }

@@ -34,18 +34,16 @@ public class Instance {
   private final String url;
   private final String sUrl;
 
-
   // TODO: generate nodeId from host and port, should be "host_port", or generate host and port from id.
-  public Instance(String nodeId,
-                  String host,
-                  int port) {
+  public Instance(String nodeId, String host, int port) {
     this(nodeId, host, port, port);
   }
 
-  public Instance(@JsonProperty("nodeId") String nodeId,
-                  @JsonProperty("host") String host,
-                  @JsonProperty("port") int port,
-                  @JsonProperty("sslPort") int sslPort) {
+  public Instance(
+      @JsonProperty("nodeId") String nodeId,
+      @JsonProperty("host") String host,
+      @JsonProperty("port") int port,
+      @JsonProperty("sslPort") int sslPort) {
     this.nodeId = nodeId;
     this.host = host;
     validatePort("port", port);
@@ -63,7 +61,7 @@ public class Instance {
     return isSSL ? sUrl : url;
   }
 
-  public static Instance fromNodeId(String nodeId){
+  public static Instance fromNodeId(String nodeId) {
     try {
       String[] parts = nodeId.split("_");
       if (parts.length != 2) {
@@ -72,22 +70,22 @@ public class Instance {
       String host = parts[0];
       int port = Utils.parseIntFromString(parts[1], "Port");
       return new Instance(nodeId, host, port);
-    } catch (Exception e){
+    } catch (Exception e) {
       throw new VeniceException("nodeId or instanceId must be of form 'host_port', found: " + nodeId);
     }
   }
 
   public String getNodeId() {
-      return nodeId;
+    return nodeId;
   }
 
   public String getHost() {
-      return host;
+    return host;
   }
 
   public int getPort() {
-       return port;
-    }
+    return port;
+  }
 
   /***
    * Convenience method for getting a host and port based url.
@@ -96,27 +94,26 @@ public class Instance {
    * @return http(s):// + host + : + port
    */
   @JsonIgnore
-  public String getUrl(boolean https){
+  public String getUrl(boolean https) {
     String scheme = https ? HttpConstants.HTTPS : HttpConstants.HTTP;
     int portNumber = https ? sslPort : port;
     return host.contains(":") ? /* for IPv6 support per https://www.ietf.org/rfc/rfc2732.txt */
-      scheme + "://[" + host + "]:" + portNumber :
-      scheme + "://" + host + ":" + portNumber;
+        scheme + "://[" + host + "]:" + portNumber : scheme + "://" + host + ":" + portNumber;
   }
 
   @JsonIgnore
   @Deprecated
-  public String getUrl(){
+  public String getUrl() {
     return getUrl(false);
   }
 
   private void validatePort(String name, int port) {
-      if (port < 0 || port > 65535) {
-        throw new IllegalArgumentException("Invalid " + name + ": " + port);
-      }
+    if (port < 0 || port > 65535) {
+      throw new IllegalArgumentException("Invalid " + name + ": " + port);
     }
+  }
 
-  //Autogen except for .toLowerCase()
+  // Autogen except for .toLowerCase()
   @Override
   public int hashCode() {
     int result = nodeId != null ? nodeId.hashCode() : 0;
@@ -125,7 +122,7 @@ public class Instance {
     return result;
   }
 
-  //Autogen, except for the equalsIgnoreCase
+  // Autogen, except for the equalsIgnoreCase
   @Override
   public boolean equals(Object o) {
     if (this == o) {

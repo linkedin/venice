@@ -1,5 +1,10 @@
 package com.linkedin.venice.router;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.helix.HelixInstanceConfigRepository.*;
+import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
+import static com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum;
@@ -13,11 +18,6 @@ import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.helix.HelixInstanceConfigRepository.*;
-import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
-import static com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum.*;
 
 
 /**
@@ -144,14 +144,18 @@ public class VeniceRouterConfig {
     zkConnection = props.getString(ZOOKEEPER_ADDRESS);
     kafkaZkAddress = props.getString(KAFKA_ZK_ADDRESS);
     kafkaBootstrapServers = props.getString(KAFKA_BOOTSTRAP_SERVERS);
-    clientTimeoutMs = props.getInt(CLIENT_TIMEOUT, 10000); //10s
+    clientTimeoutMs = props.getInt(CLIENT_TIMEOUT, 10000); // 10s
     heartbeatTimeoutMs = props.getDouble(HEARTBEAT_TIMEOUT, TimeUnit.MINUTES.toMillis(1)); // 1 minute
     heartbeatCycleMs = props.getLong(HEARTBEAT_CYCLE, TimeUnit.SECONDS.toMillis(5)); // 5 seconds
-    sslToStorageNodes = props.getBoolean(SSL_TO_STORAGE_NODES, false); // disable ssl on path to stroage node by default.
-    maxReadCapacityCu = props.getLong(MAX_READ_CAPACITY, 100000); //100000 CU
-    longTailRetryForSingleGetThresholdMs = props.getInt(ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 15); //15 ms
+    sslToStorageNodes = props.getBoolean(SSL_TO_STORAGE_NODES, false); // disable ssl on path to stroage node by
+                                                                       // default.
+    maxReadCapacityCu = props.getLong(MAX_READ_CAPACITY, 100000); // 100000 CU
+    longTailRetryForSingleGetThresholdMs = props.getInt(ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 15); // 15
+                                                                                                                 // ms
     longTailRetryForBatchGetThresholdMs = parseRetryThresholdForBatchGet(
-        props.getString(ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-5:15,6-20:30,21-150:50,151-500:100,501-:500"));
+        props.getString(
+            ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS,
+            "1-5:15,6-20:30,21-150:50,151-500:100,501-:500"));
     // Enable smart long tail retry by default
     smartLongTailRetryEnabled = props.getBoolean(ROUTER_SMART_LONG_TAIL_RETRY_ENABLED, true);
     smartLongTailRetryAbortThresholdMs = props.getInt(ROUTER_SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS, 100);
@@ -168,37 +172,58 @@ public class VeniceRouterConfig {
     refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
     refreshIntervalForZkReconnectInMs =
         props.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, java.util.concurrent.TimeUnit.SECONDS.toMillis(10));
-    routerNettyGracefulShutdownPeriodSeconds = props.getInt(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 30); //30s
+    routerNettyGracefulShutdownPeriodSeconds = props.getInt(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 30); // 30s
     enforceSecureOnly = props.getBoolean(ENFORCE_SECURE_ROUTER, false);
 
     // This only needs to be enabled in some DC, where slow DNS lookup happens.
     dnsCacheEnabled = props.getBoolean(ROUTER_DNS_CACHE_ENABLED, false);
     hostPatternForDnsCache = props.getString(ROUTE_DNS_CACHE_HOST_PATTERN, ".*prod.linkedin.com");
-    dnsCacheRefreshIntervalInMs = props.getLong(ROUTER_DNS_CACHE_REFRESH_INTERVAL_MS, TimeUnit.MINUTES.toMillis(3)); // 3 mins
+    dnsCacheRefreshIntervalInMs = props.getLong(ROUTER_DNS_CACHE_REFRESH_INTERVAL_MS, TimeUnit.MINUTES.toMillis(3)); // 3
+                                                                                                                     // mins
 
-    singleGetTardyLatencyThresholdMs = props.getLong(ROUTER_SINGLEGET_TARDY_LATENCY_MS, TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS));
-    multiGetTardyLatencyThresholdMs = props.getLong(ROUTER_MULTIGET_TARDY_LATENCY_MS, TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS));
-    computeTardyLatencyThresholdMs = props.getLong(ROUTER_COMPUTE_TARDY_LATENCY_MS, TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS));
+    singleGetTardyLatencyThresholdMs =
+        props.getLong(ROUTER_SINGLEGET_TARDY_LATENCY_MS, TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS));
+    multiGetTardyLatencyThresholdMs =
+        props.getLong(ROUTER_MULTIGET_TARDY_LATENCY_MS, TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS));
+    computeTardyLatencyThresholdMs =
+        props.getLong(ROUTER_COMPUTE_TARDY_LATENCY_MS, TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS));
 
     readThrottlingEnabled = props.getBoolean(ROUTER_ENABLE_READ_THROTTLING, true);
     maxPendingRequest = props.getLong(ROUTER_MAX_PENDING_REQUEST, 2500L * 12L);
 
-    storageNodeClientType = StorageNodeClientType.valueOf(props.getString(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT.name())); // Use ApacheHttpAsyncClient by default
+    storageNodeClientType = StorageNodeClientType.valueOf(
+        props.getString(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT.name())); // Use
+                                                                                                                  // ApacheHttpAsyncClient
+                                                                                                                  // by
+                                                                                                                  // default
     // TODO: what is the best setting? 5*NUMBER_OF_CORES?
     nettyClientEventLoopThreads = props.getInt(ROUTER_NETTY_CLIENT_EVENT_LOOP_THREADS, 24); // 24 threads by default
-    nettyClientChannelPoolAcquireTimeoutMs = props.getLong(ROUTER_NETTY_CLIENT_CHANNEL_POOL_ACQUIRE_TIMEOUT_MS, 10); // 10ms by default
-    nettyClientChannelPoolMinConnections = props.getInt(ROUTER_NETTY_CLIENT_CHANNEL_POOL_MIN_CONNECTIONS, 160); // 160 connections by default
-    nettyClientChannelPoolMaxConnections = props.getInt(ROUTER_NETTY_CLIENT_CHANNEL_POOL_MAX_CONNECTIONS, 165); // 165 connections by default
+    nettyClientChannelPoolAcquireTimeoutMs = props.getLong(ROUTER_NETTY_CLIENT_CHANNEL_POOL_ACQUIRE_TIMEOUT_MS, 10); // 10ms
+                                                                                                                     // by
+                                                                                                                     // default
+    nettyClientChannelPoolMinConnections = props.getInt(ROUTER_NETTY_CLIENT_CHANNEL_POOL_MIN_CONNECTIONS, 160); // 160
+                                                                                                                // connections
+                                                                                                                // by
+                                                                                                                // default
+    nettyClientChannelPoolMaxConnections = props.getInt(ROUTER_NETTY_CLIENT_CHANNEL_POOL_MAX_CONNECTIONS, 165); // 165
+                                                                                                                // connections
+                                                                                                                // by
+                                                                                                                // default
     /**
      * ignore this config by default; only rely on the ROUTER_MAX_PENDING_REQUEST config for pending request throttling
       */
-    nettyClientChannelPoolMaxPendingAcquires = props.getInt(ROUTER_NETTY_CLIENT_CHANNEL_POOL_MAX_PENDING_ACQUIRES, Integer.MAX_VALUE);
+    nettyClientChannelPoolMaxPendingAcquires =
+        props.getInt(ROUTER_NETTY_CLIENT_CHANNEL_POOL_MAX_PENDING_ACQUIRES, Integer.MAX_VALUE);
     /**
      * A channel will be closed if a request fails while using this channel, so there is no need to do frequent health check unless the system doesn't receive much traffic
      */
-    nettyClientChannelPoolHealthCheckIntervalMs =
-        props.getLong(ROUTER_NETTY_CLIENT_CHANNEL_POOL_HEALTH_CHECK_INTERVAL_MS, TimeUnit.MILLISECONDS.convert(5, TimeUnit.MINUTES));
-    nettyClientMaxAggregatedObjectLength = props.getInt(ROUTER_NETTY_CLIENT_MAX_AGGREGATED_OBJECT_LENGTH, 1024 * 1024 * 20); // 20MB by default; change it according to the max response size
+    nettyClientChannelPoolHealthCheckIntervalMs = props.getLong(
+        ROUTER_NETTY_CLIENT_CHANNEL_POOL_HEALTH_CHECK_INTERVAL_MS,
+        TimeUnit.MILLISECONDS.convert(5, TimeUnit.MINUTES));
+    nettyClientMaxAggregatedObjectLength =
+        props.getInt(ROUTER_NETTY_CLIENT_MAX_AGGREGATED_OBJECT_LENGTH, 1024 * 1024 * 20); // 20MB by default; change it
+                                                                                          // according to the max
+                                                                                          // response size
     decompressOnClient = props.getBoolean(ROUTER_CLIENT_DECOMPRESSION_ENABLED, true);
     computeFastAvroEnabled = props.getBoolean(ROUTER_COMPUTE_FAST_AVRO_ENABLED, false);
 
@@ -206,30 +231,42 @@ public class VeniceRouterConfig {
     connectionTimeout = props.getInt(ROUTER_CONNECTION_TIMEOUT, 5000); // 5s
 
     statefulRouterHealthCheckEnabled = props.getBoolean(ROUTER_STATEFUL_HEALTHCHECK_ENABLED, true);
-    routerUnhealthyPendingConnThresholdPerRoute = props.getInt(ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE, 500);
+    routerUnhealthyPendingConnThresholdPerRoute =
+        props.getInt(ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE, 500);
     routerPendingConnResumeThresholdPerRoute = props.getInt(ROUTER_PENDING_CONNECTION_RESUME_THRESHOLD_PER_ROUTE, 15);
-
 
     perNodeClientAllocationEnabled = props.getBoolean(ROUTER_PER_NODE_CLIENT_ENABLED, false);
     perNodeClientThreadCount = props.getInt(ROUTER_PER_NODE_CLIENT_THREAD_COUNT, 2);
 
     keyValueProfilingEnabled = props.getBoolean(KEY_VALUE_PROFILING_ENABLED, false);
 
-    leakedFutureCleanupPollIntervalMs = props.getLong(ROUTER_LEAKED_FUTURE_CLEANUP_POLL_INTERVAL_MS, TimeUnit.MINUTES.toMillis(1));
-    leakedFutureCleanupThresholdMs = props.getLong(ROUTER_LEAKED_FUTURE_CLEANUP_THRESHOLD_MS, TimeUnit.MINUTES.toMillis(1));
+    leakedFutureCleanupPollIntervalMs =
+        props.getLong(ROUTER_LEAKED_FUTURE_CLEANUP_POLL_INTERVAL_MS, TimeUnit.MINUTES.toMillis(1));
+    leakedFutureCleanupThresholdMs =
+        props.getLong(ROUTER_LEAKED_FUTURE_CLEANUP_THRESHOLD_MS, TimeUnit.MINUTES.toMillis(1));
 
     idleConnectionToServerCleanupEnabled = props.getBoolean(ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_ENABLED, true);
-    idleConnectionToServerCleanupThresholdMins = props.getLong(ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_THRESHOLD_MINS, TimeUnit.HOURS.toMinutes(3));
+    idleConnectionToServerCleanupThresholdMins =
+        props.getLong(ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_THRESHOLD_MINS, TimeUnit.HOURS.toMinutes(3));
 
-    fullPendingQueueServerOORMs = props.getLong(ROUTER_FULL_PENDING_QUEUE_SERVER_OOR_MS, TimeUnit.SECONDS.toMillis(0)); // No OOR
-    httpasyncclientConnectionWarmingEnabled = props.getBoolean(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_ENABLED, false);
-    httpasyncclientConnectionWarmingSleepIntervalMs = props.getLong(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_SLEEP_INTERVAL_MS, 100); // 100ms
-    dictionaryRetrievalTimeMs = (int)props.getLong(ROUTER_DICTIONARY_RETRIEVAL_TIME_MS, TimeUnit.SECONDS.toMillis(30)); // 30 seconds
+    fullPendingQueueServerOORMs = props.getLong(ROUTER_FULL_PENDING_QUEUE_SERVER_OOR_MS, TimeUnit.SECONDS.toMillis(0)); // No
+                                                                                                                        // OOR
+    httpasyncclientConnectionWarmingEnabled =
+        props.getBoolean(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_ENABLED, false);
+    httpasyncclientConnectionWarmingSleepIntervalMs =
+        props.getLong(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_SLEEP_INTERVAL_MS, 100); // 100ms
+    dictionaryRetrievalTimeMs = (int) props.getLong(ROUTER_DICTIONARY_RETRIEVAL_TIME_MS, TimeUnit.SECONDS.toMillis(30)); // 30
+                                                                                                                         // seconds
     routerDictionaryProcessingThreads = props.getInt(ROUTER_DICTIONARY_PROCESSING_THREADS, 3);
-    httpasyncclientConnectionWarmingLowWaterMark = props.getInt(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_LOW_WATER_MARK, 60);
-    httpasyncclientConnectionWarmingExecutorThreadNum = props.getInt(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_EXECUTOR_THREAD_NUM, 6); // 6 threads
-    httpasyncclientConnectionWarmingNewInstanceDelayJoinMs = props.getLong(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_NEW_INSTANCE_DELAY_JOIN_MS, TimeUnit.MINUTES.toMillis(2)); // 2 mins
-    httpasyncclientConnectionWarmingSocketTimeoutMs = props.getInt(ROUTER_HTTPAYSNCCLIENT_CONNECTION_WARMING_SOCKET_TIMEOUT_MS, 5000); // 5 seconds
+    httpasyncclientConnectionWarmingLowWaterMark =
+        props.getInt(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_LOW_WATER_MARK, 60);
+    httpasyncclientConnectionWarmingExecutorThreadNum =
+        props.getInt(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_EXECUTOR_THREAD_NUM, 6); // 6 threads
+    httpasyncclientConnectionWarmingNewInstanceDelayJoinMs = props
+        .getLong(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_NEW_INSTANCE_DELAY_JOIN_MS, TimeUnit.MINUTES.toMillis(2)); // 2
+                                                                                                                      // mins
+    httpasyncclientConnectionWarmingSocketTimeoutMs =
+        props.getInt(ROUTER_HTTPAYSNCCLIENT_CONNECTION_WARMING_SOCKET_TIMEOUT_MS, 5000); // 5 seconds
     asyncStartEnabled = props.getBoolean(ROUTER_ASYNC_START_ENABLED, false);
 
     maxRouterReadCapacityCu = props.getLong(ROUTER_MAX_READ_CAPACITY, 6000);
@@ -237,7 +274,8 @@ public class VeniceRouterConfig {
     earlyThrottleEnabled = props.getBoolean(ROUTER_EARLY_THROTTLE_ENABLED, false);
     helixOfflinePushEnabled = props.getBoolean(HELIX_OFFLINE_PUSH_ENABLED, false);
     helixHybridStoreQuotaEnabled = props.getBoolean(HELIX_HYBRID_STORE_QUOTA_ENABLED, false);
-    ioThreadCountInPoolMode = props.getInt(ROUTER_HTTPASYNCCLIENT_CLIENT_POOL_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
+    ioThreadCountInPoolMode =
+        props.getInt(ROUTER_HTTPASYNCCLIENT_CLIENT_POOL_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
 
     throttleClientSslHandshakes = props.getBoolean(ROUTER_THROTTLE_CLIENT_SSL_HANDSHAKES, false);
     clientSslHandshakeThreads = props.getInt(ROUTER_CLIENT_SSL_HANDSHAKE_THREADS, 4);
@@ -245,33 +283,42 @@ public class VeniceRouterConfig {
     clientSslHandshakeAttempts = props.getInt(ROUTER_CLIENT_SSL_HANDSHAKE_ATTEMPTS, 5);
     clientSslHandshakeBackoffMs = props.getLong(ROUTER_CLIENT_SSL_HANDSHAKE_BACKOFF_MS, 5 * Time.MS_PER_SECOND);
 
-    readQuotaThrottlingLeaseTimeoutMs = props.getLong(ROUTER_READ_QUOTA_THROTTLING_LEASE_TIMEOUT_MS, 6 * Time.MS_PER_HOUR);
+    readQuotaThrottlingLeaseTimeoutMs =
+        props.getLong(ROUTER_READ_QUOTA_THROTTLING_LEASE_TIMEOUT_MS, 6 * Time.MS_PER_HOUR);
 
-    String helixVirtualGroupFieldNameInDomain = props.getString(ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN,
-        GROUP_FIELD_NAME_IN_DOMAIN);
+    String helixVirtualGroupFieldNameInDomain =
+        props.getString(ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN, GROUP_FIELD_NAME_IN_DOMAIN);
     if (helixVirtualGroupFieldNameInDomain.equals(GROUP_FIELD_NAME_IN_DOMAIN)) {
       useGroupFieldInHelixDomain = true;
     } else if (helixVirtualGroupFieldNameInDomain.equals(ZONE_FIELD_NAME_IN_DOMAIN)) {
       useGroupFieldInHelixDomain = false;
     } else {
-      throw new VeniceException("Unknown value: " + helixVirtualGroupFieldNameInDomain + " for config: " + ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN + ", and "
-          + "allowed values: [" + GROUP_FIELD_NAME_IN_DOMAIN + ", " + ZONE_FIELD_NAME_IN_DOMAIN + "]");
+      throw new VeniceException(
+          "Unknown value: " + helixVirtualGroupFieldNameInDomain + " for config: "
+              + ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN + ", and " + "allowed values: [" + GROUP_FIELD_NAME_IN_DOMAIN
+              + ", " + ZONE_FIELD_NAME_IN_DOMAIN + "]");
     }
     String multiKeyRoutingStrategyStr = props.getString(ROUTER_MULTI_KEY_ROUTING_STRATEGY, LEAST_LOADED_ROUTING.name());
     try {
       multiKeyRoutingStrategy = VeniceMultiKeyRoutingStrategy.valueOf(multiKeyRoutingStrategyStr);
     } catch (Exception e) {
-      logger.warn("Invalid {} config: {}, and allowed values are: {}. Using default strategy {}",
-          ROUTER_MULTI_KEY_ROUTING_STRATEGY, multiKeyRoutingStrategyStr,
-          Arrays.toString(VeniceMultiKeyRoutingStrategy.values()), LEAST_LOADED_ROUTING.name());
+      logger.warn(
+          "Invalid {} config: {}, and allowed values are: {}. Using default strategy {}",
+          ROUTER_MULTI_KEY_ROUTING_STRATEGY,
+          multiKeyRoutingStrategyStr,
+          Arrays.toString(VeniceMultiKeyRoutingStrategy.values()),
+          LEAST_LOADED_ROUTING.name());
       multiKeyRoutingStrategy = LEAST_LOADED_ROUTING;
     }
-    String helixGroupSelectionStrategyStr = props.getString(ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_STRATEGY, LEAST_LOADED.name());
+    String helixGroupSelectionStrategyStr =
+        props.getString(ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_STRATEGY, LEAST_LOADED.name());
     try {
       helixGroupSelectionStrategy = HelixGroupSelectionStrategyEnum.valueOf(helixGroupSelectionStrategyStr);
     } catch (Exception e) {
-      throw new VeniceException("Invalid " + ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_STRATEGY + " config: " + helixGroupSelectionStrategyStr +
-          ", and allowed values: " + Arrays.toString(HelixGroupSelectionStrategyEnum.values()));
+      throw new VeniceException(
+          "Invalid " + ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_STRATEGY + " config: "
+              + helixGroupSelectionStrategyStr + ", and allowed values: "
+              + Arrays.toString(HelixGroupSelectionStrategyEnum.values()));
     }
     systemSchemaClusterName = props.getString(SYSTEM_SCHEMA_CLUSTER_NAME, "");
     routerHeartBeatEnabled = props.getBoolean(ROUTER_HEART_BEAT_ENABLED, true);
@@ -279,7 +326,8 @@ public class VeniceRouterConfig {
     routerHTTP2R2ClientEnabled = props.getBoolean(ROUTER_HTTP2_R2_CLIENT_ENABLED, false);
     routerHTTP2ClientEnabled = props.getBoolean(ROUTER_HTTP2_CLIENT_ENABLED, false);
     httpClient5PoolSize = props.getInt(ROUTER_HTTP_CLIENT5_POOL_SIZE, 1);
-    httpClient5TotalIOThreadCount = props.getInt(ROUTER_HTTP_CLIENT5_TOTAL_IO_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
+    httpClient5TotalIOThreadCount =
+        props.getInt(ROUTER_HTTP_CLIENT5_TOTAL_IO_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
     httpClient5SkipCipherCheck = props.getBoolean(ROUTER_HTTP_CLIENT5_SKIP_CIPHER_CHECK_ENABLED, false);
     /**
      * If the legacy config enables http2, Router will use it.
@@ -475,7 +523,7 @@ public class VeniceRouterConfig {
     return computeFastAvroEnabled;
   }
 
-  public int getSocketTimeout()  {
+  public int getSocketTimeout() {
     return socketTimeout;
   }
 
@@ -550,6 +598,7 @@ public class VeniceRouterConfig {
   public int getRouterDictionaryProcessingThreads() {
     return routerDictionaryProcessingThreads;
   }
+
   public int getHttpasyncclientConnectionWarmingLowWaterMark() {
     return httpasyncclientConnectionWarmingLowWaterMark;
   }
@@ -586,9 +635,13 @@ public class VeniceRouterConfig {
     this.earlyThrottleEnabled = earlyThrottleEnabled;
   }
 
-  public boolean isHelixOfflinePushEnabled() { return helixOfflinePushEnabled; }
+  public boolean isHelixOfflinePushEnabled() {
+    return helixOfflinePushEnabled;
+  }
 
-  public boolean isHelixHybridStoreQuotaEnabled() { return helixHybridStoreQuotaEnabled; }
+  public boolean isHelixHybridStoreQuotaEnabled() {
+    return helixHybridStoreQuotaEnabled;
+  }
 
   public int getIoThreadCountInPoolMode() {
     return ioThreadCountInPoolMode;
@@ -629,12 +682,14 @@ public class VeniceRouterConfig {
       String keyRange1[] = range1.split(keyRangeSeparator);
       String keyRange2[] = range2.split(keyRangeSeparator);
       if (keyRange1.length != 2) {
-        throw new VeniceException("Invalid single retry threshold config: " + range1 +
-            ", which contains two parts separated by '" + keyRangeSeparator + "'");
+        throw new VeniceException(
+            "Invalid single retry threshold config: " + range1 + ", which contains two parts separated by '"
+                + keyRangeSeparator + "'");
       }
       if (keyRange2.length != 2) {
-        throw new VeniceException("Invalid single retry threshold config: " + range2 +
-            ", which should contain two parts separated by '" + keyRangeSeparator + "'");
+        throw new VeniceException(
+            "Invalid single retry threshold config: " + range2 + ", which should contain two parts separated by '"
+                + keyRangeSeparator + "'");
       }
       return Integer.parseInt(keyRange1[0]) - Integer.parseInt(keyRange2[0]);
     });
@@ -642,19 +697,21 @@ public class VeniceRouterConfig {
     // Check whether the key ranges are continuous, and store the mapping if everything is good
     int previousUpperBound = 0;
     final int MAX_KEY_COUNT = Integer.MAX_VALUE;
-    for (String singleRetryThreshold : retryThresholdList) {
+    for (String singleRetryThreshold: retryThresholdList) {
       // parse the range and retry threshold
       String[] singleRetryThresholdParts = singleRetryThreshold.split(retryThresholdSeparator);
       if (singleRetryThresholdParts.length != 2) {
-        throw new VeniceException("Invalid single retry threshold config: " + singleRetryThreshold + ", which"
-            + " should contain two parts separated by '" + retryThresholdSeparator + "'");
+        throw new VeniceException(
+            "Invalid single retry threshold config: " + singleRetryThreshold + ", which"
+                + " should contain two parts separated by '" + retryThresholdSeparator + "'");
       }
       Integer threshold = Integer.parseInt(singleRetryThresholdParts[1]);
       String[] keyCountRange = singleRetryThresholdParts[0].split(keyRangeSeparator);
       int upperBoundKeyCount = MAX_KEY_COUNT;
       if (keyCountRange.length > 2) {
-        throw new VeniceException("Invalid single retry threshold config: " + singleRetryThreshold + ", which"
-            + " should contain only lower bound and upper bound of key count range");
+        throw new VeniceException(
+            "Invalid single retry threshold config: " + singleRetryThreshold + ", which"
+                + " should contain only lower bound and upper bound of key count range");
       }
       int lowerBoundKeyCount = Integer.parseInt(keyCountRange[0]);
       if (keyCountRange.length == 2) {
@@ -664,17 +721,19 @@ public class VeniceRouterConfig {
         throw new VeniceException("Invalid single retry threshold config: " + singleRetryThreshold);
       }
       if (lowerBoundKeyCount != previousUpperBound + 1) {
-        throw new VeniceException("Current retry threshold config: " + retryThresholdStr +
-            " is not continuous according to key count range");
+        throw new VeniceException(
+            "Current retry threshold config: " + retryThresholdStr + " is not continuous according to key count range");
       }
       retryThresholdMap.put(lowerBoundKeyCount, threshold);
       previousUpperBound = upperBoundKeyCount;
     }
     if (!retryThresholdMap.containsKey(1)) {
-      throw new VeniceException("Retry threshold for batch-get: " + retryThresholdStr + " should be setup starting from 1");
+      throw new VeniceException(
+          "Retry threshold for batch-get: " + retryThresholdStr + " should be setup starting from 1");
     }
     if (previousUpperBound != MAX_KEY_COUNT) {
-      throw new VeniceException(" Retry threshold for batch-get: " + retryThresholdStr + " doesn't cover unlimited key count");
+      throw new VeniceException(
+          " Retry threshold for batch-get: " + retryThresholdStr + " doesn't cover unlimited key count");
     }
 
     return retryThresholdMap;

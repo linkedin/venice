@@ -32,7 +32,6 @@ public class ChildAwareResponse extends ControllerResponse {
     this.d2ServiceName = d2ServiceName;
   }
 
-
   @Override
   public String toString() {
     if (childDataCenterControllerUrlMap == null && childDataCenterControllerD2Map == null) {

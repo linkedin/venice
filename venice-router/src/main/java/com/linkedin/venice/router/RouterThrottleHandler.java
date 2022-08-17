@@ -1,5 +1,11 @@
 package com.linkedin.venice.router;
 
+import static com.linkedin.venice.HttpConstants.*;
+import static com.linkedin.venice.router.api.VenicePathParser.*;
+import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
+import static com.linkedin.venice.utils.NettyUtils.*;
+import static io.netty.handler.codec.http.HttpResponseStatus.*;
+
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
@@ -24,12 +30,6 @@ import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.HttpConstants.*;
-import static com.linkedin.venice.router.api.VenicePathParser.*;
-import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
-import static com.linkedin.venice.utils.NettyUtils.*;
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
-
 
 @ChannelHandler.Sharable
 public class RouterThrottleHandler extends SimpleChannelInboundHandler<HttpRequest> {
@@ -52,7 +52,8 @@ public class RouterThrottleHandler extends SimpleChannelInboundHandler<HttpReque
 
   @Override
   public void channelRead0(ChannelHandlerContext ctx, HttpRequest msg) throws IOException {
-    if (!config.isEarlyThrottleEnabled() || msg.method().equals(HttpMethod.OPTIONS) || !(msg instanceof BasicFullHttpRequest)) {
+    if (!config.isEarlyThrottleEnabled() || msg.method().equals(HttpMethod.OPTIONS)
+        || !(msg instanceof BasicFullHttpRequest)) {
       // Pass request to the next channel
       ReferenceCountUtil.retain(msg);
       ctx.fireChannelRead(msg);
@@ -68,10 +69,10 @@ public class RouterThrottleHandler extends SimpleChannelInboundHandler<HttpReque
         if (VeniceRouterUtils.isHttpGet(msg.method().name())) {
           keyCount = 1;
         } else { // batch-get/compute requests
-          BasicFullHttpRequest basicFullHttpRequest = (BasicFullHttpRequest)msg;
+          BasicFullHttpRequest basicFullHttpRequest = (BasicFullHttpRequest) msg;
           Optional<CharSequence> keyCountsHeader = basicFullHttpRequest.getRequestHeaders().get(VENICE_KEY_COUNT);
           if (keyCountsHeader.isPresent()) {
-            keyCount = Integer.parseInt((String)keyCountsHeader.get());
+            keyCount = Integer.parseInt((String) keyCountsHeader.get());
           } else if (helper.getResourceType().equals(TYPE_STORAGE)) {
             ByteBuf byteBuf = basicFullHttpRequest.content();
             byte[] bytes = new byte[byteBuf.readableBytes()];
@@ -125,7 +126,7 @@ public class RouterThrottleHandler extends SimpleChannelInboundHandler<HttpReque
 
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable e) {
-    InetSocketAddress sockAddr = (InetSocketAddress)(ctx.channel().remoteAddress());
+    InetSocketAddress sockAddr = (InetSocketAddress) (ctx.channel().remoteAddress());
     String remoteAddr = sockAddr.getHostName() + ":" + sockAddr.getPort();
     if (!filter.isRedundantException(sockAddr.getHostName(), e)) {
       logger.error("Got exception while throttling request from " + remoteAddr + ": ", e);

@@ -12,11 +12,15 @@ import org.apache.logging.log4j.Logger;
  *
  * Useful for tests which are timing-dependent.
  */
-public class MockTime
-    extends org.apache.kafka.common.utils.MockTime
-    implements org.apache.kafka.common.utils.Time, // For interop with the Kafka Broker's Time abstraction
-               Time, io.tehuti.utils.Time {
-
+public class MockTime extends org.apache.kafka.common.utils.MockTime implements org.apache.kafka.common.utils.Time, // For
+                                                                                                                    // interop
+                                                                                                                    // with
+                                                                                                                    // the
+                                                                                                                    // Kafka
+                                                                                                                    // Broker's
+                                                                                                                    // Time
+                                                                                                                    // abstraction
+    Time, io.tehuti.utils.Time {
   private static final Logger LOGGER = LogManager.getLogger(MockTime.class);
 
   private long timeMs;

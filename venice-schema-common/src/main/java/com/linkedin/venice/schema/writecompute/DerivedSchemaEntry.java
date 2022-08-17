@@ -13,7 +13,6 @@ import org.apache.avro.Schema;
  * available operations and how it gets generated.
  */
 public class DerivedSchemaEntry extends GeneratedSchemaEntry {
-
   public DerivedSchemaEntry(int valueSchemaId, int protocolVersion, String schemaStr) {
     super(valueSchemaId, protocolVersion, schemaStr);
   }

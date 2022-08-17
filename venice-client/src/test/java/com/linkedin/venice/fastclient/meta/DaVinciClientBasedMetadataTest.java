@@ -1,5 +1,9 @@
 package com.linkedin.venice.fastclient.meta;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.meta.PersistenceType.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
@@ -42,10 +46,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.meta.PersistenceType.*;
-import static org.testng.Assert.*;
-
 
 public class DaVinciClientBasedMetadataTest {
   protected static final int KEY_COUNT = 100;
@@ -73,27 +73,31 @@ public class DaVinciClientBasedMetadataTest {
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
 
     veniceCluster.useControllerClient(controllerClient -> {
-      VersionCreationResponse metaSystemStoreVersionCreationResponse = controllerClient.emptyPush(metaSystemStoreName,
-          "test_bootstrap_meta_system_store", 10000);
-      assertFalse(metaSystemStoreVersionCreationResponse.isError(),
-          "New version creation for meta system store failed with error: " + metaSystemStoreVersionCreationResponse.getError());
-      TestUtils.waitForNonDeterministicPushCompletion(metaSystemStoreVersionCreationResponse.getKafkaTopic(), controllerClient, 30,
+      VersionCreationResponse metaSystemStoreVersionCreationResponse =
+          controllerClient.emptyPush(metaSystemStoreName, "test_bootstrap_meta_system_store", 10000);
+      assertFalse(
+          metaSystemStoreVersionCreationResponse.isError(),
+          "New version creation for meta system store failed with error: "
+              + metaSystemStoreVersionCreationResponse.getError());
+      TestUtils.waitForNonDeterministicPushCompletion(
+          metaSystemStoreVersionCreationResponse.getKafkaTopic(),
+          controllerClient,
+          30,
           TimeUnit.SECONDS);
-      daVinciBackendConfig = new PropertyBuilder()
-          .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
+      daVinciBackendConfig = new PropertyBuilder().put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
           .put(PERSISTENCE_TYPE, ROCKS_DB)
           .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
           .put(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, true)
           .build();
     });
 
-    daVinciClientFactory = new CachingDaVinciClientFactory(d2Client,
-        new MetricsRepository(), daVinciBackendConfig);
+    daVinciClientFactory = new CachingDaVinciClientFactory(d2Client, new MetricsRepository(), daVinciBackendConfig);
     daVinciClientForMetaStore = daVinciClientFactory.getAndStartSpecificAvroClient(
         VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName),
         new DaVinciConfig(),
         StoreMetaValue.class);
-    keySerializer = SerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(VeniceClusterWrapper.DEFAULT_KEY_SCHEMA));
+    keySerializer =
+        SerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(VeniceClusterWrapper.DEFAULT_KEY_SCHEMA));
 
     // Populate required ClientConfig fields for initializing DaVinciClientBasedMetadata
     ClientConfig.ClientConfigBuilder clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>();
@@ -117,22 +121,28 @@ public class DaVinciClientBasedMetadataTest {
     VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
     ReadOnlyStoreRepository storeRepository = routerWrapper.getMetaDataRepository();
     OnlineInstanceFinder onlineInstanceFinder = routerWrapper.getOnlineInstanceFinder();
-    assertEquals(daVinciClientBasedMetadata.getCurrentStoreVersion(), storeRepository.getStore(storeName).getCurrentVersion());
+    assertEquals(
+        daVinciClientBasedMetadata.getCurrentStoreVersion(),
+        storeRepository.getStore(storeName).getCurrentVersion());
     List<Version> versions = storeRepository.getStore(storeName).getVersions();
     assertFalse(versions.isEmpty(), "Version list cannot be empty.");
     byte[] keyBytes = keySerializer.serialize(1);
-    for (Version version : versions) {
+    for (Version version: versions) {
       verifyMetadata(onlineInstanceFinder, version.getNumber(), version.getPartitionCount(), keyBytes);
     }
     // Make two new versions before checking the metadata again
     veniceCluster.createVersion(storeName, KEY_COUNT);
     veniceCluster.createVersion(storeName, KEY_COUNT);
 
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () ->
-        assertEquals(daVinciClientBasedMetadata.getCurrentStoreVersion(), storeRepository.getStore(storeName).getCurrentVersion()));
+    TestUtils.waitForNonDeterministicAssertion(
+        30,
+        TimeUnit.SECONDS,
+        () -> assertEquals(
+            daVinciClientBasedMetadata.getCurrentStoreVersion(),
+            storeRepository.getStore(storeName).getCurrentVersion()));
     versions = storeRepository.getStore(storeName).getVersions();
     assertFalse(versions.isEmpty(), "Version list cannot be empty.");
-    for (Version version : versions) {
+    for (Version version: versions) {
       verifyMetadata(onlineInstanceFinder, version.getNumber(), version.getPartitionCount(), keyBytes);
     }
   }
@@ -148,23 +158,31 @@ public class DaVinciClientBasedMetadataTest {
     assertEquals(daVinciClientBasedMetadata.getValueSchemaId(latestValueSchema.getSchema()), latestValueSchema.getId());
   }
 
-  private void verifyMetadata(OnlineInstanceFinder onlineInstanceFinder, int versionNumber, int partitionCount, byte[] key) {
+  private void verifyMetadata(
+      OnlineInstanceFinder onlineInstanceFinder,
+      int versionNumber,
+      int partitionCount,
+      byte[] key) {
     final String resourceName = Version.composeKafkaTopic(storeName, versionNumber);
     final int partitionId = ThreadLocalRandom.current().nextInt(0, partitionCount);
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      assertEquals(defaultPartitioner.getPartitionId(key, partitionCount), daVinciClientBasedMetadata.getPartitionId(versionNumber, key));
+      assertEquals(
+          defaultPartitioner.getPartitionId(key, partitionCount),
+          daVinciClientBasedMetadata.getPartitionId(versionNumber, key));
       Set<String> routerReadyToServeView = onlineInstanceFinder.getReadyToServeInstances(resourceName, partitionId)
-          .stream().map(instance -> instance.getUrl(true)).collect(Collectors.toSet());
+          .stream()
+          .map(instance -> instance.getUrl(true))
+          .collect(Collectors.toSet());
       Set<String> metadataView = new HashSet<>(daVinciClientBasedMetadata.getReplicas(versionNumber, partitionId));
-      assertEquals(metadataView.size(), routerReadyToServeView.size(),
+      assertEquals(
+          metadataView.size(),
+          routerReadyToServeView.size(),
           "Different number of ready to serve instances between router and StoreMetadata.");
-      for (String instance : routerReadyToServeView) {
+      for (String instance: routerReadyToServeView) {
         assertTrue(metadataView.contains(instance), "Instance: " + instance + " is missing from StoreMetadata.");
       }
     });
   }
-
-
 
   @AfterClass
   public void cleanUp() {

@@ -15,7 +15,7 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
  * Class used to access to the allowlist stored in ZK. As operating allowlist should happen very rarely, all of
  * request will hit ZK directly without cache.
  */
-public class ZkAllowlistAccessor implements AllowlistAccessor{
+public class ZkAllowlistAccessor implements AllowlistAccessor {
   // go/inclusivecode deferred(changing zk paths will need migration)
   private static final String PREFIX_PATH = "/whitelist";
 
@@ -31,10 +31,11 @@ public class ZkAllowlistAccessor implements AllowlistAccessor{
     this.zkClient.setZkSerializer(adapterSerializer);
   }
 
-  public ZkAllowlistAccessor(String zkAddress){
+  public ZkAllowlistAccessor(String zkAddress) {
     zkClient = ZkClientFactory.newZkClient(zkAddress);
     isCloseAble = true;
   }
+
   /**
    * Judge whether the given helix nodeId is in the allowlist or not.
    */
@@ -67,7 +68,7 @@ public class ZkAllowlistAccessor implements AllowlistAccessor{
   }
 
   private String getAllowListPath(String clusterName) {
-    return HelixUtils.getHelixClusterZkPath(clusterName)+ PREFIX_PATH;
+    return HelixUtils.getHelixClusterZkPath(clusterName) + PREFIX_PATH;
   }
 
   private String getAllowListInstancePath(String clusterName, String helixNodeId) {

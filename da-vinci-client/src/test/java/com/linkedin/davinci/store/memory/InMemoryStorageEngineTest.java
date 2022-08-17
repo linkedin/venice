@@ -1,23 +1,22 @@
 package com.linkedin.davinci.store.memory;
 
+import static org.mockito.Mockito.*;
+
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
+import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
-import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.utils.VeniceProperties;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static org.mockito.Mockito.*;
-
 
 public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
-
   StorageService service;
   VeniceStoreVersionConfig storeConfig;
   final String STORE_NAME = "testng-in-memory";
@@ -33,8 +32,8 @@ public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
 
   @AfterClass
   public void cleanUp() {
-    if(service != null && storeConfig != null) {
-      service.dropStorePartition(storeConfig , PARTITION_ID);
+    if (service != null && storeConfig != null) {
+      service.dropStorePartition(storeConfig, PARTITION_ID);
     }
   }
 
@@ -43,42 +42,46 @@ public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
     VeniceProperties serverProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.IN_MEMORY);
     VeniceConfigLoader configLoader = AbstractStorageEngineTest.getVeniceConfigLoader(serverProperties);
 
-    service = new StorageService(configLoader, mock(AggVersionedStorageEngineStats.class), null,
-        AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(), AvroProtocolDefinition.PARTITION_STATE.getSerializer(), mock(
-        ReadOnlyStoreRepository.class));
+    service = new StorageService(
+        configLoader,
+        mock(AggVersionedStorageEngineStats.class),
+        null,
+        AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        mock(ReadOnlyStoreRepository.class));
     storeConfig = new VeniceStoreVersionConfig(STORE_NAME, serverProperties);
 
-    testStoreEngine = service.openStoreForNewPartition(storeConfig , PARTITION_ID);
+    testStoreEngine = service.openStoreForNewPartition(storeConfig, PARTITION_ID);
     createStoreForTest();
   }
 
   @Test
-  public void testGetAndPut(){
+  public void testGetAndPut() {
     super.testGetAndPut();
   }
 
   @Test
-  public void testGetByKeyPrefixManyKeys(){
+  public void testGetByKeyPrefixManyKeys() {
     super.testGetByKeyPrefixManyKeys();
   }
 
   @Test
-  public void testGetByKeyPrefixMaxSignedByte(){
+  public void testGetByKeyPrefixMaxSignedByte() {
     super.testGetByKeyPrefixMaxSignedByte();
   }
 
   @Test
-  public void testGetByKeyPrefixMaxUnsignedByte(){
+  public void testGetByKeyPrefixMaxUnsignedByte() {
     super.testGetByKeyPrefixMaxUnsignedByte();
   }
 
   @Test
-  public void testGetByKeyPrefixByteOverflow(){
+  public void testGetByKeyPrefixByteOverflow() {
     super.testGetByKeyPrefixByteOverflow();
   }
 
   @Test
-  public void testDelete(){
+  public void testDelete() {
     super.testDelete();
   }
 
@@ -88,32 +91,27 @@ public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
   }
 
   @Test
-  public void testGetInvalidKeys()
-  {
+  public void testGetInvalidKeys() {
     super.testGetInvalidKeys();
   }
 
   @Test
-  public void testPartitioning()
-      throws Exception {
+  public void testPartitioning() throws Exception {
     super.testPartitioning();
   }
 
   @Test
-  public void testAddingAPartitionTwice()
-      throws Exception {
+  public void testAddingAPartitionTwice() throws Exception {
     super.testAddingAPartitionTwice();
   }
 
   @Test
-  public void testRemovingPartitionTwice()
-      throws Exception{
+  public void testRemovingPartitionTwice() throws Exception {
     super.testRemovingPartitionTwice();
   }
 
   @Test
-  public void testOperationsOnNonExistingPartition()
-      throws Exception {
+  public void testOperationsOnNonExistingPartition() throws Exception {
     super.testOperationsOnNonExistingPartition();
   }
 

@@ -1,5 +1,7 @@
 package com.linkedin.venice.benchmark;
 
+import static com.linkedin.venice.integration.utils.ServiceFactory.*;
+
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -34,10 +36,8 @@ import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.options.Options;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
 
-import static com.linkedin.venice.integration.utils.ServiceFactory.*;
 
-
-@Fork(value = 2, jvmArgs = {"-Xms4G", "-Xmx4G"})
+@Fork(value = 2, jvmArgs = { "-Xms4G", "-Xmx4G" })
 @Warmup(iterations = 2)
 @Measurement(iterations = 3)
 @State(Scope.Benchmark)
@@ -49,7 +49,6 @@ public class VeniceClientBenchmark {
   protected static final String VALUE_FIELD_NAME = "value";
   protected int[] keys = new int[KEY_COUNT];
 
-
   protected VeniceClusterWrapper cluster;
   protected AvroGenericStoreClient client;
 
@@ -58,12 +57,9 @@ public class VeniceClientBenchmark {
     Utils.thisIsLocalhost();
     cluster = getVeniceCluster(1, 1, 1);
     String storeName = buildStore(cluster);
-    cluster.useControllerClient(c -> c.updateStore(storeName, new UpdateStoreQueryParams()
-        .setReadQuotaInCU(10000)
-    ));
+    cluster.useControllerClient(c -> c.updateStore(storeName, new UpdateStoreQueryParams().setReadQuotaInCU(10000)));
     client = ClientFactory.getAndStartGenericAvroClient(
-        ClientConfig.defaultGenericClientConfig(storeName)
-            .setVeniceURL(cluster.getRandomRouterURL()));
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()));
 
     Random random = ThreadLocalRandom.current();
     for (int i = 0; i < KEY_COUNT; ++i) {
@@ -82,14 +78,9 @@ public class VeniceClientBenchmark {
 
   protected String buildStore(VeniceClusterWrapper cluster) throws Exception {
     Schema schema = Schema.parse(
-        "{" +
-            "  \"namespace\" : \"example.avro\"," +
-            "  \"type\": \"record\"," +
-            "  \"name\": \"DenseVector\"," +
-            "  \"fields\": [" +
-            "     { \"name\": \"value\", \"type\": {\"type\": \"array\", \"items\": \"float\"} }" +
-            "   ]" +
-            "}");
+        "{" + "  \"namespace\" : \"example.avro\"," + "  \"type\": \"record\"," + "  \"name\": \"DenseVector\","
+            + "  \"fields\": [" + "     { \"name\": \"value\", \"type\": {\"type\": \"array\", \"items\": \"float\"} }"
+            + "   ]" + "}");
     GenericRecord record = new GenericData.Record(schema);
     List<Float> values = new ArrayList<>();
     for (int i = 0; i < 10; i++) {
@@ -100,10 +91,8 @@ public class VeniceClientBenchmark {
   }
 
   public static void main(String[] args) throws Exception {
-    Options opt = new OptionsBuilder()
-        .include(VeniceClientBenchmark.class.getSimpleName())
-        .addProfiler(GCProfiler.class)
-        .build();
+    Options opt =
+        new OptionsBuilder().include(VeniceClientBenchmark.class.getSimpleName()).addProfiler(GCProfiler.class).build();
     new Runner(opt).run();
   }
 

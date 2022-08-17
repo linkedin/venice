@@ -20,8 +20,7 @@ class AmplificationAdapter {
       ReportStatusAdapter reportStatusAdapter,
       PriorityBlockingQueue<ConsumerAction> consumerActionsQueue,
       ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap,
-      IntSupplier nextConsumerActionSeqNumProvider
-  ) {
+      IntSupplier nextConsumerActionSeqNumProvider) {
     this.amplificationFactor = amplificationFactor;
     this.reportStatusAdapter = reportStatusAdapter;
     this.consumerActionsQueue = consumerActionsQueue;
@@ -37,36 +36,63 @@ class AmplificationAdapter {
      * sub-partitions of the same user partition of the version topic.
      */
     int leaderSubPartition = PartitionUtils.getLeaderSubPartition(partition, amplificationFactor);
-    for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
+    for (int subPartition: PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
       if (leaderSubPartition == subPartition) {
-        consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.SUBSCRIBE, topic, subPartition, nextSeqNum.getAsInt(), leaderState));
+        consumerActionsQueue.add(
+            new ConsumerAction(ConsumerActionType.SUBSCRIBE, topic, subPartition, nextSeqNum.getAsInt(), leaderState));
       } else {
-        consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.SUBSCRIBE, topic, subPartition, nextSeqNum.getAsInt(), Optional.empty()));
+        consumerActionsQueue.add(
+            new ConsumerAction(
+                ConsumerActionType.SUBSCRIBE,
+                topic,
+                subPartition,
+                nextSeqNum.getAsInt(),
+                Optional.empty()));
       }
     }
   }
 
   public void unSubscribePartition(String topic, int partition) {
-    for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
-      consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.UNSUBSCRIBE, topic, subPartition, nextSeqNum.getAsInt()));
+    for (int subPartition: PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
+      consumerActionsQueue
+          .add(new ConsumerAction(ConsumerActionType.UNSUBSCRIBE, topic, subPartition, nextSeqNum.getAsInt()));
     }
   }
 
   public void resetPartitionConsumptionOffset(String topic, int partition) {
-    for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
-      consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.RESET_OFFSET, topic, subPartition, nextSeqNum.getAsInt()));
+    for (int subPartition: PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
+      consumerActionsQueue
+          .add(new ConsumerAction(ConsumerActionType.RESET_OFFSET, topic, subPartition, nextSeqNum.getAsInt()));
     }
   }
 
-  public void promoteToLeader(String topic, int partition, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
-    for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
-      consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.STANDBY_TO_LEADER, topic, subPartition, nextSeqNum.getAsInt(), checker));
+  public void promoteToLeader(
+      String topic,
+      int partition,
+      LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
+    for (int subPartition: PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
+      consumerActionsQueue.add(
+          new ConsumerAction(
+              ConsumerActionType.STANDBY_TO_LEADER,
+              topic,
+              subPartition,
+              nextSeqNum.getAsInt(),
+              checker));
     }
   }
 
-  public void demoteToStandby(String topic, int partition, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
-    for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
-      consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.LEADER_TO_STANDBY, topic, subPartition, nextSeqNum.getAsInt(), checker));
+  public void demoteToStandby(
+      String topic,
+      int partition,
+      LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
+    for (int subPartition: PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
+      consumerActionsQueue.add(
+          new ConsumerAction(
+              ConsumerActionType.LEADER_TO_STANDBY,
+              topic,
+              subPartition,
+              nextSeqNum.getAsInt(),
+              checker));
     }
   }
 
@@ -80,7 +106,7 @@ class AmplificationAdapter {
   }
 
   public boolean isPartitionConsuming(final int partition) {
-    for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
+    for (int subPartition: PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
       if (partitionConsumptionStateMap.containsKey(subPartition)) {
         return true;
       }
@@ -95,7 +121,7 @@ class AmplificationAdapter {
   }
 
   public void lagHasCaughtUp(final int partition) {
-    for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
+    for (int subPartition: PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
       if (partitionConsumptionStateMap.containsKey(subPartition)) {
         partitionConsumptionStateMap.get(subPartition).lagHasCaughtUp();
       }

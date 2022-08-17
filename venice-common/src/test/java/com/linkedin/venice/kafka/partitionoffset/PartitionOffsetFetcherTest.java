@@ -37,9 +37,8 @@ public class PartitionOffsetFetcherTest {
         1 * Time.MS_PER_SECOND,
         Optional.empty())) {
       String topic = Utils.getUniqueString("topic");
-      Assert.assertThrows(
-          TopicDoesNotExistException.class,
-          () -> fetcher.getPartitionLatestOffsetAndRetry(topic, 0, 1));
+      Assert
+          .assertThrows(TopicDoesNotExistException.class, () -> fetcher.getPartitionLatestOffsetAndRetry(topic, 0, 1));
     }
   }
 }

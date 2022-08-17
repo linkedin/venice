@@ -26,8 +26,9 @@ public class ArrayBasedPrimitiveIntegerSet extends AbstractSet<Integer> implemen
 
   public ArrayBasedPrimitiveIntegerSet(int[] backingArray, int initialSize) {
     if (initialSize > backingArray.length) {
-      throw new IllegalArgumentException("initialSize (" + initialSize + ") can not be bigger than the actual size of"
-          + " the backingArray (" + backingArray.length + ")");
+      throw new IllegalArgumentException(
+          "initialSize (" + initialSize + ") can not be bigger than the actual size of" + " the backingArray ("
+              + backingArray.length + ")");
     }
     elements = backingArray;
     size = initialSize;
@@ -46,7 +47,7 @@ public class ArrayBasedPrimitiveIntegerSet extends AbstractSet<Integer> implemen
       throw new ClassCastException("Input object is not an integer");
     }
     Integer other = (Integer) o;
-    return contains((int)other);
+    return contains((int) other);
   }
 
   /**
@@ -71,7 +72,7 @@ public class ArrayBasedPrimitiveIntegerSet extends AbstractSet<Integer> implemen
     if (e == null) {
       throw new NullPointerException();
     }
-    return add((int)e);
+    return add((int) e);
   }
 
   /**
@@ -86,7 +87,7 @@ public class ArrayBasedPrimitiveIntegerSet extends AbstractSet<Integer> implemen
     }
     // new element
     if (size == elements.length) {
-      int[] newElements = new int[(size * 3)/2 + 1];
+      int[] newElements = new int[(size * 3) / 2 + 1];
       System.arraycopy(elements, 0, newElements, 0, size);
       elements = newElements;
     }
@@ -102,7 +103,7 @@ public class ArrayBasedPrimitiveIntegerSet extends AbstractSet<Integer> implemen
       throw new ClassCastException("Input object is not an integer");
     }
     Integer e = (Integer) o;
-    return remove((int)e);
+    return remove((int) e);
   }
 
   /**
@@ -136,7 +137,6 @@ public class ArrayBasedPrimitiveIntegerSet extends AbstractSet<Integer> implemen
     this.size = 0;
   }
 
-
   // Comparison and hashing
 
   public int hashCode() {
@@ -157,6 +157,7 @@ public class ArrayBasedPrimitiveIntegerSet extends AbstractSet<Integer> implemen
     final private int size;
     private int index;
     private int lastReturnedElement;
+
     public PrimitiveIntegerSetIterator(ArrayBasedPrimitiveIntegerSet set) {
       this.set = set;
       this.backingArray = set.getBackingArray();
@@ -188,4 +189,3 @@ public class ArrayBasedPrimitiveIntegerSet extends AbstractSet<Integer> implemen
     }
   }
 }
-

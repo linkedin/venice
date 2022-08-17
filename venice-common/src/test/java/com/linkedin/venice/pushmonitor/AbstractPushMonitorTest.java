@@ -1,5 +1,10 @@
 package com.linkedin.venice.pushmonitor;
 
+import static com.linkedin.venice.pushmonitor.AbstractPushMonitor.*;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixState;
@@ -37,11 +42,6 @@ import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
-
-import static com.linkedin.venice.pushmonitor.AbstractPushMonitor.*;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
 
 
 public abstract class AbstractPushMonitorTest {
@@ -87,7 +87,10 @@ public abstract class AbstractPushMonitorTest {
 
   @Test
   public void testStartMonitorOfflinePush() {
-    monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
+    monitor.startMonitorOfflinePush(
+        topic,
+        numberOfPartition,
+        replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     OfflinePushStatus pushStatus = monitor.getOfflinePushOrThrow(topic);
     Assert.assertEquals(pushStatus.getCurrentStatus(), ExecutionStatus.STARTED);
@@ -98,7 +101,10 @@ public abstract class AbstractPushMonitorTest {
     verify(mockAccessor, atLeastOnce()).subscribePartitionStatusChange(pushStatus, monitor);
     verify(mockRoutingDataRepo, atLeastOnce()).subscribeRoutingDataChange(getTopic(), monitor);
     try {
-      monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
+      monitor.startMonitorOfflinePush(
+          topic,
+          numberOfPartition,
+          replicationFactor,
           OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
       Assert.fail("Duplicated monitoring is not allowed. ");
     } catch (VeniceException e) {
@@ -107,7 +113,10 @@ public abstract class AbstractPushMonitorTest {
 
   @Test
   public void testStartMonitorOfflinePushWhenThereIsAnExistingErrorPush() {
-    monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
+    monitor.startMonitorOfflinePush(
+        topic,
+        numberOfPartition,
+        replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     OfflinePushStatus pushStatus = monitor.getOfflinePushOrThrow(topic);
     Assert.assertEquals(pushStatus.getCurrentStatus(), ExecutionStatus.STARTED);
@@ -121,13 +130,19 @@ public abstract class AbstractPushMonitorTest {
     Assert.assertEquals(monitor.getPushStatus(topic), ExecutionStatus.ERROR);
 
     // Existing error push will be cleaned up to start a new push
-    monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
+    monitor.startMonitorOfflinePush(
+        topic,
+        numberOfPartition,
+        replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
   }
 
   @Test
   public void testStopMonitorOfflinePush() {
-    monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
+    monitor.startMonitorOfflinePush(
+        topic,
+        numberOfPartition,
+        replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     OfflinePushStatus pushStatus = monitor.getOfflinePushOrThrow(topic);
     monitor.stopMonitorOfflinePush(topic, true, false);
@@ -147,7 +162,10 @@ public abstract class AbstractPushMonitorTest {
     String store = getStoreName();
     for (int i = 0; i < MAX_PUSH_TO_KEEP; i++) {
       String topic = Version.composeKafkaTopic(store, i);
-      monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
+      monitor.startMonitorOfflinePush(
+          topic,
+          numberOfPartition,
+          replicationFactor,
           OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
       OfflinePushStatus pushStatus = monitor.getOfflinePushOrThrow(topic);
       pushStatus.updateStatus(ExecutionStatus.ERROR);
@@ -159,7 +177,10 @@ public abstract class AbstractPushMonitorTest {
     }
     // Add a new error push, the oldest one should be collected.
     String topic = Version.composeKafkaTopic(store, MAX_PUSH_TO_KEEP + 1);
-    monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
+    monitor.startMonitorOfflinePush(
+        topic,
+        numberOfPartition,
+        replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     OfflinePushStatus pushStatus = monitor.getOfflinePushOrThrow(topic);
     pushStatus.updateStatus(ExecutionStatus.ERROR);
@@ -168,7 +189,7 @@ public abstract class AbstractPushMonitorTest {
       monitor.getOfflinePushOrThrow(Version.composeKafkaTopic(store, 0));
       Assert.fail("Oldest error push should be collected.");
     } catch (VeniceException e) {
-      //expected
+      // expected
     }
     Assert.assertNotNull(monitor.getOfflinePushOrThrow(topic));
   }
@@ -178,18 +199,19 @@ public abstract class AbstractPushMonitorTest {
     int statusCount = 3;
     List<OfflinePushStatus> statusList = new ArrayList<>(statusCount);
     for (int i = 0; i < statusCount; i++) {
-      OfflinePushStatus pushStatus =
-          new OfflinePushStatus("testLoadAllPushes_v" + i, numberOfPartition, replicationFactor,
-              OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+      OfflinePushStatus pushStatus = new OfflinePushStatus(
+          "testLoadAllPushes_v" + i,
+          numberOfPartition,
+          replicationFactor,
+          OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
       pushStatus.setCurrentStatus(ExecutionStatus.COMPLETED);
       statusList.add(pushStatus);
     }
     doReturn(statusList).when(mockAccessor).loadOfflinePushStatusesAndPartitionStatuses();
-    when(mockAccessor.getOfflinePushStatusAndItsPartitionStatuses(Mockito.anyString())).thenAnswer(invocation ->
-    {
+    when(mockAccessor.getOfflinePushStatusAndItsPartitionStatuses(Mockito.anyString())).thenAnswer(invocation -> {
       String kafkaTopic = invocation.getArgument(0);
-      for(OfflinePushStatus status : statusList) {
-        if(status.getKafkaTopic().equals(kafkaTopic)) {
+      for (OfflinePushStatus status: statusList) {
+        if (status.getKafkaTopic().equals(kafkaTopic)) {
           return status;
         }
       }
@@ -197,22 +219,25 @@ public abstract class AbstractPushMonitorTest {
     });
     monitor.loadAllPushes();
     for (int i = 0; i < statusCount; i++) {
-      Assert.assertEquals(monitor.getOfflinePushOrThrow("testLoadAllPushes_v" + i).getCurrentStatus(),
+      Assert.assertEquals(
+          monitor.getOfflinePushOrThrow("testLoadAllPushes_v" + i).getCurrentStatus(),
           ExecutionStatus.COMPLETED);
     }
   }
 
   @Test
   public void testClearOldErrorVersion() {
-    //creating MAX_PUSH_TO_KEEP * 2 pushes. The first is successful and the rest of them are failed.
+    // creating MAX_PUSH_TO_KEEP * 2 pushes. The first is successful and the rest of them are failed.
     int statusCount = MAX_PUSH_TO_KEEP * 2;
     List<OfflinePushStatus> statusList = new ArrayList<>(statusCount);
     for (int i = 0; i < statusCount; i++) {
-      OfflinePushStatus pushStatus =
-          new OfflinePushStatus("testLoadAllPushes_v" + i, numberOfPartition, replicationFactor,
-              OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+      OfflinePushStatus pushStatus = new OfflinePushStatus(
+          "testLoadAllPushes_v" + i,
+          numberOfPartition,
+          replicationFactor,
+          OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
 
-      //set all push statuses except the first to error
+      // set all push statuses except the first to error
       if (i == 0) {
         pushStatus.setCurrentStatus(ExecutionStatus.COMPLETED);
       } else {
@@ -222,11 +247,10 @@ public abstract class AbstractPushMonitorTest {
     }
     doReturn(statusList).when(mockAccessor).loadOfflinePushStatusesAndPartitionStatuses();
 
-    when(mockAccessor.getOfflinePushStatusAndItsPartitionStatuses(Mockito.anyString())).thenAnswer(invocation ->
-    {
+    when(mockAccessor.getOfflinePushStatusAndItsPartitionStatuses(Mockito.anyString())).thenAnswer(invocation -> {
       String kafkaTopic = invocation.getArgument(0);
-      for(OfflinePushStatus status : statusList) {
-        if(status.getKafkaTopic().equals(kafkaTopic)) {
+      for (OfflinePushStatus status: statusList) {
+        if (status.getKafkaTopic().equals(kafkaTopic)) {
           return status;
         }
       }
@@ -235,10 +259,9 @@ public abstract class AbstractPushMonitorTest {
 
     monitor.loadAllPushes();
     // Make sure we delete old error pushes from accessor.
-    verify(mockAccessor, times(statusCount - MAX_PUSH_TO_KEEP))
-        .deleteOfflinePushStatusAndItsPartitionStatuses(any());
+    verify(mockAccessor, times(statusCount - MAX_PUSH_TO_KEEP)).deleteOfflinePushStatusAndItsPartitionStatuses(any());
 
-    //the first push should be persisted since it succeeded. But the next 5 pushes should be purged.
+    // the first push should be persisted since it succeeded. But the next 5 pushes should be purged.
     int i = 0;
     Assert.assertEquals(monitor.getPushStatus("testLoadAllPushes_v" + i), ExecutionStatus.COMPLETED);
 
@@ -247,7 +270,7 @@ public abstract class AbstractPushMonitorTest {
         monitor.getOfflinePushOrThrow("testLoadAllPushes_v" + i);
         Assert.fail("Old error pushes should be collected after loading.");
       } catch (VeniceException e) {
-        //expected
+        // expected
       }
     }
 
@@ -260,7 +283,10 @@ public abstract class AbstractPushMonitorTest {
   public void testOnRoutingDataDeleted() {
     String topic = getTopic();
     prepareMockStore(topic);
-    monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
+    monitor.startMonitorOfflinePush(
+        topic,
+        numberOfPartition,
+        replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     // Resource has been deleted from the external view but still existing in the ideal state.
     doReturn(true).when(mockRoutingDataRepo).doesResourcesExistInIdealState(topic);
@@ -282,14 +308,20 @@ public abstract class AbstractPushMonitorTest {
   private final int partitionCountForIncPushTests = 3;
   private final int replicationFactorForIncPushTests = 3;
 
-  private void prepareForIncrementalPushStatusTest(Map<Integer, Map<CharSequence, Integer>> pushStatusMap,
+  private void prepareForIncrementalPushStatusTest(
+      Map<Integer, Map<CharSequence, Integer>> pushStatusMap,
       Map<Integer, Integer> completedStatusMap) {
     statusStoreReaderMock = mock(PushStatusStoreReader.class);
     customizedViewMock = mock(HelixCustomizedViewOfflinePushRepository.class);
 
-    when(statusStoreReaderMock.getPartitionStatuses(getStoreName(), Version.parseVersionFromVersionTopicName(getTopic()),
-        incrementalPushVersion, partitionCountForIncPushTests)).thenReturn(pushStatusMap);
-    when(customizedViewMock.getCompletedStatusReplicas(getTopic(), partitionCountForIncPushTests)).thenReturn(completedStatusMap);
+    when(
+        statusStoreReaderMock.getPartitionStatuses(
+            getStoreName(),
+            Version.parseVersionFromVersionTopicName(getTopic()),
+            incrementalPushVersion,
+            partitionCountForIncPushTests)).thenReturn(pushStatusMap);
+    when(customizedViewMock.getCompletedStatusReplicas(getTopic(), partitionCountForIncPushTests))
+        .thenReturn(completedStatusMap);
   }
 
   /* Tests mutate/change count of completed status replicas to test various scenarios */
@@ -321,8 +353,16 @@ public abstract class AbstractPushMonitorTest {
     Map<Integer, Integer> completedReplicas = Collections.emptyMap();
     prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
 
-    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(), incrementalPushVersion,
-        customizedViewMock, statusStoreReaderMock, partitionCountForIncPushTests, replicationFactorForIncPushTests).getFirst();
+    ExecutionStatus actualStatus =
+        monitor
+            .getIncrementalPushStatusFromPushStatusStore(
+                getTopic(),
+                incrementalPushVersion,
+                customizedViewMock,
+                statusStoreReaderMock,
+                partitionCountForIncPushTests,
+                replicationFactorForIncPushTests)
+            .getFirst();
     Assert.assertEquals(actualStatus, ExecutionStatus.NOT_CREATED);
   }
 
@@ -332,8 +372,16 @@ public abstract class AbstractPushMonitorTest {
     Map<Integer, Integer> completedReplicas = getCompletedStatusData();
     prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
 
-    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(), incrementalPushVersion,
-        customizedViewMock, statusStoreReaderMock, partitionCountForIncPushTests, replicationFactorForIncPushTests).getFirst();
+    ExecutionStatus actualStatus =
+        monitor
+            .getIncrementalPushStatusFromPushStatusStore(
+                getTopic(),
+                incrementalPushVersion,
+                customizedViewMock,
+                statusStoreReaderMock,
+                partitionCountForIncPushTests,
+                replicationFactorForIncPushTests)
+            .getFirst();
     Assert.assertEquals(actualStatus, END_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -348,8 +396,16 @@ public abstract class AbstractPushMonitorTest {
 
     prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
 
-    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(), incrementalPushVersion,
-        customizedViewMock, statusStoreReaderMock, partitionCountForIncPushTests, replicationFactorForIncPushTests).getFirst();
+    ExecutionStatus actualStatus =
+        monitor
+            .getIncrementalPushStatusFromPushStatusStore(
+                getTopic(),
+                incrementalPushVersion,
+                customizedViewMock,
+                statusStoreReaderMock,
+                partitionCountForIncPushTests,
+                replicationFactorForIncPushTests)
+            .getFirst();
     Assert.assertEquals(actualStatus, END_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -365,8 +421,16 @@ public abstract class AbstractPushMonitorTest {
 
     prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
 
-    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(), incrementalPushVersion,
-        customizedViewMock, statusStoreReaderMock, partitionCountForIncPushTests, replicationFactorForIncPushTests).getFirst();
+    ExecutionStatus actualStatus =
+        monitor
+            .getIncrementalPushStatusFromPushStatusStore(
+                getTopic(),
+                incrementalPushVersion,
+                customizedViewMock,
+                statusStoreReaderMock,
+                partitionCountForIncPushTests,
+                replicationFactorForIncPushTests)
+            .getFirst();
     Assert.assertEquals(actualStatus, END_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -379,8 +443,16 @@ public abstract class AbstractPushMonitorTest {
 
     prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
 
-    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(), incrementalPushVersion,
-        customizedViewMock, statusStoreReaderMock, partitionCountForIncPushTests, replicationFactorForIncPushTests).getFirst();
+    ExecutionStatus actualStatus =
+        monitor
+            .getIncrementalPushStatusFromPushStatusStore(
+                getTopic(),
+                incrementalPushVersion,
+                customizedViewMock,
+                statusStoreReaderMock,
+                partitionCountForIncPushTests,
+                replicationFactorForIncPushTests)
+            .getFirst();
     Assert.assertEquals(actualStatus, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -396,14 +468,23 @@ public abstract class AbstractPushMonitorTest {
 
     prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
 
-    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(), incrementalPushVersion,
-        customizedViewMock, statusStoreReaderMock, partitionCountForIncPushTests, replicationFactorForIncPushTests).getFirst();
+    ExecutionStatus actualStatus =
+        monitor
+            .getIncrementalPushStatusFromPushStatusStore(
+                getTopic(),
+                incrementalPushVersion,
+                customizedViewMock,
+                statusStoreReaderMock,
+                partitionCountForIncPushTests,
+                replicationFactorForIncPushTests)
+            .getFirst();
     Assert.assertEquals(actualStatus, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
   @Test(description = "Expect SOIP status when for one partition numberOfReplicasInCompletedState == replicationFactor and just one replica of only one partition has seen SOIP")
   public void testCheckIncrementalPushStatusOnlyOneReplicasHasSeenSOIP() {
-    Map<Integer, Map<CharSequence, Integer>> pushStatusMap = getPushStatusData(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
+    Map<Integer, Map<CharSequence, Integer>> pushStatusMap =
+        getPushStatusData(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
     // simulate just one replica of only one partition has seen EOIP
     pushStatusMap.get(0).remove("instance-0");
     pushStatusMap.get(0).remove("instance-1");
@@ -415,8 +496,16 @@ public abstract class AbstractPushMonitorTest {
 
     prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
 
-    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(), incrementalPushVersion,
-        customizedViewMock, statusStoreReaderMock, partitionCountForIncPushTests, replicationFactorForIncPushTests).getFirst();
+    ExecutionStatus actualStatus =
+        monitor
+            .getIncrementalPushStatusFromPushStatusStore(
+                getTopic(),
+                incrementalPushVersion,
+                customizedViewMock,
+                statusStoreReaderMock,
+                partitionCountForIncPushTests,
+                replicationFactorForIncPushTests)
+            .getFirst();
     Assert.assertEquals(actualStatus, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -434,8 +523,16 @@ public abstract class AbstractPushMonitorTest {
 
     prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
 
-    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(), incrementalPushVersion,
-        customizedViewMock, statusStoreReaderMock, partitionCountForIncPushTests, replicationFactorForIncPushTests).getFirst();
+    ExecutionStatus actualStatus =
+        monitor
+            .getIncrementalPushStatusFromPushStatusStore(
+                getTopic(),
+                incrementalPushVersion,
+                customizedViewMock,
+                statusStoreReaderMock,
+                partitionCountForIncPushTests,
+                replicationFactorForIncPushTests)
+            .getFirst();
     Assert.assertEquals(actualStatus, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -449,12 +546,20 @@ public abstract class AbstractPushMonitorTest {
 
     prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
 
-    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(), incrementalPushVersion,
-        customizedViewMock, statusStoreReaderMock, partitionCountForIncPushTests, replicationFactorForIncPushTests).getFirst();
+    ExecutionStatus actualStatus =
+        monitor
+            .getIncrementalPushStatusFromPushStatusStore(
+                getTopic(),
+                incrementalPushVersion,
+                customizedViewMock,
+                statusStoreReaderMock,
+                partitionCountForIncPushTests,
+                replicationFactorForIncPushTests)
+            .getFirst();
     Assert.assertEquals(actualStatus, END_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
-  @Test (description = "Expect ERROR status when any one replica belonging to any partition has non-incremental push status")
+  @Test(description = "Expect ERROR status when any one replica belonging to any partition has non-incremental push status")
   public void testCheckIncrementalPushStatusWhenAnyOfTheReplicaHasNonIncPushStatus() {
     Map<Integer, Map<CharSequence, Integer>> pushStatusMap = getPushStatusData(END_OF_INCREMENTAL_PUSH_RECEIVED);
     // simulate one replica has non-incremental push status
@@ -463,33 +568,52 @@ public abstract class AbstractPushMonitorTest {
 
     prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
 
-    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(), incrementalPushVersion,
-        customizedViewMock, statusStoreReaderMock, partitionCountForIncPushTests, replicationFactorForIncPushTests).getFirst();
+    ExecutionStatus actualStatus =
+        monitor
+            .getIncrementalPushStatusFromPushStatusStore(
+                getTopic(),
+                incrementalPushVersion,
+                customizedViewMock,
+                statusStoreReaderMock,
+                partitionCountForIncPushTests,
+                replicationFactorForIncPushTests)
+            .getFirst();
     Assert.assertEquals(actualStatus, ExecutionStatus.ERROR);
   }
 
-  @Test (description = "Expect NOT_CREATED status when push status map is null")
+  @Test(description = "Expect NOT_CREATED status when push status map is null")
   public void testCheckIncrementalPushStatusWhenPushStatusMapisNull() {
     Map<Integer, Integer> completedReplicas = getCompletedStatusData();
     prepareForIncrementalPushStatusTest(null, completedReplicas);
 
-    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(), incrementalPushVersion,
-        customizedViewMock, statusStoreReaderMock, partitionCountForIncPushTests, replicationFactorForIncPushTests).getFirst();
+    ExecutionStatus actualStatus =
+        monitor
+            .getIncrementalPushStatusFromPushStatusStore(
+                getTopic(),
+                incrementalPushVersion,
+                customizedViewMock,
+                statusStoreReaderMock,
+                partitionCountForIncPushTests,
+                replicationFactorForIncPushTests)
+            .getFirst();
     Assert.assertEquals(actualStatus, ExecutionStatus.NOT_CREATED);
   }
 
   @Test
   public void testGetOngoingIncrementalPushVersions() {
-    Map<CharSequence, Integer> ipVersions = new HashMap<CharSequence, Integer>() {{
-      put("incPush1", 7);
-      put("incPush2", 7);
-      put("incPush3", 7);
-      put("incPush4", 7);
-    }};
+    Map<CharSequence, Integer> ipVersions = new HashMap<CharSequence, Integer>() {
+      {
+        put("incPush1", 7);
+        put("incPush2", 7);
+        put("incPush3", 7);
+        put("incPush4", 7);
+      }
+    };
     statusStoreReaderMock = mock(PushStatusStoreReader.class);
-    when(statusStoreReaderMock.getSupposedlyOngoingIncrementalPushVersions(anyString(), anyInt())).thenReturn(ipVersions);
+    when(statusStoreReaderMock.getSupposedlyOngoingIncrementalPushVersions(anyString(), anyInt()))
+        .thenReturn(ipVersions);
     Set<String> ongoIpVersions = monitor.getOngoingIncrementalPushVersions(getTopic(), statusStoreReaderMock);
-    for (CharSequence ipVersion : ipVersions.keySet()) {
+    for (CharSequence ipVersion: ipVersions.keySet()) {
       Assert.assertTrue(ongoIpVersions.contains(ipVersion.toString()));
     }
     verify(statusStoreReaderMock).getSupposedlyOngoingIncrementalPushVersions(anyString(), anyInt());
@@ -500,14 +624,21 @@ public abstract class AbstractPushMonitorTest {
     String topic = getTopic();
     // Prepare a hybrid store.
     Store store = prepareMockStore(topic);
-    store.setHybridStoreConfig(new HybridStoreConfigImpl(100, 100, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-        DataReplicationPolicy.NON_AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP));
+    store.setHybridStoreConfig(
+        new HybridStoreConfigImpl(
+            100,
+            100,
+            HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+            DataReplicationPolicy.NON_AGGREGATE,
+            BufferReplayPolicy.REWIND_FROM_EOP));
     // Prepare a mock topic replicator
-    RealTimeTopicSwitcher
-        realTimeTopicSwitcher = mock(RealTimeTopicSwitcher.class);
+    RealTimeTopicSwitcher realTimeTopicSwitcher = mock(RealTimeTopicSwitcher.class);
     monitor.setRealTimeTopicSwitcher(realTimeTopicSwitcher);
     // Start a push
-    monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
+    monitor.startMonitorOfflinePush(
+        topic,
+        numberOfPartition,
+        replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
 
     // Prepare the new partition status
@@ -526,15 +657,23 @@ public abstract class AbstractPushMonitorTest {
     monitor.onPartitionStatusChange(topic, partitionStatus);
     // Not ready to send SOBR
     verify(realTimeTopicSwitcher, never()).switchToRealTimeTopic(any(), any(), any(), any(), anyList());
-    Assert.assertEquals(monitor.getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.STARTED,
+    Assert.assertEquals(
+        monitor.getOfflinePushOrThrow(topic).getCurrentStatus(),
+        ExecutionStatus.STARTED,
         "Hybrid push is not ready to send SOBR.");
 
     // One replica received end of push
     replicaStatuses.get(0).updateStatus(ExecutionStatus.END_OF_PUSH_RECEIVED);
     monitor.onPartitionStatusChange(topic, partitionStatus);
-    verify(realTimeTopicSwitcher,times(1))
-        .switchToRealTimeTopic(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store), eq(aggregateRealTimeSourceKafkaUrl), anyList());
-    Assert.assertEquals(monitor.getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.END_OF_PUSH_RECEIVED,
+    verify(realTimeTopicSwitcher, times(1)).switchToRealTimeTopic(
+        eq(Version.composeRealTimeTopic(store.getName())),
+        eq(topic),
+        eq(store),
+        eq(aggregateRealTimeSourceKafkaUrl),
+        anyList());
+    Assert.assertEquals(
+        monitor.getOfflinePushOrThrow(topic).getCurrentStatus(),
+        ExecutionStatus.END_OF_PUSH_RECEIVED,
         "At least one replica already received end_of_push, so we send SOBR and update push status to END_OF_PUSH_RECEIVED");
 
     // Another replica received end of push
@@ -547,19 +686,25 @@ public abstract class AbstractPushMonitorTest {
   }
 
   @Test
-  public void testOnPartitionStatusChangeForHybridStoreParallel()
-      throws InterruptedException {
+  public void testOnPartitionStatusChangeForHybridStoreParallel() throws InterruptedException {
     String topic = getTopic();
     // Prepare a hybrid store.
     Store store = prepareMockStore(topic);
-    store.setHybridStoreConfig(new HybridStoreConfigImpl(100, 100, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-        DataReplicationPolicy.NON_AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP));
+    store.setHybridStoreConfig(
+        new HybridStoreConfigImpl(
+            100,
+            100,
+            HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+            DataReplicationPolicy.NON_AGGREGATE,
+            BufferReplayPolicy.REWIND_FROM_EOP));
     // Prepare a mock topic replicator
-    RealTimeTopicSwitcher
-        realTimeTopicSwitcher = mock(RealTimeTopicSwitcher.class);
+    RealTimeTopicSwitcher realTimeTopicSwitcher = mock(RealTimeTopicSwitcher.class);
     monitor.setRealTimeTopicSwitcher(realTimeTopicSwitcher);
     // Start a push
-    monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
+    monitor.startMonitorOfflinePush(
+        topic,
+        numberOfPartition,
+        replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
 
     // External view exists
@@ -588,9 +733,15 @@ public abstract class AbstractPushMonitorTest {
       threads[i].join();
     }
     // Only send one SOBR
-    verify(realTimeTopicSwitcher, only())
-        .switchToRealTimeTopic(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store), eq(aggregateRealTimeSourceKafkaUrl), anyList());
-    Assert.assertEquals(monitor.getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.END_OF_PUSH_RECEIVED,
+    verify(realTimeTopicSwitcher, only()).switchToRealTimeTopic(
+        eq(Version.composeRealTimeTopic(store.getName())),
+        eq(topic),
+        eq(store),
+        eq(aggregateRealTimeSourceKafkaUrl),
+        anyList());
+    Assert.assertEquals(
+        monitor.getOfflinePushOrThrow(topic).getCurrentStatus(),
+        ExecutionStatus.END_OF_PUSH_RECEIVED,
         "At least one replica already received end_of_push, so we send SOBR and update push status to END_OF_PUSH_RECEIVED");
   }
 
@@ -613,7 +764,11 @@ public abstract class AbstractPushMonitorTest {
     }
 
     @Override
-    public void retireOldStoreVersions(String clusterName, String storeName, boolean deleteBackupOnStartPush, int currentVersionBeforePush) {
+    public void retireOldStoreVersions(
+        String clusterName,
+        String storeName,
+        boolean deleteBackupOnStartPush,
+        int currentVersionBeforePush) {
       try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
         try {
           Thread.sleep(1000);
@@ -645,7 +800,8 @@ public abstract class AbstractPushMonitorTest {
       completedPartitionAssignment.addPartition(new Partition(0, onlineInstanceMap));
       ReplicaStatus status = new ReplicaStatus(instanceId);
       status.updateStatus(ExecutionStatus.COMPLETED);
-      ReadOnlyPartitionStatus completedPartitionStatus = new ReadOnlyPartitionStatus(0, Collections.singletonList(status));
+      ReadOnlyPartitionStatus completedPartitionStatus =
+          new ReadOnlyPartitionStatus(0, Collections.singletonList(status));
       pushMonitor.startMonitorOfflinePush(topic, 1, 1, OfflinePushStrategy.WAIT_ALL_REPLICAS);
       pushMonitor.onPartitionStatusChange(topic, completedPartitionStatus);
 
@@ -693,11 +849,13 @@ public abstract class AbstractPushMonitorTest {
 
       ReplicaStatus status = new ReplicaStatus(instanceId);
       status.updateStatus(ExecutionStatus.COMPLETED);
-      ReadOnlyPartitionStatus completedPartitionStatus = new ReadOnlyPartitionStatus(0, Collections.singletonList(status));
+      ReadOnlyPartitionStatus completedPartitionStatus =
+          new ReadOnlyPartitionStatus(0, Collections.singletonList(status));
       pushMonitor.startMonitorOfflinePush(topic, 1, 1, OfflinePushStrategy.WAIT_ALL_REPLICAS);
 
       asyncExecutor.submit(() -> {
-        // Controller thread: onPartitionStatusChange->updatePushStatusByPartitionStatus->handleCompletedPush->retireOldStoreVersions
+        // Controller thread:
+        // onPartitionStatusChange->updatePushStatusByPartitionStatus->handleCompletedPush->retireOldStoreVersions
         System.out.println("T1 will acquire cluster level read lock and store level write lock");
         pushMonitor.onPartitionStatusChange(topic, completedPartitionStatus);
         System.out.println("T1 released cluster level read lock and store level write lock");
@@ -757,6 +915,7 @@ public abstract class AbstractPushMonitorTest {
   protected String getClusterName() {
     return clusterName;
   }
+
   protected String getTopic() {
     return topic;
   }

@@ -1,5 +1,7 @@
 package com.linkedin.venice.meta;
 
+import static java.lang.Character.*;
+
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -10,8 +12,6 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
-
-import static java.lang.Character.*;
 
 
 /**
@@ -38,16 +38,20 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
    * Producer type for writing data to Venice
    */
   enum PushType {
-    BATCH(0), //Batch jobs will create a new version topic and write to it in a batch manner.
+    BATCH(0), // Batch jobs will create a new version topic and write to it in a batch manner.
     STREAM_REPROCESSING(1), // reprocessing jobs will create a new version topic and a reprocessing topic.
     STREAM(2), // Stream jobs will write to a buffer or RT topic.
     INCREMENTAL(3); // Incremental jobs will re-use an existing version topic and write on top of it.
 
     private final int value;
 
-    PushType(int value) { this.value = value; }
+    PushType(int value) {
+      this.value = value;
+    }
 
-    public int getValue() { return value; }
+    public int getValue() {
+      return value;
+    }
 
     public boolean isBatch() {
       return this == BATCH;
@@ -220,8 +224,8 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   static int parseVersionFromKafkaTopicName(String kafkaTopic) {
     int versionStartIndex = getLastIndexOfVersionSeparator(kafkaTopic) + VERSION_SEPARATOR.length();
     if (kafkaTopic.endsWith(STREAM_REPROCESSING_TOPIC_SUFFIX)) {
-      return Integer.parseInt(kafkaTopic.substring(versionStartIndex, kafkaTopic.lastIndexOf(
-          STREAM_REPROCESSING_TOPIC_SUFFIX)));
+      return Integer
+          .parseInt(kafkaTopic.substring(versionStartIndex, kafkaTopic.lastIndexOf(STREAM_REPROCESSING_TOPIC_SUFFIX)));
     } else {
       return Integer.parseInt(kafkaTopic.substring(versionStartIndex));
     }
@@ -238,24 +242,26 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   static int getLastIndexOfVersionSeparator(String kafkaTopic) {
     int lastIndexOfVersionSeparator = kafkaTopic.lastIndexOf(VERSION_SEPARATOR);
     if (lastIndexOfVersionSeparator == -1) {
-      throw new IllegalArgumentException("The version separator '" + VERSION_SEPARATOR
-          + "' is not present in the provided topic name: '" + kafkaTopic + "'");
+      throw new IllegalArgumentException(
+          "The version separator '" + VERSION_SEPARATOR + "' is not present in the provided topic name: '" + kafkaTopic
+              + "'");
     } else if (lastIndexOfVersionSeparator == 0) {
       /**
        * Empty string "" is not a valid store name, therefore the topic name cannot
        * start with the {@link VERSION_SEPARATOR}
        */
-      throw new IllegalArgumentException("There is nothing prior to the version separator '"
-          + VERSION_SEPARATOR + "' in the provided topic name: '" + kafkaTopic + "'");
+      throw new IllegalArgumentException(
+          "There is nothing prior to the version separator '" + VERSION_SEPARATOR + "' in the provided topic name: '"
+              + kafkaTopic + "'");
     }
     return lastIndexOfVersionSeparator;
   }
 
-  static String composeKafkaTopic(String storeName,int versionNumber) {
+  static String composeKafkaTopic(String storeName, int versionNumber) {
     return storeName + VERSION_SEPARATOR + versionNumber;
   }
 
-  static String composeRealTimeTopic(String storeName){
+  static String composeRealTimeTopic(String storeName) {
     return storeName + REAL_TIME_TOPIC_SUFFIX;
   }
 
@@ -315,7 +321,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   /**
    * Return true if the input topic name is a version topic or stream-reprocessing topic.
    */
-  static boolean isVersionTopicOrStreamReprocessingTopic(String kafkaTopic){
+  static boolean isVersionTopicOrStreamReprocessingTopic(String kafkaTopic) {
     return checkVersionSRTopic(kafkaTopic, false) || checkVersionSRTopic(kafkaTopic, true);
   }
 
@@ -345,11 +351,11 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     return checkVersionSRTopic(kafkaTopic, false);
   }
 
-  static String guidBasedDummyPushId(){
+  static String guidBasedDummyPushId() {
     return "guid_id_" + GuidUtils.getGUIDString();
   }
 
-  static String numberBasedDummyPushId(int number){
+  static String numberBasedDummyPushId(int number) {
     return "push_for_version_" + number;
   }
 
@@ -365,7 +371,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   }
 
   static boolean containsHybridVersion(List<Version> versions) {
-    for (Version version : versions) {
+    for (Version version: versions) {
       if (version.getHybridStoreConfig() != null) {
         return true;
       }

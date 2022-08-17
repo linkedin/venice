@@ -26,33 +26,48 @@ import org.apache.logging.log4j.Logger;
  * topic partition level.
  */
 public class PartitionWiseSharedKafkaConsumer extends SharedKafkaConsumer {
-
   private static final Logger LOGGER = LogManager.getLogger(PartitionWiseSharedKafkaConsumer.class);
 
   private static final String exceptionMessageForImproperUsage(String methodName) {
-    return methodName + " should never be called on " + PartitionWiseSharedKafkaConsumer.class.getSimpleName() +
-        " but should rather be called on " + PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer.class.getSimpleName();
+    return methodName + " should never be called on " + PartitionWiseSharedKafkaConsumer.class.getSimpleName()
+        + " but should rather be called on "
+        + PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer.class.getSimpleName();
   }
 
-  private final Map<TopicPartition, StoreIngestionTask> topicPartitionStoreIngestionTaskMap = new VeniceConcurrentHashMap<>();
+  private final Map<TopicPartition, StoreIngestionTask> topicPartitionStoreIngestionTaskMap =
+      new VeniceConcurrentHashMap<>();
 
   private final Set<TopicPartition> topicPartitionsWithoutCorrespondingIngestionTask = new HashSet<>();
 
-  public PartitionWiseSharedKafkaConsumer(KafkaConsumerWrapper delegate, KafkaConsumerService service,
-      long nonExistingTopicCleanupDelayMS, TopicExistenceChecker topicExistenceChecker) {
+  public PartitionWiseSharedKafkaConsumer(
+      KafkaConsumerWrapper delegate,
+      KafkaConsumerService service,
+      long nonExistingTopicCleanupDelayMS,
+      TopicExistenceChecker topicExistenceChecker) {
     super(delegate, service, nonExistingTopicCleanupDelayMS, topicExistenceChecker);
   }
 
-  public PartitionWiseSharedKafkaConsumer(final KafkaConsumerWrapper delegate, final KafkaConsumerService service,
-      int sanitizeTopicSubscriptionAfterPollTimes, long nonExistingTopicCleanupDelayMS, Time time, TopicExistenceChecker topicExistenceChecker) {
-    super(delegate, service, sanitizeTopicSubscriptionAfterPollTimes, nonExistingTopicCleanupDelayMS, time, topicExistenceChecker);
+  public PartitionWiseSharedKafkaConsumer(
+      final KafkaConsumerWrapper delegate,
+      final KafkaConsumerService service,
+      int sanitizeTopicSubscriptionAfterPollTimes,
+      long nonExistingTopicCleanupDelayMS,
+      Time time,
+      TopicExistenceChecker topicExistenceChecker) {
+    super(
+        delegate,
+        service,
+        sanitizeTopicSubscriptionAfterPollTimes,
+        nonExistingTopicCleanupDelayMS,
+        time,
+        topicExistenceChecker);
   }
 
   @Override
   protected Set<StoreIngestionTask> getIngestionTasksForTopic(String topic) {
     Set<StoreIngestionTask> storeIngestionTasksOfSameTopic = new HashSet<>();
     Set<TopicPartition> currentAssignment = getAssignment();
-    for (TopicPartition topicPartition : currentAssignment) {
+    for (TopicPartition topicPartition: currentAssignment) {
       if (topic.equals(topicPartition.topic())) {
         StoreIngestionTask ingestionTaskForTopicPartition = getIngestionTaskForTopicPartition(topicPartition);
         if (ingestionTaskForTopicPartition != null) {
@@ -64,7 +79,8 @@ public class PartitionWiseSharedKafkaConsumer extends SharedKafkaConsumer {
   }
 
   @Override
-  protected void sanitizeTopicsWithoutCorrespondingIngestionTask(ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records) {
+  protected void sanitizeTopicsWithoutCorrespondingIngestionTask(
+      ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records) {
     // Check whether the returned records, which don't have the corresponding ingestion tasks
     topicPartitionsWithoutCorrespondingIngestionTask.clear();
     for (TopicPartition topicPartition: records.partitions()) {
@@ -73,10 +89,12 @@ public class PartitionWiseSharedKafkaConsumer extends SharedKafkaConsumer {
       }
     }
     if (!topicPartitionsWithoutCorrespondingIngestionTask.isEmpty()) {
-      LOGGER.error("Detected the following topic partitions without attached ingestion task, and will unsubscribe them: "
-          + topicPartitionsWithoutCorrespondingIngestionTask);
+      LOGGER.error(
+          "Detected the following topic partitions without attached ingestion task, and will unsubscribe them: "
+              + topicPartitionsWithoutCorrespondingIngestionTask);
       unSubscribeTopicPartitions(topicPartitionsWithoutCorrespondingIngestionTask);
-      kafkaConsumerService.getStats().recordDetectedNoRunningIngestionTopicPartitionNum(topicPartitionsWithoutCorrespondingIngestionTask.size());
+      kafkaConsumerService.getStats()
+          .recordDetectedNoRunningIngestionTopicPartitionNum(topicPartitionsWithoutCorrespondingIngestionTask.size());
     }
   }
 
@@ -84,7 +102,7 @@ public class PartitionWiseSharedKafkaConsumer extends SharedKafkaConsumer {
     // Get the current subscription for this topic and unsubscribe them
     Set<TopicPartition> currentAssignment = getAssignment();
     Set<TopicPartition> newAssignment = new HashSet<>();
-    for (TopicPartition topicPartition : currentAssignment) {
+    for (TopicPartition topicPartition: currentAssignment) {
       if (!topicPartitions.contains(topicPartition)) {
         newAssignment.add(topicPartition);
       }
@@ -95,7 +113,7 @@ public class PartitionWiseSharedKafkaConsumer extends SharedKafkaConsumer {
     }
     updateCurrentAssignment(newAssignment);
     this.delegate.assign(newAssignment);
-    for(TopicPartition topicPartition : topicPartitions) {
+    for (TopicPartition topicPartition: topicPartitions) {
       topicPartitionStoreIngestionTaskMap.remove(topicPartition);
     }
   }
@@ -123,9 +141,10 @@ public class PartitionWiseSharedKafkaConsumer extends SharedKafkaConsumer {
   public void addIngestionTaskForTopicPartition(TopicPartition topicPartition, StoreIngestionTask storeIngestionTask) {
     topicPartitionStoreIngestionTaskMap.compute(topicPartition, (key, previousStoreIngestionTask) -> {
       if (previousStoreIngestionTask != null && previousStoreIngestionTask != storeIngestionTask) {
-        throw new KafkaConsumerException("Cannot subscribe same topic partition: " + topicPartition +
-            " for different store ingestion tasks belonging to two topics: " + previousStoreIngestionTask.getVersionTopic() +
-            " and " + storeIngestionTask.getVersionTopic());
+        throw new KafkaConsumerException(
+            "Cannot subscribe same topic partition: " + topicPartition
+                + " for different store ingestion tasks belonging to two topics: "
+                + previousStoreIngestionTask.getVersionTopic() + " and " + storeIngestionTask.getVersionTopic());
       }
       return storeIngestionTask;
     });
@@ -152,7 +171,7 @@ public class PartitionWiseSharedKafkaConsumer extends SharedKafkaConsumer {
   @Override
   public void unsubscribeAll(String versionTopic) {
     Set<TopicPartition> topicPartitionsToRemove = new HashSet<>();
-    for(Map.Entry<TopicPartition, StoreIngestionTask> entry : topicPartitionStoreIngestionTaskMap.entrySet()) {
+    for (Map.Entry<TopicPartition, StoreIngestionTask> entry: topicPartitionStoreIngestionTaskMap.entrySet()) {
       TopicPartition topicPartition = entry.getKey();
       StoreIngestionTask ingestionTaskForCurrentTopicPartition = entry.getValue();
       if (ingestionTaskForCurrentTopicPartition.getVersionTopic().equals(versionTopic)) {
@@ -161,7 +180,6 @@ public class PartitionWiseSharedKafkaConsumer extends SharedKafkaConsumer {
     }
     unSubscribeTopicPartitions(topicPartitionsToRemove);
   }
-
 
   /**
    * Package-private visibility, intended for testing only.

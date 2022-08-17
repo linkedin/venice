@@ -45,7 +45,7 @@ public class StorageNodeStatus {
    * we only compare the resource/replica in the current storage node status.
    */
   public boolean isNewerOrEqual(StorageNodeStatus oldStatus) {
-    for (String partitionName : replicaToStatusMap.keySet()) {
+    for (String partitionName: replicaToStatusMap.keySet()) {
       int oldReplicaStatus = oldStatus.getStatusValueForReplica(partitionName);
       int replicaStatus = getStatusValueForReplica(partitionName);
 
@@ -54,8 +54,9 @@ public class StorageNodeStatus {
         // Return directly, we don't need to compare the rest of status. Because, in the old server status, even if
         // there is only one replica's status was larger than the current one. The whole current storage node status
         // would not be newer or equal than the old one.
-        logger.info("Current storage node status is NOT newer than the old one. Replica +" + partitionName + " status, "
-            + "old:" + oldReplicaStatus + " src:" + replicaStatus);
+        logger.info(
+            "Current storage node status is NOT newer than the old one. Replica +" + partitionName + " status, "
+                + "old:" + oldReplicaStatus + " src:" + replicaStatus);
         return false;
       }
     }

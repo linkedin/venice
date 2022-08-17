@@ -22,22 +22,26 @@ public class StoreStatusDecider {
    *
    * @return a map in which the key is store name and the value is store's status.
    */
-  public static Map<String, String> getStoreStatues(List<Store> storeList, ResourceAssignment resourceAssignment,
+  public static Map<String, String> getStoreStatues(
+      List<Store> storeList,
+      ResourceAssignment resourceAssignment,
       PushMonitor pushMonitor) {
     Map<String, String> storeStatusMap = new HashMap<>();
-    for (Store store : storeList) {
+    for (Store store: storeList) {
       String resourceName = Version.composeKafkaTopic(store.getName(), store.getCurrentVersion());
       int replicationFactor = store.getReplicationFactor();
       if (!resourceAssignment.containsResource(resourceName)) {
-        // TODO: Determine if it makes sense to mark stores with no versions in them as UNAVAILABLE...? That seems ambiguous.
-        logger.warn("Store:" + store.getName() + " is unavailable because current version: " + store.getCurrentVersion()
-            + " does not exist ");
+        // TODO: Determine if it makes sense to mark stores with no versions in them as UNAVAILABLE...? That seems
+        // ambiguous.
+        logger.warn(
+            "Store:" + store.getName() + " is unavailable because current version: " + store.getCurrentVersion()
+                + " does not exist ");
         storeStatusMap.put(store.getName(), StoreStatus.UNAVAILABLE.toString());
         continue;
       }
       PartitionAssignment currentVersionAssignment = resourceAssignment.getPartitionAssignment(resourceName);
-      if (currentVersionAssignment.getAssignedNumberOfPartitions()
-          < currentVersionAssignment.getExpectedNumberOfPartitions()) {
+      if (currentVersionAssignment.getAssignedNumberOfPartitions() < currentVersionAssignment
+          .getExpectedNumberOfPartitions()) {
         // One or more partition is unavailable.
         logger.warn("Store: " + store.getName() + " is unavailable because missing one or more partitions.");
         storeStatusMap.put(store.getName(), StoreStatus.DEGRADED.toString());
@@ -45,13 +49,15 @@ public class StoreStatusDecider {
       }
 
       StoreStatus status = StoreStatus.FULLLY_REPLICATED;
-      for (Partition partition : currentVersionAssignment.getAllPartitions()) {
-        int onlineReplicasCount = pushMonitor.getReadyToServeInstances(currentVersionAssignment, partition.getId()).size();
+      for (Partition partition: currentVersionAssignment.getAllPartitions()) {
+        int onlineReplicasCount =
+            pushMonitor.getReadyToServeInstances(currentVersionAssignment, partition.getId()).size();
         if (onlineReplicasCount == 0) {
           // Once one partition is unavailable we say this store is unavailable, do not need to continue.
           status = StoreStatus.DEGRADED;
-          logger.warn("Store: " + store.getName() + " is unavailable because partition: " + partition.getId()
-              + " has 0 ONLINE replicas.");
+          logger.warn(
+              "Store: " + store.getName() + " is unavailable because partition: " + partition.getId()
+                  + " has 0 ONLINE replicas.");
           break;
         } else if (onlineReplicasCount < replicationFactor) {
           // One partition is under replicated, degrade store status from fully replicated to under replicated.

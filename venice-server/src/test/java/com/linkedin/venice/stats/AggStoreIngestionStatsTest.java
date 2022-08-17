@@ -1,18 +1,17 @@
 package com.linkedin.venice.stats;
 
-
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Utils;
-
 import io.tehuti.metrics.MetricsRepository;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
+
 
 public class AggStoreIngestionStatsTest {
   private AggStoreIngestionStats stats;

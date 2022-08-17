@@ -21,7 +21,8 @@ import org.apache.logging.log4j.Logger;
 public class HelixReadOnlyLiveClusterConfigRepository implements ReadOnlyLiveClusterConfigRepository {
   private static final Logger logger = LogManager.getLogger(HelixReadOnlyLiveClusterConfigRepository.class);
 
-  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER = RedundantExceptionFilter.getRedundantExceptionFilter();
+  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
   private static final LiveClusterConfig DEFAULT_LIVE_CLUSTER_CONFIG = new LiveClusterConfig();
 
   protected final ZkBaseDataAccessor<LiveClusterConfig> zkDataAccessor;
@@ -33,7 +34,10 @@ public class HelixReadOnlyLiveClusterConfigRepository implements ReadOnlyLiveClu
 
   private static final String CLUSTER_CONFIG_PATH = "/ClusterConfig";
 
-  public HelixReadOnlyLiveClusterConfigRepository(ZkClient zkClient, HelixAdapterSerializer adapter, String clusterName) {
+  public HelixReadOnlyLiveClusterConfigRepository(
+      ZkClient zkClient,
+      HelixAdapterSerializer adapter,
+      String clusterName) {
     this.zkDataAccessor = new ZkBaseDataAccessor<>(zkClient);
     this.clusterConfigZkPath = Paths.get(HelixUtils.getHelixClusterZkPath(clusterName), CLUSTER_CONFIG_PATH).toString();
     adapter.registerSerializer(clusterConfigZkPath, new VeniceJsonSerializer<>(LiveClusterConfig.class));
@@ -71,7 +75,8 @@ public class HelixReadOnlyLiveClusterConfigRepository implements ReadOnlyLiveClu
       String logMessage = "Received updated LiveClusterConfig:\n" + liveClusterConfig;
       if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(logMessage)) {
         logger.info(logMessage);
-      };
+      }
+      ;
     }
 
     @Override

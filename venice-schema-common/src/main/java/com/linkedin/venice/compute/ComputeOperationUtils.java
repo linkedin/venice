@@ -23,8 +23,8 @@ public class ComputeOperationUtils {
       throw new VeniceException("Two lists are with different dimensions: " + list1.size() + ", and " + list2.size());
     }
     if (list1 instanceof PrimitiveFloatList && list2 instanceof PrimitiveFloatList) {
-      PrimitiveFloatList primitiveFloatList1 = (PrimitiveFloatList)list1;
-      PrimitiveFloatList primitiveFloatList2 = (PrimitiveFloatList)list2;
+      PrimitiveFloatList primitiveFloatList1 = (PrimitiveFloatList) list1;
+      PrimitiveFloatList primitiveFloatList2 = (PrimitiveFloatList) list2;
       return dotProduct(list1.size(), primitiveFloatList1::getPrimitive, primitiveFloatList2::getPrimitive);
     } else {
       return dotProduct(list1.size(), list1::get, list2::get);
@@ -36,8 +36,8 @@ public class ComputeOperationUtils {
       throw new VeniceException("Two lists are with different dimensions: " + list1.size() + ", and " + list2.size());
     }
     if (list1 instanceof PrimitiveFloatList && list2 instanceof PrimitiveFloatList) {
-      PrimitiveFloatList primitiveFloatList1 = (PrimitiveFloatList)list1;
-      PrimitiveFloatList primitiveFloatList2 = (PrimitiveFloatList)list2;
+      PrimitiveFloatList primitiveFloatList1 = (PrimitiveFloatList) list1;
+      PrimitiveFloatList primitiveFloatList2 = (PrimitiveFloatList) list2;
       return hadamardProduct(list1.size(), primitiveFloatList1::getPrimitive, primitiveFloatList2::getPrimitive);
     } else {
       return hadamardProduct(list1.size(), list1::get, list2::get);
@@ -53,7 +53,7 @@ public class ComputeOperationUtils {
 
     // round up size to the largest multiple of 4
     int i = 0;
-    int limit  = (size >> 2) << 2;
+    int limit = (size >> 2) << 2;
 
     // Unrolling mult-add into blocks of 4 multiply op and assign to 4 different variables so that CPU can take
     // advantage of out of order execution, making the operation faster (on a single thread ~2x improvement)
@@ -73,12 +73,15 @@ public class ComputeOperationUtils {
     return dotProductResult;
   }
 
-  private static List<Float> hadamardProduct(int size, FloatSupplierByIndex floatSupplier1, FloatSupplierByIndex floatSupplier2) {
+  private static List<Float> hadamardProduct(
+      int size,
+      FloatSupplierByIndex floatSupplier1,
+      FloatSupplierByIndex floatSupplier2) {
     float[] floats = new float[size];
 
     // round up size to the largest multiple of 4
     int i = 0;
-    int limit  = (size >> 2) << 2;
+    int limit = (size >> 2) << 2;
 
     // Unrolling mult-add into blocks of 4 multiply op and assign to 4 different variables so that CPU can take
     // advantage of out of order execution, making the operation faster (on a single thread ~2x improvement)
@@ -98,7 +101,7 @@ public class ComputeOperationUtils {
 
   public static float squaredL2Norm(List<Float> list) {
     if (list instanceof PrimitiveFloatList) {
-      PrimitiveFloatList primitiveFloatList = (PrimitiveFloatList)list;
+      PrimitiveFloatList primitiveFloatList = (PrimitiveFloatList) list;
       int size = primitiveFloatList.size();
       FloatSupplierByIndex floatSupplierByIndex = primitiveFloatList::getPrimitive;
       return dotProduct(size, floatSupplierByIndex, floatSupplierByIndex);
@@ -118,7 +121,7 @@ public class ComputeOperationUtils {
    * @return An unmodifiable empty list if the extracted value is null. Otherwise return a list that may or may not be
    *         modifiable depending on specified type of the list as a field in the record.
    */
-  public static<T> List<T> getNullableFieldValueAsList(final GenericRecord record, final String fieldName) {
+  public static <T> List<T> getNullableFieldValueAsList(final GenericRecord record, final String fieldName) {
     Object value = record.get(fieldName);
     if (value == null) {
       return Collections.emptyList();
@@ -136,29 +139,29 @@ public class ComputeOperationUtils {
   public static Optional<String> validateNullableFieldAndGetErrorMsg(
       ReadComputeOperator operator,
       GenericRecord valueRecord,
-      String operatorFieldName
-  ) {
+      String operatorFieldName) {
     if (valueRecord.get(operatorFieldName) != null) {
       return Optional.empty();
     }
     if (valueRecord.getSchema().getField(operatorFieldName) == null) {
-      return Optional.of("Failed to execute compute request as the field " + operatorFieldName + " does not exist in the value record. " +
-          "Fields present in the value record are: " + getStringOfSchemaFieldNames(valueRecord));
+      return Optional.of(
+          "Failed to execute compute request as the field " + operatorFieldName
+              + " does not exist in the value record. " + "Fields present in the value record are: "
+              + getStringOfSchemaFieldNames(valueRecord));
     }
 
     // Field exist and the value is null. That means the field is nullable.
     if (operator.allowFieldValueToBeNull()) {
       return Optional.empty();
     }
-    return Optional.of("Failed to execute compute request as the field " + operatorFieldName + " is not allowed to be null for " + operator + " in value record. ");
+    return Optional.of(
+        "Failed to execute compute request as the field " + operatorFieldName + " is not allowed to be null for "
+            + operator + " in value record. ");
   }
 
-  private static String getStringOfSchemaFieldNames(GenericRecord valueRecord){
-    List<String> fieldNames = valueRecord.getSchema()
-        .getFields()
-        .stream()
-        .map(Schema.Field::name)
-        .collect(Collectors.toList());
+  private static String getStringOfSchemaFieldNames(GenericRecord valueRecord) {
+    List<String> fieldNames =
+        valueRecord.getSchema().getFields().stream().map(Schema.Field::name).collect(Collectors.toList());
     return String.join(", ", fieldNames);
   }
 }

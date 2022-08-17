@@ -134,10 +134,10 @@ public class PartitionConsumptionState {
    */
   private final ConcurrentMap<String, Long> consumedUpstreamRTOffsetMap;
 
-  //stores the SOP control message's producer timestamp.
+  // stores the SOP control message's producer timestamp.
   private long startOfPushTimestamp = 0;
 
-  //stores the EOP control message's producer timestamp.
+  // stores the EOP control message's producer timestamp.
   private long endOfPushTimestamp = 0;
 
   /**
@@ -156,8 +156,13 @@ public class PartitionConsumptionState {
    */
   private Map<String, Long> latestProcessedUpstreamRTOffsetMap;
 
-  public PartitionConsumptionState(int partition, int amplificationFactor, OffsetRecord offsetRecord, boolean hybrid,
-    boolean isIncrementalPushEnabled, IncrementalPushPolicy incrementalPushPolicy) {
+  public PartitionConsumptionState(
+      int partition,
+      int amplificationFactor,
+      OffsetRecord offsetRecord,
+      boolean hybrid,
+      boolean isIncrementalPushEnabled,
+      IncrementalPushPolicy incrementalPushPolicy) {
     this.partition = partition;
     this.amplificationFactor = amplificationFactor;
     this.userPartition = PartitionUtils.getUserPartition(partition, amplificationFactor);
@@ -182,11 +187,12 @@ public class PartitionConsumptionState {
     this.consumptionStartTimeInMs = System.currentTimeMillis();
 
     // Restore previous status from offset record.
-    for (CharSequence status : offsetRecord.getSubPartitionStatus().keySet()) {
+    for (CharSequence status: offsetRecord.getSubPartitionStatus().keySet()) {
       previousStatusSet.add(status.toString());
     }
 
-    // Restore in-memory consumption RT upstream offset map and latest processed RT upstream offset map from the checkpoint upstream offset map
+    // Restore in-memory consumption RT upstream offset map and latest processed RT upstream offset map from the
+    // checkpoint upstream offset map
     consumedUpstreamRTOffsetMap = new VeniceConcurrentHashMap<>();
     latestProcessedUpstreamRTOffsetMap = new VeniceConcurrentHashMap<>();
     if (offsetRecord.getLeaderTopic() != null && Version.isRealTimeTopic(offsetRecord.getLeaderTopic())) {
@@ -201,69 +207,89 @@ public class PartitionConsumptionState {
   public int getPartition() {
     return this.partition;
   }
+
   public int getUserPartition() {
     return userPartition;
   }
+
   public int getAmplificationFactor() {
     return this.amplificationFactor;
   }
+
   public OffsetRecord getOffsetRecord() {
     return this.offsetRecord;
   }
+
   public void setDeferredWrite(boolean deferredWrite) {
     this.deferredWrite = deferredWrite;
   }
+
   public boolean isDeferredWrite() {
     return this.deferredWrite;
   }
+
   public boolean isStarted() {
     return getLatestProcessedLocalVersionTopicOffset() > 0;
   }
+
   public boolean isEndOfPushReceived() {
     return this.offsetRecord.isEndOfPushReceived();
   }
+
   public boolean isWaitingForReplicationLag() {
     return isEndOfPushReceived() && !lagCaughtUp;
   }
+
   public void lagHasCaughtUp() {
     this.lagCaughtUp = true;
   }
+
   public boolean hasLagCaughtUp() {
     return lagCaughtUp;
   }
+
   public boolean isCompletionReported() {
     return completionReported;
   }
+
   public void completionReported() {
     this.completionReported = true;
   }
+
   public boolean isSubscribed() {
     return isSubscribed;
   }
+
   public void unsubscribe() {
     this.isSubscribed = false;
   }
+
   public boolean isLatchReleased() {
     return isLatchReleased;
   }
+
   public void releaseLatch() {
     this.isLatchReleased = true;
   }
+
   public void errorReported() {
     this.errorReported = true;
   }
+
   public boolean isErrorReported() {
     return this.errorReported;
   }
+
   public void incrementProcessedRecordNum() {
     ++this.processedRecordNum;
   }
+
   public boolean isComplete() {
     if (!isEndOfPushReceived()) {
       return false;
     }
 
-    //for regular push store, receiving EOP is good to go
+    // for regular push store, receiving EOP is good to go
     return (!isIncrementalPushEnabled && !hybrid) || lagCaughtUp;
   }
 
@@ -274,21 +300,27 @@ public class PartitionConsumptionState {
   public int getProcessedRecordNum() {
     return this.processedRecordNum;
   }
+
   public void resetProcessedRecordNum() {
     this.processedRecordNum = 0;
   }
+
   public void incrementProcessedRecordSize(int recordSize) {
     this.processedRecordSize += recordSize;
   }
+
   public int getProcessedRecordSize() {
     return this.processedRecordSize;
   }
+
   public void resetProcessedRecordSize() {
     this.processedRecordSize = 0;
   }
+
   public IncrementalPush getIncrementalPush() {
     return this.offsetRecord.getIncrementalPush();
   }
+
   public void setIncrementalPush(IncrementalPush ip) {
     this.offsetRecord.setIncrementalPush(ip);
   }
@@ -303,32 +335,49 @@ public class PartitionConsumptionState {
 
   @Override
   public String toString() {
-    return new StringBuilder()
-        .append("PartitionConsumptionState{")
-        .append("partition=").append(partition)
-        .append(", hybrid=").append(hybrid)
-        .append(", latestProcessedLocalVersionTopicOffset=").append(latestProcessedLocalVersionTopicOffset)
-        .append(", latestProcessedUpstreamVersionTopicOffset=").append(latestProcessedUpstreamVersionTopicOffset)
-        .append(", latestProcessedUpstreamRTOffsetMap=").append(latestProcessedUpstreamRTOffsetMap)
-        .append(", offsetRecord=" ).append(offsetRecord)
-        .append(", errorReported=").append(errorReported)
-        .append(", started=").append(isStarted())
-        .append(", lagCaughtUp=").append(lagCaughtUp)
-        .append(", processedRecordNum=").append(processedRecordNum)
-        .append(", processedRecordSize=").append(processedRecordSize)
-        .append(", processedRecordSizeSinceLastSync=").append(processedRecordSizeSinceLastSync)
-        .append(", leaderFollowerState=").append(leaderFollowerState)
-        .append(", isIncrementalPushEnabled=").append(isIncrementalPushEnabled)
-        .append(", incrementalPushPolicy=").append(incrementalPushPolicy)
-        .append("}").toString();
+    return new StringBuilder().append("PartitionConsumptionState{")
+        .append("partition=")
+        .append(partition)
+        .append(", hybrid=")
+        .append(hybrid)
+        .append(", latestProcessedLocalVersionTopicOffset=")
+        .append(latestProcessedLocalVersionTopicOffset)
+        .append(", latestProcessedUpstreamVersionTopicOffset=")
+        .append(latestProcessedUpstreamVersionTopicOffset)
+        .append(", latestProcessedUpstreamRTOffsetMap=")
+        .append(latestProcessedUpstreamRTOffsetMap)
+        .append(", offsetRecord=")
+        .append(offsetRecord)
+        .append(", errorReported=")
+        .append(errorReported)
+        .append(", started=")
+        .append(isStarted())
+        .append(", lagCaughtUp=")
+        .append(lagCaughtUp)
+        .append(", processedRecordNum=")
+        .append(processedRecordNum)
+        .append(", processedRecordSize=")
+        .append(processedRecordSize)
+        .append(", processedRecordSizeSinceLastSync=")
+        .append(processedRecordSizeSinceLastSync)
+        .append(", leaderFollowerState=")
+        .append(leaderFollowerState)
+        .append(", isIncrementalPushEnabled=")
+        .append(isIncrementalPushEnabled)
+        .append(", incrementalPushPolicy=")
+        .append(incrementalPushPolicy)
+        .append("}")
+        .toString();
   }
 
   public long getProcessedRecordSizeSinceLastSync() {
     return this.processedRecordSizeSinceLastSync;
   }
+
   public void incrementProcessedRecordSizeSinceLastSync(int recordSize) {
     this.processedRecordSizeSinceLastSync += recordSize;
   }
+
   public void resetProcessedRecordSizeSinceLastSync() {
     this.processedRecordSizeSinceLastSync = 0;
   }
@@ -337,7 +386,9 @@ public class PartitionConsumptionState {
     return isIncrementalPushEnabled;
   }
 
-  public IncrementalPushPolicy getIncrementalPushPolicy() { return incrementalPushPolicy; }
+  public IncrementalPushPolicy getIncrementalPushPolicy() {
+    return incrementalPushPolicy;
+  }
 
   public void setLeaderFollowerState(LeaderFollowerStateType state) {
     this.leaderFollowerState = state;
@@ -427,12 +478,26 @@ public class PartitionConsumptionState {
     return consumptionStartTimeInMs;
   }
 
-  public void setTransientRecord(String kafkaUrl, long kafkaConsumedOffset, byte[] key, int valueSchemaId , GenericRecord replicationMetadataRecord) {
+  public void setTransientRecord(
+      String kafkaUrl,
+      long kafkaConsumedOffset,
+      byte[] key,
+      int valueSchemaId,
+      GenericRecord replicationMetadataRecord) {
     setTransientRecord(kafkaUrl, kafkaConsumedOffset, key, null, -1, -1, valueSchemaId, replicationMetadataRecord);
   }
 
-  public void setTransientRecord(String kafkaUrl, long kafkaConsumedOffset, byte[] key, byte[] value, int valueOffset, int valueLen, int valueSchemaId, GenericRecord replicationMetadataRecord) {
-    TransientRecord transientRecord = new TransientRecord(value, valueOffset, valueLen, valueSchemaId, kafkaUrl, kafkaConsumedOffset);
+  public void setTransientRecord(
+      String kafkaUrl,
+      long kafkaConsumedOffset,
+      byte[] key,
+      byte[] value,
+      int valueOffset,
+      int valueLen,
+      int valueSchemaId,
+      GenericRecord replicationMetadataRecord) {
+    TransientRecord transientRecord =
+        new TransientRecord(value, valueOffset, valueLen, valueSchemaId, kafkaUrl, kafkaConsumedOffset);
     if (replicationMetadataRecord != null) {
       transientRecord.setReplicationMetadataRecord(replicationMetadataRecord);
     }
@@ -504,7 +569,13 @@ public class PartitionConsumptionState {
     private final long kafkaConsumedOffset;
     private GenericRecord replicationMetadataRecord;
 
-    TransientRecord(byte[] value, int valueOffset, int valueLen, int valueSchemaId, String kafkaUrl, long kafkaConsumedOffset) {
+    TransientRecord(
+        byte[] value,
+        int valueOffset,
+        int valueLen,
+        int valueSchemaId,
+        String kafkaUrl,
+        long kafkaConsumedOffset) {
       this.value = value;
       this.valueOffset = valueOffset;
       this.valueLen = valueLen;
@@ -521,10 +592,21 @@ public class PartitionConsumptionState {
       return replicationMetadataRecord;
     }
 
-    public byte[] getValue() {return value;}
-    public int getValueOffset() {return valueOffset;}
-    public int getValueLen() {return valueLen;}
-    public int getValueSchemaId() {return valueSchemaId;}
+    public byte[] getValue() {
+      return value;
+    }
+
+    public int getValueOffset() {
+      return valueOffset;
+    }
+
+    public int getValueLen() {
+      return valueLen;
+    }
+
+    public int getValueSchemaId() {
+      return valueSchemaId;
+    }
   }
 
   public void updateLeaderConsumedUpstreamRTOffset(String kafkaUrl, long offset) {
@@ -575,7 +657,9 @@ public class PartitionConsumptionState {
     if (offsetRecord.getLeaderTopic() != null && !Version.isVersionTopic(offsetRecord.getLeaderTopic())) {
       return getLatestProcessedUpstreamRTOffset(kafkaURL);
     } else {
-      return consumeRemotely() ? getLatestProcessedUpstreamVersionTopicOffset() : getLatestProcessedLocalVersionTopicOffset();
+      return consumeRemotely()
+          ? getLatestProcessedUpstreamVersionTopicOffset()
+          : getLatestProcessedLocalVersionTopicOffset();
     }
   }
 
@@ -583,13 +667,17 @@ public class PartitionConsumptionState {
     this.startOfPushTimestamp = startOfPushTimestamp;
   }
 
-  public long getStartOfPushTimestamp() {return startOfPushTimestamp;}
+  public long getStartOfPushTimestamp() {
+    return startOfPushTimestamp;
+  }
 
   public void setEndOfPushTimestamp(long endOfPushTimestamp) {
     this.endOfPushTimestamp = endOfPushTimestamp;
   }
 
-  public long getEndOfPushTimestamp() {return endOfPushTimestamp;}
+  public long getEndOfPushTimestamp() {
+    return endOfPushTimestamp;
+  }
 
   public void updateLatestProcessedLocalVersionTopicOffset(long offset) {
     this.latestProcessedLocalVersionTopicOffset = offset;

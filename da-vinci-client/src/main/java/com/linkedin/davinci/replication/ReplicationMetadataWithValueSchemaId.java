@@ -11,10 +11,14 @@ import org.apache.avro.generic.GenericRecord;
  */
 public class ReplicationMetadataWithValueSchemaId {
   private final int valueSchemaID;
-  private final int rmdProtocolVersionID; // Note that it is NOT RMD schema ID which should have the format "<valueSchemaId>-<rmdProtocolVersionID>"
+  private final int rmdProtocolVersionID; // Note that it is NOT RMD schema ID which should have the format
+                                          // "<valueSchemaId>-<rmdProtocolVersionID>"
   private final GenericRecord replicationMetadataRecord;
 
-  public ReplicationMetadataWithValueSchemaId(int valueSchemaID, int rmdProtocolVersionID, GenericRecord replicationMetadataRecord) {
+  public ReplicationMetadataWithValueSchemaId(
+      int valueSchemaID,
+      int rmdProtocolVersionID,
+      GenericRecord replicationMetadataRecord) {
     this.valueSchemaID = valueSchemaID;
     this.replicationMetadataRecord = replicationMetadataRecord;
     this.rmdProtocolVersionID = rmdProtocolVersionID;

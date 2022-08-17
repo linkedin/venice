@@ -1,5 +1,7 @@
 package com.linkedin.venice.router.api;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -12,10 +14,7 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.utils.Utils;
-
 import org.mockito.Mockito;
-import static org.mockito.Mockito.*;
-
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -32,9 +31,15 @@ public class TestVenicePartitionFinder {
     RoutingDataRepository mockDataRepo = Mockito.mock(RoutingDataRepository.class);
     HelixReadOnlyStoreRepository mockMetadataRepo = Mockito.mock(HelixReadOnlyStoreRepository.class);
     String storeName = Utils.getUniqueString("store");
-    Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY,
-        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE,
-        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 1);
+    Store store = new ZKStore(
+        storeName,
+        "owner",
+        System.currentTimeMillis(),
+        PersistenceType.IN_MEMORY,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
     for (int i = 0; i < NUM_VERSIONS; i++) {
       store.increaseVersion(String.valueOf(i));
     }
@@ -52,14 +57,18 @@ public class TestVenicePartitionFinder {
 
     String resourceName = storeName + "_v1";
     String partitionName = finder.findPartitionName(resourceName, key);
-    Assert.assertEquals(partitionName, resourceName + "_" + partitioner.getPartitionId(key.getKeyBuffer(), NUM_PARTITIONS));
+    Assert.assertEquals(
+        partitionName,
+        resourceName + "_" + partitioner.getPartitionId(key.getKeyBuffer(), NUM_PARTITIONS));
 
     // test store not exist
-    Assert.assertThrows(VeniceException.class,
+    Assert.assertThrows(
+        VeniceException.class,
         () -> finder.findPartitionNumber(key, NUM_PARTITIONS, "STORE_NOT_EXIST", 1));
 
     // test version not exist
-    Assert.assertThrows(VeniceException.class,
+    Assert.assertThrows(
+        VeniceException.class,
         () -> finder.findPartitionNumber(key, NUM_PARTITIONS, storeName, NUM_VERSIONS + 1));
   }
 }

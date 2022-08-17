@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import javax.annotation.Nonnull;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.PropertyType;
@@ -30,8 +31,6 @@ import org.apache.helix.spectator.RoutingTableProvider;
 import org.apache.helix.spectator.RoutingTableSnapshot;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import javax.annotation.Nonnull;
 
 
 /**
@@ -81,7 +80,7 @@ public abstract class HelixBaseRoutingRepository
 
   public HelixBaseRoutingRepository(SafeHelixManager manager) {
     this.manager = manager;
-    listenerManager = new ListenerManager<>(); //TODO make thread count configurable
+    listenerManager = new ListenerManager<>(); // TODO make thread count configurable
     keyBuilder = new PropertyKey.Builder(manager.getClusterName());
     dataSource = new HashMap<>();
   }
@@ -94,20 +93,22 @@ public abstract class HelixBaseRoutingRepository
     try {
       logger.info("Refresh started for cluster " + manager.getClusterName() + "'s" + getClass().getSimpleName());
       // After adding the listener, helix will initialize the callback which will get the entire external view
-      // and trigger the external view change event. In other words, venice will read the newest external view immediately.
+      // and trigger the external view change event. In other words, venice will read the newest external view
+      // immediately.
       manager.addIdealStateChangeListener(this);
       manager.addControllerListener(this);
       // Use routing table provider to get the notification of the external view change, customized view change,
       // and live instances change.
       routingTableProvider = new RoutingTableProvider(manager.getOriginalManager(), dataSource);
       routingTableProvider.addRoutingTableChangeListener(this, null);
-      // Get the current external view and customized views, process at first. As the new helix API will not init a event after you add the listener.
+      // Get the current external view and customized views, process at first. As the new helix API will not init a
+      // event after you add the listener.
       for (Map.Entry<PropertyType, List<String>> entry: dataSource.entrySet()) {
         PropertyType propertyType = entry.getKey();
         if (entry.getValue().isEmpty()) {
           onRoutingTableChange(routingTableProvider.getRoutingTableSnapshot(propertyType), null);
         } else {
-          for (String customizedStateType : entry.getValue()) {
+          for (String customizedStateType: entry.getValue()) {
             onRoutingTableChange(routingTableProvider.getRoutingTableSnapshot(propertyType, customizedStateType), null);
           }
         }
@@ -240,7 +241,7 @@ public abstract class HelixBaseRoutingRepository
   @Override
   public void onControllerChange(NotificationContext changeContext) {
     if (changeContext.getType().equals(NotificationContext.Type.FINALIZE)) {
-      //Finalized notification, listener will be removed.
+      // Finalized notification, listener will be removed.
       return;
     }
     logger.info("Got notification type:" + changeContext.getType() + ". Leader controller is changed.");
@@ -273,7 +274,7 @@ public abstract class HelixBaseRoutingRepository
 
   protected Map<String, Instance> convertLiveInstances(Collection<LiveInstance> helixLiveInstances) {
     HashMap<String, Instance> instancesMap = new HashMap<>();
-    for (LiveInstance helixLiveInstance : helixLiveInstances) {
+    for (LiveInstance helixLiveInstance: helixLiveInstances) {
       Instance instance = createInstanceFromLiveInstance(helixLiveInstance);
       instancesMap.put(instance.getNodeId(), instance);
     }
@@ -281,7 +282,9 @@ public abstract class HelixBaseRoutingRepository
   }
 
   private static Instance createInstanceFromLiveInstance(LiveInstance liveInstance) {
-    return new Instance(liveInstance.getId(), Utils.parseHostFromHelixNodeIdentifier(liveInstance.getId()),
+    return new Instance(
+        liveInstance.getId(),
+        Utils.parseHostFromHelixNodeIdentifier(liveInstance.getId()),
         Utils.parsePortFromHelixNodeIdentifier(liveInstance.getId()));
   }
 
@@ -292,7 +295,7 @@ public abstract class HelixBaseRoutingRepository
 
   protected void refreshResourceToIdealPartitionCountMap(List<IdealState> idealStates) {
     HashMap<String, Integer> partitionCountMap = new HashMap<>();
-    for (IdealState idealState : idealStates) {
+    for (IdealState idealState: idealStates) {
       // Ideal state could be null, if a resource has already been deleted.
       if (idealState != null) {
         partitionCountMap.put(idealState.getResourceName(), idealState.getNumPartitions());

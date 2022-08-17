@@ -12,7 +12,11 @@ import io.netty.handler.codec.http.HttpVersion;
 public class VeniceFullHttpResponse extends DefaultFullHttpResponse {
   private final long decompressionTimeInNs;
 
-  public VeniceFullHttpResponse(HttpVersion version, HttpResponseStatus status, ByteBuf content, long decompressionTimeInNs) {
+  public VeniceFullHttpResponse(
+      HttpVersion version,
+      HttpResponseStatus status,
+      ByteBuf content,
+      long decompressionTimeInNs) {
     super(version, status, content);
     this.decompressionTimeInNs = decompressionTimeInNs;
   }

@@ -19,57 +19,60 @@ import org.apache.logging.log4j.Logger;
  * In order to distinguish the collected metrics from the main process metrics, prefix "ingestion_isolation" is added to every metric names.
  */
 public class IsolatedIngestionProcessStats extends AbstractVeniceStats {
-    private static final Logger logger = LogManager.getLogger(IsolatedIngestionProcessStats.class);
+  private static final Logger logger = LogManager.getLogger(IsolatedIngestionProcessStats.class);
 
-    private static final String METRIC_PREFIX = "ingestion_isolation";
+  private static final String METRIC_PREFIX = "ingestion_isolation";
 
-    private final Map<String, Double> metricValueMap = new HashMap<>();
+  private final Map<String, Double> metricValueMap = new HashMap<>();
 
-    public IsolatedIngestionProcessStats(MetricsRepository metricsRepository) {
-        super(metricsRepository, METRIC_PREFIX);
-    }
+  public IsolatedIngestionProcessStats(MetricsRepository metricsRepository) {
+    super(metricsRepository, METRIC_PREFIX);
+  }
 
-    public void updateMetricMap(Map<CharSequence, Double> updateMetricValueMap) {
-        Set<String> newMetricNameSet = new HashSet<>();
-        updateMetricValueMap.forEach((name, value) -> {
-            String originalMetricName = name.toString();
+  public void updateMetricMap(Map<CharSequence, Double> updateMetricValueMap) {
+    Set<String> newMetricNameSet = new HashSet<>();
+    updateMetricValueMap.forEach((name, value) -> {
+      String originalMetricName = name.toString();
 
-            if (!metricValueMap.containsKey(originalMetricName)) {
-                /**
-                 * Although different metrics might contain different attributes (like AVG, MAX, COUNT), the calculation
-                 * is done in child process side, so we don't know how they are calculated, and we don't need to know as
-                 * all we need here is just to add it to the value map for reporter retrieval, so a Gauge lambda expression
-                 * is enough.
-                 * Here we split the sensor name and attribute name, so we can override the stat name in registerSensor()
-                 * method, so it won't show sensor_attribute.Gauge but instead sensor.attribute.
-                 */
-                String[] sensorAndAttributeName = getSensorAndAttributeName(originalMetricName);
-                if (sensorAndAttributeName.length == 1) {
-                    registerSensor(sensorAndAttributeName[0], new Gauge(() -> this.metricValueMap.get(originalMetricName)));
-                } else if (sensorAndAttributeName.length == 2) {
-                    registerSensorWithAttributeOverride(sensorAndAttributeName[0], sensorAndAttributeName[1],
-                        new Gauge(() -> this.metricValueMap.get(originalMetricName)));
-                } else {
-                    /**
-                     * In theory due to Tehuti metric naming pattern this won't happen, but we add it as defensive
-                     * coding to avoid potential metric errors.
-                     */
-                    String correctedMetricName = name.toString().replace('.', '_');
-                    registerSensor(correctedMetricName, new Gauge(() -> this.metricValueMap.get(originalMetricName)));
-                }
-                newMetricNameSet.add(originalMetricName);
-            }
-            metricValueMap.put(originalMetricName, value);
-        });
-        if (!newMetricNameSet.isEmpty()) {
-            logger.info("Registered " + newMetricNameSet.size() + " new metrics.");
-            logger.debug("New metrics list: " + newMetricNameSet);
+      if (!metricValueMap.containsKey(originalMetricName)) {
+        /**
+         * Although different metrics might contain different attributes (like AVG, MAX, COUNT), the calculation
+         * is done in child process side, so we don't know how they are calculated, and we don't need to know as
+         * all we need here is just to add it to the value map for reporter retrieval, so a Gauge lambda expression
+         * is enough.
+         * Here we split the sensor name and attribute name, so we can override the stat name in registerSensor()
+         * method, so it won't show sensor_attribute.Gauge but instead sensor.attribute.
+         */
+        String[] sensorAndAttributeName = getSensorAndAttributeName(originalMetricName);
+        if (sensorAndAttributeName.length == 1) {
+          registerSensor(sensorAndAttributeName[0], new Gauge(() -> this.metricValueMap.get(originalMetricName)));
+        } else if (sensorAndAttributeName.length == 2) {
+          registerSensorWithAttributeOverride(
+              sensorAndAttributeName[0],
+              sensorAndAttributeName[1],
+              new Gauge(() -> this.metricValueMap.get(originalMetricName)));
+        } else {
+          /**
+           * In theory due to Tehuti metric naming pattern this won't happen, but we add it as defensive
+           * coding to avoid potential metric errors.
+           */
+          String correctedMetricName = name.toString().replace('.', '_');
+          registerSensor(correctedMetricName, new Gauge(() -> this.metricValueMap.get(originalMetricName)));
         }
+        newMetricNameSet.add(originalMetricName);
+      }
+      metricValueMap.put(originalMetricName, value);
+    });
+    if (!newMetricNameSet.isEmpty()) {
+      logger.info("Registered " + newMetricNameSet.size() + " new metrics.");
+      logger.debug("New metrics list: " + newMetricNameSet);
     }
+  }
 
-    private String[] getSensorAndAttributeName(String originalMetricName) {
-        // Remove the leading dot to accommodate the Tehuti metric parsing rule.
-        String correctedMetricName = originalMetricName.startsWith(".") ? originalMetricName : originalMetricName.substring(1);
-        return correctedMetricName.split("\\.");
-    }
+  private String[] getSensorAndAttributeName(String originalMetricName) {
+    // Remove the leading dot to accommodate the Tehuti metric parsing rule.
+    String correctedMetricName =
+        originalMetricName.startsWith(".") ? originalMetricName : originalMetricName.substring(1);
+    return correctedMetricName.split("\\.");
+  }
 }

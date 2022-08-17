@@ -18,7 +18,6 @@ public enum IngestionMode {
    */
   ISOLATED(1);
 
-
   private static final Map<Integer, IngestionMode> INTEGER_INGESTION_MODE_MAP = getIngestionModeMap();
 
   private final int value;
@@ -33,7 +32,7 @@ public enum IngestionMode {
 
   private static Map<Integer, IngestionMode> getIngestionModeMap() {
     Map<Integer, IngestionMode> intToTypeMap = new HashMap<>();
-    for (IngestionMode type : IngestionMode.values()) {
+    for (IngestionMode type: IngestionMode.values()) {
       intToTypeMap.put(type.value, type);
     }
     return intToTypeMap;

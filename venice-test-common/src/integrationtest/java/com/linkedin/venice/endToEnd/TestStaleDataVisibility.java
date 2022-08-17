@@ -1,5 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.venice.utils.TestPushUtils.*;
+
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
@@ -34,7 +36,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.utils.TestPushUtils.*;
 
 public class TestStaleDataVisibility {
   private static final Logger LOGGER = LogManager.getLogger(TestStaleDataVisibility.class);
@@ -56,26 +57,38 @@ public class TestStaleDataVisibility {
     Properties childControllerProperties = new Properties();
     childControllerProperties.setProperty(ConfigKeys.CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, "true");
     multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
-      NUMBER_OF_CHILD_DATACENTERS, NUMBER_OF_CLUSTERS, 1, 1, 1, 1,
-      1, Optional.empty(), Optional.of(childControllerProperties), Optional.of(new VeniceProperties(serverProperties)), false);
+        NUMBER_OF_CHILD_DATACENTERS,
+        NUMBER_OF_CLUSTERS,
+        1,
+        1,
+        1,
+        1,
+        1,
+        Optional.empty(),
+        Optional.of(childControllerProperties),
+        Optional.of(new VeniceProperties(serverProperties)),
+        false);
 
     childClusters = multiColoMultiClusterWrapper.getClusters();
     childControllers = childClusters.stream()
-      .map(veniceClusterWrapper -> new ArrayList<>(veniceClusterWrapper.getControllers().values()))
-      .collect(Collectors.toList());
+        .map(veniceClusterWrapper -> new ArrayList<>(veniceClusterWrapper.getControllers().values()))
+        .collect(Collectors.toList());
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
 
-    LOGGER.info("parentControllers: " + parentControllers.stream()
-        .map(VeniceControllerWrapper::getControllerUrl)
-      .collect(Collectors.joining(", ")));
+    LOGGER.info(
+        "parentControllers: " + parentControllers.stream()
+            .map(VeniceControllerWrapper::getControllerUrl)
+            .collect(Collectors.joining(", ")));
 
     int i = 0;
-    for (VeniceMultiClusterWrapper multiClusterWrapper : childClusters) {
-      LOGGER.info("childCluster" + i++ + " controllers: " + multiClusterWrapper.getControllers()
-        .values()
-        .stream()
-        .map(VeniceControllerWrapper::getControllerUrl)
-        .collect(Collectors.joining(", ")));
+    for (VeniceMultiClusterWrapper multiClusterWrapper: childClusters) {
+      LOGGER.info(
+          "childCluster" + i++ + " controllers: "
+              + multiClusterWrapper.getControllers()
+                  .values()
+                  .stream()
+                  .map(VeniceControllerWrapper::getControllerUrl)
+                  .collect(Collectors.joining(", ")));
     }
   }
 
@@ -91,16 +104,19 @@ public class TestStaleDataVisibility {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    String parentControllerUrls = parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(
-        Collectors.joining(","));
+    String parentControllerUrls =
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
 
     // create a store via parent controller url
     Properties props = defaultH2VProps(parentControllerUrls, inputDirPath, storeName);
     createStoreForJob(clusterName, recordSchema, props).close();
     try (ControllerClient controllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
-      String pushStatusStoreVersionName = Version.composeKafkaTopic(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName), 1);
-      String metaStoreVersionName = Version.composeKafkaTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), 1);
-      TestUtils.waitForNonDeterministicPushCompletion(pushStatusStoreVersionName, controllerClient, 1, TimeUnit.MINUTES);
+      String pushStatusStoreVersionName =
+          Version.composeKafkaTopic(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName), 1);
+      String metaStoreVersionName =
+          Version.composeKafkaTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), 1);
+      TestUtils
+          .waitForNonDeterministicPushCompletion(pushStatusStoreVersionName, controllerClient, 1, TimeUnit.MINUTES);
       TestUtils.waitForNonDeterministicPushCompletion(metaStoreVersionName, controllerClient, 1, TimeUnit.MINUTES);
     }
 
@@ -111,7 +127,8 @@ public class TestStaleDataVisibility {
     try (ControllerClient controllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
 
       // the store should not be appearing in the stale data audit
-      ClusterStaleDataAuditResponse emptyResponse = controllerClient.getClusterStaleStores(clusterName, parentControllerUrls);
+      ClusterStaleDataAuditResponse emptyResponse =
+          controllerClient.getClusterStaleStores(clusterName, parentControllerUrls);
       Assert.assertFalse(emptyResponse.isError());
       Assert.assertFalse(emptyResponse.getAuditMap().containsKey(storeName));
 
@@ -123,18 +140,24 @@ public class TestStaleDataVisibility {
       }
 
       // store should now appear as stale
-      ClusterStaleDataAuditResponse response = controllerClient.getClusterStaleStores(clusterName, parentControllerUrls);
+      ClusterStaleDataAuditResponse response =
+          controllerClient.getClusterStaleStores(clusterName, parentControllerUrls);
       Assert.assertFalse(response.isError());
       Assert.assertEquals(response.getAuditMap().get(storeName).getStaleRegions().size(), 1);
       Assert.assertEquals(response.getAuditMap().get(storeName).getHealthyRegions().size(), 1);
 
-      //test store health check
-      StoreHealthAuditResponse healthResponse = controllerClient.listStorePushInfo(clusterName, parentControllerUrls, storeName);
+      // test store health check
+      StoreHealthAuditResponse healthResponse =
+          controllerClient.listStorePushInfo(clusterName, parentControllerUrls, storeName);
       Assert.assertTrue(response.getAuditMap().containsKey(healthResponse.getStoreName()));
-      Map<String, StoreInfo> auditMapEntry = response.getAuditMap().get(healthResponse.getStoreName()).getStaleRegions();
-      for (Map.Entry<String, StoreInfo> entry : auditMapEntry.entrySet())
+      Map<String, StoreInfo> auditMapEntry =
+          response.getAuditMap().get(healthResponse.getStoreName()).getStaleRegions();
+      for (Map.Entry<String, StoreInfo> entry: auditMapEntry.entrySet())
         if (Objects.equals(entry.getValue().getName(), storeName))
-          Assert.assertTrue(healthResponse.getRegionsWithStaleData().contains(entry.getKey())); // verify that the same regions are stale across both responses for the same store
+          Assert.assertTrue(healthResponse.getRegionsWithStaleData().contains(entry.getKey())); // verify that the same
+                                                                                                // regions are stale
+                                                                                                // across both responses
+                                                                                                // for the same store
     }
   }
 }

@@ -12,10 +12,10 @@ import java.util.Map;
 
 
 public class ClientTestUtils {
-
   public static Client getR2Client() {
     return getR2Client(false);
   }
+
   public static Client getR2Client(boolean useHttp2) {
     /**
      * 'setUsePipelineV2' is required to force http2 for all types of request.

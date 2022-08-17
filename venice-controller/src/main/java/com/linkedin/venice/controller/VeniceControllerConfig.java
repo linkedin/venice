@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigConstants.*;
+import static com.linkedin.venice.ConfigKeys.*;
+
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -25,9 +28,6 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.ConfigConstants.*;
-import static com.linkedin.venice.ConfigKeys.*;
-
 
 /**
  * Configuration which is specific to a Venice controller.
@@ -48,8 +48,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final String d2ServiceName;
   private final Map<String, String> childDataCenterControllerD2Map;
   private final int parentControllerWaitingTimeForConsumptionMs;
-  private final String batchJobHeartbeatStoreCluster;// Name of cluster where the batch job liveness heartbeat store should exist.
-  private final boolean batchJobHeartbeatEnabled;    // whether the controller is enabled to use batch job liveness heartbeat.
+  private final String batchJobHeartbeatStoreCluster;// Name of cluster where the batch job liveness heartbeat store
+                                                     // should exist.
+  private final boolean batchJobHeartbeatEnabled; // whether the controller is enabled to use batch job liveness
+                                                  // heartbeat.
   private final Duration batchJobHeartbeatTimeout;
   private final Duration batchJobHeartbeatInitialBufferTime;
   private final long adminConsumptionTimeoutMinute;
@@ -171,11 +173,12 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.controllerClusterName = props.getString(CONTROLLER_CLUSTER, "venice-controllers");
     this.controllerClusterReplica = props.getInt(CONTROLLER_CLUSTER_REPLICA, 3);
     this.controllerClusterZkAddress = props.getString(CONTROLLER_CLUSTER_ZK_ADDRESSS, getZkAddress());
-    this.topicCreationThrottlingTimeWindowMs = props.getLong(TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS, 10 * Time.MS_PER_SECOND);
+    this.topicCreationThrottlingTimeWindowMs =
+        props.getLong(TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS, 10 * Time.MS_PER_SECOND);
     this.parent = props.getBoolean(ConfigKeys.CONTROLLER_PARENT_MODE, false);
     this.activeActiveEnabledOnController = props.getBoolean(ConfigKeys.ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER, false);
-    this.activeActiveRealTimeSourceFabrics = Utils.parseCommaSeparatedStringToSet(
-            props.getString(ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, ""));
+    this.activeActiveRealTimeSourceFabrics =
+        Utils.parseCommaSeparatedStringToSet(props.getString(ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, ""));
     validateActiveActiveConfigs();
 
     // go/inclusivecode deferred(Will be replaced when clients have migrated)
@@ -187,24 +190,29 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
       this.childDataCenterControllerUrlMap = parseClusterMap(props, dataCenterAllowlist);
       this.childDataCenterControllerD2Map = parseClusterMap(props, dataCenterAllowlist, true);
     }
-    this.d2ServiceName = childDataCenterControllerD2Map.isEmpty() ? null : props.getString(CHILD_CLUSTER_D2_SERVICE_NAME);
+    this.d2ServiceName =
+        childDataCenterControllerD2Map.isEmpty() ? null : props.getString(CHILD_CLUSTER_D2_SERVICE_NAME);
     if (this.parent) {
       if (childDataCenterControllerUrlMap.isEmpty() && childDataCenterControllerD2Map.isEmpty()) {
         throw new VeniceException("child controller list can not be empty");
       }
       String parentFabricList = props.getString(PARENT_KAFKA_CLUSTER_FABRIC_LIST, "");
       this.parentFabrics = Utils.parseCommaSeparatedStringToSet(parentFabricList);
-      String nativeReplicationSourceFabricAllowlist = props.getStringWithAlternative(NATIVE_REPLICATION_FABRIC_ALLOWLIST,
+      String nativeReplicationSourceFabricAllowlist = props.getStringWithAlternative(
+          NATIVE_REPLICATION_FABRIC_ALLOWLIST,
           // go/inclusivecode deferred(will be removed once all configs have migrated)
-          NATIVE_REPLICATION_FABRIC_WHITELIST, dataCenterAllowlist);
+          NATIVE_REPLICATION_FABRIC_WHITELIST,
+          dataCenterAllowlist);
       this.childDataCenterKafkaUrlMap = parseChildDataCenterKafkaUrl(props, nativeReplicationSourceFabricAllowlist);
       this.childDataCenterKafkaZkMap = parseChildDataCenterKafkaZk(props, nativeReplicationSourceFabricAllowlist);
     } else {
       this.parentFabrics = Collections.emptySet();
 
-      String nativeReplicationSourceFabricAllowlist = props.getStringWithAlternative(NATIVE_REPLICATION_FABRIC_ALLOWLIST,
+      String nativeReplicationSourceFabricAllowlist = props.getStringWithAlternative(
+          NATIVE_REPLICATION_FABRIC_ALLOWLIST,
           // go/inclusivecode deferred(will be removed once all configs have migrated)
-          NATIVE_REPLICATION_FABRIC_WHITELIST, "");
+          NATIVE_REPLICATION_FABRIC_WHITELIST,
+          "");
       if (nativeReplicationSourceFabricAllowlist == null || nativeReplicationSourceFabricAllowlist.length() == 0) {
         this.childDataCenterKafkaUrlMap = Collections.emptyMap();
         this.childDataCenterKafkaZkMap = Collections.emptyMap();
@@ -214,44 +222,55 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
       }
     }
     this.nativeReplicationSourceFabric = props.getString(NATIVE_REPLICATION_SOURCE_FABRIC, "");
-    this.parentControllerWaitingTimeForConsumptionMs = props.getInt(ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS, 30 * Time.MS_PER_SECOND);
+    this.parentControllerWaitingTimeForConsumptionMs =
+        props.getInt(ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS, 30 * Time.MS_PER_SECOND);
     this.batchJobHeartbeatStoreCluster = props.getString(
-            BatchJobHeartbeatConfigs.HEARTBEAT_STORE_CLUSTER_CONFIG.getConfigName(),
-            BatchJobHeartbeatConfigs.HEARTBEAT_STORE_CLUSTER_CONFIG.getDefaultValue()
-    );
+        BatchJobHeartbeatConfigs.HEARTBEAT_STORE_CLUSTER_CONFIG.getConfigName(),
+        BatchJobHeartbeatConfigs.HEARTBEAT_STORE_CLUSTER_CONFIG.getDefaultValue());
     this.batchJobHeartbeatEnabled = props.getBoolean(
-            BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getConfigName(),
-            BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getDefaultValue()
-    );
-    this.batchJobHeartbeatTimeout = Duration.ofMillis(props.getLong(
-        BatchJobHeartbeatConfigs.HEARTBEAT_CONTROLLER_TIMEOUT_CONFIG.getConfigName(),
-        BatchJobHeartbeatConfigs.HEARTBEAT_CONTROLLER_TIMEOUT_CONFIG.getDefaultValue()
-    ));
-    this.batchJobHeartbeatInitialBufferTime = Duration.ofMillis(props.getLong(
-        BatchJobHeartbeatConfigs.HEARTBEAT_CONTROLLER_INITIAL_DELAY_CONFIG.getConfigName(),
-        BatchJobHeartbeatConfigs.HEARTBEAT_CONTROLLER_INITIAL_DELAY_CONFIG.getDefaultValue()
-    ));
+        BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getConfigName(),
+        BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getDefaultValue());
+    this.batchJobHeartbeatTimeout = Duration.ofMillis(
+        props.getLong(
+            BatchJobHeartbeatConfigs.HEARTBEAT_CONTROLLER_TIMEOUT_CONFIG.getConfigName(),
+            BatchJobHeartbeatConfigs.HEARTBEAT_CONTROLLER_TIMEOUT_CONFIG.getDefaultValue()));
+    this.batchJobHeartbeatInitialBufferTime = Duration.ofMillis(
+        props.getLong(
+            BatchJobHeartbeatConfigs.HEARTBEAT_CONTROLLER_INITIAL_DELAY_CONFIG.getConfigName(),
+            BatchJobHeartbeatConfigs.HEARTBEAT_CONTROLLER_INITIAL_DELAY_CONFIG.getDefaultValue()));
     this.adminConsumptionTimeoutMinute = props.getLong(ADMIN_CONSUMPTION_TIMEOUT_MINUTES, TimeUnit.DAYS.toMinutes(5));
-    this.adminConsumptionCycleTimeoutMs = props.getLong(ConfigKeys.ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(30));
-    this.adminConsumptionMaxWorkerThreadPoolSize = props.getInt(ConfigKeys.ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE, 1);
+    this.adminConsumptionCycleTimeoutMs =
+        props.getLong(ConfigKeys.ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(30));
+    this.adminConsumptionMaxWorkerThreadPoolSize =
+        props.getInt(ConfigKeys.ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE, 1);
     this.storageEngineOverheadRatio = props.getDouble(STORAGE_ENGINE_OVERHEAD_RATIO, 0.85d);
 
     // The default retention will allow Kafka remove as much data as possible.
-    this.deprecatedJobTopicRetentionMs = props.getLong(DEPRECATED_TOPIC_RETENTION_MS, TimeUnit.SECONDS.toMillis(5)); // 5 seconds
-    this.deprecatedJobTopicMaxRetentionMs = props.getLong(DEPRECATED_TOPIC_MAX_RETENTION_MS, TimeUnit.SECONDS.toMillis(60)); // 1 min
+    this.deprecatedJobTopicRetentionMs = props.getLong(DEPRECATED_TOPIC_RETENTION_MS, TimeUnit.SECONDS.toMillis(5)); // 5
+                                                                                                                     // seconds
+    this.deprecatedJobTopicMaxRetentionMs =
+        props.getLong(DEPRECATED_TOPIC_MAX_RETENTION_MS, TimeUnit.SECONDS.toMillis(60)); // 1 min
     if (this.deprecatedJobTopicMaxRetentionMs < this.deprecatedJobTopicRetentionMs) {
-      throw new VeniceException("Config: " + DEPRECATED_TOPIC_MAX_RETENTION_MS + " with value: " + this.deprecatedJobTopicMaxRetentionMs +
-          " should be larger than config: " + DEPRECATED_TOPIC_RETENTION_MS + " with value: " + this.deprecatedJobTopicRetentionMs);
+      throw new VeniceException(
+          "Config: " + DEPRECATED_TOPIC_MAX_RETENTION_MS + " with value: " + this.deprecatedJobTopicMaxRetentionMs
+              + " should be larger than config: " + DEPRECATED_TOPIC_RETENTION_MS + " with value: "
+              + this.deprecatedJobTopicRetentionMs);
     }
-    this.topicCleanupSleepIntervalBetweenTopicListFetchMs = props.getLong(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, TimeUnit.SECONDS.toMillis(30)); // 30 seconds
-    this.topicCleanupDelayFactor = props.getInt(TOPIC_CLEANUP_DELAY_FACTOR, 20); // thisFactor * topicCleanupSleepIntervalBetweenTopicListFetchMs = delayBeforeTopicDeletion
+    this.topicCleanupSleepIntervalBetweenTopicListFetchMs =
+        props.getLong(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, TimeUnit.SECONDS.toMillis(30)); // 30
+                                                                                                                // seconds
+    this.topicCleanupDelayFactor = props.getInt(TOPIC_CLEANUP_DELAY_FACTOR, 20); // thisFactor *
+                                                                                 // topicCleanupSleepIntervalBetweenTopicListFetchMs
+                                                                                 // = delayBeforeTopicDeletion
 
-    this.topicManagerKafkaOperationTimeOutMs = props.getInt(TOPIC_MANAGER_KAFKA_OPERATION_TIMEOUT_MS, 30 * Time.MS_PER_SECOND);
+    this.topicManagerKafkaOperationTimeOutMs =
+        props.getInt(TOPIC_MANAGER_KAFKA_OPERATION_TIMEOUT_MS, 30 * Time.MS_PER_SECOND);
 
     this.minNumberOfUnusedKafkaTopicsToPreserve = props.getInt(MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE, 2);
     this.minNumberOfStoreVersionsToPreserve = props.getInt(MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE, 2);
     if (minNumberOfStoreVersionsToPreserve < 1) {
-      throw new VeniceException("The minimal acceptable value for '" + MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE + "' is 1.");
+      throw new VeniceException(
+          "The minimal acceptable value for '" + MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE + "' is 1.");
     }
     // By default, keep 0 errored topics per store in parent controller
     this.parentControllerMaxErroredTopicNumToKeep = props.getInt(PARENT_CONTROLLER_MAX_ERRORED_TOPIC_NUM_TO_KEEP, 0);
@@ -260,73 +279,101 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.participantMessageStoreEnabled = props.getBoolean(PARTICIPANT_MESSAGE_STORE_ENABLED, false);
     this.adminHelixMessagingChannelEnabled = props.getBoolean(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, true);
     if (!adminHelixMessagingChannelEnabled && !participantMessageStoreEnabled) {
-      throw new VeniceException("Cannot perform kill push job if both " + ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED
-          + " and " + PARTICIPANT_MESSAGE_STORE_ENABLED + " are set to false");
+      throw new VeniceException(
+          "Cannot perform kill push job if both " + ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED + " and "
+              + PARTICIPANT_MESSAGE_STORE_ENABLED + " are set to false");
     }
     this.systemSchemaClusterName = props.getString(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, "");
     this.earlyDeleteBackUpEnabled = props.getBoolean(CONTROLLER_EARLY_DELETE_BACKUP_ENABLED, true);
-    this.topicDeletionStatusPollIntervalMs = props.getInt(TOPIC_DELETION_STATUS_POLL_INTERVAL_MS, DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS); // 2s
+    this.topicDeletionStatusPollIntervalMs =
+        props.getInt(TOPIC_DELETION_STATUS_POLL_INTERVAL_MS, DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS); // 2s
     this.isControllerClusterLeaderHAAS = props.getBoolean(CONTROLLER_CLUSTER_LEADER_HAAS, false);
     this.isVeniceClusterLeaderHAAS = props.getBoolean(VENICE_STORAGE_CLUSTER_LEADER_HAAS, false);
     this.controllerHAASSuperClusterName = props.getString(CONTROLLER_HAAS_SUPER_CLUSTER_NAME, "");
     if ((isControllerClusterLeaderHAAS || isVeniceClusterLeaderHAAS) && controllerHAASSuperClusterName.isEmpty()) {
-      throw new VeniceException(CONTROLLER_HAAS_SUPER_CLUSTER_NAME + " is required for "
-          + CONTROLLER_CLUSTER_LEADER_HAAS + " or " + VENICE_STORAGE_CLUSTER_LEADER_HAAS + " to be set to true");
+      throw new VeniceException(
+          CONTROLLER_HAAS_SUPER_CLUSTER_NAME + " is required for " + CONTROLLER_CLUSTER_LEADER_HAAS + " or "
+              + VENICE_STORAGE_CLUSTER_LEADER_HAAS + " to be set to true");
     }
-    this.sendConcurrentTopicDeleteRequestsEnabled = props.getBoolean(TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS, false);
-    this.enableBatchPushFromAdminInChildController = props.getBoolean(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, true);
+    this.sendConcurrentTopicDeleteRequestsEnabled =
+        props.getBoolean(TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS, false);
+    this.enableBatchPushFromAdminInChildController =
+        props.getBoolean(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, true);
     this.kafkaAdminClass = props.getString(KAFKA_ADMIN_CLASS, ScalaAdminUtils.class.getName());
     this.kafkaWriteOnlyClass = props.getString(KAFKA_WRITE_ONLY_ADMIN_CLASS, kafkaAdminClass);
     this.kafkaReadOnlyClass = props.getString(KAFKA_READ_ONLY_ADMIN_CLASS, kafkaAdminClass);
     this.errorPartitionAutoResetLimit = props.getInt(ERROR_PARTITION_AUTO_RESET_LIMIT, 0);
-    this.errorPartitionProcessingCycleDelay = props.getLong(ERROR_PARTITION_PROCESSING_CYCLE_DELAY, 5 * Time.MS_PER_MINUTE);
-    this.backupVersionDefaultRetentionMs = props.getLong(CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS, TimeUnit.DAYS.toMillis(7)); // 1 week
-    this.backupVersionRetentionBasedCleanupEnabled = props.getBoolean(CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED, false);
-    this.enforceSSLOnly = props.getBoolean(CONTROLLER_ENFORCE_SSL, false); // By default, allow both secure and insecure routes
-    this.terminalStateTopicCheckerDelayMs = props.getLong(TERMINAL_STATE_TOPIC_CHECK_DELAY_MS, TimeUnit.MINUTES.toMillis(10));
-    this.disableParentTopicTruncationUponCompletion = props.getBoolean(CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION, false);
+    this.errorPartitionProcessingCycleDelay =
+        props.getLong(ERROR_PARTITION_PROCESSING_CYCLE_DELAY, 5 * Time.MS_PER_MINUTE);
+    this.backupVersionDefaultRetentionMs =
+        props.getLong(CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS, TimeUnit.DAYS.toMillis(7)); // 1 week
+    this.backupVersionRetentionBasedCleanupEnabled =
+        props.getBoolean(CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED, false);
+    this.enforceSSLOnly = props.getBoolean(CONTROLLER_ENFORCE_SSL, false); // By default, allow both secure and insecure
+                                                                           // routes
+    this.terminalStateTopicCheckerDelayMs =
+        props.getLong(TERMINAL_STATE_TOPIC_CHECK_DELAY_MS, TimeUnit.MINUTES.toMillis(10));
+    this.disableParentTopicTruncationUponCompletion =
+        props.getBoolean(CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION, false);
     /**
      * Disable the zk shared metadata system schema store by default until the schema is fully finalized.
      */
-    this.zkSharedMetaSystemSchemaStoreAutoCreationEnabled = props.getBoolean(
-        CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, false);
-    this.pushStatusStoreHeartbeatExpirationTimeInSeconds = props.getLong(PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS, TimeUnit.MINUTES.toSeconds(10));
-    this.isDaVinciPushStatusStoreEnabled =  props.getBoolean(PUSH_STATUS_STORE_ENABLED, false);
-    this.zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled = props.getBoolean(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, false);
-    this.systemStoreAclSynchronizationDelayMs = props.getLong(CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS, TimeUnit.HOURS.toMillis(1));
+    this.zkSharedMetaSystemSchemaStoreAutoCreationEnabled =
+        props.getBoolean(CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, false);
+    this.pushStatusStoreHeartbeatExpirationTimeInSeconds =
+        props.getLong(PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS, TimeUnit.MINUTES.toSeconds(10));
+    this.isDaVinciPushStatusStoreEnabled = props.getBoolean(PUSH_STATUS_STORE_ENABLED, false);
+    this.zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled =
+        props.getBoolean(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, false);
+    this.systemStoreAclSynchronizationDelayMs =
+        props.getLong(CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS, TimeUnit.HOURS.toMillis(1));
     this.regionName = RegionUtils.getLocalRegionName(props, parent);
     logger.info("Final region name for this node: " + this.regionName);
     this.disabledRoutes = parseControllerRoutes(props, CONTROLLER_DISABLED_ROUTES, Collections.emptyList());
     this.adminTopicRemoteConsumptionEnabled = props.getBoolean(ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED, false);
-    if (adminTopicRemoteConsumptionEnabled && (childDataCenterKafkaUrlMap == null || childDataCenterKafkaUrlMap.isEmpty())) {
+    if (adminTopicRemoteConsumptionEnabled
+        && (childDataCenterKafkaUrlMap == null || childDataCenterKafkaUrlMap.isEmpty())) {
       throw new VeniceException("Admin topic remote consumption is enabled but Kafka url map is empty");
     }
     this.adminTopicSourceRegion = props.getString(ADMIN_TOPIC_SOURCE_REGION, "");
     this.aggregateRealTimeSourceRegion = props.getString(AGGREGATE_REAL_TIME_SOURCE_REGION, "");
-    this.isAutoMaterializeMetaSystemStoreEnabled = props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
-    this.isAutoMaterializeDaVinciPushStatusSystemStoreEnabled = props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, false);
+    this.isAutoMaterializeMetaSystemStoreEnabled =
+        props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
+    this.isAutoMaterializeDaVinciPushStatusSystemStoreEnabled =
+        props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, false);
     this.usePushStatusStoreForIncrementalPush = props.getBoolean(USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH, false);
     this.emergencySourceRegion = props.getString(EMERGENCY_SOURCE_REGION, "");
     this.allowClusterWipe = props.getBoolean(ALLOW_CLUSTER_WIPE, false);
-    this.autoCloseIdleConsumersEnabled = props.getBoolean(AUTO_CLOSE_IDLE_CONSUMERS_ENABLED, KafkaClientFactory.DEFAULT_AUTO_CLOSE_IDLE_CONSUMERS_ENABLED);
-    this.childControllerAdminTopicConsumptionEnabled = props.getBoolean(CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED, true);
+    this.autoCloseIdleConsumersEnabled = props
+        .getBoolean(AUTO_CLOSE_IDLE_CONSUMERS_ENABLED, KafkaClientFactory.DEFAULT_AUTO_CLOSE_IDLE_CONSUMERS_ENABLED);
+    this.childControllerAdminTopicConsumptionEnabled =
+        props.getBoolean(CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED, true);
     this.concurrentInitRoutinesEnabled = props.getBoolean(CONCURRENT_INIT_ROUTINES_ENABLED, false);
     this.controllerInAzureFabric = props.getBoolean(CONTROLLER_IN_AZURE_FABRIC, false);
   }
 
   private void validateActiveActiveConfigs() {
     if (this.activeActiveEnabledOnController && this.activeActiveRealTimeSourceFabrics.isEmpty()) {
-      throw new VeniceException(String.format("The config %s cannot be empty when the child controller has A/A enabled " +
-              "(%s == true).",
-              ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, ConfigKeys.ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER));
+      throw new VeniceException(
+          String.format(
+              "The config %s cannot be empty when the child controller has A/A enabled " + "(%s == true).",
+              ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST,
+              ConfigKeys.ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER));
 
     } else if (this.activeActiveEnabledOnController) {
-      logger.info(String.format("A/A is enabled on a child controller and %s == %s",
-              ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, this.activeActiveRealTimeSourceFabrics));
+      logger.info(
+          String.format(
+              "A/A is enabled on a child controller and %s == %s",
+              ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST,
+              this.activeActiveRealTimeSourceFabrics));
     } else {
-      logger.info("A/A is not enabled on child controller." +
-              (!this.activeActiveRealTimeSourceFabrics.isEmpty() ?
-                      String.format(" But %s is still set to %s.", ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, this.activeActiveRealTimeSourceFabrics) : ""));
+      logger.info(
+          "A/A is not enabled on child controller." + (!this.activeActiveRealTimeSourceFabrics.isEmpty()
+              ? String.format(
+                  " But %s is still set to %s.",
+                  ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST,
+                  this.activeActiveRealTimeSourceFabrics)
+              : ""));
     }
   }
 
@@ -386,7 +433,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    *
    * @return
    */
-  public Map<String, String> getChildDataCenterControllerUrlMap(){
+  public Map<String, String> getChildDataCenterControllerUrlMap() {
     return childDataCenterControllerUrlMap;
   }
 
@@ -438,13 +485,17 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return batchJobHeartbeatInitialBufferTime;
   }
 
-  public long getAdminConsumptionTimeoutMinutes(){
+  public long getAdminConsumptionTimeoutMinutes() {
     return adminConsumptionTimeoutMinute;
   }
 
-  public long getAdminConsumptionCycleTimeoutMs() { return adminConsumptionCycleTimeoutMs; }
+  public long getAdminConsumptionCycleTimeoutMs() {
+    return adminConsumptionCycleTimeoutMs;
+  }
 
-  public int getAdminConsumptionMaxWorkerThreadPoolSize() { return adminConsumptionMaxWorkerThreadPoolSize; }
+  public int getAdminConsumptionMaxWorkerThreadPoolSize() {
+    return adminConsumptionMaxWorkerThreadPoolSize;
+  }
 
   public static Map<String, String> parseClusterMap(VeniceProperties clusterPros, String datacenterAllowlist) {
     return parseClusterMap(clusterPros, datacenterAllowlist, false);
@@ -470,25 +521,41 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return parentControllerMaxErroredTopicNumToKeep;
   }
 
-  public String getPushJobStatusStoreClusterName() { return pushJobStatusStoreClusterName; }
+  public String getPushJobStatusStoreClusterName() {
+    return pushJobStatusStoreClusterName;
+  }
 
-  public boolean isParticipantMessageStoreEnabled() { return participantMessageStoreEnabled; }
+  public boolean isParticipantMessageStoreEnabled() {
+    return participantMessageStoreEnabled;
+  }
 
-  public boolean isDaVinciPushStatusEnabled() { return true; }
+  public boolean isDaVinciPushStatusEnabled() {
+    return true;
+  }
 
-  public String getSystemSchemaClusterName() { return systemSchemaClusterName; }
+  public String getSystemSchemaClusterName() {
+    return systemSchemaClusterName;
+  }
 
   public int getTopicDeletionStatusPollIntervalMs() {
     return topicDeletionStatusPollIntervalMs;
   }
 
-  public boolean isAdminHelixMessagingChannelEnabled() { return  adminHelixMessagingChannelEnabled; }
+  public boolean isAdminHelixMessagingChannelEnabled() {
+    return adminHelixMessagingChannelEnabled;
+  }
 
-  public boolean isControllerClusterLeaderHAAS() { return isControllerClusterLeaderHAAS; }
+  public boolean isControllerClusterLeaderHAAS() {
+    return isControllerClusterLeaderHAAS;
+  }
 
-  public boolean isVeniceClusterLeaderHAAS() { return isVeniceClusterLeaderHAAS; }
+  public boolean isVeniceClusterLeaderHAAS() {
+    return isVeniceClusterLeaderHAAS;
+  }
 
-  public String getControllerHAASSuperClusterName() { return controllerHAASSuperClusterName; }
+  public String getControllerHAASSuperClusterName() {
+    return controllerHAASSuperClusterName;
+  }
 
   public boolean isEarlyDeleteBackUpEnabled() {
     return earlyDeleteBackUpEnabled;
@@ -570,12 +637,15 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return disabledRoutes;
   }
 
-  public static List<ControllerRoute> parseControllerRoutes(VeniceProperties clusterProps, String property, List<String> defaultValue) {
+  public static List<ControllerRoute> parseControllerRoutes(
+      VeniceProperties clusterProps,
+      String property,
+      List<String> defaultValue) {
     return clusterProps.getList(property, defaultValue)
-            .stream()
-            .map(ControllerRoute::valueOfPath)
-            .filter(Objects::nonNull)
-            .collect(Collectors.toList());
+        .stream()
+        .map(ControllerRoute::valueOfPath)
+        .filter(Objects::nonNull)
+        .collect(Collectors.toList());
   }
 
   public boolean isAdminTopicRemoteConsumptionEnabled() {
@@ -647,30 +717,32 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    * @param D2Routing whether uses D2 to route or not
    * @return
    */
-  public static Map<String, String> parseClusterMap(VeniceProperties clusterPros, String datacenterAllowlist, Boolean D2Routing) {
-    String propsPrefix =  D2Routing ? CHILD_CLUSTER_D2_PREFIX : CHILD_CLUSTER_URL_PREFIX;
-    return parseChildDataCenterToValue(propsPrefix, clusterPros, datacenterAllowlist,
-        (m, k, v, errMsg) -> {
-          m.computeIfAbsent(k, key -> {
-            String[] uriList = v.split(",\\s*");
+  public static Map<String, String> parseClusterMap(
+      VeniceProperties clusterPros,
+      String datacenterAllowlist,
+      Boolean D2Routing) {
+    String propsPrefix = D2Routing ? CHILD_CLUSTER_D2_PREFIX : CHILD_CLUSTER_URL_PREFIX;
+    return parseChildDataCenterToValue(propsPrefix, clusterPros, datacenterAllowlist, (m, k, v, errMsg) -> {
+      m.computeIfAbsent(k, key -> {
+        String[] uriList = v.split(",\\s*");
 
-            if (D2Routing && uriList.length != 1) {
-              throw new VeniceException(errMsg + ": can only have 1 zookeeper url");
-            }
+        if (D2Routing && uriList.length != 1) {
+          throw new VeniceException(errMsg + ": can only have 1 zookeeper url");
+        }
 
-            if (!D2Routing) {
-              if (uriList.length == 0) {
-                throw new VeniceException(errMsg + ": urls can not be empty");
-              }
+        if (!D2Routing) {
+          if (uriList.length == 0) {
+            throw new VeniceException(errMsg + ": urls can not be empty");
+          }
 
-              if (Arrays.stream(uriList).anyMatch(uri -> (!uri.startsWith("http://") && !uri.startsWith("https://")))) {
-                throw new VeniceException(errMsg + ": urls must begin with http:// or https://");
-              }
-            }
+          if (Arrays.stream(uriList).anyMatch(uri -> (!uri.startsWith("http://") && !uri.startsWith("https://")))) {
+            throw new VeniceException(errMsg + ": urls must begin with http:// or https://");
+          }
+        }
 
-            return v;
-          });
-        });
+        return v;
+      });
+    });
   }
 
   /**
@@ -681,8 +753,13 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    * This helper function will parse the config with above format and return a Map from data center to
    * its Kafka bootstrap server urls.
    */
-  private static Map<String, String> parseChildDataCenterKafkaUrl(VeniceProperties clusterPros, String datacenterAllowlist) {
-    return parseChildDataCenterToValue(CHILD_DATA_CENTER_KAFKA_URL_PREFIX, clusterPros, datacenterAllowlist,
+  private static Map<String, String> parseChildDataCenterKafkaUrl(
+      VeniceProperties clusterPros,
+      String datacenterAllowlist) {
+    return parseChildDataCenterToValue(
+        CHILD_DATA_CENTER_KAFKA_URL_PREFIX,
+        clusterPros,
+        datacenterAllowlist,
         (m, k, v, e) -> {
           m.putIfAbsent(k, v);
         });
@@ -696,15 +773,23 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    * This helper function will parse the config with above format and return a Map from data center to
    * its Kafka zk address.
    */
-  private static Map<String, String> parseChildDataCenterKafkaZk(VeniceProperties clusterPros, String datacenterAllowlist) {
-    return parseChildDataCenterToValue(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX, clusterPros, datacenterAllowlist,
+  private static Map<String, String> parseChildDataCenterKafkaZk(
+      VeniceProperties clusterPros,
+      String datacenterAllowlist) {
+    return parseChildDataCenterToValue(
+        CHILD_DATA_CENTER_KAFKA_ZK_PREFIX,
+        clusterPros,
+        datacenterAllowlist,
         (m, k, v, e) -> {
           m.putIfAbsent(k, v);
         });
   }
 
-  private static Map<String, String> parseChildDataCenterToValue(String configPrefix, VeniceProperties clusterPros,
-      String datacenterAllowlist, PutToMap mappingFunction) {
+  private static Map<String, String> parseChildDataCenterToValue(
+      String configPrefix,
+      VeniceProperties clusterPros,
+      String datacenterAllowlist,
+      PutToMap mappingFunction) {
     Properties childDataCenterKafkaUriProps = clusterPros.clipAndFilterNamespace(configPrefix).toProperties();
 
     if (StringUtils.isEmpty(datacenterAllowlist)) {
@@ -714,7 +799,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     Map<String, String> outputMap = new HashMap<>();
     List<String> allowlist = Arrays.asList(datacenterAllowlist.split(",\\s*"));
 
-    for (Map.Entry<Object, Object> uriEntry : childDataCenterKafkaUriProps.entrySet()) {
+    for (Map.Entry<Object, Object> uriEntry: childDataCenterKafkaUriProps.entrySet()) {
       String datacenter = (String) uriEntry.getKey();
       String value = (String) uriEntry.getValue();
 

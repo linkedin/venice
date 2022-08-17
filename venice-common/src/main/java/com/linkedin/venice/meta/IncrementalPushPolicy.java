@@ -46,7 +46,7 @@ public enum IncrementalPushPolicy {
 
   private static Map<Integer, IncrementalPushPolicy> getIncrementalPushPolicyMap() {
     Map<Integer, IncrementalPushPolicy> intToTypeMap = new HashMap<>();
-    for (IncrementalPushPolicy policy : IncrementalPushPolicy.values()) {
+    for (IncrementalPushPolicy policy: IncrementalPushPolicy.values()) {
       intToTypeMap.put(policy.value, policy);
     }
 

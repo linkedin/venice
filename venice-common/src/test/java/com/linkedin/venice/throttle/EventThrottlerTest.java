@@ -15,7 +15,12 @@ public class EventThrottlerTest {
   public void testRejectUnexpectedRequests() {
     int quota = 10;
     long timeWindowMS = 1000L;
-    EventThrottler throttler = new EventThrottler(testTime, quota, timeWindowMS, "testRejectUnexpectedRequests", true,
+    EventThrottler throttler = new EventThrottler(
+        testTime,
+        quota,
+        timeWindowMS,
+        "testRejectUnexpectedRequests",
+        true,
         EventThrottler.REJECT_STRATEGY);
 
     // Send requests that number of them equals to the given quota.
@@ -44,7 +49,12 @@ public class EventThrottlerTest {
   public void testRejectExpansiveRequest() {
     long quota = 10;
     long timeWindowMS = 1000L;
-    EventThrottler throttler = new EventThrottler(testTime, quota, timeWindowMS, "testRejectExpansiveRequest", true,
+    EventThrottler throttler = new EventThrottler(
+        testTime,
+        quota,
+        timeWindowMS,
+        "testRejectExpansiveRequest",
+        true,
         EventThrottler.REJECT_STRATEGY);
     // Send the single request that usage exceeds the quota.
     try {
@@ -63,8 +73,13 @@ public class EventThrottlerTest {
   @Test
   public void testThrottlerWithSpike() {
     long quota = 10;
-    long timeWindowMS = 30000l; //30sec
-    EventThrottler throttler = new EventThrottler(testTime, quota, timeWindowMS, "testRejectExpansiveRequest", true,
+    long timeWindowMS = 30000l; // 30sec
+    EventThrottler throttler = new EventThrottler(
+        testTime,
+        quota,
+        timeWindowMS,
+        "testRejectExpansiveRequest",
+        true,
         EventThrottler.REJECT_STRATEGY);
     // we could use the quota for 30 sec.
     throttler.maybeThrottle((int) quota * 30);
@@ -83,16 +98,20 @@ public class EventThrottlerTest {
   public void testThrottlerWithCheckingQuotaBeforeRecording() {
     long quota = 10;
     long timeWindowMS = 1000L;
-    EventThrottler throttler =
-        new EventThrottler(testTime, quota, timeWindowMS, "testThrottlerWithCheckingQuotaBeforeRecording", true,
-            EventThrottler.REJECT_STRATEGY);
+    EventThrottler throttler = new EventThrottler(
+        testTime,
+        quota,
+        timeWindowMS,
+        "testThrottlerWithCheckingQuotaBeforeRecording",
+        true,
+        EventThrottler.REJECT_STRATEGY);
     sendRequests((int) quota, throttler);
     // Keep sending request even it's rejected. The usage should not record because we enable checkQuotaBeforeRecording.
     for (int i = 0; i < 100; i++) {
       try {
         sendRequests(1, throttler);
       } catch (QuotaExceededException e) {
-        //ignore.
+        // ignore.
       }
     }
     // Time goes 1.5 second, we have extra half quota right now.
@@ -101,7 +120,8 @@ public class EventThrottlerTest {
       sendRequests((int) quota / 2 - 1, throttler);
     } catch (QuotaExceededException e) {
       Assert.fail(
-          "Request should be accepted, throttler check the quota before recording, so we have enough quota now.", e);
+          "Request should be accepted, throttler check the quota before recording, so we have enough quota now.",
+          e);
     }
   }
 
@@ -114,7 +134,12 @@ public class EventThrottlerTest {
     AtomicLong currentQuota = new AtomicLong(currentQuotaValue);
 
     long timeWindowMS = 1000L;
-    EventThrottler throttler = new EventThrottler(testTime, currentQuota::get, timeWindowMS, "testQuotaCanBeModifiedAtRuntime", true,
+    EventThrottler throttler = new EventThrottler(
+        testTime,
+        currentQuota::get,
+        timeWindowMS,
+        "testQuotaCanBeModifiedAtRuntime",
+        true,
         EventThrottler.REJECT_STRATEGY);
 
     // Send requests that number of them equals to the given quota.
@@ -144,7 +169,12 @@ public class EventThrottlerTest {
   @Test
   public void testZeroQuotaWillRejectRequests() {
     long timeWindowMS = 1000L;
-    EventThrottler throttler = new EventThrottler(testTime, 0, timeWindowMS, "testRejectUnexpectedRequests", true,
+    EventThrottler throttler = new EventThrottler(
+        testTime,
+        0,
+        timeWindowMS,
+        "testRejectUnexpectedRequests",
+        true,
         EventThrottler.REJECT_STRATEGY);
 
     // Quota exceeds.
@@ -159,7 +189,12 @@ public class EventThrottlerTest {
   @Test
   public void testNegativeQuotaWillNotRejectRequests() {
     long timeWindowMS = 1000L;
-    EventThrottler throttler = new EventThrottler(testTime, -1, timeWindowMS, "testRejectUnexpectedRequests", true,
+    EventThrottler throttler = new EventThrottler(
+        testTime,
+        -1,
+        timeWindowMS,
+        "testRejectUnexpectedRequests",
+        true,
         EventThrottler.REJECT_STRATEGY);
 
     // Quota shouldn't exceed.

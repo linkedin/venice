@@ -1,5 +1,8 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.hadoop.input.kafka.KafkaInputUtils.*;
+
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
@@ -15,9 +18,6 @@ import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RecordReader;
 import org.apache.hadoop.mapred.Reporter;
 import org.apache.kafka.common.TopicPartition;
-
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.hadoop.input.kafka.KafkaInputUtils.*;
 
 
 /**
@@ -41,7 +41,8 @@ public class KafkaInputFormat implements InputFormat<BytesWritable, KafkaInputMa
       String topic = config.get(KAFKA_INPUT_TOPIC);
       Map<Integer, Long> latestOffsets = topicManager.getTopicLatestOffsets(topic);
       Map<TopicPartition, Long> partitionOffsetMap = new HashMap<>(latestOffsets.size());
-      latestOffsets.forEach((partitionId, latestOffset) -> partitionOffsetMap.put(new TopicPartition(topic, partitionId), latestOffset));
+      latestOffsets.forEach(
+          (partitionId, latestOffset) -> partitionOffsetMap.put(new TopicPartition(topic, partitionId), latestOffset));
       return partitionOffsetMap;
     }
   }
@@ -52,9 +53,11 @@ public class KafkaInputFormat implements InputFormat<BytesWritable, KafkaInputMa
    */
   @Override
   public InputSplit[] getSplits(JobConf job, int numSplits) throws IOException {
-    long maxRecordsPerSplit = job.getLong(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, DEFAULT_KAFKA_INPUT_MAX_RECORDS_PER_MAPPER);
+    long maxRecordsPerSplit =
+        job.getLong(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, DEFAULT_KAFKA_INPUT_MAX_RECORDS_PER_MAPPER);
     if (maxRecordsPerSplit < 1L) {
-      throw new IllegalArgumentException("Invalid " + KAFKA_INPUT_MAX_RECORDS_PER_MAPPER + " value [" + maxRecordsPerSplit + "]");
+      throw new IllegalArgumentException(
+          "Invalid " + KAFKA_INPUT_MAX_RECORDS_PER_MAPPER + " value [" + maxRecordsPerSplit + "]");
     }
 
     Map<TopicPartition, Long> latestOffsets = getLatestOffsets(job);
@@ -78,7 +81,10 @@ public class KafkaInputFormat implements InputFormat<BytesWritable, KafkaInputMa
   }
 
   @Override
-  public RecordReader<BytesWritable, KafkaInputMapperValue> getRecordReader(InputSplit split, JobConf job, Reporter reporter) {
+  public RecordReader<BytesWritable, KafkaInputMapperValue> getRecordReader(
+      InputSplit split,
+      JobConf job,
+      Reporter reporter) {
     return new KafkaInputRecordReader(split, job, reporter);
   }
 }

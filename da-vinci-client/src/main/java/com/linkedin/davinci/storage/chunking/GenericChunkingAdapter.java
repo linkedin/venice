@@ -15,10 +15,16 @@ public class GenericChunkingAdapter<V extends GenericRecord> extends AbstractAvr
   public static final GenericChunkingAdapter INSTANCE = new GenericChunkingAdapter();
 
   /** Singleton */
-  protected GenericChunkingAdapter() {}
+  protected GenericChunkingAdapter() {
+  }
 
   @Override
-  protected RecordDeserializer<V> getDeserializer(String storeName, int writerSchemaId, int readerSchemaId, ReadOnlySchemaRepository schemaRepo, boolean fastAvroEnabled) {
+  protected RecordDeserializer<V> getDeserializer(
+      String storeName,
+      int writerSchemaId,
+      int readerSchemaId,
+      ReadOnlySchemaRepository schemaRepo,
+      boolean fastAvroEnabled) {
     Schema writerSchema = schemaRepo.getValueSchema(storeName, writerSchemaId).getSchema();
     Schema readerSchema = schemaRepo.getValueSchema(storeName, readerSchemaId).getSchema();
 

@@ -76,8 +76,12 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   private final String clusterName;
   private final Optional<MetaStoreWriter> metaStoreWriter;
 
-  public HelixReadWriteSchemaRepository(ReadWriteStoreRepository storeRepository, ZkClient zkClient,
-      HelixAdapterSerializer adapter, String clusterName, Optional<MetaStoreWriter> metaStoreWriter) {
+  public HelixReadWriteSchemaRepository(
+      ReadWriteStoreRepository storeRepository,
+      ZkClient zkClient,
+      HelixAdapterSerializer adapter,
+      String clusterName,
+      Optional<MetaStoreWriter> metaStoreWriter) {
     this.storeRepository = storeRepository;
     this.accessor = new HelixSchemaAccessor(zkClient, adapter, clusterName);
     this.clusterName = clusterName;
@@ -165,7 +169,10 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     return getValueSchemaIdCanonicalMatch(storeName, valueSchemas, valueSchemaEntry);
   }
 
-  private int getValueSchemaIdCanonicalMatch(String storeName, Collection<SchemaEntry> valueSchemas, SchemaEntry valueSchemaEntry) {
+  private int getValueSchemaIdCanonicalMatch(
+      String storeName,
+      Collection<SchemaEntry> valueSchemas,
+      SchemaEntry valueSchemaEntry) {
     List<SchemaEntry> canonicalizedMatches = AvroSchemaUtils.filterCanonicalizedSchemas(valueSchemaEntry, valueSchemas);
     int schemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
     if (!canonicalizedMatches.isEmpty()) {
@@ -185,7 +192,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
 
   private SchemaEntry getSchemaEntryWithLargestId(Collection<SchemaEntry> schemas) {
     SchemaEntry largestIdSchema = schemas.iterator().next();
-    for (SchemaEntry schema : schemas) {
+    for (SchemaEntry schema: schemas) {
       if (schema.getId() > largestIdSchema.getId()) {
         largestIdSchema = schema;
       }
@@ -215,7 +222,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
 
   @Override
   public SchemaEntry getLatestValueSchema(String storeName) {
-    Collection<SchemaEntry>  valueSchemas = getValueSchemas(storeName);
+    Collection<SchemaEntry> valueSchemas = getValueSchemas(storeName);
 
     Store store = storeRepository.getStoreOrThrow(storeName);
     if (store.getLatestSuperSetValueSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
@@ -225,7 +232,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
 
     int maxValueSchemaId = -1;
     SchemaEntry latestSchema = null;
-    for (SchemaEntry schema : valueSchemas) {
+    for (SchemaEntry schema: valueSchemas) {
       if (schema.getId() > maxValueSchemaId) {
         maxValueSchemaId = schema.getId();
         latestSchema = schema;
@@ -292,8 +299,14 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
    * @return schema entry if the schema is successfully added or already exists.
    */
   @Override
-  public synchronized SchemaEntry addValueSchema(String storeName, String schemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
-    return addValueSchema(storeName, schemaStr, preCheckValueSchemaAndGetNextAvailableId(storeName, schemaStr, expectedCompatibilityType));
+  public synchronized SchemaEntry addValueSchema(
+      String storeName,
+      String schemaStr,
+      DirectionalSchemaCompatibilityType expectedCompatibilityType) {
+    return addValueSchema(
+        storeName,
+        schemaStr,
+        preCheckValueSchemaAndGetNextAvailableId(storeName, schemaStr, expectedCompatibilityType));
   }
 
   @Override
@@ -301,15 +314,16 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     SchemaEntry newValueSchemaEntry = new SchemaEntry(schemaId, schemaStr);
 
     if (schemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
-      int dupSchemaId = getNextAvailableSchemaId(getValueSchemas(storeName), newValueSchemaEntry,
+      int dupSchemaId = getNextAvailableSchemaId(
+          getValueSchemas(storeName),
+          newValueSchemaEntry,
           DirectionalSchemaCompatibilityType.FULL);
       if (dupSchemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
         logger.info("Value schema already exists. Skipping adding it to the schema repository. Schema: " + schemaStr);
       } else { // there is some doc field update
         newValueSchemaEntry = new SchemaEntry(dupSchemaId, schemaStr);
         accessor.addValueSchema(storeName, newValueSchemaEntry);
-        logger.info(
-            "Adding similar schema to the schema repository for doc field update. Schema: " + schemaStr);
+        logger.info("Adding similar schema to the schema repository for doc field update. Schema: " + schemaStr);
       }
     } else {
       accessor.addValueSchema(storeName, newValueSchemaEntry);
@@ -335,16 +349,20 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
    * if it's a duplicate
    */
   @Override
-  public int preCheckValueSchemaAndGetNextAvailableId(String storeName, String valueSchemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
+  public int preCheckValueSchemaAndGetNextAvailableId(
+      String storeName,
+      String valueSchemaStr,
+      DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     preCheckStoreCondition(storeName);
 
     SchemaEntry valueSchemaEntry = new SchemaEntry(SchemaData.UNKNOWN_SCHEMA_ID, valueSchemaStr);
 
     // Make sure the value schema doesn't contain the reserved field name in the top level.
-    if (valueSchemaEntry.getSchema().getType() == Schema.Type.RECORD &&
-        null != valueSchemaEntry.getSchema().getField(VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)) {
-      throw new VeniceException("Field name: " + VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME + " is reserved,"
-          + " please don't use it in the value schema");
+    if (valueSchemaEntry.getSchema().getType() == Schema.Type.RECORD
+        && null != valueSchemaEntry.getSchema().getField(VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)) {
+      throw new VeniceException(
+          "Field name: " + VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME + " is reserved,"
+              + " please don't use it in the value schema");
     }
 
     return getNextAvailableSchemaId(getValueSchemas(storeName), valueSchemaEntry, expectedCompatibilityType);
@@ -357,8 +375,10 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     DerivedSchemaEntry derivedSchemaEntry =
         new DerivedSchemaEntry(valueSchemaId, SchemaData.UNKNOWN_SCHEMA_ID, derivedSchemaStr);
 
-    return getNextAvailableSchemaId(getDerivedSchemaMap(storeName).get(valueSchemaId),
-        derivedSchemaEntry, DirectionalSchemaCompatibilityType.BACKWARD);
+    return getNextAvailableSchemaId(
+        getDerivedSchemaMap(storeName).get(valueSchemaId),
+        derivedSchemaEntry,
+        DirectionalSchemaCompatibilityType.BACKWARD);
   }
 
   @Override
@@ -367,15 +387,23 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
 
     DerivedSchemaEntry newDerivedSchemaEntry =
         new DerivedSchemaEntry(valueSchemaId, SchemaData.UNKNOWN_SCHEMA_ID, schemaStr);
-    return addDerivedSchema(storeName, schemaStr, valueSchemaId,
-        getNextAvailableSchemaId(getDerivedSchemaMap(storeName).get(valueSchemaId), newDerivedSchemaEntry,
+    return addDerivedSchema(
+        storeName,
+        schemaStr,
+        valueSchemaId,
+        getNextAvailableSchemaId(
+            getDerivedSchemaMap(storeName).get(valueSchemaId),
+            newDerivedSchemaEntry,
             DirectionalSchemaCompatibilityType.NONE));
   }
 
   @Override
-  public DerivedSchemaEntry addDerivedSchema(String storeName, String schemaStr, int valueSchemaId, int derivedSchemaId) {
-    DerivedSchemaEntry newDerivedSchemaEntry =
-        new DerivedSchemaEntry(valueSchemaId, derivedSchemaId, schemaStr);
+  public DerivedSchemaEntry addDerivedSchema(
+      String storeName,
+      String schemaStr,
+      int valueSchemaId,
+      int derivedSchemaId) {
+    DerivedSchemaEntry newDerivedSchemaEntry = new DerivedSchemaEntry(valueSchemaId, derivedSchemaId, schemaStr);
 
     if (derivedSchemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
       logger.info("derived schema is already existing. Skip adding it to repository. Schema: " + schemaStr);
@@ -392,8 +420,9 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     String idPairStr = valueSchemaId + HelixSchemaAccessor.MULTIPART_SCHEMA_VERSION_DELIMITER + derivedSchemaId;
 
     if (derivedSchemaEntry == null) {
-      logger.info("ignore removing derived schema for store: " + storeName + " id pair: " + idPairStr
-      + " because it doesn't exist");
+      logger.info(
+          "ignore removing derived schema for store: " + storeName + " id pair: " + idPairStr
+              + " because it doesn't exist");
       return null;
     }
 
@@ -401,7 +430,9 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     return derivedSchemaEntry;
   }
 
-  private int getNextAvailableSchemaId(Collection<? extends SchemaEntry> schemaEntries, SchemaEntry newSchemaEntry,
+  private int getNextAvailableSchemaId(
+      Collection<? extends SchemaEntry> schemaEntries,
+      SchemaEntry newSchemaEntry,
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     int newValueSchemaId;
     try {
@@ -430,7 +461,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
 
   @Override
   public int getValueSchemaIdIgnoreFieldOrder(String storeName, SchemaEntry newSchemaEntry) {
-    for (SchemaEntry schemaEntry : getValueSchemas(storeName)) {
+    for (SchemaEntry schemaEntry: getValueSchemas(storeName)) {
       if (AvroSchemaUtils.compareSchemaIgnoreFieldOrder(schemaEntry.getSchema(), newSchemaEntry.getSchema())) {
         return schemaEntry.getId();
       }
@@ -441,8 +472,10 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   @Override
   public Pair<Integer, Integer> getDerivedSchemaId(String storeName, String derivedSchemaStr) {
     Schema derivedSchema = Schema.parse(derivedSchemaStr);
-    for (DerivedSchemaEntry derivedSchemaEntry : getDerivedSchemaMap(storeName).values().stream()
-        .flatMap(List::stream).collect(Collectors.toList())) {
+    for (DerivedSchemaEntry derivedSchemaEntry: getDerivedSchemaMap(storeName).values()
+        .stream()
+        .flatMap(List::stream)
+        .collect(Collectors.toList())) {
       if (derivedSchemaEntry.getSchema().equals(derivedSchema)) {
         return new Pair<>(derivedSchemaEntry.getValueSchemaID(), derivedSchemaEntry.getId());
       }
@@ -455,9 +488,11 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     preCheckStoreCondition(storeName);
 
     Map<Integer, List<DerivedSchemaEntry>> derivedSchemaEntryMap = new HashMap<>();
-    accessor.getAllDerivedSchemas(storeName).forEach(derivedSchemaEntry ->
-      derivedSchemaEntryMap.computeIfAbsent(derivedSchemaEntry.getValueSchemaID(), id -> new ArrayList<>())
-          .add(derivedSchemaEntry));
+    accessor.getAllDerivedSchemas(storeName)
+        .forEach(
+            derivedSchemaEntry -> derivedSchemaEntryMap
+                .computeIfAbsent(derivedSchemaEntry.getValueSchemaID(), id -> new ArrayList<>())
+                .add(derivedSchemaEntry));
 
     return derivedSchemaEntryMap;
   }
@@ -470,20 +505,30 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   @Override
-  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(String storeName, int valueSchemaId, int replicationMetadataVersionId) {
+  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(
+      String storeName,
+      int valueSchemaId,
+      int replicationMetadataVersionId) {
     preCheckStoreCondition(storeName);
 
-    String idPairStr = valueSchemaId + HelixSchemaAccessor.MULTIPART_SCHEMA_VERSION_DELIMITER + replicationMetadataVersionId;
+    String idPairStr =
+        valueSchemaId + HelixSchemaAccessor.MULTIPART_SCHEMA_VERSION_DELIMITER + replicationMetadataVersionId;
 
     return accessor.getReplicationMetadataSchema(storeName, idPairStr);
   }
 
-  public ReplicationMetadataSchemaEntry addReplicationMetadataSchema(String storeName, int valueSchemaId, String replicationMetadataSchemaStr,  int replicationMetadataVersionId) {
+  public ReplicationMetadataSchemaEntry addReplicationMetadataSchema(
+      String storeName,
+      int valueSchemaId,
+      String replicationMetadataSchemaStr,
+      int replicationMetadataVersionId) {
     ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry =
         new ReplicationMetadataSchemaEntry(valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
 
     if (replicationMetadataVersionId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
-      logger.info("Replication metadata schema already exists. Skip adding it to repository. Schema: " + replicationMetadataSchemaStr);
+      logger.info(
+          "Replication metadata schema already exists. Skip adding it to repository. Schema: "
+              + replicationMetadataSchemaStr);
     } else {
       accessor.addReplicationMetadataSchema(storeName, replicationMetadataSchemaEntry);
     }

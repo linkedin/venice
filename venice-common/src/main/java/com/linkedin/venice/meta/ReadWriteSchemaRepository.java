@@ -1,9 +1,9 @@
 package com.linkedin.venice.meta;
 
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
-import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 
 
 public interface ReadWriteSchemaRepository extends ReadOnlySchemaRepository {
@@ -22,7 +22,10 @@ public interface ReadWriteSchemaRepository extends ReadOnlySchemaRepository {
   /**
    * Add a new value schema for the given store
    */
-  SchemaEntry addValueSchema(String storeName, String schemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType);
+  SchemaEntry addValueSchema(
+      String storeName,
+      String schemaStr,
+      DirectionalSchemaCompatibilityType expectedCompatibilityType);
 
   /**
    * Add a new value schema for the given store by specifying schema id.
@@ -52,11 +55,18 @@ public interface ReadWriteSchemaRepository extends ReadOnlySchemaRepository {
    */
   DerivedSchemaEntry removeDerivedSchema(String storeName, int valueSchemaId, int derivedSchemaId);
 
-  int preCheckValueSchemaAndGetNextAvailableId(String storeName, String valueSchemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType);
+  int preCheckValueSchemaAndGetNextAvailableId(
+      String storeName,
+      String valueSchemaStr,
+      DirectionalSchemaCompatibilityType expectedCompatibilityType);
 
   int getValueSchemaIdIgnoreFieldOrder(String storeName, SchemaEntry newSchemaEntry);
 
   int preCheckDerivedSchemaAndGetNextAvailableId(String storeName, int valueSchemaId, String derivedSchemaStr);
 
-  ReplicationMetadataSchemaEntry addReplicationMetadataSchema(String storeName, int valueSchemaId, String replicationMetadataSchemaStr, int replicationMetadataVersionId);
+  ReplicationMetadataSchemaEntry addReplicationMetadataSchema(
+      String storeName,
+      int valueSchemaId,
+      String replicationMetadataSchemaStr,
+      int replicationMetadataVersionId);
 }

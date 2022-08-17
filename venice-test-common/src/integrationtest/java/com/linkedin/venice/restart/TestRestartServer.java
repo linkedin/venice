@@ -17,6 +17,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+
 @Test(singleThreaded = true)
 public class TestRestartServer {
   private VeniceClusterWrapper cluster;
@@ -29,8 +30,14 @@ public class TestRestartServer {
     int numberOfServer = 2;
     int numberOfRouter = 1;
 
-    cluster = ServiceFactory.getVeniceCluster(numberOfController, numberOfServer, numberOfRouter, replicaFactor,
-        partitionSize, false, false);
+    cluster = ServiceFactory.getVeniceCluster(
+        numberOfController,
+        numberOfServer,
+        numberOfRouter,
+        replicaFactor,
+        partitionSize,
+        false,
+        false);
   }
 
   @AfterClass
@@ -57,15 +64,17 @@ public class TestRestartServer {
     }
 
     // Wait push completed.
-    TestUtils.waitForNonDeterministicCompletion(20, TimeUnit.SECONDS,
+    TestUtils.waitForNonDeterministicCompletion(
+        20,
+        TimeUnit.SECONDS,
         () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()
             .getOffLinePushStatus(cluster.getClusterName(), topicName)
             .getExecutionStatus()
             .equals(ExecutionStatus.COMPLETED));
 
-    //restart servers
-    for (VeniceServerWrapper failedServer : cluster.getVeniceServers()) {
+    // restart servers
+    for (VeniceServerWrapper failedServer: cluster.getVeniceServers()) {
       cluster.stopVeniceServer(failedServer.getPort());
     }
 
@@ -76,7 +85,7 @@ public class TestRestartServer {
       return partitionAssignment.getAssignedNumberOfPartitions() == 0;
     });
 
-    for (VeniceServerWrapper restartServer : cluster.getVeniceServers()) {
+    for (VeniceServerWrapper restartServer: cluster.getVeniceServers()) {
       cluster.restartVeniceServer(restartServer.getPort());
     }
 

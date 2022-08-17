@@ -12,7 +12,6 @@ import com.linkedin.venice.pushmonitor.StatusSnapshot;
  * Serializer used to convert the data between {@link OfflinePushStatus} and json.
  */
 public class OfflinePushStatusJSONSerializer extends VeniceJsonSerializer<OfflinePushStatus> {
-
   public OfflinePushStatusJSONSerializer() {
     super(OfflinePushStatus.class);
     mapper.addMixIn(OfflinePushStatus.class, OfflinePushStatusSerializerMixin.class);
@@ -21,7 +20,8 @@ public class OfflinePushStatusJSONSerializer extends VeniceJsonSerializer<Offlin
 
   public static class OfflinePushStatusSerializerMixin {
     @JsonCreator
-    public OfflinePushStatusSerializerMixin(@JsonProperty("kafkaTopic") String kafkaTopic,
+    public OfflinePushStatusSerializerMixin(
+        @JsonProperty("kafkaTopic") String kafkaTopic,
         @JsonProperty("numberOfPartition") int numberOfPartition,
         @JsonProperty("replicationFactor") int replicationFactor,
         @JsonProperty("offlinePushStrategy") OfflinePushStrategy offlinePushStrategy) {
@@ -30,7 +30,8 @@ public class OfflinePushStatusJSONSerializer extends VeniceJsonSerializer<Offlin
 
   public static class StatusSnapshotSerializerMixin {
     @JsonCreator
-    public StatusSnapshotSerializerMixin(@JsonProperty("status") ExecutionStatus status,
+    public StatusSnapshotSerializerMixin(
+        @JsonProperty("status") ExecutionStatus status,
         @JsonProperty("time") String time) {
     }
   }

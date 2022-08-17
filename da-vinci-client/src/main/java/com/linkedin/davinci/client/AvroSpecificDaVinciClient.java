@@ -10,6 +10,7 @@ import java.util.Optional;
 import java.util.Set;
 import org.apache.avro.specific.SpecificRecord;
 
+
 public class AvroSpecificDaVinciClient<K, V extends SpecificRecord> extends AvroGenericDaVinciClient<K, V> {
   private final SpecificRecordChunkingAdapter<V> chunkingAdapter;
 

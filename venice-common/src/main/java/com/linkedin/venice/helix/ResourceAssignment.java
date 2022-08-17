@@ -46,7 +46,8 @@ public class ResourceAssignment {
     if (!resourceToAssignmentsMap.containsKey(resourceName)) {
       String errorMessage = "Resource '" + resourceName + "' does not exist";
       logger.trace(errorMessage);
-      // TODO: Might want to add some (configurable) retries here or higher up the stack. If the Helix spectator is out of sync, this fails...
+      // TODO: Might want to add some (configurable) retries here or higher up the stack. If the Helix spectator is out
+      // of sync, this fails...
       throw new VeniceNoHelixResourceException(resourceName);
     }
   }
@@ -76,8 +77,9 @@ public class ResourceAssignment {
   Set<String> compareAndGetUpdatedResources(ResourceAssignment newAssignment) {
     return newAssignment.getAssignedResources()
         .stream()
-        .filter(newResource -> !containsResource(newResource)
-            || !getPartitionAssignment(newResource).equals(newAssignment.getPartitionAssignment(newResource)))
+        .filter(
+            newResource -> !containsResource(newResource)
+                || !getPartitionAssignment(newResource).equals(newAssignment.getPartitionAssignment(newResource)))
         .collect(Collectors.toSet());
   }
 

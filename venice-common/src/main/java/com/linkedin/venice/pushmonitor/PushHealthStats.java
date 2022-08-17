@@ -4,8 +4,9 @@ import com.linkedin.venice.stats.AbstractVeniceStats;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
-import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Gauge;
+import io.tehuti.metrics.stats.Max;
+
 
 public class PushHealthStats extends AbstractVeniceStats {
   private final Sensor successfulPushDurationSensor;
@@ -13,7 +14,6 @@ public class PushHealthStats extends AbstractVeniceStats {
   private final Sensor pushPreparationDurationSensor;
 
   private final Sensor successfulPushDurationSensorGauge;
-
 
   public PushHealthStats(MetricsRepository metricsRepository, String storeName) {
     super(metricsRepository, storeName);
@@ -31,7 +31,7 @@ public class PushHealthStats extends AbstractVeniceStats {
     successfulPushDurationSensor.record(durationInSec);
   }
 
-  public void recordPushPreparationDuration(long durationInSec){
+  public void recordPushPreparationDuration(long durationInSec) {
     pushPreparationDurationSensor.record(durationInSec);
   }
 

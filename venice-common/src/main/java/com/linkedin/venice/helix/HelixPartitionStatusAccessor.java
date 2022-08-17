@@ -19,20 +19,29 @@ public class HelixPartitionStatusAccessor extends HelixPartitionStateAccessor {
   private final boolean helixHybridStoreQuotaEnabled;
   private static final Logger logger = LogManager.getLogger(HelixPartitionStatusAccessor.class);
 
-  public HelixPartitionStatusAccessor(HelixManager helixManager, String instanceId, boolean isHelixHybridStoreQuotaEnabled) {
+  public HelixPartitionStatusAccessor(
+      HelixManager helixManager,
+      String instanceId,
+      boolean isHelixHybridStoreQuotaEnabled) {
     super(helixManager, instanceId);
     this.helixHybridStoreQuotaEnabled = isHelixHybridStoreQuotaEnabled;
   }
 
   public void updateReplicaStatus(String topic, int partitionId, ExecutionStatus status) {
-    super.updateReplicaStatus(HelixPartitionState.OFFLINE_PUSH, topic,
-        getPartitionNameFromId(topic, partitionId), status.name());
+    super.updateReplicaStatus(
+        HelixPartitionState.OFFLINE_PUSH,
+        topic,
+        getPartitionNameFromId(topic, partitionId),
+        status.name());
   }
 
   public void updateHybridQuotaReplicaStatus(String topic, int partitionId, HybridStoreQuotaStatus status) {
     if (helixHybridStoreQuotaEnabled) {
-      super.updateReplicaStatus(HelixPartitionState.HYBRID_STORE_QUOTA, topic,
-          getPartitionNameFromId(topic, partitionId), status.name());
+      super.updateReplicaStatus(
+          HelixPartitionState.HYBRID_STORE_QUOTA,
+          topic,
+          getPartitionNameFromId(topic, partitionId),
+          status.name());
     }
   }
 
@@ -51,38 +60,45 @@ public class HelixPartitionStatusAccessor extends HelixPartitionStateAccessor {
     try {
       super.deleteReplicaStatus(HelixPartitionState.OFFLINE_PUSH, topic, getPartitionNameFromId(topic, partitionId));
     } catch (NullPointerException e) {
-      logger.warn("The partition " + partitionId + " doesn't exist in resource " + topic +
-          " , cannot delete a non-existent partition state for " + HelixPartitionState.OFFLINE_PUSH.name());
+      logger.warn(
+          "The partition " + partitionId + " doesn't exist in resource " + topic
+              + " , cannot delete a non-existent partition state for " + HelixPartitionState.OFFLINE_PUSH.name());
     }
     if (helixHybridStoreQuotaEnabled) {
       try {
-        super.deleteReplicaStatus(HelixPartitionState.HYBRID_STORE_QUOTA, topic,
+        super.deleteReplicaStatus(
+            HelixPartitionState.HYBRID_STORE_QUOTA,
+            topic,
             getPartitionNameFromId(topic, partitionId));
       } catch (NullPointerException e) {
-        logger.warn("The partition " + partitionId + " doesn't exist in resource " + topic +
-            " , cannot delete a non-existent partition state for " + HelixPartitionState.HYBRID_STORE_QUOTA.name());
+        logger.warn(
+            "The partition " + partitionId + " doesn't exist in resource " + topic
+                + " , cannot delete a non-existent partition state for "
+                + HelixPartitionState.HYBRID_STORE_QUOTA.name());
       }
     }
   }
 
   public ExecutionStatus getReplicaStatus(String topic, int partitionId) {
-    return ExecutionStatus.valueOf(super.getReplicaStatus(HelixPartitionState.OFFLINE_PUSH, topic,
-        getPartitionNameFromId(topic, partitionId)));
+    return ExecutionStatus.valueOf(
+        super.getReplicaStatus(HelixPartitionState.OFFLINE_PUSH, topic, getPartitionNameFromId(topic, partitionId)));
   }
 
   public HybridStoreQuotaStatus getHybridQuotaReplicaStatus(String topic, int partitionId) {
     if (helixHybridStoreQuotaEnabled) {
-      return HybridStoreQuotaStatus.valueOf(super.getReplicaStatus(HelixPartitionState.HYBRID_STORE_QUOTA, topic,
-          getPartitionNameFromId(topic, partitionId)));
+      return HybridStoreQuotaStatus.valueOf(
+          super.getReplicaStatus(
+              HelixPartitionState.HYBRID_STORE_QUOTA,
+              topic,
+              getPartitionNameFromId(topic, partitionId)));
     }
     return HybridStoreQuotaStatus.UNKNOWN;
   }
 
   public Map<Integer, ExecutionStatus> getAllReplicaStatus(String topic) {
-    Map<String, String> customizedStateMap =
-        super.getAllReplicaStatus(HelixPartitionState.OFFLINE_PUSH, topic);
+    Map<String, String> customizedStateMap = super.getAllReplicaStatus(HelixPartitionState.OFFLINE_PUSH, topic);
     Map<Integer, ExecutionStatus> results = new HashMap<>();
-    for (Map.Entry entry : customizedStateMap.entrySet()) {
+    for (Map.Entry entry: customizedStateMap.entrySet()) {
       String partitionName = entry.getKey().toString();
       int partitionId = getPartitionIdFromName(partitionName);
       results.put(partitionId, ExecutionStatus.valueOf(entry.getValue().toString()));

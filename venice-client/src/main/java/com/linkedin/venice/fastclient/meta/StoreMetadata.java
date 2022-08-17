@@ -17,7 +17,6 @@ import java.util.concurrent.CompletableFuture;
  * to decide the healthiness of each replica.
  */
 public interface StoreMetadata extends SchemaReader {
-
   String getStoreName();
 
   int getCurrentStoreVersion();
@@ -38,7 +37,13 @@ public interface StoreMetadata extends SchemaReader {
   default List<String> getReplicas(long requestId, int version, int partitionId, int requiredReplicaCount) {
     return getReplicas(requestId, version, partitionId, requiredReplicaCount, Collections.emptySet());
   }
-  List<String> getReplicas(long requestId, int version, int partitionId, int requiredReplicaCount, Set<String> excludedInstances);
+
+  List<String> getReplicas(
+      long requestId,
+      int version,
+      int partitionId,
+      int requiredReplicaCount,
+      Set<String> excludedInstances);
 
   CompletableFuture<HttpStatus> sendRequestToInstance(String instance, int version, int partitionId);
 

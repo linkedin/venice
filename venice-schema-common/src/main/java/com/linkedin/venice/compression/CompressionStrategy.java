@@ -1,18 +1,16 @@
 package com.linkedin.venice.compression;
 
 import com.linkedin.venice.exceptions.VeniceException;
-
 import com.linkedin.venice.utils.EnumUtils;
 import com.linkedin.venice.utils.VeniceEnumValue;
+
 
 /**
  * Enums of the strategies used to compress/decompress Record's value
  */
 public enum CompressionStrategy implements VeniceEnumValue {
-  NO_OP(0, false),
-  GZIP(1, true),
-  @Deprecated ZSTD(2, true),
-  ZSTD_WITH_DICT(3, true);
+  NO_OP(0, false), GZIP(1, true), @Deprecated
+  ZSTD(2, true), ZSTD_WITH_DICT(3, true);
 
   private final int value;
   private final boolean compressionEnabled;

@@ -1,9 +1,8 @@
 package com.linkedin.venice.router.stats;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
-
-import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;

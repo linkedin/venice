@@ -6,13 +6,20 @@ import io.tehuti.metrics.MetricsRepository;
 
 public class AggServerHttpRequestStats extends AbstractVeniceAggStats<ServerHttpRequestStats> {
   public AggServerHttpRequestStats(MetricsRepository metricsRepository, RequestType requestType) {
-    super(metricsRepository,
-          (metricsRepo, storeName) -> new ServerHttpRequestStats(metricsRepo, storeName, requestType));
+    super(
+        metricsRepository,
+        (metricsRepo, storeName) -> new ServerHttpRequestStats(metricsRepo, storeName, requestType));
   }
 
-  public AggServerHttpRequestStats(MetricsRepository metricsRepository, RequestType requestType, boolean isKeyValueProfilingEnabled) {
-    super(metricsRepository,
-        (metricsRepo, storeName) -> new ServerHttpRequestStats(metricsRepo, storeName, requestType, isKeyValueProfilingEnabled));
+  public AggServerHttpRequestStats(
+      MetricsRepository metricsRepository,
+      RequestType requestType,
+      boolean isKeyValueProfilingEnabled) {
+    super(
+        metricsRepository,
+        (
+            metricsRepo,
+            storeName) -> new ServerHttpRequestStats(metricsRepo, storeName, requestType, isKeyValueProfilingEnabled));
   }
 
   public void recordSuccessRequest(String storeName) {
@@ -34,7 +41,7 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStats<ServerHttp
     getStoreStats(storeName).recordSuccessRequestLatency(latency);
   }
 
-  public void recordErrorRequestLatency (double latency) {
+  public void recordErrorRequestLatency(double latency) {
     totalStats.recordErrorRequestLatency(latency);
   }
 
@@ -101,12 +108,18 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStats<ServerHttp
     getStoreStats(storeName).recordReadComputeLatency(latency, assembledMultiChunkLargeValue);
   }
 
-  public void recordReadComputeDeserializationLatency(String storeName, double latency, boolean assembledMultiChunkLargeValue) {
+  public void recordReadComputeDeserializationLatency(
+      String storeName,
+      double latency,
+      boolean assembledMultiChunkLargeValue) {
     totalStats.recordReadComputeDeserializationLatency(latency, assembledMultiChunkLargeValue);
     getStoreStats(storeName).recordReadComputeDeserializationLatency(latency, assembledMultiChunkLargeValue);
   }
 
-  public void recordReadComputeSerializationLatency(String storeName, double latency, boolean assembledMultiChunkLargeValue) {
+  public void recordReadComputeSerializationLatency(
+      String storeName,
+      double latency,
+      boolean assembledMultiChunkLargeValue) {
     totalStats.recordReadComputeSerializationLatency(latency, assembledMultiChunkLargeValue);
     getStoreStats(storeName).recordReadComputeSerializationLatency(latency, assembledMultiChunkLargeValue);
   }

@@ -1,5 +1,7 @@
 package com.linkedin.venice;
 
+import static com.linkedin.venice.kafka.protocol.enums.MessageType.*;
+
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
@@ -7,12 +9,10 @@ import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSe
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
-import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import java.text.DateFormat;
@@ -27,8 +27,6 @@ import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
-
-import static com.linkedin.venice.kafka.protocol.enums.MessageType.*;
 
 
 /**
@@ -49,8 +47,12 @@ public class DumpAdminMessages {
     public String producerMetadata;
   }
 
-  public static List<AdminOperationInfo> dumpAdminMessages(String kafkaUrl, String clusterName,
-      Properties consumerProperties, long startingOffset, int messageCnt) {
+  public static List<AdminOperationInfo> dumpAdminMessages(
+      String kafkaUrl,
+      String clusterName,
+      Properties consumerProperties,
+      long startingOffset,
+      int messageCnt) {
     consumerProperties = getKafkaConsumerProperties(kafkaUrl, consumerProperties);
     String adminTopic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     try (KafkaConsumerWrapper consumer = new ApacheKafkaConsumer(consumerProperties)) {
@@ -84,7 +86,8 @@ public class DumpAdminMessages {
               adminOperationInfo.schemaId = put.schemaId;
               adminOperationInfo.adminOperation = adminMessage.toString();
               adminOperationInfo.operationType = AdminMessageType.valueOf(adminMessage).name();
-              adminOperationInfo.publishTimeStamp = dateFormat.format(new Date(messageEnvelope.producerMetadata.messageTimestamp));
+              adminOperationInfo.publishTimeStamp =
+                  dateFormat.format(new Date(messageEnvelope.producerMetadata.messageTimestamp));
               adminOperationInfo.producerMetadata = messageEnvelope.producerMetadata.toString();
               adminOperations.add(adminOperationInfo);
               break;
@@ -93,7 +96,8 @@ public class DumpAdminMessages {
               adminControlMessageInfo.offset = record.offset();
               adminControlMessageInfo.schemaId = -1;
               adminControlMessageInfo.operationType = CONTROL_MESSAGE.toString();
-              adminControlMessageInfo.publishTimeStamp = dateFormat.format(new Date(messageEnvelope.producerMetadata.messageTimestamp));
+              adminControlMessageInfo.publishTimeStamp =
+                  dateFormat.format(new Date(messageEnvelope.producerMetadata.messageTimestamp));
               adminControlMessageInfo.producerMetadata = messageEnvelope.producerMetadata.toString();
               adminOperations.add(adminControlMessageInfo);
               break;
@@ -127,7 +131,7 @@ public class DumpAdminMessages {
       requiredSSLConfigList.add("ssl.truststore.location");
       requiredSSLConfigList.add("ssl.truststore.password");
       requiredSSLConfigList.add("ssl.truststore.type");
-      requiredSSLConfigList.forEach( configProperty -> {
+      requiredSSLConfigList.forEach(configProperty -> {
         if (null == kafkaConsumerProperties.getProperty(configProperty)) {
           throw new VeniceException("Consumer config property: " + configProperty + " is required");
         }
@@ -137,11 +141,11 @@ public class DumpAdminMessages {
     kafkaConsumerProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaUrl);
     kafkaConsumerProperties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
     kafkaConsumerProperties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
-    //This is a temporary fix for the issue described here
-    //https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
-    //In our case "com.linkedin.venice.serialization.KafkaKeySerializer" class can not be found
-    //because class loader has no venice-common in class path. This can be only reproduced on JDK11
-    //Trying to avoid class loading via Kafka's ConfigDef class
+    // This is a temporary fix for the issue described here
+    // https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
+    // In our case "com.linkedin.venice.serialization.KafkaKeySerializer" class can not be found
+    // because class loader has no venice-common in class path. This can be only reproduced on JDK11
+    // Trying to avoid class loading via Kafka's ConfigDef class
     kafkaConsumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
     kafkaConsumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
 

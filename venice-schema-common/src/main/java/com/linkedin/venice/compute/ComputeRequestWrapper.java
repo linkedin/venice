@@ -39,14 +39,15 @@ public class ComputeRequestWrapper {
       put(4, ComputeRequestV4.SCHEMA$);
     }
   };
-  private static final Map<Integer, Class<? extends SpecificRecord>> CLASS_MAP = new HashMap<Integer, Class<? extends SpecificRecord>>() {
-    {
-      put(1, ComputeRequestV1.class);
-      put(2, ComputeRequestV2.class);
-      put(3, ComputeRequestV3.class);
-      put(4, ComputeRequestV4.class);
-    }
-  };
+  private static final Map<Integer, Class<? extends SpecificRecord>> CLASS_MAP =
+      new HashMap<Integer, Class<? extends SpecificRecord>>() {
+        {
+          put(1, ComputeRequestV1.class);
+          put(2, ComputeRequestV2.class);
+          put(3, ComputeRequestV3.class);
+          put(4, ComputeRequestV4.class);
+        }
+      };
   private static final Map<Integer, RecordSerializer> SERIALIZER_MAP = new HashMap<Integer, RecordSerializer>() {
     {
       put(1, SerializerDeserializerFactory.getAvroGenericSerializer(ComputeRequestV1.SCHEMA$));
@@ -58,7 +59,8 @@ public class ComputeRequestWrapper {
 
   private RecordDeserializer getDeserializer(boolean useFastAvro) {
     if (useFastAvro) {
-      return FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(SCHEMA_MAP.get(version), CLASS_MAP.get(version));
+      return FastSerializerDeserializerFactory
+          .getFastAvroSpecificDeserializer(SCHEMA_MAP.get(version), CLASS_MAP.get(version));
     } else {
       return SerializerDeserializerFactory.getAvroSpecificDeserializer(SCHEMA_MAP.get(version), CLASS_MAP.get(version));
     }
@@ -108,13 +110,13 @@ public class ComputeRequestWrapper {
   public CharSequence getResultSchemaStr() {
     switch (version) {
       case 1:
-        return ((ComputeRequestV1)computeRequest).resultSchemaStr;
+        return ((ComputeRequestV1) computeRequest).resultSchemaStr;
       case 2:
-        return ((ComputeRequestV2)computeRequest).resultSchemaStr;
+        return ((ComputeRequestV2) computeRequest).resultSchemaStr;
       case 3:
-        return ((ComputeRequestV3)computeRequest).resultSchemaStr;
+        return ((ComputeRequestV3) computeRequest).resultSchemaStr;
       case 4:
-        return ((ComputeRequestV4)computeRequest).resultSchemaStr;
+        return ((ComputeRequestV4) computeRequest).resultSchemaStr;
       default:
         throw new VeniceException("Compute request version " + version + " is not support yet.");
     }
@@ -131,16 +133,16 @@ public class ComputeRequestWrapper {
   public void setResultSchemaStr(String resultSchemaStr) {
     switch (version) {
       case 1:
-        ((ComputeRequestV1)computeRequest).resultSchemaStr = resultSchemaStr;
+        ((ComputeRequestV1) computeRequest).resultSchemaStr = resultSchemaStr;
         break;
       case 2:
-        ((ComputeRequestV2)computeRequest).resultSchemaStr = resultSchemaStr;
+        ((ComputeRequestV2) computeRequest).resultSchemaStr = resultSchemaStr;
         break;
       case 3:
-        ((ComputeRequestV3)computeRequest).resultSchemaStr = resultSchemaStr;
+        ((ComputeRequestV3) computeRequest).resultSchemaStr = resultSchemaStr;
         break;
       case 4:
-        ((ComputeRequestV4)computeRequest).resultSchemaStr = resultSchemaStr;
+        ((ComputeRequestV4) computeRequest).resultSchemaStr = resultSchemaStr;
         break;
       default:
         throw new VeniceException("Compute request version " + version + " is not support yet.");
@@ -155,13 +157,13 @@ public class ComputeRequestWrapper {
   public List<ComputeOperation> getOperations() {
     switch (version) {
       case 1:
-        return (List)((ComputeRequestV1)computeRequest).operations;
+        return (List) ((ComputeRequestV1) computeRequest).operations;
       case 2:
-        return (List)((ComputeRequestV2)computeRequest).operations;
+        return (List) ((ComputeRequestV2) computeRequest).operations;
       case 3:
-        return (List)((ComputeRequestV3)computeRequest).operations;
+        return (List) ((ComputeRequestV3) computeRequest).operations;
       case 4:
-        return (List)((ComputeRequestV4)computeRequest).operations;
+        return (List) ((ComputeRequestV4) computeRequest).operations;
       default:
         throw new VeniceException("Compute request version " + version + " is not support yet.");
     }
@@ -170,16 +172,16 @@ public class ComputeRequestWrapper {
   public void setOperations(List<ComputeOperation> operations) {
     switch (version) {
       case 1:
-        ((ComputeRequestV1)computeRequest).operations = (List)operations;
+        ((ComputeRequestV1) computeRequest).operations = (List) operations;
         break;
       case 2:
-        ((ComputeRequestV2)computeRequest).operations = (List)operations;
+        ((ComputeRequestV2) computeRequest).operations = (List) operations;
         break;
       case 3:
-        ((ComputeRequestV3)computeRequest).operations = (List)operations;
+        ((ComputeRequestV3) computeRequest).operations = (List) operations;
         break;
       case 4:
-        ((ComputeRequestV4)computeRequest).operations = (List)operations;
+        ((ComputeRequestV4) computeRequest).operations = (List) operations;
         break;
       default:
         throw new VeniceException("Compute request version " + version + " is not support yet.");

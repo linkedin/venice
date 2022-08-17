@@ -1,5 +1,7 @@
 package com.linkedin.venice.utils;
 
+import static com.linkedin.venice.HttpConstants.*;
+
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
@@ -58,8 +60,6 @@ import org.apache.commons.lang.Validate;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.HttpConstants.*;
 
 
 /**
@@ -279,7 +279,11 @@ public class Utils {
     try {
       return Integer.parseInt(value);
     } catch (NumberFormatException e) {
-      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, fieldName + " must be an integer, but value: " + value, e, ErrorType.BAD_REQUEST);
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          fieldName + " must be an integer, but value: " + value,
+          e,
+          ErrorType.BAD_REQUEST);
     }
   }
 
@@ -287,7 +291,11 @@ public class Utils {
     try {
       return Long.parseLong(value);
     } catch (NumberFormatException e) {
-      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, fieldName + " must be a long, but value: " + value, e, ErrorType.BAD_REQUEST);
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          fieldName + " must be a long, but value: " + value,
+          e,
+          ErrorType.BAD_REQUEST);
     }
   }
 
@@ -299,7 +307,10 @@ public class Utils {
     if (value.equalsIgnoreCase("true") || value.equalsIgnoreCase("false")) {
       return Boolean.valueOf(value);
     } else {
-      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, fieldName + " must be a boolean, but value: " + value, ErrorType.BAD_REQUEST);
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          fieldName + " must be a boolean, but value: " + value,
+          ErrorType.BAD_REQUEST);
     }
   }
 
@@ -358,10 +369,11 @@ public class Utils {
     int currentProtocolVersion;
     if (protocolDef.currentProtocolVersion.isPresent()) {
       int currentProtocolVersionAsInt = protocolDef.currentProtocolVersion.get();
-      if (currentProtocolVersionAsInt == SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA ||
-          currentProtocolVersionAsInt == SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL ||
-          currentProtocolVersionAsInt > Byte.MAX_VALUE) {
-        throw new IllegalArgumentException("Improperly defined protocol! Invalid currentProtocolVersion: " + currentProtocolVersionAsInt);
+      if (currentProtocolVersionAsInt == SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA
+          || currentProtocolVersionAsInt == SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL
+          || currentProtocolVersionAsInt > Byte.MAX_VALUE) {
+        throw new IllegalArgumentException(
+            "Improperly defined protocol! Invalid currentProtocolVersion: " + currentProtocolVersionAsInt);
       }
       currentProtocolVersion = currentProtocolVersionAsInt;
     } else {
@@ -413,9 +425,10 @@ public class Utils {
 
     /** Ensure that we are using Avro properly. */
     if (compiledProtocolVersion == SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA) {
-      throw new VeniceException("Failed to identify which version is currently compiled for " + protocolDef.name() +
-          ". This could happen if the avro schemas have been altered without recompiling the auto-generated classes" +
-          ", or if the auto-generated classes were edited directly instead of generating them from the schemas.");
+      throw new VeniceException(
+          "Failed to identify which version is currently compiled for " + protocolDef.name()
+              + ". This could happen if the avro schemas have been altered without recompiling the auto-generated classes"
+              + ", or if the auto-generated classes were edited directly instead of generating them from the schemas.");
     }
 
     /**
@@ -428,11 +441,12 @@ public class Utils {
      */
     Schema intendedCurrentProtocol = protocolSchemaMap.get((int) currentProtocolVersion);
     if (null == intendedCurrentProtocol) {
-      throw new VeniceException("Failed to get schema for current version: " + currentProtocolVersion
-          + " class: " + className);
+      throw new VeniceException(
+          "Failed to get schema for current version: " + currentProtocolVersion + " class: " + className);
     } else if (!intendedCurrentProtocol.equals(protocolDef.getCurrentProtocolVersionSchema())) {
-      throw new VeniceException("The intended protocol version (" + currentProtocolVersion +
-          ") does not match the compiled protocol version (" + compiledProtocolVersion + ").");
+      throw new VeniceException(
+          "The intended protocol version (" + currentProtocolVersion
+              + ") does not match the compiled protocol version (" + compiledProtocolVersion + ").");
     }
 
     return protocolSchemaMap;
@@ -477,7 +491,7 @@ public class Utils {
     return (double) Math.round(value * scale) / scale;
   }
 
-  private static final String[] LARGE_NUMBER_SUFFIXES = {"", "K", "M", "B", "T"};
+  private static final String[] LARGE_NUMBER_SUFFIXES = { "", "K", "M", "B", "T" };
 
   public static String makeLargeNumberPretty(long largeNumber) {
     if (largeNumber < 2) {
@@ -551,24 +565,23 @@ public class Utils {
     }
   }
 
-  private static final Pair<String, Integer>[] TIME_SUFFIX_AND_MULTIPLIER = Arrays.asList(
-      new Pair<>("ns", 1),
-      new Pair<>("us", Time.NS_PER_US),
-      new Pair<>("ms", Time.US_PER_MS),
-      new Pair<>("s", Time.MS_PER_SECOND),
-      new Pair<>("m", Time.SECONDS_PER_MINUTE),
-      new Pair<>("h", Time.MINUTES_PER_HOUR)
-  ).toArray(new Pair[6]);
+  private static final Pair<String, Integer>[] TIME_SUFFIX_AND_MULTIPLIER =
+      Arrays
+          .asList(
+              new Pair<>("ns", 1),
+              new Pair<>("us", Time.NS_PER_US),
+              new Pair<>("ms", Time.US_PER_MS),
+              new Pair<>("s", Time.MS_PER_SECOND),
+              new Pair<>("m", Time.SECONDS_PER_MINUTE),
+              new Pair<>("h", Time.MINUTES_PER_HOUR))
+          .toArray(new Pair[6]);
 
-
-  private static final TimeUnitInfo[] TIME_UNIT_INFO = {
-      new TimeUnitInfo("ns", 1, new DecimalFormat("0")),
+  private static final TimeUnitInfo[] TIME_UNIT_INFO = { new TimeUnitInfo("ns", 1, new DecimalFormat("0")),
       new TimeUnitInfo("us", Time.NS_PER_US, new DecimalFormat("0")),
       new TimeUnitInfo("ms", Time.US_PER_MS, new DecimalFormat("0")),
       new TimeUnitInfo("s", Time.MS_PER_SECOND, new DecimalFormat("0.0")),
       new TimeUnitInfo("m", Time.SECONDS_PER_MINUTE, new DecimalFormat("0.0")),
-      new TimeUnitInfo("h", Time.MINUTES_PER_HOUR, new DecimalFormat("0.0")),
-  };
+      new TimeUnitInfo("h", Time.MINUTES_PER_HOUR, new DecimalFormat("0.0")), };
 
   public static String makeTimePretty(long nanoSecTime) {
     double formattedTime = nanoSecTime;
@@ -622,13 +635,13 @@ public class Utils {
    * @return the version of the venice-common jar on the classpath, if available, or "N/A" otherwise.
    */
   public static String getVeniceVersionFromClassPath() {
-    //The application class loader is no longer an instance of java.net.URLClassLoader in JDK 9+
-    //So changing implementation to be compatible with JDK8 and JDK11 at the same time
+    // The application class loader is no longer an instance of java.net.URLClassLoader in JDK 9+
+    // So changing implementation to be compatible with JDK8 and JDK11 at the same time
     String classpath = System.getProperty("java.class.path");
     String[] entries = classpath.split(File.pathSeparator);
     String jarNamePrefixToLookFor = "venice-common-";
 
-    for(int i = 0; i < entries.length; i++) {
+    for (int i = 0; i < entries.length; i++) {
       int indexOfJarName = entries[i].lastIndexOf(jarNamePrefixToLookFor);
       if (indexOfJarName > -1) {
         int substringStart = indexOfJarName + jarNamePrefixToLookFor.length();
@@ -733,10 +746,9 @@ public class Utils {
    * @return a Value in the CharSequence map or {@link null}
    */
   public static Optional<CharSequence> getValueFromCharSequenceMapWithStringKey(
-          Map<CharSequence, CharSequence> charSequenceMap,
-          String stringKey
-  ) {
-    for (Map.Entry<CharSequence, CharSequence> entry : charSequenceMap.entrySet()) {
+      Map<CharSequence, CharSequence> charSequenceMap,
+      String stringKey) {
+    for (Map.Entry<CharSequence, CharSequence> entry: charSequenceMap.entrySet()) {
       if (Objects.equals(entry.getKey().toString(), stringKey)) {
         return Optional.ofNullable(entry.getValue()); // Value can be null
       }
@@ -763,7 +775,7 @@ public class Utils {
     if (closeables == null) {
       return;
     }
-    for (Closeable closeable : closeables) {
+    for (Closeable closeable: closeables) {
       IOUtils.closeQuietly(closeable, LOGGER::error);
     }
   }
@@ -775,9 +787,9 @@ public class Utils {
     synchronized (resourceAssignment) {
       Set<String> resourceNames = resourceAssignment.getAssignedResources();
 
-      for (String resourceName : resourceNames) {
+      for (String resourceName: resourceNames) {
         PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(resourceName);
-        for (Partition partition : partitionAssignment.getAllPartitions()) {
+        for (Partition partition: partitionAssignment.getAllPartitions()) {
           String status = partition.getInstanceStatusById(instanceId);
           if (status != null) {
             Replica replica = new Replica(Instance.fromNodeId(instanceId), partition.getId(), resourceName);
@@ -791,7 +803,7 @@ public class Utils {
   }
 
   public static boolean isCurrentVersion(String resourceName, ReadOnlyStoreRepository metadataRepo) {
-    try{
+    try {
       String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
       int version = Version.parseVersionFromKafkaTopicName(resourceName);
 
@@ -835,7 +847,9 @@ public class Utils {
    * @return true, if the input replica is an extra one.
    *         false, otherwise.
    */
-  public static boolean isExtraReplica(ReadOnlyStoreRepository metadataRepo, Replica replica,
+  public static boolean isExtraReplica(
+      ReadOnlyStoreRepository metadataRepo,
+      Replica replica,
       List<Instance> readyInstances) {
     String storeName = Version.parseStoreFromKafkaTopicName(replica.getResource());
     Store store = metadataRepo.getStore(storeName);
@@ -845,24 +859,30 @@ public class Utils {
         : readyInstances.size() >= store.getReplicationFactor();
   }
 
-  public static Map<String, String> extractQueryParamsFromRequest(Map<String, String[]> sparkRequestParams,
+  public static Map<String, String> extractQueryParamsFromRequest(
+      Map<String, String[]> sparkRequestParams,
       ControllerResponse response) {
     boolean anyParamContainsMoreThanOneValue =
         sparkRequestParams.values().stream().anyMatch(strings -> strings.length > 1);
 
     if (anyParamContainsMoreThanOneValue) {
-      VeniceException e = new VeniceException("Array parameters are not supported. Provided request parameters: " + sparkRequestParams, ErrorType.BAD_REQUEST);
+      VeniceException e = new VeniceException(
+          "Array parameters are not supported. Provided request parameters: " + sparkRequestParams,
+          ErrorType.BAD_REQUEST);
       response.setError(e);
       throw e;
     }
 
-    Map<String, String> params = sparkRequestParams.entrySet().stream()
+    Map<String, String> params = sparkRequestParams.entrySet()
+        .stream()
         // Extract the first (and only) value of each param
         .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()[0]));
     return params;
   }
 
-  public static Pair<Store, Version> waitStoreVersionOrThrow(String storeVersionName, ReadOnlyStoreRepository metadataRepo) {
+  public static Pair<Store, Version> waitStoreVersionOrThrow(
+      String storeVersionName,
+      ReadOnlyStoreRepository metadataRepo) {
     String storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
     int versionNumber = Version.parseVersionFromKafkaTopicName(storeVersionName);
 

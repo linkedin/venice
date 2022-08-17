@@ -1,5 +1,7 @@
 package com.linkedin.venice.benchmark;
 
+import static com.linkedin.venice.integration.utils.ServiceFactory.*;
+
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -34,7 +36,6 @@ import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.RunnerException;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
 
-import static com.linkedin.venice.integration.utils.ServiceFactory.*;
 
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
@@ -44,22 +45,17 @@ import static com.linkedin.venice.integration.utils.ServiceFactory.*;
 @Measurement(iterations = 10)
 public class IngestionBenchmarkInSingleProcess {
   private static final int numRecords = 100_000;
-  private static final String FLOAT_VECTOR_VALUE_SCHEMA = "{" +
-      "  \"namespace\" : \"example.avro\",  " +
-      "  \"type\": \"record\",   " +
-      "  \"name\": \"FloatVector\",     " +
-      "  \"fields\": [           " +
-      "       { \"name\": \"value\", \"type\": {\"type\": \"array\", \"items\": \"float\"} }  " +
-      "  ] " +
-      " } ";
+  private static final String FLOAT_VECTOR_VALUE_SCHEMA = "{" + "  \"namespace\" : \"example.avro\",  "
+      + "  \"type\": \"record\",   " + "  \"name\": \"FloatVector\",     " + "  \"fields\": [           "
+      + "       { \"name\": \"value\", \"type\": {\"type\": \"array\", \"items\": \"float\"} }  " + "  ] " + " } ";
 
   private VeniceClusterWrapper cluster;
   private String storeName;
 
-  @Param({"100"})
+  @Param({ "100" })
   protected String valueLength;
 
-  @Param({"FLOAT_VECTOR"})
+  @Param({ "FLOAT_VECTOR" })
   protected String valueType;
 
   @Setup
@@ -88,7 +84,8 @@ public class IngestionBenchmarkInSingleProcess {
     try {
       // Delete and recreate data base folder.
       FileUtils.deleteDirectory(dataBasePath);
-      DaVinciClient<Long, GenericRecord> client = getGenericAvroDaVinciClient(storeName, cluster, dataBasePath.toString());
+      DaVinciClient<Long, GenericRecord> client =
+          getGenericAvroDaVinciClient(storeName, cluster, dataBasePath.toString());
       // Ingest data to local folder.
       client.subscribeAll().get(60, TimeUnit.SECONDS);
       client.close();
@@ -98,10 +95,10 @@ public class IngestionBenchmarkInSingleProcess {
   }
 
   public static void main(String[] args) throws RunnerException {
-    org.openjdk.jmh.runner.options.Options opt = new OptionsBuilder()
-        .include(IngestionBenchmarkInSingleProcess.class.getSimpleName())
-        .addProfiler(GCProfiler.class)
-        .build();
+    org.openjdk.jmh.runner.options.Options opt =
+        new OptionsBuilder().include(IngestionBenchmarkInSingleProcess.class.getSimpleName())
+            .addProfiler(GCProfiler.class)
+            .build();
     new Runner(opt).run();
   }
 
@@ -110,7 +107,7 @@ public class IngestionBenchmarkInSingleProcess {
     GenericRecord record = new GenericData.Record(schema);
     List<Float> floatVector = new ArrayList<>();
     for (int i = 0; i < valueSize; i++) {
-      floatVector.add((float)(i * 1.0));
+      floatVector.add((float) (i * 1.0));
     }
     record.put("value", floatVector);
     return cluster.createStore(numRecords, record);

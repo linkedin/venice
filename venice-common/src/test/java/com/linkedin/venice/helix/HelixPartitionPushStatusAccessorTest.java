@@ -8,10 +8,8 @@ import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.utils.MockTestStateModel;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-
 import java.util.HashMap;
 import java.util.Map;
-
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
@@ -46,38 +44,44 @@ public class HelixPartitionPushStatusAccessorTest {
     admin = new ZKHelixAdmin(zkAddress);
     admin.addCluster(clusterName);
     HelixConfigScope configScope =
-        new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).
-            forCluster(clusterName).build();
+        new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(clusterName).build();
     Map<String, String> helixClusterProperties = new HashMap<String, String>();
     helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
     admin.setConfig(configScope, helixClusterProperties);
-    admin.addStateModelDef(clusterName, MockTestStateModel.UNIT_TEST_STATE_MODEL,
-        MockTestStateModel.getDefinition());
+    admin.addStateModelDef(clusterName, MockTestStateModel.UNIT_TEST_STATE_MODEL, MockTestStateModel.getDefinition());
 
-    admin.addResource(clusterName, resourceName, 2, MockTestStateModel.UNIT_TEST_STATE_MODEL,
+    admin.addResource(
+        clusterName,
+        resourceName,
+        2,
+        MockTestStateModel.UNIT_TEST_STATE_MODEL,
         IdealState.RebalanceMode.FULL_AUTO.toString());
     admin.rebalance(clusterName, resourceName, 1);
 
     // make sure httpPort1 and httpPort2 are different so that we have two different instances
     httpPort1 = 50000 + (int) (System.currentTimeMillis() % 10000);
-    manager1 = TestUtils
-        .getParticipant(clusterName, Utils.getHelixNodeIdentifier(httpPort1), zkAddress, httpPort1,
-            MockTestStateModel.UNIT_TEST_STATE_MODEL);
+    manager1 = TestUtils.getParticipant(
+        clusterName,
+        Utils.getHelixNodeIdentifier(httpPort1),
+        zkAddress,
+        httpPort1,
+        MockTestStateModel.UNIT_TEST_STATE_MODEL);
     manager1.connect();
-    //Waiting essential notification from ZK. TODO: use a listener to find out when ZK is ready
+    // Waiting essential notification from ZK. TODO: use a listener to find out when ZK is ready
     Thread.sleep(WAIT_TIME);
-    accessor1 = new HelixPartitionStatusAccessor(manager1.getOriginalManager(),
-        manager1.getInstanceName(), false);
+    accessor1 = new HelixPartitionStatusAccessor(manager1.getOriginalManager(), manager1.getInstanceName(), false);
 
     httpPort2 = 50000 + (int) (System.currentTimeMillis() % 10000) + 1;
-    manager2 = TestUtils
-        .getParticipant(clusterName, Utils.getHelixNodeIdentifier(httpPort2), zkAddress, httpPort2,
-            MockTestStateModel.UNIT_TEST_STATE_MODEL);
+    manager2 = TestUtils.getParticipant(
+        clusterName,
+        Utils.getHelixNodeIdentifier(httpPort2),
+        zkAddress,
+        httpPort2,
+        MockTestStateModel.UNIT_TEST_STATE_MODEL);
     manager2.connect();
-    //Waiting essential notification from ZK. TODO: use a listener to find out when ZK is ready
+    // Waiting essential notification from ZK. TODO: use a listener to find out when ZK is ready
     Thread.sleep(WAIT_TIME);
-    accessor2 = new HelixPartitionStatusAccessor(manager2.getOriginalManager(),
-        manager2.getInstanceName(), true);
+    accessor2 = new HelixPartitionStatusAccessor(manager2.getOriginalManager(), manager2.getInstanceName(), true);
   }
 
   @AfterMethod(alwaysRun = true)
@@ -103,8 +107,7 @@ public class HelixPartitionPushStatusAccessorTest {
     int partitionId = 0;
     try {
       accessor1.getReplicaStatus(topic, partitionId);
-      Assert
-          .fail("A venice exception should be thrown when getting a nonexist replica status in ZK");
+      Assert.fail("A venice exception should be thrown when getting a nonexist replica status in ZK");
     } catch (VeniceException e) {
     }
   }
@@ -160,6 +163,7 @@ public class HelixPartitionPushStatusAccessorTest {
     Assert.assertEquals(HybridStoreQuotaStatus.UNKNOWN, accessor1.getHybridQuotaReplicaStatus(topic, partitionId));
 
     accessor2.updateHybridQuotaReplicaStatus(topic, partitionId, HybridStoreQuotaStatus.QUOTA_VIOLATED);
-    Assert.assertEquals(HybridStoreQuotaStatus.QUOTA_VIOLATED, accessor2.getHybridQuotaReplicaStatus(topic, partitionId));
+    Assert
+        .assertEquals(HybridStoreQuotaStatus.QUOTA_VIOLATED, accessor2.getHybridQuotaReplicaStatus(topic, partitionId));
   }
 }

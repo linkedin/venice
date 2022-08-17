@@ -13,7 +13,6 @@ import org.checkerframework.checker.nullness.qual.NonNull;
 
 
 public class CaffeineVeniceStoreCache implements VeniceStoreCache {
-
   private final @NonNull AsyncLoadingCache caffeineCache;
 
   public CaffeineVeniceStoreCache(ObjectCacheConfig cacheConfig, AsyncCacheLoader loadingFunction) {
@@ -29,7 +28,7 @@ public class CaffeineVeniceStoreCache implements VeniceStoreCache {
   }
 
   @Override
-  public <K, V> Map<K,V> getAllPresent(Iterable<K> keys) {
+  public <K, V> Map<K, V> getAllPresent(Iterable<K> keys) {
     return caffeineCache.synchronous().getAllPresent(keys);
   }
 
@@ -39,12 +38,14 @@ public class CaffeineVeniceStoreCache implements VeniceStoreCache {
   }
 
   @Override
-  public <K, V> CompletableFuture<V> get(K key, Function<K,V> mappingFunction) {
+  public <K, V> CompletableFuture<V> get(K key, Function<K, V> mappingFunction) {
     return caffeineCache.get(key, mappingFunction);
   }
 
   @Override
-  public <K,V> CompletableFuture<Map<K,V>> getAll(Iterable<K> keys, Function<Iterable<K>, Map<K, V>> mappingFunction) {
+  public <K, V> CompletableFuture<Map<K, V>> getAll(
+      Iterable<K> keys,
+      Function<Iterable<K>, Map<K, V>> mappingFunction) {
     return caffeineCache.getAll(keys, mappingFunction);
   }
 

@@ -15,7 +15,8 @@ import org.apache.logging.log4j.Logger;
 public class DeepCopyOffsetManager implements OffsetManager {
   private static final Logger LOGGER = LogManager.getLogger(DeepCopyOffsetManager.class);
 
-  private final static InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+  private final static InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+      AvroProtocolDefinition.PARTITION_STATE.getSerializer();
 
   private final OffsetManager delegate;
 
@@ -25,26 +26,28 @@ public class DeepCopyOffsetManager implements OffsetManager {
 
   @Override
   public void put(String topicName, int partitionId, OffsetRecord record) throws VeniceException {
-    LOGGER.info("OffsetManager.put(OffsetRecord) called with topicName: " + topicName +
-        ", partitionId: " + partitionId + ", record: " + record);
+    LOGGER.info(
+        "OffsetManager.put(OffsetRecord) called with topicName: " + topicName + ", partitionId: " + partitionId
+            + ", record: " + record);
 
-    // Doing a deep copy, otherwise Mockito keeps a handle on the reference only, which can mutate and lead to confusing verify() semantics
+    // Doing a deep copy, otherwise Mockito keeps a handle on the reference only, which can mutate and lead to confusing
+    // verify() semantics
     OffsetRecord deepCopy = new OffsetRecord(record.toBytes(), partitionStateSerializer);
     delegate.put(topicName, partitionId, deepCopy);
   }
 
   @Override
   public void clearOffset(String topicName, int partitionId) {
-    LOGGER.info("OffsetManager.clearOffset called with topicName: " + topicName +
-        ", partitionId: " + partitionId);
+    LOGGER.info("OffsetManager.clearOffset called with topicName: " + topicName + ", partitionId: " + partitionId);
     delegate.clearOffset(topicName, partitionId);
   }
 
   @Override
   public OffsetRecord getLastOffset(String topicName, int partitionId) throws VeniceException {
     OffsetRecord recordToReturn = delegate.getLastOffset(topicName, partitionId);
-    LOGGER.info("OffsetManager.getLastOffset called with topicName: " + topicName +
-        ", partitionId: " + partitionId + ", recordToReturn: " + recordToReturn);
+    LOGGER.info(
+        "OffsetManager.getLastOffset called with topicName: " + topicName + ", partitionId: " + partitionId
+            + ", recordToReturn: " + recordToReturn);
     return recordToReturn;
   }
 }

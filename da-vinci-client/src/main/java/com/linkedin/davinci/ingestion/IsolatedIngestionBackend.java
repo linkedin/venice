@@ -3,7 +3,6 @@ package com.linkedin.davinci.ingestion;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
-import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer;
 import com.linkedin.davinci.ingestion.main.MainIngestionMonitorService;
 import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
 import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
@@ -38,7 +37,8 @@ import org.apache.logging.log4j.Logger;
  * The implementation of APIs in this class should consider the states in both main process and child process, as we need
  * to make sure we send the command to the correct process which holds the target storage engine.
  */
-public class IsolatedIngestionBackend extends DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceIngestionBackend {
+public class IsolatedIngestionBackend extends DefaultIngestionBackend
+    implements DaVinciIngestionBackend, VeniceIngestionBackend {
   private static final Logger logger = LogManager.getLogger(IsolatedIngestionBackend.class);
   private static final int RETRY_WAIT_TIME_IN_MS = 10 * Time.MS_PER_SECOND;
 
@@ -49,8 +49,13 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
 
   private Process isolatedIngestionServiceProcess;
 
-  public IsolatedIngestionBackend(VeniceConfigLoader configLoader, ReadOnlyStoreRepository storeRepository, MetricsRepository metricsRepository,
-      StorageMetadataService storageMetadataService, KafkaStoreIngestionService storeIngestionService, StorageService storageService) {
+  public IsolatedIngestionBackend(
+      VeniceConfigLoader configLoader,
+      ReadOnlyStoreRepository storeRepository,
+      MetricsRepository metricsRepository,
+      StorageMetadataService storageMetadataService,
+      KafkaStoreIngestionService storeIngestionService,
+      StorageService storageService) {
     super(storageMetadataService, storeIngestionService, storageService);
     int servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
     int listenerPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
@@ -67,23 +72,32 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
       mainIngestionMonitorService.setStoreRepository(storeRepository);
       mainIngestionMonitorService.setMetricsRepository(metricsRepository);
       mainIngestionMonitorService.setStoreIngestionService(storeIngestionService);
-      mainIngestionMonitorService.setStorageMetadataService((MainIngestionStorageMetadataService) storageMetadataService);
+      mainIngestionMonitorService
+          .setStorageMetadataService((MainIngestionStorageMetadataService) storageMetadataService);
 
       mainIngestionMonitorService.startInner();
       logger.info("Ingestion Report Listener started.");
     } catch (Exception e) {
       throw new VeniceException("Unable to start ingestion report listener.", e);
     }
-    logger.info("Created isolated ingestion backend with service port: " + servicePort + ", listener port: " + listenerPort);
+    logger.info(
+        "Created isolated ingestion backend with service port: " + servicePort + ", listener port: " + listenerPort);
   }
 
   @Override
-  public void startConsumption(VeniceStoreVersionConfig storeConfig, int partition, Optional<LeaderFollowerStateType> leaderState) {
+  public void startConsumption(
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
+      Optional<LeaderFollowerStateType> leaderState) {
     if (isTopicPartitionInLocal(storeConfig.getStoreVersionName(), partition)) {
-      logger.info("Start consumption of topic: " + storeConfig.getStoreVersionName() + ", partition: " + partition + " in main process.");
+      logger.info(
+          "Start consumption of topic: " + storeConfig.getStoreVersionName() + ", partition: " + partition
+              + " in main process.");
       super.startConsumption(storeConfig, partition, leaderState);
     } else {
-      logger.info("Sending consumption request of topic: " + storeConfig.getStoreVersionName() + ", partition: " + partition + " to fork process.");
+      logger.info(
+          "Sending consumption request of topic: " + storeConfig.getStoreVersionName() + ", partition: " + partition
+              + " to fork process.");
       mainIngestionMonitorService.addVersionPartitionToIngestionMap(storeConfig.getStoreVersionName(), partition);
       mainIngestionRequestClient.startConsumption(storeConfig.getStoreVersionName(), partition);
     }
@@ -110,7 +124,10 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   }
 
   @Override
-  public void dropStoragePartitionGracefully(VeniceStoreVersionConfig storeConfig, int partition, int timeoutInSeconds,
+  public void dropStoragePartitionGracefully(
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
+      int timeoutInSeconds,
       boolean removeEmptyStorageEngine) {
     String topicName = storeConfig.getStoreVersionName();
     if (isTopicPartitionInLocal(topicName, partition)) {
@@ -129,8 +146,10 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   }
 
   @Override
-  public void promoteToLeader(VeniceStoreVersionConfig storeConfig, int partition,
-    LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
+  public void promoteToLeader(
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
+      LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
     boolean messageCompleted = false;
     while (!messageCompleted) {
       /**
@@ -154,7 +173,9 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
         messageCompleted = mainIngestionRequestClient.promoteToLeader(storeConfig.getStoreVersionName(), partition);
       }
       if (!messageCompleted) {
-        logger.info("Leader promotion message rejected by remote ingestion server, will retry in " + RETRY_WAIT_TIME_IN_MS + " ms.");
+        logger.info(
+            "Leader promotion message rejected by remote ingestion server, will retry in " + RETRY_WAIT_TIME_IN_MS
+                + " ms.");
         try {
           Thread.sleep(RETRY_WAIT_TIME_IN_MS);
         } catch (InterruptedException e) {
@@ -167,8 +188,10 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   }
 
   @Override
-  public void demoteToStandby(VeniceStoreVersionConfig storeConfig, int partition,
-    LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
+  public void demoteToStandby(
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
+      LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
     boolean messageCompleted = false;
     while (!messageCompleted) {
       if (isTopicPartitionInLocal(storeConfig.getStoreVersionName(), partition)) {
@@ -178,7 +201,9 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
         messageCompleted = mainIngestionRequestClient.demoteToStandby(storeConfig.getStoreVersionName(), partition);
       }
       if (!messageCompleted) {
-        logger.info("Leader demotion message rejected by remote ingestion server, will retry in " + RETRY_WAIT_TIME_IN_MS + " ms.");
+        logger.info(
+            "Leader demotion message rejected by remote ingestion server, will retry in " + RETRY_WAIT_TIME_IN_MS
+                + " ms.");
         try {
           Thread.sleep(RETRY_WAIT_TIME_IN_MS);
         } catch (InterruptedException e) {
@@ -267,7 +292,12 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   private VeniceNotifier getIsolatedIngestionNotifier(VeniceNotifier notifier) {
     return new RelayNotifier(notifier) {
       @Override
-      public void completed(String kafkaTopic, int partition, long offset, String message, Optional<LeaderFollowerStateType> leaderState) {
+      public void completed(
+          String kafkaTopic,
+          int partition,
+          long offset,
+          String message,
+          Optional<LeaderFollowerStateType> leaderState) {
         VeniceStoreVersionConfig config = configLoader.getStoreConfig(kafkaTopic);
         config.setRestoreDataPartitions(false);
         config.setRestoreMetadataPartition(false);

@@ -12,18 +12,8 @@ import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.utils.Utils;
-
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.DataProvider;
-import org.testng.annotations.Test;
-
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +24,15 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
+import org.testng.annotations.Test;
+
 
 public class ReplicaFailoverTest {
   private static final Logger logger = LogManager.getLogger(ReplicaFailoverTest.class);
@@ -58,8 +57,12 @@ public class ReplicaFailoverTest {
     Properties props = new Properties();
     props.setProperty(ConfigKeys.ROUTER_STATEFUL_HEALTHCHECK_ENABLED, "true");
     props.setProperty(ConfigKeys.ROUTER_ASYNC_START_ENABLED, "true");
-    props.setProperty(ConfigKeys.ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE, String.valueOf(MAX_CONCURRENT_REQUESTS));
-    props.setProperty(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, String.valueOf(MAX_REQUEST_LATENCY_QD1 / 2));
+    props.setProperty(
+        ConfigKeys.ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE,
+        String.valueOf(MAX_CONCURRENT_REQUESTS));
+    props.setProperty(
+        ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS,
+        String.valueOf(MAX_REQUEST_LATENCY_QD1 / 2));
     cluster.addVeniceRouter(props);
     storeName = cluster.createStore(KEY_COUNT);
   }
@@ -72,13 +75,13 @@ public class ReplicaFailoverTest {
   @BeforeMethod
   public void setupTestCase() {
     // remove all server hooks
-    for (VeniceServerWrapper server : cluster.getVeniceServers()) {
+    for (VeniceServerWrapper server: cluster.getVeniceServers()) {
       server.getVeniceServer().setRequestHandler(null);
     }
     errorHitCountMap.clear();
 
     // restart routers to discard server health info
-    for (VeniceRouterWrapper router : cluster.getVeniceRouters()) {
+    for (VeniceRouterWrapper router: cluster.getVeniceRouters()) {
       cluster.stopVeniceRouter(router.getPort());
       cluster.restartVeniceRouter(router.getPort());
     }
@@ -86,26 +89,26 @@ public class ReplicaFailoverTest {
 
   @DataProvider(name = "workloadParams")
   public static Object[][] workloadParams() {
-    return new Object[][]{{1}, {MAX_CONCURRENT_REQUESTS}};
+    return new Object[][] { { 1 }, { MAX_CONCURRENT_REQUESTS } };
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "workloadParams")
   public void testDeadReplica(int maxConcurrentRequests) {
     List<VeniceServerWrapper> servers = cluster.getVeniceServers().subList(0, REPLICATION_FACTOR - 1);
-    for (VeniceServerWrapper server : servers) {
+    for (VeniceServerWrapper server: servers) {
       cluster.stopVeniceServer(server.getPort());
     }
 
     runWorkload(maxConcurrentRequests, REQUEST_PERCENTILE, MAX_REQUEST_LATENCY_QD1);
 
-    for (VeniceServerWrapper server : servers) {
+    for (VeniceServerWrapper server: servers) {
       cluster.restartVeniceServer(server.getPort());
     }
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "workloadParams")
   public void testDisconnectedReplica(int maxConcurrentRequests) {
-    for (VeniceServerWrapper server : cluster.getVeniceServers().subList(0, REPLICATION_FACTOR - 1)) {
+    for (VeniceServerWrapper server: cluster.getVeniceServers().subList(0, REPLICATION_FACTOR - 1)) {
       AtomicInteger hitCount = new AtomicInteger();
       errorHitCountMap.put(server.getPort(), hitCount);
 
@@ -121,7 +124,7 @@ public class ReplicaFailoverTest {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "workloadParams")
   public void testHungReplica(int maxConcurrentRequests) {
-    for (VeniceServerWrapper server : cluster.getVeniceServers().subList(0, REPLICATION_FACTOR - 1)) {
+    for (VeniceServerWrapper server: cluster.getVeniceServers().subList(0, REPLICATION_FACTOR - 1)) {
       AtomicInteger hitCount = new AtomicInteger();
       errorHitCountMap.put(server.getPort(), hitCount);
 
@@ -139,7 +142,7 @@ public class ReplicaFailoverTest {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "workloadParams")
   public void testSlowReplica(int maxConcurrentRequests) {
-    for (VeniceServerWrapper server : cluster.getVeniceServers().subList(0, REPLICATION_FACTOR - 1)) {
+    for (VeniceServerWrapper server: cluster.getVeniceServers().subList(0, REPLICATION_FACTOR - 1)) {
       AtomicInteger hitCount = new AtomicInteger();
       errorHitCountMap.put(server.getPort(), hitCount);
 
@@ -155,7 +158,7 @@ public class ReplicaFailoverTest {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "workloadParams")
   public void testFaultyReplica(int maxConcurrentRequests) {
-    for (VeniceServerWrapper server : cluster.getVeniceServers().subList(0, REPLICATION_FACTOR - 1)) {
+    for (VeniceServerWrapper server: cluster.getVeniceServers().subList(0, REPLICATION_FACTOR - 1)) {
       AtomicInteger hitCount = new AtomicInteger();
       errorHitCountMap.put(server.getPort(), hitCount);
 
@@ -186,8 +189,7 @@ public class ReplicaFailoverTest {
     AtomicLong totalLatency = new AtomicLong();
     AtomicLong totalOutlierLatency = new AtomicLong();
 
-    ClientConfig config = ClientConfig
-        .defaultGenericClientConfig(storeName)
+    ClientConfig config = ClientConfig.defaultGenericClientConfig(storeName)
         .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
         .setVeniceURL(cluster.getZk().getAddress());
 
@@ -197,7 +199,8 @@ public class ReplicaFailoverTest {
       AtomicReference<Throwable> lastFailure = new AtomicReference<>();
 
       while (submittedRequests < KEY_COUNT) {
-        Assert.assertTrue(semaphore.tryAcquire(1, getMaxTimeToCompleteRequests(1), TimeUnit.MILLISECONDS),
+        Assert.assertTrue(
+            semaphore.tryAcquire(1, getMaxTimeToCompleteRequests(1), TimeUnit.MILLISECONDS),
             "Minimal QPS requirement not met");
 
         long startTime = System.nanoTime();
@@ -207,8 +210,7 @@ public class ReplicaFailoverTest {
           }
 
           if (!Objects.equals(value, 1)) {
-            lastFailure.set(
-                new AssertionError("Unexpected single-get result, expected=" + 1 + ", actual=" + value));
+            lastFailure.set(new AssertionError("Unexpected single-get result, expected=" + 1 + ", actual=" + value));
           }
 
           long latency = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTime);
@@ -230,18 +232,24 @@ public class ReplicaFailoverTest {
 
         if (submittedRequests == KEY_COUNT) {
           // drain pending requests, after submitting the last one
-          Assert.assertTrue(semaphore.tryAcquire(maxConcurrentRequests, getMaxTimeToCompleteRequests(maxConcurrentRequests), TimeUnit.MILLISECONDS),
+          Assert.assertTrue(
+              semaphore.tryAcquire(
+                  maxConcurrentRequests,
+                  getMaxTimeToCompleteRequests(maxConcurrentRequests),
+                  TimeUnit.MILLISECONDS),
               "Minimal QPS requirement not met");
         }
 
         if (outlierRequests.get() > KEY_COUNT * (1 - requestPercentile / 100.0)) {
-          Assert.fail(outlierRequests.get() + " out of " + completedRequests.get() + " single-get requests exceeded " + maxConcurrentLatency + "ms, " +
-              "average outlier latency is " + totalOutlierLatency.get() / Math.max(1, outlierRequests.get()) + "ms, " +
-              "average latency is " + totalLatency.get() / Math.max(1, completedRequests.get()) + "ms");
+          Assert.fail(
+              outlierRequests.get() + " out of " + completedRequests.get() + " single-get requests exceeded "
+                  + maxConcurrentLatency + "ms, " + "average outlier latency is "
+                  + totalOutlierLatency.get() / Math.max(1, outlierRequests.get()) + "ms, " + "average latency is "
+                  + totalLatency.get() / Math.max(1, completedRequests.get()) + "ms");
         }
       }
 
-      for (AtomicInteger hitCount : errorHitCountMap.values()) {
+      for (AtomicInteger hitCount: errorHitCountMap.values()) {
         Assert.assertNotEquals(hitCount.get(), 0);
       }
 
@@ -249,12 +257,15 @@ public class ReplicaFailoverTest {
       throw new AssertionError(e);
 
     } finally {
-      logger.info(outlierRequests.get() + " out of " + completedRequests.get() + " single-get requests exceeded " + maxConcurrentLatency + "ms, " +
-          "average outlier latency is " + totalOutlierLatency.get() / Math.max(1, outlierRequests.get()) + "ms, " +
-          "average latency is " + totalLatency.get() / Math.max(1, completedRequests.get()) + "ms");
+      logger.info(
+          outlierRequests.get() + " out of " + completedRequests.get() + " single-get requests exceeded "
+              + maxConcurrentLatency + "ms, " + "average outlier latency is "
+              + totalOutlierLatency.get() / Math.max(1, outlierRequests.get()) + "ms, " + "average latency is "
+              + totalLatency.get() / Math.max(1, completedRequests.get()) + "ms");
 
       if (!errorHitCountMap.isEmpty()) {
-        logger.info(errorHitCountMap.values().stream().mapToInt(AtomicInteger::get).sum() + " errors were triggered in total");
+        logger.info(
+            errorHitCountMap.values().stream().mapToInt(AtomicInteger::get).sum() + " errors were triggered in total");
       }
     }
   }

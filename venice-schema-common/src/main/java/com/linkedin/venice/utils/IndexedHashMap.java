@@ -81,10 +81,7 @@ import java.util.function.Function;
  * @param <K> the type of keys maintained by this map
  * @param <V> the type of mapped values
  */
-public class IndexedHashMap <K,V>
-    extends AbstractMap<K,V>
-    implements IndexedMap<K,V> {
-
+public class IndexedHashMap<K, V> extends AbstractMap<K, V> implements IndexedMap<K, V> {
   /**
    * The default initial capacity - MUST be a power of two.
    */
@@ -137,14 +134,14 @@ public class IndexedHashMap <K,V>
    * Basic hash bin node, used for most entries.  (See below for
    * TreeNode subclass.)
    */
-  static class Node<K,V> implements Map.Entry<K,V> {
+  static class Node<K, V> implements Map.Entry<K, V> {
     final int hash;
     final K key;
     V value;
-    Node<K,V> next;
+    Node<K, V> next;
     int index;
 
-    Node(int hash, K key, V value, Node<K,V> next, int index) {
+    Node(int hash, K key, V value, Node<K, V> next, int index) {
       this.hash = hash;
       this.key = key;
       this.value = value;
@@ -152,9 +149,17 @@ public class IndexedHashMap <K,V>
       this.index = index;
     }
 
-    public final K getKey()        { return key; }
-    public final V getValue()      { return value; }
-    public final String toString() { return key + "=" + value; }
+    public final K getKey() {
+      return key;
+    }
+
+    public final V getValue() {
+      return value;
+    }
+
+    public final String toString() {
+      return key + "=" + value;
+    }
 
     public final int hashCode() {
       return Objects.hashCode(key) ^ Objects.hashCode(value);
@@ -170,9 +175,8 @@ public class IndexedHashMap <K,V>
       if (o == this)
         return true;
       if (o instanceof Map.Entry) {
-        Map.Entry<?,?> e = (Map.Entry<?,?>)o;
-        if (Objects.equals(key, e.getKey()) &&
-            Objects.equals(value, e.getValue()))
+        Map.Entry<?, ?> e = (Map.Entry<?, ?>) o;
+        if (Objects.equals(key, e.getKey()) && Objects.equals(value, e.getValue()))
           return true;
       }
       return false;
@@ -208,16 +212,17 @@ public class IndexedHashMap <K,V>
    */
   static Class<?> comparableClassFor(Object x) {
     if (x instanceof Comparable) {
-      Class<?> c; Type[] ts, as; Type t; ParameterizedType p;
+      Class<?> c;
+      Type[] ts, as;
+      Type t;
+      ParameterizedType p;
       if ((c = x.getClass()) == String.class) // bypass checks
         return c;
       if ((ts = c.getGenericInterfaces()) != null) {
         for (int i = 0; i < ts.length; ++i) {
-          if (((t = ts[i]) instanceof ParameterizedType) &&
-              ((p = (ParameterizedType)t).getRawType() ==
-                  Comparable.class) &&
-              (as = p.getActualTypeArguments()) != null &&
-              as.length == 1 && as[0] == c) // type arg is c
+          if (((t = ts[i]) instanceof ParameterizedType)
+              && ((p = (ParameterizedType) t).getRawType() == Comparable.class)
+              && (as = p.getActualTypeArguments()) != null && as.length == 1 && as[0] == c) // type arg is c
             return c;
         }
       }
@@ -229,10 +234,9 @@ public class IndexedHashMap <K,V>
    * Returns k.compareTo(x) if x matches kc (k's screened comparable
    * class), else 0.
    */
-  @SuppressWarnings({"rawtypes","unchecked"}) // for cast to Comparable
+  @SuppressWarnings({ "rawtypes", "unchecked" }) // for cast to Comparable
   static int compareComparables(Class<?> kc, Object k, Object x) {
-    return (x == null || x.getClass() != kc ? 0 :
-        ((Comparable)k).compareTo(x));
+    return (x == null || x.getClass() != kc ? 0 : ((Comparable) k).compareTo(x));
   }
 
   /**
@@ -256,7 +260,7 @@ public class IndexedHashMap <K,V>
    * (We also tolerate length zero in some operations to allow
    * bootstrapping mechanics that are currently not needed.)
    */
-  transient Node<K,V>[] table;
+  transient Node<K, V>[] table;
 
   /**
    * Holds a pointer to each entries in the map, in the order they
@@ -264,13 +268,13 @@ public class IndexedHashMap <K,V>
    * if {@link #putByIndex(Object, Object, int)} or {@link #moveElement(int, int)}
    * were used).
    */
-  List<Map.Entry<K,V>> entryList;
+  List<Map.Entry<K, V>> entryList;
 
   /**
    * Holds cached entrySet(). Note that AbstractMap fields are used
    * for keySet() and values().
    */
-  transient Set<Entry<K,V>> entrySet;
+  transient Set<Entry<K, V>> entrySet;
 
   /**
    * The number of key-value mappings contained in this map.
@@ -330,7 +334,7 @@ public class IndexedHashMap <K,V>
    * }
    *}</pre>
    */
-  transient Set<K>        keySet;
+  transient Set<K> keySet;
   transient Collection<V> values;
 
   /* ---------------- Public operations -------------- */
@@ -346,13 +350,11 @@ public class IndexedHashMap <K,V>
    */
   public IndexedHashMap(int initialCapacity, float loadFactor, List<Map.Entry<K, V>> entryList) {
     if (initialCapacity < 0)
-      throw new IllegalArgumentException("Illegal initial capacity: " +
-          initialCapacity);
+      throw new IllegalArgumentException("Illegal initial capacity: " + initialCapacity);
     if (initialCapacity > MAXIMUM_CAPACITY)
       initialCapacity = MAXIMUM_CAPACITY;
     if (loadFactor <= 0 || Float.isNaN(loadFactor))
-      throw new IllegalArgumentException("Illegal load factor: " +
-          loadFactor);
+      throw new IllegalArgumentException("Illegal load factor: " + loadFactor);
     this.loadFactor = loadFactor;
     this.threshold = tableSizeFor(initialCapacity);
     this.entryList = entryList;
@@ -434,15 +436,13 @@ public class IndexedHashMap <K,V>
     int s = m.size();
     if (s > 0) {
       if (table == null) { // pre-size
-        float ft = ((float)s / loadFactor) + 1.0F;
-        int t = ((ft < (float)MAXIMUM_CAPACITY) ?
-            (int)ft : MAXIMUM_CAPACITY);
+        float ft = ((float) s / loadFactor) + 1.0F;
+        int t = ((ft < (float) MAXIMUM_CAPACITY) ? (int) ft : MAXIMUM_CAPACITY);
         if (t > threshold)
           threshold = tableSizeFor(t);
-      }
-      else if (s > threshold)
+      } else if (s > threshold)
         resize();
-      for (Map.Entry<? extends K, ? extends V> e : m.entrySet()) {
+      for (Map.Entry<? extends K, ? extends V> e: m.entrySet()) {
         K key = e.getKey();
         V value = e.getValue();
         putVal(hash(key), key, value, false, APPEND_TO_END_OF_LIST);
@@ -486,7 +486,7 @@ public class IndexedHashMap <K,V>
    * @see #put(Object, Object)
    */
   public V get(Object key) {
-    Node<K,V> e;
+    Node<K, V> e;
     return (e = getNode(hash(key), key)) == null ? null : e.value;
   }
 
@@ -497,19 +497,20 @@ public class IndexedHashMap <K,V>
    * @param key the key
    * @return the node, or null if none
    */
-  final Node<K,V> getNode(int hash, Object key) {
-    Node<K,V>[] tab; Node<K,V> first, e; int n; K k;
-    if ((tab = table) != null && (n = tab.length) > 0 &&
-        (first = tab[(n - 1) & hash]) != null) {
+  final Node<K, V> getNode(int hash, Object key) {
+    Node<K, V>[] tab;
+    Node<K, V> first, e;
+    int n;
+    K k;
+    if ((tab = table) != null && (n = tab.length) > 0 && (first = tab[(n - 1) & hash]) != null) {
       if (first.hash == hash && // always check first node
           ((k = first.key) == key || (key != null && key.equals(k))))
         return first;
       if ((e = first.next) != null) {
         if (first instanceof TreeNode)
-          return ((TreeNode<K,V>)first).getTreeNode(hash, key);
+          return ((TreeNode<K, V>) first).getTreeNode(hash, key);
         do {
-          if (e.hash == hash &&
-              ((k = e.key) == key || (key != null && key.equals(k))))
+          if (e.hash == hash && ((k = e.key) == key || (key != null && key.equals(k))))
             return e;
         } while ((e = e.next) != null);
       }
@@ -586,7 +587,7 @@ public class IndexedHashMap <K,V>
    */
   @Override
   public void moveElement(int originalIndex, int newIndex) {
-    Map.Entry<K,V> entry = entryList.remove(originalIndex);
+    Map.Entry<K, V> entry = entryList.remove(originalIndex);
     if (entry != null) {
       entryList.add(newIndex, entry);
     }
@@ -610,21 +611,21 @@ public class IndexedHashMap <K,V>
     StringBuilder sb = new StringBuilder();
     sb.append(this.getClass().getSimpleName());
 
-    Iterator<Entry<K,V>> i = entrySet().iterator();
-    if (! i.hasNext()) {
+    Iterator<Entry<K, V>> i = entrySet().iterator();
+    if (!i.hasNext()) {
       sb.append("{}");
       return sb.toString();
     }
 
     sb.append('{');
     for (;;) {
-      Entry<K,V> e = i.next();
+      Entry<K, V> e = i.next();
       K key = e.getKey();
       V value = e.getValue();
-      sb.append(key   == this ? "(this Map)" : key);
+      sb.append(key == this ? "(this Map)" : key);
       sb.append('=');
       sb.append(value == this ? "(this Map)" : value);
-      if (! i.hasNext())
+      if (!i.hasNext())
         return sb.append('}').toString();
       sb.append(',').append(' ');
     }
@@ -641,28 +642,29 @@ public class IndexedHashMap <K,V>
    * @return previous value, or null if none
    */
   final V putVal(int hash, K key, V value, boolean onlyIfAbsent, int index) {
-    Node<K,V>[] tab; Node<K,V> p; int n, i;
+    Node<K, V>[] tab;
+    Node<K, V> p;
+    int n, i;
     if ((tab = table) == null || (n = tab.length) == 0)
       n = (tab = resize()).length;
     if ((p = tab[i = (n - 1) & hash]) == null) {
       tab[i] = newNode(hash, key, value, null, index);
     } else {
-      Node<K,V> e; K k;
-      if (p.hash == hash &&
-          ((k = p.key) == key || (key != null && key.equals(k))))
+      Node<K, V> e;
+      K k;
+      if (p.hash == hash && ((k = p.key) == key || (key != null && key.equals(k))))
         e = p;
       else if (p instanceof TreeNode)
-        e = ((TreeNode<K,V>)p).putTreeVal(this, tab, hash, key, value);
+        e = ((TreeNode<K, V>) p).putTreeVal(this, tab, hash, key, value);
       else {
-        for (int binCount = 0; ; ++binCount) {
+        for (int binCount = 0;; ++binCount) {
           if ((e = p.next) == null) {
             p.next = newNode(hash, key, value, null, index);
             if (binCount >= TREEIFY_THRESHOLD - 1) // -1 for 1st
               treeifyBin(tab, hash);
             break;
           }
-          if (e.hash == hash &&
-              ((k = e.key) == key || (key != null && key.equals(k))))
+          if (e.hash == hash && ((k = e.key) == key || (key != null && key.equals(k))))
             break;
           p = e;
         }
@@ -690,8 +692,8 @@ public class IndexedHashMap <K,V>
    *
    * @return the table
    */
-  final Node<K,V>[] resize() {
-    Node<K,V>[] oldTab = table;
+  final Node<K, V>[] resize() {
+    Node<K, V>[] oldTab = table;
     int oldCap = (oldTab == null) ? 0 : oldTab.length;
     int oldThr = threshold;
     int newCap, newThr = 0;
@@ -699,39 +701,35 @@ public class IndexedHashMap <K,V>
       if (oldCap >= MAXIMUM_CAPACITY) {
         threshold = Integer.MAX_VALUE;
         return oldTab;
-      }
-      else if ((newCap = oldCap << 1) < MAXIMUM_CAPACITY &&
-          oldCap >= DEFAULT_INITIAL_CAPACITY)
+      } else if ((newCap = oldCap << 1) < MAXIMUM_CAPACITY && oldCap >= DEFAULT_INITIAL_CAPACITY)
         newThr = oldThr << 1; // double threshold
-    }
-    else if (oldThr > 0) // initial capacity was placed in threshold
+    } else if (oldThr > 0) // initial capacity was placed in threshold
       newCap = oldThr;
-    else {               // zero initial threshold signifies using defaults
+    else { // zero initial threshold signifies using defaults
       newCap = DEFAULT_INITIAL_CAPACITY;
-      newThr = (int)(DEFAULT_LOAD_FACTOR * DEFAULT_INITIAL_CAPACITY);
+      newThr = (int) (DEFAULT_LOAD_FACTOR * DEFAULT_INITIAL_CAPACITY);
     }
     if (newThr == 0) {
-      float ft = (float)newCap * loadFactor;
-      newThr = (newCap < MAXIMUM_CAPACITY && ft < (float)MAXIMUM_CAPACITY ?
-          (int)ft : Integer.MAX_VALUE);
+      float ft = (float) newCap * loadFactor;
+      newThr = (newCap < MAXIMUM_CAPACITY && ft < (float) MAXIMUM_CAPACITY ? (int) ft : Integer.MAX_VALUE);
     }
     threshold = newThr;
-    @SuppressWarnings({"rawtypes","unchecked"})
-    Node<K,V>[] newTab = (Node<K,V>[])new Node[newCap];
+    @SuppressWarnings({ "rawtypes", "unchecked" })
+    Node<K, V>[] newTab = (Node<K, V>[]) new Node[newCap];
     table = newTab;
     if (oldTab != null) {
       for (int j = 0; j < oldCap; ++j) {
-        Node<K,V> e;
+        Node<K, V> e;
         if ((e = oldTab[j]) != null) {
           oldTab[j] = null;
           if (e.next == null)
             newTab[e.hash & (newCap - 1)] = e;
           else if (e instanceof TreeNode)
-            ((TreeNode<K,V>)e).split(this, newTab, j, oldCap);
+            ((TreeNode<K, V>) e).split(this, newTab, j, oldCap);
           else { // preserve order
-            Node<K,V> loHead = null, loTail = null;
-            Node<K,V> hiHead = null, hiTail = null;
-            Node<K,V> next;
+            Node<K, V> loHead = null, loTail = null;
+            Node<K, V> hiHead = null, hiTail = null;
+            Node<K, V> next;
             do {
               next = e.next;
               if ((e.hash & oldCap) == 0) {
@@ -740,8 +738,7 @@ public class IndexedHashMap <K,V>
                 else
                   loTail.next = e;
                 loTail = e;
-              }
-              else {
+              } else {
                 if (hiTail == null)
                   hiHead = e;
                 else
@@ -768,14 +765,15 @@ public class IndexedHashMap <K,V>
    * Replaces all linked nodes in bin at index for given hash unless
    * table is too small, in which case resizes instead.
    */
-  final void treeifyBin(Node<K,V>[] tab, int hash) {
-    int n, index; Node<K,V> e;
+  final void treeifyBin(Node<K, V>[] tab, int hash) {
+    int n, index;
+    Node<K, V> e;
     if (tab == null || (n = tab.length) < MIN_TREEIFY_CAPACITY)
       resize();
     else if ((e = tab[index = (n - 1) & hash]) != null) {
-      TreeNode<K,V> hd = null, tl = null;
+      TreeNode<K, V> hd = null, tl = null;
       do {
-        TreeNode<K,V> p = replacementTreeNode(e, null);
+        TreeNode<K, V> p = replacementTreeNode(e, null);
         if (tl == null)
           hd = p;
         else {
@@ -811,9 +809,8 @@ public class IndexedHashMap <K,V>
    *         previously associated <tt>null</tt> with <tt>key</tt>.)
    */
   public V remove(Object key) {
-    Node<K,V> e;
-    return (e = removeNode(hash(key), key, null, false, true)) == null ?
-        null : e.value;
+    Node<K, V> e;
+    return (e = removeNode(hash(key), key, null, false, true)) == null ? null : e.value;
   }
 
   /**
@@ -826,23 +823,22 @@ public class IndexedHashMap <K,V>
    * @param movable if false do not move other nodes while removing
    * @return the node, or null if none
    */
-  final Node<K,V> removeNode(int hash, Object key, Object value,
-      boolean matchValue, boolean movable) {
-    Node<K,V>[] tab; Node<K,V> p; int n, index;
-    if ((tab = table) != null && (n = tab.length) > 0 &&
-        (p = tab[index = (n - 1) & hash]) != null) {
-      Node<K,V> node = null, e; K k; V v;
-      if (p.hash == hash &&
-          ((k = p.key) == key || (key != null && key.equals(k))))
+  final Node<K, V> removeNode(int hash, Object key, Object value, boolean matchValue, boolean movable) {
+    Node<K, V>[] tab;
+    Node<K, V> p;
+    int n, index;
+    if ((tab = table) != null && (n = tab.length) > 0 && (p = tab[index = (n - 1) & hash]) != null) {
+      Node<K, V> node = null, e;
+      K k;
+      V v;
+      if (p.hash == hash && ((k = p.key) == key || (key != null && key.equals(k))))
         node = p;
       else if ((e = p.next) != null) {
         if (p instanceof TreeNode)
-          node = ((TreeNode<K,V>)p).getTreeNode(hash, key);
+          node = ((TreeNode<K, V>) p).getTreeNode(hash, key);
         else {
           do {
-            if (e.hash == hash &&
-                ((k = e.key) == key ||
-                    (key != null && key.equals(k)))) {
+            if (e.hash == hash && ((k = e.key) == key || (key != null && key.equals(k)))) {
               node = e;
               break;
             }
@@ -850,10 +846,9 @@ public class IndexedHashMap <K,V>
           } while ((e = e.next) != null);
         }
       }
-      if (node != null && (!matchValue || (v = node.value) == value ||
-          (value != null && value.equals(v)))) {
+      if (node != null && (!matchValue || (v = node.value) == value || (value != null && value.equals(v)))) {
         if (node instanceof TreeNode)
-          ((TreeNode<K,V>)node).removeTreeNode(this, tab, movable);
+          ((TreeNode<K, V>) node).removeTreeNode(this, tab, movable);
         else if (node == p)
           tab[index] = node.next;
         else
@@ -872,7 +867,7 @@ public class IndexedHashMap <K,V>
    * The map will be empty after this call returns.
    */
   public void clear() {
-    Node<K,V>[] tab;
+    Node<K, V>[] tab;
     modCount++;
     if ((tab = table) != null && size > 0) {
       size = 0;
@@ -894,9 +889,8 @@ public class IndexedHashMap <K,V>
     V v;
     if (size > 0) {
       for (int i = 0; i < entryList.size(); ++i) {
-        Map.Entry<K,V> e = entryList.get(i);
-        if ((v = e.getValue()) == value ||
-            (value != null && value.equals(v)))
+        Map.Entry<K, V> e = entryList.get(i);
+        if ((v = e.getValue()) == value || (value != null && value.equals(v)))
           return true;
       }
     }
@@ -928,16 +922,30 @@ public class IndexedHashMap <K,V>
   }
 
   final class KeySet extends AbstractSet<K> {
-    public final int size()                 { return size; }
-    public final void clear()               { IndexedHashMap.this.clear(); }
-    public final Iterator<K> iterator()     { return new KeyIterator(); }
-    public final boolean contains(Object o) { return containsKey(o); }
+    public final int size() {
+      return size;
+    }
+
+    public final void clear() {
+      IndexedHashMap.this.clear();
+    }
+
+    public final Iterator<K> iterator() {
+      return new KeyIterator();
+    }
+
+    public final boolean contains(Object o) {
+      return containsKey(o);
+    }
+
     public final boolean remove(Object key) {
       return removeNode(hash(key), key, null, false, true) != null;
     }
+
     public final Spliterator<K> spliterator() {
       return entryList.stream().map(kvEntry -> kvEntry.getKey()).spliterator();
     }
+
     public final void forEach(Consumer<? super K> action) {
       iterator().forEachRemaining(action);
     }
@@ -968,13 +976,26 @@ public class IndexedHashMap <K,V>
   }
 
   final class Values extends AbstractCollection<V> {
-    public final int size()                 { return size; }
-    public final void clear()               { IndexedHashMap.this.clear(); }
-    public final Iterator<V> iterator()     { return new ValueIterator(); }
-    public final boolean contains(Object o) { return containsValue(o); }
+    public final int size() {
+      return size;
+    }
+
+    public final void clear() {
+      IndexedHashMap.this.clear();
+    }
+
+    public final Iterator<V> iterator() {
+      return new ValueIterator();
+    }
+
+    public final boolean contains(Object o) {
+      return containsValue(o);
+    }
+
     public final Spliterator<V> spliterator() {
       return entryList.stream().map(kvEntry -> kvEntry.getValue()).spliterator();
     }
+
     public final void forEach(Consumer<? super V> action) {
       iterator().forEachRemaining(action);
     }
@@ -996,38 +1017,48 @@ public class IndexedHashMap <K,V>
    *
    * @return a set view of the mappings contained in this map
    */
-  public Set<Map.Entry<K,V>> entrySet() {
-    Set<Map.Entry<K,V>> es;
+  public Set<Map.Entry<K, V>> entrySet() {
+    Set<Map.Entry<K, V>> es;
     return (es = entrySet) == null ? (entrySet = new EntrySet()) : es;
   }
 
-  final class EntrySet extends AbstractSet<Map.Entry<K,V>> {
-    public final int size()                 { return size; }
-    public final void clear()               { IndexedHashMap.this.clear(); }
-    public final Iterator<Map.Entry<K,V>> iterator() {
+  final class EntrySet extends AbstractSet<Map.Entry<K, V>> {
+    public final int size() {
+      return size;
+    }
+
+    public final void clear() {
+      IndexedHashMap.this.clear();
+    }
+
+    public final Iterator<Map.Entry<K, V>> iterator() {
       return new EntryIterator();
     }
+
     public final boolean contains(Object o) {
       if (!(o instanceof Map.Entry))
         return false;
-      Map.Entry<?,?> e = (Map.Entry<?,?>) o;
+      Map.Entry<?, ?> e = (Map.Entry<?, ?>) o;
       Object key = e.getKey();
-      Node<K,V> candidate = getNode(hash(key), key);
+      Node<K, V> candidate = getNode(hash(key), key);
       return candidate != null && candidate.equals(e);
     }
+
     public final boolean remove(Object o) {
       if (o instanceof Map.Entry) {
-        Map.Entry<?,?> e = (Map.Entry<?,?>) o;
+        Map.Entry<?, ?> e = (Map.Entry<?, ?>) o;
         Object key = e.getKey();
         Object value = e.getValue();
         return removeNode(hash(key), key, value, true, true) != null;
       }
       return false;
     }
-    public final Spliterator<Map.Entry<K,V>> spliterator() {
+
+    public final Spliterator<Map.Entry<K, V>> spliterator() {
       return entryList.spliterator();
     }
-    public final void forEach(Consumer<? super Map.Entry<K,V>> action) {
+
+    public final void forEach(Consumer<? super Map.Entry<K, V>> action) {
       iterator().forEachRemaining(action);
     }
   }
@@ -1036,7 +1067,7 @@ public class IndexedHashMap <K,V>
 
   @Override
   public V getOrDefault(Object key, V defaultValue) {
-    Node<K,V> e;
+    Node<K, V> e;
     return (e = getNode(hash(key), key)) == null ? defaultValue : e.value;
   }
 
@@ -1052,9 +1083,9 @@ public class IndexedHashMap <K,V>
 
   @Override
   public boolean replace(K key, V oldValue, V newValue) {
-    Node<K,V> e; V v;
-    if ((e = getNode(hash(key), key)) != null &&
-        ((v = e.value) == oldValue || (v != null && v.equals(oldValue)))) {
+    Node<K, V> e;
+    V v;
+    if ((e = getNode(hash(key), key)) != null && ((v = e.value) == oldValue || (v != null && v.equals(oldValue)))) {
       e.value = newValue;
       afterNodeAccess(e);
       return true;
@@ -1064,7 +1095,7 @@ public class IndexedHashMap <K,V>
 
   @Override
   public V replace(K key, V value) {
-    Node<K,V> e;
+    Node<K, V> e;
     if ((e = getNode(hash(key), key)) != null) {
       V oldValue = e.value;
       e.value = value;
@@ -1075,26 +1106,26 @@ public class IndexedHashMap <K,V>
   }
 
   @Override
-  public V computeIfAbsent(K key,
-      Function<? super K, ? extends V> mappingFunction) {
+  public V computeIfAbsent(K key, Function<? super K, ? extends V> mappingFunction) {
     if (mappingFunction == null)
       throw new NullPointerException();
     int hash = hash(key);
-    Node<K,V>[] tab; Node<K,V> first; int n, i;
+    Node<K, V>[] tab;
+    Node<K, V> first;
+    int n, i;
     int binCount = 0;
-    TreeNode<K,V> t = null;
-    Node<K,V> old = null;
-    if (size > threshold || (tab = table) == null ||
-        (n = tab.length) == 0)
+    TreeNode<K, V> t = null;
+    Node<K, V> old = null;
+    if (size > threshold || (tab = table) == null || (n = tab.length) == 0)
       n = (tab = resize()).length;
     if ((first = tab[i = (n - 1) & hash]) != null) {
       if (first instanceof TreeNode)
-        old = (t = (TreeNode<K,V>)first).getTreeNode(hash, key);
+        old = (t = (TreeNode<K, V>) first).getTreeNode(hash, key);
       else {
-        Node<K,V> e = first; K k;
+        Node<K, V> e = first;
+        K k;
         do {
-          if (e.hash == hash &&
-              ((k = e.key) == key || (key != null && key.equals(k)))) {
+          if (e.hash == hash && ((k = e.key) == key || (key != null && key.equals(k)))) {
             old = e;
             break;
           }
@@ -1114,8 +1145,7 @@ public class IndexedHashMap <K,V>
       old.value = v;
       afterNodeAccess(old);
       return v;
-    }
-    else if (t != null)
+    } else if (t != null)
       t.putTreeVal(this, tab, hash, key, v);
     else {
       tab[i] = newNode(hash, key, v, first, APPEND_TO_END_OF_LIST);
@@ -1128,47 +1158,45 @@ public class IndexedHashMap <K,V>
     return v;
   }
 
-  public V computeIfPresent(K key,
-      BiFunction<? super K, ? super V, ? extends V> remappingFunction) {
+  public V computeIfPresent(K key, BiFunction<? super K, ? super V, ? extends V> remappingFunction) {
     if (remappingFunction == null)
       throw new NullPointerException();
-    Node<K,V> e; V oldValue;
+    Node<K, V> e;
+    V oldValue;
     int hash = hash(key);
-    if ((e = getNode(hash, key)) != null &&
-        (oldValue = e.value) != null) {
+    if ((e = getNode(hash, key)) != null && (oldValue = e.value) != null) {
       V v = remappingFunction.apply(key, oldValue);
       if (v != null) {
         e.value = v;
         afterNodeAccess(e);
         return v;
-      }
-      else
+      } else
         removeNode(hash, key, null, false, true);
     }
     return null;
   }
 
   @Override
-  public V compute(K key,
-      BiFunction<? super K, ? super V, ? extends V> remappingFunction) {
+  public V compute(K key, BiFunction<? super K, ? super V, ? extends V> remappingFunction) {
     if (remappingFunction == null)
       throw new NullPointerException();
     int hash = hash(key);
-    Node<K,V>[] tab; Node<K,V> first; int n, i;
+    Node<K, V>[] tab;
+    Node<K, V> first;
+    int n, i;
     int binCount = 0;
-    TreeNode<K,V> t = null;
-    Node<K,V> old = null;
-    if (size > threshold || (tab = table) == null ||
-        (n = tab.length) == 0)
+    TreeNode<K, V> t = null;
+    Node<K, V> old = null;
+    if (size > threshold || (tab = table) == null || (n = tab.length) == 0)
       n = (tab = resize()).length;
     if ((first = tab[i = (n - 1) & hash]) != null) {
       if (first instanceof TreeNode)
-        old = (t = (TreeNode<K,V>)first).getTreeNode(hash, key);
+        old = (t = (TreeNode<K, V>) first).getTreeNode(hash, key);
       else {
-        Node<K,V> e = first; K k;
+        Node<K, V> e = first;
+        K k;
         do {
-          if (e.hash == hash &&
-              ((k = e.key) == key || (key != null && key.equals(k)))) {
+          if (e.hash == hash && ((k = e.key) == key || (key != null && key.equals(k)))) {
             old = e;
             break;
           }
@@ -1182,11 +1210,9 @@ public class IndexedHashMap <K,V>
       if (v != null) {
         old.value = v;
         afterNodeAccess(old);
-      }
-      else
+      } else
         removeNode(hash, key, null, false, true);
-    }
-    else if (v != null) {
+    } else if (v != null) {
       if (t != null)
         t.putTreeVal(this, tab, hash, key, v);
       else {
@@ -1202,28 +1228,28 @@ public class IndexedHashMap <K,V>
   }
 
   @Override
-  public V merge(K key, V value,
-      BiFunction<? super V, ? super V, ? extends V> remappingFunction) {
+  public V merge(K key, V value, BiFunction<? super V, ? super V, ? extends V> remappingFunction) {
     if (value == null)
       throw new NullPointerException();
     if (remappingFunction == null)
       throw new NullPointerException();
     int hash = hash(key);
-    Node<K,V>[] tab; Node<K,V> first; int n, i;
+    Node<K, V>[] tab;
+    Node<K, V> first;
+    int n, i;
     int binCount = 0;
-    TreeNode<K,V> t = null;
-    Node<K,V> old = null;
-    if (size > threshold || (tab = table) == null ||
-        (n = tab.length) == 0)
+    TreeNode<K, V> t = null;
+    Node<K, V> old = null;
+    if (size > threshold || (tab = table) == null || (n = tab.length) == 0)
       n = (tab = resize()).length;
     if ((first = tab[i = (n - 1) & hash]) != null) {
       if (first instanceof TreeNode)
-        old = (t = (TreeNode<K,V>)first).getTreeNode(hash, key);
+        old = (t = (TreeNode<K, V>) first).getTreeNode(hash, key);
       else {
-        Node<K,V> e = first; K k;
+        Node<K, V> e = first;
+        K k;
         do {
-          if (e.hash == hash &&
-              ((k = e.key) == key || (key != null && key.equals(k)))) {
+          if (e.hash == hash && ((k = e.key) == key || (key != null && key.equals(k)))) {
             old = e;
             break;
           }
@@ -1240,8 +1266,7 @@ public class IndexedHashMap <K,V>
       if (v != null) {
         old.value = v;
         afterNodeAccess(old);
-      }
-      else
+      } else
         removeNode(hash, key, null, false, true);
       return v;
     }
@@ -1274,14 +1299,14 @@ public class IndexedHashMap <K,V>
   // iterators
 
   abstract class HashIterator {
-    Map.Entry<K,V> next;        // next entry to return
-    Map.Entry<K,V> current;     // current entry
-    int expectedModCount;  // for fast-fail
-    int index;             // current slot
+    Map.Entry<K, V> next; // next entry to return
+    Map.Entry<K, V> current; // current entry
+    int expectedModCount; // for fast-fail
+    int index; // current slot
 
     HashIterator() {
       expectedModCount = modCount;
-      List<Map.Entry<K,V>> entries = entryList;
+      List<Map.Entry<K, V>> entries = entryList;
       current = next = null;
       index = 0;
       if (index < entries.size()) {
@@ -1293,8 +1318,8 @@ public class IndexedHashMap <K,V>
       return next != null;
     }
 
-    final Map.Entry<K,V> nextNode() {
-      List<Map.Entry<K,V>> entries = entryList;
+    final Map.Entry<K, V> nextNode() {
+      List<Map.Entry<K, V>> entries = entryList;
       if (modCount != expectedModCount)
         throw new ConcurrentModificationException();
       if (next == null)
@@ -1309,7 +1334,7 @@ public class IndexedHashMap <K,V>
     }
 
     public final void remove() {
-      Map.Entry<K,V> p = current;
+      Map.Entry<K, V> p = current;
       if (p == null)
         throw new IllegalStateException();
       if (modCount != expectedModCount)
@@ -1322,24 +1347,26 @@ public class IndexedHashMap <K,V>
     }
   }
 
-  final class KeyIterator extends HashIterator
-      implements Iterator<K> {
-    public final K next() { return nextNode().getKey(); }
+  final class KeyIterator extends HashIterator implements Iterator<K> {
+    public final K next() {
+      return nextNode().getKey();
+    }
   }
 
-  final class ValueIterator extends HashIterator
-      implements Iterator<V> {
-    public final V next() { return nextNode().getValue(); }
+  final class ValueIterator extends HashIterator implements Iterator<V> {
+    public final V next() {
+      return nextNode().getValue();
+    }
   }
 
-  final class EntryIterator extends HashIterator
-      implements Iterator<Map.Entry<K,V>> {
-    public final Map.Entry<K,V> next() { return nextNode(); }
+  final class EntryIterator extends HashIterator implements Iterator<Map.Entry<K, V>> {
+    public final Map.Entry<K, V> next() {
+      return nextNode();
+    }
   }
 
   /* ------------------------------------------------------------ */
   // LinkedHashMap support
-
 
   /*
    * The following package-protected methods are designed to be
@@ -1350,19 +1377,19 @@ public class IndexedHashMap <K,V>
    */
 
   // Create a regular (non-tree) node
-  Node<K,V> newNode(int hash, K key, V value, Node<K,V> next, int index) {
+  Node<K, V> newNode(int hash, K key, V value, Node<K, V> next, int index) {
     return newNode(index, i -> new Node<>(hash, key, value, next, i));
   }
 
   // For conversion from TreeNodes to plain nodes
-  Node<K,V> replacementNode(Node<K,V> p, Node<K,V> next) {
+  Node<K, V> replacementNode(Node<K, V> p, Node<K, V> next) {
     Node<K, V> entry = new Node<>(p.hash, p.key, p.value, next, p.index);
     entryList.set(p.index, entry);
     return entry;
   }
 
   // Create a tree bin node
-  TreeNode<K,V> newTreeNode(int hash, K key, V value, Node<K,V> next, int index) {
+  TreeNode<K, V> newTreeNode(int hash, K key, V value, Node<K, V> next, int index) {
     return newNode(index, i -> new TreeNode<>(hash, key, value, next, i));
   }
 
@@ -1380,16 +1407,20 @@ public class IndexedHashMap <K,V>
   }
 
   // For treeifyBin
-  TreeNode<K,V> replacementTreeNode(Node<K,V> p, Node<K,V> next) {
+  TreeNode<K, V> replacementTreeNode(Node<K, V> p, Node<K, V> next) {
     TreeNode<K, V> entry = new TreeNode<>(p.hash, p.key, p.value, next, p.index);
     entryList.set(p.index, entry);
     return entry;
   }
 
   // Callbacks to allow LinkedHashMap post-actions
-  void afterNodeAccess(Node<K,V> p) { }
-  void afterNodeInsertion(boolean evict) { }
-  void afterNodeRemoval(Node<K,V> p) {
+  void afterNodeAccess(Node<K, V> p) {
+  }
+
+  void afterNodeInsertion(boolean evict) {
+  }
+
+  void afterNodeRemoval(Node<K, V> p) {
     entryList.remove(p.index);
     fixIndices(p.index, entryList.size());
   }
@@ -1406,21 +1437,22 @@ public class IndexedHashMap <K,V>
   /**
    * Entry for Tree bins.
    */
-  static final class TreeNode<K,V> extends Node<K,V> {
-    TreeNode<K,V> parent;  // red-black tree links
-    TreeNode<K,V> left;
-    TreeNode<K,V> right;
-    TreeNode<K,V> prev;    // needed to unlink next upon deletion
+  static final class TreeNode<K, V> extends Node<K, V> {
+    TreeNode<K, V> parent; // red-black tree links
+    TreeNode<K, V> left;
+    TreeNode<K, V> right;
+    TreeNode<K, V> prev; // needed to unlink next upon deletion
     boolean red;
-    TreeNode(int hash, K key, V val, Node<K,V> next, int index) {
+
+    TreeNode(int hash, K key, V val, Node<K, V> next, int index) {
       super(hash, key, val, next, index);
     }
 
     /**
      * Returns root of tree containing this node.
      */
-    final TreeNode<K,V> root() {
-      for (TreeNode<K,V> r = this, p;;) {
+    final TreeNode<K, V> root() {
+      for (TreeNode<K, V> r = this, p;;) {
         if ((p = r.parent) == null)
           return r;
         r = p;
@@ -1430,17 +1462,17 @@ public class IndexedHashMap <K,V>
     /**
      * Ensures that the given root is the first node of its bin.
      */
-    static <K,V> void moveRootToFront(Node<K,V>[] tab, TreeNode<K,V> root) {
+    static <K, V> void moveRootToFront(Node<K, V>[] tab, TreeNode<K, V> root) {
       int n;
       if (root != null && tab != null && (n = tab.length) > 0) {
         int index = (n - 1) & root.hash;
-        TreeNode<K,V> first = (TreeNode<K,V>)tab[index];
+        TreeNode<K, V> first = (TreeNode<K, V>) tab[index];
         if (root != first) {
-          Node<K,V> rn;
+          Node<K, V> rn;
           tab[index] = root;
-          TreeNode<K,V> rp = root.prev;
+          TreeNode<K, V> rp = root.prev;
           if ((rn = root.next) != null)
-            ((TreeNode<K,V>)rn).prev = rp;
+            ((TreeNode<K, V>) rn).prev = rp;
           if (rp != null)
             rp.next = rn;
           if (first != null)
@@ -1457,11 +1489,12 @@ public class IndexedHashMap <K,V>
      * The kc argument caches comparableClassFor(key) upon first use
      * comparing keys.
      */
-    final TreeNode<K,V> find(int h, Object k, Class<?> kc) {
-      TreeNode<K,V> p = this;
+    final TreeNode<K, V> find(int h, Object k, Class<?> kc) {
+      TreeNode<K, V> p = this;
       do {
-        int ph, dir; K pk;
-        TreeNode<K,V> pl = p.left, pr = p.right, q;
+        int ph, dir;
+        K pk;
+        TreeNode<K, V> pl = p.left, pr = p.right, q;
         if ((ph = p.hash) > h)
           p = pl;
         else if (ph < h)
@@ -1472,9 +1505,7 @@ public class IndexedHashMap <K,V>
           p = pr;
         else if (pr == null)
           p = pl;
-        else if ((kc != null ||
-            (kc = comparableClassFor(k)) != null) &&
-            (dir = compareComparables(kc, k, pk)) != 0)
+        else if ((kc != null || (kc = comparableClassFor(k)) != null) && (dir = compareComparables(kc, k, pk)) != 0)
           p = (dir < 0) ? pl : pr;
         else if ((q = pr.find(h, k, kc)) != null)
           return q;
@@ -1487,7 +1518,7 @@ public class IndexedHashMap <K,V>
     /**
      * Calls find for root node.
      */
-    final TreeNode<K,V> getTreeNode(int h, Object k) {
+    final TreeNode<K, V> getTreeNode(int h, Object k) {
       return ((parent != null) ? root() : this).find(h, k, null);
     }
 
@@ -1500,44 +1531,38 @@ public class IndexedHashMap <K,V>
      */
     static int tieBreakOrder(Object a, Object b) {
       int d;
-      if (a == null || b == null ||
-          (d = a.getClass().getName().
-              compareTo(b.getClass().getName())) == 0)
-        d = (System.identityHashCode(a) <= System.identityHashCode(b) ?
-            -1 : 1);
+      if (a == null || b == null || (d = a.getClass().getName().compareTo(b.getClass().getName())) == 0)
+        d = (System.identityHashCode(a) <= System.identityHashCode(b) ? -1 : 1);
       return d;
     }
 
     /**
      * Forms tree of the nodes linked from this node.
      */
-    final void treeify(Node<K,V>[] tab) {
-      TreeNode<K,V> root = null;
-      for (TreeNode<K,V> x = this, next; x != null; x = next) {
-        next = (TreeNode<K,V>)x.next;
+    final void treeify(Node<K, V>[] tab) {
+      TreeNode<K, V> root = null;
+      for (TreeNode<K, V> x = this, next; x != null; x = next) {
+        next = (TreeNode<K, V>) x.next;
         x.left = x.right = null;
         if (root == null) {
           x.parent = null;
           x.red = false;
           root = x;
-        }
-        else {
+        } else {
           K k = x.key;
           int h = x.hash;
           Class<?> kc = null;
-          for (TreeNode<K,V> p = root;;) {
+          for (TreeNode<K, V> p = root;;) {
             int dir, ph;
             K pk = p.key;
             if ((ph = p.hash) > h)
               dir = -1;
             else if (ph < h)
               dir = 1;
-            else if ((kc == null &&
-                (kc = comparableClassFor(k)) == null) ||
-                (dir = compareComparables(kc, k, pk)) == 0)
+            else if ((kc == null && (kc = comparableClassFor(k)) == null) || (dir = compareComparables(kc, k, pk)) == 0)
               dir = tieBreakOrder(k, pk);
 
-            TreeNode<K,V> xp = p;
+            TreeNode<K, V> xp = p;
             if ((p = (dir <= 0) ? p.left : p.right) == null) {
               x.parent = xp;
               if (dir <= 0)
@@ -1557,10 +1582,10 @@ public class IndexedHashMap <K,V>
      * Returns a list of non-TreeNodes replacing those linked from
      * this node.
      */
-    final Node<K,V> untreeify(IndexedHashMap<K,V> map) {
-      Node<K,V> hd = null, tl = null;
-      for (Node<K,V> q = this; q != null; q = q.next) {
-        Node<K,V> p = map.replacementNode(q, null);
+    final Node<K, V> untreeify(IndexedHashMap<K, V> map) {
+      Node<K, V> hd = null, tl = null;
+      for (Node<K, V> q = this; q != null; q = q.next) {
+        Node<K, V> p = map.replacementNode(q, null);
         if (tl == null)
           hd = p;
         else
@@ -1573,38 +1598,34 @@ public class IndexedHashMap <K,V>
     /**
      * Tree version of putVal.
      */
-    final TreeNode<K,V> putTreeVal(IndexedHashMap<K,V> map, Node<K,V>[] tab,
-        int h, K k, V v) {
+    final TreeNode<K, V> putTreeVal(IndexedHashMap<K, V> map, Node<K, V>[] tab, int h, K k, V v) {
       Class<?> kc = null;
       boolean searched = false;
-      TreeNode<K,V> root = (parent != null) ? root() : this;
-      for (TreeNode<K,V> p = root;;) {
-        int dir, ph; K pk;
+      TreeNode<K, V> root = (parent != null) ? root() : this;
+      for (TreeNode<K, V> p = root;;) {
+        int dir, ph;
+        K pk;
         if ((ph = p.hash) > h)
           dir = -1;
         else if (ph < h)
           dir = 1;
         else if ((pk = p.key) == k || (k != null && k.equals(pk)))
           return p;
-        else if ((kc == null &&
-            (kc = comparableClassFor(k)) == null) ||
-            (dir = compareComparables(kc, k, pk)) == 0) {
+        else if ((kc == null && (kc = comparableClassFor(k)) == null) || (dir = compareComparables(kc, k, pk)) == 0) {
           if (!searched) {
-            TreeNode<K,V> q, ch;
+            TreeNode<K, V> q, ch;
             searched = true;
-            if (((ch = p.left) != null &&
-                (q = ch.find(h, k, kc)) != null) ||
-                ((ch = p.right) != null &&
-                    (q = ch.find(h, k, kc)) != null))
+            if (((ch = p.left) != null && (q = ch.find(h, k, kc)) != null)
+                || ((ch = p.right) != null && (q = ch.find(h, k, kc)) != null))
               return q;
           }
           dir = tieBreakOrder(k, pk);
         }
 
-        TreeNode<K,V> xp = p;
+        TreeNode<K, V> xp = p;
         if ((p = (dir <= 0) ? p.left : p.right) == null) {
-          Node<K,V> xpn = xp.next;
-          TreeNode<K,V> x = map.newTreeNode(h, k, v, xpn, APPEND_TO_END_OF_LIST);
+          Node<K, V> xpn = xp.next;
+          TreeNode<K, V> x = map.newTreeNode(h, k, v, xpn, APPEND_TO_END_OF_LIST);
           if (dir <= 0)
             xp.left = x;
           else
@@ -1612,7 +1633,7 @@ public class IndexedHashMap <K,V>
           xp.next = x;
           x.parent = x.prev = xp;
           if (xpn != null)
-            ((TreeNode<K,V>)xpn).prev = x;
+            ((TreeNode<K, V>) xpn).prev = x;
           moveRootToFront(tab, balanceInsertion(root, x));
           return null;
         }
@@ -1629,14 +1650,13 @@ public class IndexedHashMap <K,V>
      * the bin is converted back to a plain bin. (The test triggers
      * somewhere between 2 and 6 nodes, depending on tree structure).
      */
-    final void removeTreeNode(IndexedHashMap<K,V> map, Node<K,V>[] tab,
-        boolean movable) {
+    final void removeTreeNode(IndexedHashMap<K, V> map, Node<K, V>[] tab, boolean movable) {
       int n;
       if (tab == null || (n = tab.length) == 0)
         return;
       int index = (n - 1) & hash;
-      TreeNode<K,V> first = (TreeNode<K,V>)tab[index], root = first, rl;
-      TreeNode<K,V> succ = (TreeNode<K,V>)next, pred = prev;
+      TreeNode<K, V> first = (TreeNode<K, V>) tab[index], root = first, rl;
+      TreeNode<K, V> succ = (TreeNode<K, V>) next, pred = prev;
       if (pred == null)
         tab[index] = first = succ;
       else
@@ -1647,28 +1667,25 @@ public class IndexedHashMap <K,V>
         return;
       if (root.parent != null)
         root = root.root();
-      if (root == null
-          || (movable
-          && (root.right == null
-          || (rl = root.left) == null
-          || rl.left == null))) {
-        tab[index] = first.untreeify(map);  // too small
+      if (root == null || (movable && (root.right == null || (rl = root.left) == null || rl.left == null))) {
+        tab[index] = first.untreeify(map); // too small
         return;
       }
-      TreeNode<K,V> p = this, pl = left, pr = right, replacement;
+      TreeNode<K, V> p = this, pl = left, pr = right, replacement;
       if (pl != null && pr != null) {
-        TreeNode<K,V> s = pr, sl;
+        TreeNode<K, V> s = pr, sl;
         while ((sl = s.left) != null) // find successor
           s = sl;
-        boolean c = s.red; s.red = p.red; p.red = c; // swap colors
-        TreeNode<K,V> sr = s.right;
-        TreeNode<K,V> pp = p.parent;
+        boolean c = s.red;
+        s.red = p.red;
+        p.red = c; // swap colors
+        TreeNode<K, V> sr = s.right;
+        TreeNode<K, V> pp = p.parent;
         if (s == pr) { // p was s's direct parent
           p.parent = s;
           s.right = p;
-        }
-        else {
-          TreeNode<K,V> sp = s.parent;
+        } else {
+          TreeNode<K, V> sp = s.parent;
           if ((p.parent = sp) != null) {
             if (s == sp.left)
               sp.left = p;
@@ -1693,15 +1710,14 @@ public class IndexedHashMap <K,V>
           replacement = sr;
         else
           replacement = p;
-      }
-      else if (pl != null)
+      } else if (pl != null)
         replacement = pl;
       else if (pr != null)
         replacement = pr;
       else
         replacement = p;
       if (replacement != p) {
-        TreeNode<K,V> pp = replacement.parent = p.parent;
+        TreeNode<K, V> pp = replacement.parent = p.parent;
         if (pp == null)
           root = replacement;
         else if (p == pp.left)
@@ -1711,10 +1727,10 @@ public class IndexedHashMap <K,V>
         p.left = p.right = p.parent = null;
       }
 
-      TreeNode<K,V> r = p.red ? root : balanceDeletion(root, replacement);
+      TreeNode<K, V> r = p.red ? root : balanceDeletion(root, replacement);
 
-      if (replacement == p) {  // detach
-        TreeNode<K,V> pp = p.parent;
+      if (replacement == p) { // detach
+        TreeNode<K, V> pp = p.parent;
         p.parent = null;
         if (pp != null) {
           if (p == pp.left)
@@ -1737,14 +1753,14 @@ public class IndexedHashMap <K,V>
      * @param index the index of the table being split
      * @param bit the bit of hash to split on
      */
-    final void split(IndexedHashMap<K,V> map, Node<K,V>[] tab, int index, int bit) {
-      TreeNode<K,V> b = this;
+    final void split(IndexedHashMap<K, V> map, Node<K, V>[] tab, int index, int bit) {
+      TreeNode<K, V> b = this;
       // Relink into lo and hi lists, preserving order
-      TreeNode<K,V> loHead = null, loTail = null;
-      TreeNode<K,V> hiHead = null, hiTail = null;
+      TreeNode<K, V> loHead = null, loTail = null;
+      TreeNode<K, V> hiHead = null, hiTail = null;
       int lc = 0, hc = 0;
-      for (TreeNode<K,V> e = b, next; e != null; e = next) {
-        next = (TreeNode<K,V>)e.next;
+      for (TreeNode<K, V> e = b, next; e != null; e = next) {
+        next = (TreeNode<K, V>) e.next;
         e.next = null;
         if ((e.hash & bit) == 0) {
           if ((e.prev = loTail) == null)
@@ -1753,8 +1769,7 @@ public class IndexedHashMap <K,V>
             loTail.next = e;
           loTail = e;
           ++lc;
-        }
-        else {
+        } else {
           if ((e.prev = hiTail) == null)
             hiHead = e;
           else
@@ -1787,9 +1802,8 @@ public class IndexedHashMap <K,V>
     /* ------------------------------------------------------------ */
     // Red-black tree methods, all adapted from CLR
 
-    static <K,V> TreeNode<K,V> rotateLeft(TreeNode<K,V> root,
-        TreeNode<K,V> p) {
-      TreeNode<K,V> r, pp, rl;
+    static <K, V> TreeNode<K, V> rotateLeft(TreeNode<K, V> root, TreeNode<K, V> p) {
+      TreeNode<K, V> r, pp, rl;
       if (p != null && (r = p.right) != null) {
         if ((rl = p.right = r.left) != null)
           rl.parent = p;
@@ -1805,9 +1819,8 @@ public class IndexedHashMap <K,V>
       return root;
     }
 
-    static <K,V> TreeNode<K,V> rotateRight(TreeNode<K,V> root,
-        TreeNode<K,V> p) {
-      TreeNode<K,V> l, pp, lr;
+    static <K, V> TreeNode<K, V> rotateRight(TreeNode<K, V> root, TreeNode<K, V> p) {
+      TreeNode<K, V> l, pp, lr;
       if (p != null && (l = p.left) != null) {
         if ((lr = p.left = l.right) != null)
           lr.parent = p;
@@ -1823,15 +1836,13 @@ public class IndexedHashMap <K,V>
       return root;
     }
 
-    static <K,V> TreeNode<K,V> balanceInsertion(TreeNode<K,V> root,
-        TreeNode<K,V> x) {
+    static <K, V> TreeNode<K, V> balanceInsertion(TreeNode<K, V> root, TreeNode<K, V> x) {
       x.red = true;
-      for (TreeNode<K,V> xp, xpp, xppl, xppr;;) {
+      for (TreeNode<K, V> xp, xpp, xppl, xppr;;) {
         if ((xp = x.parent) == null) {
           x.red = false;
           return x;
-        }
-        else if (!xp.red || (xpp = xp.parent) == null)
+        } else if (!xp.red || (xpp = xp.parent) == null)
           return root;
         if (xp == (xppl = xpp.left)) {
           if ((xppr = xpp.right) != null && xppr.red) {
@@ -1839,8 +1850,7 @@ public class IndexedHashMap <K,V>
             xp.red = false;
             xpp.red = true;
             x = xpp;
-          }
-          else {
+          } else {
             if (x == xp.right) {
               root = rotateLeft(root, x = xp);
               xpp = (xp = x.parent) == null ? null : xp.parent;
@@ -1853,15 +1863,13 @@ public class IndexedHashMap <K,V>
               }
             }
           }
-        }
-        else {
+        } else {
           if (xppl != null && xppl.red) {
             xppl.red = false;
             xp.red = false;
             xpp.red = true;
             x = xpp;
-          }
-          else {
+          } else {
             if (x == xp.left) {
               root = rotateRight(root, x = xp);
               xpp = (xp = x.parent) == null ? null : xp.parent;
@@ -1878,20 +1886,17 @@ public class IndexedHashMap <K,V>
       }
     }
 
-    static <K,V> TreeNode<K,V> balanceDeletion(TreeNode<K,V> root,
-        TreeNode<K,V> x) {
-      for (TreeNode<K,V> xp, xpl, xpr;;) {
+    static <K, V> TreeNode<K, V> balanceDeletion(TreeNode<K, V> root, TreeNode<K, V> x) {
+      for (TreeNode<K, V> xp, xpl, xpr;;) {
         if (x == null || x == root)
           return root;
         else if ((xp = x.parent) == null) {
           x.red = false;
           return x;
-        }
-        else if (x.red) {
+        } else if (x.red) {
           x.red = false;
           return root;
-        }
-        else if ((xpl = xp.left) == x) {
+        } else if ((xpl = xp.left) == x) {
           if ((xpr = xp.right) != null && xpr.red) {
             xpr.red = false;
             xp.red = true;
@@ -1901,20 +1906,17 @@ public class IndexedHashMap <K,V>
           if (xpr == null)
             x = xp;
           else {
-            TreeNode<K,V> sl = xpr.left, sr = xpr.right;
-            if ((sr == null || !sr.red) &&
-                (sl == null || !sl.red)) {
+            TreeNode<K, V> sl = xpr.left, sr = xpr.right;
+            if ((sr == null || !sr.red) && (sl == null || !sl.red)) {
               xpr.red = true;
               x = xp;
-            }
-            else {
+            } else {
               if (sr == null || !sr.red) {
                 if (sl != null)
                   sl.red = false;
                 xpr.red = true;
                 root = rotateRight(root, xpr);
-                xpr = (xp = x.parent) == null ?
-                    null : xp.right;
+                xpr = (xp = x.parent) == null ? null : xp.right;
               }
               if (xpr != null) {
                 xpr.red = (xp == null) ? false : xp.red;
@@ -1928,8 +1930,7 @@ public class IndexedHashMap <K,V>
               x = root;
             }
           }
-        }
-        else { // symmetric
+        } else { // symmetric
           if (xpl != null && xpl.red) {
             xpl.red = false;
             xp.red = true;
@@ -1939,20 +1940,17 @@ public class IndexedHashMap <K,V>
           if (xpl == null)
             x = xp;
           else {
-            TreeNode<K,V> sl = xpl.left, sr = xpl.right;
-            if ((sl == null || !sl.red) &&
-                (sr == null || !sr.red)) {
+            TreeNode<K, V> sl = xpl.left, sr = xpl.right;
+            if ((sl == null || !sl.red) && (sr == null || !sr.red)) {
               xpl.red = true;
               x = xp;
-            }
-            else {
+            } else {
               if (sl == null || !sl.red) {
                 if (sr != null)
                   sr.red = false;
                 xpl.red = true;
                 root = rotateLeft(root, xpl);
-                xpl = (xp = x.parent) == null ?
-                    null : xp.left;
+                xpl = (xp = x.parent) == null ? null : xp.left;
               }
               if (xpl != null) {
                 xpl.red = (xp == null) ? false : xp.red;
@@ -1973,9 +1971,8 @@ public class IndexedHashMap <K,V>
     /**
      * Recursive invariant check
      */
-    static <K,V> boolean checkInvariants(TreeNode<K,V> t) {
-      TreeNode<K,V> tp = t.parent, tl = t.left, tr = t.right,
-          tb = t.prev, tn = (TreeNode<K,V>)t.next;
+    static <K, V> boolean checkInvariants(TreeNode<K, V> t) {
+      TreeNode<K, V> tp = t.parent, tl = t.left, tr = t.right, tb = t.prev, tn = (TreeNode<K, V>) t.next;
       if (tb != null && tb.next != t)
         return false;
       if (tn != null && tn.prev != t)

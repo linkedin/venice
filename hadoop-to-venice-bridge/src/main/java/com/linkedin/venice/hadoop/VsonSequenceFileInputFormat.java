@@ -28,29 +28,28 @@ public class VsonSequenceFileInputFormat extends SequenceFileInputFormat<BytesWr
     String[] list = StringUtils.split(dirs);
 
     List<FileStatus> status = new ArrayList<>();
-    for (String s : list) {
+    for (String s: list) {
       status.addAll(getAllSubFileStatus(job, new Path(s)));
     }
 
     return status.toArray(new FileStatus[0]);
   }
 
-  private List<FileStatus> getAllSubFileStatus(JobConf inputConf, Path filterMemberPath)
-      throws IOException {
+  private List<FileStatus> getAllSubFileStatus(JobConf inputConf, Path filterMemberPath) throws IOException {
     List<FileStatus> list = new ArrayList<>();
 
     FileSystem fs = filterMemberPath.getFileSystem(inputConf);
     FileStatus[] subFiles = fs.listStatus(filterMemberPath);
 
-    if(null != subFiles) {
-      if(fs.isDirectory(filterMemberPath)) {
-        for(FileStatus subFile: subFiles) {
-          if(!HadoopUtils.shouldPathBeIgnored(subFile.getPath())) {
+    if (null != subFiles) {
+      if (fs.isDirectory(filterMemberPath)) {
+        for (FileStatus subFile: subFiles) {
+          if (!HadoopUtils.shouldPathBeIgnored(subFile.getPath())) {
             list.addAll(getAllSubFileStatus(inputConf, subFile.getPath()));
           }
         }
       } else {
-        if(subFiles.length > 0 && !HadoopUtils.shouldPathBeIgnored(subFiles[0].getPath())) {
+        if (subFiles.length > 0 && !HadoopUtils.shouldPathBeIgnored(subFiles[0].getPath())) {
           list.add(subFiles[0]);
         }
       }
@@ -59,4 +58,3 @@ public class VsonSequenceFileInputFormat extends SequenceFileInputFormat<BytesWr
     return list;
   }
 }
-

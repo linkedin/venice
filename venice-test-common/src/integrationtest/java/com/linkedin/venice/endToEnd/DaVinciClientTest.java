@@ -1,5 +1,11 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
+import static com.linkedin.venice.meta.PersistenceType.*;
+import static com.linkedin.venice.utils.TestPushUtils.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.DaVinciUserApp;
@@ -35,7 +41,6 @@ import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
-import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.Pair;
@@ -69,8 +74,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.filefilter.DirectoryFileFilter;
-import org.apache.commons.io.filefilter.RegexFileFilter;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -78,18 +81,12 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
-import static com.linkedin.venice.meta.PersistenceType.*;
-import static com.linkedin.venice.utils.TestPushUtils.*;
-import static org.testng.Assert.*;
-
 
 public class DaVinciClientTest {
   private static final int KEY_COUNT = 10;
   private static final int TEST_TIMEOUT = 120_000;
-  private static final String TEST_RECORD_VALUE_SCHEMA = "{\"type\":\"record\", \"name\":\"ValueRecord\", \"fields\": [{\"name\":\"number\", "
-          + "\"type\":\"int\"}]}";
+  private static final String TEST_RECORD_VALUE_SCHEMA =
+      "{\"type\":\"record\", \"name\":\"ValueRecord\", \"fields\": [{\"name\":\"number\", " + "\"type\":\"int\"}]}";
   private VeniceClusterWrapper cluster;
   private D2Client d2Client;
 
@@ -98,10 +95,8 @@ public class DaVinciClientTest {
     Utils.thisIsLocalhost();
     Properties clusterConfig = new Properties();
     clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
-    cluster = ServiceFactory.getVeniceCluster(1, 2, 1, 1,
-        100, false, false, clusterConfig);
-    d2Client = new D2ClientBuilder()
-        .setZkHosts(cluster.getZk().getAddress())
+    cluster = ServiceFactory.getVeniceCluster(1, 2, 1, 1, 100, false, false, clusterConfig);
+    d2Client = new D2ClientBuilder().setZkHosts(cluster.getZk().getAddress())
         .setZkSessionTimeout(3, TimeUnit.SECONDS)
         .setZkStartupTimeout(3, TimeUnit.SECONDS)
         .build();
@@ -122,8 +117,7 @@ public class DaVinciClientTest {
     String storeName2 = createStoreWithMetaSystemStore(KEY_COUNT);
 
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
-    VeniceProperties backendConfig = new PropertyBuilder()
-        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+    VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
@@ -131,22 +125,28 @@ public class DaVinciClientTest {
 
     for (int i = 0; i < 10; ++i) {
       MetricsRepository metricsRepository = new MetricsRepository();
-      try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
-        CompletableFuture.allOf(
-            CompletableFuture.runAsync(() -> factory.getGenericAvroClient(storeName1, new DaVinciConfig()).start()),
-            CompletableFuture.runAsync(() -> factory.getGenericAvroClient(storeName2, new DaVinciConfig()).start()),
-            CompletableFuture.runAsync(() -> factory.getGenericAvroClient(storeName1, new DaVinciConfig().setIsolated(true)).start()),
-            CompletableFuture.runAsync(() -> factory.getGenericAvroClient(storeName2, new DaVinciConfig().setIsolated(true)).start())
-        ).get();
+      try (CachingDaVinciClientFactory factory =
+          new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+        CompletableFuture
+            .allOf(
+                CompletableFuture.runAsync(() -> factory.getGenericAvroClient(storeName1, new DaVinciConfig()).start()),
+                CompletableFuture.runAsync(() -> factory.getGenericAvroClient(storeName2, new DaVinciConfig()).start()),
+                CompletableFuture.runAsync(
+                    () -> factory.getGenericAvroClient(storeName1, new DaVinciConfig().setIsolated(true)).start()),
+                CompletableFuture.runAsync(
+                    () -> factory.getGenericAvroClient(storeName2, new DaVinciConfig().setIsolated(true)).start()))
+            .get();
       }
       assertThrows(NullPointerException.class, AvroGenericDaVinciClient::getBackend);
     }
 
-    // Verify that multiple isolated clients with non-local access enabled to the same store can be started successfully.
+    // Verify that multiple isolated clients with non-local access enabled to the same store can be started
+    // successfully.
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     daVinciConfig.setNonLocalAccessPolicy(NonLocalAccessPolicy.QUERY_VENICE).setIsolated(true);
     MetricsRepository metricsRepository = new MetricsRepository();
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+    try (CachingDaVinciClientFactory factory =
+        new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
       factory.getAndStartGenericAvroClient(storeName1, daVinciConfig);
       factory.getAndStartGenericAvroClient(storeName1, daVinciConfig);
     }
@@ -158,8 +158,7 @@ public class DaVinciClientTest {
     String storeName2 = createStoreWithMetaSystemStore(KEY_COUNT);
     String storeName3 = createStoreWithMetaSystemStore(KEY_COUNT);
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
-    VeniceProperties backendConfig = new PropertyBuilder()
-        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+    VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
@@ -168,7 +167,8 @@ public class DaVinciClientTest {
     MetricsRepository metricsRepository = new MetricsRepository();
 
     // Test multiple clients sharing the same ClientConfig/MetricsRepository & base data path
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+    try (CachingDaVinciClientFactory factory =
+        new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
       DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, clientConfig);
 
       // Test non-existent key access
@@ -193,12 +193,10 @@ public class DaVinciClientTest {
         cluster.useControllerClient(controllerClient -> {
           ControllerResponse response = controllerClient.updateStore(
               storeName1,
-              new UpdateStoreQueryParams()
-                  .setPartitionerClass(ConstantVenicePartitioner.class.getName())
+              new UpdateStoreQueryParams().setPartitionerClass(ConstantVenicePartitioner.class.getName())
                   .setPartitionCount(partitionCount)
                   .setPartitionerParams(
-                      Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, iString)
-                  ));
+                      Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, iString)));
           assertFalse(response.isError(), response.getError());
         });
 
@@ -218,15 +216,16 @@ public class DaVinciClientTest {
       assertEquals(client2.batchGet(keyValueMap.keySet()).get(), keyValueMap);
       assertEquals(client3.batchGet(keyValueMap.keySet()).get(), keyValueMap);
 
-      // TODO(jlliu): Re-enable this test-case after fixing store deletion that is flaky due to CLIENT_USE_SYSTEM_STORE_REPOSITORY.
-//      // Test read from a store that is being deleted concurrently
-//      try (ControllerClient controllerClient = cluster.getControllerClient()) {
-//        ControllerResponse response = controllerClient.disableAndDeleteStore(storeName2);
-//        assertFalse(response.isError(), response.getError());
-//        TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-//          assertThrows(VeniceClientException.class, () -> client2.get(KEY_COUNT / 3).get());
-//        });
-//      }
+      // TODO(jlliu): Re-enable this test-case after fixing store deletion that is flaky due to
+      // CLIENT_USE_SYSTEM_STORE_REPOSITORY.
+      // // Test read from a store that is being deleted concurrently
+      // try (ControllerClient controllerClient = cluster.getControllerClient()) {
+      // ControllerResponse response = controllerClient.disableAndDeleteStore(storeName2);
+      // assertFalse(response.isError(), response.getError());
+      // TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      // assertThrows(VeniceClientException.class, () -> client2.get(KEY_COUNT / 3).get());
+      // });
+      // }
       client2.unsubscribeAll();
     }
 
@@ -238,7 +237,10 @@ public class DaVinciClientTest {
 
     // Test managed clients & data cleanup
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
-        d2Client, new MetricsRepository(), backendConfig, Optional.of(Collections.singleton(storeName1)))) {
+        d2Client,
+        new MetricsRepository(),
+        backendConfig,
+        Optional.of(Collections.singleton(storeName1)))) {
       assertNotEquals(FileUtils.sizeOfDirectory(new File(baseDataPath)), 0);
 
       DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, clientConfig);
@@ -246,10 +248,9 @@ public class DaVinciClientTest {
       client1.unsubscribeAll();
       // client2 was removed explicitly above via disableAndDeleteStore()
       // client3 is expected to be removed by the factory during bootstrap
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true,
-          () -> {
-            assertEquals(FileUtils.sizeOfDirectory(new File(baseDataPath)), 0);
-          });
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        assertEquals(FileUtils.sizeOfDirectory(new File(baseDataPath)), 0);
+      });
     }
   }
 
@@ -262,17 +263,17 @@ public class DaVinciClientTest {
     cluster.useControllerClient(client -> TestUtils.createMetaSystemStore(client, storeName, Optional.of(logger)));
 
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
-    VeniceProperties backendConfig = new PropertyBuilder()
-        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+    VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         // TODO: Looks like cache = null does not work with fast meta store repository refresh interval
-        //.put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+        // .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .build();
 
     MetricsRepository metricsRepository = new MetricsRepository();
 
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+    try (CachingDaVinciClientFactory factory =
+        new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
       DaVinciClient<Integer, Object> client = factory.getAndStartGenericAvroClient(storeName, clientConfig);
 
       GenericRecord reusableObject = new GenericData.Record(client.getLatestValueSchema());
@@ -300,15 +301,16 @@ public class DaVinciClientTest {
     }
   }
 
-  @Test(groups = {"flaky"}, timeOut = TEST_TIMEOUT * 2)
+  @Test(groups = { "flaky" }, timeOut = TEST_TIMEOUT * 2)
   public void testUnstableIngestionIsolation() throws Exception {
-    final String storeName = Utils.getUniqueString( "store");
+    final String storeName = Utils.getUniqueString("store");
     // TODO: I have no idea how this happens, BeforeClass should have run setup, but it seems to not do that sometimes?
-    if(cluster == null) {
+    if (cluster == null) {
       setUp();
     }
     cluster.useControllerClient(client -> {
-      NewStoreResponse response = client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
+      NewStoreResponse response =
+          client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
       if (response.isError()) {
         throw new VeniceException(response.getError());
       }
@@ -320,16 +322,22 @@ public class DaVinciClientTest {
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(DEFAULT_VALUE_SCHEMA);
 
-
     Map<String, Object> extraBackendConfigMap = TestUtils.getIngestionIsolationPropertyMap();
     extraBackendConfigMap.put(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 5 * Time.MS_PER_SECOND);
 
     DaVinciTestContext<Integer, Integer> daVinciTestContext =
-        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
-            cluster.getZk().getAddress(), storeName, new DaVinciConfig(), extraBackendConfigMap);
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
+            d2Client,
+            new MetricsRepository(),
+            Optional.empty(),
+            cluster.getZk().getAddress(),
+            storeName,
+            new DaVinciConfig(),
+            extraBackendConfigMap);
 
     try (
-        VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+        VeniceWriter<Object, Object, byte[]> writer =
+            vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
         CachingDaVinciClientFactory factory = daVinciTestContext.getDaVinciClientFactory()) {
       int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
       writer.broadcastStartOfPush(Collections.emptyMap());
@@ -359,8 +367,10 @@ public class DaVinciClientTest {
       dummyOffsetMetadata.metadataUpdateType = IngestionMetadataUpdateType.PUT_OFFSET_RECORD.getValue();
       dummyOffsetMetadata.topicName = Version.composeKafkaTopic(storeName, 1);
       dummyOffsetMetadata.partitionId = 0;
-      dummyOffsetMetadata.payload = ByteBuffer.wrap(new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer()).toBytes());
-      MainIngestionRequestClient requestClient = new MainIngestionRequestClient(Optional.empty(), isolatedIngestionServicePort);
+      dummyOffsetMetadata.payload =
+          ByteBuffer.wrap(new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer()).toBytes());
+      MainIngestionRequestClient requestClient =
+          new MainIngestionRequestClient(Optional.empty(), isolatedIngestionServicePort);
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         assertTrue(requestClient.updateMetadata(dummyOffsetMetadata));
       });
@@ -377,14 +387,12 @@ public class DaVinciClientTest {
     final int amplificationFactor = isAmplificationFactorEnabled ? 3 : 1;
     String storeName = Utils.getUniqueString("store");
     String storeName2 = createStoreWithMetaSystemStore(KEY_COUNT);
-    Consumer<UpdateStoreQueryParams> paramsConsumer =
-            params -> params.setAmplificationFactor(amplificationFactor)
-                .setLeaderFollowerModel(true)
-                .setPartitionCount(partitionCount)
-                .setPartitionerClass(ConstantVenicePartitioner.class.getName())
-                .setPartitionerParams(
-                    Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(dataPartition))
-                );
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setAmplificationFactor(amplificationFactor)
+        .setLeaderFollowerModel(true)
+        .setPartitionCount(partitionCount)
+        .setPartitionerClass(ConstantVenicePartitioner.class.getName())
+        .setPartitionerParams(
+            Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(dataPartition)));
     setupHybridStore(storeName, paramsConsumer, 1000);
 
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -393,12 +401,20 @@ public class DaVinciClientTest {
     extraBackendConfigMap.put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true);
     extraBackendConfigMap.put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1);
     extraBackendConfigMap.put(DATA_BASE_PATH, baseDataPath);
-    extraBackendConfigMap.put(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, VeniceServerConfig.MINIMUM_CONSUMER_NUM_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER);
+    extraBackendConfigMap.put(
+        SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER,
+        VeniceServerConfig.MINIMUM_CONSUMER_NUM_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER);
     extraBackendConfigMap.put(SERVER_SHARED_CONSUMER_POOL_ENABLED, false);
 
     DaVinciTestContext<Integer, Integer> daVinciTestContext =
-        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, metricsRepository, Optional.empty(),
-            cluster.getZk().getAddress(), storeName, new DaVinciConfig(), extraBackendConfigMap);
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
+            d2Client,
+            metricsRepository,
+            Optional.empty(),
+            cluster.getZk().getAddress(),
+            storeName,
+            new DaVinciConfig(),
+            extraBackendConfigMap);
 
     try (CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory()) {
       DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient();
@@ -440,8 +456,14 @@ public class DaVinciClientTest {
 
     // Restart Da Vinci client to test bootstrap logic.
     metricsRepository = new MetricsRepository();
-    daVinciTestContext = ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, metricsRepository,
-        Optional.empty(), cluster.getZk().getAddress(), storeName, new DaVinciConfig(), extraBackendConfigMap);
+    daVinciTestContext = ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
+        d2Client,
+        metricsRepository,
+        Optional.empty(),
+        cluster.getZk().getAddress(),
+        storeName,
+        new DaVinciConfig(),
+        extraBackendConfigMap);
     try (CachingDaVinciClientFactory factory = daVinciTestContext.getDaVinciClientFactory()) {
       DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, true, true, () -> {
@@ -458,16 +480,22 @@ public class DaVinciClientTest {
         assertEquals(result, 1);
       }
       MetricsRepository finalMetricsRepository = metricsRepository;
-      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS,
-          () -> assertTrue(finalMetricsRepository.metrics().keySet().stream().anyMatch(k -> k.contains("ingestion_isolation")))
-      );
-      logger.info("Successfully finished all assertions! All that's left is closing the {}",
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> assertTrue(
+              finalMetricsRepository.metrics().keySet().stream().anyMatch(k -> k.contains("ingestion_isolation"))));
+      logger.info(
+          "Successfully finished all assertions! All that's left is closing the {}",
           factory.getClass().getSimpleName());
     }
   }
 
-  @Test(dataProvider = "AmplificationFactor-and-ObjectCache", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT * 2)
-  public void testHybridStoreWithoutIngestionIsolation(boolean isAmplificationFactorEnabled, DaVinciConfig daVinciConfig) throws Exception {
+  @Test(dataProvider = "AmplificationFactor-and-ObjectCache", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT
+      * 2)
+  public void testHybridStoreWithoutIngestionIsolation(
+      boolean isAmplificationFactorEnabled,
+      DaVinciConfig daVinciConfig) throws Exception {
     // Create store
     final int partition = 1;
     final int partitionCount = 2;
@@ -476,17 +504,15 @@ public class DaVinciClientTest {
 
     // Convert it to hybrid
     Consumer<UpdateStoreQueryParams> paramsConsumer =
-            params -> params.setPartitionerClass(ConstantVenicePartitioner.class.getName())
-                    .setLeaderFollowerModel(true)
-                    .setPartitionCount(partitionCount)
-                    .setAmplificationFactor(amplificationFactor)
-                    .setPartitionerParams(
-                            Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partition))
-                    );
+        params -> params.setPartitionerClass(ConstantVenicePartitioner.class.getName())
+            .setLeaderFollowerModel(true)
+            .setPartitionCount(partitionCount)
+            .setAmplificationFactor(amplificationFactor)
+            .setPartitionerParams(
+                Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partition)));
     setupHybridStore(storeName, paramsConsumer);
 
-    VeniceProperties backendConfig = new PropertyBuilder()
-        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+    VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
         .put(PERSISTENCE_TYPE, ROCKS_DB)
@@ -494,7 +520,8 @@ public class DaVinciClientTest {
 
     MetricsRepository metricsRepository = new MetricsRepository();
 
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+    try (CachingDaVinciClientFactory factory =
+        new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
       DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, daVinciConfig);
       // subscribe to a partition without data
       int emptyPartition = (partition + 1) % partitionCount;
@@ -520,8 +547,8 @@ public class DaVinciClientTest {
         assertEquals(batchGetResult, keyValueMap);
       });
 
-      // Write some fresh records to override the old value.  Make sure we can read the new value.
-      List<Pair<Object,Object>> dataToPublish = new ArrayList<>();
+      // Write some fresh records to override the old value. Make sure we can read the new value.
+      List<Pair<Object, Object>> dataToPublish = new ArrayList<>();
       dataToPublish.add(new Pair<>(0, 1));
       dataToPublish.add(new Pair<>(1, 2));
       dataToPublish.add(new Pair<>(3, 4));
@@ -529,7 +556,7 @@ public class DaVinciClientTest {
       generateHybridData(storeName, dataToPublish);
 
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        for (Pair<Object, Object> entry : dataToPublish) {
+        for (Pair<Object, Object> entry: dataToPublish) {
           assertEquals(client.get((Integer) entry.getFirst()).get(), entry.getSecond());
         }
       });
@@ -548,12 +575,10 @@ public class DaVinciClientTest {
             .setPartitionCount(partitionCount)
             .setAmplificationFactor(amplificationFactor)
             .setPartitionerParams(
-                Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partition))
-            );
+                Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partition)));
     setupHybridStore(storeName, paramsConsumer);
 
-    VeniceProperties backendConfig = new PropertyBuilder()
-        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+    VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
         .put(PERSISTENCE_TYPE, ROCKS_DB)
@@ -561,7 +586,8 @@ public class DaVinciClientTest {
 
     MetricsRepository metricsRepository = new MetricsRepository();
 
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+    try (CachingDaVinciClientFactory factory =
+        new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
       DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
       // subscribe to a partition without data
       int emptyPartition = (partition + 1) % partitionCount;
@@ -621,14 +647,16 @@ public class DaVinciClientTest {
   public void testBootstrap(DaVinciConfig daVinciConfig) throws Exception {
     String storeName = createStoreWithMetaSystemStore(KEY_COUNT);
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
-    try (DaVinciClient<Integer, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath)) {
+    try (DaVinciClient<Integer, Object> client =
+        ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath)) {
       client.subscribeAll().get();
       for (int k = 0; k < KEY_COUNT; ++k) {
         assertEquals(client.get(k).get(), 1);
       }
     }
 
-    try (DaVinciClient<Integer, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath)) {
+    try (DaVinciClient<Integer, Object> client =
+        ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath)) {
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         try {
           Map<Integer, Integer> keyValueMap = new HashMap<>();
@@ -645,7 +673,8 @@ public class DaVinciClientTest {
 
     daVinciConfig.setStorageClass(StorageClass.DISK);
     // Try to open the Da Vinci client with different storage class.
-    try (DaVinciClient<Integer, Integer> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath, daVinciConfig)) {
+    try (DaVinciClient<Integer, Integer> client =
+        ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath, daVinciConfig)) {
       client.subscribeAll().get();
     }
 
@@ -656,7 +685,8 @@ public class DaVinciClientTest {
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(DEFAULT_VALUE_SCHEMA);
     int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
-    try (VeniceWriter<Object, Object, byte[]> batchProducer = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false)) {
+    try (VeniceWriter<Object, Object, byte[]> batchProducer =
+        vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false)) {
       batchProducer.broadcastStartOfPush(Collections.emptyMap());
       Future[] writerFutures = new Future[KEY_COUNT];
       for (int i = 0; i < KEY_COUNT; i++) {
@@ -669,7 +699,8 @@ public class DaVinciClientTest {
        * Creating a stuck VPJ here so the new version will not be fully ingested. Da Vinci bootstrap should continue to
        * subscribe to existing CURRENT VERSION pushed before.
        */
-      try (DaVinciClient<Integer, Integer> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath, daVinciConfig)) {
+      try (DaVinciClient<Integer, Integer> client =
+          ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath, daVinciConfig)) {
         TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, false, true, () -> {
           for (int i = 0; i < KEY_COUNT; i++) {
             int value = client.get(i).get();
@@ -684,7 +715,8 @@ public class DaVinciClientTest {
      * Push a new version as the CURRENT VERSION, so that old local version is removed during bootstrap and the access will fail.
      */
     cluster.createVersion(storeName, KEY_COUNT);
-    try (DaVinciClient<Integer, Integer> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath, daVinciConfig)) {
+    try (DaVinciClient<Integer, Integer> client =
+        ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath, daVinciConfig)) {
       assertThrows(VeniceException.class, () -> client.get(0).get());
     }
   }
@@ -696,7 +728,8 @@ public class DaVinciClientTest {
 
     Map<Integer, Integer> keyValueMap = new HashMap<>();
     daVinciConfig.setNonLocalAccessPolicy(NonLocalAccessPolicy.QUERY_VENICE);
-    try (DaVinciClient<Integer, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig)) {
+    try (DaVinciClient<Integer, Object> client =
+        ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig)) {
       client.subscribe(Collections.singleton(0)).get();
       // With QUERY_VENICE enabled, all key-value pairs should be found.
       for (int k = 0; k < KEY_COUNT; ++k) {
@@ -707,22 +740,25 @@ public class DaVinciClientTest {
     }
 
     daVinciConfig.setNonLocalAccessPolicy(NonLocalAccessPolicy.FAIL_FAST);
-    try (DaVinciClient<Integer, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig)) {
+    try (DaVinciClient<Integer, Object> client =
+        ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig)) {
       // We only subscribe to 1/3 of the partitions so some data will not be present locally.
       client.subscribe(Collections.singleton(0)).get();
       assertThrows(() -> client.batchGet(keyValueMap.keySet()).get());
     }
 
     // Update the store to use non-default partitioner
-    cluster.useControllerClient(controllerClient -> TestUtils.assertCommand(controllerClient.updateStore(
-        storeName,
-        new UpdateStoreQueryParams()
-            .setPartitionerClass(ConstantVenicePartitioner.class.getName())
-            .setPartitionerParams(
-                Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(2))))));
+    cluster.useControllerClient(
+        controllerClient -> TestUtils.assertCommand(
+            controllerClient.updateStore(
+                storeName,
+                new UpdateStoreQueryParams().setPartitionerClass(ConstantVenicePartitioner.class.getName())
+                    .setPartitionerParams(
+                        Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(2))))));
     cluster.createVersion(storeName, KEY_COUNT);
     daVinciConfig.setNonLocalAccessPolicy(NonLocalAccessPolicy.QUERY_VENICE);
-    try (DaVinciClient<Integer, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig)) {
+    try (DaVinciClient<Integer, Object> client =
+        ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig)) {
       client.subscribe(Collections.singleton(0)).get();
       // With QUERY_VENICE enabled, all key-value pairs should be found.
       assertEquals(client.batchGet(keyValueMap.keySet()).get().size(), keyValueMap.size());
@@ -732,21 +768,23 @@ public class DaVinciClientTest {
   // TODO: add comprehensive tests for memory limit feature
   @Test(timeOut = TEST_TIMEOUT)
   public void testMemoryLimit() throws Exception {
-    VeniceProperties backendConfig = new PropertyBuilder()
-        .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
-        .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-        // TODO: Fix shared consumer mode compatibility (or remove memory limit feature entirely)
-        .put(SERVER_SHARED_CONSUMER_POOL_ENABLED, false)
-        .build();
+    VeniceProperties backendConfig =
+        new PropertyBuilder().put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
+            .put(PERSISTENCE_TYPE, ROCKS_DB)
+            .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+            .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+            // TODO: Fix shared consumer mode compatibility (or remove memory limit feature entirely)
+            .put(SERVER_SHARED_CONSUMER_POOL_ENABLED, false)
+            .build();
     MetricsRepository metricsRepository = new MetricsRepository();
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+    try (CachingDaVinciClientFactory factory =
+        new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
       String storeName = createStoreWithMetaSystemStore(KEY_COUNT);
       DaVinciConfig daVinciConfig = new DaVinciConfig().setMemoryLimit(KEY_COUNT / 2);
       DaVinciClient<Integer, Object> client = factory.getAndStartGenericAvroClient(storeName, daVinciConfig);
       assertThrows(() -> client.subscribeAll().get(5, TimeUnit.SECONDS));
-      Metric memoryUsageMetric = metricsRepository.getMetric(".RocksDBMemoryStats--" + storeName + ".rocksdb.memory-usage.Gauge");
+      Metric memoryUsageMetric =
+          metricsRepository.getMetric(".RocksDBMemoryStats--" + storeName + ".rocksdb.memory-usage.Gauge");
       assertNotNull(memoryUsageMetric);
       double memoryUsage = memoryUsageMetric.value();
       assertTrue(memoryUsage > 0);
@@ -764,8 +802,14 @@ public class DaVinciClientTest {
 
     Map<String, Object> extraConfigMap = TestUtils.getIngestionIsolationPropertyMap();
     DaVinciTestContext<String, GenericRecord> daVinciTestContext =
-        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
-            cluster.getZk().getAddress(), storeName, daVinciConfig, extraConfigMap);
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
+            d2Client,
+            new MetricsRepository(),
+            Optional.empty(),
+            cluster.getZk().getAddress(),
+            storeName,
+            daVinciConfig,
+            extraConfigMap);
 
     try (CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory()) {
       DaVinciClient<String, GenericRecord> client = daVinciTestContext.getDaVinciClient();
@@ -778,13 +822,20 @@ public class DaVinciClientTest {
   public void testUnsubscribeBeforeFutureGet() throws Exception {
     // Verify DaVinci client doesn't hang in a deadlock when calling unsubscribe right after subscribing and before the
     // future is complete. The future should also return exceptionally.
-    String storeName = createStoreWithMetaSystemStore(10000); // A large amount of keys to give window for potential race conditions
+    String storeName = createStoreWithMetaSystemStore(10000); // A large amount of keys to give window for potential
+                                                              // race conditions
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     daVinciConfig.setMemoryLimit(1024 * 1024 * 1024); // 1GB
     Map<String, Object> extraConfigMap = TestUtils.getIngestionIsolationPropertyMap();
     DaVinciTestContext<String, GenericRecord> daVinciTestContext =
-        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
-            cluster.getZk().getAddress(), storeName, daVinciConfig, extraConfigMap);
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
+            d2Client,
+            new MetricsRepository(),
+            Optional.empty(),
+            cluster.getZk().getAddress(),
+            storeName,
+            daVinciConfig,
+            extraConfigMap);
 
     try (CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory()) {
       DaVinciClient<String, GenericRecord> client = daVinciTestContext.getDaVinciClient();
@@ -796,30 +847,25 @@ public class DaVinciClientTest {
     }
   }
 
-
   @Test(timeOut = TEST_TIMEOUT * 2)
   public void testCrashedDaVinciWithIngestionIsolation() throws Exception {
     String storeName = createStoreWithMetaSystemStore(KEY_COUNT);
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     String zkHosts = cluster.getZk().getAddress();
-    ForkedJavaProcess forkedDaVinciUserApp = ForkedJavaProcess.exec(
-        DaVinciUserApp.class,
-        zkHosts, baseDataPath, storeName, "100", "10"
-    );
+    ForkedJavaProcess forkedDaVinciUserApp =
+        ForkedJavaProcess.exec(DaVinciUserApp.class, zkHosts, baseDataPath, storeName, "100", "10");
     // Sleep long enough so the forked Da Vinci app process can finish ingestion.
     Thread.sleep(60000);
     IsolatedIngestionUtils.executeShellCommand("kill " + forkedDaVinciUserApp.pid());
     // Sleep long enough so the heartbeat timeout is detected by IsolatedIngestionServer.
     Thread.sleep(15000);
-    D2Client d2Client = new D2ClientBuilder()
-        .setZkHosts(zkHosts)
+    D2Client d2Client = new D2ClientBuilder().setZkHosts(zkHosts)
         .setZkSessionTimeout(3, TimeUnit.SECONDS)
         .setZkStartupTimeout(3, TimeUnit.SECONDS)
         .build();
     D2ClientUtils.startClient(d2Client);
     MetricsRepository metricsRepository = new MetricsRepository();
-    VeniceProperties backendConfig = new PropertyBuilder()
-        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+    VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
@@ -827,13 +873,14 @@ public class DaVinciClientTest {
         .build();
 
     // Re-open the same store's database to verify RocksDB metadata partition's lock has been released.
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+    try (CachingDaVinciClientFactory factory =
+        new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
       DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
       client.subscribeAll().get();
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider="CompressionStrategy")
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "CompressionStrategy")
   public void testReadCompressedData(CompressionStrategy compressionStrategy) throws Exception {
     String storeName = Utils.getUniqueString("batch-store");
     Consumer<UpdateStoreQueryParams> paramsConsumer =
@@ -848,22 +895,24 @@ public class DaVinciClientTest {
     }
   }
 
-
   private void setupHybridStore(String storeName, Consumer<UpdateStoreQueryParams> paramsConsumer) throws Exception {
     setupHybridStore(storeName, paramsConsumer, KEY_COUNT);
   }
 
-  private void setupHybridStore(String storeName, Consumer<UpdateStoreQueryParams> paramsConsumer, int keyCount) throws Exception {
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams()
-        .setHybridRewindSeconds(10)
-        .setHybridOffsetLagThreshold(10);
+  private void setupHybridStore(String storeName, Consumer<UpdateStoreQueryParams> paramsConsumer, int keyCount)
+      throws Exception {
+    UpdateStoreQueryParams params =
+        new UpdateStoreQueryParams().setHybridRewindSeconds(10).setHybridOffsetLagThreshold(10);
     paramsConsumer.accept(params);
     cluster.useControllerClient(client -> {
       client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
       TestUtils.createMetaSystemStore(client, storeName, Optional.of(logger));
       client.updateStore(storeName, params);
       cluster.createVersion(storeName, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, Stream.of());
-      SystemProducer producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM,
+      SystemProducer producer = TestPushUtils.getSamzaProducer(
+          cluster,
+          storeName,
+          Version.PushType.STREAM,
           Pair.create(VeniceSystemFactory.VENICE_PARTITIONERS, ConstantVenicePartitioner.class.getName()));
       try {
         for (int i = 0; i < keyCount; i++) {
@@ -876,10 +925,13 @@ public class DaVinciClientTest {
   }
 
   private void generateHybridData(String storeName, List<Pair<Object, Object>> dataToWrite) {
-    SystemProducer producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM,
-            Pair.create(VeniceSystemFactory.VENICE_PARTITIONERS, ConstantVenicePartitioner.class.getName()));
+    SystemProducer producer = TestPushUtils.getSamzaProducer(
+        cluster,
+        storeName,
+        Version.PushType.STREAM,
+        Pair.create(VeniceSystemFactory.VENICE_PARTITIONERS, ConstantVenicePartitioner.class.getName()));
     try {
-      for (Pair<Object,Object> record : dataToWrite) {
+      for (Pair<Object, Object> record: dataToWrite) {
         TestPushUtils.sendStreamingRecord(producer, storeName, record.getFirst(), record.getSecond());
       }
     } finally {
@@ -887,7 +939,9 @@ public class DaVinciClientTest {
     }
   }
 
-  private void setUpStore(String storeName, Consumer<UpdateStoreQueryParams> paramsConsumer,
+  private void setUpStore(
+      String storeName,
+      Consumer<UpdateStoreQueryParams> paramsConsumer,
       Consumer<Properties> propertiesConsumer) throws Exception {
     // Produce input data.
     File inputDir = getTempDataDirectory();
@@ -899,8 +953,8 @@ public class DaVinciClientTest {
     propertiesConsumer.accept(h2vProperties);
     // Create & update store for test.
     final int numPartitions = 3;
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams()
-        .setPartitionCount(numPartitions); // Update the partition count.
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(numPartitions); // Update the
+                                                                                                   // partition count.
     paramsConsumer.accept(params);
     try (ControllerClient controllerClient =
         createStoreForJob(cluster, DEFAULT_KEY_SCHEMA, "\"string\"", h2vProperties)) {

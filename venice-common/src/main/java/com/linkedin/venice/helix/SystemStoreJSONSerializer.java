@@ -13,7 +13,6 @@ import java.io.IOException;
 
 
 public class SystemStoreJSONSerializer extends VeniceJsonSerializer<SerializableSystemStore> {
-
   public SystemStoreJSONSerializer() {
     super(SerializableSystemStore.class);
     addMixin(ZKStore.class, StoreJSONSerializer.StoreSerializerMixin.class);
@@ -24,13 +23,13 @@ public class SystemStoreJSONSerializer extends VeniceJsonSerializer<Serializable
     addMixin(SerializableSystemStore.class, SystemStoreSerializerMixin.class);
   }
 
-
   public static class SystemStoreSerializerMixin {
     @JsonCreator
     public SystemStoreSerializerMixin(
         @JsonProperty("zkSharedStore") ZKStore zkSharedStore,
         @JsonProperty("systemStoreType") VeniceSystemStoreType systemStoreType,
-        @JsonProperty("veniceStore") ZKStore veniceStore) {}
+        @JsonProperty("veniceStore") ZKStore veniceStore) {
+    }
   }
 
   private void addMixin(Class veniceClass, Class serializerClass) {

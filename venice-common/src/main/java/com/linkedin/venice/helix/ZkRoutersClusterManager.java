@@ -27,7 +27,8 @@ import org.apache.zookeeper.Watcher;
  * Manage live routers through Zookeeper. Help each router to create a ZNode which reflects whether that router is
  * connected to ZK cluster or not and monitor all routers' ZNodes to get how many routers live right now.
  */
-public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildListener, IZkDataListener, VeniceResource, IZkStateListener {
+public class ZkRoutersClusterManager
+    implements RoutersClusterManager, IZkChildListener, IZkDataListener, VeniceResource, IZkStateListener {
   private static final Logger logger = LogManager.getLogger(ZkRoutersClusterManager.class);
   private static final String PREFIX_PATH = "/routers";
   private final String clusterName;
@@ -47,7 +48,11 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
   private final int refreshAttemptsForZkReconnect;
   private final long refreshIntervalForZkReconnectInMs;
 
-  public ZkRoutersClusterManager(ZkClient zkClient, HelixAdapterSerializer adaper, String clusterName, int refreshAttemptsForZkReconnect,
+  public ZkRoutersClusterManager(
+      ZkClient zkClient,
+      HelixAdapterSerializer adaper,
+      String clusterName,
+      int refreshAttemptsForZkReconnect,
       long refreshIntervalForZkReconnectInMs) {
     this.zkClient = zkClient;
     this.clusterName = clusterName;
@@ -56,7 +61,8 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
     adaper.registerSerializer(getRouterRootPath(), new RouterClusterConfigJSONSerializer());
     zkClient.setZkSerializer(adaper);
     dataAccessor = new ZkBaseDataAccessor<>(zkClient);
-    zkStateListener = new CachedResourceZkStateListener(this, refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
+    zkStateListener =
+        new CachedResourceZkStateListener(this, refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
     this.refreshAttemptsForZkReconnect = refreshAttemptsForZkReconnect;
     this.refreshIntervalForZkReconnectInMs = refreshIntervalForZkReconnectInMs;
     isConnected.set(zkClient.getConnection().getZookeeperState().isAlive());
@@ -104,7 +110,7 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
       try {
         zkClient.createPersistent(getRouterRootPath(), true);
       } catch (ZkNodeExistsException ee) {
-        //ignore, the path might already be created by other routers.
+        // ignore, the path might already be created by other routers.
       }
       // Try to create ephemeral node for this router again.
       registerRouter(instanceId);
@@ -119,10 +125,11 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
       if (!pathExistedPriorToDeletion) {
         logger.info("Attempted to delete a non-existent zk path: " + getRouterPath(instanceId));
       }
-    } catch(Exception e) {
+    } catch (Exception e) {
       // cannot delete this instance from zk path because of exceptions
-      throw new VeniceException("Error when deleting router " + instanceId +
-          " from zk path " + getRouterPath(instanceId), e);
+      throw new VeniceException(
+          "Error when deleting router " + instanceId + " from zk path " + getRouterPath(instanceId),
+          e);
     }
     changeLiveRouterCount(zkClient.getChildren(getRouterRootPath()).size());
     logger.info("Removed router " + instanceId + " from live routers temporarily");
@@ -199,7 +206,7 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
   @Override
   public void enableThrottling(boolean enable) {
     compareAndSetClusterConfig(currentData -> {
-      if(currentData == null){
+      if (currentData == null) {
         currentData = new RoutersClusterConfig();
       }
       currentData.setThrottlingEnabled(enable);
@@ -211,7 +218,7 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
   @Override
   public void enableQuotaRebalance(boolean enable, int expectRouterCount) {
     compareAndSetClusterConfig(currentData -> {
-      if(currentData == null){
+      if (currentData == null) {
         currentData = new RoutersClusterConfig();
       }
       currentData.setQuotaRebalanceEnabled(enable);
@@ -237,7 +244,7 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
   @Override
   public void enableMaxCapacityProtection(boolean enable) {
     compareAndSetClusterConfig(currentData -> {
-      if(currentData == null){
+      if (currentData == null) {
         currentData = new RoutersClusterConfig();
       }
       currentData.setMaxCapacityProtectionEnabled(enable);
@@ -264,7 +271,7 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
   }
 
   protected void changeLiveRouterCount(int newRouterCount) {
-    if(!isConnected.get()) {
+    if (!isConnected.get()) {
       return;
     }
     if (this.liveRouterCount != newRouterCount) {
@@ -275,9 +282,10 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
 
   protected void triggerRouterCountChangedEvent(int newRouterCount) {
     synchronized (routerCountListeners) {
-      // As we don't expect there are lots of routerCountListeners and the handle logic should be simple enough in each of listener,
+      // As we don't expect there are lots of routerCountListeners and the handle logic should be simple enough in each
+      // of listener,
       // so we trigger them one by one in synchronize.
-      for (RouterCountChangedListener listener : routerCountListeners) {
+      for (RouterCountChangedListener listener: routerCountListeners) {
         listener.handleRouterCountChanged(newRouterCount);
       }
     }
@@ -285,7 +293,7 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
 
   protected void triggerRouterClusterConfigChangedEvent(RoutersClusterConfig newConfig) {
     synchronized (configListeners) {
-      for (RouterClusterConfigChangedListener listener : configListeners) {
+      for (RouterClusterConfigChangedListener listener: configListeners) {
         listener.handleRouterClusterConfigChanged(newConfig);
       }
     }
@@ -297,8 +305,7 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
    * will be executed to process the event.
    */
   @Override
-  public void handleChildChange(String parentPath, List<String> currentChilds)
-      throws Exception {
+  public void handleChildChange(String parentPath, List<String> currentChilds) throws Exception {
     int oldLiveRouterCount = liveRouterCount;
     changeLiveRouterCount(currentChilds.size());
     logger.info("Live router count has been changed from: " + oldLiveRouterCount + " to: " + currentChilds.size());
@@ -311,8 +318,7 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
    * Make this method synchronized to avoid the conflict modification of routersClusterConfig.
    */
   @Override
-  public synchronized void handleDataChange(String dataPath, Object data)
-      throws Exception {
+  public synchronized void handleDataChange(String dataPath, Object data) throws Exception {
     if (data instanceof RoutersClusterConfig) {
       RoutersClusterConfig newConfig = (RoutersClusterConfig) data;
       if (routersClusterConfig == null || !routersClusterConfig.equals(newConfig)) {
@@ -323,15 +329,14 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
         logger.info("Router Cluster Config have not been changed, ignore the data changed event.");
       }
     } else {
-      if(data != null) {
+      if (data != null) {
         logger.error("Invalid config type: " + data.getClass().getName());
       }
     }
   }
 
   @Override
-  public synchronized void handleDataDeleted(String dataPath)
-      throws Exception {
+  public synchronized void handleDataDeleted(String dataPath) throws Exception {
     // Cluster is deleted.
     clear();
   }
@@ -365,14 +370,16 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
 
   @Override
   public void handleStateChanged(Watcher.Event.KeeperState keeperState) throws Exception {
-    if(keeperState.getIntValue() != 3 && keeperState.getIntValue() != 5 && keeperState.getIntValue() != 6) {
-      // Looks like we're disconnected.  Lets update our connection state and freeze our internal state
-      logger.warn("zkclient is disconnected and is in state: " + Watcher.Event.KeeperState.fromInt(keeperState.getIntValue()));
+    if (keeperState.getIntValue() != 3 && keeperState.getIntValue() != 5 && keeperState.getIntValue() != 6) {
+      // Looks like we're disconnected. Lets update our connection state and freeze our internal state
+      logger.warn(
+          "zkclient is disconnected and is in state: " + Watcher.Event.KeeperState.fromInt(keeperState.getIntValue()));
       this.isConnected.set(false);
     } else {
-      // Now we are in a connected state.  Unfreeze things and refresh data
+      // Now we are in a connected state. Unfreeze things and refresh data
       this.isConnected.set(true);
-      logger.info("zkclient is connected and is in state: " + Watcher.Event.KeeperState.fromInt(keeperState.getIntValue()));
+      logger.info(
+          "zkclient is connected and is in state: " + Watcher.Event.KeeperState.fromInt(keeperState.getIntValue()));
       this.refresh();
     }
   }

@@ -4,7 +4,6 @@ import com.google.common.collect.Sets;
 import com.linkedin.common.callback.Callback;
 import com.linkedin.common.util.None;
 import com.linkedin.data.ByteString;
-import com.linkedin.ddsstorage.base.concurrency.TimeoutProcessor;
 import com.linkedin.r2.message.RequestContext;
 import com.linkedin.r2.message.rest.RestException;
 import com.linkedin.r2.message.rest.RestRequest;
@@ -28,7 +27,6 @@ import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.net.URI;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
@@ -75,7 +73,7 @@ public class TestClientSimulator implements Client {
 
   ConcurrentHashMap<Integer, RequestInfo> requestIdToRequestInfos = new ConcurrentHashMap<>();
 
-  ConcurrentHashMap<String, Deque<ExpectedRequestEvent>> routeToExpectedRequestEvents =  new ConcurrentHashMap<>();
+  ConcurrentHashMap<String, Deque<ExpectedRequestEvent>> routeToExpectedRequestEvents = new ConcurrentHashMap<>();
 
   ClientConfig clientConfig;
 
@@ -86,18 +84,21 @@ public class TestClientSimulator implements Client {
   public final RecordSerializer<MultiGetResponseRecordV1> multiGetResponseSerializer;
   public final RecordDeserializer<MultiGetRouterRequestKeyV1> multiGetRequestDeserializer;
   private boolean speculativeQueryEnabled = false;
-  private Map<String,String> keyValues = new HashMap<>();
+  private Map<String, String> keyValues = new HashMap<>();
   private Map<String, Integer> keysToPartitions = new HashMap<>();
   private Map<String, Set<Integer>> routeToPartitions = new HashMap<>();
-  private Map<Integer,List<String>> partitionToReplicas = new HashMap<>();
+  private Map<Integer, List<String>> partitionToReplicas = new HashMap<>();
   private boolean longTailRetryEnabledForBatchGet = false;
   private int longTailRetryThresholdForBatchGetInMicroseconds = 0;
 
   public TestClientSimulator() {
     this.keySerializer = FastSerializerDeserializerFactory.getAvroGenericSerializer(KEY_VALUE_SCHEMA);
-    this.keyDeserializer = FastSerializerDeserializerFactory.getAvroGenericDeserializer(KEY_VALUE_SCHEMA,KEY_VALUE_SCHEMA);
-    this.multiGetRequestDeserializer = FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(MultiGetRouterRequestKeyV1.SCHEMA$,MultiGetRouterRequestKeyV1.class);
-    this.multiGetResponseSerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
+    this.keyDeserializer =
+        FastSerializerDeserializerFactory.getAvroGenericDeserializer(KEY_VALUE_SCHEMA, KEY_VALUE_SCHEMA);
+    this.multiGetRequestDeserializer = FastSerializerDeserializerFactory
+        .getFastAvroSpecificDeserializer(MultiGetRouterRequestKeyV1.SCHEMA$, MultiGetRouterRequestKeyV1.class);
+    this.multiGetResponseSerializer =
+        FastSerializerDeserializerFactory.getFastAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
   }
 
   /**
@@ -107,7 +108,7 @@ public class TestClientSimulator implements Client {
    * @return keys and values with the pattern k_i and v_i
    */
   public TestClientSimulator generateKeyValues(int start, int end) {
-    for ( int i = start; i < end; i++) {
+    for (int i = start; i < end; i++) {
       keyValues.put("k_" + i, "v_" + i);
     }
     return this;
@@ -120,13 +121,16 @@ public class TestClientSimulator implements Client {
    */
   public TestClientSimulator partitionKeys(int numPartitions) {
     int i = 0;
-    for( String key : keyValues.keySet()) {
+    for (String key: keyValues.keySet()) {
       keysToPartitions.put(key, i++ % numPartitions);
     }
     return this;
   }
 
-  public TestClientSimulator expectRequestWithKeysForPartitionOnRoute(int timeTick, int requestId, String route ,
+  public TestClientSimulator expectRequestWithKeysForPartitionOnRoute(
+      int timeTick,
+      int requestId,
+      String route,
       int... partitions) {
     RequestInfo requestInfo = new RequestInfo();
     requestInfo.requestId = requestId;
@@ -138,16 +142,17 @@ public class TestClientSimulator implements Client {
         .filter(e -> partitionSet.contains(e.getValue()))
         .collect(Collectors.toMap(e -> e.getKey(), e -> keyValues.get(e.getKey())));
 
-    requestIdToRequestInfos.put(requestInfo.requestId,requestInfo);
+    requestIdToRequestInfos.put(requestInfo.requestId, requestInfo);
     ExpectedRequestEvent expectedRequestEvent = new ExpectedRequestEvent(requestInfo, timeTick);
     timeToEvents.computeIfAbsent(timeTick, t -> new ArrayList<>()).add(expectedRequestEvent);
-    routeToExpectedRequestEvents.computeIfAbsent(requestInfo.route,r -> new LinkedList<>()).addLast(expectedRequestEvent);
+    routeToExpectedRequestEvents.computeIfAbsent(requestInfo.route, r -> new LinkedList<>())
+        .addLast(expectedRequestEvent);
 
     return this;
   }
 
   public TestClientSimulator respondToRequestWithKeyValues(int timeTick, int requestId) {
-    if ( ! requestIdToRequestInfos.containsKey(requestId)) {
+    if (!requestIdToRequestInfos.containsKey(requestId)) {
       throw new IllegalStateException("Must have a corresponding request");
     }
     timeToEvents.putIfAbsent(timeTick, new ArrayList<>());
@@ -156,14 +161,13 @@ public class TestClientSimulator implements Client {
   }
 
   public TestClientSimulator respondToRequestWithError(int timeTick, int requestId, int errorCode) {
-    if ( ! requestIdToRequestInfos.containsKey(requestId)) {
+    if (!requestIdToRequestInfos.containsKey(requestId)) {
       throw new IllegalStateException("Must have a corresponding request");
     }
     timeToEvents.putIfAbsent(timeTick, new ArrayList<>());
-    timeToEvents.get(timeTick).add(new SendResponseEvent(requestIdToRequestInfos.get(requestId),errorCode));
+    timeToEvents.get(timeTick).add(new SendResponseEvent(requestIdToRequestInfos.get(requestId), errorCode));
     return this;
   }
-
 
   @Override
   public Future<RestResponse> restRequest(RestRequest request) {
@@ -179,9 +183,9 @@ public class TestClientSimulator implements Client {
   public void restRequest(RestRequest request, Callback<RestResponse> callback) {
     // Receive and deserialize the request to verify
     URI uri = request.getURI();
-    if ( uri.getHost() != null) {
-      String route = uri.getScheme() + "://" + uri.getHost() ;
-      LOGGER.info("Received rest request on route {} " , route);
+    if (uri.getHost() != null) {
+      String route = uri.getScheme() + "://" + uri.getHost();
+      LOGGER.info("Received rest request on route {} ", route);
       Deque<ExpectedRequestEvent> requestInfos = routeToExpectedRequestEvents.get(route);
 
       Assert.assertFalse(requestInfos.isEmpty());
@@ -190,16 +194,20 @@ public class TestClientSimulator implements Client {
 
       Set<String> expectedKeys = new HashSet<>(expectedRequestEvent.info.keyValues.keySet());
       expectedRequestEvent.info.orderedKeys = new ArrayList<>();
-      LOGGER.info("t:{} Received rest request . Expecting {} keys on route {} routeId {}" ,
-          currentTimeTick.get(), expectedKeys.size(), route, expectedRequestEvent.info.requestId);
+      LOGGER.info(
+          "t:{} Received rest request . Expecting {} keys on route {} routeId {}",
+          currentTimeTick.get(),
+          expectedKeys.size(),
+          route,
+          expectedRequestEvent.info.requestId);
 
       ByteString entity = request.getEntity();
       Iterable<MultiGetRouterRequestKeyV1> multiGetRouterRequestKeyV1s =
           multiGetRequestDeserializer.deserializeObjects(new ByteBufferOptimizedBinaryDecoder(entity.copyBytes()));
-      for (MultiGetRouterRequestKeyV1 keyRecord : multiGetRouterRequestKeyV1s) {
+      for (MultiGetRouterRequestKeyV1 keyRecord: multiGetRouterRequestKeyV1s) {
         Utf8 key = keyDeserializer.deserialize(keyRecord.keyBytes);
-        LOGGER.info("t:{} Received key {} on route {} " , currentTimeTick.get(), key, route);
-        Assert.assertTrue(expectedKeys.contains(key.toString()),"Unexpected key received " + key);
+        LOGGER.info("t:{} Received key {} on route {} ", currentTimeTick.get(), key, route);
+        Assert.assertTrue(expectedKeys.contains(key.toString()), "Unexpected key received " + key);
         expectedKeys.remove(key.toString());
         expectedRequestEvent.info.orderedKeys.add(key.toString());
       }
@@ -224,9 +232,9 @@ public class TestClientSimulator implements Client {
     return this;
   }
 
-  public TestClientSimulator assignRouteToPartitions(String route , int... partitions) {
+  public TestClientSimulator assignRouteToPartitions(String route, int... partitions) {
     Set<Integer> partitionSet = this.routeToPartitions.computeIfAbsent(route, r -> new HashSet<>());
-    for (int partition : partitions) {
+    for (int partition: partitions) {
       partitionSet.add(partition);
     }
     return this;
@@ -241,22 +249,24 @@ public class TestClientSimulator implements Client {
     return keyValues;
   }
 
-  public TestClientSimulator expectReplicaRequestForPartitionAndRespondWithReplicas(int partitionId ,
+  public TestClientSimulator expectReplicaRequestForPartitionAndRespondWithReplicas(
+      int partitionId,
       List<String> replicas) {
-    partitionToReplicas.put(partitionId,replicas);
+    partitionToReplicas.put(partitionId, replicas);
     return this;
   }
 
-  abstract class Event{
+  abstract class Event {
     int timeTick;
     CompletableFuture<Integer> future = new CompletableFuture<>();
+
     abstract CompletableFuture<Integer> execute();
   }
 
-  class RequestInfo{
+  class RequestInfo {
     int requestId;
     String route;
-    Map<String,String> keyValues;
+    Map<String, String> keyValues;
     Callback<RestResponse> callback;
     List<String> orderedKeys;
 
@@ -267,7 +277,7 @@ public class TestClientSimulator implements Client {
     }
   }
 
-  class ExpectedRequestEvent extends Event{
+  class ExpectedRequestEvent extends Event {
     RequestInfo info;
 
     public ExpectedRequestEvent(RequestInfo info, int timeTick) {
@@ -277,7 +287,7 @@ public class TestClientSimulator implements Client {
 
     public CompletableFuture<Integer> execute() {
       LOGGER.info(" t:{} Waiting for request {} ", timeTick, info);
-      return future.whenComplete((v,e) -> {
+      return future.whenComplete((v, e) -> {
         // If we get here our expectations are matched. Move the clock to the expected timeTick
         LOGGER.info("t:{} Request {} matched ", timeTick, info);
         currentTimeTick.set(timeTick);
@@ -290,7 +300,7 @@ public class TestClientSimulator implements Client {
     }
   }
 
-  class SendResponseEvent extends Event{
+  class SendResponseEvent extends Event {
     RequestInfo info;
     boolean isError;
     int errorCode;
@@ -298,6 +308,7 @@ public class TestClientSimulator implements Client {
     public SendResponseEvent(RequestInfo requestInfo) {
       this.info = requestInfo;
     }
+
     public SendResponseEvent(RequestInfo requestInfo, int errorCode) {
       this.info = requestInfo;
       this.isError = true;
@@ -305,13 +316,20 @@ public class TestClientSimulator implements Client {
     }
 
     public CompletableFuture<Integer> execute() {
-      if ( isError) {
-        LOGGER.info("t:{} Sending error response via route {} for request {} ", currentTimeTick.get(),
-            info.route, info.requestId);
-        info.callback.onError(RestException.forError(errorCode,"Something is rotten"));
+      if (isError) {
+        LOGGER.info(
+            "t:{} Sending error response via route {} for request {} ",
+            currentTimeTick.get(),
+            info.route,
+            info.requestId);
+        info.callback.onError(RestException.forError(errorCode, "Something is rotten"));
       } else {
-        LOGGER.info("t:{} Sending {} keys via route {} for request {} ", currentTimeTick.get(),
-            info.keyValues.size(), info.route, info.requestId);
+        LOGGER.info(
+            "t:{} Sending {} keys via route {} for request {} ",
+            currentTimeTick.get(),
+            info.keyValues.size(),
+            info.route,
+            info.requestId);
         List<MultiGetResponseRecordV1> multiGetResponse = new ArrayList<>();
         for (int i = 0; i < info.orderedKeys.size(); i++) {
           MultiGetResponseRecordV1 rec = new MultiGetResponseRecordV1();
@@ -321,8 +339,7 @@ public class TestClientSimulator implements Client {
           multiGetResponse.add(rec);
         }
         RestResponseBuilder restResponseBuilder = new RestResponseBuilder();
-        restResponseBuilder
-            .setEntity(multiGetResponseSerializer.serializeObjects(multiGetResponse))
+        restResponseBuilder.setEntity(multiGetResponseSerializer.serializeObjects(multiGetResponse))
             .setStatus(200)
             .build();
         info.callback.onSuccess(restResponseBuilder.build());
@@ -330,6 +347,7 @@ public class TestClientSimulator implements Client {
       future.complete(timeTick);
       return future;
     }
+
     @Override
     public String toString() {
       return "SendResponseEvent {" + "route=" + info.route + ", numberOfKeys =" + info.keyValues.size() + "}";
@@ -338,55 +356,56 @@ public class TestClientSimulator implements Client {
 
   AtomicInteger currentTimeTick = new AtomicInteger();
   int timeIntervalBetweenEventsInMs = 1;
-  ScheduledExecutorService executor ;
+  ScheduledExecutorService executor;
   CompletableFuture<Integer> simulatorComplete = new CompletableFuture<>();
 
-   public void simulate() {
-     LOGGER.info("Starting simulation with {} keys and {} partitions" , keyValues.size(),
-         new HashSet<>(keysToPartitions.values()).size());
-     LOGGER.info("Simulating timeline -->  ");
-     for( int time : timeToEvents.navigableKeySet()) {
-       LOGGER.info("  time: {} , events: -- >", time);
-       for( Event event : timeToEvents.get(time)) {
-         LOGGER.info("    event: --> {} ", event);
-       }
-     }
-     executor = Executors.newScheduledThreadPool(4);
-     executor.schedule(() -> executeTimedEvents(0), timeIntervalBetweenEventsInMs, TimeUnit.MILLISECONDS);
-     getSimulatorComplete().whenComplete((v, t) -> {
-       try {
-         TestUtils.shutdownExecutor(executor);
-       } catch (InterruptedException e) {
-         Assert.fail("Executor shutdown interrupted", e);
-       }
-     });
-   }
+  public void simulate() {
+    LOGGER.info(
+        "Starting simulation with {} keys and {} partitions",
+        keyValues.size(),
+        new HashSet<>(keysToPartitions.values()).size());
+    LOGGER.info("Simulating timeline -->  ");
+    for (int time: timeToEvents.navigableKeySet()) {
+      LOGGER.info("  time: {} , events: -- >", time);
+      for (Event event: timeToEvents.get(time)) {
+        LOGGER.info("    event: --> {} ", event);
+      }
+    }
+    executor = Executors.newScheduledThreadPool(4);
+    executor.schedule(() -> executeTimedEvents(0), timeIntervalBetweenEventsInMs, TimeUnit.MILLISECONDS);
+    getSimulatorComplete().whenComplete((v, t) -> {
+      try {
+        TestUtils.shutdownExecutor(executor);
+      } catch (InterruptedException e) {
+        Assert.fail("Executor shutdown interrupted", e);
+      }
+    });
+  }
 
   public synchronized void executeTimedEvents(int time) {
-     currentTimeTick.set(time);
-     LOGGER.info("t:{} Executing {} timed events ", currentTimeTick.get(), timeToEvents.get(currentTimeTick.get()));
-     if(timeToEvents.containsKey(currentTimeTick.get())) {
-       List<Event> events = timeToEvents.get(currentTimeTick.get());
-       int index = 0;
-       CompletableFuture[] futures = new CompletableFuture[events.size()];
-       for (Event event : events) {
-         futures[index++] = event.future;
-       }
-       CompletableFuture.allOf(futures)
-           .whenComplete(this::scheduleNextTimeTick);
-       for (Event event : events) {
-         event.execute();
-       }
-     } else {
-       scheduleNextTimeTick(null, null);
-     }
+    currentTimeTick.set(time);
+    LOGGER.info("t:{} Executing {} timed events ", currentTimeTick.get(), timeToEvents.get(currentTimeTick.get()));
+    if (timeToEvents.containsKey(currentTimeTick.get())) {
+      List<Event> events = timeToEvents.get(currentTimeTick.get());
+      int index = 0;
+      CompletableFuture[] futures = new CompletableFuture[events.size()];
+      for (Event event: events) {
+        futures[index++] = event.future;
+      }
+      CompletableFuture.allOf(futures).whenComplete(this::scheduleNextTimeTick);
+      for (Event event: events) {
+        event.execute();
+      }
+    } else {
+      scheduleNextTimeTick(null, null);
+    }
   }
 
   private void scheduleNextTimeTick(Void i, Throwable e) {
-     if ( e != null) {
-       LOGGER.error("Exception while executing timed event {} , {} " , currentTimeTick.get(), e);
-       simulatorComplete.completeExceptionally(e);
-     }
+    if (e != null) {
+      LOGGER.error("Exception while executing timed event {} , {} ", currentTimeTick.get(), e);
+      simulatorComplete.completeExceptionally(e);
+    }
     Integer nextTimeTick = timeToEvents.higherKey(currentTimeTick.get());
     LOGGER.info("t:{} Scheduling next timer for {} ", currentTimeTick.get(), nextTimeTick);
     if (nextTimeTick != null) {
@@ -394,7 +413,7 @@ public class TestClientSimulator implements Client {
       currentTimeTick.set(nextTimeTick);
       executor.schedule(() -> executeTimedEvents(nextTimeTick), delay, TimeUnit.MILLISECONDS);
     } else { // this is the last timetick
-      LOGGER.info("Completing simulation at timeTick {} " , currentTimeTick.get());
+      LOGGER.info("Completing simulation at timeTick {} ", currentTimeTick.get());
       simulatorComplete.complete(currentTimeTick.get());
     }
   }
@@ -413,12 +432,13 @@ public class TestClientSimulator implements Client {
     return this;
   }
 
-  public TestClientSimulator setLongTailRetryThresholdForBatchGetInMicroseconds(int longTailRetryThresholdForBatchGetInMicroseconds) {
+  public TestClientSimulator setLongTailRetryThresholdForBatchGetInMicroseconds(
+      int longTailRetryThresholdForBatchGetInMicroseconds) {
     this.longTailRetryThresholdForBatchGetInMicroseconds = longTailRetryThresholdForBatchGetInMicroseconds;
     return this;
   }
 
-  public AvroGenericStoreClient<String,Utf8> getFastClient() {
+  public AvroGenericStoreClient<String, Utf8> getFastClient() {
     // Test generic store client
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<Object, Object, SpecificRecord>();
@@ -426,15 +446,16 @@ public class TestClientSimulator implements Client {
     clientConfigBuilder.setR2Client(this);
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfigBuilder.setSpeculativeQueryEnabled(speculativeQueryEnabled);
-    if ( longTailRetryEnabledForBatchGet) {
+    if (longTailRetryEnabledForBatchGet) {
       clientConfigBuilder.setLongTailRetryEnabledForBatchGet(longTailRetryEnabledForBatchGet);
-      clientConfigBuilder.setLongTailRetryThresholdForBatchGetInMicroSeconds(longTailRetryThresholdForBatchGetInMicroseconds);
+      clientConfigBuilder
+          .setLongTailRetryThresholdForBatchGetInMicroSeconds(longTailRetryThresholdForBatchGetInMicroseconds);
     }
     clientConfigBuilder.setClientRoutingStrategy(new ClientRoutingStrategy() {
       @Override
       public List<String> getReplicas(long requestId, List<String> replicas, int requiredReplicaCount) {
         List<String> retReplicas = new ArrayList<>();
-        for(int i = 0; i < requiredReplicaCount && i < replicas.size(); i++) {
+        for (int i = 0; i < requiredReplicaCount && i < replicas.size(); i++) {
           retReplicas.add(replicas.get(i));
         }
         return retReplicas;
@@ -463,10 +484,11 @@ public class TestClientSimulator implements Client {
 
       @Override
       public List<String> getReplicas(int version, int partitionId) {
-        if ( partitionToReplicas.containsKey(partitionId)) {
+        if (partitionToReplicas.containsKey(partitionId)) {
           return partitionToReplicas.get(partitionId);
         } else {
-          return routeToPartitions.keySet().stream()
+          return routeToPartitions.keySet()
+              .stream()
               .filter(r -> routeToPartitions.get(r).contains(partitionId))
               .collect(Collectors.toList());
         }

@@ -1,5 +1,8 @@
 package com.linkedin.venice.router.api;
 
+import static com.linkedin.venice.HttpConstants.*;
+import static io.netty.handler.codec.http.HttpResponseStatus.*;
+
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
@@ -30,9 +33,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
-import static com.linkedin.venice.HttpConstants.*;
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
-
 
 /**
  * This class is used to handle all the decompression related logic in Router, and it will be used in
@@ -42,7 +42,8 @@ public class VeniceResponseDecompressor {
   private static final RecordSerializer<MultiGetResponseRecordV1> recordSerializer =
       FastSerializerDeserializerFactory.getFastAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
   private static final RecordDeserializer<MultiGetResponseRecordV1> recordDeserializer =
-      FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(MultiGetResponseRecordV1.SCHEMA$, MultiGetResponseRecordV1.class);
+      FastSerializerDeserializerFactory
+          .getFastAvroSpecificDeserializer(MultiGetResponseRecordV1.SCHEMA$, MultiGetResponseRecordV1.class);
 
   private final CompressionStrategy clientCompression;
   private final RouterStats<AggRouterHttpRequestStats> routerStats;
@@ -53,9 +54,15 @@ public class VeniceResponseDecompressor {
   private final ExecutorService decompressionExecutor;
   private final int multiGetDecompressionBatchSize;
 
-  public VeniceResponseDecompressor(boolean decompressOnClient, RouterStats<AggRouterHttpRequestStats> routerStats,
-      BasicFullHttpRequest request, String storeName, int version, CompressorFactory compressorFactory,
-      ExecutorService decompressionExecutor, int multiGetDecompressionBatchSize) {
+  public VeniceResponseDecompressor(
+      boolean decompressOnClient,
+      RouterStats<AggRouterHttpRequestStats> routerStats,
+      BasicFullHttpRequest request,
+      String storeName,
+      int version,
+      CompressorFactory compressorFactory,
+      ExecutorService decompressionExecutor,
+      int multiGetDecompressionBatchSize) {
     this.routerStats = routerStats;
     this.clientCompression = decompressOnClient ? getClientSupportedCompression(request) : CompressionStrategy.NO_OP;
     this.storeName = storeName;
@@ -91,7 +98,8 @@ public class VeniceResponseDecompressor {
     stats.recordCompressedResponseSize(storeName, content.readableBytes());
     long startTimeInNs = System.nanoTime();
     ByteBuf copy = content.isReadOnly() ? content.copy() : content;
-    ByteBuf decompressedData = Unpooled.wrappedBuffer(decompressRecord(compressionStrategy, copy.nioBuffer(), RequestType.SINGLE_GET));
+    ByteBuf decompressedData =
+        Unpooled.wrappedBuffer(decompressRecord(compressionStrategy, copy.nioBuffer(), RequestType.SINGLE_GET));
     final long decompressionTimeInNs = System.nanoTime() - startTimeInNs;
     stats.recordDecompressionTime(storeName, LatencyUtils.getLatencyInMS(startTimeInNs));
 
@@ -120,7 +128,7 @@ public class VeniceResponseDecompressor {
       CompositeByteBuf decompressedData = Unpooled.compositeBuffer();
       long startTimeInNs = System.nanoTime();
       if (content instanceof CompositeByteBuf) {
-        for (ByteBuf buffer : (CompositeByteBuf) content) {
+        for (ByteBuf buffer: (CompositeByteBuf) content) {
           decompressedData.addComponent(true, decompressMultiGetRecords(compressionStrategy, buffer));
         }
       } else {
@@ -140,7 +148,9 @@ public class VeniceResponseDecompressor {
     }
   }
 
-  public Pair<ByteBuf, CompressionStrategy> processMultiGetResponseForStreaming(CompressionStrategy responseCompression, ByteBuf content) {
+  public Pair<ByteBuf, CompressionStrategy> processMultiGetResponseForStreaming(
+      CompressionStrategy responseCompression,
+      ByteBuf content) {
     if (canPassThroughResponse(responseCompression)) {
       // Decompress record on the client side if needed
       return new Pair<>(content, responseCompression);
@@ -156,14 +166,20 @@ public class VeniceResponseDecompressor {
     return new Pair<>(decompressedContent, CompressionStrategy.NO_OP);
   }
 
-  private ByteBuffer decompressRecord(CompressionStrategy compressionStrategy, ByteBuffer compressedData, RequestType requestType) {
+  private ByteBuffer decompressRecord(
+      CompressionStrategy compressionStrategy,
+      ByteBuffer compressedData,
+      RequestType requestType) {
     try {
       VeniceCompressor compressor;
       if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
         compressor = compressorFactory.getVersionSpecificCompressor(kafkaTopic);
         if (compressor == null) {
-          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(requestType),
-              SERVICE_UNAVAILABLE, "Compressor not available for resource " + kafkaTopic + ". Dictionary not downloaded.");
+          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
+              Optional.of(storeName),
+              Optional.of(requestType),
+              SERVICE_UNAVAILABLE,
+              "Compressor not available for resource " + kafkaTopic + ". Dictionary not downloaded.");
         }
       } else {
         compressor = compressorFactory.getCompressor(compressionStrategy);
@@ -171,20 +187,22 @@ public class VeniceResponseDecompressor {
       ByteBuffer decompressed = compressor.decompress(compressedData);
       return decompressed;
     } catch (IOException e) {
-      String errorMsg = String.format("Failed to decompress data. Store: %s; Version: %d, error: %s", storeName, version, e.getMessage());
-      throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(requestType),
-          BAD_GATEWAY, errorMsg);
+      String errorMsg = String
+          .format("Failed to decompress data. Store: %s; Version: %d, error: %s", storeName, version, e.getMessage());
+      throw RouterExceptionAndTrackingUtils
+          .newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(requestType), BAD_GATEWAY, errorMsg);
     }
   }
 
   private ByteBuf decompressMultiGetRecords(CompressionStrategy compressionStrategy, ByteBuf data) {
     ByteBuf copy = data.isReadOnly() ? data.copy() : data;
     Iterable<MultiGetResponseRecordV1> records = recordDeserializer.deserializeObjects(
-        OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(copy.array(), 0, copy.readableBytes()));
+        OptimizedBinaryDecoderFactory.defaultFactory()
+            .createOptimizedBinaryDecoder(copy.array(), 0, copy.readableBytes()));
 
     List<CompletableFuture<Void>> decompressRecordsFutures = new ArrayList<>();
     List<MultiGetResponseRecordV1> decompressionBatch = null;
-    for (MultiGetResponseRecordV1 record : records) {
+    for (MultiGetResponseRecordV1 record: records) {
       if (decompressionBatch == null) {
         decompressionBatch = new ArrayList<>(multiGetDecompressionBatchSize);
       }
@@ -208,19 +226,27 @@ public class VeniceResponseDecompressor {
             }
 
             return null;
-          }).get(1L, TimeUnit.SECONDS);
+          })
+          .get(1L, TimeUnit.SECONDS);
     } catch (Exception e) {
-      String errorMsg = String.format("Failed to decompress data. Store: %s; Version: %d, error: %s", storeName, version, e.getMessage());
-      throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(RequestType.MULTI_GET),
-          BAD_GATEWAY, errorMsg);
+      String errorMsg = String
+          .format("Failed to decompress data. Store: %s; Version: %d, error: %s", storeName, version, e.getMessage());
+      throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
+          Optional.of(storeName),
+          Optional.of(RequestType.MULTI_GET),
+          BAD_GATEWAY,
+          errorMsg);
     }
 
     return Unpooled.wrappedBuffer(recordSerializer.serializeObjects(records, AvroSerializer.REUSE.get()));
   }
 
-  private CompletableFuture<Void> decompressRecords(List<MultiGetResponseRecordV1> records, CompressionStrategy compressionStrategy, ExecutorService executor) {
+  private CompletableFuture<Void> decompressRecords(
+      List<MultiGetResponseRecordV1> records,
+      CompressionStrategy compressionStrategy,
+      ExecutorService executor) {
     return CompletableFuture.supplyAsync(() -> {
-      for (MultiGetResponseRecordV1 record : records) {
+      for (MultiGetResponseRecordV1 record: records) {
         record.value = decompressRecord(compressionStrategy, record.value, RequestType.MULTI_GET);
       }
       return null;

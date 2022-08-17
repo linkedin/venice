@@ -1,5 +1,7 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
@@ -16,8 +18,6 @@ import org.apache.hadoop.mapred.JobConf;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-
 
 public class KafkaInputUtils {
   public static KafkaClientFactory getConsumerFactory(JobConf config) {
@@ -26,10 +26,13 @@ public class KafkaInputUtils {
     if (config.get(SSL_CONFIGURATOR_CLASS_CONFIG) != null) {
       SSLConfigurator configurator = SSLConfigurator.getSSLConfigurator(config.get(SSL_CONFIGURATOR_CLASS_CONFIG));
       try {
-        sslProps = configurator.setupSSLConfig(HadoopUtils.getProps(config), UserCredentialsFactory.getHadoopUserCredentials());
+        sslProps = configurator
+            .setupSSLConfig(HadoopUtils.getProps(config), UserCredentialsFactory.getHadoopUserCredentials());
         VeniceProperties veniceProperties = new VeniceProperties(sslProps);
         // Copy the pass-through Kafka properties
-        consumerFactoryProperties.putAll(veniceProperties.clipAndFilterNamespace(KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX).toProperties());
+        consumerFactoryProperties.putAll(
+            veniceProperties.clipAndFilterNamespace(KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX)
+                .toProperties());
         // Copy the mandatory ssl configs
         KafkaSSLUtils.validateAndCopyKafakaSSLConfig(veniceProperties, consumerFactoryProperties);
       } catch (IOException e) {
@@ -41,7 +44,8 @@ public class KafkaInputUtils {
      * Use a large receive buffer size: 4MB since Kafka re-push could consume remotely.
      */
     consumerFactoryProperties.setProperty(CommonClientConfigs.RECEIVE_BUFFER_CONFIG, Long.toString(4 * 1024 * 1024));
-    consumerFactoryProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, config.get(KAFKA_INPUT_BROKER_URL));
+    consumerFactoryProperties
+        .setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, config.get(KAFKA_INPUT_BROKER_URL));
 
     return new KafkaConsumerFactoryImpl(new VeniceProperties(consumerFactoryProperties));
   }

@@ -14,9 +14,12 @@ public class PushStatusCleanUpStats extends AbstractVeniceStats {
 
   public PushStatusCleanUpStats(MetricsRepository metricsRepository, String storeName) {
     super(metricsRepository, storeName);
-    failedLeakedPushStatusCleanUpCountSensor = registerSensorIfAbsent("failed_leaked_push_status_clean_up_count", new Rate());
-    successfulLeakedPushStatusCleanUpCountSensor = registerSensorIfAbsent("successful_leaked_push_status_clean_up_count", new Rate());
-    leakedPushStatusCleanUpServiceStateSensor = registerSensorIfAbsent("leaked_push_status_clean_up_service_state", new Gauge());
+    failedLeakedPushStatusCleanUpCountSensor =
+        registerSensorIfAbsent("failed_leaked_push_status_clean_up_count", new Rate());
+    successfulLeakedPushStatusCleanUpCountSensor =
+        registerSensorIfAbsent("successful_leaked_push_status_clean_up_count", new Rate());
+    leakedPushStatusCleanUpServiceStateSensor =
+        registerSensorIfAbsent("leaked_push_status_clean_up_service_state", new Gauge());
   }
 
   public void recordSuccessfulLeakedPushStatusCleanUpCount(int count) {

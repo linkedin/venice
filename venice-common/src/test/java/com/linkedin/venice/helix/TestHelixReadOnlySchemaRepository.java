@@ -13,8 +13,9 @@ import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
-
+import java.util.Collection;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.zookeeper.CreateMode;
@@ -23,8 +24,6 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import java.util.Collection;
-import java.util.concurrent.TimeUnit;
 
 public class TestHelixReadOnlySchemaRepository {
   private String zkAddress;
@@ -49,7 +48,11 @@ public class TestHelixReadOnlySchemaRepository {
     zkClient.create(clusterPath, null, CreateMode.PERSISTENT);
     zkClient.create(clusterPath + storesPath, null, CreateMode.PERSISTENT);
 
-    storeRWRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, Optional.empty(),
+    storeRWRepo = new HelixReadWriteStoreRepository(
+        zkClient,
+        adapter,
+        cluster,
+        Optional.empty(),
         new ClusterLockManager(cluster));
     storeRWRepo.refresh();
     storeRORepo = new HelixReadOnlyStoreRepository(zkClient, adapter, cluster, 1, 1000);
@@ -66,8 +69,15 @@ public class TestHelixReadOnlySchemaRepository {
   }
 
   private void createStore(String storeName) {
-    Store store = new ZKStore(storeName, "abc@linkedin.com", 10, PersistenceType.ROCKS_DB,
-        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS, 1);
+    Store store = new ZKStore(
+        storeName,
+        "abc@linkedin.com",
+        10,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        1);
     storeRWRepo.addStore(store);
     TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> storeRORepo.hasStore(storeName));
   }
@@ -106,7 +116,8 @@ public class TestHelixReadOnlySchemaRepository {
     TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
       return 1 == schemaRORepo.getValueSchemas(storeName).size();
     });
-    Assert.assertNotEquals(SchemaData.INVALID_VALUE_SCHEMA_ID, schemaRORepo.getValueSchemaId(storeName, valueSchemaStr));
+    Assert
+        .assertNotEquals(SchemaData.INVALID_VALUE_SCHEMA_ID, schemaRORepo.getValueSchemaId(storeName, valueSchemaStr));
     Assert.assertTrue(schemaRORepo.hasValueSchema(storeName, 1));
     Assert.assertFalse(schemaRORepo.hasValueSchema(storeName, 2));
   }
@@ -124,21 +135,12 @@ public class TestHelixReadOnlySchemaRepository {
     createStore(storeName);
     Assert.assertNull(schemaRORepo.getValueSchema(storeName, 1));
     // Add new value schema
-    String valueSchemaStr1 = "{\n" +
-        "\t\"type\": \"record\",\n" +
-        "\t\"name\": \"key\",\n" +
-        "\t\"fields\": [\n" +
-        "\t\t{\"type\": \"string\", \"name\": \"id\"}\n" +
-        "\t]\n" +
-        "}";
-    String valueSchemaStr2 = "{\n" +
-        "\t\"type\": \"record\",\n" +
-        "\t\"name\": \"key\",\n" +
-        "\t\"fields\": [\n" +
-        "\t\t{\"type\": \"string\", \"name\": \"id\"},\n" +
-        "\t\t{\"type\": [\"string\",\"null\"], \"name\": \"stuff\", \"default\": \"null\", \"doc\": \"new field\"}\n" +
-        "\t]\n" +
-        "}";
+    String valueSchemaStr1 = "{\n" + "\t\"type\": \"record\",\n" + "\t\"name\": \"key\",\n" + "\t\"fields\": [\n"
+        + "\t\t{\"type\": \"string\", \"name\": \"id\"}\n" + "\t]\n" + "}";
+    String valueSchemaStr2 = "{\n" + "\t\"type\": \"record\",\n" + "\t\"name\": \"key\",\n" + "\t\"fields\": [\n"
+        + "\t\t{\"type\": \"string\", \"name\": \"id\"},\n"
+        + "\t\t{\"type\": [\"string\",\"null\"], \"name\": \"stuff\", \"default\": \"null\", \"doc\": \"new field\"}\n"
+        + "\t]\n" + "}";
 
     schemaRWRepo.addValueSchema(storeName, valueSchemaStr1);
     schemaRWRepo.addValueSchema(storeName, valueSchemaStr2);
@@ -185,13 +187,8 @@ public class TestHelixReadOnlySchemaRepository {
     String storeName = "test_store1";
     createStore(storeName);
     // Add new value schema
-    String valueSchemaStr1 = "{\n" +
-        "\t\"type\": \"record\",\n" +
-        "\t\"name\": \"key\",\n" +
-        "\t\"fields\": [\n" +
-        "\t\t{\"type\": \"string\", \"name\": \"id\"}\n" +
-        "\t]\n" +
-        "}";
+    String valueSchemaStr1 = "{\n" + "\t\"type\": \"record\",\n" + "\t\"name\": \"key\",\n" + "\t\"fields\": [\n"
+        + "\t\t{\"type\": \"string\", \"name\": \"id\"}\n" + "\t]\n" + "}";
 
     schemaRWRepo.addValueSchema(storeName, valueSchemaStr1);
     TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {

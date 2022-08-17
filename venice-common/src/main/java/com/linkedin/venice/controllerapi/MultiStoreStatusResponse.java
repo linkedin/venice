@@ -2,6 +2,7 @@ package com.linkedin.venice.controllerapi;
 
 import java.util.Map;
 
+
 public class MultiStoreStatusResponse extends ControllerResponse {
   private Map<String, String> storeStatusMap;
 

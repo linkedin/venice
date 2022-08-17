@@ -8,6 +8,5 @@ import java.security.cert.X509Certificate;
  * to decide what exact information it is.
  */
 public interface IdentityParser {
-
   String parseIdentityFromCert(X509Certificate certificate);
 }

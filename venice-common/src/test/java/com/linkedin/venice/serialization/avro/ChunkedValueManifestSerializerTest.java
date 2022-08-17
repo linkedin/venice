@@ -10,7 +10,8 @@ import org.testng.annotations.Test;
 
 
 public class ChunkedValueManifestSerializerTest {
-  private static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER = new ChunkedValueManifestSerializer(false);
+  private static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER =
+      new ChunkedValueManifestSerializer(false);
 
   @Test
   public void testSerializerWithHeader() {
@@ -22,8 +23,8 @@ public class ChunkedValueManifestSerializerTest {
     chunkedValueManifest.schemaId = 1;
     chunkedValueManifest.size = 1;
     byte[] serialized = CHUNKED_VALUE_MANIFEST_SERIALIZER.serialize("", chunkedValueManifest);
-    ChunkedValueManifest deserialized = CHUNKED_VALUE_MANIFEST_SERIALIZER.deserialize(serialized,
-        AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
+    ChunkedValueManifest deserialized = CHUNKED_VALUE_MANIFEST_SERIALIZER
+        .deserialize(serialized, AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
 
     Assert.assertEquals(deserialized.keysWithChunkIdSuffix.size(), 1);
     Assert.assertTrue(Arrays.equals(deserialized.keysWithChunkIdSuffix.get(0).array(), keyWithChunkIdSuffix));

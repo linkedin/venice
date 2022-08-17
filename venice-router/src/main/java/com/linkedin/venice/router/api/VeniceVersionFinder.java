@@ -41,9 +41,14 @@ public class VeniceVersionFinder {
   private final OnlineInstanceFinder onlineInstanceFinder;
   private final CompressorFactory compressorFactory;
 
-  public VeniceVersionFinder(ReadOnlyStoreRepository metadataRepository, OnlineInstanceFinder onlineInstanceFinder,
-      StaleVersionStats stats, HelixReadOnlyStoreConfigRepository storeConfigRepo,
-      Map<String, String> clusterToD2Map, String clusterName, CompressorFactory compressorFactory) {
+  public VeniceVersionFinder(
+      ReadOnlyStoreRepository metadataRepository,
+      OnlineInstanceFinder onlineInstanceFinder,
+      StaleVersionStats stats,
+      HelixReadOnlyStoreConfigRepository storeConfigRepo,
+      Map<String, String> clusterToD2Map,
+      String clusterName,
+      CompressorFactory compressorFactory) {
     this.metadataRepository = metadataRepository;
     this.onlineInstanceFinder = onlineInstanceFinder;
     this.stats = stats;
@@ -59,7 +64,7 @@ public class VeniceVersionFinder {
      * in {@link ReadOnlyStoreRepository}, such as 'isEnableReads' and others.
      */
     Store veniceStore = metadataRepository.getStore(store);
-    if (null == veniceStore){
+    if (null == veniceStore) {
       throw new VeniceNoStoreException(store);
     }
     if (!veniceStore.isEnableReads()) {
@@ -78,7 +83,7 @@ public class VeniceVersionFinder {
     }
 
     int metadataCurrentVersion = veniceStore.getCurrentVersion();
-    if (!lastCurrentVersion.containsKey(store)){
+    if (!lastCurrentVersion.containsKey(store)) {
       lastCurrentVersion.put(store, metadataCurrentVersion);
       if (metadataCurrentVersion == Store.NON_EXISTING_VERSION) {
         /** This should happen at most once per store, since we are adding the mapping to {@link lastCurrentVersion} */
@@ -87,11 +92,11 @@ public class VeniceVersionFinder {
       }
     }
     int prevVersion = lastCurrentVersion.get(store);
-    if (prevVersion == metadataCurrentVersion){
+    if (prevVersion == metadataCurrentVersion) {
       stats.recordNotStale();
       return metadataCurrentVersion;
     }
-    //This is a new version change, verify we have online replicas for each partition
+    // This is a new version change, verify we have online replicas for each partition
     String kafkaTopic = Version.composeKafkaTopic(store, metadataCurrentVersion);
 
     boolean currentVersionDecompressorReady = isDecompressorReady(veniceStore, metadataCurrentVersion);
@@ -162,7 +167,8 @@ public class VeniceVersionFinder {
           logger.warn("Failed to get partition assignment for logging purposes for resource: " + kafkaTopic, e);
           partitionAssignment = "unknown";
         }
-        String message = "No online replica exists for partition " + p + " of " + kafkaTopic + ", partition assignment: " + partitionAssignment;
+        String message = "No online replica exists for partition " + p + " of " + kafkaTopic
+            + ", partition assignment: " + partitionAssignment;
         if (!filter.isRedundantException(message)) {
           logger.warn(message);
         }
@@ -175,7 +181,9 @@ public class VeniceVersionFinder {
   private boolean isDecompressorReady(Store store, int versionNumber) {
     String kafkaTopic = Version.composeKafkaTopic(store.getName(), versionNumber);
     return store.getVersion(versionNumber)
-        .map(version -> version.getCompressionStrategy() != CompressionStrategy.ZSTD_WITH_DICT || compressorFactory.versionSpecificCompressorExists(kafkaTopic))
+        .map(
+            version -> version.getCompressionStrategy() != CompressionStrategy.ZSTD_WITH_DICT
+                || compressorFactory.versionSpecificCompressorExists(kafkaTopic))
         .orElse(false);
   }
 }

@@ -1,5 +1,11 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_VERSION_ID;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+import static com.linkedin.venice.meta.Version.*;
+
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -12,7 +18,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
-import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.PartitionerConfig;
@@ -29,12 +34,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import spark.Route;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_VERSION_ID;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
-import static com.linkedin.venice.meta.Version.*;
-
 
 /**
  * This class will add a new version to the given store.
@@ -44,7 +43,10 @@ public class CreateVersion extends AbstractRoute {
   private final boolean checkReadMethodForKafka;
   private final boolean disableParentRequestTopicForStreamPushes;
 
-  public CreateVersion(boolean sslEnabled, Optional<DynamicAccessController> accessController, boolean checkReadMethodForKafka,
+  public CreateVersion(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      boolean checkReadMethodForKafka,
       boolean disableParentRequestTopicForStreamPushes) {
     super(sslEnabled, accessController);
     this.checkReadMethodForKafka = checkReadMethodForKafka;
@@ -66,8 +68,7 @@ public class CreateVersion extends AbstractRoute {
       try {
         // Also allow allowList users to run this command
         if (!isAllowListUser(request)
-            && (!hasWriteAccessToTopic(request) || (this.checkReadMethodForKafka && !hasReadAccessToTopic(request))))
-        {
+            && (!hasWriteAccessToTopic(request) || (this.checkReadMethodForKafka && !hasReadAccessToTopic(request)))) {
           response.status(HttpStatus.SC_FORBIDDEN);
           String userId = getPrincipalId(request);
           String storeName = request.queryParams(NAME);
@@ -83,8 +84,8 @@ public class CreateVersion extends AbstractRoute {
             errorMsg = "[Error] Push terminated due to ACL issues for user \"" + userId
                 + "\". Please visit go/veniceacl and setup [write] ACLs for your store.";
           } else if (missingWriteAccess) {
-            errorMsg = "[Error] Hadoop user \"" + userId + "\" does not have [write] permission for store: "
-                + storeName + ". Please refer to go/veniceacl and setup store ACLs";
+            errorMsg = "[Error] Hadoop user \"" + userId + "\" does not have [write] permission for store: " + storeName
+                + ". Please refer to go/veniceacl and setup store ACLs";
           } else {
             errorMsg = "[Error] Missing [read] method in [write] ACLs for user \"" + userId
                 + "\". Please visit go/veniceacl and setup ACLs for your store";
@@ -95,7 +96,7 @@ public class CreateVersion extends AbstractRoute {
 
         AdminSparkServer.validateParams(request, REQUEST_TOPIC.getParams(), admin);
 
-        //Query params
+        // Query params
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         Store store = admin.getStore(clusterName, storeName);
@@ -116,7 +117,7 @@ public class CreateVersion extends AbstractRoute {
         } else {
           // Retrieve provided partitioner class list from the request
           boolean hasMatchedPartitioner = false;
-          for (String partitioner : request.queryParams(PARTITIONERS).split(",")) {
+          for (String partitioner: request.queryParams(PARTITIONERS).split(",")) {
             if (partitioner.equals(storePartitionerConfig.getPartitionerClass())) {
               responseObject.setPartitionerClass(storePartitionerConfig.getPartitionerClass());
               responseObject.setAmplificationFactor(storePartitionerConfig.getAmplificationFactor());
@@ -126,22 +127,29 @@ public class CreateVersion extends AbstractRoute {
             }
           }
           if (!hasMatchedPartitioner) {
-            throw new VeniceException("Expected partitioner class " + storePartitionerConfig.getPartitionerClass() + " cannot be found.");
+            throw new VeniceException(
+                "Expected partitioner class " + storePartitionerConfig.getPartitionerClass() + " cannot be found.");
           }
         }
 
-        if (!store.isLeaderFollowerModelEnabled()
-            && store.getPartitionerConfig() != null && store.getPartitionerConfig().getAmplificationFactor() != 1) {
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "amplificationFactor can only be specified "
-              + "when leaderFollower enabled", ErrorType.BAD_REQUEST);
+        if (!store.isLeaderFollowerModelEnabled() && store.getPartitionerConfig() != null
+            && store.getPartitionerConfig().getAmplificationFactor() != 1) {
+          throw new VeniceHttpException(
+              HttpStatus.SC_BAD_REQUEST,
+              "amplificationFactor can only be specified " + "when leaderFollower enabled",
+              ErrorType.BAD_REQUEST);
         }
 
         String pushTypeString = request.queryParams(PUSH_TYPE);
         PushType pushType;
         try {
           pushType = PushType.valueOf(pushTypeString);
-        } catch (RuntimeException e){
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, pushTypeString + " is an invalid " + PUSH_TYPE, e, ErrorType.BAD_REQUEST);
+        } catch (RuntimeException e) {
+          throw new VeniceHttpException(
+              HttpStatus.SC_BAD_REQUEST,
+              pushTypeString + " is an invalid " + PUSH_TYPE,
+              e,
+              ErrorType.BAD_REQUEST);
         }
         validatePushType(pushType, store);
 
@@ -199,20 +207,27 @@ public class CreateVersion extends AbstractRoute {
         });
 
         if (sourceGridFabric.isPresent() && !isActiveActiveReplicationEnabledInAllRegion.get()) {
-          LOGGER.info("Ignoring config " + SOURCE_GRID_FABRIC + " : " + sourceGridFabric.get() + ", as store " + storeName + " is not set up for Active/Active replication in all regions");
+          LOGGER.info(
+              "Ignoring config " + SOURCE_GRID_FABRIC + " : " + sourceGridFabric.get() + ", as store " + storeName
+                  + " is not set up for Active/Active replication in all regions");
           sourceGridFabric = Optional.empty();
         }
         Optional<String> emergencySourceRegion = admin.getEmergencySourceRegion();
         if (emergencySourceRegion.isPresent() && !isActiveActiveReplicationEnabledInAllRegion.get()) {
-          LOGGER.info("Ignoring config " + EMERGENCY_SOURCE_REGION + " : " + emergencySourceRegion.get() + ", as store " + storeName + " is not set up for Active/Active replication in all regions");
+          LOGGER.info(
+              "Ignoring config " + EMERGENCY_SOURCE_REGION + " : " + emergencySourceRegion.get() + ", as store "
+                  + storeName + " is not set up for Active/Active replication in all regions");
           emergencySourceRegion = Optional.empty();
         }
-        LOGGER.info("requestTopicForPushing: source grid fabric: " + sourceGridFabric.orElse("") + ", emergency source region: " + emergencySourceRegion.orElse(""));
+        LOGGER.info(
+            "requestTopicForPushing: source grid fabric: " + sourceGridFabric.orElse("") + ", emergency source region: "
+                + emergencySourceRegion.orElse(""));
 
         /**
          * Version-level rewind time override, and it is only valid for hybrid stores.
          */
-        Optional<String> rewindTimeInSecondsOverrideOptional = Optional.ofNullable(request.queryParams(REWIND_TIME_IN_SECONDS_OVERRIDE));
+        Optional<String> rewindTimeInSecondsOverrideOptional =
+            Optional.ofNullable(request.queryParams(REWIND_TIME_IN_SECONDS_OVERRIDE));
         long rewindTimeInSecondsOverride = -1;
         if (rewindTimeInSecondsOverrideOptional.isPresent()) {
           rewindTimeInSecondsOverride = Long.parseLong(rewindTimeInSecondsOverrideOptional.get());
@@ -223,12 +238,14 @@ public class CreateVersion extends AbstractRoute {
          */
         boolean deferVersionSwap = Boolean.parseBoolean(request.queryParams(DEFER_VERSION_SWAP));
 
-        switch(pushType) {
+        switch (pushType) {
           case BATCH:
           case INCREMENTAL:
           case STREAM_REPROCESSING:
             if (!admin.whetherEnableBatchPushFromAdmin(storeName)) {
-              throw new VeniceUnsupportedOperationException(pushTypeString, "Please push data to Venice Parent Colo instead");
+              throw new VeniceUnsupportedOperationException(
+                  pushTypeString,
+                  "Please push data to Venice Parent Colo instead");
             }
             String dictionaryStr = request.queryParams(COMPRESSION_DICTIONARY);
 
@@ -236,23 +253,27 @@ public class CreateVersion extends AbstractRoute {
              * Before trying to get the version, create the RT topic in parent kafka since it's needed anyway in following cases.
              * Otherwise topic existence check fails internally.
              */
-            if (pushType.isIncremental() && (isWriteComputeEnabled || store.getIncrementalPushPolicy()
-                .equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME))) {
+            if (pushType.isIncremental() && (isWriteComputeEnabled
+                || store.getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME))) {
               admin.getRealTimeTopic(clusterName, storeName);
               if (store.isApplyTargetVersionFilterForIncPush()) {
                 int targetVersion;
                 if (admin.isParent()) {
-                  Map<String, Integer> regionToCurrentVersions = admin.getCurrentVersionsForMultiColos(clusterName, storeName);
+                  Map<String, Integer> regionToCurrentVersions =
+                      admin.getCurrentVersionsForMultiColos(clusterName, storeName);
                   if (regionToCurrentVersions == null || regionToCurrentVersions.isEmpty()) {
                     throw new VeniceException(
-                        "Failed to get current versions from different regions in parent controller " + "for store " + storeName + " during incremental push");
+                        "Failed to get current versions from different regions in parent controller " + "for store "
+                            + storeName + " during incremental push");
                   }
                   targetVersion = regionToCurrentVersions.entrySet().iterator().next().getValue();
-                  for (Map.Entry<String, Integer> regionToCurrentVersion : regionToCurrentVersions.entrySet()) {
+                  for (Map.Entry<String, Integer> regionToCurrentVersion: regionToCurrentVersions.entrySet()) {
                     if (regionToCurrentVersion.getValue() != targetVersion) {
                       throw new VeniceException(
-                          "Current version for store " + storeName + " is " + regionToCurrentVersion.getValue() + " in region " + regionToCurrentVersion.getKey()
-                              + ", which is different from other regions. " + "Failing the incremental push until there is a consistent current version across all regions");
+                          "Current version for store " + storeName + " is " + regionToCurrentVersion.getValue()
+                              + " in region " + regionToCurrentVersion.getKey()
+                              + ", which is different from other regions. "
+                              + "Failing the incremental push until there is a consistent current version across all regions");
                     }
                   }
                 } else {
@@ -265,10 +286,23 @@ public class CreateVersion extends AbstractRoute {
               }
             }
 
-            final Optional<X509Certificate> certInRequest = isAclEnabled() ? Optional.of(getCertificate(request)) : Optional.empty();
-            final Version version =
-                admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionCount, replicationFactor,
-                   pushType, sendStartOfPush, sorted, dictionaryStr, sourceGridFabric, certInRequest, rewindTimeInSecondsOverride, emergencySourceRegion, deferVersionSwap);
+            final Optional<X509Certificate> certInRequest =
+                isAclEnabled() ? Optional.of(getCertificate(request)) : Optional.empty();
+            final Version version = admin.incrementVersionIdempotent(
+                clusterName,
+                storeName,
+                pushJobId,
+                partitionCount,
+                replicationFactor,
+                pushType,
+                sendStartOfPush,
+                sorted,
+                dictionaryStr,
+                sourceGridFabric,
+                certInRequest,
+                rewindTimeInSecondsOverride,
+                emergencySourceRegion,
+                deferVersionSwap);
 
             // If Version partition count different from calculated partition count use the version count as store count
             // may have been updated later.
@@ -280,7 +314,8 @@ public class CreateVersion extends AbstractRoute {
             boolean isTopicRT = false;
             if (pushType.isStreamReprocessing()) {
               responseTopic = Version.composeStreamReprocessingTopic(storeName, version.getNumber());
-            } else if (pushType.isIncremental() && version.getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
+            } else if (pushType.isIncremental() && version.getIncrementalPushPolicy()
+                .equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
               isTopicRT = true;
               responseTopic = Version.composeRealTimeTopic(storeName);
               // disable amplificationFactor logic on real-time topic
@@ -321,7 +356,9 @@ public class CreateVersion extends AbstractRoute {
              * At this point parent corp cluster is already set in the responseObject.setKafkaBootstrapServers().
              * So we only need to override for 1 and 2.
              */
-            if (pushType.isIncremental() && version.getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME) && admin.isParent()) {
+            if (pushType.isIncremental()
+                && version.getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)
+                && admin.isParent()) {
               if (isActiveActiveReplicationEnabledInAllRegion.get()) {
                 Optional<String> overRideSourceRegion =
                     emergencySourceRegion.isPresent() ? emergencySourceRegion : Optional.empty();
@@ -329,19 +366,27 @@ public class CreateVersion extends AbstractRoute {
                   overRideSourceRegion = sourceGridFabric;
                 }
                 if (overRideSourceRegion.isPresent()) {
-                  Pair<String, String> sourceKafkaBootstrapServersAndZk = admin.getNativeReplicationKafkaBootstrapServerAndZkAddress(overRideSourceRegion.get());
+                  Pair<String, String> sourceKafkaBootstrapServersAndZk =
+                      admin.getNativeReplicationKafkaBootstrapServerAndZkAddress(overRideSourceRegion.get());
                   String sourceKafkaBootstrapServers = sourceKafkaBootstrapServersAndZk.getFirst();
                   if (sourceKafkaBootstrapServers == null) {
-                    throw new VeniceException("Failed to get the kafka URL for the source region: " + overRideSourceRegion.get());
+                    throw new VeniceException(
+                        "Failed to get the kafka URL for the source region: " + overRideSourceRegion.get());
                   }
                   responseObject.setKafkaBootstrapServers(sourceKafkaBootstrapServers);
-                  LOGGER.info("Incremental Push to RT Policy job source region is being overridden with: " + overRideSourceRegion.get() + " address:" + sourceKafkaBootstrapServers);
+                  LOGGER.info(
+                      "Incremental Push to RT Policy job source region is being overridden with: "
+                          + overRideSourceRegion.get() + " address:" + sourceKafkaBootstrapServers);
                 }
               } else if (version.isNativeReplicationEnabled()) {
-                Optional<String> aggregateRealTimeTopicSourceKafkaServers = admin.getAggregateRealTimeTopicSource(clusterName);
-                aggregateRealTimeTopicSourceKafkaServers.ifPresent(source -> responseObject.setKafkaBootstrapServers(source));
+                Optional<String> aggregateRealTimeTopicSourceKafkaServers =
+                    admin.getAggregateRealTimeTopicSource(clusterName);
+                aggregateRealTimeTopicSourceKafkaServers
+                    .ifPresent(source -> responseObject.setKafkaBootstrapServers(source));
               }
-              LOGGER.info("Incremental Push to RT Policy job final source region address is: " + responseObject.getKafkaBootstrapServers());
+              LOGGER.info(
+                  "Incremental Push to RT Policy job final source region address is: "
+                      + responseObject.getKafkaBootstrapServers());
             }
             break;
           case STREAM:
@@ -350,16 +395,23 @@ public class CreateVersion extends AbstractRoute {
 
               // Conditionally check if the controller allows for fetching this information
               if (disableParentRequestTopicForStreamPushes) {
-                throw new VeniceException(String.format("Parent request topic is disabled!!  Cannot push data to topic in parent colo for store %s.  Aborting!!", storeName));
+                throw new VeniceException(
+                    String.format(
+                        "Parent request topic is disabled!!  Cannot push data to topic in parent colo for store %s.  Aborting!!",
+                        storeName));
               }
 
-              // Conditionally check if this store has aggregate mode enabled.  If not, throw an exception (as aggregate mode is required to produce to parent colo)
-              // We check the store config instead of the version config because we want this policy to go into affect without needing to perform empty pushes everywhere
+              // Conditionally check if this store has aggregate mode enabled. If not, throw an exception (as aggregate
+              // mode is required to produce to parent colo)
+              // We check the store config instead of the version config because we want this policy to go into affect
+              // without needing to perform empty pushes everywhere
               if (!store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.AGGREGATE)) {
                 if (!isActiveActiveReplicationEnabledInAllRegionAllVersions.get()) {
                   throw new VeniceException("Store is not in aggregate mode!  Cannot push data to parent topic!!");
                 } else {
-                  LOGGER.info("Store: " + storeName + " samza job running in Aggregate mode, Store config is in Non-Aggregate mode, AA is enabled in all regions, letting the job continue");
+                  LOGGER.info(
+                      "Store: " + storeName
+                          + " samza job running in Aggregate mode, Store config is in Non-Aggregate mode, AA is enabled in all regions, letting the job continue");
                 }
               }
             } else {
@@ -367,7 +419,9 @@ public class CreateVersion extends AbstractRoute {
                 if (!store.isActiveActiveReplicationEnabled()) {
                   throw new VeniceException("Store is in aggregate mode!  Cannot push data to child topic!!");
                 } else {
-                  LOGGER.info("Store: " + storeName + " samza job running in Non-Aggregate mode, Store config is in Aggregate mode, AA is enabled in the local region, letting the job continue");
+                  LOGGER.info(
+                      "Store: " + storeName
+                          + " samza job running in Non-Aggregate mode, Store config is in Aggregate mode, AA is enabled in the local region, letting the job continue");
                 }
               }
             }
@@ -390,18 +444,28 @@ public class CreateVersion extends AbstractRoute {
   }
 
   private void validatePushType(PushType pushType, Store store) {
-    if (pushType.equals(PushType.STREAM) && !store.isHybrid()){
-      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "requesting topic for streaming writes to store "
-          + store.getName() + " which is not configured to be a hybrid store", ErrorType.BAD_REQUEST);
+    if (pushType.equals(PushType.STREAM) && !store.isHybrid()) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          "requesting topic for streaming writes to store " + store.getName()
+              + " which is not configured to be a hybrid store",
+          ErrorType.BAD_REQUEST);
     }
-    if (pushType.equals(PushType.STREAM) && store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.NONE)) {
-      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "requesting topic for streaming writes to store " +
-          store.getName() + " which is configured to have a hybrid data replication policy " +
-          store.getHybridStoreConfig().getDataReplicationPolicy(), ErrorType.BAD_REQUEST);
+    if (pushType.equals(PushType.STREAM)
+        && store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.NONE)) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          "requesting topic for streaming writes to store " + store.getName()
+              + " which is configured to have a hybrid data replication policy "
+              + store.getHybridStoreConfig().getDataReplicationPolicy(),
+          ErrorType.BAD_REQUEST);
     }
     if (pushType.isIncremental() && !store.isIncrementalPushEnabled()) {
-      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "requesting topic for incremental push to store " +
-          store.getName() + " which does not have incremental push enabled.", ErrorType.BAD_REQUEST);
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          "requesting topic for incremental push to store " + store.getName()
+              + " which does not have incremental push enabled.",
+          ErrorType.BAD_REQUEST);
     }
   }
 
@@ -429,8 +493,11 @@ public class CreateVersion extends AbstractRoute {
         try {
           pushType = PushType.valueOf(request.queryParams(PUSH_TYPE));
         } catch (RuntimeException parseException) {
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, request.queryParams(PUSH_TYPE) + " is an invalid "
-              + PUSH_TYPE, parseException, ErrorType.BAD_REQUEST);
+          throw new VeniceHttpException(
+              HttpStatus.SC_BAD_REQUEST,
+              request.queryParams(PUSH_TYPE) + " is an invalid " + PUSH_TYPE,
+              parseException,
+              ErrorType.BAD_REQUEST);
         }
         String remoteKafkaBootstrapServers = null;
         if (request.queryParams().contains(REMOTE_KAFKA_BOOTSTRAP_SERVERS)) {
@@ -440,20 +507,31 @@ public class CreateVersion extends AbstractRoute {
         /**
          * Version-level rewind time override, and it is only valid for hybrid stores.
          */
-        Optional<String> rewindTimeInSecondsOverrideOptional = Optional.ofNullable(request.queryParams(REWIND_TIME_IN_SECONDS_OVERRIDE));
+        Optional<String> rewindTimeInSecondsOverrideOptional =
+            Optional.ofNullable(request.queryParams(REWIND_TIME_IN_SECONDS_OVERRIDE));
         long rewindTimeInSecondsOverride = -1;
         if (rewindTimeInSecondsOverrideOptional.isPresent()) {
           rewindTimeInSecondsOverride = Long.parseLong(rewindTimeInSecondsOverrideOptional.get());
         }
 
-        Optional<String> replicationMetadataVersionIdOptional = Optional.ofNullable(request.queryParams(REPLICATION_METADATA_VERSION_ID));
+        Optional<String> replicationMetadataVersionIdOptional =
+            Optional.ofNullable(request.queryParams(REPLICATION_METADATA_VERSION_ID));
         int replicationMetadataVersionId = REPLICATION_METADATA_VERSION_ID_UNSET;
         if (replicationMetadataVersionIdOptional.isPresent()) {
           replicationMetadataVersionId = Integer.parseInt(replicationMetadataVersionIdOptional.get());
         }
 
-        admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, partitionCount, pushType,
-            remoteKafkaBootstrapServers, rewindTimeInSecondsOverride, replicationMetadataVersionId, false);
+        admin.addVersionAndStartIngestion(
+            clusterName,
+            storeName,
+            pushJobId,
+            versionNumber,
+            partitionCount,
+            pushType,
+            remoteKafkaBootstrapServers,
+            rewindTimeInSecondsOverride,
+            replicationMetadataVersionId,
+            false);
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
         responseObject.setVersion(versionNumber);
@@ -466,7 +544,7 @@ public class CreateVersion extends AbstractRoute {
   }
 
   @Deprecated
-  public Route uploadPushInfo(Admin admin){
+  public Route uploadPushInfo(Admin admin) {
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
       response.type(HttpConstants.JSON);
@@ -479,7 +557,7 @@ public class CreateVersion extends AbstractRoute {
         }
         AdminSparkServer.validateParams(request, OFFLINE_PUSH_INFO.getParams(), admin);
 
-        //Query params
+        // Query params
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         responseObject.setCluster(clusterName);
@@ -502,12 +580,13 @@ public class CreateVersion extends AbstractRoute {
         // Also allow allowlist users to run this command
         if (!isAllowListUser(request) && !hasWriteAccessToTopic(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
-          responseObject.setError("You don't have permission to end this push job; please grant write ACL for yourself.");
+          responseObject
+              .setError("You don't have permission to end this push job; please grant write ACL for yourself.");
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, END_OF_PUSH.getParams(), admin);
 
-        //Query params
+        // Query params
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         String versionString = request.queryParams(VERSION);
@@ -544,7 +623,8 @@ public class CreateVersion extends AbstractRoute {
 
         String storeName = request.queryParams(NAME);
         if (!admin.whetherEnableBatchPushFromAdmin(storeName)) {
-          throw new VeniceUnsupportedOperationException("EMPTY PUSH",
+          throw new VeniceUnsupportedOperationException(
+              "EMPTY PUSH",
               "Please push data to Venice Parent Colo instead or use Aggregate mode if you are running Samza GF Job.");
         }
 
@@ -553,8 +633,7 @@ public class CreateVersion extends AbstractRoute {
         String pushJobId = request.queryParams(PUSH_JOB_ID);
         int partitionNum = admin.calculateNumberOfPartitions(clusterName, storeName, storeSize);
         int replicationFactor = admin.getReplicationFactor(clusterName, storeName);
-        version = admin.incrementVersionIdempotent(clusterName, storeName, pushJobId,
-            partitionNum, replicationFactor);
+        version = admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionNum, replicationFactor);
         int versionNumber = version.getNumber();
 
         responseObject.setCluster(clusterName);

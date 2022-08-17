@@ -8,8 +8,8 @@ import org.apache.logging.log4j.Logger;
  * Logs the Notification received.
  */
 public class LogNotifier implements VeniceNotifier {
-
   private static final Logger logger = LogManager.getLogger(LogNotifier.class);
+
   @Override
   public void started(String kafkaTopic, int partitionId, String message) {
     logger.info(logMessage("Push started", kafkaTopic, partitionId, null, message));
@@ -57,14 +57,17 @@ public class LogNotifier implements VeniceNotifier {
 
   @Override
   public void catchUpVersionTopicOffsetLag(String kafkaTopic, int partitionId) {
-    logger.info(logMessage("Received CATCH_UP_BASE_TOPIC_OFFSET_LAG",
-        kafkaTopic, partitionId, null, ""));
+    logger.info(logMessage("Received CATCH_UP_BASE_TOPIC_OFFSET_LAG", kafkaTopic, partitionId, null, ""));
   }
 
   private String logMessage(String header, String kafkaTopic, int partitionId, Long offset, String message) {
-    return String.format("%s for store %s user partitionId %d%s%s", header, kafkaTopic, partitionId,
+    return String.format(
+        "%s for store %s user partitionId %d%s%s",
+        header,
+        kafkaTopic,
+        partitionId,
         offset == null ? "" : " offset " + offset,
-        (message == null || message.isEmpty())? "" : " message " + message);
+        (message == null || message.isEmpty()) ? "" : " message " + message);
   }
 
   @Override

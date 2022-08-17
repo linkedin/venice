@@ -18,8 +18,7 @@ import org.testng.annotations.Test;
 
 public class TestTempFileSSLConfigurator {
   @Test
-  public void testWriteToTempFile()
-      throws IOException {
+  public void testWriteToTempFile() throws IOException {
     String testCertStr = "test123";
     byte[] testCert = testCertStr.getBytes();
     TempFileSSLConfigurator configurator =
@@ -34,8 +33,7 @@ public class TestTempFileSSLConfigurator {
   }
 
   @Test
-  public void testGetCertification()
-      throws IOException {
+  public void testGetCertification() throws IOException {
     String testCertStr = "test123";
     byte[] testCert = testCertStr.getBytes();
     Text text = new Text("testCert");
@@ -50,8 +48,7 @@ public class TestTempFileSSLConfigurator {
   }
 
   @Test
-  public void testSetupSSLConfig()
-      throws IOException {
+  public void testSetupSSLConfig() throws IOException {
     Properties properties = new Properties();
     properties.put(VenicePushJob.SSL_KEY_STORE_PROPERTY_NAME, "linkedin.keystore");
     properties.put(VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME, "linkedin.truststore");
@@ -72,9 +69,9 @@ public class TestTempFileSSLConfigurator {
     TempFileSSLConfigurator configurator =
         (TempFileSSLConfigurator) SSLConfigurator.getSSLConfigurator(TempFileSSLConfigurator.class.getName());
     properties = configurator.setupSSLConfig(properties, UserGroupInformation.getCurrentUser().getCredentials());
-    String[] paths = new String[]{properties.getProperty(CommonConfigKeys.SSL_KEYSTORE_LOCATION), properties.getProperty(
-        CommonConfigKeys.SSL_TRUSTSTORE_LOCATION)};
-    for (String path : paths) {
+    String[] paths = new String[] { properties.getProperty(CommonConfigKeys.SSL_KEYSTORE_LOCATION),
+        properties.getProperty(CommonConfigKeys.SSL_TRUSTSTORE_LOCATION) };
+    for (String path: paths) {
       File file = new File(path);
       try (FileInputStream fis = new FileInputStream(file)) {
         byte[] result = new byte[testCert.length];

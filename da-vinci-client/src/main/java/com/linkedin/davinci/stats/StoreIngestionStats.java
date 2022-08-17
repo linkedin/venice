@@ -2,7 +2,6 @@ package com.linkedin.davinci.stats;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
-
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.stats.TehutiUtils;
@@ -17,6 +16,7 @@ import io.tehuti.metrics.stats.Rate;
 import io.tehuti.metrics.stats.Total;
 import java.util.HashMap;
 import java.util.Map;
+
 
 public class StoreIngestionStats extends AbstractVeniceStats {
   /**
@@ -34,7 +34,8 @@ public class StoreIngestionStats extends AbstractVeniceStats {
    */
   private final Sensor bytesReadFromKafkaAsUncompressedSizeSensor;
   private final Sensor storageQuotaUsedSensor;
-  // disk quota allowed for a store without replication. It should be as a straight line unless we bumps the disk quota allowed.
+  // disk quota allowed for a store without replication. It should be as a straight line unless we bumps the disk quota
+  // allowed.
   private final Sensor diskQuotaSensor;
 
   private final Sensor pollRequestSensor;
@@ -109,7 +110,6 @@ public class StoreIngestionStats extends AbstractVeniceStats {
    */
   private final Sensor writeComputeCacheHitCount;
 
-
   private final Sensor totalLeaderBytesConsumedSensor;
   private final Sensor totalLeaderRecordsConsumedSensor;
   private final Sensor totalFollowerBytesConsumedSensor;
@@ -153,15 +153,15 @@ public class StoreIngestionStats extends AbstractVeniceStats {
 
   private final Sensor leaderDelegateRealTimeRecordLatencySensor;
 
-  public StoreIngestionStats(MetricsRepository metricsRepository, VeniceServerConfig serverConfig,
-                             String storeName) {
+  public StoreIngestionStats(MetricsRepository metricsRepository, VeniceServerConfig serverConfig, String storeName) {
     super(metricsRepository, storeName);
     totalBytesConsumedSensor = registerSensor("bytes_consumed", new Rate());
     totalRecordsConsumedSensor = registerSensor("records_consumed", new Rate());
 
-    bytesReadFromKafkaAsUncompressedSizeSensor = registerSensor("bytes_read_from_kafka_as_uncompressed_size", new Rate(), new Total());
-    diskQuotaSensor = registerSensor("global_store_disk_quota_allowed",
-                                      new Gauge(() -> diskQuotaAllowedGauge), new Max());
+    bytesReadFromKafkaAsUncompressedSizeSensor =
+        registerSensor("bytes_read_from_kafka_as_uncompressed_size", new Rate(), new Total());
+    diskQuotaSensor =
+        registerSensor("global_store_disk_quota_allowed", new Gauge(() -> diskQuotaAllowedGauge), new Max());
 
     // Measure latency of Kafka consumer poll request and processing returned consumer records
     pollRequestSensor = registerSensor("kafka_poll_request", new Count());
@@ -172,23 +172,31 @@ public class StoreIngestionStats extends AbstractVeniceStats {
     consumerRecordsQueuePutLatencySensor = registerSensor("consumer_records_queue_put_latency", new Avg(), new Max());
 
     String keySizeSensorName = "record_key_size_in_bytes";
-    keySizeSensor = registerSensor(keySizeSensorName, new Avg(), new Min(), new Max(),
+    keySizeSensor = registerSensor(
+        keySizeSensorName,
+        new Avg(),
+        new Min(),
+        new Max(),
         TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + keySizeSensorName));
 
     String valueSizeSensorName = "record_value_size_in_bytes";
-    valueSizeSensor = registerSensor(valueSizeSensorName, new Avg(), new Min(), new Max(),
+    valueSizeSensor = registerSensor(
+        valueSizeSensorName,
+        new Avg(),
+        new Min(),
+        new Max(),
         TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + valueSizeSensorName));
 
     unexpectedMessageSensor = registerSensor("unexpected_message", new Rate());
     inconsistentStoreMetadataSensor = registerSensor("inconsistent_store_metadata", new Count());
 
-
     ingestionFailureSensor = registerSensor("ingestion_failure", new Count());
 
-    storageQuotaUsedSensor = registerSensor("storage_quota_used",
-                                            new Gauge(() -> hybridQuotaUsageGauge), new Avg(), new Min(), new Max());
+    storageQuotaUsedSensor =
+        registerSensor("storage_quota_used", new Gauge(() -> hybridQuotaUsageGauge), new Avg(), new Min(), new Max());
 
-    leaderProducerSynchronizeLatencySensor = registerSensor("leader_producer_synchronize_latency", new Avg(), new Max());
+    leaderProducerSynchronizeLatencySensor =
+        registerSensor("leader_producer_synchronize_latency", new Avg(), new Max());
     leaderWriteComputeLookUpLatencySensor = registerSensor("leader_write_compute_lookup_latency", new Avg(), new Max());
     leaderWriteComputeUpdateLatencySensor = registerSensor("leader_write_compute_update_latency", new Avg(), new Max());
 
@@ -199,7 +207,10 @@ public class StoreIngestionStats extends AbstractVeniceStats {
     consumerToQueueLatencySensor = registerSensor("consumer_to_queue_latency", new Avg(), new Max());
 
     String storageEnginePutLatencySensorName = "storage_engine_put_latency";
-    storageEnginePutLatencySensor = registerSensor(storageEnginePutLatencySensorName, new Avg(), new Max(),
+    storageEnginePutLatencySensor = registerSensor(
+        storageEnginePutLatencySensorName,
+        new Avg(),
+        new Max(),
         TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + storageEnginePutLatencySensorName));
     produceToDrainerQueueCallCountSensor = registerSensor("produce_to_drainer_queue_call_count", new Rate());
     produceToDrainerQueueRecordNumSensor = registerSensor("produce_to_drainer_queue_record_num", new Avg(), new Max());
@@ -223,25 +234,32 @@ public class StoreIngestionStats extends AbstractVeniceStats {
     totalLeaderRecordsProducedSensor = registerSensor("leader_records_produced", new Rate());
     totalRegionHybridBytesConsumedMap = new HashMap<>();
     totalRegionHybridRecordsConsumedMap = new HashMap<>();
-    for (Map.Entry<Integer, String> entry : serverConfig.getKafkaClusterIdToAliasMap().entrySet()) {
-      String regionNamePrefix = RegionUtils.getRegionSpecificMetricPrefix(serverConfig.getRegionName(), entry.getValue());
-      totalRegionHybridBytesConsumedMap.put(entry.getKey(), registerSensor(regionNamePrefix + "_rt_bytes_consumed", new Rate()));
-      totalRegionHybridRecordsConsumedMap.put(entry.getKey(), registerSensor(regionNamePrefix + "_rt_records_consumed", new Rate()));
+    for (Map.Entry<Integer, String> entry: serverConfig.getKafkaClusterIdToAliasMap().entrySet()) {
+      String regionNamePrefix =
+          RegionUtils.getRegionSpecificMetricPrefix(serverConfig.getRegionName(), entry.getValue());
+      totalRegionHybridBytesConsumedMap
+          .put(entry.getKey(), registerSensor(regionNamePrefix + "_rt_bytes_consumed", new Rate()));
+      totalRegionHybridRecordsConsumedMap
+          .put(entry.getKey(), registerSensor(regionNamePrefix + "_rt_records_consumed", new Rate()));
     }
 
     checksumVerificationFailureSensor = registerSensor("checksum_verification_failure", new Count());
 
-    leaderIngestionValueBytesLookUpLatencySensor = registerSensor("leader_ingestion_value_bytes_lookup_latency", new Avg(), new Max());
+    leaderIngestionValueBytesLookUpLatencySensor =
+        registerSensor("leader_ingestion_value_bytes_lookup_latency", new Avg(), new Max());
     leaderIngestionValueBytesCacheHitCount = registerSensor("leader_ingestion_value_bytes_cache_hit_count", new Rate());
-    leaderIngestionReplicationMetadataCacheHitCount = registerSensor("leader_ingestion_replication_metadata_cache_hit_count", new Rate());
-    leaderIngestionReplicationMetadataLookUpLatencySensor = registerSensor("leader_ingestion_replication_metadata_lookup_latency", new Avg(), new Max());
+    leaderIngestionReplicationMetadataCacheHitCount =
+        registerSensor("leader_ingestion_replication_metadata_cache_hit_count", new Rate());
+    leaderIngestionReplicationMetadataLookUpLatencySensor =
+        registerSensor("leader_ingestion_replication_metadata_lookup_latency", new Avg(), new Max());
     updateIgnoredDCRSensor = registerSensor("update_ignored_dcr", new Rate());
     tombstoneCreationDCRSensor = registerSensor("tombstone_creation_dcr", new Rate());
 
     timestampRegresssionDCRErrorRate = registerSensor("timestamp_regression_dcr_error", new Rate());
     offsetRegressionDCRErrorRate = registerSensor("offset_regression_dcr_error", new Rate());
 
-    leaderDelegateRealTimeRecordLatencySensor = registerSensor("leader_delegate_real_time_record_latency", new Avg(), new Max());
+    leaderDelegateRealTimeRecordLatencySensor =
+        registerSensor("leader_delegate_real_time_record_latency", new Avg(), new Max());
   }
 
   public void recordTotalBytesConsumed(long bytes) {
@@ -283,7 +301,9 @@ public class StoreIngestionStats extends AbstractVeniceStats {
     unexpectedMessageSensor.record(count);
   }
 
-  public void recordInconsistentStoreMetadata(int count) { inconsistentStoreMetadataSensor.record(count); }
+  public void recordInconsistentStoreMetadata(int count) {
+    inconsistentStoreMetadataSensor.record(count);
+  }
 
   public void recordKeySize(long bytes) {
     keySizeSensor.record(bytes);

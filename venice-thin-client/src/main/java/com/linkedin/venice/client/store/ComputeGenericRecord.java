@@ -1,14 +1,13 @@
 package com.linkedin.venice.client.store;
 
+import static com.linkedin.venice.VeniceConstants.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.util.Utf8;
-
-import static com.linkedin.venice.VeniceConstants.*;
 
 
 /**
@@ -21,7 +20,7 @@ public class ComputeGenericRecord implements GenericRecord {
   private ComputeGenericRecord(GenericRecord record) {
     this.innerRecord = record;
     Object errorMap = record.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME);
-    if (null != errorMap && errorMap instanceof Map && !((Map)errorMap).isEmpty()) {
+    if (null != errorMap && errorMap instanceof Map && !((Map) errorMap).isEmpty()) {
       /**
        * The reason for the following conversion is that the de-serialized Map
        * is actually a Map<Utf8, Utf8>, so {@link #get(String)} could not use it directly.
@@ -29,9 +28,7 @@ public class ComputeGenericRecord implements GenericRecord {
        * will just convert the map to be a Map<String, String>.
        */
       Map<String, String> stringErrorMap = new HashMap<>();
-      ((Map)errorMap).forEach( (k, v) ->
-        stringErrorMap.put(k.toString(), v.toString())
-      );
+      ((Map) errorMap).forEach((k, v) -> stringErrorMap.put(k.toString(), v.toString()));
       computationErrorMap = Optional.of(stringErrorMap);
     } else {
       computationErrorMap = Optional.empty();
@@ -50,8 +47,9 @@ public class ComputeGenericRecord implements GenericRecord {
   @Override
   public Object get(String key) {
     if (computationErrorMap.isPresent() && computationErrorMap.get().containsKey(key)) {
-      throw new VeniceException("Something bad happened in Venice backend when computing this field: "
-          + key + ", error message: " + computationErrorMap.get().get(key));
+      throw new VeniceException(
+          "Something bad happened in Venice backend when computing this field: " + key + ", error message: "
+              + computationErrorMap.get().get(key));
     }
     return innerRecord.get(key);
   }

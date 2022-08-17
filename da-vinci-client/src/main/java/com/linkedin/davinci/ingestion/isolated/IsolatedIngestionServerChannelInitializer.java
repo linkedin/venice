@@ -26,14 +26,15 @@ public class IsolatedIngestionServerChannelInitializer extends ChannelInitialize
 
   @Override
   protected void initChannel(SocketChannel ch) {
-    sslFactory.ifPresent(
-        sslEngineComponentFactory -> ch.pipeline().addLast(new SSLInitializer(sslEngineComponentFactory)));
+    sslFactory
+        .ifPresent(sslEngineComponentFactory -> ch.pipeline().addLast(new SSLInitializer(sslEngineComponentFactory)));
     ch.pipeline().addLast(new HttpRequestDecoder());
     ch.pipeline().addLast(new HttpObjectAggregator(1024 * 1024));
     ch.pipeline().addLast(new HttpResponseEncoder());
     if (sslFactory.isPresent()) {
       ch.pipeline().addLast(verifySslHandler);
-      aclHandler.ifPresent(isolatedIngestionServerAclHandler -> ch.pipeline().addLast(isolatedIngestionServerAclHandler));
+      aclHandler
+          .ifPresent(isolatedIngestionServerAclHandler -> ch.pipeline().addLast(isolatedIngestionServerAclHandler));
     }
     ch.pipeline().addLast(new IsolatedIngestionServerHandler(isolatedIngestionServer));
   }

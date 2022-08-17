@@ -28,7 +28,7 @@ public class TopicCleanupServiceForParentController extends TopicCleanupService 
   protected void cleanupVeniceTopics() {
     Set<String> parentFabrics = multiClusterConfigs.getParentFabrics();
     if (!parentFabrics.isEmpty()) {
-      for (String parentFabric : parentFabrics) {
+      for (String parentFabric: parentFabrics) {
         String kafkaBootstrapServers = multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(parentFabric);
         String kafkaZkAddress = multiClusterConfigs.getChildDataCenterKafkaZkMap().get(parentFabric);
         cleanupVeniceTopics(getTopicManager(Pair.create(kafkaBootstrapServers, kafkaZkAddress)));
@@ -44,13 +44,19 @@ public class TopicCleanupServiceForParentController extends TopicCleanupService 
       topics.forEach((topic, retention) -> {
         if (getAdmin().isTopicTruncatedBasedOnRetention(retention)) {
           // Topic may be deleted after delay
-          int remainingFactor = storeToCountdownForDeletion.merge(topic + "_" + topicManager.getKafkaBootstrapServers(),
-              delayFactor, (oldVal, givenVal) -> oldVal - 1);
+          int remainingFactor = storeToCountdownForDeletion.merge(
+              topic + "_" + topicManager.getKafkaBootstrapServers(),
+              delayFactor,
+              (oldVal, givenVal) -> oldVal - 1);
           if (remainingFactor > 0) {
-            LOGGER.info("Retention policy for topic: " + topic + " is: " + retention + " ms, and it is deprecated, will delete it"
-                + " after " + remainingFactor * sleepIntervalBetweenTopicListFetchMs + " milliseconds.");
+            LOGGER.info(
+                "Retention policy for topic: " + topic + " is: " + retention
+                    + " ms, and it is deprecated, will delete it" + " after "
+                    + remainingFactor * sleepIntervalBetweenTopicListFetchMs + " milliseconds.");
           } else {
-            LOGGER.info("Retention policy for topic: " + topic + " is: " + retention + " ms, and it is deprecated, will delete it now.");
+            LOGGER.info(
+                "Retention policy for topic: " + topic + " is: " + retention
+                    + " ms, and it is deprecated, will delete it now.");
             storeToCountdownForDeletion.remove(topic + "_" + topicManager.getKafkaBootstrapServers());
             try {
               topicManager.ensureTopicIsDeletedAndBlockWithRetry(topic);

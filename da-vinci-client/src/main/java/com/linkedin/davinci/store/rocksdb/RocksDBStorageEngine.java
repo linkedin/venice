@@ -1,5 +1,7 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
+
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -22,8 +24,6 @@ import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
-
 
 class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition> {
   private static final Logger LOGGER = LogManager.getLogger(RocksDBStorageEngine.class);
@@ -39,16 +39,16 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
   private final VeniceStoreVersionConfig storeConfig;
   private final boolean replicationMetadataEnabled;
 
-
-  public RocksDBStorageEngine(VeniceStoreVersionConfig storeConfig,
-                              RocksDBStorageEngineFactory factory,
-                              String rocksDbPath,
-                              RocksDBMemoryStats rocksDBMemoryStats,
-                              RocksDBThrottler rocksDbThrottler,
-                              RocksDBServerConfig rocksDBServerConfig,
-                              InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
-                              InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
-                              boolean replicationMetadataEnabled) {
+  public RocksDBStorageEngine(
+      VeniceStoreVersionConfig storeConfig,
+      RocksDBStorageEngineFactory factory,
+      String rocksDbPath,
+      RocksDBMemoryStats rocksDBMemoryStats,
+      RocksDBThrottler rocksDbThrottler,
+      RocksDBServerConfig rocksDBServerConfig,
+      InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
+      boolean replicationMetadataEnabled) {
     super(storeConfig.getStoreVersionName(), storeVersionStateSerializer, partitionStateSerializer);
     this.storeConfig = storeConfig;
     this.rocksDbPath = rocksDbPath;
@@ -106,7 +106,7 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
     String[] partitionDbNames = storeDbDir.list();
     HashSet<Integer> partitionIdSet = new HashSet<>();
     if (partitionDbNames != null) {
-      for (String partitionDbName : partitionDbNames) {
+      for (String partitionDbName: partitionDbNames) {
         partitionIdSet.add(RocksDBUtils.parsePartitionIdFromPartitionDbName(partitionDbName));
       }
     }
@@ -117,10 +117,21 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
   public RocksDBStoragePartition createStoragePartition(StoragePartitionConfig storagePartitionConfig) {
     // Metadata partition should not enable replication metadata column family.
     if (storagePartitionConfig.getPartitionId() == METADATA_PARTITION_ID || !replicationMetadataEnabled) {
-      return new RocksDBStoragePartition(storagePartitionConfig, factory, rocksDbPath, memoryStats, rocksDbThrottler,
+      return new RocksDBStoragePartition(
+          storagePartitionConfig,
+          factory,
+          rocksDbPath,
+          memoryStats,
+          rocksDbThrottler,
           rocksDBServerConfig);
     } else {
-      return new ReplicationMetadataRocksDBStoragePartition(storagePartitionConfig, factory, rocksDbPath, memoryStats, rocksDbThrottler, rocksDBServerConfig);
+      return new ReplicationMetadataRocksDBStoragePartition(
+          storagePartitionConfig,
+          factory,
+          rocksDbPath,
+          memoryStats,
+          rocksDbThrottler,
+          rocksDBServerConfig);
     }
   }
 
@@ -147,7 +158,7 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
   public long getRMDSizeInBytes() {
     Set<Integer> partitionIds = super.getPartitionIds();
     long diskUsage = 0;
-    for (int i : partitionIds) {
+    for (int i: partitionIds) {
       AbstractStoragePartition partition;
       try {
         partition = super.getPartitionOrThrow(i);
@@ -185,16 +196,19 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
         boolean usePlainTableFormat = persistedStorageEngineConfig.getBoolean(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, true);
         if (usePlainTableFormat != rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
           String existingTableFormat = usePlainTableFormat ? "PlainTable" : "BlockBasedTable";
-          String newTableFormat = rocksDBServerConfig.isRocksDBPlainTableFormatEnabled() ? "PlainTable" : "BlockBasedTable";
-          LOGGER.warn("Tried to open an existing " + existingTableFormat + " RocksDB format engine with table format option: "
-              + newTableFormat + ". Will remove the content and recreate the folder.");
+          String newTableFormat =
+              rocksDBServerConfig.isRocksDBPlainTableFormatEnabled() ? "PlainTable" : "BlockBasedTable";
+          LOGGER.warn(
+              "Tried to open an existing " + existingTableFormat + " RocksDB format engine with table format option: "
+                  + newTableFormat + ". Will remove the content and recreate the folder.");
           return true;
         }
       } catch (IOException e) {
         throw new VeniceException("Encounter IO exception when validating RocksDB engine configs.", e);
       }
     } else {
-      // If no existing config is found, we will by default skip the checking as not enough information is given to enforce the check.
+      // If no existing config is found, we will by default skip the checking as not enough information is given to
+      // enforce the check.
       LOGGER.warn("RocksDB storage engine config not found for store" + getStoreName() + " skipping the validation.");
     }
     return false;
@@ -215,6 +229,7 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
   }
 
   private String getRocksDbEngineConfigPath() {
-    return RocksDBUtils.composePartitionDbDir(rocksDbPath, getStoreName(), METADATA_PARTITION_ID) + "/" + SERVER_CONFIG_FILE_NAME;
+    return RocksDBUtils.composePartitionDbDir(rocksDbPath, getStoreName(), METADATA_PARTITION_ID) + "/"
+        + SERVER_CONFIG_FILE_NAME;
   }
- }
+}

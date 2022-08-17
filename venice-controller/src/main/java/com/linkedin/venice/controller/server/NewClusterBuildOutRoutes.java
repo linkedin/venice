@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -7,9 +10,6 @@ import com.linkedin.venice.meta.StoreInfo;
 import java.util.Optional;
 import spark.Request;
 import spark.Route;
-
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
 public class NewClusterBuildOutRoutes extends AbstractRoute {

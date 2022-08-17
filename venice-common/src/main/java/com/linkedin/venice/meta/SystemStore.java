@@ -22,7 +22,8 @@ import java.util.Optional;
  * we need to modify the zk shared store (a regular Venice store) instead of here.
  */
 public class SystemStore extends AbstractStore {
-  private static final SystemStoreAttributes DEFAULT_READ_ONLY_SYSTEM_STORE_ATTRIBUTE = new ReadOnlyStore.ReadOnlySystemStoreAttributes(new SystemStoreAttributesImpl());
+  private static final SystemStoreAttributes DEFAULT_READ_ONLY_SYSTEM_STORE_ATTRIBUTE =
+      new ReadOnlyStore.ReadOnlySystemStoreAttributes(new SystemStoreAttributesImpl());
   private final Store zkSharedStore;
   private final VeniceSystemStoreType systemStoreType;
   private final Store veniceStore;
@@ -56,7 +57,8 @@ public class SystemStore extends AbstractStore {
     Store zkSharedStoreClone = zkSharedStore.cloneStore();
     Store veniceStoreClone = veniceStore.cloneStore();
     if (!(zkSharedStoreClone instanceof ZKStore && veniceStoreClone instanceof ZKStore)) {
-      throw new UnsupportedOperationException("SystemStore is only serializable if the underlying Store object is ZKStore");
+      throw new UnsupportedOperationException(
+          "SystemStore is only serializable if the underlying Store object is ZKStore");
     }
     return new SerializableSystemStore((ZKStore) zkSharedStoreClone, systemStoreType, (ZKStore) veniceStoreClone);
   }
@@ -76,8 +78,9 @@ public class SystemStore extends AbstractStore {
   }
 
   private void throwUnsupportedOperationException(String method) {
-    throw new VeniceException("Method: '" + method + "' is not supported in system store: " + getName() +
-        " since the system store properties are shared across all the system stores");
+    throw new VeniceException(
+        "Method: '" + method + "' is not supported in system store: " + getName()
+            + " since the system store properties are shared across all the system stores");
   }
 
   /**
@@ -104,7 +107,6 @@ public class SystemStore extends AbstractStore {
 
     return systemStoreAttributes;
   }
-
 
   @Override
   public void setOwner(String owner) {
@@ -154,7 +156,7 @@ public class SystemStore extends AbstractStore {
      * Do nothing to avoid the failure since {@literal VeniceHelixAdmin#addVersion} would always
      * setup store-level persistence type, which is not quite useful..
      */
-    //throwUnsupportedOperationException("setPersistenceType");
+    // throwUnsupportedOperationException("setPersistenceType");
   }
 
   @Override
@@ -477,7 +479,8 @@ public class SystemStore extends AbstractStore {
 
   @Override
   public boolean isStoreMetadataSystemStoreEnabled() {
-    // TODO zkSharedStore.isStoreMetadataSystemStoreEnabled() should never be true. Perhaps we should enforce that here or somewhere.
+    // TODO zkSharedStore.isStoreMetadataSystemStoreEnabled() should never be true. Perhaps we should enforce that here
+    // or somewhere.
     return zkSharedStore.isStoreMetadataSystemStoreEnabled();
   }
 
@@ -543,13 +546,13 @@ public class SystemStore extends AbstractStore {
     throwUnsupportedOperationException("setReplicationFactor");
   }
 
-  //TODO: evaluate how to support store migration properly
+  // TODO: evaluate how to support store migration properly
   @Override
   public boolean isMigrationDuplicateStore() {
     return veniceStore.isMigrationDuplicateStore();
   }
 
-  //TODO: evaluate how to support store migration properly
+  // TODO: evaluate how to support store migration properly
   @Override
   public void setMigrationDuplicateStore(boolean migrationDuplicateStore) {
     throwUnsupportedOperationException("setMigrationDuplicateStore");
@@ -600,7 +603,7 @@ public class SystemStore extends AbstractStore {
     throw new VeniceException("Method: 'putSystemStore' is not supported inside SystemStore");
   }
 
-    @Override
+  @Override
   public boolean isDaVinciPushStatusStoreEnabled() {
     return zkSharedStore.isDaVinciPushStatusStoreEnabled();
   }
@@ -624,8 +627,8 @@ public class SystemStore extends AbstractStore {
       return false;
     }
     SystemStore that = (SystemStore) o;
-    return zkSharedStore.equals(that.zkSharedStore) && systemStoreType == that.systemStoreType && veniceStore.equals(
-        that.veniceStore);
+    return zkSharedStore.equals(that.zkSharedStore) && systemStoreType == that.systemStoreType
+        && veniceStore.equals(that.veniceStore);
   }
 
   @Override

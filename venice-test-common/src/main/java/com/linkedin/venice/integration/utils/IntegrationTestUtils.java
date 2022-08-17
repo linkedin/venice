@@ -1,17 +1,16 @@
 package com.linkedin.venice.integration.utils;
 
+import static com.linkedin.venice.ConfigKeys.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
-
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.Properties;
-
-import static com.linkedin.venice.ConfigKeys.*;
 
 
 /**
@@ -25,8 +24,12 @@ public class IntegrationTestUtils {
   /**
    * N.B.: Visibility is package-private on purpose.
    */
-  static VeniceProperties getClusterProps(String clusterName, File dataDirectory, String zkAddress,
-      KafkaBrokerWrapper kafkaBrokerWrapper, boolean sslToKafka) {
+  static VeniceProperties getClusterProps(
+      String clusterName,
+      File dataDirectory,
+      String zkAddress,
+      KafkaBrokerWrapper kafkaBrokerWrapper,
+      boolean sslToKafka) {
     // TODO: Validate that these configs are all still used.
     // TODO: Centralize default config values in a single place
 
@@ -71,7 +74,8 @@ public class IntegrationTestUtils {
     if (!directory.exists()) {
       directory.mkdir();
     } else if (!directory.isDirectory()) {
-      throw new VeniceException("Can only create a config file in a directory, not in a file: " + directory.getAbsolutePath());
+      throw new VeniceException(
+          "Can only create a config file in a directory, not in a file: " + directory.getAbsolutePath());
     }
     File propsFile = new File(directory, fileName);
     if (propsFile.exists()) {
@@ -83,7 +87,9 @@ public class IntegrationTestUtils {
         content.store(writer, "Config file: " + fileName);
       }
     } catch (IOException e) {
-      throw new VeniceException("Got an IOExpcetion while trying to create or write to the file: " + propsFile.getAbsolutePath(), e);
+      throw new VeniceException(
+          "Got an IOExpcetion while trying to create or write to the file: " + propsFile.getAbsolutePath(),
+          e);
     }
     return propsFile;
   }

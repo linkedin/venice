@@ -1,5 +1,8 @@
 package com.linkedin.venice.router.api;
 
+import static com.linkedin.venice.HttpConstants.*;
+import static org.apache.http.HttpStatus.*;
+
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
@@ -20,9 +23,6 @@ import java.util.concurrent.TimeoutException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.HttpConstants.*;
-import static org.apache.http.HttpStatus.*;
-
 
 public class RouterHeartbeat extends AbstractVeniceService {
   private final Thread heartBeatThread;
@@ -35,25 +35,32 @@ public class RouterHeartbeat extends AbstractVeniceService {
    * @param routerConfig Venice router config
    * @param sslFactory if provided, the heartbeat will attempt to use ssl when checking the status of the storage nodes
    */
-  public RouterHeartbeat(LiveInstanceMonitor monitor, VeniceHostHealth health,
-      VeniceRouterConfig routerConfig, Optional<SSLEngineComponentFactory> sslFactory, StorageNodeClient storageNodeClient) {
+  public RouterHeartbeat(
+      LiveInstanceMonitor monitor,
+      VeniceHostHealth health,
+      VeniceRouterConfig routerConfig,
+      Optional<SSLEngineComponentFactory> sslFactory,
+      StorageNodeClient storageNodeClient) {
 
     // How long of a timeout we allow for a node to respond to a heartbeat request
-    int heartbeatTimeoutMillis = (int)routerConfig.getHeartbeatTimeoutMs();
+    int heartbeatTimeoutMillis = (int) routerConfig.getHeartbeatTimeoutMs();
     long heartbeatCycleMillis = routerConfig.getHeartbeatCycleMs();
 
     Runnable runnable = () -> {
       boolean running = true;
       List<CompletableFuture<PortableHttpResponse>> responseFutures = new ArrayList<>();
       List<Instance> instances = new ArrayList<>();
-      while(running) {
+      while (running) {
         try {
           responseFutures.clear();
           instances.clear();
           // send out all heartbeat requests in parallel
-          for (Instance instance : monitor.getAllLiveInstances()) {
-            VeniceMetaDataRequest
-                request = new VeniceMetaDataRequest(instance, QueryAction.HEALTH.toString().toLowerCase(), HTTP_GET, sslFactory.isPresent());
+          for (Instance instance: monitor.getAllLiveInstances()) {
+            VeniceMetaDataRequest request = new VeniceMetaDataRequest(
+                instance,
+                QueryAction.HEALTH.toString().toLowerCase(),
+                HTTP_GET,
+                sslFactory.isPresent());
             request.setTimeout(heartbeatTimeoutMillis);
             CompletableFuture<PortableHttpResponse> responseFuture = new CompletableFuture<>();
             storageNodeClient.sendRequest(request, responseFuture);
@@ -76,7 +83,7 @@ public class RouterHeartbeat extends AbstractVeniceService {
             if (elapsedTime >= heartbeatTimeoutMillis) {
               timeoutLimit = 0;
             } else {
-              timeoutLimit = (long)(heartbeatTimeoutMillis - elapsedTime);
+              timeoutLimit = (long) (heartbeatTimeoutMillis - elapsedTime);
             }
             try {
               PortableHttpResponse response = responseFutures.get(i).get(timeoutLimit, TimeUnit.MILLISECONDS);

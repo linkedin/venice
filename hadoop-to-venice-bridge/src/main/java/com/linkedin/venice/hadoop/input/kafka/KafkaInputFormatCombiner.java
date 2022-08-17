@@ -34,11 +34,15 @@ import org.apache.hadoop.mapred.Reporter;
 public class KafkaInputFormatCombiner extends AbstractMapReduceTask
     implements Reducer<BytesWritable, BytesWritable, BytesWritable, BytesWritable> {
   private static final RecordDeserializer<KafkaInputMapperValue> KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_DESERIALIZER =
-      FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(KafkaInputMapperValue.SCHEMA$, KafkaInputMapperValue.class);
+      FastSerializerDeserializerFactory
+          .getFastAvroSpecificDeserializer(KafkaInputMapperValue.SCHEMA$, KafkaInputMapperValue.class);
 
   @Override
-  public void reduce(BytesWritable key, Iterator<BytesWritable> values,
-      OutputCollector<BytesWritable, BytesWritable> output, Reporter reporter) throws IOException {
+  public void reduce(
+      BytesWritable key,
+      Iterator<BytesWritable> values,
+      OutputCollector<BytesWritable, BytesWritable> output,
+      Reporter reporter) throws IOException {
     /**
      * N.B.: This class currently does nothing chunked topics, which is functional, but provides no
      *       scalability benefits. In theory, it is possible to extend the scalability benefits to
@@ -73,10 +77,12 @@ public class KafkaInputFormatCombiner extends AbstractMapReduceTask
   }
 
   @Override
-  public void close() {}
+  public void close() {
+  }
 
   @Override
-  protected void configureTask(VeniceProperties props, JobConf job) {}
+  protected void configureTask(VeniceProperties props, JobConf job) {
+  }
 
   /**
    * @return the value with the largest offset for the purpose of compaction
@@ -88,7 +94,8 @@ public class KafkaInputFormatCombiner extends AbstractMapReduceTask
     long largestOffset = Long.MIN_VALUE;
     while (valueIterator.hasNext()) {
       BytesWritable bytesWritable = valueIterator.next();
-      mapperValue = KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_DESERIALIZER.deserialize(mapperValue, bytesWritable.copyBytes());
+      mapperValue =
+          KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_DESERIALIZER.deserialize(mapperValue, bytesWritable.copyBytes());
       if (mapperValue.offset > largestOffset) {
         lastBytesWritable = bytesWritable;
         lastValueIsADelete = mapperValue.valueType.equals(MapperValueType.DELETE);

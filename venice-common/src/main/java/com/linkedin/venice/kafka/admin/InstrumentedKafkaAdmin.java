@@ -1,5 +1,7 @@
 package com.linkedin.venice.kafka.admin;
 
+import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.*;
+
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.stats.KafkaAdminWrapperStats;
 import com.linkedin.venice.utils.SystemTime;
@@ -17,8 +19,6 @@ import org.apache.commons.lang.Validate;
 import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.common.KafkaFuture;
 
-import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.*;
-
 
 /**
  * This class delegates another {@link KafkaAdminWrapper} instance and keeps track of the invocation rate of methods
@@ -28,7 +28,6 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
   private final KafkaAdminWrapper kafkaAdmin;
   private final KafkaAdminWrapperStats kafkaAdminWrapperStats;
   private final Time time;
-
 
   public InstrumentedKafkaAdmin(KafkaAdminWrapper kafkaAdmin, MetricsRepository metricsRepository, String statsName) {
     this(kafkaAdmin, metricsRepository, statsName, new SystemTime());
@@ -110,7 +109,8 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
 
   @Override
   public boolean containsTopicWithExpectationAndRetry(String topic, int maxRetries, final boolean expectedResult) {
-    return instrument(CONTAINS_TOPIC_WITH_RETRY,
+    return instrument(
+        CONTAINS_TOPIC_WITH_RETRY,
         () -> kafkaAdmin.containsTopicWithExpectationAndRetry(topic, maxRetries, expectedResult));
   }
 
@@ -143,12 +143,13 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
     final Map<String, KafkaFuture<TopicDescription>> res = kafkaAdmin.describeTopics(topicNames);
     kafkaAdminWrapperStats.recordLatency(
         KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.DESCRIBE_TOPICS,
-        Utils.calculateDurationMs(time, startTimeMs)
-    );
+        Utils.calculateDurationMs(time, startTimeMs));
     return res;
   }
 
-  private <T> T instrument(KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE type, Supplier<T> functionToInstrument) {
+  private <T> T instrument(
+      KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE type,
+      Supplier<T> functionToInstrument) {
     final long startTimeMs = time.getMilliseconds();
     final T res = functionToInstrument.get();
     kafkaAdminWrapperStats.recordLatency(type, Utils.calculateDurationMs(time, startTimeMs));

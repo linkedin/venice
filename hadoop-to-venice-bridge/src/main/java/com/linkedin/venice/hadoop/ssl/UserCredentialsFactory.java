@@ -16,8 +16,7 @@ public class UserCredentialsFactory {
   /**
    * Get user's credentials from the current Hadoop user group context.
    */
-  public static Credentials getHadoopUserCredentials()
-      throws IOException {
+  public static Credentials getHadoopUserCredentials() throws IOException {
 
     Credentials credentials = UserGroupInformation.getCurrentUser().getCredentials();
     verifyCredentials(credentials);
@@ -27,10 +26,9 @@ public class UserCredentialsFactory {
   /**
    * Get user's credentials from the the Hadoop token file
    */
-  public static Credentials getUserCredentialsFromTokenFile()
-      throws IOException {
+  public static Credentials getUserCredentialsFromTokenFile() throws IOException {
     String tokenFilePath = System.getenv(UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION);
-    if(tokenFilePath == null){
+    if (tokenFilePath == null) {
       tokenFilePath = System.getProperty(UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION);
     }
     File tokenFile = new File(tokenFilePath);
@@ -41,9 +39,10 @@ public class UserCredentialsFactory {
 
   private static void verifyCredentials(Credentials credentials) {
     if (credentials.numberOfSecretKeys() < REQUIRED_SECRET_KEY_COUNT) {
-      logger.info("Number of tokens found: " + credentials.numberOfTokens());           // Currently is 4
-      logger.warn("Number of secret keys found: " + credentials.numberOfSecretKeys());  // Currently should be 4
-      logger.warn("The current credentials does not contain required secret keys which are required by enabling Kafka SSL.");
+      logger.info("Number of tokens found: " + credentials.numberOfTokens()); // Currently is 4
+      logger.warn("Number of secret keys found: " + credentials.numberOfSecretKeys()); // Currently should be 4
+      logger.warn(
+          "The current credentials does not contain required secret keys which are required by enabling Kafka SSL.");
     }
   }
 }

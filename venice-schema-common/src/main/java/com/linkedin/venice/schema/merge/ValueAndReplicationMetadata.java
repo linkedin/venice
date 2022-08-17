@@ -1,10 +1,9 @@
 package com.linkedin.venice.schema.merge;
 
 import com.linkedin.venice.utils.lazy.Lazy;
+import javax.annotation.Nonnull;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang.Validate;
-
-import javax.annotation.Nonnull;
 
 
 /**

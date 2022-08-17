@@ -9,6 +9,7 @@ import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+
 /**
  * Default implementation of the {@link VenicePartitioner} class.
  *
@@ -40,7 +41,8 @@ public class DefaultVenicePartitioner extends VenicePartitioner {
     }
   }
 
-  private static final ThreadLocal<PartitionerState> partitionerState = ThreadLocal.withInitial(() -> new PartitionerState());
+  private static final ThreadLocal<PartitionerState> partitionerState =
+      ThreadLocal.withInitial(() -> new PartitionerState());
 
   public DefaultVenicePartitioner() {
     super();
@@ -87,7 +89,7 @@ public class DefaultVenicePartitioner extends VenicePartitioner {
     return getPartitionId(keyBytes, 0, keyBytes.length, numPartitions);
   }
 
-    @Override
+  @Override
   public int getPartitionId(ByteBuffer keyByteBuffer, int numPartitions) {
     return getPartitionId(keyByteBuffer.array(), keyByteBuffer.position(), keyByteBuffer.remaining(), numPartitions);
   }

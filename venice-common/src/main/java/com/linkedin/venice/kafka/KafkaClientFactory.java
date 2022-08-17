@@ -1,7 +1,9 @@
 package com.linkedin.venice.kafka;
 
+import static com.linkedin.venice.ConfigConstants.*;
+import static com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer.*;
+
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.kafka.admin.InstrumentedKafkaAdmin;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
@@ -10,6 +12,7 @@ import com.linkedin.venice.kafka.consumer.AutoClosingKafkaConsumerStats;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.ReflectUtils;
@@ -17,7 +20,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.Properties;
-
+import javax.annotation.Nonnull;
 import org.apache.commons.lang.Validate;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -25,11 +28,6 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import javax.annotation.Nonnull;
-
-import static com.linkedin.venice.ConfigConstants.*;
-import static com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer.*;
 
 
 /**
@@ -64,16 +62,19 @@ public abstract class KafkaClientFactory {
   }
 
   public KafkaConsumerWrapper getConsumer(Properties props) {
-    return new ApacheKafkaConsumer(getKafkaConsumer(props), new VeniceProperties(props), isKafkaConsumerOffsetCollectionEnabled());
+    return new ApacheKafkaConsumer(
+        getKafkaConsumer(props),
+        new VeniceProperties(props),
+        isKafkaConsumerOffsetCollectionEnabled());
   }
 
   public Consumer<byte[], byte[]> getRawBytesKafkaConsumer() {
     Properties props = getConsumerProps();
-    //This is a temporary fix for the issue described here
-    //https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
-    //In our case "org.apache.kafka.common.serialization.ByteArrayDeserializer" class can not be found
-    //because class loader has no venice-common in class path. This can be only reproduced on JDK11
-    //Trying to avoid class loading via Kafka's ConfigDef class
+    // This is a temporary fix for the issue described here
+    // https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
+    // In our case "org.apache.kafka.common.serialization.ByteArrayDeserializer" class can not be found
+    // because class loader has no venice-common in class path. This can be only reproduced on JDK11
+    // Trying to avoid class loading via Kafka's ConfigDef class
     props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     // Increase receive buffer to 1MB to check whether it can solve the metadata timing out issue
@@ -93,10 +94,10 @@ public abstract class KafkaClientFactory {
     return getKafkaConsumer(props);
   }
 
-  private  <K, V> Consumer<K, V> getKafkaConsumer(Properties properties) {
+  private <K, V> Consumer<K, V> getKafkaConsumer(Properties properties) {
     Properties propertiesWithSSL = setupSSL(properties);
     if (autoCloseIdleConsumersEnabled) {
-      AutoClosingKafkaConsumer<K, V> consumer =  new AutoClosingKafkaConsumer<>(propertiesWithSSL, stats);
+      AutoClosingKafkaConsumer<K, V> consumer = new AutoClosingKafkaConsumer<>(propertiesWithSSL, stats);
       stats.ifPresent(s -> {
         s.addConsumerToTrack(consumer);
       });
@@ -120,31 +121,37 @@ public abstract class KafkaClientFactory {
   private KafkaAdminWrapper createAdminClient(
       String kafkaAdminClientClass,
       Optional<MetricsRepository> optionalMetricsRepository,
-      String statsNamePrefix
-  ) {
-    KafkaAdminWrapper adminWrapper = ReflectUtils.callConstructor(
-        ReflectUtils.loadClass(kafkaAdminClientClass),
-        new Class[0],
-        new Object[0]
-    );
+      String statsNamePrefix) {
+    KafkaAdminWrapper adminWrapper =
+        ReflectUtils.callConstructor(ReflectUtils.loadClass(kafkaAdminClientClass), new Class[0], new Object[0]);
     Properties properties = setupSSL(new Properties());
     properties.setProperty(ConfigKeys.KAFKA_ZK_ADDRESS, getKafkaZkAddress());
     if (!properties.contains(ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFG_MAX_RETRY_TIME_SEC)) {
-      properties.put(ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFG_MAX_RETRY_TIME_SEC, DEFAULT_KAFKA_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS);
+      properties.put(
+          ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFG_MAX_RETRY_TIME_SEC,
+          DEFAULT_KAFKA_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS);
     }
     adminWrapper.initialize(properties);
     final String kafkaBootstrapServers = getKafkaBootstrapServers();
 
     if (optionalMetricsRepository.isPresent()) {
       // Use Kafka bootstrap server to identify which Kafka admin client stats it is
-      final String kafkaAdminStatsName = String.format("%s_%s_%s", statsNamePrefix, kafkaAdminClientClass, kafkaBootstrapServers);
+      final String kafkaAdminStatsName =
+          String.format("%s_%s_%s", statsNamePrefix, kafkaAdminClientClass, kafkaBootstrapServers);
       adminWrapper = new InstrumentedKafkaAdmin(adminWrapper, optionalMetricsRepository.get(), kafkaAdminStatsName);
-      logger.info(String.format("Created instrumented Kafka admin client of class %s for Kafka cluster with bootstrap "
-              + "server %s and has stats name prefix %s",
-          kafkaAdminClientClass, kafkaBootstrapServers, statsNamePrefix));
+      logger.info(
+          String.format(
+              "Created instrumented Kafka admin client of class %s for Kafka cluster with bootstrap "
+                  + "server %s and has stats name prefix %s",
+              kafkaAdminClientClass,
+              kafkaBootstrapServers,
+              statsNamePrefix));
     } else {
-      logger.info(String.format("Created non-instrumented Kafka admin client of class %s for Kafka cluster with bootstrap server %s",
-          kafkaAdminClientClass, kafkaBootstrapServers));
+      logger.info(
+          String.format(
+              "Created non-instrumented Kafka admin client of class %s for Kafka cluster with bootstrap server %s",
+              kafkaAdminClientClass,
+              kafkaBootstrapServers));
     }
     return adminWrapper;
   }
@@ -193,7 +200,10 @@ public abstract class KafkaClientFactory {
 
   public abstract String getKafkaBootstrapServers();
 
-  abstract protected KafkaClientFactory clone(String kafkaBootstrapServers, String kafkaZkAddress, Optional<MetricsParameters> metricsParameters);
+  abstract protected KafkaClientFactory clone(
+      String kafkaBootstrapServers,
+      String kafkaZkAddress,
+      Optional<MetricsParameters> metricsParameters);
 
   public static class MetricsParameters {
     final String uniqueName;
@@ -204,8 +214,14 @@ public abstract class KafkaClientFactory {
       this.metricsRepository = metricsRepository;
     }
 
-    public MetricsParameters(Class kafkaFactoryClass, Class usingClass, String kafkaBootstrapUrl, MetricsRepository metricsRepository) {
-      this(kafkaFactoryClass.getSimpleName() + "_used_by_" + usingClass + "_for_" + kafkaBootstrapUrl, metricsRepository);
+    public MetricsParameters(
+        Class kafkaFactoryClass,
+        Class usingClass,
+        String kafkaBootstrapUrl,
+        MetricsRepository metricsRepository) {
+      this(
+          kafkaFactoryClass.getSimpleName() + "_used_by_" + usingClass + "_for_" + kafkaBootstrapUrl,
+          metricsRepository);
     }
   }
 }

@@ -1,5 +1,8 @@
 package com.linkedin.venice.samza;
 
+import static com.linkedin.venice.CommonConfigKeys.*;
+import static com.linkedin.venice.VeniceConstants.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
@@ -24,9 +27,6 @@ import org.apache.samza.system.SystemConsumer;
 import org.apache.samza.system.SystemFactory;
 import org.apache.samza.system.SystemProducer;
 import org.apache.samza.util.SinglePartitionWithoutOffsetsSystemAdmin;
-
-import static com.linkedin.venice.CommonConfigKeys.*;
-import static com.linkedin.venice.VeniceConstants.*;
 
 
 public class VeniceSystemFactory implements SystemFactory, Serializable {
@@ -104,8 +104,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
       SSL_KEYSTORE_LOCATION,
       SSL_KEY_PASSWORD,
       SSL_TRUSTSTORE_LOCATION,
-      SSL_TRUSTSTORE_PASSWORD
-  );
+      SSL_TRUSTSTORE_PASSWORD);
 
   public VeniceSystemFactory() {
     systemProducerStatues = new VeniceConcurrentHashMap<>();
@@ -129,27 +128,64 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
    * Keep the original createSystemProducer method to keep backward compatibility.
    * TODO: Remove this method after samza-li-venice 0.7.1 or higher is released as active version.
    */
-  protected SystemProducer createSystemProducer(String veniceD2ZKHost, String veniceD2Service, String storeName,
-      Version.PushType venicePushType, String samzaJobId, String runningFabric, Config config,
-      Optional<SSLFactory> sslFactory, Optional<String> partitioners) {
-    return new VeniceSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType, samzaJobId, runningFabric,
-        config.getBoolean(VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION, false), this, sslFactory, partitioners);
+  protected SystemProducer createSystemProducer(
+      String veniceD2ZKHost,
+      String veniceD2Service,
+      String storeName,
+      Version.PushType venicePushType,
+      String samzaJobId,
+      String runningFabric,
+      Config config,
+      Optional<SSLFactory> sslFactory,
+      Optional<String> partitioners) {
+    return new VeniceSystemProducer(
+        veniceD2ZKHost,
+        veniceD2Service,
+        storeName,
+        venicePushType,
+        samzaJobId,
+        runningFabric,
+        config.getBoolean(VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION, false),
+        this,
+        sslFactory,
+        partitioners);
   }
 
   // Extra `Config` parameter is to ease the internal implementation
-  protected SystemProducer createSystemProducer(String veniceD2ZKHost, String veniceD2Service, String storeName,
-      Version.PushType venicePushType, String samzaJobId, String runningFabric, boolean verifyLatestProtocolPresent, Config config,
-      Optional<SSLFactory> sslFactory, Optional<String> partitioners) {
-    return new VeniceSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType, samzaJobId, runningFabric,
-        verifyLatestProtocolPresent, this, sslFactory, partitioners);
+  protected SystemProducer createSystemProducer(
+      String veniceD2ZKHost,
+      String veniceD2Service,
+      String storeName,
+      Version.PushType venicePushType,
+      String samzaJobId,
+      String runningFabric,
+      boolean verifyLatestProtocolPresent,
+      Config config,
+      Optional<SSLFactory> sslFactory,
+      Optional<String> partitioners) {
+    return new VeniceSystemProducer(
+        veniceD2ZKHost,
+        veniceD2Service,
+        storeName,
+        venicePushType,
+        samzaJobId,
+        runningFabric,
+        verifyLatestProtocolPresent,
+        this,
+        sslFactory,
+        partitioners);
   }
 
   /**
    * Samza table writer would directly call this function to create venice system producer instead of calling the general
    * {@link VeniceSystemFactory#getProducer(String, Config, MetricsRegistry)} function.
    */
-  public SystemProducer getProducer(String systemName, String storeName, boolean veniceAggregate,
-      String pushTypeString, Config config) {
+  public SystemProducer getProducer(
+      String systemName,
+      String storeName,
+      boolean veniceAggregate,
+      String pushTypeString,
+      Config config) {
     if (isEmpty(storeName)) {
       throw new SamzaException(VENICE_STORE + " should not be null for system " + systemName);
     }
@@ -160,15 +196,15 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
     try {
       venicePushType = Version.PushType.valueOf(pushTypeString);
     } catch (Exception e) {
-      throw new SamzaException("Cannot parse venice push type: " + pushTypeString
-          + ".  Must be one of: " + Arrays.stream(Version.PushType.values())
-          .map(Enum::toString)
-          .collect(Collectors.joining(",")));
+      throw new SamzaException(
+          "Cannot parse venice push type: " + pushTypeString + ".  Must be one of: "
+              + Arrays.stream(Version.PushType.values()).map(Enum::toString).collect(Collectors.joining(",")));
     }
 
     String veniceParentZKHosts = config.get(VENICE_PARENT_D2_ZK_HOSTS);
     if (isEmpty(veniceParentZKHosts)) {
-      throw new SamzaException(VENICE_PARENT_D2_ZK_HOSTS + " should not be null, please put this property in your app-def.xml");
+      throw new SamzaException(
+          VENICE_PARENT_D2_ZK_HOSTS + " should not be null, please put this property in your app-def.xml");
     }
     String localVeniceZKHosts = config.get(D2_ZK_HOSTS_PROPERTY);
     if (isEmpty(localVeniceZKHosts)) {
@@ -220,8 +256,17 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
     LOGGER.info("Will use the following Venice D2 ZK hosts: " + veniceD2ZKHost);
 
     boolean verifyLatestProtocolPresent = config.getBoolean(VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION, false);
-    SystemProducer systemProducer = createSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType,
-        samzaJobId, runningFabric, verifyLatestProtocolPresent, config, sslFactory, partitioners);
+    SystemProducer systemProducer = createSystemProducer(
+        veniceD2ZKHost,
+        veniceD2Service,
+        storeName,
+        venicePushType,
+        samzaJobId,
+        runningFabric,
+        verifyLatestProtocolPresent,
+        config,
+        sslFactory,
+        partitioners);
     this.systemProducerStatues.computeIfAbsent(systemProducer, k -> Pair.create(true, false));
     return systemProducer;
   }

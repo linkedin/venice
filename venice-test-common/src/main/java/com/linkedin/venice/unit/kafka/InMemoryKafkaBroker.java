@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
+
 /**
  * Used in unit tests in order to avoid spinning a full Kafka broker with network stack
  * and disk IO.
@@ -51,7 +52,8 @@ public class InMemoryKafkaBroker {
    * @return Some {@link InMemoryKafkaMessage} instance, or the {@link Optional#empty()} instance if that partition is drained.
    * @throws IllegalArgumentException if the topic or partition does not exist.
    */
-  public Optional<InMemoryKafkaMessage> consume(String topicName, int partition, long offset) throws IllegalArgumentException {
+  public Optional<InMemoryKafkaMessage> consume(String topicName, int partition, long offset)
+      throws IllegalArgumentException {
     InMemoryKafkaTopic topic = getTopic(topicName);
     return topic.consume(partition, offset);
   }

@@ -9,7 +9,7 @@ import org.testng.annotations.Test;
  */
 public class TestInstance {
   @Test
-  public void getHostWorksRight(){
+  public void getHostWorksRight() {
     Instance ip4 = new Instance("0", "127.0.0.1", 1234);
     Assert.assertEquals(ip4.getUrl(), "http://127.0.0.1:1234");
 
@@ -18,7 +18,7 @@ public class TestInstance {
   }
 
   @Test
-  public void parsesNodeId(){
+  public void parsesNodeId() {
     Instance host = Instance.fromNodeId("localhost_1234");
     Assert.assertEquals(host.getHost(), "localhost");
     Assert.assertEquals(host.getPort(), 1234);

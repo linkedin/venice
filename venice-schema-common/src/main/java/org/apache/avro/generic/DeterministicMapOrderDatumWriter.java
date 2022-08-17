@@ -14,11 +14,9 @@ import org.apache.avro.io.Encoder;
  * the same as natural ordering of map keys.
  */
 public interface DeterministicMapOrderDatumWriter {
+  void internalWrite(Schema schema, Object datum, Encoder out) throws IOException;
 
-  void internalWrite(Schema schema, Object datum, Encoder out)  throws IOException;
-
-  default void writeMapWithDeterministicOrder(Schema schema, Object datum, Encoder out)
-      throws IOException {
+  default void writeMapWithDeterministicOrder(Schema schema, Object datum, Encoder out) throws IOException {
     Schema valueSchemaType = schema.getValueType();
     Map map = (Map) datum;
     final int expectedMapSize = map.size();
@@ -26,11 +24,10 @@ public interface DeterministicMapOrderDatumWriter {
     out.writeMapStart();
     out.setItemCount(expectedMapSize);
 
-    List<Map.Entry> sortedEntryList = (List<Map.Entry>) map.entrySet().stream()
-        .sorted(Map.Entry.comparingByKey())
-        .collect(Collectors.toList());
+    List<Map.Entry> sortedEntryList =
+        (List<Map.Entry>) map.entrySet().stream().sorted(Map.Entry.comparingByKey()).collect(Collectors.toList());
 
-    for (Map.Entry entry : sortedEntryList) {
+    for (Map.Entry entry: sortedEntryList) {
       out.startItem();
       out.writeString((CharSequence) entry.getKey().toString());
       internalWrite(valueSchemaType, entry.getValue(), out);
@@ -39,8 +36,8 @@ public interface DeterministicMapOrderDatumWriter {
 
     out.writeMapEnd();
     if (actualSize != expectedMapSize) {
-      throw new ConcurrentModificationException("Size of map written was " +
-          expectedMapSize + ", but number of entries written was " + actualSize + ". ");
+      throw new ConcurrentModificationException(
+          "Size of map written was " + expectedMapSize + ", but number of entries written was " + actualSize + ". ");
     }
   }
 }

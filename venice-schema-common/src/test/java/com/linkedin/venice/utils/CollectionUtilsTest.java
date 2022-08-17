@@ -1,16 +1,15 @@
 package com.linkedin.venice.utils;
 
+import static org.apache.avro.Schema.*;
+import static org.testng.Assert.*;
+
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.avro.generic.GenericData;
 import org.testng.annotations.Test;
 
-import static org.apache.avro.Schema.*;
-import static org.testng.Assert.*;
-
 
 public class CollectionUtilsTest {
-
   @Test
   public void testListEquals() {
     /** 1. Standard {@link java.util.ArrayList<Integer>} instances should compare properly. */
@@ -19,7 +18,9 @@ public class CollectionUtilsTest {
     populateIntegerList(javaUtilArrayList1);
     populateIntegerList(javaUtilArrayList2);
 
-    assertListEqualityBothWays(javaUtilArrayList1, javaUtilArrayList2,
+    assertListEqualityBothWays(
+        javaUtilArrayList1,
+        javaUtilArrayList2,
         "We cannot compare java.util.ArrayList<Integer> by referential equality properly!");
 
     /**
@@ -52,9 +53,11 @@ public class CollectionUtilsTest {
      */
 
     // Code under test
-    assertTrue(CollectionUtils.listEquals(javaUtilArrayList1, avroArray),
+    assertTrue(
+        CollectionUtils.listEquals(javaUtilArrayList1, avroArray),
         "We cannot compare java.util.ArrayList<Integer> with GenericData.Array properly!");
-    assertTrue(CollectionUtils.listEquals(avroArray, javaUtilArrayList1),
+    assertTrue(
+        CollectionUtils.listEquals(avroArray, javaUtilArrayList1),
         "We cannot compare GenericData.Array with java.util.ArrayList<Integer> properly!");
 
     /** 3. Ensure that we verify content equality, not just referential equality */
@@ -63,10 +66,11 @@ public class CollectionUtilsTest {
     populateTestObjectList(javaUtilArrayList3);
     populateTestObjectList(javaUtilArrayList4);
 
-    assertListEqualityBothWays(javaUtilArrayList3, javaUtilArrayList4,
+    assertListEqualityBothWays(
+        javaUtilArrayList3,
+        javaUtilArrayList4,
         "We cannot compare java.util.ArrayList<Object> by content equality properly!");
   }
-
 
   private void populateIntegerList(List<Integer> list) {
     list.add(1);
@@ -110,7 +114,8 @@ public class CollectionUtilsTest {
         return false;
       }
       TestContentObject testContentObject = (TestContentObject) o;
-      if (!intVal.equals(testContentObject.intVal) || !booleanVal.equals(testContentObject.booleanVal) || !stringVal.equals(testContentObject.stringVal)){
+      if (!intVal.equals(testContentObject.intVal) || !booleanVal.equals(testContentObject.booleanVal)
+          || !stringVal.equals(testContentObject.stringVal)) {
         return false;
       }
       return true;

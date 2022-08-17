@@ -42,7 +42,9 @@ public class R2TransportClient extends InternalTransportClient {
     return valueFuture;
   }
 
-  public CompletableFuture<TransportClientResponse> post(String requestUrl, Map<String, String> headers,
+  public CompletableFuture<TransportClientResponse> post(
+      String requestUrl,
+      Map<String, String> headers,
       byte[] requestBody) {
     RestRequest request = D2ClientUtils.createD2PostRequest(requestUrl, headers, requestBody);
     CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
@@ -64,7 +66,7 @@ public class R2TransportClient extends InternalTransportClient {
 
     @Override
     public void onError(Throwable e) {
-      if (e instanceof RestException){
+      if (e instanceof RestException) {
         // Get the RestResponse for status codes other than 200
         RestResponse result = ((RestException) e).getResponse();
         onSuccess(result);

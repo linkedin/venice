@@ -2,7 +2,6 @@ package com.linkedin.venice.client.store;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
-import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.utils.SslUtils;
@@ -28,8 +27,7 @@ public class QueryTool {
   private static final int SSL_CONFIG_FILE_PATH = 4;
   private static final int REQUIRED_ARGS_COUNT = 5;
 
-  public static void main(String[] args)
-      throws Exception {
+  public static void main(String[] args) throws Exception {
     if (args.length < REQUIRED_ARGS_COUNT) {
       System.out.println(
           "Usage: java -jar venice-thin-client-0.1.jar <store> <key_string> <url> <is_vson_store> <ssl_config_file_path>");
@@ -42,34 +40,43 @@ public class QueryTool {
     String sslConfigFilePath = removeQuotes(args[SSL_CONFIG_FILE_PATH]);
     System.out.println();
 
-    Map<String, String> outputMap = queryStoreForKey(store, keyString, url, isVsonStore, Optional.of(sslConfigFilePath));
+    Map<String, String> outputMap =
+        queryStoreForKey(store, keyString, url, isVsonStore, Optional.of(sslConfigFilePath));
     outputMap.entrySet().stream().forEach(System.out::println);
   }
 
-  public static Map<String, String> queryStoreForKey(String store, String keyString, String url, boolean isVsonStore, Optional<String> sslConfigFile)
-      throws Exception {
+  public static Map<String, String> queryStoreForKey(
+      String store,
+      String keyString,
+      String url,
+      boolean isVsonStore,
+      Optional<String> sslConfigFile) throws Exception {
 
     SSLEngineComponentFactory factory = null;
-    if(sslConfigFile.isPresent()) {
+    if (sslConfigFile.isPresent()) {
       Properties sslProperties = SslUtils.loadSSLConfig(sslConfigFile.get());
       factory = SslUtils.getSSLEngineComponentFactory(sslProperties);
     }
 
     // Verify the ssl engine is set up correctly.
-    if(url.toLowerCase().trim().startsWith("https") && (factory == null || factory.getSSLContext() == null)){
-      throw new VeniceException("ERROR: The SSL configuration is not valid to send a request to "+url);
+    if (url.toLowerCase().trim().startsWith("https") && (factory == null || factory.getSSLContext() == null)) {
+      throw new VeniceException("ERROR: The SSL configuration is not valid to send a request to " + url);
     }
 
     Map<String, String> outputMap = new LinkedHashMap<>();
     try (AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
-        ClientConfig.defaultGenericClientConfig(store).setVeniceURL(url).setVsonClient(isVsonStore).setSslEngineComponentFactory(factory))) {
+        ClientConfig.defaultGenericClientConfig(store)
+            .setVeniceURL(url)
+            .setVsonClient(isVsonStore)
+            .setSslEngineComponentFactory(factory))) {
       AbstractAvroStoreClient<Object, Object> castClient =
-          (AbstractAvroStoreClient<Object, Object>) ((StatTrackingStoreClient<Object, Object>) client).getInnerStoreClient();
+          (AbstractAvroStoreClient<Object, Object>) ((StatTrackingStoreClient<Object, Object>) client)
+              .getInnerStoreClient();
       Schema keySchema = castClient.getKeySchema();
 
       Object key = null;
       // Transfer vson schema to avro schema.
-      while(keySchema.getType().equals(Schema.Type.UNION)) {
+      while (keySchema.getType().equals(Schema.Type.UNION)) {
         keySchema = VsonAvroSchemaAdapter.stripFromUnion(keySchema);
       }
       switch (keySchema.getType()) {
@@ -87,7 +94,8 @@ public class QueryTool {
           break;
         case RECORD:
           try {
-            key = new GenericDatumReader<>(keySchema, keySchema).read(null,
+            key = new GenericDatumReader<>(keySchema, keySchema).read(
+                null,
                 AvroCompatibilityHelper.newJsonDecoder(keySchema, new ByteArrayInputStream(keyString.getBytes())));
           } catch (IOException e) {
             throw new VeniceException("Invalid input key:" + keyString, e);

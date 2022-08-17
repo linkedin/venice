@@ -27,7 +27,6 @@ import org.rocksdb.MemoryUsageType;
  * This class aggregates across the partitions and emits aggregate stats
  */
 public class RocksDBMemoryStats extends AbstractVeniceStats {
-
   private static final Logger logger = LogManager.getLogger(RocksDBMemoryStats.class);
 
   // List of metric domains to emit
@@ -57,28 +56,28 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
       "rocksdb.actual-delayed-write-rate",
       "rocksdb.block-cache-capacity",
       "rocksdb.block-cache-pinned-usage",
-      "rocksdb.block-cache-usage"
-      );
+      "rocksdb.block-cache-usage");
 
   // metrics emitted on a per instance basis need only be collected once, not aggregated
-  private static final Set<String> INSTANCE_METRIC_DOMAINS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
-      "rocksdb.block-cache-capacity",
-      "rocksdb.block-cache-pinned-usage",
-      "rocksdb.block-cache-usage"
-  )));
+  private static final Set<String> INSTANCE_METRIC_DOMAINS = Collections.unmodifiableSet(
+      new HashSet<>(
+          Arrays.asList(
+              "rocksdb.block-cache-capacity",
+              "rocksdb.block-cache-pinned-usage",
+              "rocksdb.block-cache-usage")));
 
   // metrics related to block cache, which should not be collected when plain table format is enabled.
-  private static final Set<String> BLOCK_CACHE_METRICS = PARTITION_METRIC_DOMAINS.stream()
-      .filter(s -> s.contains("rocksdb.block-cache"))
-      .collect(Collectors.toSet());
+  private static final Set<String> BLOCK_CACHE_METRICS =
+      PARTITION_METRIC_DOMAINS.stream().filter(s -> s.contains("rocksdb.block-cache")).collect(Collectors.toSet());
 
   private static final String ROCKSDB_MEMORY_USAGE_SUFFIX = ".rocksdb.memory-usage";
 
-  private static final Set<MemoryUsageType> MEMORY_USAGE_TYPES =
-      Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
-          MemoryUsageType.kMemTableTotal,
-          MemoryUsageType.kTableReadersTotal,
-          MemoryUsageType.kCacheTotal)));
+  private static final Set<MemoryUsageType> MEMORY_USAGE_TYPES = Collections.unmodifiableSet(
+      new HashSet<>(
+          Arrays.asList(
+              MemoryUsageType.kMemTableTotal,
+              MemoryUsageType.kTableReadersTotal,
+              MemoryUsageType.kCacheTotal)));
 
   private Map<String, RocksDBStoragePartition> hostedRocksDBPartitions = new ConcurrentHashMap<>();
 
@@ -86,7 +85,7 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
 
   public RocksDBMemoryStats(MetricsRepository metricsRepository, String name, boolean plainTableEnabled) {
     super(metricsRepository, name);
-    for(String metric : PARTITION_METRIC_DOMAINS) {
+    for (String metric: PARTITION_METRIC_DOMAINS) {
       // Skip the block cache related metrics when using PlainTable format is enabled.
       if (plainTableEnabled && BLOCK_CACHE_METRICS.contains(metric)) {
         continue;
@@ -95,7 +94,7 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
         Long total = 0L;
         // Lock down the list of RocksDB interfaces while the collection is ongoing
         synchronized (hostedRocksDBPartitions) {
-          for(RocksDBStoragePartition dbPartition : hostedRocksDBPartitions.values()) {
+          for (RocksDBStoragePartition dbPartition: hostedRocksDBPartitions.values()) {
             try {
               total += dbPartition.getRocksDBStatValue(metric);
             } catch (VeniceException e) {
@@ -119,7 +118,7 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
 
   public void deregisterPartition(String partitionName) {
     // Synchronize on the hosted partitions so that this method does not return while
-    // a metric collection is ongoing.  This prevents venice-server from potentially
+    // a metric collection is ongoing. This prevents venice-server from potentially
     // closing a RocksDB database while a property is being read.
     synchronized (hostedRocksDBPartitions) {
       hostedRocksDBPartitions.remove(partitionName);
@@ -170,12 +169,12 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
     private long getTotalMemoryUsageInBytes() {
       long total = 0;
 
-      for (Map.Entry<String, RocksDBStoragePartition> entry : hostedRocksDBPartitions.entrySet()) {
-        if (! entry.getKey().startsWith(storeName)) {
+      for (Map.Entry<String, RocksDBStoragePartition> entry: hostedRocksDBPartitions.entrySet()) {
+        if (!entry.getKey().startsWith(storeName)) {
           continue;
         }
         Map<MemoryUsageType, Long> memoryUsages = entry.getValue().getApproximateMemoryUsageByType(null);
-        for (Map.Entry<MemoryUsageType, Long> memoryUsageEntry : memoryUsages.entrySet()) {
+        for (Map.Entry<MemoryUsageType, Long> memoryUsageEntry: memoryUsages.entrySet()) {
           if (MEMORY_USAGE_TYPES.contains(memoryUsageEntry.getKey())) {
             total += memoryUsageEntry.getValue();
           }

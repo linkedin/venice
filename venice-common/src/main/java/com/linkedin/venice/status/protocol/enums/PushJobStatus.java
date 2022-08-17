@@ -6,6 +6,6 @@
 package com.linkedin.venice.status.protocol.enums;
 
 @SuppressWarnings("all")
-public enum PushJobStatus { 
+public enum PushJobStatus {
   SUCCESS, ERROR, KILLED
 }

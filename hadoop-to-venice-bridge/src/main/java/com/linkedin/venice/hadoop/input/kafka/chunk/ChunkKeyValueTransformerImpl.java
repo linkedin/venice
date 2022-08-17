@@ -7,12 +7,11 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 import org.apache.commons.lang.Validate;
-
-import javax.annotation.Nonnull;
 
 
 public class ChunkKeyValueTransformerImpl implements ChunkKeyValueTransformer {
@@ -21,9 +20,9 @@ public class ChunkKeyValueTransformerImpl implements ChunkKeyValueTransformer {
   private static int calculateNonChunkedKeySize() {
     return new ChunkedKeySuffixSerializer().serialize(
         KeyWithChunkingSuffixSerializer.IGNORED_TOPIC_NAME,
-        KeyWithChunkingSuffixSerializer.NON_CHUNK_KEY_SUFFIX
-    ).length;
+        KeyWithChunkingSuffixSerializer.NON_CHUNK_KEY_SUFFIX).length;
   }
+
   private final RecordDeserializer<?> keyDeserializer;
 
   public ChunkKeyValueTransformerImpl(@Nonnull Schema keySchema) {
@@ -49,8 +48,8 @@ public class ChunkKeyValueTransformerImpl implements ChunkKeyValueTransformer {
   }
 
   private RawKeyBytesAndChunkedKeySuffix splitKeyWithChunkedKeySuffix(byte[] compositeKey) {
-    BinaryDecoder decoder =
-        OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(compositeKey, 0, compositeKey.length);
+    BinaryDecoder decoder = OptimizedBinaryDecoderFactory.defaultFactory()
+        .createOptimizedBinaryDecoder(compositeKey, 0, compositeKey.length);
     Object ignore = keyDeserializer.deserialize(decoder);
     int chunkedKeySuffixByteCount;
     try {
@@ -63,10 +62,11 @@ public class ChunkKeyValueTransformerImpl implements ChunkKeyValueTransformer {
     return splitCompositeKeyWithSuffixSize(compositeKey, chunkedKeySuffixByteCount);
   }
 
-  private RawKeyBytesAndChunkedKeySuffix splitCompositeKeyWithSuffixSize(byte[] compositeKey, int chunkedKeySuffixSize) {
+  private RawKeyBytesAndChunkedKeySuffix splitCompositeKeyWithSuffixSize(
+      byte[] compositeKey,
+      int chunkedKeySuffixSize) {
     return new RawKeyBytesAndChunkedKeySuffix(
         ByteBuffer.wrap(compositeKey, 0, compositeKey.length - chunkedKeySuffixSize),
-        ByteBuffer.wrap(compositeKey, compositeKey.length - chunkedKeySuffixSize, chunkedKeySuffixSize)
-    );
+        ByteBuffer.wrap(compositeKey, compositeKey.length - chunkedKeySuffixSize, chunkedKeySuffixSize));
   }
 }

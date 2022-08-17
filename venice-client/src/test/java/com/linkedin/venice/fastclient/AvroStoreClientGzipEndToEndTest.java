@@ -13,10 +13,9 @@ import org.testng.annotations.DataProvider;
 
 
 public class AvroStoreClientGzipEndToEndTest extends AvroStoreClientEndToEndTest {
-
   @DataProvider(name = "useDaVinciClientBasedMetadata")
   public static Object[][] useDaVinciClientBasedMetadata() {
-    return new Object[][]{{true}};
+    return new Object[][] { { true } };
   }
 
   protected void prepareData() throws Exception {
@@ -33,11 +32,11 @@ public class AvroStoreClientGzipEndToEndTest extends AvroStoreClientEndToEndTest
       return new AbstractMap.SimpleEntry<>(keyPrefix + i, record);
     });
 
-    storeName = veniceCluster.createStore(KEY_SCHEMA_STR, VALUE_SCHEMA_STR, genericRecordStream,
-        CompressionStrategy.GZIP, topic -> {
+    storeName = veniceCluster
+        .createStore(KEY_SCHEMA_STR, VALUE_SCHEMA_STR, genericRecordStream, CompressionStrategy.GZIP, topic -> {
           storeVersionName = topic;
           return null;
-    });
+        });
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
   }
 

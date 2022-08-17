@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controller.server.AdminSparkServer.mapper;
+import static com.linkedin.venice.controllerapi.ControllerRoute.LEADER_CONTROLLER;
+
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -28,9 +31,6 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.controller.server.AdminSparkServer.mapper;
-import static com.linkedin.venice.controllerapi.ControllerRoute.LEADER_CONTROLLER;
-
 
 /**
  * Separate test case from TestAdminParkServer because controller client is not required for this test.
@@ -56,8 +56,7 @@ public class TestAdminSparkServerGetLeader {
   }
 
   @Test
-  public void testGetLeaderController()
-      throws IOException {
+  public void testGetLeaderController() throws IOException {
     String controllerUrl = veniceControllerWrapper.getControllerUrl();
 
     try (CloseableHttpClient client = HttpClients.createDefault()) {
@@ -78,7 +77,9 @@ public class TestAdminSparkServerGetLeader {
 
           String leaderControllerUrl = responseObject.getUrl();
 
-          Assert.assertEquals(leaderControllerUrl, "http://" + Utils.getHostName() + ":" + veniceControllerWrapper.getPort(),
+          Assert.assertEquals(
+              leaderControllerUrl,
+              "http://" + Utils.getHostName() + ":" + veniceControllerWrapper.getPort(),
               "Can not find correct leader controller url.");
         } catch (IOException e) {
           throw new VeniceException(e);

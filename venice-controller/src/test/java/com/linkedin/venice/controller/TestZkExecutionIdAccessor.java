@@ -36,7 +36,9 @@ public class TestZkExecutionIdAccessor {
   public void getLastSucceedExecutionId() {
     long id = 100L;
     executionIdAccessor.updateLastSucceededExecutionId(clusterName, id);
-    Assert.assertEquals(executionIdAccessor.getLastSucceededExecutionId("non-existing-cluster"), Long.valueOf(-1),
+    Assert.assertEquals(
+        executionIdAccessor.getLastSucceededExecutionId("non-existing-cluster"),
+        Long.valueOf(-1),
         "Cluster has not been created.");
     Assert.assertEquals(executionIdAccessor.getLastSucceededExecutionId(clusterName), Long.valueOf(id));
   }

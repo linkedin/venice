@@ -1,5 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -7,8 +9,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
-
-import static org.mockito.Mockito.*;
 
 
 public class LeakedPushStatusCleanUpServiceTest {
@@ -47,10 +47,15 @@ public class LeakedPushStatusCleanUpServiceTest {
     /**
      * The actual test; the clean up service will try to delete the leaked push status
      */
-    try (LeakedPushStatusCleanUpService cleanUpService = new LeakedPushStatusCleanUpService(clusterName, accessor,
-        metadataRepository, aggPushStatusCleanUpStats, sleepIntervalInMs)) {
+    try (LeakedPushStatusCleanUpService cleanUpService = new LeakedPushStatusCleanUpService(
+        clusterName,
+        accessor,
+        metadataRepository,
+        aggPushStatusCleanUpStats,
+        sleepIntervalInMs)) {
       cleanUpService.start();
-      verify(accessor, timeout(TEST_TIMEOUT).atLeastOnce()).deleteOfflinePushStatusAndItsPartitionStatuses(leakedStoreVersion1);
+      verify(accessor, timeout(TEST_TIMEOUT).atLeastOnce())
+          .deleteOfflinePushStatusAndItsPartitionStatuses(leakedStoreVersion1);
       /**
        * At most {@link LeakedPushStatusCleanUpService#MAX_LEAKED_VERSION_TO_KEEP} leaked push statues before the current
        * version will be kept for debugging.

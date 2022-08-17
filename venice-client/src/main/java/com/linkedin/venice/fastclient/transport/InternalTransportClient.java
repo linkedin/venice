@@ -12,9 +12,12 @@ import java.util.Map;
  * Eventually this class can be deleted once all the methods defined in {@link TransportClient} are required in Fast-Client.
  */
 public abstract class InternalTransportClient extends TransportClient {
-
-  public void streamPost(String requestPath, Map<String, String> headers, byte[] requestBody,
-      TransportClientStreamingCallback callback, int keyCount) {
+  public void streamPost(
+      String requestPath,
+      Map<String, String> headers,
+      byte[] requestBody,
+      TransportClientStreamingCallback callback,
+      int keyCount) {
     throw new VeniceClientException("'streamPost' is not supported.");
   }
 }

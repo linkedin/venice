@@ -1,5 +1,7 @@
 package com.linkedin.davinci.repository;
 
+import static com.linkedin.venice.system.store.MetaStoreWriter.*;
+
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -18,20 +20,18 @@ import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-
 import java.util.HashMap;
 import java.util.Map;
 
-import static com.linkedin.venice.system.store.MetaStoreWriter.*;
-
 
 public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository {
-
   private final Map<String, AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue>> storeClientMap =
       new VeniceConcurrentHashMap<>();
   private final ICProvider icProvider;
 
-  public ThinClientMetaStoreBasedRepository(ClientConfig clientConfig, VeniceProperties backendConfig,
+  public ThinClientMetaStoreBasedRepository(
+      ClientConfig clientConfig,
+      VeniceProperties backendConfig,
       ICProvider icProvider) {
     super(clientConfig, backendConfig);
     this.icProvider = icProvider;
@@ -63,10 +63,12 @@ public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository
   @Override
   protected Store getStoreFromSystemStore(String storeName, String clusterName) {
     StoreProperties storeProperties =
-        getStoreMetaValue(storeName, MetaStoreDataType.STORE_PROPERTIES.getStoreMetaKey(new HashMap<String, String>() {{
-          put(KEY_STRING_STORE_NAME, storeName);
-          put(KEY_STRING_CLUSTER_NAME, clusterName);
-        }})).storeProperties;
+        getStoreMetaValue(storeName, MetaStoreDataType.STORE_PROPERTIES.getStoreMetaKey(new HashMap<String, String>() {
+          {
+            put(KEY_STRING_STORE_NAME, storeName);
+            put(KEY_STRING_CLUSTER_NAME, clusterName);
+          }
+        })).storeProperties;
     return new ZKStore(storeProperties);
   }
 
@@ -80,8 +82,8 @@ public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository
     StoreMetaValue value;
     try {
       if (icProvider != null) {
-        value = icProvider.call(getClass().getCanonicalName(), () -> getAvroClientForMetaStore(storeName).get(key))
-            .get();
+        value =
+            icProvider.call(getClass().getCanonicalName(), () -> getAvroClientForMetaStore(storeName).get(key)).get();
       } else {
         value = getAvroClientForMetaStore(storeName).get(key).get();
       }
@@ -89,7 +91,8 @@ public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository
       throw e;
     } catch (Exception e) {
       throw new VeniceException(
-          "Failed to get data from meta store using thin client for store: " + storeName + " with key: " + key, e);
+          "Failed to get data from meta store using thin client for store: " + storeName + " with key: " + key,
+          e);
     }
     if (value == null) {
       throw new MissingKeyInStoreMetadataException(key.toString(), StoreMetaValue.class.getSimpleName());

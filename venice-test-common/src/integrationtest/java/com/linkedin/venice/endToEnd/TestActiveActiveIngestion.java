@@ -1,5 +1,14 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
+import static com.linkedin.venice.CommonConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.*;
+import static com.linkedin.venice.samza.VeniceSystemFactory.*;
+import static com.linkedin.venice.utils.TestPushUtils.*;
+import static com.linkedin.venice.utils.TestUtils.*;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -48,15 +57,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
-import static com.linkedin.venice.CommonConfigKeys.*;
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.*;
-import static com.linkedin.venice.samza.VeniceSystemFactory.*;
-import static com.linkedin.venice.utils.TestPushUtils.*;
-import static com.linkedin.venice.utils.TestUtils.*;
-
 
 public class TestActiveActiveIngestion {
   private static final int TEST_TIMEOUT = 360 * Time.MS_PER_SECOND;
@@ -70,6 +70,7 @@ public class TestActiveActiveIngestion {
   private VeniceClusterWrapper clusterWrapper;
   private VeniceServerWrapper serverWrapper;
   private AvroSerializer serializer;
+
   @BeforeClass
   public void setUp() {
     String stringSchemaStr = "\"string\"";
@@ -78,10 +79,21 @@ public class TestActiveActiveIngestion {
     serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
     serverProperties.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
     serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
-    serverProperties.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME, "localhost:" + Utils.getFreePort());
+    serverProperties.put(
+        CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME,
+        "localhost:" + Utils.getFreePort());
     multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
-        1, 1, 1, 1, 1, 1,
-        1, Optional.empty(), Optional.empty(), Optional.of(new VeniceProperties(serverProperties)), false);
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.of(new VeniceProperties(serverProperties)),
+        false);
 
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
@@ -95,12 +107,15 @@ public class TestActiveActiveIngestion {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testKIFRepushActiveActiveStore() throws Exception{
+  public void testKIFRepushActiveActiveStore() throws Exception {
     String parentControllerURLs =
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
     ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
-    TestUtils.assertCommand(parentControllerClient.configureActiveActiveReplicationForCluster(
-        true, VeniceUserStoreType.BATCH_ONLY.toString(), Optional.empty()));
+    TestUtils.assertCommand(
+        parentControllerClient.configureActiveActiveReplicationForCluster(
+            true,
+            VeniceUserStoreType.BATCH_ONLY.toString(),
+            Optional.empty()));
     // create a active-active enabled store and run batch push job
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
@@ -108,14 +123,14 @@ public class TestActiveActiveIngestion {
     String storeName = Utils.getUniqueString("store");
     Properties props = defaultH2VProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
     String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
-    String valueSchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
-    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams()
-        .setLeaderFollowerModel(true)
+    String valueSchemaStr =
+        recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setLeaderFollowerModel(true)
         .setActiveActiveReplicationEnabled(true)
         .setHybridRewindSeconds(5)
         .setHybridOffsetLagThreshold(2)
         .setNativeReplicationEnabled(true);
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props,storeParms ).close();
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
 
     TestPushUtils.runPushJob("Run push job", props);
 
@@ -124,11 +139,14 @@ public class TestActiveActiveIngestion {
 
     // run repush
     props.setProperty(SOURCE_KAFKA, "true");
-    props.setProperty(KAFKA_INPUT_BROKER_URL,  clusterWrapper.getKafka().getAddress());
+    props.setProperty(KAFKA_INPUT_BROKER_URL, clusterWrapper.getKafka().getAddress());
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     TestPushUtils.runPushJob("Run repush job", props);
-    ControllerClient controllerClient = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS,
+    ControllerClient controllerClient =
+        new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
         () -> Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2));
 
     clusterWrapper.refreshAllRouterMetaData();
@@ -138,28 +156,31 @@ public class TestActiveActiveIngestion {
         ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(clusterWrapper.getRandomRouterURL())
             .setMetricsRepository(metricsRepository))) {
-      //test single get
-      for (int i = 0; i < 10; i ++) {
+      // test single get
+      for (int i = 0; i < 10; i++) {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "stream_" + i);
       }
       // test deletes
-      for (int i = 10; i < 20; i ++) {
+      for (int i = 10; i < 20; i++) {
         Assert.assertNull(avroClient.get(Integer.toString(i)).get());
       }
       // test old data
-      for (int i = 20; i < 100; i ++) {
+      for (int i = 20; i < 100; i++) {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
       }
     }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testActiveActiveStoreRestart() throws Exception{
+  public void testActiveActiveStoreRestart() throws Exception {
     String parentControllerURLs =
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
     ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
-    TestUtils.assertCommand(parentControllerClient.configureActiveActiveReplicationForCluster(
-        true, VeniceUserStoreType.BATCH_ONLY.toString(), Optional.empty()));
+    TestUtils.assertCommand(
+        parentControllerClient.configureActiveActiveReplicationForCluster(
+            true,
+            VeniceUserStoreType.BATCH_ONLY.toString(),
+            Optional.empty()));
     // create a active-active enabled store and run batch push job
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
@@ -167,19 +188,29 @@ public class TestActiveActiveIngestion {
     String storeName = Utils.getUniqueString("store");
     Properties props = defaultH2VProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
     String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
-    String valueSchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
-    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams()
-        .setActiveActiveReplicationEnabled(true)
+    String valueSchemaStr =
+        recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
         .setHybridRewindSeconds(5)
         .setHybridOffsetLagThreshold(2)
         .setNativeReplicationEnabled(true);
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props,storeParms ).close();
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
     // Create a new version
     VersionCreationResponse versionCreationResponse;
     versionCreationResponse = TestUtils.assertCommand(
-        parentControllerClient.requestTopicForWrites(storeName, 1024 * 1024, Version.PushType.BATCH,
-            Version.guidBasedDummyPushId(), true, true, false, Optional.empty(),
-            Optional.empty(), Optional.empty(), false, -1));
+        parentControllerClient.requestTopicForWrites(
+            storeName,
+            1024 * 1024,
+            Version.PushType.BATCH,
+            Version.guidBasedDummyPushId(),
+            true,
+            true,
+            false,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            false,
+            -1));
 
     String topic = versionCreationResponse.getKafkaTopic();
     String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
@@ -196,7 +227,7 @@ public class TestActiveActiveIngestion {
       restartPointSetForSortedInput.add(543);
       serverWrapper = clusterWrapper.getVeniceServers().get(0);
       int cur = 0;
-      for (Map.Entry<byte[], byte[]> entry : sortedInputRecords.entrySet()) {
+      for (Map.Entry<byte[], byte[]> entry: sortedInputRecords.entrySet()) {
         if (restartPointSetForSortedInput.contains(++cur)) {
           // Restart server
           clusterWrapper.stopVeniceServer(serverWrapper.getPort());
@@ -208,18 +239,17 @@ public class TestActiveActiveIngestion {
     }
 
     // Wait push completed.
-    TestUtils.waitForNonDeterministicCompletion(20, TimeUnit.SECONDS,
-        () -> {
-          try {
-            return clusterWrapper.getLeaderVeniceController()
-                .getVeniceAdmin()
-                .getOffLinePushStatus(clusterWrapper.getClusterName(), topic)
-                .getExecutionStatus()
-                .equals(ExecutionStatus.COMPLETED);
-          } catch (Exception e) {
-            return false;
-          }
-        });
+    TestUtils.waitForNonDeterministicCompletion(20, TimeUnit.SECONDS, () -> {
+      try {
+        return clusterWrapper.getLeaderVeniceController()
+            .getVeniceAdmin()
+            .getOffLinePushStatus(clusterWrapper.getClusterName(), topic)
+            .getExecutionStatus()
+            .equals(ExecutionStatus.COMPLETED);
+      } catch (Exception e) {
+        return false;
+      }
+    });
   }
 
   private void runSamzaStreamJob(String storeName) {
@@ -229,12 +259,13 @@ public class TestActiveActiveIngestion {
     samzaConfig.put(configPrefix + VENICE_STORE, storeName);
     samzaConfig.put(configPrefix + VENICE_AGGREGATE, "false");
     samzaConfig.put(D2_ZK_HOSTS_PROPERTY, childDatacenters.get(0).getZkServerWrapper().getAddress());
-    samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, "dfd"); //parentController.getKafkaZkAddress());
+    samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, "dfd"); // parentController.getKafkaZkAddress());
     samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
     samzaConfig.put(SSL_ENABLED, "false");
     VeniceSystemFactory factory = new VeniceSystemFactory();
 
-    try (VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+    try (
+        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
       veniceProducer.start();
       // send puts
       for (int i = 0; i < 10; i++) {

@@ -1,5 +1,10 @@
 package com.linkedin.venice.writer;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.writer.ApacheKafkaProducer.*;
+import static org.apache.kafka.clients.producer.ProducerConfig.*;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
@@ -17,22 +22,15 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-
 import io.tehuti.metrics.MetricsRepository;
-
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.Consumer;
-import org.apache.kafka.clients.producer.Callback;
-import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -40,11 +38,6 @@ import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.writer.ApacheKafkaProducer.*;
-import static org.apache.kafka.clients.producer.ProducerConfig.*;
-import static org.mockito.Mockito.*;
 
 
 public class SharedKafkaProducerServiceTest {
@@ -87,21 +80,31 @@ public class SharedKafkaProducerServiceTest {
       properties.put(PROPERTIES_KAFKA_PREFIX + BUFFER_MEMORY_CONFIG, "16384");
       sharedKafkaProducerService = TestUtils.getSharedKafkaProducerService(properties);
 
-      VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactoryWithSharedProducer(properties, Optional.of(sharedKafkaProducerService));
+      VeniceWriterFactory veniceWriterFactory =
+          TestUtils.getVeniceWriterFactoryWithSharedProducer(properties, Optional.of(sharedKafkaProducerService));
 
-      try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter1 = veniceWriterFactory.createVeniceWriter(existingTopic, new KafkaKeySerializer(), new DefaultSerializer(), new DefaultSerializer(),
-          Optional.empty(), SystemTime.INSTANCE, new DefaultVenicePartitioner(), Optional.of(1), Optional.empty())) {
+      try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter1 = veniceWriterFactory.createVeniceWriter(
+          existingTopic,
+          new KafkaKeySerializer(),
+          new DefaultSerializer(),
+          new DefaultSerializer(),
+          Optional.empty(),
+          SystemTime.INSTANCE,
+          new DefaultVenicePartitioner(),
+          Optional.of(1),
+          Optional.empty())) {
         CountDownLatch producedTopicPresent = new CountDownLatch(100);
         for (int i = 0; i < 100 && !Thread.interrupted(); i++) {
           try {
-            veniceWriter1.put(new KafkaKey(MessageType.PUT, "topic1".getBytes()), "topic1".getBytes(), 1, (metadata, e) -> {
-              if (e != null) {
-                LOGGER.error("Error when producing to an existing topic " + existingTopic, e);
-              } else {
-                LOGGER.info("produced offset test-topic-1: " + metadata.offset());
-                producedTopicPresent.countDown();
-              }
-            });
+            veniceWriter1
+                .put(new KafkaKey(MessageType.PUT, "topic1".getBytes()), "topic1".getBytes(), 1, (metadata, e) -> {
+                  if (e != null) {
+                    LOGGER.error("Error when producing to an existing topic " + existingTopic, e);
+                  } else {
+                    LOGGER.info("produced offset test-topic-1: " + metadata.offset());
+                    producedTopicPresent.countDown();
+                  }
+                });
           } catch (VeniceException e) {
             LOGGER.error("Exception: ", e);
           }
@@ -112,8 +115,16 @@ public class SharedKafkaProducerServiceTest {
       Thread thread2 = null;
       VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter2 = null;
       try {
-        veniceWriter2 = veniceWriterFactory.createVeniceWriter(nonExistingTopic, new KafkaKeySerializer(), new DefaultSerializer(), new DefaultSerializer(),
-            Optional.empty(), SystemTime.INSTANCE, new DefaultVenicePartitioner(), Optional.of(1), Optional.empty());
+        veniceWriter2 = veniceWriterFactory.createVeniceWriter(
+            nonExistingTopic,
+            new KafkaKeySerializer(),
+            new DefaultSerializer(),
+            new DefaultSerializer(),
+            Optional.empty(),
+            SystemTime.INSTANCE,
+            new DefaultVenicePartitioner(),
+            Optional.of(1),
+            Optional.empty());
 
         AtomicInteger producedTopicNotPresent = new AtomicInteger();
         VeniceWriter<KafkaKey, byte[], byte[]> finalVeniceWriter = veniceWriter2;
@@ -124,7 +135,11 @@ public class SharedKafkaProducerServiceTest {
            */
           for (int i = 0; i < 100 && !Thread.interrupted(); i++) {
             try {
-              finalVeniceWriter.put(new KafkaKey(MessageType.PUT, "topic2".getBytes()), "topic2".getBytes(), 1, (metadata, e) -> producedTopicNotPresent.getAndIncrement());
+              finalVeniceWriter.put(
+                  new KafkaKey(MessageType.PUT, "topic2".getBytes()),
+                  "topic2".getBytes(),
+                  1,
+                  (metadata, e) -> producedTopicNotPresent.getAndIncrement());
             } catch (VeniceException e) {
               LOGGER.error("Exception: ", e);
             }
@@ -150,7 +165,7 @@ public class SharedKafkaProducerServiceTest {
       List<TopicPartition> partitions = Collections.singletonList(new TopicPartition(existingTopic, 0));
       consumer.assign(partitions);
       Long end = consumer.endOffsets(partitions).get(partitions.get(0));
-      Assert.assertTrue(end > 100L); //to account for the SOP that VW sends internally.
+      Assert.assertTrue(end > 100L); // to account for the SOP that VW sends internally.
     }
   }
 
@@ -165,10 +180,14 @@ public class SharedKafkaProducerServiceTest {
   public void testProducerReuse() throws Exception {
     SharedKafkaProducerService sharedKafkaProducerService = null;
     try {
-      sharedKafkaProducerService = new SharedKafkaProducerService(getProperties(), 8, new ProducerSupplier(), new MetricsRepository(),
+      sharedKafkaProducerService = new SharedKafkaProducerService(
+          getProperties(),
+          8,
+          new ProducerSupplier(),
+          new MetricsRepository(),
           Collections.EMPTY_SET);
 
-      //Create at least 8 tasks to assign each producer a task.
+      // Create at least 8 tasks to assign each producer a task.
       KafkaProducerWrapper producer1 = sharedKafkaProducerService.acquireKafkaProducer("task1");
       KafkaProducerWrapper producer2 = sharedKafkaProducerService.acquireKafkaProducer("task2");
       KafkaProducerWrapper producer3 = sharedKafkaProducerService.acquireKafkaProducer("task3");
@@ -178,14 +197,14 @@ public class SharedKafkaProducerServiceTest {
       KafkaProducerWrapper producer7 = sharedKafkaProducerService.acquireKafkaProducer("task7");
       KafkaProducerWrapper producer8 = sharedKafkaProducerService.acquireKafkaProducer("task8");
 
-      //verify same task acquires the same producer.
+      // verify same task acquires the same producer.
       Assert.assertEquals(producer1, sharedKafkaProducerService.acquireKafkaProducer("task1"));
 
-      //release a producer and verify the last released producer is returned for a new task.
+      // release a producer and verify the last released producer is returned for a new task.
       sharedKafkaProducerService.releaseKafkaProducer("task5");
       Assert.assertEquals(producer5, sharedKafkaProducerService.acquireKafkaProducer("task9"));
 
-      //already released producer should not cause any harm.
+      // already released producer should not cause any harm.
       sharedKafkaProducerService.releaseKafkaProducer("task5");
     } finally {
       if (sharedKafkaProducerService != null) {
@@ -198,8 +217,12 @@ public class SharedKafkaProducerServiceTest {
   public void testProducerClosing() throws Exception {
     SharedKafkaProducerService sharedKafkaProducerService = null;
     try {
-      sharedKafkaProducerService =
-          new SharedKafkaProducerService(getProperties(), 8, new ProducerSupplier(), new MetricsRepository(), Collections.EMPTY_SET);
+      sharedKafkaProducerService = new SharedKafkaProducerService(
+          getProperties(),
+          8,
+          new ProducerSupplier(),
+          new MetricsRepository(),
+          Collections.EMPTY_SET);
       sharedKafkaProducerService.acquireKafkaProducer("task1");
       sharedKafkaProducerService.releaseKafkaProducer("task1");
     } finally {

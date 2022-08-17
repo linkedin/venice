@@ -1,5 +1,7 @@
 package com.linkedin.venice.kafka.validation;
 
+import static com.linkedin.venice.utils.RedundantExceptionFilter.*;
+
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
@@ -35,8 +37,6 @@ import java.util.function.Function;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.utils.RedundantExceptionFilter.*;
 
 
 /**
@@ -74,7 +74,8 @@ public class ProducerTracker {
   }
 
   public String toString() {
-    return ProducerTracker.class.getSimpleName() + "(GUID: " + ByteUtils.toHexString(producerGUID.bytes()) + ", topic: " + topicName + ")";
+    return ProducerTracker.class.getSimpleName() + "(GUID: " + ByteUtils.toHexString(producerGUID.bytes()) + ", topic: "
+        + topicName + ")";
   }
 
   public ReentrantLock getPartitionLock(int partition) {
@@ -193,8 +194,10 @@ public class ProducerTracker {
    * @param consumerRecord
    * @throws DataValidationException
    */
-  public void validateMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-                                    boolean endOfPushReceived, boolean tolerateMissingMsgs) throws DataValidationException {
+  public void validateMessage(
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      boolean endOfPushReceived,
+      boolean tolerateMissingMsgs) throws DataValidationException {
     ReentrantLock partitionLock = getPartitionLock(consumerRecord.partition());
     partitionLock.lock();
     try {
@@ -225,14 +228,17 @@ public class ProducerTracker {
    */
   private Segment trackSegment(
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      boolean endOfPushReceived, boolean tolerateMissingMsgs)
-      throws DuplicateDataException {
+      boolean endOfPushReceived,
+      boolean tolerateMissingMsgs) throws DuplicateDataException {
     int incomingSegmentNumber = consumerRecord.value().producerMetadata.segmentNumber;
     Segment previousSegment = segments.get(consumerRecord.partition());
     if (previousSegment == null) {
       if (incomingSegmentNumber != 0) {
-        handleUnregisteredProducer("track new segment with non-zero incomingSegment=" + incomingSegmentNumber, consumerRecord,
-            null, endOfPushReceived);
+        handleUnregisteredProducer(
+            "track new segment with non-zero incomingSegment=" + incomingSegmentNumber,
+            consumerRecord,
+            null,
+            endOfPushReceived);
       }
       Segment newSegment = initializeNewSegment(consumerRecord, endOfPushReceived, true);
       return newSegment;
@@ -253,8 +259,8 @@ public class ProducerTracker {
         throw DataFaultType.DUPLICATE.getNewException(previousSegment, consumerRecord);
       } else {
         // Defensive code.
-        throw new IllegalStateException("This condition should never happen. " +
-            getClass().getSimpleName() + " may have a regression.");
+        throw new IllegalStateException(
+            "This condition should never happen. " + getClass().getSimpleName() + " may have a regression.");
       }
     }
   }
@@ -266,8 +272,10 @@ public class ProducerTracker {
    * @return the newly initialized {@link Segment}
    * @throws IllegalStateException if called for a message other than a {@link ControlMessageType#START_OF_SEGMENT}
    */
-  private Segment initializeNewSegment(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      boolean endOfPushReceived, boolean tolerateAnyMessageType) {
+  private Segment initializeNewSegment(
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      boolean endOfPushReceived,
+      boolean tolerateAnyMessageType) {
     CheckSumType checkSumType = CheckSumType.NONE;
     boolean unregisteredProducer = true;
     Map<CharSequence, CharSequence> debugInfo = new HashMap<>();
@@ -281,8 +289,7 @@ public class ProducerTracker {
             StartOfSegment startOfSegment = (StartOfSegment) controlMessage.controlMessageUnion;
             checkSumType = CheckSumType.valueOf(startOfSegment.checksumType);
             debugInfo = controlMessage.debugInfo;
-            startOfSegment.upcomingAggregates.stream().forEach(aggregate ->
-                aggregates.put(aggregate, 0L));
+            startOfSegment.upcomingAggregates.stream().forEach(aggregate -> aggregates.put(aggregate, 0L));
             unregisteredProducer = false;
         }
     }
@@ -299,7 +306,10 @@ public class ProducerTracker {
     if (unregisteredProducer) {
       handleUnregisteredProducer(
           "initialize new segment with a non-" + ControlMessageType.START_OF_SEGMENT.name() + " message",
-          consumerRecord, null, endOfPushReceived, Optional.of(tolerateAnyMessageType));
+          consumerRecord,
+          null,
+          endOfPushReceived,
+          Optional.of(tolerateAnyMessageType));
     } else {
       newSegment.registeredSegment();
     }
@@ -307,9 +317,12 @@ public class ProducerTracker {
     return newSegment;
   }
 
-  private void handleUnregisteredProducer(String scenario,
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord, Segment segment, boolean endOfPushReceived) {
-      handleUnregisteredProducer(scenario, consumerRecord, segment, endOfPushReceived, Optional.empty());
+  private void handleUnregisteredProducer(
+      String scenario,
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      Segment segment,
+      boolean endOfPushReceived) {
+    handleUnregisteredProducer(scenario, consumerRecord, segment, endOfPushReceived, Optional.empty());
   }
 
   /**
@@ -317,20 +330,25 @@ public class ProducerTracker {
    * @param endOfPushReceived Whether end of push is received for this partition.
    * @param tolerateAnyMessageType If true, then a segment can be initialized without "START_OF_SEGMENT".
    */
-  private void handleUnregisteredProducer(String scenario,
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord, Segment segment, boolean endOfPushReceived,
+  private void handleUnregisteredProducer(
+      String scenario,
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      Segment segment,
+      boolean endOfPushReceived,
       Optional<Boolean> tolerateAnyMessageType) {
-    String extraInfo= scenario + ", endOfPushReceived=" + endOfPushReceived;
+    String extraInfo = scenario + ", endOfPushReceived=" + endOfPushReceived;
     if (tolerateAnyMessageType.isPresent()) {
       extraInfo += ", tolerateAnyMessageType=" + tolerateAnyMessageType;
     }
     if (endOfPushReceived && tolerateAnyMessageType.orElse(true)) {
-      String errorMsgIdentifier = consumerRecord.topic() + "-" + consumerRecord.partition() + "-" + DataFaultType.UNREGISTERED_PRODUCER.toString();
+      String errorMsgIdentifier = consumerRecord.topic() + "-" + consumerRecord.partition() + "-"
+          + DataFaultType.UNREGISTERED_PRODUCER.toString();
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMsgIdentifier)) {
         logger.warn("Will " + extraInfo);
       }
     } else {
-      throw DataFaultType.UNREGISTERED_PRODUCER.getNewException(segment, consumerRecord, Optional.of("Cannot " + extraInfo));
+      throw DataFaultType.UNREGISTERED_PRODUCER
+          .getNewException(segment, consumerRecord, Optional.of("Cannot " + extraInfo));
     }
   }
 
@@ -349,9 +367,11 @@ public class ProducerTracker {
    * @throws DuplicateDataException if the incoming sequence number is equal to or smaller than the previous sequence number
    */
   private void trackSequenceNumber(
-      Segment segment, ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      boolean endOfPushReceived, boolean tolerateMissingMsgs, boolean hasPreviousSegment)
-      throws MissingDataException, DuplicateDataException {
+      Segment segment,
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      boolean endOfPushReceived,
+      boolean tolerateMissingMsgs,
+      boolean hasPreviousSegment) throws MissingDataException, DuplicateDataException {
 
     int previousSequenceNumber = segment.getSequenceNumber();
     int incomingSequenceNumber = consumerRecord.value().producerMetadata.messageSequenceNumber;
@@ -379,7 +399,8 @@ public class ProducerTracker {
       segment.setLastRecordProducerTimestamp(consumerRecord.value().producerMetadata.messageTimestamp);
     } else if (incomingSequenceNumber <= previousSequenceNumber) {
       if (!hasPreviousSegment) {
-        // When hasPrevSegment is false, SN meets a producer for the first time. For hybrid + L/F case, a follower may never
+        // When hasPrevSegment is false, SN meets a producer for the first time. For hybrid + L/F case, a follower may
+        // never
         // see the record coming from samza producer before it is promoted to leader. This check prevents the first
         // message to be considered as "duplicated" and skipped.
         segment.setLastRecordProducerTimestamp(consumerRecord.value().producerMetadata.messageTimestamp);
@@ -433,8 +454,8 @@ public class ProducerTracker {
   private void trackCheckSum(
       Segment segment,
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      boolean endOfPushReceived, boolean tolerateMissingMsgs)
-      throws CorruptDataException {
+      boolean endOfPushReceived,
+      boolean tolerateMissingMsgs) throws CorruptDataException {
     /**
      * {@link Segment#addToCheckSum(KafkaKey, KafkaMessageEnvelope)} is an expensive operation because of the internal
      * memory allocation.
@@ -478,7 +499,7 @@ public class ProducerTracker {
            * missing exceptions in {@link #trackSegment(ConsumerRecord, boolean)}
            */
           segment.end(incomingEndOfSegment.finalSegment);
-          throw dataCorruptException ;
+          throw dataCorruptException;
         } else {
           throw dataCorruptException;
         }
@@ -503,8 +524,7 @@ public class ProducerTracker {
       Segment segment,
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       long logCompactionDelayInMs,
-      Optional<DIVErrorMetricCallback> errorMetricCallback)
-      throws MissingDataException {
+      Optional<DIVErrorMetricCallback> errorMetricCallback) throws MissingDataException {
     int previousSequenceNumber = segment.getSequenceNumber();
     int incomingSequenceNumber = consumerRecord.value().producerMetadata.messageSequenceNumber;
 
@@ -531,7 +551,9 @@ public class ProducerTracker {
       long lastRecordTimestamp = segment.getLastRecordTimestamp();
       if (logCompactionDelayInMs > 0 && LatencyUtils.getElapsedTimeInMs(lastRecordTimestamp) < logCompactionDelayInMs) {
         DataValidationException dataMissingException = DataFaultType.MISSING.getNewException(segment, consumerRecord);
-        logger.error("Encountered missing data message within the log compaction time window. Error msg:\n" + dataMissingException.getMessage());
+        logger.error(
+            "Encountered missing data message within the log compaction time window. Error msg:\n"
+                + dataMissingException.getMessage());
         if (errorMetricCallback.isPresent()) {
           errorMetricCallback.get().execute(dataMissingException);
         }
@@ -545,9 +567,10 @@ public class ProducerTracker {
     }
   }
 
-  public void checkMissingMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      Optional<ProducerTracker.DIVErrorMetricCallback> errorMetricCallback, long kafkaLogCompactionDelayInMs)
-      throws DataValidationException {
+  public void checkMissingMessage(
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      Optional<ProducerTracker.DIVErrorMetricCallback> errorMetricCallback,
+      long kafkaLogCompactionDelayInMs) throws DataValidationException {
 
     Segment segment = null;
     ReentrantLock partitionLock = getPartitionLock(consumerRecord.partition());
@@ -568,8 +591,9 @@ public class ProducerTracker {
          * Missing an entire segment is not acceptable, even though Kafka log compaction kicks in and all the data
          * messages within a segment are compacted; START_OF_SEGMENT and END_OF_SEGMENT messages should still be there.
          */
-        logger.error("Encountered a missing segment. This is unacceptable even if log compaction kicks in. Error msg:\n"
-            + missingSegment.getMessage());
+        logger.error(
+            "Encountered a missing segment. This is unacceptable even if log compaction kicks in. Error msg:\n"
+                + missingSegment.getMessage());
         if (errorMetricCallback.isPresent()) {
           errorMetricCallback.get().execute(missingSegment);
         }
@@ -646,14 +670,16 @@ public class ProducerTracker {
       this.exceptionSupplier = exceptionSupplier;
     }
 
-    DataValidationException getNewException(Segment segment,
+    DataValidationException getNewException(
+        Segment segment,
         ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
       return getNewException(segment, consumerRecord, Optional.<String>empty());
     }
 
-
-    DataValidationException getNewException(Segment segment,
-        ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord, Optional<String> extraInfo) {
+    DataValidationException getNewException(
+        Segment segment,
+        ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+        Optional<String> extraInfo) {
       ProducerMetadata producerMetadata = consumerRecord.value().producerMetadata;
       MessageType messageType = MessageType.valueOf(consumerRecord.value());
       String messageTypeString = messageType.name();
@@ -685,8 +711,12 @@ public class ProducerTracker {
           .append("; incoming segment: " + producerMetadata.segmentNumber)
           .append("; previous sequence number: " + previousSequenceNumber)
           .append("; incoming sequence number: " + producerMetadata.messageSequenceNumber)
-          .append("; consumer record timestamp: " + consumerRecord.timestamp() + " (" + new Date(consumerRecord.timestamp()).toString() + ")")
-          .append("; producer timestamp: " + producerMetadata.messageTimestamp + " (" + new Date(producerMetadata.messageTimestamp).toString() + ")");
+          .append(
+              "; consumer record timestamp: " + consumerRecord.timestamp() + " ("
+                  + new Date(consumerRecord.timestamp()).toString() + ")")
+          .append(
+              "; producer timestamp: " + producerMetadata.messageTimestamp + " ("
+                  + new Date(producerMetadata.messageTimestamp).toString() + ")");
       if (producerMetadata.upstreamOffset != -1) {
         sb.append("; producer metadata's upstream offset: " + producerMetadata.upstreamOffset);
       }
@@ -715,6 +745,7 @@ public class ProducerTracker {
       return msg;
     }
   }
+
   public interface DIVErrorMetricCallback {
     void execute(DataValidationException exception);
   }

@@ -6,7 +6,6 @@ import java.util.List;
 
 
 public class MultiStoragePersonaResponse extends ControllerResponse {
-
   private List<StoragePersona> storagePersonas;
 
   public List<StoragePersona> getStoragePersonas() {

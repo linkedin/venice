@@ -36,7 +36,6 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   private TimeoutProcessor timeoutProcessor;
   private static final Logger LOGGER = LogManager.getLogger(RetriableAvroGenericStoreClient.class);
 
-
   public RetriableAvroGenericStoreClient(InternalAvroStoreClient<K, V> delegate, ClientConfig clientConfig) {
     super(delegate);
     if (!(clientConfig.isLongTailRetryEnabledForSingleGet() || clientConfig.isLongTailRetryEnabledForBatchGet())) {
@@ -44,19 +43,21 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     }
     this.longTailRetryEnabledForSingleGet = clientConfig.isLongTailRetryEnabledForSingleGet();
     this.longTailRetryEnabledForBatchGet = clientConfig.isLongTailRetryEnabledForBatchGet();
-    this.longTailRetryThresholdForSingleGetInMicroseconds = clientConfig.getLongTailRetryThresholdForSingletGetInMicroSeconds();
-    this.longTailRetryThresholdForBatchGetInMicroseconds = clientConfig.getLongTailRetryThresholdForBatchGetInMicroSeconds();
+    this.longTailRetryThresholdForSingleGetInMicroseconds =
+        clientConfig.getLongTailRetryThresholdForSingletGetInMicroSeconds();
+    this.longTailRetryThresholdForBatchGetInMicroseconds =
+        clientConfig.getLongTailRetryThresholdForBatchGetInMicroSeconds();
   }
 
   enum RetryType {
-    LONG_TAIL_RETRY,
-    ERROR_RETRY
+    LONG_TAIL_RETRY, ERROR_RETRY
   }
 
   class RetryRunnable implements Runnable {
     private final GetRequestContext requestContext;
     private final RetryType retryType;
     private final Runnable retryTask;
+
     RetryRunnable(GetRequestContext requestContext, RetryType retryType, Runnable retryTask) {
       this.requestContext = requestContext;
       this.retryType = retryType;
@@ -86,7 +87,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   @Override
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
     if (!longTailRetryEnabledForSingleGet) {
-      return super.get(requestContext,key);
+      return super.get(requestContext, key);
     }
     final CompletableFuture<V> originalRequestFuture = super.get(requestContext, key);
     if (timeoutProcessor == null) {
@@ -151,10 +152,12 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   }
 
   @Override
-  public void streamingBatchGet(BatchGetRequestContext<K,V> requestContext, Set<K> keys,
+  public void streamingBatchGet(
+      BatchGetRequestContext<K, V> requestContext,
+      Set<K> keys,
       StreamingCallback<K, V> callback) throws VeniceClientException {
-    if (!longTailRetryEnabledForBatchGet ) {
-      super.streamingBatchGet(requestContext,keys,callback);
+    if (!longTailRetryEnabledForBatchGet) {
+      super.streamingBatchGet(requestContext, keys, callback);
     }
     /** Track the final completion of the request. It will be completed normally if
      1. the original requests calls onComplete with no exception
@@ -166,8 +169,8 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     AtomicReference<Exception> savedException = new AtomicReference<>();
     /** Track all keys with a future. We remove the key when we receive value from either the original or the retry
      callback. Removal is thread safe so we will do it only once. We can then complete the future for that key */
-    VeniceConcurrentHashMap<K,CompletableFuture<V>> pendingKeys = new VeniceConcurrentHashMap<>();
-    for(K key : keys) {
+    VeniceConcurrentHashMap<K, CompletableFuture<V>> pendingKeys = new VeniceConcurrentHashMap<>();
+    for (K key: keys) {
       CompletableFuture<V> originalCompletion = new CompletableFuture<V>();
       originalCompletion.whenComplete((value, throwable) -> {
         callback.onRecordReceived(key, value);
@@ -175,8 +178,14 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       pendingKeys.put(key, originalCompletion);
     }
 
-    super.streamingBatchGet(requestContext, keys, getStreamingCallback(finalRequestCompletion, savedException,
-        pendingKeys, requestContext.numberOfKeysCompletedInOriginalRequest));
+    super.streamingBatchGet(
+        requestContext,
+        keys,
+        getStreamingCallback(
+            finalRequestCompletion,
+            savedException,
+            pendingKeys,
+            requestContext.numberOfKeysCompletedInOriginalRequest));
 
     if (timeoutProcessor == null) {
       /** Reuse the {@link TimeoutProcessor} from {@link com.linkedin.venice.fastclient.meta.InstanceHealthMonitor} to
@@ -184,16 +193,21 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       timeoutProcessor = requestContext.instanceHealthMonitor.getTimeoutProcessor();
     }
 
-    Runnable retryTask = () -> {    // Look at the remaining keys and setup completion
+    Runnable retryTask = () -> { // Look at the remaining keys and setup completion
       if (!pendingKeys.isEmpty()) {
         requestContext.longTailRetryTriggered = true;
         requestContext.numberOfKeysSentInRetryRequest = pendingKeys.size();
-        LOGGER.debug("Retrying {} incomplete keys " , pendingKeys.size());
+        LOGGER.debug("Retrying {} incomplete keys ", pendingKeys.size());
         // Prepare the retry context and track excluded routes on a per partition basis
-        BatchGetRequestContext<K,V> retryContext = new BatchGetRequestContext<>();
+        BatchGetRequestContext<K, V> retryContext = new BatchGetRequestContext<>();
         retryContext.setRoutesForPartitionMapping(requestContext.getRoutesForPartitionMapping());
-        super.streamingBatchGet(retryContext, Collections.unmodifiableSet(pendingKeys.keySet()),
-            getStreamingCallback(finalRequestCompletion, savedException, pendingKeys,
+        super.streamingBatchGet(
+            retryContext,
+            Collections.unmodifiableSet(pendingKeys.keySet()),
+            getStreamingCallback(
+                finalRequestCompletion,
+                savedException,
+                pendingKeys,
                 requestContext.numberOfKeysCompletedInRetryRequest));
       } else {
         /** If there are no keys pending at this point , the onCompletion callback of the original
@@ -206,8 +220,8 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         timeoutProcessor.schedule(retryTask, longTailRetryThresholdForBatchGetInMicroseconds, TimeUnit.MICROSECONDS);
 
     finalRequestCompletion.whenComplete((ignore, finalException) -> {
-       if (!scheduledRetryTask.isDone()) {
-          scheduledRetryTask.cancel();
+      if (!scheduledRetryTask.isDone()) {
+        scheduledRetryTask.cancel();
       }
       if (finalException == null) {
         callback.onCompletion(Optional.empty());
@@ -217,8 +231,10 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     });
   }
 
-  private StreamingCallback<K, V> getStreamingCallback(CompletableFuture<Void> finalRequestCompletion,
-      AtomicReference<Exception> savedException, VeniceConcurrentHashMap<K, CompletableFuture<V>> pendingKeys,
+  private StreamingCallback<K, V> getStreamingCallback(
+      CompletableFuture<Void> finalRequestCompletion,
+      AtomicReference<Exception> savedException,
+      VeniceConcurrentHashMap<K, CompletableFuture<V>> pendingKeys,
       AtomicInteger successfulKeysCounter) {
     return new StreamingCallback<K, V>() {
       @Override
@@ -229,7 +245,8 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
           removed.complete(value);
           successfulKeysCounter.incrementAndGet();
         }
-        if (pendingKeys.isEmpty() && !finalRequestCompletion.isDone()) { // No more pending keys so complete the finalRequest
+        if (pendingKeys.isEmpty() && !finalRequestCompletion.isDone()) { // No more pending keys so complete the
+                                                                         // finalRequest
           finalRequestCompletion.complete(null);
         }
       }

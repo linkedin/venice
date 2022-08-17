@@ -1,14 +1,14 @@
 package com.linkedin.venice.fastclient.meta;
 
+import static org.mockito.Mockito.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.restli.common.HttpStatus;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
-
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
 
 
 public class InstanceHealthMonitorTest {
@@ -59,7 +59,9 @@ public class InstanceHealthMonitorTest {
     CompletableFuture<HttpStatus> requestFuture = healthMonitor.sendRequestToInstance(instance);
     requestFuture.complete(HttpStatus.S_429_TOO_MANY_REQUESTS);
     assertEquals(healthMonitor.getPendingRequestCounter(instance), 1);
-    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS,
+    TestUtils.waitForNonDeterministicAssertion(
+        3,
+        TimeUnit.SECONDS,
         () -> assertEquals(healthMonitor.getPendingRequestCounter(instance), 1));
   }
 
@@ -74,7 +76,9 @@ public class InstanceHealthMonitorTest {
     requestFuture.complete(HttpStatus.S_500_INTERNAL_SERVER_ERROR);
     assertEquals(healthMonitor.getPendingRequestCounter(instance), 1);
     assertFalse(healthMonitor.isInstanceHealthy(instance));
-    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS,
+    TestUtils.waitForNonDeterministicAssertion(
+        3,
+        TimeUnit.SECONDS,
         () -> assertEquals(healthMonitor.getPendingRequestCounter(instance), 0));
     assertFalse(healthMonitor.isInstanceHealthy(instance));
 

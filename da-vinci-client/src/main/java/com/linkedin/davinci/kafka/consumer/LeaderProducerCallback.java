@@ -1,5 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
+
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
@@ -15,20 +17,18 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.writer.ChunkAwareCallback;
-import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
-
 
 class LeaderProducerCallback implements ChunkAwareCallback {
   private static final Logger LOGGER = LogManager.getLogger(LeaderFollowerStoreIngestionTask.class);
 
-  protected static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER = new ChunkedValueManifestSerializer(false);
+  protected static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER =
+      new ChunkedValueManifestSerializer(false);
 
   private final LeaderFollowerStoreIngestionTask ingestionTask;
   private final ConsumerRecord<KafkaKey, KafkaMessageEnvelope> sourceConsumerRecord;
@@ -85,8 +85,10 @@ class LeaderProducerCallback implements ChunkAwareCallback {
   @Override
   public void onCompletion(RecordMetadata recordMetadata, Exception e) {
     if (e != null) {
-      LOGGER.error("Leader failed to send out message to version topic when consuming " + leaderTopic + " partition "
-          + partition, e);
+      LOGGER.error(
+          "Leader failed to send out message to version topic when consuming " + leaderTopic + " partition "
+              + partition,
+          e);
       int version = Version.parseVersionFromKafkaTopicName(versionTopic);
       versionedDIVStats.recordLeaderProducerFailure(ingestionTask.getStoreName(), version);
     } else {
@@ -112,28 +114,35 @@ class LeaderProducerCallback implements ChunkAwareCallback {
         }
       }
 
-      //record just the time it took for this callback to be invoked before we do further processing here such as queuing to drainer.
-      //this indicates how much time kafka took to deliver the message to broker.
-      versionedDIVStats.recordLeaderProducerCompletionTime(ingestionTask.getStoreName(), ingestionTask.versionNumber, LatencyUtils.getLatencyInMS(produceTimeNs));
+      // record just the time it took for this callback to be invoked before we do further processing here such as
+      // queuing to drainer.
+      // this indicates how much time kafka took to deliver the message to broker.
+      versionedDIVStats.recordLeaderProducerCompletionTime(
+          ingestionTask.getStoreName(),
+          ingestionTask.versionNumber,
+          LatencyUtils.getLatencyInMS(produceTimeNs));
 
       int producedRecordNum = 0;
       int producedRecordSize = 0;
-      //produce to drainer buffer service for further processing.
+      // produce to drainer buffer service for further processing.
       try {
         /**
          * queue the leaderProducedRecordContext to drainer service as is in case the value was not chunked.
          * Otherwise queue the chunks and manifest individually to drainer service.
          */
         if (chunkedValueManifest == null) {
-          //update the keyBytes for the ProducedRecord in case it was changed due to isChunkingEnabled flag in VeniceWriter.
+          // update the keyBytes for the ProducedRecord in case it was changed due to isChunkingEnabled flag in
+          // VeniceWriter.
           if (key != null) {
             leaderProducedRecordContext.setKeyBytes(key);
           }
           leaderProducedRecordContext.setProducedOffset(recordMetadata.offset());
-          ingestionTask.produceToStoreBufferService(sourceConsumerRecord, leaderProducedRecordContext, subPartition, kafkaUrl);
+          ingestionTask
+              .produceToStoreBufferService(sourceConsumerRecord, leaderProducedRecordContext, subPartition, kafkaUrl);
 
           producedRecordNum++;
-          producedRecordSize = Math.max(0, recordMetadata.serializedKeySize()) + Math.max(0, recordMetadata.serializedValueSize());
+          producedRecordSize =
+              Math.max(0, recordMetadata.serializedKeySize()) + Math.max(0, recordMetadata.serializedValueSize());
         } else {
           int schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
           for (int i = 0; i < chunkedValueManifest.keysWithChunkIdSuffix.size(); i++) {
@@ -144,18 +153,20 @@ class LeaderProducerCallback implements ChunkAwareCallback {
             chunkPut.putValue = chunkValue;
             chunkPut.schemaId = schemaId;
 
-            LeaderProducedRecordContext
-                producedRecordForChunk = LeaderProducedRecordContext.newPutRecord(null, -1, ByteUtils.extractByteArray(chunkKey), chunkPut);
+            LeaderProducedRecordContext producedRecordForChunk =
+                LeaderProducedRecordContext.newPutRecord(null, -1, ByteUtils.extractByteArray(chunkKey), chunkPut);
             producedRecordForChunk.setProducedOffset(-1);
-            ingestionTask.produceToStoreBufferService(sourceConsumerRecord, producedRecordForChunk, subPartition, kafkaUrl);
+            ingestionTask
+                .produceToStoreBufferService(sourceConsumerRecord, producedRecordForChunk, subPartition, kafkaUrl);
 
             producedRecordNum++;
             producedRecordSize += chunkKey.remaining() + chunkValue.remaining();
           }
 
-          //produce the manifest inside the top-level key
+          // produce the manifest inside the top-level key
           schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
-          ByteBuffer manifest = ByteBuffer.wrap(CHUNKED_VALUE_MANIFEST_SERIALIZER.serialize(versionTopic, chunkedValueManifest));
+          ByteBuffer manifest =
+              ByteBuffer.wrap(CHUNKED_VALUE_MANIFEST_SERIALIZER.serialize(versionTopic, chunkedValueManifest));
           /**
            * The byte[] coming out of the {@link CHUNKED_VALUE_MANIFEST_SERIALIZER} is padded in front, so
            * that the put to the storage engine can avoid a copy, but we need to set the position to skip
@@ -170,9 +181,12 @@ class LeaderProducerCallback implements ChunkAwareCallback {
           LeaderProducedRecordContext producedRecordForManifest = LeaderProducedRecordContext.newPutRecordWithFuture(
               leaderProducedRecordContext.getConsumedKafkaUrl(),
               leaderProducedRecordContext.getConsumedOffset(),
-              key, manifestPut, leaderProducedRecordContext.getPersistedToDBFuture());
+              key,
+              manifestPut,
+              leaderProducedRecordContext.getPersistedToDBFuture());
           producedRecordForManifest.setProducedOffset(recordMetadata.offset());
-          ingestionTask.produceToStoreBufferService(sourceConsumerRecord, producedRecordForManifest, subPartition, kafkaUrl);
+          ingestionTask
+              .produceToStoreBufferService(sourceConsumerRecord, producedRecordForManifest, subPartition, kafkaUrl);
           producedRecordNum++;
           producedRecordSize += key.length + manifest.remaining();
         }
@@ -180,9 +194,12 @@ class LeaderProducerCallback implements ChunkAwareCallback {
 
       } catch (Exception oe) {
         boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
-        LOGGER.error(ingestionTask.consumerTaskId + " received exception in kafka callback thread; EOP received: " + endOfPushReceived + " Topic: " + sourceConsumerRecord.topic() + " Partition: "
-            + sourceConsumerRecord.partition() + ", Offset: " + sourceConsumerRecord.offset() + " exception: ", oe);
-        //If EOP is not received yet, set the ingestion task exception so that ingestion will fail eventually.
+        LOGGER.error(
+            ingestionTask.consumerTaskId + " received exception in kafka callback thread; EOP received: "
+                + endOfPushReceived + " Topic: " + sourceConsumerRecord.topic() + " Partition: "
+                + sourceConsumerRecord.partition() + ", Offset: " + sourceConsumerRecord.offset() + " exception: ",
+            oe);
+        // If EOP is not received yet, set the ingestion task exception so that ingestion will fail eventually.
         if (!endOfPushReceived) {
           try {
             ingestionTask.offerProducerException(oe, partition);
@@ -206,7 +223,11 @@ class LeaderProducerCallback implements ChunkAwareCallback {
   }
 
   private void recordProducerStats(int producedRecordSize, int producedRecordNum) {
-    versionedStorageIngestionStats.recordLeaderProduced(ingestionTask.getStoreName(), ingestionTask.versionNumber, producedRecordSize, producedRecordNum);
+    versionedStorageIngestionStats.recordLeaderProduced(
+        ingestionTask.getStoreName(),
+        ingestionTask.versionNumber,
+        producedRecordSize,
+        producedRecordNum);
     storeIngestionStats.recordTotalLeaderBytesProduced(producedRecordSize);
     storeIngestionStats.recordTotalLeaderRecordsProduced(producedRecordNum);
   }

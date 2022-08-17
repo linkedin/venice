@@ -1,5 +1,7 @@
 package com.linkedin.davinci.ingestion.main;
 
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
+
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -20,8 +22,6 @@ import java.util.function.Consumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
-
 
 /**
  * MainIngestionReportHandler is the handler class for {@link MainIngestionMonitorService}. It handles {@link IngestionTaskReport}
@@ -30,7 +30,8 @@ import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
  */
 public class MainIngestionReportHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private static final Logger logger = LogManager.getLogger(MainIngestionReportHandler.class);
-  private static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+  private static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+      AvroProtocolDefinition.PARTITION_STATE.getSerializer();
   private final MainIngestionMonitorService mainIngestionMonitorService;
 
   public MainIngestionReportHandler(MainIngestionMonitorService mainIngestionMonitorService) {
@@ -51,7 +52,9 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
     long offset = report.offset;
-    logger.info("Received ingestion report " + ingestionReportType.name() + " for topic: " + topicName + ", partition: " + partitionId + " from ingestion service.");
+    logger.info(
+        "Received ingestion report " + ingestionReportType.name() + " for topic: " + topicName + ", partition: "
+            + partitionId + " from ingestion service.");
     // TODO: Use more flexible pull model to sync storage metadata from child process to main process.
     updateLocalStorageMetadata(report);
     // Relay the notification to parent service's listener.
@@ -60,11 +63,20 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
         mainIngestionMonitorService.removeVersionPartitionFromIngestionMap(topicName, partitionId);
         // Set LeaderState passed from child process to cache.
         LeaderFollowerStateType leaderFollowerStateType = LeaderFollowerStateType.valueOf(report.leaderFollowerState);
-        notifierHelper(topicName, notifier -> notifier.completed(topicName, partitionId, report.offset, "", Optional.of(leaderFollowerStateType)));
+        notifierHelper(
+            topicName,
+            notifier -> notifier
+                .completed(topicName, partitionId, report.offset, "", Optional.of(leaderFollowerStateType)));
         break;
       case ERROR:
         mainIngestionMonitorService.removeVersionPartitionFromIngestionMap(topicName, partitionId);
-        notifierHelper(topicName, notifier -> notifier.error(topicName, partitionId, report.message.toString(), new VeniceException(report.message.toString())));
+        notifierHelper(
+            topicName,
+            notifier -> notifier.error(
+                topicName,
+                partitionId,
+                report.message.toString(),
+                new VeniceException(report.message.toString())));
         break;
       case STARTED:
         notifierHelper(topicName, notifier -> notifier.started(topicName, partitionId));
@@ -96,7 +108,10 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
     logger.error("Encounter exception during ingestion task report handling.", cause);
-    ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.INTERNAL_SERVER_ERROR, cause.getClass().getSimpleName() + "_" + cause.getMessage()));
+    ctx.writeAndFlush(
+        buildHttpResponse(
+            HttpResponseStatus.INTERNAL_SERVER_ERROR,
+            cause.getClass().getSimpleName() + "_" + cause.getMessage()));
     ctx.close();
   }
 
@@ -115,15 +130,15 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
     // Sync up offset record & store version state before report ingestion complete to parent process.
     if (mainIngestionMonitorService.getStorageMetadataService() != null) {
       if (!report.offsetRecordArray.isEmpty()) {
-        mainIngestionMonitorService.getStoreIngestionService().updatePartitionOffsetRecords(topicName, partitionId,
-            report.offsetRecordArray);
+        mainIngestionMonitorService.getStoreIngestionService()
+            .updatePartitionOffsetRecords(topicName, partitionId, report.offsetRecordArray);
       }
       if (report.storeVersionState != null) {
-        StoreVersionState storeVersionState = IsolatedIngestionUtils.deserializeStoreVersionState(topicName, report.storeVersionState.array());
+        StoreVersionState storeVersionState =
+            IsolatedIngestionUtils.deserializeStoreVersionState(topicName, report.storeVersionState.array());
         mainIngestionMonitorService.getStorageMetadataService().putStoreVersionState(topicName, storeVersionState);
         logger.info("Updated storeVersionState for topic: " + topicName + " " + storeVersionState.toString());
       }
     }
   }
 }
-

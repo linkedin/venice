@@ -14,24 +14,13 @@ import java.util.Map;
 
 
 public class KafkaAdminWrapperStats extends AbstractVeniceStats {
-
-  private static final Map<Pair<MetricsRepository, String>, KafkaAdminWrapperStats>
-      KAFKA_ADMIN_WRAPPER_STATS_SINGLETON_MAP = new VeniceConcurrentHashMap<>();
+  private static final Map<Pair<MetricsRepository, String>, KafkaAdminWrapperStats> KAFKA_ADMIN_WRAPPER_STATS_SINGLETON_MAP =
+      new VeniceConcurrentHashMap<>();
 
   public enum OCCURRENCE_LATENCY_SENSOR_TYPE {
-    CREATE_TOPIC,
-    DELETE_TOPIC,
-    LIST_ALL_TOPICS,
-    SET_TOPIC_CONFIG,
-    GET_ALL_TOPIC_RETENTIONS,
-    GET_TOPIC_CONFIG,
-    GET_TOPIC_CONFIG_WITH_RETRY,
-    CONTAINS_TOPIC,
-    GET_SOME_TOPIC_CONFIGS,
-    IS_TOPIC_DELETION_UNDER_WAY,
-    DESCRIBE_TOPICS,
-    CONTAINS_TOPIC_WITH_RETRY,
-    CLOSE
+    CREATE_TOPIC, DELETE_TOPIC, LIST_ALL_TOPICS, SET_TOPIC_CONFIG, GET_ALL_TOPIC_RETENTIONS, GET_TOPIC_CONFIG,
+    GET_TOPIC_CONFIG_WITH_RETRY, CONTAINS_TOPIC, GET_SOME_TOPIC_CONFIGS, IS_TOPIC_DELETION_UNDER_WAY, DESCRIBE_TOPICS,
+    CONTAINS_TOPIC_WITH_RETRY, CLOSE
   }
 
   private final Map<OCCURRENCE_LATENCY_SENSOR_TYPE, Sensor> sensorsByTypes;
@@ -52,8 +41,9 @@ public class KafkaAdminWrapperStats extends AbstractVeniceStats {
 
   private KafkaAdminWrapperStats(MetricsRepository metricsRepository, String resourceName) {
     super(metricsRepository, resourceName);
-    Map<OCCURRENCE_LATENCY_SENSOR_TYPE, Sensor> tmpRateSensorsByTypes = new HashMap<>(OCCURRENCE_LATENCY_SENSOR_TYPE.values().length);
-    for (OCCURRENCE_LATENCY_SENSOR_TYPE sensorType : OCCURRENCE_LATENCY_SENSOR_TYPE.values()) {
+    Map<OCCURRENCE_LATENCY_SENSOR_TYPE, Sensor> tmpRateSensorsByTypes =
+        new HashMap<>(OCCURRENCE_LATENCY_SENSOR_TYPE.values().length);
+    for (OCCURRENCE_LATENCY_SENSOR_TYPE sensorType: OCCURRENCE_LATENCY_SENSOR_TYPE.values()) {
       final String sensorName = sensorType.name().toLowerCase();
       tmpRateSensorsByTypes.put(
           sensorType,
@@ -63,9 +53,7 @@ public class KafkaAdminWrapperStats extends AbstractVeniceStats {
               new Max(),
               new Min(),
               new Avg(),
-              TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + sensorName)
-          )
-      );
+              TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + sensorName)));
     }
 
     this.sensorsByTypes = Collections.unmodifiableMap(tmpRateSensorsByTypes);

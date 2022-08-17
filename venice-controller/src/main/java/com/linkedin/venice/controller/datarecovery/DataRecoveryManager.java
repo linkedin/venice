@@ -56,8 +56,13 @@ public class DataRecoveryManager implements Closeable {
     }
   }
 
-  public void initiateDataRecovery(String clusterName, String storeName, int version, String sourceFabric,
-      boolean copyAllVersionConfigs, Version sourceFabricVersion) {
+  public void initiateDataRecovery(
+      String clusterName,
+      String storeName,
+      int version,
+      String sourceFabric,
+      boolean copyAllVersionConfigs,
+      Version sourceFabricVersion) {
     Version dataRecoveryVersion = sourceFabricVersion.cloneVersion();
     dataRecoveryVersion.setStatus(VersionStatus.STARTED);
     Store store = veniceAdmin.getStore(clusterName, storeName);
@@ -79,15 +84,21 @@ public class DataRecoveryManager implements Closeable {
     }
     boolean versionAdded = veniceAdmin.addSpecificVersion(clusterName, storeName, dataRecoveryVersion);
     if (!versionAdded) {
-      throw new VeniceException("Failed to add version: " + version + " to store: " + storeName
-          + " because another version with the push id already exist. Push id: " + dataRecoveryVersion.getPushJobId());
+      throw new VeniceException(
+          "Failed to add version: " + version + " to store: " + storeName
+              + " because another version with the push id already exist. Push id: "
+              + dataRecoveryVersion.getPushJobId());
     }
     veniceAdmin.createSpecificVersionTopic(clusterName, storeName, dataRecoveryVersion);
     veniceAdmin.createHelixResourceAndStartMonitoring(clusterName, storeName, dataRecoveryVersion);
   }
 
-  public void prepareStoreVersionForDataRecovery(String clusterName, String storeName, String destinationFabric,
-      int versionNumber, int sourceAmplificationFactor) {
+  public void prepareStoreVersionForDataRecovery(
+      String clusterName,
+      String storeName,
+      String destinationFabric,
+      int versionNumber,
+      int sourceAmplificationFactor) {
     verifyStoreIsCapableOfDataRecovery(clusterName, storeName, sourceAmplificationFactor);
     Store store = veniceAdmin.getStore(clusterName, storeName);
     if (store.getCurrentVersion() == versionNumber) {
@@ -95,8 +106,11 @@ public class DataRecoveryManager implements Closeable {
       // perform data recovery on the current version.
       Optional<Version> backupVersion =
           store.getVersions().stream().filter(v -> v.getNumber() != versionNumber).findFirst();
-      veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setCurrentVersion(
-          backupVersion.map(Version::getNumber).orElse(Store.NON_EXISTING_VERSION)));
+      veniceAdmin.updateStore(
+          clusterName,
+          storeName,
+          new UpdateStoreQueryParams()
+              .setCurrentVersion(backupVersion.map(Version::getNumber).orElse(Store.NON_EXISTING_VERSION)));
     }
     veniceAdmin.wipeCluster(clusterName, destinationFabric, Optional.of(storeName), Optional.of(versionNumber));
     veniceAdmin.deleteParticipantStoreKillMessage(clusterName, Version.composeKafkaTopic(storeName, versionNumber));
@@ -123,7 +137,10 @@ public class DataRecoveryManager implements Closeable {
     }
   }
 
-  public void verifyStoreVersionIsReadyForDataRecovery(String clusterName, String storeName, int versionNumber,
+  public void verifyStoreVersionIsReadyForDataRecovery(
+      String clusterName,
+      String storeName,
+      int versionNumber,
       int sourceAmplificationFactor) {
     verifyStoreIsCapableOfDataRecovery(clusterName, storeName, sourceAmplificationFactor);
     ensureClientConfigIsAvailable("verify store version is ready for data recovery");
@@ -139,8 +156,8 @@ public class DataRecoveryManager implements Closeable {
     if (veniceAdmin.getTopicManager().containsTopic(kafkaTopic)) {
       throw new VeniceException("Previous version topic: " + kafkaTopic + " still exists");
     }
-    if (!ExecutionStatus.NOT_CREATED.equals(
-        veniceAdmin.getOffLinePushStatus(clusterName, kafkaTopic).getExecutionStatus())) {
+    if (!ExecutionStatus.NOT_CREATED
+        .equals(veniceAdmin.getOffLinePushStatus(clusterName, kafkaTopic).getExecutionStatus())) {
       throw new VeniceException("Previous push status for " + kafkaTopic + " still exists");
     }
     try {
@@ -173,8 +190,10 @@ public class DataRecoveryManager implements Closeable {
   private AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue> getParticipantStoreClient(
       String clusterName) {
     return clientMap.computeIfAbsent(clusterName, k -> {
-      ClientConfig<ParticipantMessageValue> newClientConfig = ClientConfig.defaultSpecificClientConfig(
-          VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName), ParticipantMessageValue.class)
+      ClientConfig<ParticipantMessageValue> newClientConfig = ClientConfig
+          .defaultSpecificClientConfig(
+              VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName),
+              ParticipantMessageValue.class)
           .setD2Client(d2Client)
           .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME);
       return ClientFactory.getAndStartSpecificAvroClient(newClientConfig);
@@ -183,7 +202,7 @@ public class DataRecoveryManager implements Closeable {
 
   @Override
   public void close() {
-    for (AvroSpecificStoreClient client : clientMap.values()) {
+    for (AvroSpecificStoreClient client: clientMap.values()) {
       client.close();
     }
   }

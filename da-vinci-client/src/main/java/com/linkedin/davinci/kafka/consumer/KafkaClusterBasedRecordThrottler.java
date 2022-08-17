@@ -1,5 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.davinci.kafka.consumer.StoreIngestionTask.*;
+
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
@@ -11,8 +13,6 @@ import java.util.Map;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.davinci.kafka.consumer.StoreIngestionTask.*;
 
 
 /**
@@ -30,7 +30,10 @@ public class KafkaClusterBasedRecordThrottler {
     this.kafkaUrlToThrottledRecords = new VeniceConcurrentHashMap<>();
   }
 
-  public ConsumerRecords<KafkaKey, KafkaMessageEnvelope> poll(KafkaConsumerWrapper consumer, String kafkaUrl, long pollTimeoutMs) {
+  public ConsumerRecords<KafkaKey, KafkaMessageEnvelope> poll(
+      KafkaConsumerWrapper consumer,
+      String kafkaUrl,
+      long pollTimeoutMs) {
     ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords;
     if (kafkaUrlToThrottledRecords.containsKey(kafkaUrl)) {
       consumerRecords = kafkaUrlToThrottledRecords.get(kafkaUrl);
@@ -57,7 +60,9 @@ public class KafkaClusterBasedRecordThrottler {
         try {
           Thread.sleep(pollTimeoutMs);
         } catch (InterruptedException interruptedException) {
-          throw new VeniceException("Kafka Cluster based throttled records poll sleep got interrupted", interruptedException);
+          throw new VeniceException(
+              "Kafka Cluster based throttled records poll sleep got interrupted",
+              interruptedException);
         }
 
         // Return early so we don't ingest these records

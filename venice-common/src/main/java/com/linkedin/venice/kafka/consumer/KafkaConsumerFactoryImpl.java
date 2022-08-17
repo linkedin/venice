@@ -27,7 +27,9 @@ public class KafkaConsumerFactoryImpl extends KafkaClientFactory {
     try {
       SSLConfig sslConfig = new SSLConfig(veniceProperties);
       properties.putAll(sslConfig.getKafkaSSLConfig());
-      properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, veniceProperties.getString(ConfigKeys.KAFKA_SECURITY_PROTOCOL));
+      properties.setProperty(
+          CommonClientConfigs.SECURITY_PROTOCOL_CONFIG,
+          veniceProperties.getString(ConfigKeys.KAFKA_SECURITY_PROTOCOL));
     } catch (UndefinedPropertyException e) {
       logger.warn("SSL properties are missing, Kafka consumer will not be able to consume if SSL is required.");
     }
@@ -63,7 +65,10 @@ public class KafkaConsumerFactoryImpl extends KafkaClientFactory {
   }
 
   @Override
-  protected KafkaClientFactory clone(String kafkaBootstrapServers, String kafkaZkAddress, Optional<MetricsParameters> metricsParameters) {
+  protected KafkaClientFactory clone(
+      String kafkaBootstrapServers,
+      String kafkaZkAddress,
+      Optional<MetricsParameters> metricsParameters) {
     Properties clonedProperties = this.veniceProperties.toProperties();
     clonedProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServers);
     clonedProperties.setProperty(ConfigKeys.KAFKA_ZK_ADDRESS, kafkaZkAddress);

@@ -1,8 +1,9 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.davinci.replication.merge.MergeConflictResolver;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
@@ -41,8 +42,6 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import static org.mockito.Mockito.*;
-
 
 public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStorageEngineTest {
   private static final int PARTITION_ID = 0;
@@ -64,7 +63,11 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
     return generateInputWithMetadata(0, recordCnt, false, false);
   }
 
-  private Map<String, Pair<String, String>> generateInputWithMetadata(int startIndex, int endIndex, boolean sorted, boolean createTombStone) {
+  private Map<String, Pair<String, String>> generateInputWithMetadata(
+      int startIndex,
+      int endIndex,
+      boolean sorted,
+      boolean createTombStone) {
     Map<String, Pair<String, String>> records;
     if (sorted) {
       BytewiseComparator comparator = new BytewiseComparator(new ComparatorOptions());
@@ -77,7 +80,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
       records = new HashMap<>();
     }
     for (int i = startIndex; i < endIndex; ++i) {
-      String value = createTombStone && i%100 == 0 ? null : valuePrefix + i;
+      String value = createTombStone && i % 100 == 0 ? null : valuePrefix + i;
       String metadata = metadataPrefix + i;
       records.put(keyPrefix + i, Pair.create(value, metadata));
     }
@@ -118,14 +121,13 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         mockReadOnlyStoreRepository);
     storeConfig = new VeniceStoreVersionConfig(topicName, serverProps, PersistenceType.ROCKS_DB);
-    testStoreEngine = storageService.openStoreForNewPartition(storeConfig , PARTITION_ID);
+    testStoreEngine = storageService.openStoreForNewPartition(storeConfig, PARTITION_ID);
     createStoreForTest();
     String stringSchema = "\"string\"";
     Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(stringSchema, 1);
     ReadOnlySchemaRepository schemaRepository = mock(ReadOnlySchemaRepository.class);
 
-    ReplicationMetadataSchemaEntry
-        rmdSchemaEntry = new ReplicationMetadataSchemaEntry(1, 1, aaSchema);
+    ReplicationMetadataSchemaEntry rmdSchemaEntry = new ReplicationMetadataSchemaEntry(1, 1, aaSchema);
     doReturn(rmdSchemaEntry).when(schemaRepository).getReplicationMetadataSchema(anyString(), anyInt(), anyInt());
 
     SchemaEntry valueSchemaEntry = new SchemaEntry(1, stringSchema);
@@ -141,13 +143,15 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
 
   @AfterClass
   public void cleanUp() throws Exception {
-    storageService.dropStorePartition(storeConfig , PARTITION_ID);
+    storageService.dropStorePartition(storeConfig, PARTITION_ID);
     storageService.stop();
   }
+
   @Test
   public void testUseReplicationMetadataRocksDBStoragePartition() {
     // Verify that data partition is created as RMD-RocksDB Partition.
-    Assert.assertTrue(testStoreEngine.getPartitionOrThrow(PARTITION_ID) instanceof ReplicationMetadataRocksDBStoragePartition);
+    Assert.assertTrue(
+        testStoreEngine.getPartitionOrThrow(PARTITION_ID) instanceof ReplicationMetadataRocksDBStoragePartition);
     // Verify that metadata partition is not create as RMD-RocksDB Partition
     Assert.assertFalse(testStoreEngine.getMetadataPartition() instanceof ReplicationMetadataRocksDBStoragePartition);
   }
@@ -155,31 +159,42 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
   @Test
   public void testMetadataColumnFamily() {
     String storeName = "test_store_column1";
-    String storeDir = getTempDatabaseDir(storeName);;
+    String storeDir = getTempDatabaseDir(storeName);
+    ;
     int valueSchemaId = 1;
     int partitionId = 0;
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
     Properties props = new Properties();
-    VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, props);
-    RocksDBServerConfig rocksDBServerConfig  = new RocksDBServerConfig(veniceServerProperties);
+    VeniceProperties veniceServerProperties =
+        AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, props);
+    RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
-    ReplicationMetadataRocksDBStoragePartition
-        storagePartition = new ReplicationMetadataRocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+    ReplicationMetadataRocksDBStoragePartition storagePartition = new ReplicationMetadataRocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        rocksDbThrottler,
+        rocksDBServerConfig);
 
     Map<String, Pair<String, String>> inputRecords = generateInputWithMetadata(100);
-    for (Map.Entry<String, Pair<String, String>> entry : inputRecords.entrySet()) {
+    for (Map.Entry<String, Pair<String, String>> entry: inputRecords.entrySet()) {
       // Use ByteBuffer value/metadata API here since it performs conversion from ByteBuffer to byte array
       ByteBuffer valueByteBuffer = ByteBuffer.wrap(entry.getValue().getFirst().getBytes());
       int valuePosition = valueByteBuffer.position();
 
-      byte[] replicationMetadataWitValueSchemaIdBytes = getReplicationMetadataWithValueSchemaId(entry.getValue().getSecond().getBytes(), valueSchemaId);
+      byte[] replicationMetadataWitValueSchemaIdBytes =
+          getReplicationMetadataWithValueSchemaId(entry.getValue().getSecond().getBytes(), valueSchemaId);
 
-      storagePartition.putWithReplicationMetadata(entry.getKey().getBytes(), valueByteBuffer, replicationMetadataWitValueSchemaIdBytes);
+      storagePartition.putWithReplicationMetadata(
+          entry.getKey().getBytes(),
+          valueByteBuffer,
+          replicationMetadataWitValueSchemaIdBytes);
       Assert.assertEquals(valueByteBuffer.position(), valuePosition);
     }
 
-    for (Map.Entry<String, Pair<String, String>> entry : inputRecords.entrySet()) {
+    for (Map.Entry<String, Pair<String, String>> entry: inputRecords.entrySet()) {
       byte[] key = entry.getKey().getBytes();
       byte[] value = storagePartition.get(key, false);
       Assert.assertEquals(value, entry.getValue().getFirst().getBytes());
@@ -191,11 +206,12 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
       Assert.assertEquals(replicationMetadataWithValueSchema, ByteBuffer.wrap(entry.getValue().getSecond().getBytes()));
     }
 
-    for (Map.Entry<String, Pair<String, String>> entry : inputRecords.entrySet()) {
+    for (Map.Entry<String, Pair<String, String>> entry: inputRecords.entrySet()) {
       byte[] updatedMetadataBytes = "updated_metadata".getBytes();
       byte[] key = entry.getKey().getBytes();
       int updatedValueSchemaId = 2;
-      byte[] updatedReplicationMetadataWitValueSchemaIdBytes = getReplicationMetadataWithValueSchemaId(updatedMetadataBytes, updatedValueSchemaId);
+      byte[] updatedReplicationMetadataWitValueSchemaIdBytes =
+          getReplicationMetadataWithValueSchemaId(updatedMetadataBytes, updatedValueSchemaId);
 
       storagePartition.deleteWithReplicationMetadata(key, updatedReplicationMetadataWitValueSchemaIdBytes);
 
@@ -211,11 +227,9 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
       Assert.assertEquals(replicationMetadataWithValueSchemaInt, updatedValueSchemaId);
     }
 
-
-
     // Records from Batch push may have no replication metadata
     Map<String, Pair<String, String>> inputRecordsBatch = generateInputWithMetadata(100, 200, false, false);
-    for (Map.Entry<String, Pair<String, String>> entry : inputRecordsBatch.entrySet()) {
+    for (Map.Entry<String, Pair<String, String>> entry: inputRecordsBatch.entrySet()) {
       // Use ByteBuffer value/metadata API here since it performs conversion from ByteBuffer to byte array
       ByteBuffer valueByteBuffer = ByteBuffer.wrap(entry.getValue().getFirst().getBytes());
       int valuePosition = valueByteBuffer.position();
@@ -226,21 +240,21 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
       Assert.assertEquals(metadataByteBuffer.position(), metadataPosition);
     }
 
-    for (Map.Entry<String, Pair<String, String>> entry : inputRecordsBatch.entrySet()) {
+    for (Map.Entry<String, Pair<String, String>> entry: inputRecordsBatch.entrySet()) {
       byte[] key = entry.getKey().getBytes();
       byte[] value = storagePartition.get(key, false);
       Assert.assertEquals(value, entry.getValue().getFirst().getBytes());
       Assert.assertNull(storagePartition.getReplicationMetadata(key));
     }
 
-    for (Map.Entry<String, Pair<String, String>> entry : inputRecordsBatch.entrySet()) {
+    for (Map.Entry<String, Pair<String, String>> entry: inputRecordsBatch.entrySet()) {
       byte[] updatedMetadataBytes = "updated_metadata".getBytes();
       int updatedValueSchemaId = 2;
       byte[] key = entry.getKey().getBytes();
-      byte[] updatedReplicationMetadataWitValueSchemaIdBytes = getReplicationMetadataWithValueSchemaId(updatedMetadataBytes, updatedValueSchemaId);
+      byte[] updatedReplicationMetadataWitValueSchemaIdBytes =
+          getReplicationMetadataWithValueSchemaId(updatedMetadataBytes, updatedValueSchemaId);
 
       storagePartition.deleteWithReplicationMetadata(key, updatedReplicationMetadataWitValueSchemaIdBytes);
-
 
       byte[] value = storagePartition.get(key, false);
       Assert.assertNull(value);
@@ -260,13 +274,19 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
 
   private byte[] getReplicationMetadataWithValueSchemaId(byte[] replicationMetadata, int valueSchemaId) {
     ByteBuffer metadataByteBuffer = ByteBuffer.wrap(replicationMetadata);
-    ByteBuffer replicationMetadataWitValueSchemaId = ByteUtils.prependIntHeaderToByteBuffer(metadataByteBuffer, valueSchemaId, false);
-    replicationMetadataWitValueSchemaId.position(replicationMetadataWitValueSchemaId.position() - ByteUtils.SIZE_OF_INT);
+    ByteBuffer replicationMetadataWitValueSchemaId =
+        ByteUtils.prependIntHeaderToByteBuffer(metadataByteBuffer, valueSchemaId, false);
+    replicationMetadataWitValueSchemaId
+        .position(replicationMetadataWitValueSchemaId.position() - ByteUtils.SIZE_OF_INT);
     return ByteUtils.extractByteArray(replicationMetadataWitValueSchemaId);
   }
 
-  @Test (dataProvider = "testIngestionDataProvider")
-  public void testReplicationMetadataIngestion(boolean sorted, boolean interrupted, boolean reopenDatabaseDuringInterruption, boolean verifyChecksum) {
+  @Test(dataProvider = "testIngestionDataProvider")
+  public void testReplicationMetadataIngestion(
+      boolean sorted,
+      boolean interrupted,
+      boolean reopenDatabaseDuringInterruption,
+      boolean verifyChecksum) {
     Optional<CheckSum> runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
     String storeName = Utils.getUniqueString("test_store");
     String storeDir = getTempDatabaseDir(storeName);
@@ -275,14 +295,19 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
     partitionConfig.setDeferredWrite(sorted);
     Options options = new Options();
     options.setCreateIfMissing(true);
-    Map<String, Pair<String, String>>  inputRecords = generateInputWithMetadata(0, 1000, sorted, true);
+    Map<String, Pair<String, String>> inputRecords = generateInputWithMetadata(0, 1000, sorted, true);
     VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
-    RocksDBServerConfig rocksDBServerConfig  = new RocksDBServerConfig(veniceServerProperties);
+    RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
-    ReplicationMetadataRocksDBStoragePartition
-        storagePartition = new ReplicationMetadataRocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+    ReplicationMetadataRocksDBStoragePartition storagePartition = new ReplicationMetadataRocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        rocksDbThrottler,
+        rocksDBServerConfig);
 
     final int syncPerRecords = 100;
     final int interruptedRecord = 345;
@@ -302,11 +327,14 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
     int currentFileNo = 0;
     Map<String, String> checkpointingInfo = new HashMap<>();
 
-    for (Map.Entry<String, Pair<String, String>> entry : inputRecords.entrySet()) {
+    for (Map.Entry<String, Pair<String, String>> entry: inputRecords.entrySet()) {
       if (entry.getValue().getFirst() == null) {
-        storagePartition.deleteWithReplicationMetadata(entry.getKey().getBytes(), entry.getValue().getSecond().getBytes());
+        storagePartition
+            .deleteWithReplicationMetadata(entry.getKey().getBytes(), entry.getValue().getSecond().getBytes());
       } else {
-        storagePartition.putWithReplicationMetadata(entry.getKey().getBytes(), entry.getValue().getFirst().getBytes(),
+        storagePartition.putWithReplicationMetadata(
+            entry.getKey().getBytes(),
+            entry.getValue().getFirst().getBytes(),
             entry.getValue().getSecond().getBytes());
       }
       if (verifyChecksum) {
@@ -318,17 +346,26 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
       if (++currentRecordNum % syncPerRecords == 0) {
         checkpointingInfo = storagePartition.sync();
         if (sorted) {
-          Assert.assertEquals(checkpointingInfo.get(RocksDBSstFileWriter.ROCKSDB_LAST_FINISHED_SST_FILE_NO),
+          Assert.assertEquals(
+              checkpointingInfo.get(RocksDBSstFileWriter.ROCKSDB_LAST_FINISHED_SST_FILE_NO),
               Integer.valueOf(currentFileNo++).toString());
         } else {
-          Assert.assertTrue(checkpointingInfo.isEmpty(), "For non-deferred-write database, sync() should return empty map");
+          Assert.assertTrue(
+              checkpointingInfo.isEmpty(),
+              "For non-deferred-write database, sync() should return empty map");
         }
       }
       if (interrupted) {
         if (currentRecordNum == interruptedRecord) {
           if (reopenDatabaseDuringInterruption) {
             storagePartition.close();
-            storagePartition = new ReplicationMetadataRocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+            storagePartition = new ReplicationMetadataRocksDBStoragePartition(
+                partitionConfig,
+                factory,
+                DATA_BASE_DIR,
+                null,
+                rocksDbThrottler,
+                rocksDBServerConfig);
             Options storeOptions = storagePartition.getOptions();
             Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
           }
@@ -342,13 +379,17 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
           int replayStart = (interruptedRecord / syncPerRecords) * syncPerRecords + 1;
           int replayCnt = 0;
           runningChecksum.get().reset();
-          for (Map.Entry<String, Pair<String, String>> innerEntry : inputRecords.entrySet()) {
+          for (Map.Entry<String, Pair<String, String>> innerEntry: inputRecords.entrySet()) {
             ++replayCnt;
             if (replayCnt >= replayStart && replayCnt <= interruptedRecord) {
               if (innerEntry.getValue().getFirst() == null) {
-                storagePartition.deleteWithReplicationMetadata(innerEntry.getKey().getBytes(), innerEntry.getValue().getSecond().getBytes());
+                storagePartition.deleteWithReplicationMetadata(
+                    innerEntry.getKey().getBytes(),
+                    innerEntry.getValue().getSecond().getBytes());
               } else {
-                storagePartition.putWithReplicationMetadata(innerEntry.getKey().getBytes(), innerEntry.getValue().getFirst().getBytes(),
+                storagePartition.putWithReplicationMetadata(
+                    innerEntry.getKey().getBytes(),
+                    innerEntry.getValue().getFirst().getBytes(),
                     innerEntry.getValue().getSecond().getBytes());
               }
               if (verifyChecksum) {
@@ -373,11 +414,12 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
     }
 
     // Verify all the key/value pairs
-    for (Map.Entry<String, Pair<String, String>> entry : inputRecords.entrySet()) {
+    for (Map.Entry<String, Pair<String, String>> entry: inputRecords.entrySet()) {
       byte[] bytes = entry.getValue().getFirst() == null ? null : entry.getValue().getFirst().getBytes();
       Assert.assertEquals(storagePartition.get(entry.getKey().getBytes(), false), bytes);
       if (sorted) {
-        Assert.assertEquals(storagePartition.getReplicationMetadata(entry.getKey().getBytes()),
+        Assert.assertEquals(
+            storagePartition.getReplicationMetadata(entry.getKey().getBytes()),
             entry.getValue().getSecond().getBytes());
       }
     }
@@ -389,7 +431,13 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
     storagePartition.close();
     partitionConfig.setDeferredWrite(false);
     partitionConfig.setWriteOnlyConfig(false);
-    storagePartition = new ReplicationMetadataRocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+    storagePartition = new ReplicationMetadataRocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        rocksDbThrottler,
+        rocksDBServerConfig);
     // Test deletion
     String toBeDeletedKey = keyPrefix + 10;
     Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
@@ -403,18 +451,17 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
     removeDir(storeDir);
   }
 
-  @DataProvider(name="testIngestionDataProvider")
+  @DataProvider(name = "testIngestionDataProvider")
   private Object[][] testIngestionDataProvider() {
-    return new Object[][] {
-        {true, false, false, true}, // Sorted input without interruption, with verifyChecksum
-        {true, false, false, false}, // Sorted input without interruption, without verifyChecksum
-        {true, true, true, false},   // Sorted input with interruption, without verifyChecksum
-        {true, true, false, false},  // Sorted input with storage node re-boot, without verifyChecksum
-        {true, true, true, true},   // Sorted input with interruption, with verifyChecksum
-        {true, true, false, true},  // Sorted input with storage node re-boot, with verifyChecksum
-        {false, false, false, false},// Unsorted input without interruption, without verifyChecksum
-        {false, true, false, false}, // Unsorted input with interruption, without verifyChecksum
-        {false, true, true, false}   // Unsorted input with storage node re-boot, without verifyChecksum
+    return new Object[][] { { true, false, false, true }, // Sorted input without interruption, with verifyChecksum
+        { true, false, false, false }, // Sorted input without interruption, without verifyChecksum
+        { true, true, true, false }, // Sorted input with interruption, without verifyChecksum
+        { true, true, false, false }, // Sorted input with storage node re-boot, without verifyChecksum
+        { true, true, true, true }, // Sorted input with interruption, with verifyChecksum
+        { true, true, false, true }, // Sorted input with storage node re-boot, with verifyChecksum
+        { false, false, false, false }, // Unsorted input without interruption, without verifyChecksum
+        { false, true, false, false }, // Unsorted input with interruption, without verifyChecksum
+        { false, true, true, false } // Unsorted input with storage node re-boot, without verifyChecksum
     };
   }
 }

@@ -43,13 +43,16 @@ public class DelegatingAvroStoreClient<K, V> extends InternalAvroStoreClient<K, 
   }
 
   @Override
-  protected void streamingBatchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys,
+  protected void streamingBatchGet(
+      BatchGetRequestContext<K, V> requestContext,
+      Set<K> keys,
       StreamingCallback<K, V> callback) {
     delegate.streamingBatchGet(requestContext, keys, callback);
   }
 
   @Override
-  protected CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(BatchGetRequestContext<K, V> requestContext,
+  protected CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(
+      BatchGetRequestContext<K, V> requestContext,
       Set<K> keys) {
     return delegate.streamingBatchGet(requestContext, keys);
   }

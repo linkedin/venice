@@ -9,8 +9,7 @@ import org.testng.annotations.Test;
 
 public class PartitionStatusJSONSerializerTest {
   @Test
-  public void testPartitionStatusSerializeAndDeserialize()
-      throws IOException {
+  public void testPartitionStatusSerializeAndDeserialize() throws IOException {
     PartitionStatus partitionStatus = new PartitionStatus(1);
     partitionStatus.updateReplicaStatus("i1", ExecutionStatus.COMPLETED);
     partitionStatus.updateReplicaStatus("i2", ExecutionStatus.ERROR);

@@ -16,56 +16,55 @@ import org.apache.avro.Schema;
  *       not need to depend on Kafka.
  */
 public abstract class VenicePartitioner {
+  protected final VeniceProperties props; // available for sub-classes to use.
 
-    protected final VeniceProperties props; // available for sub-classes to use.
+  public VenicePartitioner() {
+    this(new VeniceProperties(new Properties()), null);
+  }
 
-    public VenicePartitioner() {
-        this(new VeniceProperties(new Properties()), null);
+  public VenicePartitioner(VeniceProperties props) {
+    this(props, null);
+  }
+
+  public VenicePartitioner(VeniceProperties props, Schema schema) {
+    this.props = props;
+    if (schema != null) {
+      checkSchema(schema);
     }
+  }
 
-    public VenicePartitioner(VeniceProperties props) {
-        this(props, null);
+  /**
+   * A function that returns the partitionId based on the key and partition count.
+   *
+   * @param keyBytes      - A key that will be mapped into a partition
+   * @param numPartitions - The number of total partitions available in Kafka/storage
+   * @return
+   */
+  public abstract int getPartitionId(byte[] keyBytes, int numPartitions);
+
+  /**
+   * Implementors of this class can optionally provide an implementation of this function,
+   * which would result in eliminating an instantiation of {@link ByteBuffer} in the case
+   * where the provided offset and length do not map to the boundaries of the byte[]. This
+   * is just a minor optimization.
+   */
+  public int getPartitionId(byte[] keyBytes, int offset, int length, int numPartitions) {
+    if (0 != offset || keyBytes.length != length) {
+      return getPartitionId(ByteBuffer.wrap(keyBytes, offset, length), numPartitions);
     }
+    return getPartitionId(keyBytes, numPartitions);
+  }
 
-    public VenicePartitioner(VeniceProperties props, Schema schema) {
-        this.props = props;
-        if (schema != null) {
-            checkSchema(schema);
-        }
-    }
+  public abstract int getPartitionId(ByteBuffer keyByteBuffer, int numPartitions);
 
-    /**
-     * A function that returns the partitionId based on the key and partition count.
-     *
-     * @param keyBytes      - A key that will be mapped into a partition
-     * @param numPartitions - The number of total partitions available in Kafka/storage
-     * @return
-     */
-    public abstract int getPartitionId(byte[] keyBytes, int numPartitions);
-
-    /**
-     * Implementors of this class can optionally provide an implementation of this function,
-     * which would result in eliminating an instantiation of {@link ByteBuffer} in the case
-     * where the provided offset and length do not map to the boundaries of the byte[]. This
-     * is just a minor optimization.
-     */
-    public int getPartitionId(byte[] keyBytes, int offset, int length, int numPartitions) {
-        if (0 != offset || keyBytes.length != length) {
-            return getPartitionId(ByteBuffer.wrap(keyBytes, offset, length), numPartitions);
-        }
-        return getPartitionId(keyBytes, numPartitions);
-    }
-
-    public abstract int getPartitionId(ByteBuffer keyByteBuffer, int numPartitions);
-
-    /**
-     * Implementors of this class can optionally provide an implementation of this function,
-     * which can perform validation of schemas to be certain that they are compatible with the
-     * partitioner implementation.
-     *
-     * @param keySchema the schema to be validated
-     * @throws PartitionerSchemaMismatchException should the provided schema not match the partitioner (with a message that explains why).
-     */
-    protected void checkSchema(@Nonnull Schema keySchema) throws PartitionerSchemaMismatchException {
-    }
+  /**
+   * Implementors of this class can optionally provide an implementation of this function,
+   * which can perform validation of schemas to be certain that they are compatible with the
+   * partitioner implementation.
+   *
+   * @param keySchema the schema to be validated
+   * @throws PartitionerSchemaMismatchException should the provided schema not match the partitioner (with a message that explains why).
+   */
+  protected void checkSchema(@Nonnull Schema keySchema) throws PartitionerSchemaMismatchException {
+  }
 }

@@ -17,51 +17,51 @@ import org.apache.avro.Schema;
  * the two above classes are located.
  */
 public class VeniceAvroKafkaSerializer implements VeniceKafkaSerializer<Object> {
-    private final AvroSerializer<Object> serializer;
-    private final AvroGenericDeserializer<Object> deserializer;
+  private final AvroSerializer<Object> serializer;
+  private final AvroGenericDeserializer<Object> deserializer;
 
-    public VeniceAvroKafkaSerializer(String schemaStr) {
-        this(AvroCompatibilityHelper.parse(schemaStr));
-    }
+  public VeniceAvroKafkaSerializer(String schemaStr) {
+    this(AvroCompatibilityHelper.parse(schemaStr));
+  }
 
-    public VeniceAvroKafkaSerializer(Schema schema) {
-        this.serializer = new AvroSerializer<>(schema);
-        this.deserializer = new AvroGenericDeserializer<>(schema, schema);
-    }
+  public VeniceAvroKafkaSerializer(Schema schema) {
+    this.serializer = new AvroSerializer<>(schema);
+    this.deserializer = new AvroGenericDeserializer<>(schema, schema);
+  }
 
-    /**
-     * Close this serializer.
-     * This method has to be idempotent if the serializer is used in KafkaProducer because it might be called
-     * multiple times.
-     */
-    @Override
-    public void close() {
-      /* This function is not used, but is required for the interfaces. */
-    }
+  /**
+   * Close this serializer.
+   * This method has to be idempotent if the serializer is used in KafkaProducer because it might be called
+   * multiple times.
+   */
+  @Override
+  public void close() {
+    /* This function is not used, but is required for the interfaces. */
+  }
 
-    /**
-     * Configure this class.
-     * @param configMap configs in key/value pairs
-     * @param isKey whether is for key or value
-     */
-    @Override
-    public void configure(Map<String, ?> configMap, boolean isKey) {
-      /* This function is not used, but is required for the interfaces. */
-    }
+  /**
+   * Configure this class.
+   * @param configMap configs in key/value pairs
+   * @param isKey whether is for key or value
+   */
+  @Override
+  public void configure(Map<String, ?> configMap, boolean isKey) {
+    /* This function is not used, but is required for the interfaces. */
+  }
 
-    public byte[] serialize(String topic, Object object) {
-        return this.serializer.serialize(object, AvroSerializer.REUSE.get());
-    }
+  public byte[] serialize(String topic, Object object) {
+    return this.serializer.serialize(object, AvroSerializer.REUSE.get());
+  }
 
-    public Object deserialize(String topic, byte[] bytes) {
-        return deserialize(bytes);
-    }
+  public Object deserialize(String topic, byte[] bytes) {
+    return deserialize(bytes);
+  }
 
-    public Object deserialize(byte[] bytes) {
-        return this.deserializer.deserialize(bytes);
-    }
+  public Object deserialize(byte[] bytes) {
+    return this.deserializer.deserialize(bytes);
+  }
 
-    public Object deserialize(ByteBuffer byteBuffer) {
-        return this.deserializer.deserialize(byteBuffer);
-    }
+  public Object deserialize(ByteBuffer byteBuffer) {
+    return this.deserializer.deserialize(byteBuffer);
+  }
 }

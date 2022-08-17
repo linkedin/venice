@@ -1,6 +1,5 @@
 package com.linkedin.venice.controllerapi;
 
-
 public class RepushInfoResponse extends ControllerResponse {
   private RepushInfo repushInfo;
 

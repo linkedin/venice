@@ -1,5 +1,8 @@
 package com.linkedin.venice.router.api.path;
 
+import static com.linkedin.venice.router.api.VenicePathParser.*;
+import static io.netty.handler.codec.http.HttpResponseStatus.*;
+
 import com.linkedin.ddsstorage.base.misc.QueryStringDecoder;
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.RequestConstants;
@@ -21,45 +24,52 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Optional;
 import javax.annotation.Nonnull;
-
 import org.apache.commons.lang.StringUtils;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpUriRequest;
 
-import static com.linkedin.venice.router.api.VenicePathParser.*;
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
-
 
 public class VeniceSingleGetPath extends VenicePath {
-  private static final String ROUTER_REQUEST_VERSION = Integer.toString(
-      ReadAvroProtocolDefinition.SINGLE_GET_ROUTER_REQUEST_V1.getProtocolVersion());
+  private static final String ROUTER_REQUEST_VERSION =
+      Integer.toString(ReadAvroProtocolDefinition.SINGLE_GET_ROUTER_REQUEST_V1.getProtocolVersion());
 
   private final RouterKey routerKey;
   private final String partition;
 
-  public VeniceSingleGetPath(String resourceName, String key, String uri, VenicePartitionFinder partitionFinder,
+  public VeniceSingleGetPath(
+      String resourceName,
+      String key,
+      String uri,
+      VenicePartitionFinder partitionFinder,
       Optional<RouterStats<AggRouterHttpRequestStats>> stats) throws RouterException {
     super(resourceName, false, -1);
     if (StringUtils.isEmpty(key)) {
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(), BAD_REQUEST,
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+          Optional.empty(),
+          Optional.empty(),
+          BAD_REQUEST,
           "Request URI must have non-empty key.  Uri is: " + uri);
     }
 
-    if (isFormatB64(uri)){
+    if (isFormatB64(uri)) {
       routerKey = RouterKey.fromBase64(key);
     } else {
       routerKey = RouterKey.fromString(key);
     }
 
     if (stats.isPresent()) {
-      stats.get().getStatsByType(RequestType.SINGLE_GET)
+      stats.get()
+          .getStatsByType(RequestType.SINGLE_GET)
           .recordKeySize(Version.parseStoreFromKafkaTopicName(resourceName), routerKey.getKeySize());
     }
 
     try {
       int partitionNum = partitionFinder.getNumPartitions(resourceName);
-      int partitionId = partitionFinder.findPartitionNumber(routerKey, partitionNum,
-          Version.parseStoreFromKafkaTopicName(resourceName), Version.parseVersionFromKafkaTopicName(resourceName));
+      int partitionId = partitionFinder.findPartitionNumber(
+          routerKey,
+          partitionNum,
+          Version.parseStoreFromKafkaTopicName(resourceName),
+          Version.parseVersionFromKafkaTopicName(resourceName));
       routerKey.setPartitionId(partitionId);
       String partition = Integer.toString(partitionId);
       setPartitionKeys(Collections.singleton(routerKey));
@@ -84,16 +94,22 @@ public class VeniceSingleGetPath extends VenicePath {
   @Override
   public VenicePath substitutePartitionKey(RouterKey s) {
     if (!routerKey.equals(s)) {
-      throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(getStoreName()), Optional.of(getRequestType()),
-          INTERNAL_SERVER_ERROR, "RouterKey: " + routerKey + " is expected, but received: " + s);
+      throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
+          Optional.of(getStoreName()),
+          Optional.of(getRequestType()),
+          INTERNAL_SERVER_ERROR,
+          "RouterKey: " + routerKey + " is expected, but received: " + s);
     }
     return this;
   }
 
   @Override
   public VenicePath substitutePartitionKey(@Nonnull Collection<RouterKey> s) {
-    throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(getStoreName()), Optional.of(getRequestType()),
-        INTERNAL_SERVER_ERROR, "substitutePartitionKey(@Nonnull Collection<RouterKey> s) is not expected to be invoked for single-get request");
+    throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
+        Optional.of(getStoreName()),
+        Optional.of(getRequestType()),
+        INTERNAL_SERVER_ERROR,
+        "substitutePartitionKey(@Nonnull Collection<RouterKey> s) is not expected to be invoked for single-get request");
   }
 
   @Override
@@ -108,16 +124,22 @@ public class VeniceSingleGetPath extends VenicePath {
   public String getLocation() {
     String sep = VenicePathParser.SEP;
     StringBuilder sb = new StringBuilder();
-    sb.append(TYPE_STORAGE).append(sep)
-        .append(getResourceName()).append(sep)
-        .append(partition).append(sep)
-        .append(getPartitionKey().base64Encoded()).append("?")
-        .append(RequestConstants.FORMAT_KEY).append("=").append(RequestConstants.B64_FORMAT);
+    sb.append(TYPE_STORAGE)
+        .append(sep)
+        .append(getResourceName())
+        .append(sep)
+        .append(partition)
+        .append(sep)
+        .append(getPartitionKey().base64Encoded())
+        .append("?")
+        .append(RequestConstants.FORMAT_KEY)
+        .append("=")
+        .append(RequestConstants.B64_FORMAT);
     return sb.toString();
   }
 
   protected static boolean isFormatB64(String key) {
-    String format = RequestConstants.DEFAULT_FORMAT; //"string"
+    String format = RequestConstants.DEFAULT_FORMAT; // "string"
     QueryStringDecoder queryStringParser = new QueryStringDecoder(key, StandardCharsets.UTF_8);
     if (queryStringParser.getParameters().keySet().contains(RequestConstants.FORMAT_KEY)) {
       format = queryStringParser.getParameters().get(RequestConstants.FORMAT_KEY).get(0);

@@ -5,9 +5,11 @@ import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+
 @Test
 public class VeniceReentrantReadWriteLockTest {
   private static final Logger LOGGER = LogManager.getLogger(VeniceReentrantReadWriteLock.class);
+
   @Test
   public void testVeniceLockLogging() {
     try {

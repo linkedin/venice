@@ -63,8 +63,13 @@ public abstract class AbstractPartitionStateModel extends StateModel {
 
   private HelixPartitionStatusAccessor partitionPushStatusAccessor;
 
-  public AbstractPartitionStateModel(VeniceIngestionBackend ingestionBackend, ReadOnlyStoreRepository storeRepository,
-                                     VeniceStoreVersionConfig storeConfig, int partition, CompletableFuture<HelixPartitionStatusAccessor> accessorFuture, String instanceName) {
+  public AbstractPartitionStateModel(
+      VeniceIngestionBackend ingestionBackend,
+      ReadOnlyStoreRepository storeRepository,
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
+      CompletableFuture<HelixPartitionStatusAccessor> accessorFuture,
+      String instanceName) {
     this.ingestionBackend = ingestionBackend;
     this.storeRepository = storeRepository;
     this.storeConfig = storeConfig;
@@ -79,19 +84,20 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     this.instanceName = instanceName;
   }
 
-  protected void executeStateTransition(Message message, NotificationContext context,
-      Runnable handler) {
+  protected void executeStateTransition(Message message, NotificationContext context, Runnable handler) {
     executeStateTransition(message, context, handler, false);
   }
 
-  protected void executeStateTransition(Message message, NotificationContext context,
-      Runnable handler, boolean rollback) {
+  protected void executeStateTransition(
+      Message message,
+      NotificationContext context,
+      Runnable handler,
+      boolean rollback) {
     String from = message.getFromState();
     String to = message.getToState();
     logEntry(from, to, message, context, rollback);
     // Change name to indicate which st is occupied this thread.
-    Thread.currentThread()
-        .setName("Helix-ST-" + message.getResourceName() + "-" + partition + "-" + from + "->" + to);
+    Thread.currentThread().setName("Helix-ST-" + message.getResourceName() + "-" + partition + "-" + from + "->" + to);
     try {
       handler.run();
       logCompletion(from, to, message, context, rollback);
@@ -102,15 +108,17 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   }
 
   private void logEntry(String from, String to, Message message, NotificationContext context, boolean rollback) {
-    logger.info(getStorePartitionDescription() + " " + (rollback ? "rolling back" : "initiating") + " transition from "
-        + from + " to " + to + " for resource: " + getStoreConfig().getStoreVersionName() + " Partition " + partition +
-        " invoked with Message " + message + " and context " + context);
+    logger.info(
+        getStorePartitionDescription() + " " + (rollback ? "rolling back" : "initiating") + " transition from " + from
+            + " to " + to + " for resource: " + getStoreConfig().getStoreVersionName() + " Partition " + partition
+            + " invoked with Message " + message + " and context " + context);
   }
 
   private void logCompletion(String from, String to, Message message, NotificationContext context, boolean rollback) {
-    logger.info(getStorePartitionDescription() + " " + (rollback ? "rolled back" : "completed") + " transition from "
-        + from + " to " + to + " for resource: " + getStoreConfig().getStoreVersionName() + " Partition " + partition +
-        " invoked with Message " + message + " and context " + context);
+    logger.info(
+        getStorePartitionDescription() + " " + (rollback ? "rolled back" : "completed") + " transition from " + from
+            + " to " + to + " for resource: " + getStoreConfig().getStoreVersionName() + " Partition " + partition
+            + " invoked with Message " + message + " and context " + context);
   }
 
   /**
@@ -119,16 +127,17 @@ public abstract class AbstractPartitionStateModel extends StateModel {
    */
   @Override
   public void rollbackOnError(Message message, NotificationContext context, StateTransitionError error) {
-    executeStateTransition(message, context, ()-> {
-      logger.info(getStorePartitionDescription() + " met an error during state transition. Stop the running consumption. Caused by:",
+    executeStateTransition(message, context, () -> {
+      logger.info(
+          getStorePartitionDescription()
+              + " met an error during state transition. Stop the running consumption. Caused by:",
           error.getException());
       /**
        * When state transition fails, we shouldn't remove the corresponding database here since the database could
        * be either recovered by bounce/Helix Reset or completely dropped after going through 'ERROR' to 'DROPPED' state transition.
        */
       stopConsumption();
-    },
-    true);
+    }, true);
   }
 
   /**
@@ -138,7 +147,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   @Override
   @Transition(to = HelixState.DROPPED_STATE, from = HelixState.ERROR_STATE)
   public void onBecomeDroppedFromError(Message message, NotificationContext context) {
-    executeStateTransition(message, context, ()-> {
+    executeStateTransition(message, context, () -> {
       try {
         removePartitionFromStoreGracefully();
       } catch (Exception e) {
@@ -148,27 +157,28 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     });
   }
 
-
   @Override
   public void reset() {
     try {
       stopConsumption();
     } catch (Exception e) {
-      logger.error("Error when trying to stop any ongoing consumption during reset for: "
-          + storePartitionDescription, e);
+      logger
+          .error("Error when trying to stop any ongoing consumption during reset for: " + storePartitionDescription, e);
     }
     try {
       waitPartitionPushStatusAccessor();
     } catch (Exception e) {
-      throw new VeniceException("Error when initializing partition push status accessor, "
-          + "reset failed. ", e);
+      throw new VeniceException("Error when initializing partition push status accessor, " + "reset failed. ", e);
     }
     /**
      * reset the customized view to default state before instance gets shut down.
      */
     if (partitionPushStatusAccessor != null) {
-      partitionPushStatusAccessor.updateReplicaStatus(storeConfig.getStoreVersionName(), partition, ExecutionStatus.STARTED);
-      partitionPushStatusAccessor.updateHybridQuotaReplicaStatus(storeConfig.getStoreVersionName(), partition,
+      partitionPushStatusAccessor
+          .updateReplicaStatus(storeConfig.getStoreVersionName(), partition, ExecutionStatus.STARTED);
+      partitionPushStatusAccessor.updateHybridQuotaReplicaStatus(
+          storeConfig.getStoreVersionName(),
+          partition,
           HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
     }
   }
@@ -183,7 +193,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
      * accessor ready to get notified.
      */
     final Consumer<Double> waitTimeLogging = elapsedTimeInMs -> {
-      //TODO Evaluate if debugLoggingEnabled config can be removed, as logging level can be changed at run time.
+      // TODO Evaluate if debugLoggingEnabled config can be removed, as logging level can be changed at run time.
       if (storeConfig.isDebugLoggingEnabled()) {
         logger.info(
             "Completed waiting for partition push status accessor for resource " + storeConfig.getStoreVersionName()
@@ -192,11 +202,12 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     };
 
     try (Timer t = Timer.run(waitTimeLogging)) {
-        waitPartitionPushStatusAccessor();
-        initializePartitionPushStatus();
+      waitPartitionPushStatusAccessor();
+      initializePartitionPushStatus();
     } catch (Exception e) {
-      throw new VeniceException("Error when initializing partition push status accessor, "
-          + "will not start ingestion for store partition. ", e);
+      throw new VeniceException(
+          "Error when initializing partition push status accessor, " + "will not start ingestion for store partition. ",
+          e);
     }
 
     /**
@@ -204,7 +215,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
      * will not create them again.
      */
     final Consumer<Double> setupTimeLogging = elapsedTimeInMs -> {
-      //TODO Evaluate if debugLoggingEnabled config can be removed, as logging level can be changed at run time.
+      // TODO Evaluate if debugLoggingEnabled config can be removed, as logging level can be changed at run time.
       if (storeConfig.isDebugLoggingEnabled()) {
         logger.info(
             "Completed starting the consumption for resource " + storeConfig.getStoreVersionName() + " partition "
@@ -223,10 +234,14 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     // Since this removes the storageEngine from the map not doing a un-subscribe and dropping a partition could
     // lead to NPE and other issues.
     // Adding a topic unsubscribe call for those race conditions as a safe-guard before dropping the partition.
-    ingestionBackend.dropStoragePartitionGracefully(storeConfig, partition, getStoreConfig().getPartitionGracefulDropDelaySeconds());
+    ingestionBackend.dropStoragePartitionGracefully(
+        storeConfig,
+        partition,
+        getStoreConfig().getPartitionGracefulDropDelaySeconds());
     removeCustomizedState();
     // Delete this replica from meta system store if necessary
-    Optional<MetaSystemStoreReplicaStatusNotifier> metaSystemStoreReplicaStatusNotifier = ingestionBackend.getStoreIngestionService().getMetaSystemStoreReplicaStatusNotifier();
+    Optional<MetaSystemStoreReplicaStatusNotifier> metaSystemStoreReplicaStatusNotifier =
+        ingestionBackend.getStoreIngestionService().getMetaSystemStoreReplicaStatusNotifier();
     if (metaSystemStoreReplicaStatusNotifier.isPresent()) {
       metaSystemStoreReplicaStatusNotifier.get().drop(storeConfig.getStoreVersionName(), partition);
     }
@@ -239,8 +254,9 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     try {
       waitPartitionPushStatusAccessor();
     } catch (Exception e) {
-      throw new VeniceException("Error when initializing partition push status accessor, "
-          + "failed to remove customized state. ", e);
+      throw new VeniceException(
+          "Error when initializing partition push status accessor, " + "failed to remove customized state. ",
+          e);
     }
     if (partitionPushStatusAccessor != null) {
       String storeName = getStoreConfig().getStoreVersionName();
@@ -252,21 +268,33 @@ public abstract class AbstractPartitionStateModel extends StateModel {
           logger.info("Wait " + RETRY_DURATION_MS + "ms to retry.");
           Utils.sleep(RETRY_DURATION_MS);
           logger.info(
-              String.format("Attempt #%s in removing customized state for store: %s, partition: %s, on instance: %s",
-                  attempt, storeName, partition, instanceName));
+              String.format(
+                  "Attempt #%s in removing customized state for store: %s, partition: %s, on instance: %s",
+                  attempt,
+                  storeName,
+                  partition,
+                  instanceName));
         }
         try {
           partitionPushStatusAccessor.deleteReplicaStatus(storeName, partition);
           isSuccess = true;
         } catch (Exception e) {
-          logger.error(String.format("Error in removing customized state for store: %s, partition: %s, on instance: %s",
-              storeName, partition, instanceName), e);
+          logger.error(
+              String.format(
+                  "Error in removing customized state for store: %s, partition: %s, on instance: %s",
+                  storeName,
+                  partition,
+                  instanceName),
+              e);
         }
       }
       if (!isSuccess) {
         String errorMsg = String.format(
             "Error: After attempting %s times, removing customized state for store: %s, partition: %s, on instance: %s",
-            attempt, storeName, partition, instanceName);
+            attempt,
+            storeName,
+            partition,
+            instanceName);
         logger.error(errorMsg);
         throw new VeniceException(errorMsg);
       }
@@ -277,19 +305,22 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     try {
       int bootstrapToOnlineTimeoutInHours;
       try {
-        bootstrapToOnlineTimeoutInHours = getStoreRepo()
-            .getStoreOrThrow(Version.parseStoreFromKafkaTopicName(resourceName))
-            .getBootstrapToOnlineTimeoutInHours();
+        bootstrapToOnlineTimeoutInHours =
+            getStoreRepo().getStoreOrThrow(Version.parseStoreFromKafkaTopicName(resourceName))
+                .getBootstrapToOnlineTimeoutInHours();
       } catch (Exception e) {
-        logger.warn("Failed to fetch bootstrapToOnlineTimeoutInHours from store config for resource "
-            + resourceName + ", using the default value of "
-            + Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS + " hours instead");
+        logger.warn(
+            "Failed to fetch bootstrapToOnlineTimeoutInHours from store config for resource " + resourceName
+                + ", using the default value of " + Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS + " hours instead");
         bootstrapToOnlineTimeoutInHours = Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
       }
-      notifier.waitConsumptionCompleted(resourceName, partition, bootstrapToOnlineTimeoutInHours, getStoreIngestionService());
+      notifier.waitConsumptionCompleted(
+          resourceName,
+          partition,
+          bootstrapToOnlineTimeoutInHours,
+          getStoreIngestionService());
     } catch (InterruptedException e) {
-      String errorMsg =
-          "Can not complete consumption for resource:" + resourceName + " partition:" + partition;
+      String errorMsg = "Can not complete consumption for resource:" + resourceName + " partition:" + partition;
       logger.error(errorMsg, e);
       // Please note, after throwing this exception, this node will become ERROR for this resource.
       throw new VeniceException(errorMsg, e);
@@ -305,7 +336,8 @@ public abstract class AbstractPartitionStateModel extends StateModel {
 
   private void initializePartitionPushStatus() {
     if (partitionPushStatusAccessor != null) {
-      partitionPushStatusAccessor.updateReplicaStatus(storeConfig.getStoreVersionName(), getPartition(), ExecutionStatus.NOT_STARTED);
+      partitionPushStatusAccessor
+          .updateReplicaStatus(storeConfig.getStoreVersionName(), getPartition(), ExecutionStatus.NOT_STARTED);
     } else {
       throw new VeniceException("HelixPartitionStatusAccessor is expected not to be null.");
     }

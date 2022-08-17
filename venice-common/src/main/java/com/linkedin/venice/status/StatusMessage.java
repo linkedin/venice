@@ -4,7 +4,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
 
 /**
@@ -18,12 +17,12 @@ public abstract class StatusMessage {
   storage node and controller. If the field names are removed
   or modified, it will cause serialization, de-serialization
   issues.
-
+  
   Adding fields and when not available doing the default thing
   should be fine.
    */
   private static final String MESSAGE_ID = "messageId";
-  protected  final String messageId;
+  protected final String messageId;
 
   /**
    * Create message from given fields map. Should be override in each sub-class.
@@ -55,7 +54,7 @@ public abstract class StatusMessage {
    * @return
    */
   public Map<String, String> getFields() {
-    Map<String , String> fields = new HashMap<>();
+    Map<String, String> fields = new HashMap<>();
     fields.put(MESSAGE_ID, messageId);
     return fields;
   }
@@ -76,7 +75,7 @@ public abstract class StatusMessage {
     }
   }
 
-  public static String generateMessageId(){
+  public static String generateMessageId() {
     // Confirmed with helix team. The message Id is used as the key for zk node. So it must be a global unique Id.
     // And Helix also use Java UUID for other helix message. So we just follow this stand here.
     return GuidUtils.getGUIDString();

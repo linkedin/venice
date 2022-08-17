@@ -11,7 +11,6 @@ import java.util.Optional;
  * {@link ConsumerActionType} enum.
  */
 public class ConsumerAction implements Comparable<ConsumerAction> {
-
   private final ConsumerActionType type;
   private final String topic;
   private final int partition;
@@ -25,18 +24,31 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
     this(type, topic, partition, sequenceNumber, null, Optional.empty());
   }
 
-  public ConsumerAction(ConsumerActionType type, String topic, int partition, int sequenceNumber,
+  public ConsumerAction(
+      ConsumerActionType type,
+      String topic,
+      int partition,
+      int sequenceNumber,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
     this(type, topic, partition, sequenceNumber, checker, Optional.empty());
   }
 
-  public ConsumerAction(ConsumerActionType type, String topic, int partition, int sequenceNumber,
+  public ConsumerAction(
+      ConsumerActionType type,
+      String topic,
+      int partition,
+      int sequenceNumber,
       Optional<LeaderFollowerStateType> leaderState) {
     this(type, topic, partition, sequenceNumber, null, leaderState);
   }
 
-  public ConsumerAction(ConsumerActionType type, String topic, int partition, int sequenceNumber,
-                        LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker, Optional<LeaderFollowerStateType> leaderState) {
+  public ConsumerAction(
+      ConsumerActionType type,
+      String topic,
+      int partition,
+      int sequenceNumber,
+      LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker,
+      Optional<LeaderFollowerStateType> leaderState) {
     this.type = type;
     this.topic = topic;
     this.partition = partition;
@@ -79,13 +91,8 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
 
   @Override
   public String toString() {
-    return "KafkaTaskMessage{" +
-        "type=" + type +
-        ", topic='" + topic + '\'' +
-        ", partition=" + partition +
-        ", attempts=" + attempts +
-        ", sequenceNumber=" + sequenceNumber +
-        '}';
+    return "KafkaTaskMessage{" + "type=" + type + ", topic='" + topic + '\'' + ", partition=" + partition
+        + ", attempts=" + attempts + ", sequenceNumber=" + sequenceNumber + '}';
   }
 
   @Override
@@ -114,11 +121,8 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
     }
     ConsumerAction other = (ConsumerAction) obj;
 
-    if (topic.equals(other.topic)
-        && partition == other.partition
-        && sequenceNumber == other.sequenceNumber
-        && type.equals(other.type)
-        && leaderState.equals(other.leaderState)) {
+    if (topic.equals(other.topic) && partition == other.partition && sequenceNumber == other.sequenceNumber
+        && type.equals(other.type) && leaderState.equals(other.leaderState)) {
       return true;
     }
 

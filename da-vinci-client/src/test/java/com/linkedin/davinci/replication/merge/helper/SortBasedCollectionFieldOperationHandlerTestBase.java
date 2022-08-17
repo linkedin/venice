@@ -36,16 +36,11 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
    * A schema that contains a list field.
    */
   private static final Schema VALUE_SCHEMA = AvroCompatibilityHelper.parse(
-      "{"
-      + "   \"type\" : \"record\","
-      + "   \"namespace\" : \"com.linkedin.avro\","
-      + "   \"name\" : \"TestRecord\","
-      + "   \"fields\" : ["
-      + "      { \"name\" : \"Items\" , \"type\" : {\"type\" : \"array\", \"items\" : \"int\"}, \"default\" : [] },"
-      + "      { \"name\" : \"PetNameToAge\" , \"type\" : [\"null\" , {\"type\" : \"map\", \"values\" : \"int\"}], \"default\" : null }"
-      + "   ]"
-      + "}"
-  );
+      "{" + "   \"type\" : \"record\"," + "   \"namespace\" : \"com.linkedin.avro\"," + "   \"name\" : \"TestRecord\","
+          + "   \"fields\" : ["
+          + "      { \"name\" : \"Items\" , \"type\" : {\"type\" : \"array\", \"items\" : \"int\"}, \"default\" : [] },"
+          + "      { \"name\" : \"PetNameToAge\" , \"type\" : [\"null\" , {\"type\" : \"map\", \"values\" : \"int\"}], \"default\" : null }"
+          + "   ]" + "}");
   protected static final String LIST_FIELD_NAME = "Items";
   protected static final String MAP_FIELD_NAME = "PetNameToAge";
   private static final Schema RMD_TIMESTAMP_SCHEMA;
@@ -61,16 +56,19 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
   protected static final int COLO_ID_5 = 5;
   protected static final int COLO_ID_6 = 6;
 
-  protected void applyAllOperationsOnValue(List<CollectionOperation> allCollectionOps, ExpectedCollectionResults<?, ?> expectedCollectionResults) {
+  protected void applyAllOperationsOnValue(
+      List<CollectionOperation> allCollectionOps,
+      ExpectedCollectionResults<?, ?> expectedCollectionResults) {
     CollectionOperationSequenceBuilder builder = new CollectionOperationSequenceBuilder();
-    for (CollectionOperation collectionOperation : allCollectionOps) {
+    for (CollectionOperation collectionOperation: allCollectionOps) {
       builder.addOperation(collectionOperation);
     }
     List<List<CollectionOperation>> allOpSequences = builder.build();
     logger.info("All operation sequences: " + allOpSequences);
 
     GenericRecord currValueRecord = new GenericData.Record(VALUE_SCHEMA);
-    CollectionTimestampBuilder collectionTimestampBuilder = new CollectionTimestampBuilder(Schema.create(Schema.Type.LONG));
+    CollectionTimestampBuilder collectionTimestampBuilder =
+        new CollectionTimestampBuilder(Schema.create(Schema.Type.LONG));
     collectionTimestampBuilder.setTopLevelColoID(1);
     collectionTimestampBuilder.setPutOnlyPartLength(0);
     collectionTimestampBuilder.setTopLevelTimestamps(0);
@@ -78,7 +76,8 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
     collectionTimestampBuilder.setDeletedElementTimestamps(new LinkedList<>());
     collectionTimestampBuilder.setDeletedElements(Schema.create(Schema.Type.LONG), new LinkedList<>());
     collectionTimestampBuilder.setCollectionTimestampSchema(RMD_TIMESTAMP_SCHEMA.getField(LIST_FIELD_NAME).schema());
-    CollectionReplicationMetadata collectionMetadata = new CollectionReplicationMetadata(collectionTimestampBuilder.build());
+    CollectionReplicationMetadata collectionMetadata =
+        new CollectionReplicationMetadata(collectionTimestampBuilder.build());
     SortBasedCollectionFieldOpHandler handlerToTest =
         new SortBasedCollectionFieldOpHandler(AvroCollectionElementComparator.INSTANCE);
 
@@ -91,7 +90,7 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
       List<CollectionOperation> opSequence = allOpSequences.get(i);
       logger.info("Applying operation sequence: " + opSequence);
 
-      for (CollectionOperation op : opSequence) {
+      for (CollectionOperation op: opSequence) {
         applyOperationOnValue(op, collectionRmdCopy, handlerToTest, currValueRecordCopy);
       }
       logger.info("Post-merge value record: " + currValueRecordCopy);
@@ -103,23 +102,32 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
           Assert.assertEquals(currValueRecordCopy.get(listFieldName), expectedCollectionResults.getExpectedList());
         }
         if (mapFieldName != null) {
-          validateMapsEqual((Map<String, ?>) currValueRecordCopy.get(mapFieldName), expectedCollectionResults.getExpectedMap());
+          validateMapsEqual(
+              (Map<String, ?>) currValueRecordCopy.get(mapFieldName),
+              expectedCollectionResults.getExpectedMap());
         }
         prevValueRecord = currValueRecordCopy;
         prevCollectionRmd = collectionRmdCopy;
 
       } else {
         if (listFieldName != null) {
-          if (GenericData.get().compare(currValueRecordCopy.get(listFieldName), prevValueRecord.get(listFieldName), VALUE_SCHEMA.getField(listFieldName).schema()) != 0) {
-            Assert.fail(String.format("Current value record is different from the previous value record. "
-                + "Current: [%s] Previous: [%s]", currValueRecordCopy, prevValueRecord));
+          if (GenericData.get()
+              .compare(
+                  currValueRecordCopy.get(listFieldName),
+                  prevValueRecord.get(listFieldName),
+                  VALUE_SCHEMA.getField(listFieldName).schema()) != 0) {
+            Assert.fail(
+                String.format(
+                    "Current value record is different from the previous value record. "
+                        + "Current: [%s] Previous: [%s]",
+                    currValueRecordCopy,
+                    prevValueRecord));
           }
         }
         if (mapFieldName != null) {
           validateMapsEqual(
               (Map<String, ?>) currValueRecordCopy.get(mapFieldName),
-              (Map<String, ?>) prevValueRecord.get(mapFieldName)
-          );
+              (Map<String, ?>) prevValueRecord.get(mapFieldName));
         }
 
         if (!prevCollectionRmd.equals(collectionRmdCopy)) {
@@ -157,8 +165,7 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
       CollectionOperation op,
       CollectionReplicationMetadata collectionMetadata,
       SortBasedCollectionFieldOpHandler handlerToTest,
-      GenericRecord currValueRecord
-  ) {
+      GenericRecord currValueRecord) {
     if (op instanceof PutListOperation) {
       handlerToTest.handlePutList(
           op.getOpTimestamp(),
@@ -166,8 +173,7 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
           ((PutListOperation) op).getNewList(),
           (CollectionReplicationMetadata<Object>) collectionMetadata,
           currValueRecord,
-          op.getFieldName()
-      );
+          op.getFieldName());
 
     } else if (op instanceof PutMapOperation) {
       handlerToTest.handlePutMap(
@@ -176,8 +182,7 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
           ((PutMapOperation) op).getNewMap(),
           (CollectionReplicationMetadata<String>) collectionMetadata,
           currValueRecord,
-          op.getFieldName()
-      );
+          op.getFieldName());
 
     } else if (op instanceof MergeListOperation) {
       handlerToTest.handleModifyList(
@@ -186,8 +191,7 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
           currValueRecord,
           op.getFieldName(),
           ((MergeListOperation) op).getNewElements(),
-          ((MergeListOperation) op).getToRemoveElements()
-      );
+          ((MergeListOperation) op).getToRemoveElements());
 
     } else if (op instanceof MergeMapOperation) {
       handlerToTest.handleModifyMap(
@@ -196,8 +200,7 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
           currValueRecord,
           op.getFieldName(),
           ((MergeMapOperation) op).getNewEntries(),
-          ((MergeMapOperation) op).getToRemoveKeys()
-      );
+          ((MergeMapOperation) op).getToRemoveKeys());
 
     } else if (op instanceof DeleteListOperation) {
       handlerToTest.handleDeleteList(
@@ -205,8 +208,7 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
           op.getOpColoID(),
           (CollectionReplicationMetadata<Object>) collectionMetadata,
           currValueRecord,
-          op.getFieldName()
-      );
+          op.getFieldName());
 
     } else if (op instanceof DeleteMapOperation) {
       handlerToTest.handleDeleteMap(
@@ -214,8 +216,7 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
           op.getOpColoID(),
           (CollectionReplicationMetadata<String>) collectionMetadata,
           currValueRecord,
-          op.getFieldName()
-      );
+          op.getFieldName());
     } else {
       throw new IllegalStateException("Unknown operation type: Got: " + op.getClass());
     }

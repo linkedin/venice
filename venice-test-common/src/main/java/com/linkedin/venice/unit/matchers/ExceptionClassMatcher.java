@@ -2,6 +2,7 @@ package com.linkedin.venice.unit.matchers;
 
 import org.mockito.ArgumentMatcher;
 
+
 public class ExceptionClassMatcher implements ArgumentMatcher<Exception> {
   private final Class exceptionClass;
 

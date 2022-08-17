@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigKeys.*;
+
 import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -29,7 +31,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.ConfigKeys.*;
 
 public class TestFabricBuildout {
   private static final int TEST_TIMEOUT = 90_000; // ms
@@ -37,7 +38,9 @@ public class TestFabricBuildout {
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
   private static final String[] CLUSTER_NAMES =
-      IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new); // ["venice-cluster0", "venice-cluster1", ...];
+      IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new); // ["venice-cluster0",
+                                                                                                         // "venice-cluster1",
+                                                                                                         // ...];
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
@@ -80,15 +83,21 @@ public class TestFabricBuildout {
     String storeName = Utils.getUniqueString("store");
 
     // Test the admin channel
-    String parentControllerUrls = parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(
-        Collectors.joining(","));
+    String parentControllerUrls =
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
 
-    try (ControllerClient parentControllerClient = ControllerClient.constructClusterControllerClient(clusterName, parentControllerUrls);
-        ControllerClient dc0Client = ControllerClient.constructClusterControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString())) {
+    try (
+        ControllerClient parentControllerClient =
+            ControllerClient.constructClusterControllerClient(clusterName, parentControllerUrls);
+        ControllerClient dc0Client = ControllerClient
+            .constructClusterControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString())) {
       // Create a test store only in dc0 colo
-      NewStoreResponse newStoreResponse = dc0Client.retryableRequest(3,
+      NewStoreResponse newStoreResponse = dc0Client.retryableRequest(
+          3,
           c -> c.createNewStore(storeName, "", "\"string\"", TestPushUtils.USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT));
-      Assert.assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+      Assert.assertFalse(
+          newStoreResponse.isError(),
+          "The NewStoreResponse returned an error: " + newStoreResponse.getError());
       // Enable read compute to test superset schema registration.
       Assert.assertFalse(
           dc0Client.updateStore(storeName, new UpdateStoreQueryParams().setReadComputationEnabled(true)).isError());
@@ -100,8 +109,8 @@ public class TestFabricBuildout {
 
       // Call metadata copy over to copy dc0's store configs to dc1
       parentControllerClient.copyOverStoreMetadata("dc-0", "dc-1", storeName);
-      ControllerClient dc1Client = ControllerClient.constructClusterControllerClient(clusterName,
-          childDatacenters.get(1).getControllerConnectString());
+      ControllerClient dc1Client = ControllerClient
+          .constructClusterControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
       checkStoreConfig(dc1Client, storeName);
       AdminTopicMetadataResponse response = dc1Client.getAdminTopicMetadata(Optional.of(storeName));
       Assert.assertFalse(response.isError());
@@ -112,14 +121,18 @@ public class TestFabricBuildout {
   @Test(timeOut = TEST_TIMEOUT)
   public void testStartFabricBuildout() throws Exception {
     String clusterName = CLUSTER_NAMES[0];
-    try (ControllerClient childControllerClient0 = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
-        ControllerClient childControllerClient1 = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
+    try (
+        ControllerClient childControllerClient0 =
+            new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+        ControllerClient childControllerClient1 =
+            new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
       String testStoreName1 = Utils.getUniqueString("test-store");
-      NewStoreResponse newStoreResponse = childControllerClient0.createNewStore(testStoreName1, "test", "\"string\"", "\"string\"");
+      NewStoreResponse newStoreResponse =
+          childControllerClient0.createNewStore(testStoreName1, "test", "\"string\"", "\"string\"");
       Assert.assertFalse(newStoreResponse.isError());
       checkStoreConfig(childControllerClient0, testStoreName1);
-      VersionCreationResponse versionCreationResponse = childControllerClient0.emptyPush(testStoreName1,
-          Utils.getUniqueString("empty-push-1"), 1L);
+      VersionCreationResponse versionCreationResponse =
+          childControllerClient0.emptyPush(testStoreName1, Utils.getUniqueString("empty-push-1"), 1L);
       Assert.assertFalse(versionCreationResponse.isError());
       String testStoreName2 = Utils.getUniqueString("test-store");
       newStoreResponse = childControllerClient0.createNewStore(testStoreName2, "test", "\"string\"", "\"string\"");
@@ -131,14 +144,13 @@ public class TestFabricBuildout {
       newStoreResponse = childControllerClient1.createNewStore(testStoreName1, "test", "\"string\"", "\"string\"");
       Assert.assertFalse(newStoreResponse.isError());
       childControllerClient1.updateStore(testStoreName1, new UpdateStoreQueryParams().setPartitionCount(1));
-      versionCreationResponse = childControllerClient1.emptyPush(testStoreName1, Utils.getUniqueString("empty-push-1"), 1L);
+      versionCreationResponse =
+          childControllerClient1.emptyPush(testStoreName1, Utils.getUniqueString("empty-push-1"), 1L);
       Assert.assertFalse(versionCreationResponse.isError());
       checkStoreConfigAndCurrentVersion(childControllerClient1, testStoreName1, 1);
 
-      String[] args = {"--start-fabric-buildout", "--url", parentControllers.get(0).getControllerUrl(),
-          "--cluster", clusterName,
-          "--source-fabric", "dc-0",
-          "--dest-fabric", "dc-1"};
+      String[] args = { "--start-fabric-buildout", "--url", parentControllers.get(0).getControllerUrl(), "--cluster",
+          clusterName, "--source-fabric", "dc-0", "--dest-fabric", "dc-1" };
       AdminTool.main(args);
 
       checkStoreConfigAndCurrentVersion(childControllerClient1, testStoreName1, 1);
@@ -149,26 +161,29 @@ public class TestFabricBuildout {
   @Test(timeOut = TEST_TIMEOUT)
   public void testCompareStore() {
     String clusterName = CLUSTER_NAMES[0];
-    String parentControllerUrls = parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(
-        Collectors.joining(","));
+    String parentControllerUrls =
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls);
-        ControllerClient childControllerClient0 = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
-        ControllerClient childControllerClient1 = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
+        ControllerClient childControllerClient0 =
+            new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+        ControllerClient childControllerClient1 =
+            new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
       String testStoreName = Utils.getUniqueString("test-store");
-      NewStoreResponse newStoreResponse = childControllerClient0.createNewStore(testStoreName, "test",
-          "\"string\"", TestPushUtils.NESTED_SCHEMA_STRING);
+      NewStoreResponse newStoreResponse = childControllerClient0
+          .createNewStore(testStoreName, "test", "\"string\"", TestPushUtils.NESTED_SCHEMA_STRING);
       Assert.assertFalse(newStoreResponse.isError());
       checkStoreConfig(childControllerClient0, testStoreName);
-      newStoreResponse = childControllerClient1.createNewStore(testStoreName, "test", "\"string\"",
-          TestPushUtils.NESTED_SCHEMA_STRING);
+      newStoreResponse = childControllerClient1
+          .createNewStore(testStoreName, "test", "\"string\"", TestPushUtils.NESTED_SCHEMA_STRING);
       Assert.assertFalse(newStoreResponse.isError());
       checkStoreConfig(childControllerClient1, testStoreName);
 
       // Only modify the store in dc-0
-      VersionCreationResponse versionCreationResponse = childControllerClient0.emptyPush(testStoreName,
-          Utils.getUniqueString("empty-push-1"), 1L);
+      VersionCreationResponse versionCreationResponse =
+          childControllerClient0.emptyPush(testStoreName, Utils.getUniqueString("empty-push-1"), 1L);
       Assert.assertFalse(versionCreationResponse.isError());
-      SchemaResponse schemaResponse = childControllerClient0.addValueSchema(testStoreName, TestPushUtils.NESTED_SCHEMA_STRING_V2);
+      SchemaResponse schemaResponse =
+          childControllerClient0.addValueSchema(testStoreName, TestPushUtils.NESTED_SCHEMA_STRING_V2);
       Assert.assertFalse(schemaResponse.isError());
 
       StoreComparisonResponse response = parentControllerClient.compareStore(testStoreName, "dc-0", "dc-1");
@@ -188,7 +203,9 @@ public class TestFabricBuildout {
     });
   }
 
-  private static void checkStoreConfigAndCurrentVersion(ControllerClient childControllerClient, String storeName,
+  private static void checkStoreConfigAndCurrentVersion(
+      ControllerClient childControllerClient,
+      String storeName,
       int versionNum) {
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
       StoreResponse storeResponse = childControllerClient.getStore(storeName);

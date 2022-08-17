@@ -17,10 +17,10 @@ import java.net.URL;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class ClientStats extends com.linkedin.venice.client.stats.ClientStats {
@@ -44,9 +44,12 @@ public class ClientStats extends com.linkedin.venice.client.stats.ClientStats {
   // Routing stats
   private final Map<String, RouteStats> perRouteStats = new VeniceConcurrentHashMap<>();
 
-  public static ClientStats getClientStats(MetricsRepository metricsRepository, String statsPrefix, String storeName,
+  public static ClientStats getClientStats(
+      MetricsRepository metricsRepository,
+      String statsPrefix,
+      String storeName,
       RequestType requestType) {
-    String metricName = statsPrefix.isEmpty() ?  storeName : statsPrefix + "." + storeName;
+    String metricName = statsPrefix.isEmpty() ? storeName : statsPrefix + "." + storeName;
     return new ClientStats(metricsRepository, metricName, requestType);
   }
 
@@ -54,21 +57,25 @@ public class ClientStats extends com.linkedin.venice.client.stats.ClientStats {
     super(metricsRepository, storeName, requestType);
 
     this.storeName = storeName;
-    this.noAvailableReplicaRequestCountSensor = registerSensor("no_available_replica_request_count", new OccurrenceRate());
+    this.noAvailableReplicaRequestCountSensor =
+        registerSensor("no_available_replica_request_count", new OccurrenceRate());
 
     Rate requestRate = getRequestRate();
     Rate fastClientSlowerRequestRate = new OccurrenceRate();
-    this.dualReadFastClientSlowerRequestCountSensor = registerSensor("dual_read_fastclient_slower_request_count",
-        fastClientSlowerRequestRate);
-    this.dualReadFastClientSlowerRequestRatioSensor = registerSensor("dual_read_fastclient_slower_request_ratio",
+    this.dualReadFastClientSlowerRequestCountSensor =
+        registerSensor("dual_read_fastclient_slower_request_count", fastClientSlowerRequestRate);
+    this.dualReadFastClientSlowerRequestRatioSensor = registerSensor(
+        "dual_read_fastclient_slower_request_ratio",
         new TehutiUtils.SimpleRatioStat(fastClientSlowerRequestRate, requestRate));
     Rate fastClientErrorThinClientSucceedRequestRate = new OccurrenceRate();
     this.dualReadFastClientErrorThinClientSucceedRequestCountSensor = registerSensor(
-        "dual_read_fastclient_error_thinclient_succeed_request_count", fastClientErrorThinClientSucceedRequestRate);
+        "dual_read_fastclient_error_thinclient_succeed_request_count",
+        fastClientErrorThinClientSucceedRequestRate);
     this.dualReadFastClientErrorThinClientSucceedRequestRatioSensor = registerSensor(
-        "dual_read_fastclient_error_thinclient_succeed_request_ratio", new TehutiUtils.SimpleRatioStat(fastClientErrorThinClientSucceedRequestRate, requestRate));
-    this.dualReadThinClientFastClientLatencyDeltaSensor = registerSensorWithDetailedPercentiles(
-        "dual_read_thinclient_fastclient_latency_delta", new Max(), new Avg());
+        "dual_read_fastclient_error_thinclient_succeed_request_ratio",
+        new TehutiUtils.SimpleRatioStat(fastClientErrorThinClientSucceedRequestRate, requestRate));
+    this.dualReadThinClientFastClientLatencyDeltaSensor =
+        registerSensorWithDetailedPercentiles("dual_read_thinclient_fastclient_latency_delta", new Max(), new Avg());
     this.leakedRequestCountSensor = registerSensor("leaked_request_count", new OccurrenceRate());
     this.longTailRetryRequestSensor = registerSensor("long_tail_retry_request", new OccurrenceRate());
     this.errorRetryRequestSensor = registerSensor("error_retry_request", new OccurrenceRate());
@@ -96,7 +103,7 @@ public class ClientStats extends com.linkedin.venice.client.stats.ClientStats {
       String instanceName = instanceUrl;
       try {
         URL url = new URL(instanceUrl);
-        instanceName = url.getHost()  + "_" + url.getPort();
+        instanceName = url.getHost() + "_" + url.getPort();
       } catch (MalformedURLException e) {
         LOGGER.error("Invalid instance url: " + instanceUrl);
       }
@@ -107,25 +114,32 @@ public class ClientStats extends com.linkedin.venice.client.stats.ClientStats {
   public void recordRequest(String instance) {
     getRouteStats(instance).recordRequest();
   }
+
   public void recordResponseWaitingTime(String instance, double latency) {
     getRouteStats(instance).recordResponseWaitingTime(latency);
   }
+
   public void recordHealthyRequest(String instance) {
     getRouteStats(instance).recordHealthyRequest();
   }
+
   public void recordQuotaExceededRequest(String instance) {
     getRouteStats(instance).recordQuotaExceededRequest();
   }
+
   public void recordInternalServerErrorRequest(String instance) {
     getRouteStats(instance).recordInternalServerErrorRequest();
   }
+
   public void recordServiceUnavailableRequest(String instance) {
     getRouteStats(instance).recordServiceUnavailableRequest();
   }
+
   public void recordLeakedRequest(String instance) {
     leakedRequestCountSensor.record();
     getRouteStats(instance).recordLeakedRequest();
   }
+
   public void recordOtherErrorRequest(String instance) {
     getRouteStats(instance).recordOtherErrorRequest();
   }
@@ -153,9 +167,10 @@ public class ClientStats extends com.linkedin.venice.client.stats.ClientStats {
     StringBuilder builder = new StringBuilder();
     String sensorFullName = getSensorFullName(sensorName);
     builder.append(sensorFullName).append(":");
-    builder.append(IntStream.range(0,stats.length)
-                  .mapToObj((statIdx) -> stats[statIdx] + "=" + metricValues.get(statIdx))
-                  .collect(Collectors.joining(",")));
+    builder.append(
+        IntStream.range(0, stats.length)
+            .mapToObj((statIdx) -> stats[statIdx] + "=" + metricValues.get(statIdx))
+            .collect(Collectors.joining(",")));
     return builder.toString();
   }
 
@@ -173,6 +188,7 @@ public class ClientStats extends com.linkedin.venice.client.stats.ClientStats {
     }).collect(Collectors.toList());
     return collect;
   }
+
   /**
    * Per-route request metrics.
    */
@@ -189,11 +205,14 @@ public class ClientStats extends com.linkedin.venice.client.stats.ClientStats {
     public RouteStats(MetricsRepository metricsRepository, String storeName, String instanceName) {
       super(metricsRepository, storeName + "." + StatsUtils.convertHostnameToMetricName(instanceName));
       this.requestCountSensor = registerSensor("request_count", new OccurrenceRate());
-      this.responseWaitingTimeSensor = registerSensor("response_waiting_time", TehutiUtils.getPercentileStat(getName(), "response_waiting_time"));
+      this.responseWaitingTimeSensor =
+          registerSensor("response_waiting_time", TehutiUtils.getPercentileStat(getName(), "response_waiting_time"));
       this.healthyRequestCountSensor = registerSensor("healthy_request_count", new OccurrenceRate());
       this.quotaExceededRequestCountSensor = registerSensor("quota_exceeded_request_count", new OccurrenceRate());
-      this.internalServerErrorRequestCountSensor = registerSensor("internal_server_error_request_count", new OccurrenceRate());
-      this.serviceUnavailableRequestCountSensor = registerSensor("service_unavailable_request_count", new OccurrenceRate());
+      this.internalServerErrorRequestCountSensor =
+          registerSensor("internal_server_error_request_count", new OccurrenceRate());
+      this.serviceUnavailableRequestCountSensor =
+          registerSensor("service_unavailable_request_count", new OccurrenceRate());
       this.leakedRequestCountSensor = registerSensor("leaked_request_count", new OccurrenceRate());
       this.otherErrorRequestCountSensor = registerSensor("other_error_request_count", new OccurrenceRate());
     }
@@ -201,24 +220,31 @@ public class ClientStats extends com.linkedin.venice.client.stats.ClientStats {
     public void recordRequest() {
       requestCountSensor.record();
     }
+
     public void recordResponseWaitingTime(double latency) {
       responseWaitingTimeSensor.record(latency);
     }
+
     public void recordHealthyRequest() {
       healthyRequestCountSensor.record();
     }
+
     public void recordQuotaExceededRequest() {
       quotaExceededRequestCountSensor.record();
     }
+
     public void recordInternalServerErrorRequest() {
       internalServerErrorRequestCountSensor.record();
     }
+
     public void recordServiceUnavailableRequest() {
       serviceUnavailableRequestCountSensor.record();
     }
+
     public void recordLeakedRequest() {
       leakedRequestCountSensor.record();
     }
+
     public void recordOtherErrorRequest() {
       otherErrorRequestCountSensor.record();
     }

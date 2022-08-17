@@ -14,17 +14,26 @@ import java.util.concurrent.ExecutorService;
  */
 
 public class LeaderFollowerPartitionStateModelFactory extends AbstractStateModelFactory {
-  private LeaderFollowerIngestionProgressNotifier leaderFollowerStateModelNotifier = new LeaderFollowerIngestionProgressNotifier();
+  private LeaderFollowerIngestionProgressNotifier leaderFollowerStateModelNotifier =
+      new LeaderFollowerIngestionProgressNotifier();
 
-  public LeaderFollowerPartitionStateModelFactory(VeniceIngestionBackend ingestionBackend, VeniceConfigLoader configService,
-                                                  ExecutorService executorService, ReadOnlyStoreRepository metadataRepo,
-                                                  CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture,
-                                                  String instanceName
-  ) {
-    super(ingestionBackend, configService, executorService, metadataRepo,
-        partitionPushStatusAccessorFuture, instanceName);
+  public LeaderFollowerPartitionStateModelFactory(
+      VeniceIngestionBackend ingestionBackend,
+      VeniceConfigLoader configService,
+      ExecutorService executorService,
+      ReadOnlyStoreRepository metadataRepo,
+      CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture,
+      String instanceName) {
+    super(
+        ingestionBackend,
+        configService,
+        executorService,
+        metadataRepo,
+        partitionPushStatusAccessorFuture,
+        instanceName);
 
-    // Add a new notifier to let state model knows ingestion has caught up the lag so that it can complete the offline to
+    // Add a new notifier to let state model knows ingestion has caught up the lag so that it can complete the offline
+    // to
     // standby state transition.
     ingestionBackend.addLeaderFollowerIngestionNotifier(leaderFollowerStateModelNotifier);
     logger.info("LeaderFollowerParticipantModelFactory Created");
@@ -33,10 +42,14 @@ public class LeaderFollowerPartitionStateModelFactory extends AbstractStateModel
   @Override
   public LeaderFollowerPartitionStateModel createNewStateModel(String resourceName, String partitionName) {
     logger.info("Creating LeaderFollowerParticipantModel handler for partition: " + partitionName);
-    return new LeaderFollowerPartitionStateModel(getIngestionBackend(),
+    return new LeaderFollowerPartitionStateModel(
+        getIngestionBackend(),
         getConfigService().getStoreConfig(HelixUtils.getResourceName(partitionName)),
-        HelixUtils.getPartitionId(partitionName), leaderFollowerStateModelNotifier, getStoreMetadataRepo(),
-        partitionPushStatusAccessorFuture, instanceName);
+        HelixUtils.getPartitionId(partitionName),
+        leaderFollowerStateModelNotifier,
+        getStoreMetadataRepo(),
+        partitionPushStatusAccessorFuture,
+        instanceName);
   }
 
   /**
@@ -47,7 +60,6 @@ public class LeaderFollowerPartitionStateModelFactory extends AbstractStateModel
    *    future versions.
    */
   public enum LeaderFollowerThreadPoolStrategy {
-    SINGLE_POOL_STRATEGY,
-    DUAL_POOL_STRATEGY
+    SINGLE_POOL_STRATEGY, DUAL_POOL_STRATEGY
   }
 }

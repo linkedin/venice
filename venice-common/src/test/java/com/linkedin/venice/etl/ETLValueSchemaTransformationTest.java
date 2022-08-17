@@ -1,10 +1,10 @@
 package com.linkedin.venice.etl;
 
+import static com.linkedin.venice.utils.TestPushUtils.*;
+
 import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.Test;
-
-import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
 public class ETLValueSchemaTransformationTest {

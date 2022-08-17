@@ -5,6 +5,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.UUID;
 
+
 /**
  * A Guid generator which internally uses {@link UUID#randomUUID()}.
  *
@@ -14,7 +15,8 @@ public class JavaUtilGuidV4Generator implements GuidGenerator {
   /**
    * Required in order to construct via reflection.
    */
-  public JavaUtilGuidV4Generator() {}
+  public JavaUtilGuidV4Generator() {
+  }
 
   @Override
   public GUID getGuid() {

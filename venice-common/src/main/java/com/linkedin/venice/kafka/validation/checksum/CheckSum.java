@@ -36,7 +36,6 @@ import org.apache.logging.log4j.Logger;
  * value will be re-initialized.
  */
 public abstract class CheckSum {
-
   private static final Logger LOGGER = LogManager.getLogger(CheckSum.class);
 
   private boolean writeEnabled = true;
@@ -50,14 +49,14 @@ public abstract class CheckSum {
    */
   public void update(byte[] input, int startIndex, int length) {
     if (!writeEnabled) {
-      throw new IncomingDataAfterSegmentEndedException("check sum is finalized. reset() needs to be called before reusing it.");
+      throw new IncomingDataAfterSegmentEndedException(
+          "check sum is finalized. reset() needs to be called before reusing it.");
     }
 
     updateChecksum(input, startIndex, length);
   }
 
   protected abstract void updateChecksum(byte[] input, int startIndex, int length);
-
 
   /**
    * Get the checkSum of the buffer till now. When it called, the object will flip
@@ -126,24 +125,33 @@ public abstract class CheckSum {
 
   public static Optional<CheckSum> getInstance(CheckSumType type) {
     switch (type) {
-      case NONE: return Optional.empty();
-      case ADLER32: return Optional.of(new Adler32CheckSum());
-      case CRC32: return Optional.of(new CRC32CheckSum());
-      case MD5: return Optional.of(new MD5CheckSum());
-      default: return Optional.empty();
+      case NONE:
+        return Optional.empty();
+      case ADLER32:
+        return Optional.of(new Adler32CheckSum());
+      case CRC32:
+        return Optional.of(new CRC32CheckSum());
+      case MD5:
+        return Optional.of(new MD5CheckSum());
+      default:
+        return Optional.empty();
     }
   }
 
   public static Optional<CheckSum> getInstance(CheckSumType type, byte[] encodedState) {
     if (type.isCheckpointingSupported()) {
       switch (type) {
-        case NONE: return Optional.empty();
-        case MD5: return Optional.of(new MD5CheckSum(encodedState));
-        default: return Optional.empty();
+        case NONE:
+          return Optional.empty();
+        case MD5:
+          return Optional.of(new MD5CheckSum(encodedState));
+        default:
+          return Optional.empty();
       }
     } else {
       // TODO: Consider throwing exception here, instead.
-      LOGGER.warn("CheckSum.getInstance(type, encodedState) called for a type which does not support checkpointing: " + type);
+      LOGGER.warn(
+          "CheckSum.getInstance(type, encodedState) called for a type which does not support checkpointing: " + type);
       // Not a very big deal since the default checksumming strategy is MD5 anyway.
       return Optional.empty();
     }

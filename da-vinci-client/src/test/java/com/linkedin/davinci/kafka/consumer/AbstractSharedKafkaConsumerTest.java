@@ -1,5 +1,8 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static org.mockito.Mockito.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -18,9 +21,6 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
-
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
 
 
 /**
@@ -101,8 +101,13 @@ public abstract class AbstractSharedKafkaConsumerTest<C extends SharedKafkaConsu
     for (TopicPartition topicPartition: someTopicPartitions) {
       List<ConsumerRecord<Object, Object>> consumerRecordList = new ArrayList<>();
       for (int offset = 0; offset < 10; offset++) {
-        consumerRecordList.add(new ConsumerRecord<>(
-            topicPartition.topic(), topicPartition.partition(), offset, new Object(), new Object()));
+        consumerRecordList.add(
+            new ConsumerRecord<>(
+                topicPartition.topic(),
+                topicPartition.partition(),
+                offset,
+                new Object(),
+                new Object()));
       }
       someRecordsByTopicPartitions.put(topicPartition, consumerRecordList);
     }
@@ -114,27 +119,30 @@ public abstract class AbstractSharedKafkaConsumerTest<C extends SharedKafkaConsu
     consumerUnderTest.sanitizeTopicsWithoutCorrespondingIngestionTask(emptyRecords);
     Set<S> thingsWithoutCorrespondingIngestionTaskFromLastSanitization =
         getThingsWithoutCorrespondingIngestionTask(consumerUnderTest);
-    assertTrue(thingsWithoutCorrespondingIngestionTaskFromLastSanitization.isEmpty(),
+    assertTrue(
+        thingsWithoutCorrespondingIngestionTaskFromLastSanitization.isEmpty(),
         "There should not be anything flagged for removal by sanitization when processing an empty input.");
     verify(this.consumer, times(expectedNumberOfCallsToSubscribeSoFar)).subscribe(anyString(), anyInt(), anyLong());
     verify(this.consumer, times(expectedNumberOfCallsToAssignSoFar)).assign(anyCollection());
 
     // Scenario 2: no subs, some input
-    ConsumerRecords<KafkaKey, KafkaMessageEnvelope> someRecords =
-        new ConsumerRecords(someRecordsByTopicPartitions);
+    ConsumerRecords<KafkaKey, KafkaMessageEnvelope> someRecords = new ConsumerRecords(someRecordsByTopicPartitions);
     consumerUnderTest.sanitizeTopicsWithoutCorrespondingIngestionTask(someRecords);
-    thingsWithoutCorrespondingIngestionTaskFromLastSanitization = getThingsWithoutCorrespondingIngestionTask(consumerUnderTest);
-    Set<S> unitsOfSubscriptionWithoutCorrespondingIngestionTask =
-        instantiateUnitsOfSubscription(someTopicPartitions);
-    assertEquals(thingsWithoutCorrespondingIngestionTaskFromLastSanitization.size(),
+    thingsWithoutCorrespondingIngestionTaskFromLastSanitization =
+        getThingsWithoutCorrespondingIngestionTask(consumerUnderTest);
+    Set<S> unitsOfSubscriptionWithoutCorrespondingIngestionTask = instantiateUnitsOfSubscription(someTopicPartitions);
+    assertEquals(
+        thingsWithoutCorrespondingIngestionTaskFromLastSanitization.size(),
         unitsOfSubscriptionWithoutCorrespondingIngestionTask.size(),
         "When there are no subscriptions, all inputs should be flagged for removal by sanitization.");
     for (S unitOfSubscription: thingsWithoutCorrespondingIngestionTaskFromLastSanitization) {
-      assertTrue(unitsOfSubscriptionWithoutCorrespondingIngestionTask.contains(unitOfSubscription),
+      assertTrue(
+          unitsOfSubscriptionWithoutCorrespondingIngestionTask.contains(unitOfSubscription),
           "The expected unit of subscription was not flagged by sanitization.");
     }
     for (S unitOfSubscription: unitsOfSubscriptionWithoutCorrespondingIngestionTask) {
-      assertTrue(thingsWithoutCorrespondingIngestionTaskFromLastSanitization.contains(unitOfSubscription),
+      assertTrue(
+          thingsWithoutCorrespondingIngestionTaskFromLastSanitization.contains(unitOfSubscription),
           "A unit of subscription was flagged by sanitization but should not have been.");
     }
     verify(this.consumer, times(expectedNumberOfCallsToSubscribeSoFar)).subscribe(anyString(), anyInt(), anyLong());
@@ -152,7 +160,8 @@ public abstract class AbstractSharedKafkaConsumerTest<C extends SharedKafkaConsu
     consumerUnderTest.sanitizeTopicsWithoutCorrespondingIngestionTask(emptyRecords);
     thingsWithoutCorrespondingIngestionTaskFromLastSanitization =
         getThingsWithoutCorrespondingIngestionTask(consumerUnderTest);
-    assertTrue(thingsWithoutCorrespondingIngestionTaskFromLastSanitization.isEmpty(),
+    assertTrue(
+        thingsWithoutCorrespondingIngestionTaskFromLastSanitization.isEmpty(),
         "There should not be anything flagged for removal by sanitization when processing an empty input.");
     verify(this.consumer, times(expectedNumberOfCallsToSubscribeSoFar)).subscribe(anyString(), anyInt(), anyLong());
     verify(this.consumer, times(expectedNumberOfCallsToAssignSoFar)).assign(anyCollection());
@@ -161,7 +170,8 @@ public abstract class AbstractSharedKafkaConsumerTest<C extends SharedKafkaConsu
     consumerUnderTest.sanitizeTopicsWithoutCorrespondingIngestionTask(someRecords);
     thingsWithoutCorrespondingIngestionTaskFromLastSanitization =
         getThingsWithoutCorrespondingIngestionTask(consumerUnderTest);
-    assertTrue(thingsWithoutCorrespondingIngestionTaskFromLastSanitization.isEmpty(),
+    assertTrue(
+        thingsWithoutCorrespondingIngestionTaskFromLastSanitization.isEmpty(),
         "There should not be anything flagged for removal by sanitization when processing an input that corresponds exactly to the subs.");
     verify(this.consumer, times(expectedNumberOfCallsToSubscribeSoFar)).subscribe(anyString(), anyInt(), anyLong());
     verify(this.consumer, times(expectedNumberOfCallsToAssignSoFar)).assign(anyCollection());
@@ -169,14 +179,15 @@ public abstract class AbstractSharedKafkaConsumerTest<C extends SharedKafkaConsu
     // Scenario 5: some subs, some input that corresponding to a subset of the subs
     Map<TopicPartition, List<ConsumerRecord<Object, Object>>> someRecordsByTopicPartitionsCorrespondingToSubsetOfSubs =
         new HashMap<>();
-    someRecordsByTopicPartitionsCorrespondingToSubsetOfSubs.put(
-        firstTopicPartition, someRecordsByTopicPartitions.get(firstTopicPartition));
+    someRecordsByTopicPartitionsCorrespondingToSubsetOfSubs
+        .put(firstTopicPartition, someRecordsByTopicPartitions.get(firstTopicPartition));
     ConsumerRecords<KafkaKey, KafkaMessageEnvelope> someRecordsCorrespondingToSubsetOfSubs =
         new ConsumerRecords(someRecordsByTopicPartitionsCorrespondingToSubsetOfSubs);
     consumerUnderTest.sanitizeTopicsWithoutCorrespondingIngestionTask(someRecordsCorrespondingToSubsetOfSubs);
     thingsWithoutCorrespondingIngestionTaskFromLastSanitization =
         getThingsWithoutCorrespondingIngestionTask(consumerUnderTest);
-    assertTrue(thingsWithoutCorrespondingIngestionTaskFromLastSanitization.isEmpty(),
+    assertTrue(
+        thingsWithoutCorrespondingIngestionTaskFromLastSanitization.isEmpty(),
         "There should not be anything flagged for removal by sanitization when processing an input that corresponds to a subset of the subs.");
     verify(this.consumer, times(expectedNumberOfCallsToSubscribeSoFar)).subscribe(anyString(), anyInt(), anyLong());
     verify(this.consumer, times(expectedNumberOfCallsToAssignSoFar)).assign(anyCollection());
@@ -188,8 +199,8 @@ public abstract class AbstractSharedKafkaConsumerTest<C extends SharedKafkaConsu
     List<ConsumerRecord<Object, Object>> consumerRecordList = new ArrayList<>();
     TopicPartition topicPartition = new TopicPartition("topic3", 2);
     for (int offset = 0; offset < 10; offset++) {
-      consumerRecordList.add(new ConsumerRecord<>(
-          topicPartition.topic(), topicPartition.partition(), offset, new Object(), new Object()));
+      consumerRecordList.add(
+          new ConsumerRecord<>(topicPartition.topic(), topicPartition.partition(), offset, new Object(), new Object()));
     }
     someRecordsByTopicPartitionsCorrespondingToSupersetOfSubs.put(topicPartition, consumerRecordList);
     ConsumerRecords<KafkaKey, KafkaMessageEnvelope> someRecordsCorrespondingToSupersetOfSubs =
@@ -197,7 +208,8 @@ public abstract class AbstractSharedKafkaConsumerTest<C extends SharedKafkaConsu
     consumerUnderTest.sanitizeTopicsWithoutCorrespondingIngestionTask(someRecordsCorrespondingToSupersetOfSubs);
     thingsWithoutCorrespondingIngestionTaskFromLastSanitization =
         getThingsWithoutCorrespondingIngestionTask(consumerUnderTest);
-    assertFalse(thingsWithoutCorrespondingIngestionTaskFromLastSanitization.isEmpty(),
+    assertFalse(
+        thingsWithoutCorrespondingIngestionTaskFromLastSanitization.isEmpty(),
         "There should be something flagged for removal by sanitization when processing an input that corresponds to a superset of the subs.");
     verify(this.consumer, times(expectedNumberOfCallsToSubscribeSoFar)).subscribe(anyString(), anyInt(), anyLong());
     verify(this.consumer, times(expectedNumberOfCallsToAssignSoFar)).assign(anyCollection());
@@ -208,7 +220,8 @@ public abstract class AbstractSharedKafkaConsumerTest<C extends SharedKafkaConsu
     consumerUnderTest.sanitizeTopicsWithoutCorrespondingIngestionTask(someRecordsCorrespondingToSupersetOfSubs);
     thingsWithoutCorrespondingIngestionTaskFromLastSanitization =
         getThingsWithoutCorrespondingIngestionTask(consumerUnderTest);
-    assertFalse(thingsWithoutCorrespondingIngestionTaskFromLastSanitization.isEmpty(),
+    assertFalse(
+        thingsWithoutCorrespondingIngestionTaskFromLastSanitization.isEmpty(),
         "There should be something flagged for removal by sanitization when processing an input that corresponds to a superset of the subs.");
     verify(this.consumer, times(++expectedNumberOfCallsToSubscribeSoFar)).subscribe(anyString(), anyInt(), anyLong());
     verify(this.consumer, times(++expectedNumberOfCallsToAssignSoFar)).assign(anyCollection());

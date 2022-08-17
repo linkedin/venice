@@ -1,5 +1,10 @@
 package com.linkedin.venice.schema.writecompute;
 
+import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.*;
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.*;
+import static org.apache.avro.Schema.*;
+import static org.apache.avro.Schema.Type.*;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
@@ -17,11 +22,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.commons.lang.Validate;
-
-import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.*;
-import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.*;
-import static org.apache.avro.Schema.*;
-import static org.apache.avro.Schema.Type.*;
 
 
 /**
@@ -44,7 +44,8 @@ import static org.apache.avro.Schema.Type.*;
 public class WriteComputeSchemaConverter {
   private final static WriteComputeSchemaConverter instance = new WriteComputeSchemaConverter();
 
-  private WriteComputeSchemaConverter() {}
+  private WriteComputeSchemaConverter() {
+  }
 
   public static WriteComputeSchemaConverter getInstance() {
     return instance;
@@ -72,13 +73,15 @@ public class WriteComputeSchemaConverter {
   private void validateValueRecordSchema(Schema valueRecordSchema) {
     Validate.notNull(valueRecordSchema);
     if (valueRecordSchema.getType() != RECORD) {
-      throw new IllegalArgumentException("Cannot generate write-compute schema from non-Record value schema. Got value "
-          + "schema: " + valueRecordSchema);
+      throw new IllegalArgumentException(
+          "Cannot generate write-compute schema from non-Record value schema. Got value " + "schema: "
+              + valueRecordSchema);
     }
-    for (Field field : valueRecordSchema.getFields()) {
+    for (Field field: valueRecordSchema.getFields()) {
       if (!AvroCompatibilityHelper.fieldHasDefault(field)) {
-        throw new IllegalArgumentException("Cannot generate write-compute schema from a value Record schema that does not"
-            + " have default values for all its fields. Got value schema: " + valueRecordSchema);
+        throw new IllegalArgumentException(
+            "Cannot generate write-compute schema from a value Record schema that does not"
+                + " have default values for all its fields. Got value schema: " + valueRecordSchema);
       }
     }
   }
@@ -199,24 +202,25 @@ public class WriteComputeSchemaConverter {
       derivedSchemaName = recordSchema.getName();
     }
 
-    Schema newSchema = Schema.createRecord(derivedSchemaName, recordSchema.getDoc(), recordNamespace,
-        recordSchema.isError());
+    Schema newSchema =
+        Schema.createRecord(derivedSchemaName, recordSchema.getDoc(), recordNamespace, recordSchema.isError());
     List<Field> fieldList = new ArrayList<>(recordSchema.getFields().size());
-    for (Field field : recordSchema.getFields()) {
+    for (Field field: recordSchema.getFields()) {
       if (!AvroCompatibilityHelper.fieldHasDefault(field)) {
-        throw new VeniceException(String.format("Cannot generate derived schema because field: \"%s\" "
-            + "does not have a default value.", field.name()));
+        throw new VeniceException(
+            String.format(
+                "Cannot generate derived schema because field: \"%s\" " + "does not have a default value.",
+                field.name()));
       }
 
       final Schema.Field writeComputeField = AvroCompatibilityHelper.newField(null)
           .setName(field.name())
           .setSchema(
               wrapNoopUnion(
-                  recordNamespace, field.schema().getType() == RECORD ?
-                      field.schema() :
-                      convert(field.schema(), field.name(), recordNamespace)
-              )
-          )
+                  recordNamespace,
+                  field.schema().getType() == RECORD
+                      ? field.schema()
+                      : convert(field.schema(), field.name(), recordNamespace)))
           .setDoc(field.doc())
           .setOrder(field.order())
           .setDefault(Collections.emptyMap())
@@ -269,8 +273,8 @@ public class WriteComputeSchemaConverter {
    * @param namespace The namespace in "ListOps" record. See {@link #convert(Schema, String, String)} for details.
    */
   private Schema convertArray(Schema arraySchema, String name, String namespace) {
-    return Schema.createUnion(Arrays.asList(createCollectionOperationSchema(LIST_OPS, arraySchema, name, namespace),
-        arraySchema));
+    return Schema.createUnion(
+        Arrays.asList(createCollectionOperationSchema(LIST_OPS, arraySchema, name, namespace), arraySchema));
   }
 
   /**
@@ -307,8 +311,8 @@ public class WriteComputeSchemaConverter {
    * @param namespace the namespace in "MapOps" record. See {@link #convert(Schema, String, String)} for details.
    */
   private Schema convertMap(Schema mapSchema, String name, String namespace) {
-    return Schema.createUnion(Arrays.asList(createCollectionOperationSchema(MAP_OPS, mapSchema, name, namespace),
-        mapSchema));
+    return Schema
+        .createUnion(Arrays.asList(createCollectionOperationSchema(MAP_OPS, mapSchema, name, namespace), mapSchema));
   }
 
   /**
@@ -390,15 +394,13 @@ public class WriteComputeSchemaConverter {
       throw new VeniceException("Expect schema to be UNION type. Got: " + unionSchema);
     }
     SchemaUtils.containsOnlyOneCollection(unionSchema);
-    return SchemaUtils.createFlattenedUnionSchema(unionSchema.getTypes().stream().sequential()
-        .map(schema -> {
-          Schema.Type type = schema.getType();
-          if (type == RECORD) {
-            return schema;
-          }
-          return convert(schema, name, namespace);
-        })
-        .collect(Collectors.toList()));
+    return SchemaUtils.createFlattenedUnionSchema(unionSchema.getTypes().stream().sequential().map(schema -> {
+      Schema.Type type = schema.getType();
+      if (type == RECORD) {
+        return schema;
+      }
+      return convert(schema, name, namespace);
+    }).collect(Collectors.toList()));
   }
 
   /**
@@ -409,7 +411,7 @@ public class WriteComputeSchemaConverter {
    */
   private Schema wrapNoopUnion(String namespace, Schema... schemaList) {
     LinkedList<Schema> list = new LinkedList<>(Arrays.asList(schemaList));
-    //always put NO_OP at the first place so that it will be the default value of the union
+    // always put NO_OP at the first place so that it will be the default value of the union
     list.addFirst(getNoOpOperation(namespace));
 
     return SchemaUtils.createFlattenedUnionSchema(list);
@@ -419,8 +421,7 @@ public class WriteComputeSchemaConverter {
       WriteComputeOperation collectionOperation,
       Schema collectionSchema,
       String name,
-      String namespace
-  ) {
+      String namespace) {
     if (name == null) {
       name = collectionOperation.getName();
     } else {
@@ -428,17 +429,18 @@ public class WriteComputeSchemaConverter {
     }
 
     Schema operationSchema = Schema.createRecord(name, null, namespace, false);
-    operationSchema.setFields(Arrays.stream(collectionOperation.params.get())
-        .map(param -> param.apply(collectionSchema))
-        .collect(Collectors.toList()));
+    operationSchema.setFields(
+        Arrays.stream(collectionOperation.params.get())
+            .map(param -> param.apply(collectionSchema))
+            .collect(Collectors.toList()));
     return operationSchema;
   }
 
   public Schema getNoOpOperation(String namespace) {
     Schema noOpSchema = Schema.createRecord(NO_OP_ON_FIELD.getName(), null, namespace, false);
 
-    //Avro requires every record to have a list of fields even if it's empty... Otherwise, NPE
-    //will be thrown out during parsing the schema.
+    // Avro requires every record to have a list of fields even if it's empty... Otherwise, NPE
+    // will be thrown out during parsing the schema.
     noOpSchema.setFields(Collections.emptyList());
     return noOpSchema;
   }
@@ -472,7 +474,7 @@ public class WriteComputeSchemaConverter {
    */
   public static Set<String> getNamesOfFieldsToBeUpdated(GenericRecord writeComputeRecord) {
     Set<String> fieldsToBeUpdated = new HashSet<>();
-    for (Field field : writeComputeRecord.getSchema().getFields()) {
+    for (Field field: writeComputeRecord.getSchema().getFields()) {
       Object fieldObject = writeComputeRecord.get(field.name());
       if (getFieldOperationType(fieldObject) != NO_OP_ON_FIELD) {
         fieldsToBeUpdated.add(field.name());

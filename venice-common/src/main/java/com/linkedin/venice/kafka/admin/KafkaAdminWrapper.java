@@ -62,11 +62,14 @@ public interface KafkaAdminWrapper extends Closeable {
         expectedResult,
         defaultInitialBackoff,
         defaultMaxBackoff,
-        defaultMaxDuration
-    );
+        defaultMaxDuration);
   }
 
-  default boolean containsTopicWithPartitionCheckExpectationAndRetry(String topic, int partition, int maxAttempts, final boolean expectedResult) {
+  default boolean containsTopicWithPartitionCheckExpectationAndRetry(
+      String topic,
+      int partition,
+      int maxAttempts,
+      final boolean expectedResult) {
     Duration defaultInitialBackoff = Duration.ofMillis(100);
     Duration defaultMaxBackoff = Duration.ofSeconds(5);
     Duration defaultMaxDuration = Duration.ofSeconds(60);
@@ -77,13 +80,11 @@ public interface KafkaAdminWrapper extends Closeable {
         expectedResult,
         defaultInitialBackoff,
         defaultMaxBackoff,
-        defaultMaxDuration
-    );
+        defaultMaxDuration);
   }
 
-  List<Class<? extends Throwable>> RETRIABLE_EXCEPTIONS = Collections.unmodifiableList(Arrays.asList(
-      VeniceRetriableException.class,
-      TimeoutException.class));
+  List<Class<? extends Throwable>> RETRIABLE_EXCEPTIONS =
+      Collections.unmodifiableList(Arrays.asList(VeniceRetriableException.class, TimeoutException.class));
 
   default boolean containsTopicWithExpectationAndRetry(
       String topic,
@@ -91,28 +92,21 @@ public interface KafkaAdminWrapper extends Closeable {
       final boolean expectedResult,
       Duration initialBackoff,
       Duration maxBackoff,
-      Duration maxDuration
-  ) {
+      Duration maxDuration) {
     if (initialBackoff.toMillis() > maxBackoff.toMillis()) {
-      throw new IllegalArgumentException("Initial backoff cannot be longer than max backoff. Got initial backoff in "
-          + "millis: " + initialBackoff.toMillis() + " and max backoff in mills: " + maxBackoff.toMillis());
+      throw new IllegalArgumentException(
+          "Initial backoff cannot be longer than max backoff. Got initial backoff in " + "millis: "
+              + initialBackoff.toMillis() + " and max backoff in mills: " + maxBackoff.toMillis());
     }
 
     try {
-      return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
-          () -> {
-            if (expectedResult != this.containsTopic(topic)) {
-              throw new VeniceRetriableException("Retrying containsTopic check to get expected result: " + expectedResult +
-                  " for topic " + topic);
-            }
-            return expectedResult;
-          },
-          maxAttempts,
-          initialBackoff,
-          maxBackoff,
-          maxDuration,
-          RETRIABLE_EXCEPTIONS
-      );
+      return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
+        if (expectedResult != this.containsTopic(topic)) {
+          throw new VeniceRetriableException(
+              "Retrying containsTopic check to get expected result: " + expectedResult + " for topic " + topic);
+        }
+        return expectedResult;
+      }, maxAttempts, initialBackoff, maxBackoff, maxDuration, RETRIABLE_EXCEPTIONS);
     } catch (VeniceRetriableException e) {
       return !expectedResult; // Eventually still not get the expected result
     }
@@ -125,28 +119,21 @@ public interface KafkaAdminWrapper extends Closeable {
       final boolean expectedResult,
       Duration initialBackoff,
       Duration maxBackoff,
-      Duration maxDuration
-  ) {
+      Duration maxDuration) {
     if (initialBackoff.toMillis() > maxBackoff.toMillis()) {
-      throw new IllegalArgumentException("Initial backoff cannot be longer than max backoff. Got initial backoff in "
-          + "millis: " + initialBackoff.toMillis() + " and max backoff in mills: " + maxBackoff.toMillis());
+      throw new IllegalArgumentException(
+          "Initial backoff cannot be longer than max backoff. Got initial backoff in " + "millis: "
+              + initialBackoff.toMillis() + " and max backoff in mills: " + maxBackoff.toMillis());
     }
 
     try {
-      return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
-          () -> {
-            if (expectedResult != this.containsTopicWithPartitionCheck(topic, partition)) {
-              throw new VeniceRetriableException("Retrying containsTopic check to get expected result: " + expectedResult +
-                  " for topic " + topic);
-            }
-            return expectedResult;
-          },
-          maxAttempts,
-          initialBackoff,
-          maxBackoff,
-          maxDuration,
-          RETRIABLE_EXCEPTIONS
-      );
+      return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
+        if (expectedResult != this.containsTopicWithPartitionCheck(topic, partition)) {
+          throw new VeniceRetriableException(
+              "Retrying containsTopic check to get expected result: " + expectedResult + " for topic " + topic);
+        }
+        return expectedResult;
+      }, maxAttempts, initialBackoff, maxBackoff, maxDuration, RETRIABLE_EXCEPTIONS);
     } catch (VeniceRetriableException e) {
       return !expectedResult; // Eventually still not get the expected result
     }

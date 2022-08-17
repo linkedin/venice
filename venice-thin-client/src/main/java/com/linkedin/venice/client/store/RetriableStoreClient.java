@@ -2,18 +2,13 @@ package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
-import com.linkedin.venice.client.stats.ClientStats;
-import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.read.RequestType;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Supplier;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.httpclient.HttpStatus;
 
 
@@ -47,7 +42,7 @@ public class RetriableStoreClient<K, V> extends DelegatingStoreClient<K, V> {
 
   /**
    * Skip retrying getRaw for now as it ues R2 thread pool, doing retry might cause deadlock.
-
+  
   *@Override
   *public CompletableFuture<byte[]> getRaw(String requestPath, Optional<ClientStats> stats, long preRequestTimeInNS) {
    * return super.getRaw(requestPath, stats, preRequestTimeInNS);
@@ -62,20 +57,22 @@ public class RetriableStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   @Override
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
     CompletableFuture<Map<K, V>> innerFuture = super.batchGet(keys);
-    Supplier<CompletableFuture<Map<K,V>>> supplier = () -> super.batchGet(keys);
+    Supplier<CompletableFuture<Map<K, V>>> supplier = () -> super.batchGet(keys);
 
     return retryOnError(innerFuture, supplier, RequestType.MULTI_GET);
   }
 
-  private <T> CompletableFuture<T> retryOnError(CompletableFuture<T> origFuture, Supplier<CompletableFuture<T>> supplier, RequestType requestType) {
+  private <T> CompletableFuture<T> retryOnError(
+      CompletableFuture<T> origFuture,
+      Supplier<CompletableFuture<T>> supplier,
+      RequestType requestType) {
     CompletableFuture<T> retryFuture = new CompletableFuture<>();
 
     origFuture.whenComplete((T val, Throwable throwable) -> {
       if (null != throwable) {
         int attempt = 0;
         Throwable retryThrowable = throwable;
-        while (!retryFuture.isDone() && attempt < retryCount
-            && isRetriableException(retryThrowable)) {
+        while (!retryFuture.isDone() && attempt < retryCount && isRetriableException(retryThrowable)) {
           attempt++;
           statStoreclient.recordRetryCount(requestType);
           if (retryBackOffInMs > 0) {

@@ -1,7 +1,11 @@
 package com.linkedin.venice.hadoop;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
+import java.io.IOException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.IndexedRecord;
@@ -16,13 +20,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
-import java.io.IOException;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static org.mockito.Mockito.*;
 
 public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMapper> {
-
   protected VeniceAvroMapper newMapper() {
     return new VeniceAvroMapper();
   }
@@ -38,7 +38,7 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
     }
   }
 
-  @Test (expectedExceptions = UndefinedPropertyException.class)
+  @Test(expectedExceptions = UndefinedPropertyException.class)
   public void testConfigureWithMissingProps() {
     JobConf job = setupJobConf();
     job.unset(VenicePushJob.TOPIC_PROP);
@@ -61,10 +61,9 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
 
     verify(output, times(getNumberOfCollectorInvocationForFirstMapInvocation(numReducers, taskId)))
         .collect(keyCaptor.capture(), valueCaptor.capture());
-    Assert.assertTrue(getHexString(keyCaptor.getValue().copyBytes())
-        .endsWith(getHexString(keyFieldValue.getBytes())));
-    Assert.assertTrue(getHexString(valueCaptor.getValue().copyBytes())
-        .endsWith(getHexString(valueFieldValue.getBytes())));
+    Assert.assertTrue(getHexString(keyCaptor.getValue().copyBytes()).endsWith(getHexString(keyFieldValue.getBytes())));
+    Assert.assertTrue(
+        getHexString(valueCaptor.getValue().copyBytes()).endsWith(getHexString(valueFieldValue.getBytes())));
 
     /** Subsequent calls should trigger just one call to the {@link OutputCollector}, no matter the task ID */
     final String keyFieldValue2 = "key_field_value_2";
@@ -74,13 +73,12 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
 
     mapper.map(wrapper2, NullWritable.get(), output2, null);
     verify(output2).collect(keyCaptor.capture(), valueCaptor.capture());
-    Assert.assertTrue(getHexString(keyCaptor.getValue().copyBytes())
-        .endsWith(getHexString(keyFieldValue2.getBytes())));
-    Assert.assertTrue(getHexString(valueCaptor.getValue().copyBytes())
-        .endsWith(getHexString(valueFieldValue2.getBytes())));
+    Assert.assertTrue(getHexString(keyCaptor.getValue().copyBytes()).endsWith(getHexString(keyFieldValue2.getBytes())));
+    Assert.assertTrue(
+        getHexString(valueCaptor.getValue().copyBytes()).endsWith(getHexString(valueFieldValue2.getBytes())));
   }
 
-  @Test (expectedExceptions = VeniceException.class, dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
+  @Test(expectedExceptions = VeniceException.class, dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
   public void testMapWithNullKey(int numReducers, int taskId) throws IOException {
     final String valueFieldValue = "value_field_value";
     AvroWrapper<IndexedRecord> wrapper = getAvroWrapper(null, valueFieldValue);
@@ -99,7 +97,8 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
     VeniceAvroMapper mapper = getMapper(numReducers, taskId);
     mapper.map(wrapper, NullWritable.get(), output, mock(Reporter.class));
 
-    verify(output, times(getNumberOfCollectorInvocationForFirstMapInvocation(numReducers, taskId) - 1)).collect(Mockito.any(), Mockito.any());
+    verify(output, times(getNumberOfCollectorInvocationForFirstMapInvocation(numReducers, taskId) - 1))
+        .collect(Mockito.any(), Mockito.any());
   }
 
   @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
@@ -116,31 +115,27 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
     });
     mapper.map(wrapper, NullWritable.get(), output, mockReporter);
 
-    verify(mockReporter, times(1)).
-        incrCounter(
-            eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
-            eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
-            eq(18L)
-        );
+    verify(mockReporter, times(1)).incrCounter(
+        eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+        eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+        eq(18L));
 
     // Expect no authorization error
     verify(mockReporter, never()).incrCounter(
         eq(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME.getGroupName()),
         eq(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME.getCounterName()),
-        anyLong()
-    );
+        anyLong());
     // Even with exceeded quota, the mapper should still count key and value sizes in bytes and output
     verify(mockReporter, times(1)).incrCounter(
         eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getGroupName()),
         eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getCounterName()),
-        anyLong()
-    );
+        anyLong());
     verify(mockReporter, times(1)).incrCounter(
         eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
         eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
-        anyLong()
-    );
-    verify(output, times(getNumberOfCollectorInvocationForFirstMapInvocation(numReducers, taskId))).collect(any(), any());
+        anyLong());
+    verify(output, times(getNumberOfCollectorInvocationForFirstMapInvocation(numReducers, taskId)))
+        .collect(any(), any());
   }
 
   @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
@@ -157,32 +152,28 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
     });
     mapper.map(wrapper, NullWritable.get(), output, mockReporter);
 
-    verify(mockReporter, times(1)).
-        incrCounter(
-            eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
-            eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
-            eq(18L)
-        );
+    verify(mockReporter, times(1)).incrCounter(
+        eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+        eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+        eq(18L));
 
     // Not write ACL failure
     verify(mockReporter, never()).incrCounter(
         eq(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME.getGroupName()),
         eq(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME.getCounterName()),
-        anyLong()
-    );
+        anyLong());
     // Expect reporter to record these counters due to no early termination
     verify(mockReporter, times(1)).incrCounter(
         eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getGroupName()),
         eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getCounterName()),
-        anyLong()
-    );
+        anyLong());
     verify(mockReporter, times(1)).incrCounter(
         eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
         eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
-        anyLong()
-    );
+        anyLong());
     // Expect the output collect to collect output due to no early termination
-    verify(output, times(getNumberOfCollectorInvocationForFirstMapInvocation(numReducers, taskId))).collect(any(), any());
+    verify(output, times(getNumberOfCollectorInvocationForFirstMapInvocation(numReducers, taskId)))
+        .collect(any(), any());
   }
 
   private AvroWrapper<IndexedRecord> getAvroWrapper(String keyFieldValue, String valueFieldValue) {

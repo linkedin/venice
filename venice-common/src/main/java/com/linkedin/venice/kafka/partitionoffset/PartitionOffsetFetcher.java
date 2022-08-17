@@ -10,7 +10,6 @@ import org.apache.kafka.common.TopicPartition;
 
 @Threadsafe
 public interface PartitionOffsetFetcher extends Closeable {
-
   Int2LongMap getTopicLatestOffsets(String topic);
 
   long getPartitionLatestOffsetAndRetry(String topic, int partition, int retries);

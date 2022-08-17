@@ -4,10 +4,16 @@
  * DO NOT EDIT DIRECTLY
  */
 package com.linkedin.venice.serialization.avro;
+
 @SuppressWarnings("all")
 @org.apache.avro.specific.AvroGenerated
 public enum EnumField1 {
-  A, B, C  ;
-  public static final org.apache.avro.Schema SCHEMA$ = new org.apache.avro.Schema.Parser().parse("{\"type\":\"enum\",\"name\":\"EnumField1\",\"namespace\":\"com.linkedin.venice.serialization.avro\",\"symbols\":[\"A\",\"B\",\"C\"]}");
-  public static org.apache.avro.Schema getClassSchema() { return SCHEMA$; }
+  A, B, C;
+
+  public static final org.apache.avro.Schema SCHEMA$ = new org.apache.avro.Schema.Parser().parse(
+      "{\"type\":\"enum\",\"name\":\"EnumField1\",\"namespace\":\"com.linkedin.venice.serialization.avro\",\"symbols\":[\"A\",\"B\",\"C\"]}");
+
+  public static org.apache.avro.Schema getClassSchema() {
+    return SCHEMA$;
+  }
 }

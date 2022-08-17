@@ -1,5 +1,9 @@
 package com.linkedin.venice.hadoop;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.utils.TestPushUtils.*;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -37,10 +41,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.utils.TestPushUtils.*;
-import static org.mockito.Mockito.*;
-
 
 public class TestVenicePushJob {
   private static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
@@ -55,28 +55,17 @@ public class TestVenicePushJob {
    * @return the Schema object for the avro file
    * @throws IOException
    */
-  protected static Schema writeComplicatedAvroFileWithUserSchema(File parentDir, boolean addFieldWithDefaultValue) throws IOException {
-    String schemaStr = "{\"namespace\": \"example.avro\",\n" +
-        " \"type\": \"record\",\n" +
-        " \"name\": \"User\",\n" +
-        " \"fields\": [\n" +
-        "      { \"name\": \"id\", \"type\": \"string\"},\n" +
-        "      {\n" +
-        "       \"name\": \"value\",\n" +
-        "       \"type\": {\n" +
-        "           \"type\": \"record\",\n" +
-        "           \"name\": \"ValueRecord\",\n" +
-        "           \"fields\" : [\n" +
-        "              {\"name\": \"favorite_number\", \"type\": \"int\"}\n";
+  protected static Schema writeComplicatedAvroFileWithUserSchema(File parentDir, boolean addFieldWithDefaultValue)
+      throws IOException {
+    String schemaStr = "{\"namespace\": \"example.avro\",\n" + " \"type\": \"record\",\n" + " \"name\": \"User\",\n"
+        + " \"fields\": [\n" + "      { \"name\": \"id\", \"type\": \"string\"},\n" + "      {\n"
+        + "       \"name\": \"value\",\n" + "       \"type\": {\n" + "           \"type\": \"record\",\n"
+        + "           \"name\": \"ValueRecord\",\n" + "           \"fields\" : [\n"
+        + "              {\"name\": \"favorite_number\", \"type\": \"int\"}\n";
     if (addFieldWithDefaultValue) {
       schemaStr += ",{\"name\": \"favorite_color\", \"type\": \"string\", \"default\": \"blue\"}\n";
     }
-    schemaStr +=
-        "           ]\n" +
-        "        }\n" +
-        "      }\n" +
-        " ]\n" +
-        "}";
+    schemaStr += "           ]\n" + "        }\n" + "      }\n" + " ]\n" + "}";
     Schema schema = Schema.parse(schemaStr);
     File file = new File(parentDir, "simple_user.avro");
     DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(schema);
@@ -105,17 +94,12 @@ public class TestVenicePushJob {
    * @throws IOException
    */
   protected static Schema writeSimpleAvroFileWithDifferentUserSchema(File parentDir) throws IOException {
-    String schemaStr = "{" +
-        "  \"namespace\" : \"example.avro\",  " +
-        "  \"type\": \"record\",   " +
-        "  \"name\": \"User\",     " +
-        "  \"fields\": [           " +
-        "       { \"name\": \"id\", \"type\": \"string\" },  " +
-        "       { \"name\": \"name\", \"type\": \"string\" },  " +
-        "       { \"name\": \"age\", \"type\": \"int\" },  " +
-        "       { \"name\": \"company\", \"type\": \"string\" }  " +
-        "  ] " +
-        " } ";
+    String schemaStr =
+        "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   " + "  \"name\": \"User\",     "
+            + "  \"fields\": [           " + "       { \"name\": \"id\", \"type\": \"string\" },  "
+            + "       { \"name\": \"name\", \"type\": \"string\" },  "
+            + "       { \"name\": \"age\", \"type\": \"int\" },  "
+            + "       { \"name\": \"company\", \"type\": \"string\" }  " + "  ] " + " } ";
     Schema schema = Schema.parse(schemaStr);
     File file = new File(parentDir, "simple_user_with_different_schema.avro");
     DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(schema);
@@ -139,7 +123,7 @@ public class TestVenicePushJob {
   @BeforeClass
   public void setUp() {
     Utils.thisIsLocalhost();
-    veniceCluster = ServiceFactory.getVeniceCluster(true); //Now with SSL!
+    veniceCluster = ServiceFactory.getVeniceCluster(true); // Now with SSL!
     controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getRandomRouterURL());
   }
 
@@ -153,8 +137,7 @@ public class TestVenicePushJob {
    * This is a fast test as long as @BeforeMethod doesn't create a cluster
    * @throws Exception
    */
-  @Test(timeOut = TEST_TIMEOUT,
-      expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Inconsistent file.* schema found.*")
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Inconsistent file.* schema found.*")
   public void testRunJobWithInputHavingDifferentSchema() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
@@ -195,9 +178,7 @@ public class TestVenicePushJob {
    *This is a fast test as long as @BeforeMethod doesn't create a cluster
    * @throws Exception
    */
-  @Test(timeOut = TEST_TIMEOUT,
-      expectedExceptions = VeniceSchemaFieldNotFoundException.class,
-      expectedExceptionsMessageRegExp = ".*Could not find field: name1.*")
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceSchemaFieldNotFoundException.class, expectedExceptionsMessageRegExp = ".*Could not find field: name1.*")
   public void testRunJobWithInvalidValueField() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
@@ -218,9 +199,7 @@ public class TestVenicePushJob {
    *This is a fast test as long as @BeforeMethod doesn't create a cluster
    * @throws Exception
    */
-  @Test(timeOut = TEST_TIMEOUT,
-      expectedExceptions = VeniceSchemaFieldNotFoundException.class,
-      expectedExceptionsMessageRegExp = ".*Could not find field: name1.*")
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceSchemaFieldNotFoundException.class, expectedExceptionsMessageRegExp = ".*Could not find field: name1.*")
   public void testRunJobWithInvalidValueFieldVson() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleVsonFileWithUserSchema(inputDir);
@@ -242,9 +221,7 @@ public class TestVenicePushJob {
    * This is a fast test as long as @BeforeMethod doesn't create a cluster
    * @throws Exception
    */
-  @Test(timeOut = TEST_TIMEOUT,
-      expectedExceptions = VeniceException.class,
-      expectedExceptionsMessageRegExp = ".*should not have sub directory.*")
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*should not have sub directory.*")
   public void testRunJobWithSubDirInInputDir() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
@@ -280,24 +257,29 @@ public class TestVenicePushJob {
     inputDir_v2_v1.mkdir();
     File inputDir_v2_v2 = new File(inputDir_v2, "v2");
     inputDir_v2_v2.mkdir();
-    File inputDir_v2_file = new File(inputDir_v2, "v3.avro"); // Added to ensure lexically greater files do not get resolved
+    File inputDir_v2_file = new File(inputDir_v2, "v3.avro"); // Added to ensure lexically greater files do not get
+                                                              // resolved
     inputDir_v2_file.createNewFile();
 
     FileSystem fs = FileSystem.get(new Configuration());
 
-    Assert.assertEquals(getLatestPathOfInputDirectory("file:" + inputDir.getAbsolutePath() + "/#LATEST", fs).toString(),
+    Assert.assertEquals(
+        getLatestPathOfInputDirectory("file:" + inputDir.getAbsolutePath() + "/#LATEST", fs).toString(),
         "file:" + inputDir_v2.getAbsolutePath(),
         "VenicePushJob should parse #LATEST to latest directory when it is in the last level in the input path");
 
-    Assert.assertEquals(getLatestPathOfInputDirectory("file:" + inputDir.getAbsolutePath() + "/#LATEST/v1", fs).toString(),
+    Assert.assertEquals(
+        getLatestPathOfInputDirectory("file:" + inputDir.getAbsolutePath() + "/#LATEST/v1", fs).toString(),
         "file:" + inputDir_v2_v1.getAbsolutePath(),
         "VenicePushJob should parse #LATEST to latest directory when it is only in an intermediate level in the input path");
 
-    Assert.assertEquals(getLatestPathOfInputDirectory("file:" + inputDir.getAbsolutePath() + "/#LATEST/#LATEST", fs).toString(),
+    Assert.assertEquals(
+        getLatestPathOfInputDirectory("file:" + inputDir.getAbsolutePath() + "/#LATEST/#LATEST", fs).toString(),
         "file:" + inputDir_v2_v2.getAbsolutePath(),
         "VenicePushJob should parse all occurrences of #LATEST to respective latest directories");
 
-    Assert.assertEquals(getLatestPathOfInputDirectory("file:" + inputDir.getAbsolutePath() + "/#LATEST/#LATEST/", fs).toString(),
+    Assert.assertEquals(
+        getLatestPathOfInputDirectory("file:" + inputDir.getAbsolutePath() + "/#LATEST/#LATEST/", fs).toString(),
         "file:" + inputDir_v2_v2.getAbsolutePath(),
         "VenicePushJob should parse #LATEST to latest directory to respective latest directories");
   }
@@ -306,9 +288,7 @@ public class TestVenicePushJob {
    * This is a (mostly) fast test as long as @BeforeMethod doesn't create a cluster
    * @throws Exception
    */
-  @Test(timeOut = TEST_TIMEOUT,
-      expectedExceptions = VeniceException.class,
-      expectedExceptionsMessageRegExp = ".*Key schema mis-match for store.*")
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Key schema mis-match for store.*")
   public void testRunJobWithDifferentKeySchemaConfig() throws Exception {
     File inputDir = getTempDataDirectory();
     String storeName = Utils.getUniqueString("store");
@@ -329,9 +309,7 @@ public class TestVenicePushJob {
    * This is a (mostly) fast test as long as @BeforeMethod doesn't create a cluster
    * @throws Exception
    */
-  @Test(timeOut = TEST_TIMEOUT,
-      expectedExceptions = VeniceException.class,
-      expectedExceptionsMessageRegExp = ".*Failed to validate value schema.*")
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Failed to validate value schema.*")
   public void testRunJobMultipleTimesWithInCompatibleValueSchemaConfig() throws Exception {
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
@@ -438,7 +416,7 @@ public class TestVenicePushJob {
 
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
 
-    //disable WriteCompute in store
+    // disable WriteCompute in store
     params.setWriteComputationEnabled(false);
     params.setLeaderFollowerModel(true);
     params.setIncrementalPushEnabled(true);
@@ -448,7 +426,7 @@ public class TestVenicePushJob {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
 
-    //enable write compute param
+    // enable write compute param
     props.put(ENABLE_WRITE_COMPUTE, true);
     props.put(INCREMENTAL_PUSH, true);
 
@@ -476,7 +454,7 @@ public class TestVenicePushJob {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
 
-    //enable write compute param
+    // enable write compute param
     props.put(ENABLE_WRITE_COMPUTE, true);
     props.put(INCREMENTAL_PUSH, false);
 
@@ -484,8 +462,7 @@ public class TestVenicePushJob {
 
   }
 
-  @Test(timeOut = TEST_TIMEOUT,
-      expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during Hadoop to Venice Bridge.*")
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during Hadoop to Venice Bridge.*")
   public void testRunJobWithBuggySprayingMapReduceShufflePartitioner() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
@@ -494,18 +471,20 @@ public class TestVenicePushJob {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     veniceCluster.getNewStore(storeName);
-    TestUtils.assertCommand(veniceCluster.updateStore(storeName, new UpdateStoreQueryParams()
-        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-        .setPartitionCount(3)));
+    TestUtils.assertCommand(
+        veniceCluster.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA).setPartitionCount(3)));
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
 
-    TestPushUtils.runPushJob("Test push job", props,
+    TestPushUtils.runPushJob(
+        "Test push job",
+        props,
         job -> job.setMapRedPartitionerClass(BuggySprayingMapReduceShufflePartitioner.class));
     // No need for asserts, because we are expecting an exception to be thrown!
   }
 
-  @Test(timeOut = TEST_TIMEOUT,
-      expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during Hadoop to Venice Bridge.*")
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during Hadoop to Venice Bridge.*")
   public void testRunJobWithBuggyOffsettingMapReduceShufflePartitioner() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
@@ -514,18 +493,20 @@ public class TestVenicePushJob {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     veniceCluster.getNewStore(storeName);
-    TestUtils.assertCommand(veniceCluster.updateStore(storeName, new UpdateStoreQueryParams()
-        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-        .setPartitionCount(3)));
+    TestUtils.assertCommand(
+        veniceCluster.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA).setPartitionCount(3)));
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
 
-    TestPushUtils.runPushJob("Test push job", props,
+    TestPushUtils.runPushJob(
+        "Test push job",
+        props,
         job -> job.setMapRedPartitionerClass(BuggyOffsettingMapReduceShufflePartitioner.class));
     // No need for asserts, because we are expecting an exception to be thrown!
   }
 
-  @Test(timeOut = TEST_TIMEOUT,
-      expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during Hadoop to Venice Bridge.*")
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during Hadoop to Venice Bridge.*")
   public void testRunJobWithNonDeterministicPartitioner() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
@@ -535,17 +516,18 @@ public class TestVenicePushJob {
     String storeName = Utils.getUniqueString("store");
     veniceCluster.getNewStore(storeName);
     String nonDeterministicPartitionerClassName = NonDeterministicVenicePartitioner.class.getName();
-    TestUtils.assertCommand(veniceCluster.updateStore(storeName, new UpdateStoreQueryParams()
-        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-        .setPartitionCount(3)
-        .setPartitionerClass(nonDeterministicPartitionerClassName)));
+    TestUtils.assertCommand(
+        veniceCluster.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+                .setPartitionCount(3)
+                .setPartitionerClass(nonDeterministicPartitionerClassName)));
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
     props.setProperty(VENICE_PARTITIONERS_PROP, nonDeterministicPartitionerClassName);
 
     TestPushUtils.runPushJob("Test push job", props);
     // No need for asserts, because we are expecting an exception to be thrown!
   }
-
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testKIFRepushForIncrementalPushStores(boolean offsetChangesDuringKifRepush) throws Exception {
@@ -555,41 +537,49 @@ public class TestVenicePushJob {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     veniceCluster.getNewStore(storeName);
-    TestUtils.assertCommand(veniceCluster.updateStore(storeName, new UpdateStoreQueryParams()
-        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-        .setPartitionCount(2)
-        .setIncrementalPushEnabled(true)
-        .setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC)
-        .setLeaderFollowerModel(true)));
+    TestUtils.assertCommand(
+        veniceCluster.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+                .setPartitionCount(2)
+                .setIncrementalPushEnabled(true)
+                .setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC)
+                .setLeaderFollowerModel(true)));
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
 
-    //create a batch version.
+    // create a batch version.
     TestPushUtils.runPushJob("Test push job", props);
 
-    //setup repush job settings
+    // setup repush job settings
     props.setProperty(SOURCE_KAFKA, "true");
     props.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
     props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
 
-    //Run the repush job, this should fail.
+    // Run the repush job, this should fail.
     Exception e = Assert.expectThrows(VeniceException.class, () -> TestPushUtils.runPushJob("Test push job", props));
     Assert.assertTrue(e.getMessage().contains("has same Incremental Push to VT policy for source and new version"));
 
-    //convert to RT policy
-    TestUtils.assertCommand(veniceCluster.updateStore(storeName, new UpdateStoreQueryParams()
-        .setHybridOffsetLagThreshold(1)
-        .setHybridRewindSeconds(0)
-        .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)));
+    // convert to RT policy
+    TestUtils.assertCommand(
+        veniceCluster.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1)
+                .setHybridRewindSeconds(0)
+                .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)));
 
     if (!offsetChangesDuringKifRepush) {
-      //This repush should succeed
+      // This repush should succeed
       TestPushUtils.runPushJob("Test push job", props);
     } else {
-      //This repush should fail since this is simulating a scenario where a end offsets changes for the source VT topic.
+      // This repush should fail since this is simulating a scenario where a end offsets changes for the source VT
+      // topic.
       KafkaInputOffsetTracker kafkaInputOffsetTracker = mock(KafkaInputOffsetTracker.class);
       when(kafkaInputOffsetTracker.compareOffsetsAtBeginningAndEnd()).thenReturn(false);
-      e = Assert.expectThrows(VeniceException.class, () -> TestPushUtils.runPushJob("Test push job", props, job -> job.setKafkaInputOffsetTracker(kafkaInputOffsetTracker)));
+      e = Assert.expectThrows(
+          VeniceException.class,
+          () -> TestPushUtils
+              .runPushJob("Test push job", props, job -> job.setKafkaInputOffsetTracker(kafkaInputOffsetTracker)));
       Assert.assertTrue(e.getMessage().contains("topic offsets does not match before and after the push job"));
     }
   }
@@ -602,28 +592,32 @@ public class TestVenicePushJob {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     veniceCluster.getNewStore(storeName);
-    TestUtils.assertCommand(veniceCluster.updateStore(storeName, new UpdateStoreQueryParams()
-        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-        .setPartitionCount(2)
-        .setIncrementalPushEnabled(true)
-        .setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC)
-        .setLeaderFollowerModel(true)));
+    TestUtils.assertCommand(
+        veniceCluster.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+                .setPartitionCount(2)
+                .setIncrementalPushEnabled(true)
+                .setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC)
+                .setLeaderFollowerModel(true)));
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
 
-    //create a batch version.
+    // create a batch version.
     TestPushUtils.runPushJob("Test push job", props);
 
-    //setup repush job settings, without any broker url or topic name
+    // setup repush job settings, without any broker url or topic name
     props.setProperty(SOURCE_KAFKA, "true");
     props.setProperty(KAFKA_INPUT_FABRIC, "dc-0");
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
-    //convert to RT policy
-    TestUtils.assertCommand(veniceCluster.updateStore(storeName, new UpdateStoreQueryParams()
-        .setHybridOffsetLagThreshold(1)
-        .setHybridRewindSeconds(0)
-        .setChunkingEnabled(chunkingEnabled)
-        .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)));
-    //Run the repush job, it should still pass
+    // convert to RT policy
+    TestUtils.assertCommand(
+        veniceCluster.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1)
+                .setHybridRewindSeconds(0)
+                .setChunkingEnabled(chunkingEnabled)
+                .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)));
+    // Run the repush job, it should still pass
     TestPushUtils.runPushJob("Test push job", props);
   }
 }

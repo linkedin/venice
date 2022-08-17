@@ -1,5 +1,10 @@
 package com.linkedin.venice.kafka.ssl;
 
+import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestPushUtils.sslH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
+
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -41,11 +46,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestPushUtils.sslH2VProps;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
-
 
 public class ProduceWithSSL {
   private VeniceClusterWrapper cluster;
@@ -61,8 +61,7 @@ public class ProduceWithSSL {
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
-  public void testVeniceWriterSupportSSL()
-      throws ExecutionException, InterruptedException {
+  public void testVeniceWriterSupportSSL() throws ExecutionException, InterruptedException {
     String storeName = Utils.getUniqueString("testVeniceWriterSupportSSL");
     cluster.getNewStore(storeName);
     VersionCreationResponse response = cluster.getNewVersion(storeName, 1000);
@@ -87,26 +86,24 @@ public class ProduceWithSSL {
     AvroGenericStoreClient<String, CharSequence> storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(cluster.getRandomRouterURL())
-            .setSslEngineComponentFactory(SslUtils.getLocalSslFactory())
-    );
+            .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()));
 
     Assert.assertEquals(storeClient.get(testKey).get().toString(), testVal);
     writer.close();
     controllerClient.close();
   }
-  private byte[] readFile(String path)
-      throws IOException {
+
+  private byte[] readFile(String path) throws IOException {
     File file = new File(path);
     try (FileInputStream fis = new FileInputStream(file)) {
-      byte[] data = new byte[(int)file.length()];
+      byte[] data = new byte[(int) file.length()];
       fis.read(data);
       return data;
     }
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 90 * Time.MS_PER_SECOND)
-  public void testVenicePushJobSupportSSL(boolean isOpenSSLEnabled)
-      throws Exception {
+  public void testVenicePushJobSupportSSL(boolean isOpenSSLEnabled) throws Exception {
     VeniceClusterWrapper cluster = this.cluster;
     try {
       if (isOpenSSLEnabled) {
@@ -121,13 +118,15 @@ public class ProduceWithSSL {
       String keyStorePropertyName = "ssl.identity";
       String trustStorePropertyName = "ssl.truststore";
       String keyStorePwdPropertyName = "ssl.identity.keystore.password";
-      String keyPwdPropertyName="ssl.identity.key.password";
+      String keyPwdPropertyName = "ssl.identity.key.password";
 
       props.setProperty(VenicePushJob.SSL_KEY_STORE_PROPERTY_NAME, keyStorePropertyName);
-      props.setProperty(VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME,trustStorePropertyName);
-      props.setProperty(VenicePushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME,keyStorePwdPropertyName);
-      props.setProperty(VenicePushJob.SSL_KEY_PASSWORD_PROPERTY_NAME,keyPwdPropertyName);
-      props.setProperty(KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX + "send.buffer.bytes", Integer.toString(4 * 1024 * 1024));
+      props.setProperty(VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME, trustStorePropertyName);
+      props.setProperty(VenicePushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, keyStorePwdPropertyName);
+      props.setProperty(VenicePushJob.SSL_KEY_PASSWORD_PROPERTY_NAME, keyPwdPropertyName);
+      props.setProperty(
+          KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX + "send.buffer.bytes",
+          Integer.toString(4 * 1024 * 1024));
 
       // put cert into hadoop user credentials.
       Properties sslProps = KafkaSSLUtils.getLocalCommonKafkaSSLConfig();
@@ -136,10 +135,12 @@ public class ProduceWithSSL {
       Credentials credentials = new Credentials();
       credentials.addSecretKey(new Text(keyStorePropertyName), keyStoreCert);
       credentials.addSecretKey(new Text(trustStorePropertyName), trustStoreCert);
-      credentials.addSecretKey(new Text(keyStorePwdPropertyName), sslProps.getProperty(SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG).getBytes(
-          StandardCharsets.UTF_8));
-      credentials.addSecretKey(new Text(keyPwdPropertyName), sslProps.getProperty(SslConfigs.SSL_KEY_PASSWORD_CONFIG).getBytes(
-          StandardCharsets.UTF_8));
+      credentials.addSecretKey(
+          new Text(keyStorePwdPropertyName),
+          sslProps.getProperty(SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG).getBytes(StandardCharsets.UTF_8));
+      credentials.addSecretKey(
+          new Text(keyPwdPropertyName),
+          sslProps.getProperty(SslConfigs.SSL_KEY_PASSWORD_CONFIG).getBytes(StandardCharsets.UTF_8));
       UserGroupInformation.getCurrentUser().addCredentials(credentials);
       // Setup token file
       String filePath = getTempDataDirectory().getAbsolutePath() + "/testHadoopToken";
@@ -151,7 +152,10 @@ public class ProduceWithSSL {
       createStoreForJob(cluster.getClusterName(), recordSchema, props).close();
       String controllerUrl = cluster.getAllControllersURLs();
       ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), controllerUrl);
-      Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 0, "Push has not been start, current should be 0");
+      Assert.assertEquals(
+          controllerClient.getStore(storeName).getStore().getCurrentVersion(),
+          0,
+          "Push has not been start, current should be 0");
 
       // First push to verify regular push job works fine
       TestPushUtils.runPushJob("Test push job", props);
@@ -170,8 +174,9 @@ public class ProduceWithSSL {
       });
 
       // Enable dictionary compression and do a regular push
-      ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
-          .setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
+      ControllerResponse response = controllerClient.updateStore(
+          storeName,
+          new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
       if (response.isError()) {
         throw new VeniceException(response.getError());
       }

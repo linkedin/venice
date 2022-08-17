@@ -1,5 +1,7 @@
 package com.linkedin.davinci.ingestion;
 
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
+
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
@@ -21,8 +23,6 @@ import org.apache.http.util.EntityUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
-
 
 public class HttpClientTransport implements AutoCloseable {
   private static final Logger logger = LogManager.getLogger(HttpClientTransport.class);
@@ -42,18 +42,20 @@ public class HttpClientTransport implements AutoCloseable {
 
   public HttpClientTransport(Optional<SSLEngineComponentFactory> sslFactory, int port) {
     forkedProcessRequestUrl = (sslFactory.isPresent() ? HTTPS : HTTP) + "://" + Utils.getHostName() + ":" + port;
-    httpClient = HttpClientUtils.getMinimalHttpClientWithConnManager(
-        DEFAULT_IO_THREAD_COUNT,
-        DEFAULT_MAX_CONNECTION_PER_ROUTE,
-        DEFAULT_MAX_CONNECTION_TOTAL,
-        DEFAULT_SOCKET_TIMEOUT_MS,
-        DEFAULT_CONNECTION_TIMEOUT_MS,
-        sslFactory,
-        Optional.empty(),
-        Optional.empty(),
-        true,
-        DEFAULT_IDLE_CONNECTION_CLEANUP_THRESHOLD_IN_MINUTES
-    ).getClient();
+    httpClient =
+        HttpClientUtils
+            .getMinimalHttpClientWithConnManager(
+                DEFAULT_IO_THREAD_COUNT,
+                DEFAULT_MAX_CONNECTION_PER_ROUTE,
+                DEFAULT_MAX_CONNECTION_TOTAL,
+                DEFAULT_SOCKET_TIMEOUT_MS,
+                DEFAULT_CONNECTION_TIMEOUT_MS,
+                sslFactory,
+                Optional.empty(),
+                Optional.empty(),
+                true,
+                DEFAULT_IDLE_CONNECTION_CLEANUP_THRESHOLD_IN_MINUTES)
+            .getClient();
     httpClient.start();
   }
 
@@ -66,7 +68,10 @@ public class HttpClientTransport implements AutoCloseable {
    * This method shoves the POST string query params into the URL so the body will only contain the byte array data
    * to make processing/deserializing easier. Please make sure the query params doesn't exceed the URL limit of 2048 chars.
    */
-  public <T extends SpecificRecordBase, S extends SpecificRecordBase> T sendRequest(IngestionAction action, S param, int timeoutMs) {
+  public <T extends SpecificRecordBase, S extends SpecificRecordBase> T sendRequest(
+      IngestionAction action,
+      S param,
+      int timeoutMs) {
     HttpPost request = new HttpPost(forkedProcessRequestUrl + "/" + action.toString());
     try {
       byte[] requestPayload = serializeIngestionActionRequest(action, param);
@@ -108,7 +113,11 @@ public class HttpClientTransport implements AutoCloseable {
     return sendRequestWithRetry(action, param, DEFAULT_REQUEST_TIMEOUT_MS, 1);
   }
 
-  public <T extends SpecificRecordBase, S extends SpecificRecordBase> T sendRequestWithRetry(IngestionAction action, S param, int timeoutMs, int maxAttempt) {
+  public <T extends SpecificRecordBase, S extends SpecificRecordBase> T sendRequestWithRetry(
+      IngestionAction action,
+      S param,
+      int timeoutMs,
+      int maxAttempt) {
     // Sanity check for maxAttempt argument.
     if (maxAttempt <= 0) {
       throw new IllegalArgumentException("maxAttempt must be a positive integer");
@@ -123,10 +132,14 @@ public class HttpClientTransport implements AutoCloseable {
       } catch (VeniceException e) {
         retryCount++;
         if (retryCount != maxAttempt) {
-          logger.warn("Encounter exception when sending request, will retry for " + retryCount + "/" + maxAttempt + " time.");
+          logger.warn(
+              "Encounter exception when sending request, will retry for " + retryCount + "/" + maxAttempt + " time.");
         } else {
           long totalTimeInMs = System.currentTimeMillis() - startTimeIsMs;
-          throw new VeniceException("Failed to send request to remote forked process after " + maxAttempt + " attempts, total time spent in millis: " + totalTimeInMs, e);
+          throw new VeniceException(
+              "Failed to send request to remote forked process after " + maxAttempt
+                  + " attempts, total time spent in millis: " + totalTimeInMs,
+              e);
         }
       }
       try {
@@ -138,7 +151,10 @@ public class HttpClientTransport implements AutoCloseable {
     return result;
   }
 
-  public <T extends SpecificRecordBase, S extends SpecificRecordBase> T sendRequestWithRetry(IngestionAction action, S param, int maxAttempt) {
+  public <T extends SpecificRecordBase, S extends SpecificRecordBase> T sendRequestWithRetry(
+      IngestionAction action,
+      S param,
+      int maxAttempt) {
     return sendRequestWithRetry(action, param, DEFAULT_REQUEST_TIMEOUT_MS, maxAttempt);
   }
 }

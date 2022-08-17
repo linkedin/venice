@@ -1,5 +1,7 @@
 package com.linkedin.venice.kafka.validation;
 
+import static com.linkedin.venice.kafka.validation.SegmentStatus.*;
+
 import com.linkedin.venice.exceptions.validation.*;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -17,7 +19,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static com.linkedin.venice.kafka.validation.SegmentStatus.*;
 
 /**
  * A segment is a sequence of messages sent by a single producer into a single partition.
@@ -163,7 +164,7 @@ public class Segment {
     if (this.checkSum.isPresent()) {
       return this.checkSum.get().getEncodedState();
     } else {
-      return new byte[]{};
+      return new byte[] {};
     }
   }
 
@@ -245,8 +246,8 @@ public class Segment {
    *         false otherwise (which happens when hitting an {@link ControlMessageType#END_OF_SEGMENT}).
    * @throws UnsupportedMessageTypeException if the {@link MessageType} or {@link ControlMessageType} is unknown.
    */
-  public synchronized boolean addToCheckSum(KafkaKey key, KafkaMessageEnvelope messageEnvelope) throws
-                                                                                   UnsupportedMessageTypeException {
+  public synchronized boolean addToCheckSum(KafkaKey key, KafkaMessageEnvelope messageEnvelope)
+      throws UnsupportedMessageTypeException {
     // Some of the instances could be re-used and clobbered in a single-threaded setting. TODO: Explore GC tuning later.
     switch (MessageType.valueOf(messageEnvelope)) {
       case CONTROL_MESSAGE:
@@ -267,8 +268,8 @@ public class Segment {
             return true;
           default:
             throw new UnsupportedMessageTypeException(
-                "This version of Venice does not support the following control message type: " +
-                    controlMessage.controlMessageType);
+                "This version of Venice does not support the following control message type: "
+                    + controlMessage.controlMessageType);
         }
       case PUT:
         updateCheckSum(messageEnvelope.messageType);
@@ -293,8 +294,7 @@ public class Segment {
         return true;
       default:
         throw new UnsupportedMessageTypeException(
-            "This version of Venice does not support the following message type: " +
-                messageEnvelope.messageType);
+            "This version of Venice does not support the following message type: " + messageEnvelope.messageType);
     }
   }
 
@@ -330,7 +330,7 @@ public class Segment {
     if (this.checkSum.isPresent()) {
       return checkSum.get().getCheckSum();
     } else {
-      return new byte[]{};
+      return new byte[] {};
     }
   }
 
@@ -354,12 +354,8 @@ public class Segment {
 
   @Override
   public String toString() {
-    return "Segment(partition: " + partition
-        + ", segment: " + segmentNumber
-        + ", sequence: " + sequenceNumber
-        + ", started: " + started
-        + ", ended: " + ended
-        + ", checksum: " + checkSum + ")";
+    return "Segment(partition: " + partition + ", segment: " + segmentNumber + ", sequence: " + sequenceNumber
+        + ", started: " + started + ", ended: " + ended + ", checksum: " + checkSum + ")";
   }
 
   public SegmentStatus getStatus() {

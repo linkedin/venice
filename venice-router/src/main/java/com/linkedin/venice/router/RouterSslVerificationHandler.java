@@ -49,7 +49,7 @@ public class RouterSslVerificationHandler extends SimpleChannelInboundHandler<Ht
     }
     if (null == sslHandler) {
       // Log that we got an unexpected non-ssl request
-      String remote = ctx.channel().remoteAddress().toString(); //ip and port
+      String remote = ctx.channel().remoteAddress().toString(); // ip and port
       String method = req.method().name();
       String errLine = remote + " requested " + method + " " + req.uri();
       logger.warn("[requireSsl=" + this.requireSsl + "] Got an unexpected non-ssl request: " + errLine);

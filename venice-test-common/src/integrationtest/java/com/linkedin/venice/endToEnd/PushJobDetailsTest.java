@@ -1,5 +1,12 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
+import static com.linkedin.venice.utils.TestPushUtils.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -40,13 +47,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
-import static com.linkedin.venice.utils.TestPushUtils.*;
-import static org.testng.Assert.*;
-
 
 public class PushJobDetailsTest {
   private final Map<Integer, Schema> schemaVersionMap = new HashMap<>();
@@ -70,25 +70,31 @@ public class PushJobDetailsTest {
     zkWrapper = ServiceFactory.getZkServer();
     controllerProperties = new Properties();
     // Disable topic cleanup since parent and child are sharing the same kafka cluster.
-    controllerProperties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
+    controllerProperties
+        .setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
     controllerProperties.setProperty(PUSH_JOB_STATUS_STORE_CLUSTER_NAME, venice.getClusterName());
     controllerProperties.setProperty(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, "true");
     controllerProperties.setProperty(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE, "true");
     controllerProperties.setProperty(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY_STORE, "true");
-    parentController = ServiceFactory.getVeniceParentController(venice.getClusterName(), zkWrapper.getAddress(),
-        venice.getKafka(), new VeniceControllerWrapper[]{venice.getLeaderVeniceController()},
-        new VeniceProperties(controllerProperties), false);
+    parentController = ServiceFactory.getVeniceParentController(
+        venice.getClusterName(),
+        zkWrapper.getAddress(),
+        venice.getKafka(),
+        new VeniceControllerWrapper[] { venice.getLeaderVeniceController() },
+        new VeniceProperties(controllerProperties),
+        false);
     parentControllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
-    venice.useControllerClient(controllerClient -> TestUtils.waitForNonDeterministicPushCompletion(
-        Version.composeKafkaTopic(VeniceSystemStoreUtils.getPushJobDetailsStoreName(), 1), controllerClient,
-        2, TimeUnit.MINUTES));
+    venice.useControllerClient(
+        controllerClient -> TestUtils.waitForNonDeterministicPushCompletion(
+            Version.composeKafkaTopic(VeniceSystemStoreUtils.getPushJobDetailsStoreName(), 1),
+            controllerClient,
+            2,
+            TimeUnit.MINUTES));
     File inputDir = getTempDataDirectory();
     inputDirPath = "file://" + inputDir.getAbsolutePath();
     recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
-    for (int i=1; i<= latestSchemaId; i++) {
-      schemaVersionMap.put(i,
-          Utils.getSchemaFromResource("avro/PushJobDetails/v"
-              + i + "/PushJobDetails.avsc"));
+    for (int i = 1; i <= latestSchemaId; i++) {
+      schemaVersionMap.put(i, Utils.getSchemaFromResource("avro/PushJobDetails/v" + i + "/PushJobDetails.avsc"));
     }
   }
 
@@ -103,11 +109,15 @@ public class PushJobDetailsTest {
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testPushJobDetails() throws ExecutionException, InterruptedException, IOException {
     String testStoreName = "test-push-store";
-    parentControllerClient.createNewStore(testStoreName, "test-user",
-        recordSchema.getField("id").schema().toString(), recordSchema.getField("name").schema().toString());
+    parentControllerClient.createNewStore(
+        testStoreName,
+        "test-user",
+        recordSchema.getField("id").schema().toString(),
+        recordSchema.getField("name").schema().toString());
     // Set store quota to unlimited else local H2V jobs will fail due to quota enforcement NullPointerException because
     // hadoop job client cannot fetch counters properly.
-    parentControllerClient.updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(-1).setPartitionCount(2));
+    parentControllerClient
+        .updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(-1).setPartitionCount(2));
     Properties pushJobProps = defaultH2VProps(venice, inputDirPath, testStoreName);
     pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
     pushJobProps.setProperty(VENICE_URL_PROP, parentController.getControllerUrl());
@@ -118,9 +128,10 @@ public class PushJobDetailsTest {
 
     // Verify the sent push job details.
     try (AvroSpecificStoreClient<PushJobStatusRecordKey, PushJobDetails> client =
-        ClientFactory.getAndStartSpecificAvroClient(ClientConfig.defaultSpecificClientConfig(
-            VeniceSystemStoreUtils.getPushJobDetailsStoreName(), PushJobDetails.class)
-            .setVeniceURL(venice.getRandomRouterURL()))) {
+        ClientFactory.getAndStartSpecificAvroClient(
+            ClientConfig
+                .defaultSpecificClientConfig(VeniceSystemStoreUtils.getPushJobDetailsStoreName(), PushJobDetails.class)
+                .setVeniceURL(venice.getRandomRouterURL()))) {
       PushJobStatusRecordKey key = new PushJobStatusRecordKey();
       key.storeName = testStoreName;
       key.versionNumber = 1;
@@ -132,19 +143,29 @@ public class PushJobDetailsTest {
         }
       });
       PushJobDetails value = client.get(key).get();
-      assertEquals(value.clusterName.toString(), venice.getClusterName(), "Unexpected cluster name from push job details");
+      assertEquals(
+          value.clusterName.toString(),
+          venice.getClusterName(),
+          "Unexpected cluster name from push job details");
       assertTrue(value.reportTimestamp > 0, "Push job details report timestamp is missing");
-      List<Integer> expectedStatuses = Arrays.asList(PushJobDetailsStatus.STARTED.getValue(),
-          PushJobDetailsStatus.TOPIC_CREATED.getValue(), PushJobDetailsStatus.WRITE_COMPLETED.getValue(),
+      List<Integer> expectedStatuses = Arrays.asList(
+          PushJobDetailsStatus.STARTED.getValue(),
+          PushJobDetailsStatus.TOPIC_CREATED.getValue(),
+          PushJobDetailsStatus.WRITE_COMPLETED.getValue(),
           PushJobDetailsStatus.COMPLETED.getValue());
-      assertEquals(value.overallStatus.size(), expectedStatuses.size(),"Unexpected number of overall statuses in push job details");
+      assertEquals(
+          value.overallStatus.size(),
+          expectedStatuses.size(),
+          "Unexpected number of overall statuses in push job details");
       for (int i = 0; i < expectedStatuses.size(); i++) {
         assertEquals(value.overallStatus.get(i).status, (int) expectedStatuses.get(i));
         assertTrue(value.overallStatus.get(i).timestamp > 0, "Timestamp for status tuple is missing");
       }
       assertFalse(value.coloStatus.isEmpty(), "Colo status shouldn't be empty");
-      for (List<PushJobDetailsStatusTuple> tuple : value.coloStatus.values()) {
-        assertEquals(tuple.get(tuple.size() - 1).status, PushJobDetailsStatus.COMPLETED.getValue(),
+      for (List<PushJobDetailsStatusTuple> tuple: value.coloStatus.values()) {
+        assertEquals(
+            tuple.get(tuple.size() - 1).status,
+            PushJobDetailsStatus.COMPLETED.getValue(),
             "Latest status for every colo should be COMPLETED");
         assertTrue(tuple.get(tuple.size() - 1).timestamp > 0, "Timestamp for colo status tuple is missing");
       }
@@ -181,8 +202,11 @@ public class PushJobDetailsTest {
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testPushJobDetailsFailureTags() throws ExecutionException, InterruptedException {
     String testStoreName = "test-push-failure-store";
-    parentControllerClient.createNewStore(testStoreName, "test-user",
-        recordSchema.getField("id").schema().toString(), recordSchema.getField("name").schema().toString());
+    parentControllerClient.createNewStore(
+        testStoreName,
+        "test-user",
+        recordSchema.getField("id").schema().toString(),
+        recordSchema.getField("name").schema().toString());
     // hadoop job client cannot fetch counters properly and should fail the job
     parentControllerClient.updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(0));
     Properties pushJobProps = defaultH2VProps(venice, inputDirPath, testStoreName);
@@ -193,9 +217,10 @@ public class PushJobDetailsTest {
       assertThrows(VeniceException.class, testPushJob::run);
     }
     try (AvroSpecificStoreClient<PushJobStatusRecordKey, PushJobDetails> client =
-        ClientFactory.getAndStartSpecificAvroClient(ClientConfig.defaultSpecificClientConfig(
-            VeniceSystemStoreUtils.getPushJobDetailsStoreName(), PushJobDetails.class)
-            .setVeniceURL(venice.getRandomRouterURL()))) {
+        ClientFactory.getAndStartSpecificAvroClient(
+            ClientConfig
+                .defaultSpecificClientConfig(VeniceSystemStoreUtils.getPushJobDetailsStoreName(), PushJobDetails.class)
+                .setVeniceURL(venice.getRandomRouterURL()))) {
       PushJobStatusRecordKey key = new PushJobStatusRecordKey();
       key.storeName = testStoreName;
       key.versionNumber = 1;
@@ -207,7 +232,9 @@ public class PushJobDetailsTest {
         }
       });
       PushJobDetails value = client.get(key).get();
-      assertEquals(value.pushJobLatestCheckpoint.intValue(), PushJobCheckpoints.START_MAP_REDUCE_JOB.getValue(),
+      assertEquals(
+          value.pushJobLatestCheckpoint.intValue(),
+          PushJobCheckpoints.START_MAP_REDUCE_JOB.getValue(),
           "Unexpected latest push job checkpoint reported");
       assertFalse(value.failureDetails.toString().isEmpty());
     }
@@ -221,16 +248,18 @@ public class PushJobDetailsTest {
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testPushJobDetailsStatusEnums() {
     // A list of known ExecutionStatus that we don't report/expose to job status polling.
-    ExecutionStatus[] unreportedStatusesArray = {NEW, NOT_STARTED, PROGRESS, START_OF_BUFFER_REPLAY_RECEIVED, TOPIC_SWITCH_RECEIVED,
-        DROPPED, WARNING, ARCHIVED, CATCH_UP_BASE_TOPIC_OFFSET_LAG, DATA_RECOVERY_COMPLETED};
+    ExecutionStatus[] unreportedStatusesArray = { NEW, NOT_STARTED, PROGRESS, START_OF_BUFFER_REPLAY_RECEIVED,
+        TOPIC_SWITCH_RECEIVED, DROPPED, WARNING, ARCHIVED, CATCH_UP_BASE_TOPIC_OFFSET_LAG, DATA_RECOVERY_COMPLETED };
     HashSet<ExecutionStatus> unreportedStatuses = new HashSet<>(Arrays.asList(unreportedStatusesArray));
     HashSet<Integer> processedSignals = new HashSet<>();
-    for (ExecutionStatus status : ExecutionStatus.values()) {
+    for (ExecutionStatus status: ExecutionStatus.values()) {
       if (unreportedStatuses.contains(status)) {
         continue; // Ignore parsing of statuses that are never reported.
       }
       Integer intValue = PushJobDetailsStatus.valueOf(status.toString()).getValue();
-      assertFalse(processedSignals.contains(intValue), "Each PushJobDetailsStatus should have its own unique int value");
+      assertFalse(
+          processedSignals.contains(intValue),
+          "Each PushJobDetailsStatus should have its own unique int value");
       processedSignals.add(intValue);
     }
   }

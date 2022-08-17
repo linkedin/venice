@@ -6,12 +6,10 @@ import java.util.Map;
 
 
 public enum IngestionMetadataUpdateType {
-  PUT_OFFSET_RECORD(0),
-  CLEAR_OFFSET_RECORD(1),
-  PUT_STORE_VERSION_STATE(2),
-  CLEAR_STORE_VERSION_STATE(3);
+  PUT_OFFSET_RECORD(0), CLEAR_OFFSET_RECORD(1), PUT_STORE_VERSION_STATE(2), CLEAR_STORE_VERSION_STATE(3);
 
-  private static final Map<Integer, IngestionMetadataUpdateType> INGESTION_METADATA_UPDATE_TYPE_MAP = getIngestionMetadataUpdateTypeMap();
+  private static final Map<Integer, IngestionMetadataUpdateType> INGESTION_METADATA_UPDATE_TYPE_MAP =
+      getIngestionMetadataUpdateTypeMap();
 
   private final int value;
 
@@ -25,7 +23,7 @@ public enum IngestionMetadataUpdateType {
 
   private static Map<Integer, IngestionMetadataUpdateType> getIngestionMetadataUpdateTypeMap() {
     Map<Integer, IngestionMetadataUpdateType> intToTypeMap = new HashMap<>();
-    for (IngestionMetadataUpdateType type : IngestionMetadataUpdateType.values()) {
+    for (IngestionMetadataUpdateType type: IngestionMetadataUpdateType.values()) {
       intToTypeMap.put(type.value, type);
     }
     return intToTypeMap;

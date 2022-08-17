@@ -1,5 +1,8 @@
 package com.linkedin.davinci.ingestion.main;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static java.lang.Thread.*;
+
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
 import com.linkedin.davinci.ingestion.IsolatedIngestionProcessStats;
@@ -36,9 +39,6 @@ import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static java.lang.Thread.*;
-
 
 /**
  * MainIngestionMonitorService is the listener service in main process which handles various kinds of reports sent from
@@ -66,7 +66,8 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private final MainIngestionRequestClient heartbeatClient;
   // Topic name to partition set map, representing all topic partitions being ingested in Isolated Ingestion Backend.
   private final Map<String, Set<Integer>> topicNameToPartitionSetMap = new VeniceConcurrentHashMap<>();
-  // Topic name to partition set map, representing all topic partitions that have completed ingestion in isolated process.
+  // Topic name to partition set map, representing all topic partitions that have completed ingestion in isolated
+  // process.
   private final Map<String, Set<Integer>> completedTopicPartitions = new VeniceConcurrentHashMap<>();
   private final Map<String, Boolean> topicNameToLeaderFollowerEnabledFlagMap = new VeniceConcurrentHashMap<>();
   private final List<VeniceNotifier> onlineOfflineIngestionNotifierList = new ArrayList<>();
@@ -85,7 +86,10 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private long heartbeatTimeoutMs;
   private volatile long latestHeartbeatTimestamp = -1;
 
-  public MainIngestionMonitorService(IsolatedIngestionBackend ingestionBackend, VeniceConfigLoader configLoader, Optional<SSLEngineComponentFactory> sslFactory) {
+  public MainIngestionMonitorService(
+      IsolatedIngestionBackend ingestionBackend,
+      VeniceConfigLoader configLoader,
+      Optional<SSLEngineComponentFactory> sslFactory) {
     this.configLoader = configLoader;
     this.servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
     this.applicationPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
@@ -97,12 +101,16 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     bossGroup = new NioEventLoopGroup();
     workerGroup = new NioEventLoopGroup();
     bootstrap = new ServerBootstrap();
-    bootstrap.group(bossGroup, workerGroup).channel(serverSocketChannelClass)
-            .childHandler(new MainIngestionReportChannelInitializer(this, IsolatedIngestionUtils.getSSLEngineComponentFactory(configLoader)))
-            .option(ChannelOption.SO_BACKLOG, 1000)
-            .childOption(ChannelOption.SO_KEEPALIVE, true)
-            .option(ChannelOption.SO_REUSEADDR, true)
-            .childOption(ChannelOption.TCP_NODELAY, true);
+    bootstrap.group(bossGroup, workerGroup)
+        .channel(serverSocketChannelClass)
+        .childHandler(
+            new MainIngestionReportChannelInitializer(
+                this,
+                IsolatedIngestionUtils.getSSLEngineComponentFactory(configLoader)))
+        .option(ChannelOption.SO_BACKLOG, 1000)
+        .childOption(ChannelOption.SO_KEEPALIVE, true)
+        .option(ChannelOption.SO_REUSEADDR, true)
+        .childOption(ChannelOption.TCP_NODELAY, true);
 
     heartbeatClient = new MainIngestionRequestClient(this.sslFactory, this.servicePort);
     metricsClient = new MainIngestionRequestClient(this.sslFactory, this.servicePort);
@@ -113,7 +121,8 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   public boolean startInner() throws Exception {
     serverFuture = bootstrap.bind(applicationPort).sync();
     logger.info("Report listener service started on port: " + applicationPort);
-    heartbeatTimeoutMs = configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 60 * Time.MS_PER_SECOND);
+    heartbeatTimeoutMs = configLoader.getCombinedProperties()
+        .getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 60 * Time.MS_PER_SECOND);
     setupMetricsCollection();
 
     // There is no async process in this function, so we are completely finished with the start up process.
@@ -226,7 +235,8 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
         return val;
       });
     } else {
-      logger.error("Topic partition not found in ongoing ingestion tasks: " + topicName + ", partition id: " + partitionId);
+      logger.error(
+          "Topic partition not found in ongoing ingestion tasks: " + topicName + ", partition id: " + partitionId);
     }
   }
 
@@ -252,8 +262,8 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   }
 
   public int getTopicPartitionCount(String topicName) {
-    return topicNameToPartitionSetMap.getOrDefault(topicName, Collections.emptySet()).size() +
-        completedTopicPartitions.getOrDefault(topicName, Collections.emptySet()).size();
+    return topicNameToPartitionSetMap.getOrDefault(topicName, Collections.emptySet()).size()
+        + completedTopicPartitions.getOrDefault(topicName, Collections.emptySet()).size();
   }
 
   private void setupMetricsCollection() {
@@ -277,7 +287,9 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     if ((System.currentTimeMillis() - latestHeartbeatTimestamp) <= heartbeatTimeoutMs) {
       return;
     }
-    logger.warn("Lost connection to forked ingestion process since timestamp " + latestHeartbeatTimestamp + ", restarting forked process.");
+    logger.warn(
+        "Lost connection to forked ingestion process since timestamp " + latestHeartbeatTimestamp
+            + ", restarting forked process.");
     heartbeatStats.recordForkedProcessRestart();
     try (MainIngestionRequestClient client = new MainIngestionRequestClient(sslFactory, servicePort)) {
       /**
@@ -323,7 +335,9 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
 
   private void checkHeartbeatTimeout() {
     long currentTimeMillis = System.currentTimeMillis();
-    logger.info("Checking heartbeat timeout at " + currentTimeMillis + ", latest heartbeat received: " + latestHeartbeatTimestamp);
+    logger.info(
+        "Checking heartbeat timeout at " + currentTimeMillis + ", latest heartbeat received: "
+            + latestHeartbeatTimestamp);
     if (heartbeatClient.sendHeartbeatRequest()) {
       // Update heartbeat time.
       latestHeartbeatTimestamp = System.currentTimeMillis();
@@ -331,7 +345,9 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
       logger.info("Received isolated ingestion server heartbeat at: " + latestHeartbeatTimestamp);
     } else {
       heartbeatStats.recordHeartbeatAge(currentTimeMillis - latestHeartbeatTimestamp);
-      logger.warn("Failed to connect to forked ingestion process at " + currentTimeMillis + ", last successful timestamp: " + latestHeartbeatTimestamp);
+      logger.warn(
+          "Failed to connect to forked ingestion process at " + currentTimeMillis + ", last successful timestamp: "
+              + latestHeartbeatTimestamp);
     }
 
     if (latestHeartbeatTimestamp != -1) {

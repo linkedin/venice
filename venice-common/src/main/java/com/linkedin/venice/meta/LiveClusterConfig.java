@@ -18,7 +18,8 @@ public class LiveClusterConfig {
   @JsonProperty(ConfigKeys.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED)
   private boolean childControllerAdminTopicConsumptionEnabled = true;
 
-  public LiveClusterConfig() {}
+  public LiveClusterConfig() {
+  }
 
   public LiveClusterConfig(LiveClusterConfig clone) {
     if (clone.getServerKafkaFetchQuotaRecordsPerSecond() != null) {
@@ -66,11 +67,14 @@ public class LiveClusterConfig {
       return DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
     }
 
-    return serverKafkaFetchQuotaRecordsPerSecond.getOrDefault(regionName, DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND);
+    return serverKafkaFetchQuotaRecordsPerSecond
+        .getOrDefault(regionName, DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND);
   }
 
   @JsonIgnore
-  public void setServerKafkaFetchQuotaRecordsPerSecondForRegion(String regionName, int kafkaFetchQuotaRecordsPerSecond) {
+  public void setServerKafkaFetchQuotaRecordsPerSecondForRegion(
+      String regionName,
+      int kafkaFetchQuotaRecordsPerSecond) {
     if (serverKafkaFetchQuotaRecordsPerSecond == null) {
       serverKafkaFetchQuotaRecordsPerSecond = new HashMap<>();
     }
@@ -79,13 +83,18 @@ public class LiveClusterConfig {
   }
 
   public String toString() {
-    return new StringBuilder()
-        .append(ConfigKeys.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND)
-        .append('=').append(serverKafkaFetchQuotaRecordsPerSecond).append(Utils.NEW_LINE_CHAR)
+    return new StringBuilder().append(ConfigKeys.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND)
+        .append('=')
+        .append(serverKafkaFetchQuotaRecordsPerSecond)
+        .append(Utils.NEW_LINE_CHAR)
         .append(ConfigKeys.ALLOW_STORE_MIGRATION)
-        .append('=').append(storeMigrationAllowed).append(Utils.NEW_LINE_CHAR)
+        .append('=')
+        .append(storeMigrationAllowed)
+        .append(Utils.NEW_LINE_CHAR)
         .append(ConfigKeys.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED)
-        .append('=').append(childControllerAdminTopicConsumptionEnabled).append(Utils.NEW_LINE_CHAR)
+        .append('=')
+        .append(childControllerAdminTopicConsumptionEnabled)
+        .append(Utils.NEW_LINE_CHAR)
         .toString();
   }
 }

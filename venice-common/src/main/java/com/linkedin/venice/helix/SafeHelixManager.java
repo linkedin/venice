@@ -27,6 +27,7 @@ import org.apache.helix.participant.StateMachineEngine;
 import org.apache.helix.store.zk.ZkHelixPropertyStore;
 import org.apache.helix.zookeeper.datamodel.ZNRecord;
 
+
 /**
  * A wrapper around {@link HelixManager} which disables the unsafe functionality.
  *
@@ -57,7 +58,6 @@ import org.apache.helix.zookeeper.datamodel.ZNRecord;
  * TODO: Review the rest of the functions and determine if more should be culled.
  */
 public class SafeHelixManager {
-
   private final HelixManager helixManager;
 
   public SafeHelixManager(HelixManager helixManager) {
@@ -215,7 +215,7 @@ public class SafeHelixManager {
     return helixManager.getHealthReportCollector();
   }
 
-  public HelixManager getOriginalManager(){
+  public HelixManager getOriginalManager() {
     return helixManager;
   }
 }

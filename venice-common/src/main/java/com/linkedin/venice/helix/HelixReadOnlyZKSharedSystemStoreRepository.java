@@ -28,11 +28,13 @@ public class HelixReadOnlyZKSharedSystemStoreRepository extends HelixReadOnlySto
    */
   private final Set<String> zkSharedSystemStoreSet = new HashSet<>();
 
-
-  public HelixReadOnlyZKSharedSystemStoreRepository(ZkClient zkClient, HelixAdapterSerializer compositeSerializer, String systemStoreClusterName) {
-    super(zkClient, compositeSerializer,  systemStoreClusterName,0, 0);
+  public HelixReadOnlyZKSharedSystemStoreRepository(
+      ZkClient zkClient,
+      HelixAdapterSerializer compositeSerializer,
+      String systemStoreClusterName) {
+    super(zkClient, compositeSerializer, systemStoreClusterName, 0, 0);
     // Initialize the necessary zk shared system stores
-    for (VeniceSystemStoreType type : VeniceSystemStoreType.values()) {
+    for (VeniceSystemStoreType type: VeniceSystemStoreType.values()) {
       if (type.isNewMedataRepositoryAdopted()) {
         zkSharedSystemStoreSet.add(type.getZkSharedStoreName());
       }
@@ -92,7 +94,9 @@ public class HelixReadOnlyZKSharedSystemStoreRepository extends HelixReadOnlySto
    */
   @Override
   protected List<Store> getStoresFromZk() {
-    return super.getStoresFromZk().stream().filter(s -> zkSharedSystemStoreSet.contains(s.getName())).collect(Collectors.toList());
+    return super.getStoresFromZk().stream()
+        .filter(s -> zkSharedSystemStoreSet.contains(s.getName()))
+        .collect(Collectors.toList());
   }
 
   /**
@@ -103,7 +107,8 @@ public class HelixReadOnlyZKSharedSystemStoreRepository extends HelixReadOnlySto
   @Override
   protected void onRepositoryChanged(Collection<String> newZkStoreNames) {
     // Only monitor system stores
-    List<String> systemStores = newZkStoreNames.stream().filter(s -> zkSharedSystemStoreSet.contains(s)).collect(Collectors.toList());
+    List<String> systemStores =
+        newZkStoreNames.stream().filter(s -> zkSharedSystemStoreSet.contains(s)).collect(Collectors.toList());
     super.onRepositoryChanged(systemStores);
   }
 

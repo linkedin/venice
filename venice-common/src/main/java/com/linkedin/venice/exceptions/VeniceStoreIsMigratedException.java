@@ -18,7 +18,7 @@ public class VeniceStoreIsMigratedException extends VeniceException {
     this.d2ServiceName = d2ServiceName;
   }
 
-  public String getStoreName(){
+  public String getStoreName() {
     return storeName;
   }
 

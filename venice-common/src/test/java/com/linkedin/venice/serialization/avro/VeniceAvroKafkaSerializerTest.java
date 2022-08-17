@@ -1,7 +1,7 @@
 package com.linkedin.venice.serialization.avro;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-
+import java.io.IOException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -11,24 +11,24 @@ import org.apache.avro.specific.SpecificDatumReader;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import java.io.IOException;
-
 
 public class VeniceAvroKafkaSerializerTest {
   private String topic = "dummyTopic";
+
   @Test
   public void testSerializeUnionOfEnumField() throws IOException {
-    Schema recordSchema = Schema.parse("{\n" + "  \"fields\": [\n" + "    {\n" + "      \"default\": null,\n"
-        + "      \"name\": \"union\",\n" + "      \"type\": [\n" + "        \"null\",\n" + "        {\n"
-        + "          \"name\": \"EnumField1\",\n" + "          \"symbols\": [\n" + "            \"A\",\n"
-        + "            \"B\",\n" + "            \"C\"\n" + "          ],\n" + "          \"type\": \"enum\"\n"
-        + "        }\n" + "      ]\n" + "    }\n" + "  ],\n" + "  \"name\": \"UnionOfEnumRecord\",\n"
-        + "  \"type\": \"record\",\n" + "  \"namespace\": \"com.linkedin.venice.serialization.avro\"\n" + "}");
+    Schema recordSchema = Schema.parse(
+        "{\n" + "  \"fields\": [\n" + "    {\n" + "      \"default\": null,\n" + "      \"name\": \"union\",\n"
+            + "      \"type\": [\n" + "        \"null\",\n" + "        {\n" + "          \"name\": \"EnumField1\",\n"
+            + "          \"symbols\": [\n" + "            \"A\",\n" + "            \"B\",\n" + "            \"C\"\n"
+            + "          ],\n" + "          \"type\": \"enum\"\n" + "        }\n" + "      ]\n" + "    }\n" + "  ],\n"
+            + "  \"name\": \"UnionOfEnumRecord\",\n" + "  \"type\": \"record\",\n"
+            + "  \"namespace\": \"com.linkedin.venice.serialization.avro\"\n" + "}");
     Schema enumSchema = recordSchema.getField("union").schema().getTypes().get(1);
 
     VeniceAvroKafkaSerializer serializer = new VeniceAvroKafkaSerializer(recordSchema);
 
-    //test serializing specificRecord
+    // test serializing specificRecord
     UnionOfEnumRecord specificRecord = new UnionOfEnumRecord();
     specificRecord.union = EnumField1.B;
 
@@ -42,7 +42,7 @@ public class VeniceAvroKafkaSerializerTest {
     UnionOfEnumRecord result = reader.read(null, decoder);
     Assert.assertEquals(specificRecord, result);
 
-    //test serializing genericRecord
+    // test serializing genericRecord
     GenericRecord genericRecord = new GenericData.Record(recordSchema);
     genericRecord.put("union", AvroCompatibilityHelper.newEnumSymbol(enumSchema, "B"));
 

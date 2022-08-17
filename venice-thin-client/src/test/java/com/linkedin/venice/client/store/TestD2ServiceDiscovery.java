@@ -1,5 +1,7 @@
 package com.linkedin.venice.client.store;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
@@ -15,8 +17,6 @@ import java.util.concurrent.TimeoutException;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-
-import static org.mockito.Mockito.*;
 
 
 public class TestD2ServiceDiscovery {
@@ -35,7 +35,9 @@ public class TestD2ServiceDiscovery {
         // Find the d2 service for that store.
         try (D2TransportClient client = new D2TransportClient(router.getRouterD2Service(), clientConfig)) {
           String d2ServiceName = new D2ServiceDiscovery().find(client, storeName).getD2Service();
-          Assert.assertEquals(d2ServiceName, router.getD2ServiceNameForCluster(router.getClusterName()),
+          Assert.assertEquals(
+              d2ServiceName,
+              router.getD2ServiceNameForCluster(router.getClusterName()),
               "Should find the correct d2 service associated with the given cluster.");
         }
       }
@@ -44,13 +46,11 @@ public class TestD2ServiceDiscovery {
 
   @DataProvider(name = "exceptionProvider")
   public static Object[][] exceptionProvider() {
-    return new Object[][] {
-        {new TimeoutException("Fake timeout")}, {new ExecutionException(new RuntimeException("Fake execution exception"))}
-    };
+    return new Object[][] { { new TimeoutException("Fake timeout") },
+        { new ExecutionException(new RuntimeException("Fake execution exception")) } };
   }
 
-
-  @Test (dataProvider ="exceptionProvider", expectedExceptions = ServiceDiscoveryException.class, expectedExceptionsMessageRegExp = "Failed to find d2 service for test after 10 attempts")
+  @Test(dataProvider = "exceptionProvider", expectedExceptions = ServiceDiscoveryException.class, expectedExceptionsMessageRegExp = "Failed to find d2 service for test after 10 attempts")
   public void testRetry(Exception e) throws InterruptedException, ExecutionException, TimeoutException {
     D2TransportClient mockTransportClient = mock(D2TransportClient.class);
     CompletableFuture<TransportClientResponse> mockFuture = mock(CompletableFuture.class);

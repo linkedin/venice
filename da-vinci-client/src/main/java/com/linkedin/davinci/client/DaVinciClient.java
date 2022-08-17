@@ -4,6 +4,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
+
 /**
  * Da Vinci Client to provide key-value lookups in embedded mode
  * @param <K>

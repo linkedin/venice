@@ -14,7 +14,6 @@ import java.util.concurrent.CompletableFuture;
  * All the internal implementations of different tiers should extend this class.
  */
 public abstract class InternalAvroStoreClient<K, V> implements AvroGenericStoreClient<K, V> {
-
   public CompletableFuture<V> get(K key) throws VeniceClientException {
     return get(new GetRequestContext(), key);
   }
@@ -48,21 +47,25 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericStoreC
    * @return
    * @throws VeniceClientException
    */
-  protected abstract CompletableFuture<Map<K,V>> batchGet(BatchGetRequestContext<K,V> requestContext, Set<K> keys) throws VeniceClientException;
-
+  protected abstract CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
+      throws VeniceClientException;
 
   public void streamingBatchGet(final Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
-     streamingBatchGet(new BatchGetRequestContext<K,V>(), keys, callback);
+    streamingBatchGet(new BatchGetRequestContext<K, V>(), keys, callback);
   }
 
   public CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(final Set<K> keys) throws VeniceClientException {
-    return  streamingBatchGet(new BatchGetRequestContext<K,V>(), keys);
+    return streamingBatchGet(new BatchGetRequestContext<K, V>(), keys);
   }
 
+  protected abstract void streamingBatchGet(
+      BatchGetRequestContext<K, V> requestContext,
+      Set<K> keys,
+      StreamingCallback<K, V> callback);
 
-  protected abstract void streamingBatchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys, StreamingCallback<K, V> callback);
-  protected abstract CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys);
-
+  protected abstract CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(
+      BatchGetRequestContext<K, V> requestContext,
+      Set<K> keys);
 
   public ComputeRequestBuilder<K> compute() {
     throw new VeniceClientException("'compute' is not supported.");

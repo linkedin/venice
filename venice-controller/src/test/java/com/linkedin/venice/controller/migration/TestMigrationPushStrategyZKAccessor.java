@@ -7,7 +7,6 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.migration.MigrationPushStrategy;
 import com.linkedin.venice.utils.Utils;
-
 import java.util.Map;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.testng.Assert;
@@ -34,12 +33,14 @@ public class TestMigrationPushStrategyZKAccessor {
 
   @Test
   public void testCreateAndUpdatePushStrategy() {
-    MigrationPushStrategyZKAccessor accessor = new MigrationPushStrategyZKAccessor(zkClient, new HelixAdapterSerializer());
+    MigrationPushStrategyZKAccessor accessor =
+        new MigrationPushStrategyZKAccessor(zkClient, new HelixAdapterSerializer());
     String voldemortStore = Utils.getUniqueString("voldemort_store");
     accessor.setPushStrategy(voldemortStore, MigrationPushStrategy.RunBnPAndH2VWaitForBothStrategy.name());
     Map<String, String> pushStrategies = accessor.getAllPushStrategies();
     Assert.assertTrue(pushStrategies.containsKey(voldemortStore));
-    Assert.assertEquals(pushStrategies.get(voldemortStore), MigrationPushStrategy.RunBnPAndH2VWaitForBothStrategy.name());
+    Assert
+        .assertEquals(pushStrategies.get(voldemortStore), MigrationPushStrategy.RunBnPAndH2VWaitForBothStrategy.name());
     // update
     accessor.setPushStrategy(voldemortStore, MigrationPushStrategy.RunBnPOnlyStrategy.name());
     pushStrategies = accessor.getAllPushStrategies();
@@ -47,9 +48,10 @@ public class TestMigrationPushStrategyZKAccessor {
     Assert.assertEquals(pushStrategies.get(voldemortStore), MigrationPushStrategy.RunBnPOnlyStrategy.name());
   }
 
-  @Test (expectedExceptions = VeniceException.class)
+  @Test(expectedExceptions = VeniceException.class)
   public void testSetInvalidStrategy() {
-    MigrationPushStrategyZKAccessor accessor = new MigrationPushStrategyZKAccessor(zkClient, new HelixAdapterSerializer());
+    MigrationPushStrategyZKAccessor accessor =
+        new MigrationPushStrategyZKAccessor(zkClient, new HelixAdapterSerializer());
     String voldemortStore = Utils.getUniqueString("voldemort_store");
     accessor.setPushStrategy(voldemortStore, "invalid_strategy");
   }

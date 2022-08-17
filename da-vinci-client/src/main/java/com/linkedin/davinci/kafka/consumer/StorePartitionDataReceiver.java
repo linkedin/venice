@@ -2,7 +2,6 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.avroutil1.compatibility.shaded.org.apache.commons.lang3.Validate;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -13,8 +12,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class StorePartitionDataReceiver implements ConsumedDataReceiver<List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> {
-
+public class StorePartitionDataReceiver
+    implements ConsumedDataReceiver<List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> {
   private final StoreIngestionTask storeIngestionTask;
   private final TopicPartition topicPartition;
   private final String kafkaUrl;
@@ -22,7 +21,10 @@ public class StorePartitionDataReceiver implements ConsumedDataReceiver<List<Con
 
   private long receivedRecordsCount;
 
-  public StorePartitionDataReceiver(StoreIngestionTask storeIngestionTask, TopicPartition topicPartition, String kafkaUrl) {
+  public StorePartitionDataReceiver(
+      StoreIngestionTask storeIngestionTask,
+      TopicPartition topicPartition,
+      String kafkaUrl) {
     this.storeIngestionTask = Validate.notNull(storeIngestionTask);
     this.topicPartition = Validate.notNull(topicPartition);
     this.kafkaUrl = Validate.notNull(kafkaUrl);
@@ -85,7 +87,8 @@ public class StorePartitionDataReceiver implements ConsumedDataReceiver<List<Con
          * {@link StoreIngestionTask#close()} here, but in the interest of keeping the shutdown flow
          * simpler, we will avoid doing this for now.
          */
-        logger.warn("Unexpected: got interrupted prior to the {} getting closed.",
+        logger.warn(
+            "Unexpected: got interrupted prior to the {} getting closed.",
             storeIngestionTask.getClass().getSimpleName());
       }
       /**
@@ -95,8 +98,10 @@ public class StorePartitionDataReceiver implements ConsumedDataReceiver<List<Con
        */
       throw e;
     }
-    logger.error("Received exception when StoreIngestionTask is processing the polled consumer record for topic: "
-        + topicPartition, e);
+    logger.error(
+        "Received exception when StoreIngestionTask is processing the polled consumer record for topic: "
+            + topicPartition,
+        e);
     storeIngestionTask.setLastConsumerException(e);
   }
 

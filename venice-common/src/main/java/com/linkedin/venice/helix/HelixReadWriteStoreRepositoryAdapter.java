@@ -14,8 +14,10 @@ public class HelixReadWriteStoreRepositoryAdapter extends HelixReadOnlyStoreRepo
     implements ReadWriteStoreRepository {
   private final ReadWriteStoreRepository regularStoreRepository;
 
-  public HelixReadWriteStoreRepositoryAdapter(HelixReadOnlyZKSharedSystemStoreRepository systemStoreRepository,
-      ReadWriteStoreRepository regularStoreRepository, String clusterName) {
+  public HelixReadWriteStoreRepositoryAdapter(
+      HelixReadOnlyZKSharedSystemStoreRepository systemStoreRepository,
+      ReadWriteStoreRepository regularStoreRepository,
+      String clusterName) {
     super(systemStoreRepository, regularStoreRepository, clusterName);
     this.regularStoreRepository = regularStoreRepository;
   }
@@ -47,7 +49,7 @@ public class HelixReadWriteStoreRepositoryAdapter extends HelixReadOnlyStoreRepo
        * For system store, we only update the info stored in the corresponding Venice regular store,
        * since shared properties are not mutable in {@link SystemStore} api.
        */
-      SystemStore systemStore = (SystemStore)store;
+      SystemStore systemStore = (SystemStore) store;
       regularStoreRepository.updateStore(systemStore.getVeniceStore());
     }
   }

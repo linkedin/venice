@@ -26,7 +26,6 @@ import org.apache.commons.lang3.Validate;
  * @param <V> Value type
  */
 public class BatchGetRequestContext<K, V> extends RequestContext {
-
   /**
    * Tracks routes and corresponding request contexts
    */
@@ -54,7 +53,7 @@ public class BatchGetRequestContext<K, V> extends RequestContext {
   void addKey(String route, K key, int partitionId) {
     Validate.notNull(route);
     routeRequests.computeIfAbsent(route, r -> new RouteRequestContext<>()).addKeyInfo(key, partitionId);
-    routesForPartition.computeIfAbsent(partitionId,(k) -> new HashSet<>()).add(route);
+    routesForPartition.computeIfAbsent(partitionId, (k) -> new HashSet<>()).add(route);
   }
 
   Set<String> getRoutes() {
@@ -85,7 +84,7 @@ public class BatchGetRequestContext<K, V> extends RequestContext {
     long responseDeserializationTimeNS = 0;
     long recordDeserializationTimeNS = 0;
     long requestSerializationTimeNS = 0;
-    for (RouteRequestContext<K> rrc : routeRequests.values()) {
+    for (RouteRequestContext<K> rrc: routeRequests.values()) {
       decompressionTimeNS += rrc.decompressionTime.get();
       responseDeserializationTimeNS += rrc.responseDeserializationTime.get();
       recordDeserializationTimeNS += rrc.recordDeserializationTime.get();
@@ -145,7 +144,7 @@ public class BatchGetRequestContext<K, V> extends RequestContext {
   }
 
   void setPartialResponseException(Throwable exception) {
-    this.partialResponseException.compareAndSet(null,exception);
+    this.partialResponseException.compareAndSet(null, exception);
   }
 
   /* Utility validation methods */

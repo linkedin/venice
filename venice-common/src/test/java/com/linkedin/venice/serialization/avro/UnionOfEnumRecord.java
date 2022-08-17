@@ -4,19 +4,28 @@
  * DO NOT EDIT DIRECTLY
  */
 package com.linkedin.venice.serialization.avro;
+
 @SuppressWarnings("all")
 @org.apache.avro.specific.AvroGenerated
-public class UnionOfEnumRecord extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = new org.apache.avro.Schema.Parser().parse("{\"type\":\"record\",\"name\":\"UnionOfEnumRecord\",\"namespace\":\"com.linkedin.venice.serialization.avro\",\"fields\":[{\"name\":\"union\",\"type\":[\"null\",{\"type\":\"enum\",\"name\":\"EnumField1\",\"symbols\":[\"A\",\"B\",\"C\"]}],\"default\":null}]}");
-  public static org.apache.avro.Schema getClassSchema() { return SCHEMA$; }
-  @Deprecated public EnumField1 union;
+public class UnionOfEnumRecord extends org.apache.avro.specific.SpecificRecordBase
+    implements org.apache.avro.specific.SpecificRecord {
+  public static final org.apache.avro.Schema SCHEMA$ = new org.apache.avro.Schema.Parser().parse(
+      "{\"type\":\"record\",\"name\":\"UnionOfEnumRecord\",\"namespace\":\"com.linkedin.venice.serialization.avro\",\"fields\":[{\"name\":\"union\",\"type\":[\"null\",{\"type\":\"enum\",\"name\":\"EnumField1\",\"symbols\":[\"A\",\"B\",\"C\"]}],\"default\":null}]}");
+
+  public static org.apache.avro.Schema getClassSchema() {
+    return SCHEMA$;
+  }
+
+  @Deprecated
+  public EnumField1 union;
 
   /**
    * Default constructor.  Note that this does not initialize fields
    * to their default values from the schema.  If that is desired then
    * one should use <code>newBuilder()</code>.
    */
-  public UnionOfEnumRecord() {}
+  public UnionOfEnumRecord() {
+  }
 
   /**
    * All-args constructor.
@@ -25,20 +34,29 @@ public class UnionOfEnumRecord extends org.apache.avro.specific.SpecificRecordBa
     this.union = union;
   }
 
-  public org.apache.avro.Schema getSchema() { return SCHEMA$; }
-  // Used by DatumWriter.  Applications should not call.
+  public org.apache.avro.Schema getSchema() {
+    return SCHEMA$;
+  }
+
+  // Used by DatumWriter. Applications should not call.
   public java.lang.Object get(int field$) {
     switch (field$) {
-    case 0: return union;
-    default: throw new org.apache.avro.AvroRuntimeException("Bad index");
+      case 0:
+        return union;
+      default:
+        throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
-  // Used by DatumReader.  Applications should not call.
-  @SuppressWarnings(value="unchecked")
+
+  // Used by DatumReader. Applications should not call.
+  @SuppressWarnings(value = "unchecked")
   public void put(int field$, java.lang.Object value$) {
     switch (field$) {
-    case 0: union = (EnumField1)value$; break;
-    default: throw new org.apache.avro.AvroRuntimeException("Bad index");
+      case 0:
+        union = (EnumField1) value$;
+        break;
+      default:
+        throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
 
@@ -63,12 +81,14 @@ public class UnionOfEnumRecord extends org.apache.avro.specific.SpecificRecordBa
   }
 
   /** Creates a new UnionOfEnumRecord RecordBuilder by copying an existing Builder */
-  public static com.linkedin.venice.serialization.avro.UnionOfEnumRecord.Builder newBuilder(com.linkedin.venice.serialization.avro.UnionOfEnumRecord.Builder other) {
+  public static com.linkedin.venice.serialization.avro.UnionOfEnumRecord.Builder newBuilder(
+      com.linkedin.venice.serialization.avro.UnionOfEnumRecord.Builder other) {
     return new com.linkedin.venice.serialization.avro.UnionOfEnumRecord.Builder(other);
   }
 
   /** Creates a new UnionOfEnumRecord RecordBuilder by copying an existing UnionOfEnumRecord instance */
-  public static com.linkedin.venice.serialization.avro.UnionOfEnumRecord.Builder newBuilder(com.linkedin.venice.serialization.avro.UnionOfEnumRecord other) {
+  public static com.linkedin.venice.serialization.avro.UnionOfEnumRecord.Builder newBuilder(
+      com.linkedin.venice.serialization.avro.UnionOfEnumRecord other) {
     return new com.linkedin.venice.serialization.avro.UnionOfEnumRecord.Builder(other);
   }
 
@@ -76,8 +96,7 @@ public class UnionOfEnumRecord extends org.apache.avro.specific.SpecificRecordBa
    * RecordBuilder for UnionOfEnumRecord instances.
    */
   public static class Builder extends org.apache.avro.specific.SpecificRecordBuilderBase<UnionOfEnumRecord>
-    implements org.apache.avro.data.RecordBuilder<UnionOfEnumRecord> {
-
+      implements org.apache.avro.data.RecordBuilder<UnionOfEnumRecord> {
     private EnumField1 union;
 
     /** Creates a new Builder */
@@ -96,7 +115,7 @@ public class UnionOfEnumRecord extends org.apache.avro.specific.SpecificRecordBa
 
     /** Creates a Builder by copying an existing UnionOfEnumRecord instance */
     private Builder(com.linkedin.venice.serialization.avro.UnionOfEnumRecord other) {
-            super(com.linkedin.venice.serialization.avro.UnionOfEnumRecord.SCHEMA$);
+      super(com.linkedin.venice.serialization.avro.UnionOfEnumRecord.SCHEMA$);
       if (isValidValue(fields()[0], other.union)) {
         this.union = data().deepCopy(fields()[0].schema(), other.union);
         fieldSetFlags()[0] = true;

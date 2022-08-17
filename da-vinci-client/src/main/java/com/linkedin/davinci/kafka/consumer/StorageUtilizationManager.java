@@ -1,5 +1,8 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
+import static com.linkedin.venice.utils.RedundantExceptionFilter.*;
+
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.utils.StoragePartitionDiskUsage;
 import com.linkedin.venice.meta.Store;
@@ -20,8 +23,6 @@ import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
-import static com.linkedin.venice.utils.RedundantExceptionFilter.*;
 
 /**
  * This class has the following responsibilities:
@@ -50,7 +51,6 @@ import static com.linkedin.venice.utils.RedundantExceptionFilter.*;
  * 2. no write-compute messages/partial updates/incremental push
  */
 public class StorageUtilizationManager implements StoreDataChangedListener {
-
   private static final Logger logger = LogManager.getLogger(StorageUtilizationManager.class);
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = getRedundantExceptionFilter();
 
@@ -102,7 +102,8 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       TopicPartitionConsumerFunction resumePartition) {
     this.partitionConsumptionStateMap = partitionConsumptionStateMap;
     this.storageEngine = storageEngine;
-    this.storagePartitionDiskUsageFunctionConstructor = partition -> new StoragePartitionDiskUsage(partition, storageEngine);
+    this.storagePartitionDiskUsageFunctionConstructor =
+        partition -> new StoragePartitionDiskUsage(partition, storageEngine);
     this.storeName = store.getName();
     this.versionTopic = versionTopic;
     if (subPartitionCount <= 0) {
@@ -113,7 +114,8 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     this.pausedPartitions = VeniceConcurrentHashMap.newKeySet();
     this.storeVersion = Version.parseVersionFromKafkaTopicName(versionTopic);
     this.isHybridQuotaEnabledInServer = isHybridQuotaEnabledInServer;
-    this.isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled = isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled;
+    this.isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled =
+        isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled;
     this.reportStatusAdapter = reportStatusAdapter;
     this.pausePartition = pausePartition;
     this.resumePartition = resumePartition;
@@ -163,15 +165,19 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     }
     Optional<Version> version = store.getVersion(storeVersion);
     if (!version.isPresent()) {
-      logger.debug("Version: {}  doesn't exist in the store: {}", Version.parseVersionFromKafkaTopicName(versionTopic),
+      logger.debug(
+          "Version: {}  doesn't exist in the store: {}",
+          Version.parseVersionFromKafkaTopicName(versionTopic),
           storeName);
       return;
     }
     versionIsOnline = isVersionOnline(version.get());
     if (this.storeQuotaInBytes != store.getStorageQuotaInByte() || !store.isHybridStoreDiskQuotaEnabled()) {
-      logger.info("Store: " + this.storeName + " changed, updated quota from " + this.storeQuotaInBytes
-          + " to " + store.getStorageQuotaInByte() + " and store quota is " + (store.isHybridStoreDiskQuotaEnabled() ? "": "not ")
-          + "enabled, so we reset the store quota and resume all partitions.");
+      logger.info(
+          "Store: " + this.storeName + " changed, updated quota from " + this.storeQuotaInBytes + " to "
+              + store.getStorageQuotaInByte() + " and store quota is "
+              + (store.isHybridStoreDiskQuotaEnabled() ? "" : "not ")
+              + "enabled, so we reset the store quota and resume all partitions.");
       resumeAllPartitions();
     }
 
@@ -181,12 +187,12 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       setStoreQuota(store);
       boolean isHybridQuotaChangedToDisabled = oldHybridQuotaEnabledState && !isHybridQuotaEnabled();
 
-
       if (isHybridQuotaChangedToDisabled) {
         // A store is changed from disk quota enabled to disabled, mark all its partitions as not violated.
         reportStoreQuotaNotViolated();
       } else if (isHybridQuotaUpdated) {
-        // For other cases that disk quota gets updated, recompute all partition quota status and report if there is a change.
+        // For other cases that disk quota gets updated, recompute all partition quota status and report if there is a
+        // change.
         checkAllPartitionsQuota();
       }
     }
@@ -273,7 +279,9 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       // Log quota exceeded info only once a minute per partition.
       boolean shouldLogQuotaExceeded = !REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier);
       if (shouldLogQuotaExceeded) {
-        logger.info("Quota exceeded for store " + storeName + " partition " + partition + ", paused this partition." + versionTopic);
+        logger.info(
+            "Quota exceeded for store " + storeName + " partition " + partition + ", paused this partition."
+                + versionTopic);
       }
     } else { /** we have free space for this partition */
       /**
@@ -294,8 +302,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
    * @return true if the quota is exceeded for given partition
    */
   private boolean isStorageQuotaExceeded(StoragePartitionDiskUsage partitionDiskUsage) {
-    return partitionDiskUsage.getUsage() >= diskQuotaPerPartition
-        && storeQuotaInBytes != Store.UNLIMITED_STORAGE_QUOTA;
+    return partitionDiskUsage.getUsage() >= diskQuotaPerPartition && storeQuotaInBytes != Store.UNLIMITED_STORAGE_QUOTA;
   }
 
   /**

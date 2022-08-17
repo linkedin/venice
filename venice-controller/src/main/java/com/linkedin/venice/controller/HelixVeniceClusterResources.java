@@ -78,7 +78,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private final Optional<MetaStoreWriter> metaStoreWriter;
   private final VeniceAdminStats veniceAdminStats;
 
-  public HelixVeniceClusterResources(String clusterName,
+  public HelixVeniceClusterResources(
+      String clusterName,
       ZkClient zkClient,
       HelixAdapterSerializer adapterSerializer,
       SafeHelixManager helixManager,
@@ -104,17 +105,24 @@ public class HelixVeniceClusterResources implements VeniceResource {
      * {@link com.linkedin.venice.pushmonitor.AbstractPushMonitor} and {@link HelixReadWriteStoreRepository}.
      */
     this.clusterLockManager = new ClusterLockManager(clusterName);
-    HelixReadWriteStoreRepository readWriteStoreRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer,
-        clusterName, metaStoreWriter, clusterLockManager);
+    HelixReadWriteStoreRepository readWriteStoreRepository = new HelixReadWriteStoreRepository(
+        zkClient,
+        adapterSerializer,
+        clusterName,
+        metaStoreWriter,
+        clusterLockManager);
     this.storeMetadataRepository = new HelixReadWriteStoreRepositoryAdapter(
         admin.getReadOnlyZKSharedSystemStoreRepository(),
         readWriteStoreRepository,
-        clusterName
-    );
+        clusterName);
     this.schemaRepository = new HelixReadWriteSchemaRepositoryAdapter(
         admin.getReadOnlyZKSharedSchemaRepository(),
-        new HelixReadWriteSchemaRepository(readWriteStoreRepository, zkClient, adapterSerializer, clusterName, metaStoreWriter)
-    );
+        new HelixReadWriteSchemaRepository(
+            readWriteStoreRepository,
+            zkClient,
+            adapterSerializer,
+            clusterName,
+            metaStoreWriter));
 
     SafeHelixManager spectatorManager;
     if (this.helixManager.getInstanceType() == InstanceType.SPECTATOR) {
@@ -122,16 +130,24 @@ public class HelixVeniceClusterResources implements VeniceResource {
       // used directly for external view purposes.
       spectatorManager = this.helixManager;
     } else {
-      // Use a separate helix manger for listening on the external view to prevent it from blocking state transition and messages.
+      // Use a separate helix manger for listening on the external view to prevent it from blocking state transition and
+      // messages.
       spectatorManager = getSpectatorManager(clusterName, zkClient.getServers());
     }
     this.routingDataRepository = new HelixExternalViewRepository(spectatorManager);
     this.customizedViewRepo = new HelixCustomizedViewOfflinePushRepository(this.helixManager);
-    this.messageChannel = new HelixStatusMessageChannel(helixManager,
-        new HelixMessageChannelStats(metricsRepository, clusterName), config.getHelixSendMessageTimeoutMs());
-    VeniceOfflinePushMonitorAccessor offlinePushMonitorAccessor = new VeniceOfflinePushMonitorAccessor(clusterName, zkClient,
-        adapterSerializer, config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs());
-    String aggregateRealTimeSourceKafkaUrl = config.getChildDataCenterKafkaUrlMap().get(config.getAggregateRealTimeSourceRegion());
+    this.messageChannel = new HelixStatusMessageChannel(
+        helixManager,
+        new HelixMessageChannelStats(metricsRepository, clusterName),
+        config.getHelixSendMessageTimeoutMs());
+    VeniceOfflinePushMonitorAccessor offlinePushMonitorAccessor = new VeniceOfflinePushMonitorAccessor(
+        clusterName,
+        zkClient,
+        adapterSerializer,
+        config.getRefreshAttemptsForZkReconnect(),
+        config.getRefreshIntervalForZkReconnectInMs());
+    String aggregateRealTimeSourceKafkaUrl =
+        config.getChildDataCenterKafkaUrlMap().get(config.getAggregateRealTimeSourceRegion());
 
     this.pushMonitor = new PushMonitorDelegator(
         clusterName,
@@ -145,32 +161,54 @@ public class HelixVeniceClusterResources implements VeniceResource {
         aggregateRealTimeSourceKafkaUrl,
         getActiveActiveRealTimeSourceKafkaURLs(config));
 
-    this.leakedPushStatusCleanUpService = new LeakedPushStatusCleanUpService(clusterName, offlinePushMonitorAccessor, storeMetadataRepository,
-        new AggPushStatusCleanUpStats(clusterName, metricsRepository), this.config.getLeakedPushStatusCleanUpServiceSleepIntervalInMs());
-    // On controller side, router cluster manager is used as an accessor without maintaining any cache, so do not need to refresh once zk reconnected.
-    this.routersClusterManager =
-        new ZkRoutersClusterManager(zkClient, adapterSerializer, clusterName, config.getRefreshAttemptsForZkReconnect(),
-            config.getRefreshIntervalForZkReconnectInMs());
-    this.aggPartitionHealthStats =
-        new AggPartitionHealthStats(clusterName, metricsRepository, routingDataRepository, storeMetadataRepository, pushMonitor);
+    this.leakedPushStatusCleanUpService = new LeakedPushStatusCleanUpService(
+        clusterName,
+        offlinePushMonitorAccessor,
+        storeMetadataRepository,
+        new AggPushStatusCleanUpStats(clusterName, metricsRepository),
+        this.config.getLeakedPushStatusCleanUpServiceSleepIntervalInMs());
+    // On controller side, router cluster manager is used as an accessor without maintaining any cache, so do not need
+    // to refresh once zk reconnected.
+    this.routersClusterManager = new ZkRoutersClusterManager(
+        zkClient,
+        adapterSerializer,
+        clusterName,
+        config.getRefreshAttemptsForZkReconnect(),
+        config.getRefreshIntervalForZkReconnectInMs());
+    this.aggPartitionHealthStats = new AggPartitionHealthStats(
+        clusterName,
+        metricsRepository,
+        routingDataRepository,
+        storeMetadataRepository,
+        pushMonitor);
     this.storeConfigAccessor = new ZkStoreConfigAccessor(zkClient, adapterSerializer, metaStoreWriter);
     this.accessController = accessController;
     if (config.getErrorPartitionAutoResetLimit() > 0) {
-      errorPartitionResetTask = new ErrorPartitionResetTask(clusterName, helixAdminClient, storeMetadataRepository,
-          routingDataRepository, pushMonitor, metricsRepository, config.getErrorPartitionAutoResetLimit(),
+      errorPartitionResetTask = new ErrorPartitionResetTask(
+          clusterName,
+          helixAdminClient,
+          storeMetadataRepository,
+          routingDataRepository,
+          pushMonitor,
+          metricsRepository,
+          config.getErrorPartitionAutoResetLimit(),
           config.getErrorPartitionProcessingCycleDelay());
     }
     veniceAdminStats = new VeniceAdminStats(metricsRepository, "venice-admin-" + clusterName);
-    this.storagePersonaRepository = new StoragePersonaRepository(clusterName, this.storeMetadataRepository, adapterSerializer, zkClient);
+    this.storagePersonaRepository =
+        new StoragePersonaRepository(clusterName, this.storeMetadataRepository, adapterSerializer, zkClient);
   }
 
   private List<String> getActiveActiveRealTimeSourceKafkaURLs(VeniceControllerConfig config) {
     List<String> kafkaURLs = new ArrayList<>(config.getActiveActiveRealTimeSourceFabrics().size());
-    for (String fabric : config.getActiveActiveRealTimeSourceFabrics()) {
+    for (String fabric: config.getActiveActiveRealTimeSourceFabrics()) {
       String kafkaURL = config.getChildDataCenterKafkaUrlMap().get(fabric);
       if (kafkaURL == null) {
         throw new VeniceException(
-                String.format("No A/A source Kafka URL found for fabric %s in %s", fabric, config.getChildDataCenterKafkaUrlMap()));
+            String.format(
+                "No A/A source Kafka URL found for fabric %s in %s",
+                fabric,
+                config.getChildDataCenterKafkaUrlMap()));
       }
       kafkaURLs.add(kafkaURL);
     }
@@ -184,7 +222,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
    */
   private void repairStoreReplicationFactor(ReadWriteStoreRepository metadataRepository) {
     List<Store> stores = metadataRepository.getAllStores();
-    for (Store store : stores) {
+    for (Store store: stores) {
       String storeName = store.getName();
       VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
       if (null == systemStoreType || !systemStoreType.isStoreZkShared()) {
@@ -196,8 +234,9 @@ public class HelixVeniceClusterResources implements VeniceResource {
           int previousReplicationFactor = store.getReplicationFactor();
           store.setReplicationFactor(config.getReplicationFactor());
           metadataRepository.updateStore(store);
-          logger.info("Updated replication factor from " + previousReplicationFactor + " to " +
-              config.getReplicationFactor() + " for store: " + store.getName() + " in cluster: " + clusterName);
+          logger.info(
+              "Updated replication factor from " + previousReplicationFactor + " to " + config.getReplicationFactor()
+                  + " for store: " + store.getName() + " in cluster: " + clusterName);
 
         }
       }
@@ -207,8 +246,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
   @Override
   public void refresh() {
     clear();
-    //make sure that metadataRepo is initialized first since schemaRepo and
-    //pushMonitor depends on it
+    // make sure that metadataRepo is initialized first since schemaRepo and
+    // pushMonitor depends on it
     storeMetadataRepository.refresh();
     repairStoreReplicationFactor(storeMetadataRepository);
     /**
@@ -216,7 +255,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
      */
     if (accessController.isPresent()) {
       DynamicAccessController accessClient = accessController.get();
-      accessClient.init(storeMetadataRepository.getAllStores().stream().map(Store::getName).collect(Collectors.toList()));
+      accessClient
+          .init(storeMetadataRepository.getAllStores().stream().map(Store::getName).collect(Collectors.toList()));
       storeMetadataRepository.registerStoreDataChangedListener(new AclCreationDeletionListener(accessClient));
     }
     schemaRepository.refresh();
@@ -287,10 +327,14 @@ public class HelixVeniceClusterResources implements VeniceResource {
     return routingDataRepository;
   }
 
-  public HelixCustomizedViewOfflinePushRepository getCustomizedViewRepository() { return customizedViewRepo; }
+  public HelixCustomizedViewOfflinePushRepository getCustomizedViewRepository() {
+    return customizedViewRepo;
+  }
 
   // setCustomizedViewRepository is used for testing only.
-  void setCustomizedViewRepository(HelixCustomizedViewOfflinePushRepository repo) { customizedViewRepo = repo; }
+  void setCustomizedViewRepository(HelixCustomizedViewOfflinePushRepository repo) {
+    customizedViewRepo = repo;
+  }
 
   public HelixStatusMessageChannel getMessageChannel() {
     return messageChannel;
@@ -332,14 +376,17 @@ public class HelixVeniceClusterResources implements VeniceResource {
     return veniceAdminStats;
   }
 
-  public StoragePersonaRepository getStoragePersonaRepository() { return storagePersonaRepository; }
+  public StoragePersonaRepository getStoragePersonaRepository() {
+    return storagePersonaRepository;
+  }
 
   /**
    * Lock the resource for shutdown operation(leadership handle over and controller shutdown). Once
    * acquired the lock, no other thread could operate for this cluster.
    */
   public AutoCloseableLock lockForShutdown() {
-    logger.info("lockForShutdown() called. Will log the current stacktrace and then attempt to acquire the lock.",
+    logger.info(
+        "lockForShutdown() called. Will log the current stacktrace and then attempt to acquire the lock.",
         new VeniceException("Not thrown, for logging purposes only."));
     return clusterLockManager.createClusterWriteLock();
   }

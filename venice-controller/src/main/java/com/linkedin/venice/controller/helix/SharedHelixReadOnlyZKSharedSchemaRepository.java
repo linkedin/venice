@@ -15,13 +15,21 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
  * will do nothing in {@link #clear()} since it will be shared across all the clusters, whose leader are
  * in the same Controller node.
  */
-public class SharedHelixReadOnlyZKSharedSchemaRepository
-    extends HelixReadOnlyZKSharedSchemaRepository
+public class SharedHelixReadOnlyZKSharedSchemaRepository extends HelixReadOnlyZKSharedSchemaRepository
     implements Closeable {
-  public SharedHelixReadOnlyZKSharedSchemaRepository(HelixReadOnlyZKSharedSystemStoreRepository storeRepository,
-      ZkClient zkClient, HelixAdapterSerializer adapter, String systemStoreClusterName,
-      int refreshAttemptsForZkReconnect, long refreshIntervalForZkReconnectInMs) {
-    super(storeRepository, zkClient, adapter, systemStoreClusterName, refreshAttemptsForZkReconnect,
+  public SharedHelixReadOnlyZKSharedSchemaRepository(
+      HelixReadOnlyZKSharedSystemStoreRepository storeRepository,
+      ZkClient zkClient,
+      HelixAdapterSerializer adapter,
+      String systemStoreClusterName,
+      int refreshAttemptsForZkReconnect,
+      long refreshIntervalForZkReconnectInMs) {
+    super(
+        storeRepository,
+        zkClient,
+        adapter,
+        systemStoreClusterName,
+        refreshAttemptsForZkReconnect,
         refreshIntervalForZkReconnectInMs);
   }
 

@@ -12,7 +12,6 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Properties;
@@ -28,10 +27,24 @@ public class TestD2ControllerClient {
     D2Client d2Client = null;
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
-        VeniceControllerWrapper controllerWrapper =
-            ServiceFactory.getVeniceChildController(new String[]{CLUSTER_NAME}, kafkaBrokerWrapper, 1, 10, 0, 1, null, true, true, new Properties())) {
+        VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceChildController(
+            new String[] { CLUSTER_NAME },
+            kafkaBrokerWrapper,
+            1,
+            10,
+            0,
+            1,
+            null,
+            true,
+            true,
+            new Properties())) {
       String zkAddress = kafkaBrokerWrapper.getZkAddress();
-      D2TestUtils.setupD2Config(zkAddress, false, D2TestUtils.CONTROLLER_CLUSTER_NAME, D2TestUtils.CONTROLLER_SERVICE_NAME, false);
+      D2TestUtils.setupD2Config(
+          zkAddress,
+          false,
+          D2TestUtils.CONTROLLER_CLUSTER_NAME,
+          D2TestUtils.CONTROLLER_SERVICE_NAME,
+          false);
 
       d2Client = D2TestUtils.getAndStartD2Client(zkAddress);
       String d2ServiceName = D2TestUtils.CONTROLLER_SERVICE_NAME;
@@ -47,7 +60,8 @@ public class TestD2ControllerClient {
         Assert.assertEquals(store.getCluster(), CLUSTER_NAME);
 
         // Test cluster discovery
-        D2ServiceDiscoveryResponse discoveryResponse = D2ControllerClient.discoverCluster(d2Client, d2ServiceName, storeName);
+        D2ServiceDiscoveryResponse discoveryResponse =
+            D2ControllerClient.discoverCluster(d2Client, d2ServiceName, storeName);
         Assert.assertEquals(discoveryResponse.getD2Service(), D2TestUtils.DEFAULT_TEST_SERVICE_NAME);
       }
     } finally {

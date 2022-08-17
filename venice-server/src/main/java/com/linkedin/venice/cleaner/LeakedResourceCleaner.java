@@ -1,6 +1,5 @@
 package com.linkedin.venice.cleaner;
 
-import com.linkedin.davinci.kafka.consumer.ParticipantStoreConsumptionTask;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageService;
@@ -37,8 +36,12 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
   private final LeakedResourceCleanerStats stats;
   private long nonExistentStoreCleanupInterval = Time.MS_PER_DAY;
 
-  public LeakedResourceCleaner(StorageEngineRepository storageEngineRepository, long pollIntervalMs,
-      ReadOnlyStoreRepository storeRepository, StoreIngestionService ingestionService, StorageService storageService,
+  public LeakedResourceCleaner(
+      StorageEngineRepository storageEngineRepository,
+      long pollIntervalMs,
+      ReadOnlyStoreRepository storeRepository,
+      StoreIngestionService ingestionService,
+      StorageService storageService,
       MetricsRepository metricsRepository) {
     this.storageEngineRepository = storageEngineRepository;
     this.pollIntervalMs = pollIntervalMs;
@@ -74,7 +77,7 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
       this.storageEngineRepository = storageEngineRepository;
     }
 
-    protected void setStop(){
+    protected void setStop() {
       stop = true;
     }
 
@@ -83,13 +86,13 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
       while (!stop) {
         try {
           Thread.sleep(pollIntervalMs);
-        } catch (InterruptedException e)  {
+        } catch (InterruptedException e) {
           logger.info("Received interruptedException while running LeakedResourceCleanerRunnable, will exit");
           break;
         }
 
         List<AbstractStorageEngine> storageEngines = storageEngineRepository.getAllLocalStorageEngines();
-        for (AbstractStorageEngine storageEngine : storageEngines) {
+        for (AbstractStorageEngine storageEngine: storageEngines) {
           String resourceName = storageEngine.getStoreName();
           try {
             Store store;
@@ -103,7 +106,8 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
                 long timestamp = nonExistentStoreToCheckedTimestamp.get(storeName);
                 // If store is reported missing for more than a day by the store repo, delete the resources.
                 if (timestamp + nonExistentStoreCleanupInterval < currentTime) {
-                  logger.info("Store: " + storeName + " is not hosted by this host, it's resources will be cleaned up.");
+                  logger
+                      .info("Store: " + storeName + " is not hosted by this host, it's resources will be cleaned up.");
                   storageService.removeStorageEngine(resourceName);
                   logger.info("Resource: " + resourceName + " has been cleaned up.");
                   stats.recordLeakedVersion();
@@ -123,20 +127,23 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
                * and it might be caused by Zookeeper issue in the extreme scenario, and we will skip the resource cleanup
                * for this store.
                */
-              logger.warn("Found no version for store: " + storeName + ", but a lingering resource: " + resourceName +
-                  ", which is suspicious, so here will skip the cleanup.");
+              logger.warn(
+                  "Found no version for store: " + storeName + ", but a lingering resource: " + resourceName
+                      + ", which is suspicious, so here will skip the cleanup.");
               continue;
             }
-            if (!store.getVersion(version).isPresent() &&  // The version has already been deleted
-                /**
-                 * This is to avoid the race condition since Version will be deleted in Controller first and the
-                 * actual cleanup in storage node is being handled in {@link ParticipantStoreConsumptionTask}.
-                 *
-                 * If there is no version existed in ZK and no running ingestion task for current resource, it
-                 * is safe to be deleted.
-                 */
+            if (!store.getVersion(version).isPresent() && // The version has already been deleted
+            /**
+             * This is to avoid the race condition since Version will be deleted in Controller first and the
+             * actual cleanup in storage node is being handled in {@link ParticipantStoreConsumptionTask}.
+             *
+             * If there is no version existed in ZK and no running ingestion task for current resource, it
+             * is safe to be deleted.
+             */
                 !ingestionService.containsRunningConsumption(resourceName)) {
-              logger.info("Resource: " + resourceName + " doesn't have either the corresponding version stored in ZK, or a running ingestion task, so it will be cleaned up.");
+              logger.info(
+                  "Resource: " + resourceName
+                      + " doesn't have either the corresponding version stored in ZK, or a running ingestion task, so it will be cleaned up.");
               storageService.removeStorageEngine(resourceName);
               logger.info("Resource: " + resourceName + " has been cleaned up.");
               stats.recordLeakedVersion();
@@ -144,8 +151,8 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
           } catch (Exception e) {
             logger.error("Received exception while verifying/cleaning up resource: " + resourceName);
           }
-        } //~for
-      } //~while
+        } // ~for
+      } // ~while
     }
   }
 

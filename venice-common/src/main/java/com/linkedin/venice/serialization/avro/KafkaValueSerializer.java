@@ -2,6 +2,7 @@ package com.linkedin.venice.serialization.avro;
 
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 
+
 /**
  * Serializer for the Avro-based kafka protocol defined in:
  *

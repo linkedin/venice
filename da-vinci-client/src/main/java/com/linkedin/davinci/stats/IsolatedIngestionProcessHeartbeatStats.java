@@ -18,6 +18,7 @@ public class IsolatedIngestionProcessHeartbeatStats extends AbstractVeniceStats 
     heartbeatAgeSensor = registerSensor("heartbeat_age", new Gauge());
     forkedProcessRestartSensor = registerSensor("forked_process_restart", new OccurrenceRate());
   }
+
   public void recordHeartbeatAge(long heartbeatAgeInMs) {
     heartbeatAgeSensor.record(heartbeatAgeInMs);
   }

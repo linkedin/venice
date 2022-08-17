@@ -1,5 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
+import static com.linkedin.venice.VeniceConstants.*;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
@@ -18,8 +20,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.VeniceConstants.*;
-
 
 /**
  * This push monitor is able to query hybrid store quota status from routers
@@ -35,7 +35,11 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
   private final HybridQuotaMonitorTask hybridQuotaMonitorTask;
   private HybridStoreQuotaStatus currentStatus = HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED;
 
-  public RouterBasedHybridStoreQuotaMonitor(D2TransportClient transportClient, String storeName, Version.PushType pushType, String topicName) {
+  public RouterBasedHybridStoreQuotaMonitor(
+      D2TransportClient transportClient,
+      String storeName,
+      Version.PushType pushType,
+      String topicName) {
     final String requestPath;
     if (Version.PushType.STREAM.equals(pushType)) {
       requestPath = buildStreamHybridStoreQuotaRequestPath(storeName);
@@ -43,7 +47,9 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
       final String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
       requestPath = buildStreamReprocessingHybridStoreQuotaRequestPath(versionTopic);
     } else {
-      throw new VeniceException("Only push types " + pushType.STREAM + " and " + pushType.STREAM_REPROCESSING + " can monitor hybrid store quota.");
+      throw new VeniceException(
+          "Only push types " + pushType.STREAM + " and " + pushType.STREAM_REPROCESSING
+              + " can monitor hybrid store quota.");
     }
     executor = Executors.newSingleThreadExecutor(new DaemonThreadFactory("RouterBasedHybridQuotaMonitor"));
     hybridQuotaMonitorTask = new HybridQuotaMonitorTask(transportClient, storeName, requestPath, this);
@@ -69,6 +75,7 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
   private static String buildStreamHybridStoreQuotaRequestPath(String storeName) {
     return TYPE_STREAM_HYBRID_STORE_QUOTA + "/" + storeName;
   }
+
   private static String buildStreamReprocessingHybridStoreQuotaRequestPath(String versionTopic) {
     return TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA + "/" + versionTopic;
   }
@@ -82,7 +89,10 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
     private final String requestPath;
     private final RouterBasedHybridStoreQuotaMonitor hybridStoreQuotaMonitorService;
 
-    public HybridQuotaMonitorTask(D2TransportClient transportClient, String storeName, String requestPath,
+    public HybridQuotaMonitorTask(
+        D2TransportClient transportClient,
+        String storeName,
+        String requestPath,
         RouterBasedHybridStoreQuotaMonitor hybridStoreQuotaMonitorService) {
       this.transportClient = transportClient;
       this.storeName = storeName;
@@ -99,7 +109,8 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
           // Get hybrid store quota status
           CompletableFuture<TransportClientResponse> responseFuture = transportClient.get(requestPath);
           TransportClientResponse response = responseFuture.get(POLL_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-          HybridStoreQuotaStatusResponse quotaStatusResponse = mapper.readValue(response.getBody(), HybridStoreQuotaStatusResponse.class);
+          HybridStoreQuotaStatusResponse quotaStatusResponse =
+              mapper.readValue(response.getBody(), HybridStoreQuotaStatusResponse.class);
           if (quotaStatusResponse.isError()) {
             logger.error("Router was not able to get hybrid quota status: " + quotaStatusResponse.getError());
             continue;
@@ -110,7 +121,8 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
               logger.info("Hybrid job failed with quota violation for store: " + storeName);
               break;
             default:
-              logger.info("Current hybrid job state: " + quotaStatusResponse.getQuotaStatus() + " for store: " + storeName);
+              logger.info(
+                  "Current hybrid job state: " + quotaStatusResponse.getQuotaStatus() + " for store: " + storeName);
           }
 
           Utils.sleep(POLL_CYCLE_DELAY_MS);
@@ -126,4 +138,3 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
     }
   }
 }
-

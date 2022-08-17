@@ -12,6 +12,7 @@ import java.util.Set;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
+import javax.annotation.Nonnull;
 import org.apache.helix.PropertyType;
 import org.apache.helix.api.listeners.RoutingTableChangeListener;
 import org.apache.helix.model.CustomizedView;
@@ -19,8 +20,6 @@ import org.apache.helix.spectator.RoutingTableProvider;
 import org.apache.helix.spectator.RoutingTableSnapshot;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import javax.annotation.Nonnull;
 
 
 /**
@@ -35,14 +34,14 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
 
   // lock object protects resourceToStatusMap.
   private final Lock lock = new ReentrantLock();
-  private Map<String, HybridStoreQuotaStatus> resourceToStatusMap;  // Topic to quota state
+  private Map<String, HybridStoreQuotaStatus> resourceToStatusMap; // Topic to quota state
 
   public HelixHybridStoreQuotaRepository(SafeHelixManager manager) {
     this.manager = manager;
     resourceToStatusMap = new HashMap<>();
     dataSource = new HashMap<>();
-    dataSource.put(PropertyType.CUSTOMIZEDVIEW,
-        Collections.singletonList(HelixPartitionState.HYBRID_STORE_QUOTA.name()));
+    dataSource
+        .put(PropertyType.CUSTOMIZEDVIEW, Collections.singletonList(HelixPartitionState.HYBRID_STORE_QUOTA.name()));
   }
 
   /**
@@ -53,7 +52,9 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
     try (AutoCloseableLock ignore = AutoCloseableLock.of(lock)) {
       List<String> hybridQuotaViolatedStores = resourceToStatusMap.keySet()
           .stream()
-          .filter(originalResources -> resourceToStatusMap.get(originalResources).equals(HybridStoreQuotaStatus.QUOTA_VIOLATED))
+          .filter(
+              originalResources -> resourceToStatusMap.get(originalResources)
+                  .equals(HybridStoreQuotaStatus.QUOTA_VIOLATED))
           .collect(Collectors.toList());
       return hybridQuotaViolatedStores;
     }
@@ -83,7 +84,8 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
       routingTableProvider.addRoutingTableChangeListener(this, null);
       // We only support HYBRID_STORE_QUOTA in this class.
       onRoutingTableChange(
-          routingTableProvider.getRoutingTableSnapshot(PropertyType.CUSTOMIZEDVIEW, HelixPartitionState.HYBRID_STORE_QUOTA.name()),
+          routingTableProvider
+              .getRoutingTableSnapshot(PropertyType.CUSTOMIZEDVIEW, HelixPartitionState.HYBRID_STORE_QUOTA.name()),
           null);
       logger.info("Refresh finished for cluster" + manager.getClusterName() + "'s" + getClass().getSimpleName());
     } catch (Exception e) {
@@ -112,10 +114,10 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
       Set<String> resourcesInCustomizedView =
           customizedViewCollection.stream().map(CustomizedView::getResourceName).collect(Collectors.toSet());
       Map<String, HybridStoreQuotaStatus> newResourceToStatusMap = new HashMap<>();
-      for (CustomizedView customizedView : customizedViewCollection) {
+      for (CustomizedView customizedView: customizedViewCollection) {
         String resourceName = customizedView.getResourceName();
         HybridStoreQuotaStatus status = HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED;
-        for (String partitionName : customizedView.getPartitionSet()) {
+        for (String partitionName: customizedView.getPartitionSet()) {
           Map<String, String> instanceStateMap = customizedView.getStateMap(partitionName);
           // Iterate through all instances' execution status
           for (Map.Entry<String, String> entry: instanceStateMap.entrySet()) {
@@ -146,8 +148,9 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
         this.resourceToStatusMap = newResourceToStatusMap;
       }
       logger.info("Updated resource execution status map.");
-      logger.info("Hybrid store quota view is changed. The number of active resources is " + resourcesInCustomizedView.size()
-          + ", and the number of deleted resource is " + deletedResourceNames.size());
+      logger.info(
+          "Hybrid store quota view is changed. The number of active resources is " + resourcesInCustomizedView.size()
+              + ", and the number of deleted resource is " + deletedResourceNames.size());
     }
   }
 

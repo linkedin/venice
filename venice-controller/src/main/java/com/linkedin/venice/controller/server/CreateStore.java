@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
@@ -9,9 +12,6 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import java.util.Optional;
 import spark.Request;
 import spark.Route;
-
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
 public class CreateStore extends AbstractRoute {
@@ -55,7 +55,7 @@ public class CreateStore extends AbstractRoute {
       AclResponse responseObject = new AclResponse();
       response.type(HttpConstants.JSON);
       try {
-        //TODO need security validation here?
+        // TODO need security validation here?
         AdminSparkServer.validateParams(request, UPDATE_ACL.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
@@ -76,7 +76,7 @@ public class CreateStore extends AbstractRoute {
       AclResponse responseObject = new AclResponse();
       response.type(HttpConstants.JSON);
       try {
-        //TODO need security validation here?
+        // TODO need security validation here?
         AdminSparkServer.validateParams(request, GET_ACL.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
@@ -98,7 +98,7 @@ public class CreateStore extends AbstractRoute {
       AclResponse responseObject = new AclResponse();
       response.type(HttpConstants.JSON);
       try {
-        //TODO need security validation here?
+        // TODO need security validation here?
         AdminSparkServer.validateParams(request, DELETE_ACL.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);

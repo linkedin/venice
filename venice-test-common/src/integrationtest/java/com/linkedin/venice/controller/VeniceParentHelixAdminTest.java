@@ -1,5 +1,10 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.controller.SchemaConstants.*;
+import static com.linkedin.venice.utils.TestUtils.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -38,10 +43,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.controller.SchemaConstants.*;
-import static com.linkedin.venice.utils.TestUtils.*;
-import static org.testng.Assert.*;
 
 public class VeniceParentHelixAdminTest {
   private static final Logger LOGGER = LogManager.getLogger(VeniceParentHelixAdminTest.class);
@@ -70,19 +71,29 @@ public class VeniceParentHelixAdminTest {
     Properties properties = new Properties();
     properties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
     properties.setProperty(TERMINAL_STATE_TOPIC_CHECK_DELAY_MS, String.valueOf(1000L));
-    try (VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(venice.getClusterName(),
-        zkServerWrapper.getAddress(), venice.getKafka(), new VeniceControllerWrapper[]{venice.getLeaderVeniceController()},
-        new VeniceProperties(properties), false);
-    ControllerClient parentControllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl())) {
+    try (
+        VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(
+            venice.getClusterName(),
+            zkServerWrapper.getAddress(),
+            venice.getKafka(),
+            new VeniceControllerWrapper[] { venice.getLeaderVeniceController() },
+            new VeniceProperties(properties),
+            false);
+        ControllerClient parentControllerClient =
+            new ControllerClient(venice.getClusterName(), parentController.getControllerUrl())) {
       String storeName = Utils.getUniqueString("testStore");
-      assertFalse(parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"").isError(),
+      assertFalse(
+          parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"").isError(),
           "Failed to create test store");
       // Empty push without checking its push status
       VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test-push", 1000);
       assertFalse(response.isError(), "Failed to perform empty push on test store");
       // The empty push should eventually complete and have its version topic truncated by job status polling invoked by
       // the TerminalStateTopicCheckerForParentController.
-      waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true,
+      waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          true,
           () -> assertTrue(parentController.getVeniceAdmin().isTopicTruncated(response.getKafkaTopic())));
     }
   }
@@ -91,32 +102,35 @@ public class VeniceParentHelixAdminTest {
   public void testAddVersion() {
     Properties properties = new Properties();
     properties.setProperty(REPLICATION_METADATA_VERSION_ID, String.valueOf(1));
-    try (VeniceControllerWrapper parentControllerWrapper =
-        ServiceFactory.getVeniceParentController(
+    try (
+        VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceParentController(
             venice.getClusterName(),
             zkServerWrapper.getAddress(),
             venice.getKafka(),
-            new VeniceControllerWrapper[]{venice.getLeaderVeniceController()},
+            new VeniceControllerWrapper[] { venice.getLeaderVeniceController() },
             new VeniceProperties(properties),
             false);
-        ControllerClient parentControllerClient = new ControllerClient(
-            venice.getClusterName(), parentControllerWrapper.getControllerUrl())) {
+        ControllerClient parentControllerClient =
+            new ControllerClient(venice.getClusterName(), parentControllerWrapper.getControllerUrl())) {
       // Adding store
       String storeName = Utils.getUniqueString("test_store");
       String owner = "test_owner";
       String keySchemaStr = "\"long\"";
       Schema valueSchema = generateSchema(false);
       venice.useControllerClient(childControllerClient -> {
-        assertCommand(parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString()),
+        assertCommand(
+            parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString()),
             "Failed to create store:" + storeName);
 
         // Configure the store to hybrid
-        UpdateStoreQueryParams params =
-            new UpdateStoreQueryParams().setHybridRewindSeconds(600).setHybridOffsetLagThreshold(10000)
-                .setLeaderFollowerModel(true).setNativeReplicationEnabled(true).setActiveActiveReplicationEnabled(true);
+        UpdateStoreQueryParams params = new UpdateStoreQueryParams().setHybridRewindSeconds(600)
+            .setHybridOffsetLagThreshold(10000)
+            .setLeaderFollowerModel(true)
+            .setNativeReplicationEnabled(true)
+            .setActiveActiveReplicationEnabled(true);
         assertCommand(parentControllerClient.updateStore(storeName, params));
-        HybridStoreConfig hybridStoreConfig = assertCommand(parentControllerClient.getStore(storeName))
-            .getStore().getHybridStoreConfig();
+        HybridStoreConfig hybridStoreConfig =
+            assertCommand(parentControllerClient.getStore(storeName)).getStore().getHybridStoreConfig();
         Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 600);
         Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 10000);
         // Check the store config in Child Colo
@@ -128,58 +142,67 @@ public class VeniceParentHelixAdminTest {
         });
 
         // Test add version without rewind time override
-        assertCommand(parentControllerClient.requestTopicForWrites(
-            storeName,
-            1000,
-            Version.PushType.BATCH,
-            Version.numberBasedDummyPushId(1),
-            true,
-            true,
-            false,
-            Optional.empty(),
-            Optional.empty(),
-            Optional.of("dc-1"),
-            false,
-            -1));
+        assertCommand(
+            parentControllerClient.requestTopicForWrites(
+                storeName,
+                1000,
+                Version.PushType.BATCH,
+                Version.numberBasedDummyPushId(1),
+                true,
+                true,
+                false,
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of("dc-1"),
+                false,
+                -1));
         // Check version-level rewind time config
-        Optional<Version> versionFromParent = assertCommand(parentControllerClient.getStore(storeName))
-            .getStore().getVersion(1);
-        assertTrue(versionFromParent.isPresent() && versionFromParent.get().getHybridStoreConfig().getRewindTimeInSeconds() == 600);
+        Optional<Version> versionFromParent =
+            assertCommand(parentControllerClient.getStore(storeName)).getStore().getVersion(1);
+        assertTrue(
+            versionFromParent.isPresent()
+                && versionFromParent.get().getHybridStoreConfig().getRewindTimeInSeconds() == 600);
         // Validate version-level rewind time config in child
         waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-          Optional<Version> versionFromChild = assertCommand(childControllerClient.getStore(storeName))
-              .getStore().getVersion(1);
-          assertTrue(versionFromChild.isPresent() && versionFromChild.get().getHybridStoreConfig().getRewindTimeInSeconds() == 600);
+          Optional<Version> versionFromChild =
+              assertCommand(childControllerClient.getStore(storeName)).getStore().getVersion(1);
+          assertTrue(
+              versionFromChild.isPresent()
+                  && versionFromChild.get().getHybridStoreConfig().getRewindTimeInSeconds() == 600);
         });
 
         // Need to kill the current version since it is not allowed to have multiple ongoing versions.
         assertCommand(parentControllerClient.killOfflinePushJob(Version.composeKafkaTopic(storeName, 1)));
         // Test add version with rewind time override
-        assertCommand(parentControllerClient.requestTopicForWrites(
-            storeName,
-            1000,
-            Version.PushType.BATCH,
-            Version.numberBasedDummyPushId(2),
-            true,
-            true,
-            false,
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            false,
-            1000));
+        assertCommand(
+            parentControllerClient.requestTopicForWrites(
+                storeName,
+                1000,
+                Version.PushType.BATCH,
+                Version.numberBasedDummyPushId(2),
+                true,
+                true,
+                false,
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                false,
+                1000));
 
         // Check version-level config
-        versionFromParent = assertCommand(parentControllerClient.getStore(storeName))
-            .getStore().getVersion(2);
-        assertTrue(versionFromParent.isPresent() && versionFromParent.get().getHybridStoreConfig().getRewindTimeInSeconds() == 1000);
+        versionFromParent = assertCommand(parentControllerClient.getStore(storeName)).getStore().getVersion(2);
+        assertTrue(
+            versionFromParent.isPresent()
+                && versionFromParent.get().getHybridStoreConfig().getRewindTimeInSeconds() == 1000);
         assertEquals(versionFromParent.get().getReplicationMetadataVersionId(), 1);
 
         // Validate version-level config in child
         waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-          Optional<Version> versionFromChild = assertCommand(childControllerClient.getStore(storeName))
-              .getStore().getVersion(2);
-          assertTrue(versionFromChild.isPresent() && versionFromChild.get().getHybridStoreConfig().getRewindTimeInSeconds() == 1000);
+          Optional<Version> versionFromChild =
+              assertCommand(childControllerClient.getStore(storeName)).getStore().getVersion(2);
+          assertTrue(
+              versionFromChild.isPresent()
+                  && versionFromChild.get().getHybridStoreConfig().getRewindTimeInSeconds() == 1000);
           assertEquals(versionFromChild.get().getReplicationMetadataVersionId(), 1);
         });
 
@@ -192,24 +215,33 @@ public class VeniceParentHelixAdminTest {
     }
   }
 
-  @Test (timeOut = DEFAULT_TEST_TIMEOUT * 2)
+  @Test(timeOut = DEFAULT_TEST_TIMEOUT * 2)
   public void testResourceCleanupCheckForStoreRecreation() {
     Properties properties = new Properties();
     properties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
     properties.setProperty(TERMINAL_STATE_TOPIC_CHECK_DELAY_MS, String.valueOf(1000L));
     // Recreation of the same store will fail due to lingering system store resources
-    // TODO: Will come up with a solution to make sure system store creation is blocked until previous resources are cleaned up.
+    // TODO: Will come up with a solution to make sure system store creation is blocked until previous resources are
+    // cleaned up.
     properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(false));
     properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(false));
-    try (VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(venice.getClusterName(),
-        zkServerWrapper.getAddress(), venice.getKafka(), new VeniceControllerWrapper[]{venice.getLeaderVeniceController()},
-        new VeniceProperties(properties), false);
-        ControllerClient parentControllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl())) {
+    try (
+        VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(
+            venice.getClusterName(),
+            zkServerWrapper.getAddress(),
+            venice.getKafka(),
+            new VeniceControllerWrapper[] { venice.getLeaderVeniceController() },
+            new VeniceProperties(properties),
+            false);
+        ControllerClient parentControllerClient =
+            new ControllerClient(venice.getClusterName(), parentController.getControllerUrl())) {
       String storeName = Utils.getUniqueString("testStore");
-      assertFalse(parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"").isError(),
+      assertFalse(
+          parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"").isError(),
           "Failed to create test store");
       // Trying to create the same store will fail
-      assertTrue(parentControllerClient.createNewStore(storeName,"test", "\"string\"", "\"string\"").isError(),
+      assertTrue(
+          parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"").isError(),
           "Trying to create an existing store should fail");
       // Empty push without checking its push status
       VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test-push", 1000);
@@ -217,36 +249,51 @@ public class VeniceParentHelixAdminTest {
 
       // The empty push should eventually complete and have its version topic truncated by job status polling invoked by
       // the TerminalStateTopicCheckerForParentController.
-      waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true,
+      waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          true,
           () -> assertTrue(parentController.getVeniceAdmin().isTopicTruncated(response.getKafkaTopic())));
       assertFalse(parentControllerClient.disableAndDeleteStore(storeName).isError(), "Delete store shouldn't fail");
 
-      ControllerResponse controllerResponse = parentControllerClient.createNewStore(storeName,"test", "\"string\"", "\"string\"");
-      assertFalse(controllerResponse.isError(), "Trying to re-create the store with lingering version topics should succeed");
+      ControllerResponse controllerResponse =
+          parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
+      assertFalse(
+          controllerResponse.isError(),
+          "Trying to re-create the store with lingering version topics should succeed");
 
       // Enabling meta system store by triggering an empty push to the corresponding meta system store
       String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
       VersionCreationResponse versionCreationResponseForMetaSystemStore =
           parentControllerClient.emptyPush(metaSystemStoreName, "test_meta_system_store_push_1", 10000);
-      assertFalse(versionCreationResponseForMetaSystemStore.isError(),
+      assertFalse(
+          versionCreationResponseForMetaSystemStore.isError(),
           "New version creation for meta system store: " + metaSystemStoreName + " should success, but got error: "
               + versionCreationResponseForMetaSystemStore.getError());
-      waitForNonDeterministicPushCompletion(versionCreationResponseForMetaSystemStore.getKafkaTopic(),
-          parentControllerClient, 30, TimeUnit.SECONDS);
+      waitForNonDeterministicPushCompletion(
+          versionCreationResponseForMetaSystemStore.getKafkaTopic(),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
 
       // Delete the store and try re-creation.
       assertFalse(parentControllerClient.disableAndDeleteStore(storeName).isError(), "Delete store shouldn't fail");
       // re-create the same store right away will fail because of lingering system store resources
-      controllerResponse = parentControllerClient.createNewStore(storeName,"test", "\"string\"", "\"string\"");
-      assertTrue(controllerResponse.isError(), "Trying to re-create the store with lingering system store resource should fail");
+      controllerResponse = parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
+      assertTrue(
+          controllerResponse.isError(),
+          "Trying to re-create the store with lingering system store resource should fail");
     }
   }
 
   @Test(timeOut = DEFAULT_TEST_TIMEOUT)
   public void testHybridAndETLStoreConfig() {
-    try (VeniceControllerWrapper parentControllerWrapper =
-            ServiceFactory.getVeniceParentController(venice.getClusterName(), zkServerWrapper.getAddress(), venice.getKafka(),
-                new VeniceControllerWrapper[]{venice.getLeaderVeniceController()},false)) {
+    try (VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceParentController(
+        venice.getClusterName(),
+        zkServerWrapper.getAddress(),
+        venice.getKafka(),
+        new VeniceControllerWrapper[] { venice.getLeaderVeniceController() },
+        false)) {
       String controllerUrl = parentControllerWrapper.getControllerUrl();
 
       // Adding store
@@ -259,21 +306,18 @@ public class VeniceParentHelixAdminTest {
         assertCommand(controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString()));
 
         // Configure the store to hybrid
-        UpdateStoreQueryParams params = new UpdateStoreQueryParams()
-            .setHybridRewindSeconds(600)
-            .setHybridOffsetLagThreshold(10000);
+        UpdateStoreQueryParams params =
+            new UpdateStoreQueryParams().setHybridRewindSeconds(600).setHybridOffsetLagThreshold(10000);
         assertCommand(controllerClient.updateStore(storeName, params));
-        HybridStoreConfig hybridStoreConfig = assertCommand(controllerClient.getStore(storeName))
-            .getStore().getHybridStoreConfig();
+        HybridStoreConfig hybridStoreConfig =
+            assertCommand(controllerClient.getStore(storeName)).getStore().getHybridStoreConfig();
         Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 600);
         Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 10000);
 
         // Try to update the hybrid store with different hybrid configs
-        params = new UpdateStoreQueryParams()
-            .setHybridRewindSeconds(172800);
+        params = new UpdateStoreQueryParams().setHybridRewindSeconds(172800);
         assertCommand(controllerClient.updateStore(storeName, params));
-        hybridStoreConfig = assertCommand(controllerClient.getStore(storeName))
-            .getStore().getHybridStoreConfig();
+        hybridStoreConfig = assertCommand(controllerClient.getStore(storeName)).getStore().getHybridStoreConfig();
         Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 172800);
         Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 10000);
 
@@ -282,12 +326,13 @@ public class VeniceParentHelixAdminTest {
         params.setRegularVersionETLEnabled(true);
         params.setFutureVersionETLEnabled(true);
         ControllerResponse controllerResponse = controllerClient.updateStore(storeName, params);
-        ETLStoreConfig etlStoreConfig = assertCommand(controllerClient.getStore(storeName))
-            .getStore().getEtlStoreConfig();
+        ETLStoreConfig etlStoreConfig =
+            assertCommand(controllerClient.getStore(storeName)).getStore().getEtlStoreConfig();
         Assert.assertFalse(etlStoreConfig.isRegularVersionETLEnabled());
         Assert.assertFalse(etlStoreConfig.isFutureVersionETLEnabled());
-        Assert.assertTrue(controllerResponse.getError().contains("Cannot enable ETL for this store "
-            + "because etled user proxy account is not set"));
+        Assert.assertTrue(
+            controllerResponse.getError()
+                .contains("Cannot enable ETL for this store " + "because etled user proxy account is not set"));
 
         // test enabling ETL with empty proxy account, expected failure
         params = new UpdateStoreQueryParams();
@@ -297,8 +342,9 @@ public class VeniceParentHelixAdminTest {
         etlStoreConfig = assertCommand(controllerClient.getStore(storeName)).getStore().getEtlStoreConfig();
         Assert.assertFalse(etlStoreConfig.isRegularVersionETLEnabled());
         Assert.assertFalse(etlStoreConfig.isFutureVersionETLEnabled());
-        Assert.assertTrue(controllerResponse.getError().contains("Cannot enable ETL for this store "
-            + "because etled user proxy account is not set"));
+        Assert.assertTrue(
+            controllerResponse.getError()
+                .contains("Cannot enable ETL for this store " + "because etled user proxy account is not set"));
 
         // test enabling ETL with etl proxy account, expected success
         params = new UpdateStoreQueryParams();
@@ -330,7 +376,8 @@ public class VeniceParentHelixAdminTest {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = DEFAULT_TEST_TIMEOUT*10)
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = DEFAULT_TEST_TIMEOUT
+      * 10)
   public void testStoreMetaDataUpdateFromParentToChildController(boolean isControllerSslEnabled) {
     String clusterName = Utils.getUniqueString("testStoreMetadataUpdate");
     Properties properties = new Properties();
@@ -343,20 +390,19 @@ public class VeniceParentHelixAdminTest {
         VeniceControllerWrapper childControllerWrapper =
             ServiceFactory.getVeniceChildController(clusterName, kafkaBrokerWrapper, isControllerSslEnabled);
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
-        VeniceControllerWrapper parentControllerWrapper =
-            ServiceFactory.getVeniceParentController(
-                clusterName,
-                parentZk.getAddress(),
-                kafkaBrokerWrapper,
-                new VeniceControllerWrapper[]{childControllerWrapper},
-                new VeniceProperties(properties),
-                isControllerSslEnabled
-            )
-    ) {
-      String childControllerUrl =
-          isControllerSslEnabled ? childControllerWrapper.getSecureControllerUrl() : childControllerWrapper.getControllerUrl();
-      String parentControllerUrl =
-          isControllerSslEnabled ? parentControllerWrapper.getSecureControllerUrl() : parentControllerWrapper.getControllerUrl();
+        VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceParentController(
+            clusterName,
+            parentZk.getAddress(),
+            kafkaBrokerWrapper,
+            new VeniceControllerWrapper[] { childControllerWrapper },
+            new VeniceProperties(properties),
+            isControllerSslEnabled)) {
+      String childControllerUrl = isControllerSslEnabled
+          ? childControllerWrapper.getSecureControllerUrl()
+          : childControllerWrapper.getControllerUrl();
+      String parentControllerUrl = isControllerSslEnabled
+          ? parentControllerWrapper.getSecureControllerUrl()
+          : parentControllerWrapper.getControllerUrl();
       Optional<SSLFactory> sslFactory =
           isControllerSslEnabled ? Optional.of(SslUtils.getVeniceLocalSslFactory()) : Optional.empty();
       try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrl, sslFactory);
@@ -373,31 +419,43 @@ public class VeniceParentHelixAdminTest {
     }
   }
 
-  private void testBackupVersionRetentionUpdate(ControllerClient parentControllerClient, ControllerClient childControllerClient) {
+  private void testBackupVersionRetentionUpdate(
+      ControllerClient parentControllerClient,
+      ControllerClient childControllerClient) {
     String storeName = Utils.getUniqueString("test_store_");
     String owner = "test_owner";
     String keySchemaStr = "\"long\"";
-    String valueSchemaStr ="\"string\"";
-    NewStoreResponse
-        newStoreResponse = parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaStr);
+    String valueSchemaStr = "\"string\"";
+    NewStoreResponse newStoreResponse =
+        parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaStr);
     Assert.assertNotNull(newStoreResponse);
     Assert.assertFalse(newStoreResponse.isError(), "error in newStoreResponse: " + newStoreResponse.getError());
     long backupVersionRetentionMs = TimeUnit.HOURS.toMillis(1);
-    ControllerResponse controllerResponse = parentControllerClient.updateStore(storeName,
+    ControllerResponse controllerResponse = parentControllerClient.updateStore(
+        storeName,
         new UpdateStoreQueryParams().setBackupVersionRetentionMs(backupVersionRetentionMs).setReadQuotaInCU(10000));
     Assert.assertNotNull(controllerResponse);
-    Assert.assertFalse(controllerResponse.isError(), "Error in store update response: " + controllerResponse.getError());
+    Assert
+        .assertFalse(controllerResponse.isError(), "Error in store update response: " + controllerResponse.getError());
 
     // Verify the update in Parent Controller
     StoreResponse storeResponseFromParentController = parentControllerClient.getStore(storeName);
-    Assert.assertFalse(storeResponseFromParentController.isError(), "Error in store response from Parent Controller: " + storeResponseFromParentController.getError());
-    Assert.assertEquals(storeResponseFromParentController.getStore().getBackupVersionRetentionMs(), backupVersionRetentionMs);
+    Assert.assertFalse(
+        storeResponseFromParentController.isError(),
+        "Error in store response from Parent Controller: " + storeResponseFromParentController.getError());
+    Assert.assertEquals(
+        storeResponseFromParentController.getStore().getBackupVersionRetentionMs(),
+        backupVersionRetentionMs);
     Assert.assertEquals(storeResponseFromParentController.getStore().getReadQuotaInCU(), 10000);
     // Verify the update in Child Controller
     waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       StoreResponse storeResponseFromChildController = childControllerClient.getStore(storeName);
-      Assert.assertFalse(storeResponseFromChildController.isError(), "Error in store response from Child Controller: " + storeResponseFromChildController.getError());
-      Assert.assertEquals(storeResponseFromChildController.getStore().getBackupVersionRetentionMs(), backupVersionRetentionMs);
+      Assert.assertFalse(
+          storeResponseFromChildController.isError(),
+          "Error in store response from Child Controller: " + storeResponseFromChildController.getError());
+      Assert.assertEquals(
+          storeResponseFromChildController.getStore().getBackupVersionRetentionMs(),
+          backupVersionRetentionMs);
       Assert.assertEquals(storeResponseFromChildController.getStore().getReadQuotaInCU(), 10000);
     });
   }
@@ -409,7 +467,8 @@ public class VeniceParentHelixAdminTest {
     String keySchemaStr = "\"long\"";
     Schema valueSchemaV1 = generateSchema(false);
 
-    NewStoreResponse newStoreResponse = parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaV1.toString());
+    NewStoreResponse newStoreResponse =
+        parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaV1.toString());
     Assert.assertNotNull(newStoreResponse);
     Assert.assertFalse(newStoreResponse.isError(), "error in newStoreResponse: " + newStoreResponse.getError());
 
@@ -418,7 +477,8 @@ public class VeniceParentHelixAdminTest {
     params.setAutoSchemaPushJobEnabled(true);
     ControllerResponse updateStoreResponse = parentControllerClient.updateStore(storeName, params);
     Assert.assertNotNull(updateStoreResponse);
-    Assert.assertFalse(updateStoreResponse.isError(), "error in updateStoreResponse: " + updateStoreResponse.getError());
+    Assert
+        .assertFalse(updateStoreResponse.isError(), "error in updateStoreResponse: " + updateStoreResponse.getError());
 
     Schema valueSchemaV2 = generateSchema(true);
     SchemaResponse addSchemaResponse = parentControllerClient.addValueSchema(storeName, valueSchemaV2.toString());
@@ -429,14 +489,18 @@ public class VeniceParentHelixAdminTest {
     Assert.assertNotNull(schemaResponse);
     Assert.assertFalse(schemaResponse.isError(), "error in schemaResponse: " + schemaResponse.getError());
     Assert.assertNotNull(schemaResponse.getSchemas());
-    Assert.assertEquals(schemaResponse.getSchemas().length,3,
+    Assert.assertEquals(
+        schemaResponse.getSchemas().length,
+        3,
         "2 value schemas + 1 superset schema. So should expect a total of 3 schemas.");
 
     StoreResponse storeResponse = parentControllerClient.getStore(storeName);
     Assert.assertNotNull(storeResponse);
     Assert.assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
     Assert.assertNotNull(storeResponse.getStore());
-    Assert.assertEquals(storeResponse.getStore().getLatestSuperSetValueSchemaId(), 3,
+    Assert.assertEquals(
+        storeResponse.getStore().getLatestSuperSetValueSchemaId(),
+        3,
         "Superset schema ID should be the latest schema ID among schema ID 1, 2, 3");
 
     Schema valueSchemaV3 = generateSuperSetSchemaNewField();
@@ -448,10 +512,12 @@ public class VeniceParentHelixAdminTest {
     Assert.assertNotNull(schemaResponse);
     Assert.assertFalse(schemaResponse.isError(), "error in schemaResponse: " + schemaResponse.getError());
     Assert.assertNotNull(schemaResponse.getSchemas());
-    Assert.assertEquals(schemaResponse.getSchemas().length,4);
+    Assert.assertEquals(schemaResponse.getSchemas().length, 4);
 
     storeResponse = parentControllerClient.getStore(storeName);
-    Assert.assertEquals(storeResponse.getStore().getLatestSuperSetValueSchemaId(), 4,
+    Assert.assertEquals(
+        storeResponse.getStore().getLatestSuperSetValueSchemaId(),
+        4,
         "Superset schema ID should be the same as the latest value schema because the latest value schema should "
             + "be the superset schema at this point.");
   }
@@ -475,9 +541,11 @@ public class VeniceParentHelixAdminTest {
 
     MultiSchemaResponse schemaResponse = parentControllerClient.getAllValueSchema(storeName);
 
-    Assert.assertEquals(schemaResponse.getSchemas().length,2);
+    Assert.assertEquals(schemaResponse.getSchemas().length, 2);
     StoreResponse storeResponse = parentControllerClient.getStore(storeName);
-    Assert.assertEquals(storeResponse.getStore().getLatestSuperSetValueSchemaId(), 2,
+    Assert.assertEquals(
+        storeResponse.getStore().getLatestSuperSetValueSchemaId(),
+        2,
         "Second schema should be the superset schema.");
   }
 
@@ -486,14 +554,16 @@ public class VeniceParentHelixAdminTest {
     String storeName = Utils.getUniqueString("test_store");
     String owner = "test_owner";
     String keySchemaStr = "\"long\"";
-    String schemaStr = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"id1\",\"type\":\"double\"}]}";
-    String schemaStrDoc = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field updated\"},{\"name\":\"id1\",\"type\":\"double\"}]}";
+    String schemaStr =
+        "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"id1\",\"type\":\"double\"}]}";
+    String schemaStrDoc =
+        "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field updated\"},{\"name\":\"id1\",\"type\":\"double\"}]}";
     Schema valueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
     parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
     valueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStrDoc);
     parentControllerClient.addValueSchema(storeName, valueSchema.toString());
     MultiSchemaResponse schemaResponse = parentControllerClient.getAllValueSchema(storeName);
-    Assert.assertEquals(schemaResponse.getSchemas().length,2);
+    Assert.assertEquals(schemaResponse.getSchemas().length, 2);
   }
 
   private void testAddBadValueSchema(ControllerClient parentControllerClient) {
@@ -501,8 +571,10 @@ public class VeniceParentHelixAdminTest {
     String storeName = Utils.getUniqueString("test_store");
     String owner = "test_owner";
     String keySchemaStr = "\"long\"";
-    String schemaStr = "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"kind\",\"type\":{\"type\":\"enum\",\"name\":\"Kind\",\"symbols\":[\"ONE\",\"TWO\"]}}]}";
-    String schemaStr1 = "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"kind\",\"type\":{\"type\":\"enum\",\"name\":\"Kind\",\"symbols\":[\"ONE\",\"FOUR\",\"THREE\"]}}]}";
+    String schemaStr =
+        "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"kind\",\"type\":{\"type\":\"enum\",\"name\":\"Kind\",\"symbols\":[\"ONE\",\"TWO\"]}}]}";
+    String schemaStr1 =
+        "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"kind\",\"type\":{\"type\":\"enum\",\"name\":\"Kind\",\"symbols\":[\"ONE\",\"FOUR\",\"THREE\"]}}]}";
     Schema valueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
     parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
     valueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr1);
@@ -519,7 +591,8 @@ public class VeniceParentHelixAdminTest {
 
     // Step 1. Create a store
     parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
-    MultiSchemaResponse valueAndWriteComputeSchemaResponse = parentControllerClient.getAllValueAndDerivedSchema(storeName);
+    MultiSchemaResponse valueAndWriteComputeSchemaResponse =
+        parentControllerClient.getAllValueAndDerivedSchema(storeName);
     MultiSchemaResponse.Schema[] registeredSchemas = valueAndWriteComputeSchemaResponse.getSchemas();
     Assert.assertEquals(registeredSchemas.length, 1);
     MultiSchemaResponse.Schema registeredSchema = registeredSchemas[0];
@@ -541,8 +614,7 @@ public class VeniceParentHelixAdminTest {
     ControllerResponse response = parentControllerClient.updateStore(storeName, updateStoreQueryParams);
     Assert.assertTrue(
         response.isError(),
-        "Enabling Write Compute should fail because the value schema has a field that does not have default value."
-    );
+        "Enabling Write Compute should fail because the value schema has a field that does not have default value.");
     final String expectedErrorMsg =
         "Cannot generate write-compute schema from a value Record schema that does not have default values for all its fields";
     Assert.assertTrue(response.getError().contains(expectedErrorMsg));
@@ -556,7 +628,8 @@ public class VeniceParentHelixAdminTest {
 
     // Step 1. Create a store
     parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
-    MultiSchemaResponse valueAndWriteComputeSchemaResponse = parentControllerClient.getAllValueAndDerivedSchema(storeName);
+    MultiSchemaResponse valueAndWriteComputeSchemaResponse =
+        parentControllerClient.getAllValueAndDerivedSchema(storeName);
     MultiSchemaResponse.Schema[] registeredSchemas = valueAndWriteComputeSchemaResponse.getSchemas();
     Assert.assertEquals(registeredSchemas.length, 1);
     MultiSchemaResponse.Schema registeredSchema = registeredSchemas[0];
@@ -575,7 +648,8 @@ public class VeniceParentHelixAdminTest {
     Assert.assertEquals(registeredWriteComputeSchema.size(), 1);
     Assert.assertEquals(registeredWriteComputeSchema.get(0).getId(), 1);
 
-    // Note that currently there is only one WriteComputeSchemaConverter implementation so that we know the Venice controller
+    // Note that currently there is only one WriteComputeSchemaConverter implementation so that we know the Venice
+    // controller
     // must have used this WriteComputeSchemaConverter impl to generate and register Write Compute schema.
     final WriteComputeSchemaConverter writeComputeSchemaConverter = WriteComputeSchemaConverter.getInstance();
     Schema expectedWriteComputeSchema = writeComputeSchemaConverter.convertFromValueRecordSchema(valueSchema);
@@ -593,24 +667,24 @@ public class VeniceParentHelixAdminTest {
     // Sort registered write compute schemas by their value schema IDs.
     registeredWriteComputeSchema.sort(Comparator.comparingInt(MultiSchemaResponse.Schema::getId));
     // Validate all registered write compute schemas are generated as expected.
-    expectedWriteComputeSchema = writeComputeSchemaConverter.convertFromValueRecordSchemaStr(VALUE_SCHEMA_FOR_WRITE_COMPUTE_V1);
+    expectedWriteComputeSchema =
+        writeComputeSchemaConverter.convertFromValueRecordSchemaStr(VALUE_SCHEMA_FOR_WRITE_COMPUTE_V1);
     Assert.assertEquals(registeredWriteComputeSchema.get(0).getSchemaStr(), expectedWriteComputeSchema.toString());
-    expectedWriteComputeSchema = writeComputeSchemaConverter.convertFromValueRecordSchemaStr(VALUE_SCHEMA_FOR_WRITE_COMPUTE_V2);
+    expectedWriteComputeSchema =
+        writeComputeSchemaConverter.convertFromValueRecordSchemaStr(VALUE_SCHEMA_FOR_WRITE_COMPUTE_V2);
     Assert.assertEquals(registeredWriteComputeSchema.get(1).getSchemaStr(), expectedWriteComputeSchema.toString());
-    expectedWriteComputeSchema = writeComputeSchemaConverter.convertFromValueRecordSchemaStr(VALUE_SCHEMA_FOR_WRITE_COMPUTE_V3);
+    expectedWriteComputeSchema =
+        writeComputeSchemaConverter.convertFromValueRecordSchemaStr(VALUE_SCHEMA_FOR_WRITE_COMPUTE_V3);
     Assert.assertEquals(registeredWriteComputeSchema.get(2).getSchemaStr(), expectedWriteComputeSchema.toString());
 
-    for (MultiSchemaResponse.Schema writeComputeSchema : registeredWriteComputeSchema) {
+    for (MultiSchemaResponse.Schema writeComputeSchema: registeredWriteComputeSchema) {
       Assert.assertEquals(writeComputeSchema.getDerivedSchemaId(), 1);
     }
   }
 
-
-
-
   private List<MultiSchemaResponse.Schema> getWriteComputeSchemaStrs(MultiSchemaResponse.Schema[] registeredSchemas) {
     List<MultiSchemaResponse.Schema> writeComputeSchemaStrs = new ArrayList<>();
-    for (MultiSchemaResponse.Schema schema : registeredSchemas) {
+    for (MultiSchemaResponse.Schema schema: registeredSchemas) {
       if (schema.isDerivedSchema()) {
         writeComputeSchemaStrs.add(schema);
       }
@@ -619,80 +693,44 @@ public class VeniceParentHelixAdminTest {
   }
 
   private Schema generateSchema(boolean addFieldWithDefaultValue) {
-    String schemaStr = "{\"namespace\": \"example.avro\",\n" +
-        " \"type\": \"record\",\n" +
-        " \"name\": \"User\",\n" +
-        " \"fields\": [\n" +
-        "      { \"name\": \"id\", \"type\": \"string\", \"default\": \"default_ID\"},\n" +
-        "      {\n" +
-        "       \"name\": \"value\",\n" +
-        "       \"type\": [\"null\" , {\n" +
-        "           \"type\": \"record\",\n" +
-        "           \"name\": \"ValueRecord\",\n" +
-        "           \"fields\" : [\n";
+    String schemaStr = "{\"namespace\": \"example.avro\",\n" + " \"type\": \"record\",\n" + " \"name\": \"User\",\n"
+        + " \"fields\": [\n" + "      { \"name\": \"id\", \"type\": \"string\", \"default\": \"default_ID\"},\n"
+        + "      {\n" + "       \"name\": \"value\",\n" + "       \"type\": [\"null\" , {\n"
+        + "           \"type\": \"record\",\n" + "           \"name\": \"ValueRecord\",\n"
+        + "           \"fields\" : [\n";
     if (addFieldWithDefaultValue) {
       schemaStr += "{\"name\": \"favorite_color\", \"type\": \"string\", \"default\": \"blue\"}\n";
     } else {
-      schemaStr +=   "{\"name\": \"favorite_number\", \"type\": \"int\", \"default\" : 0}\n";
+      schemaStr += "{\"name\": \"favorite_number\", \"type\": \"int\", \"default\" : 0}\n";
     }
-    schemaStr +=
-        "           ]\n" +
-            "      }]," +
-            "       \"default\": null\n" +
-            "    }\n" +
-            " ]\n" +
-            "}";
+    schemaStr += "           ]\n" + "      }]," + "       \"default\": null\n" + "    }\n" + " ]\n" + "}";
     return AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
   }
 
   private Schema generateSuperSetSchema() {
-    String schemaStr = "{\"namespace\": \"example.avro\",\n" +
-        " \"type\": \"record\",\n" +
-        " \"name\": \"User\",\n" +
-        " \"fields\": [\n" +
-        "      { \"name\": \"id\", \"type\": \"string\", \"default\": \"default_ID\"},\n" +
-        "      {\n" +
-        "       \"name\": \"value\",\n" +
-        "       \"type\": [\"null\" , {\n" +
-        "           \"type\": \"record\",\n" +
-        "           \"name\": \"ValueRecord\",\n" +
-        "           \"fields\" : [\n" +
-        "{\"name\": \"favorite_color\", \"type\": \"string\", \"default\": \"blue\"},\n" +
-        "{\"name\": \"favorite_number\", \"type\": \"int\", \"default\" : 0}\n";
+    String schemaStr = "{\"namespace\": \"example.avro\",\n" + " \"type\": \"record\",\n" + " \"name\": \"User\",\n"
+        + " \"fields\": [\n" + "      { \"name\": \"id\", \"type\": \"string\", \"default\": \"default_ID\"},\n"
+        + "      {\n" + "       \"name\": \"value\",\n" + "       \"type\": [\"null\" , {\n"
+        + "           \"type\": \"record\",\n" + "           \"name\": \"ValueRecord\",\n"
+        + "           \"fields\" : [\n"
+        + "{\"name\": \"favorite_color\", \"type\": \"string\", \"default\": \"blue\"},\n"
+        + "{\"name\": \"favorite_number\", \"type\": \"int\", \"default\" : 0}\n";
 
-    schemaStr +=
-        "           ]\n" +
-            "     }],\n" +
-            "    \"default\": null" +
-            "   }\n" +
-            " ]\n" +
-            "}";
+    schemaStr += "           ]\n" + "     }],\n" + "    \"default\": null" + "   }\n" + " ]\n" + "}";
     return AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
   }
 
   private Schema generateSuperSetSchemaNewField() {
-    String schemaStr = "{\"namespace\": \"example.avro\",\n" +
-        " \"type\": \"record\",\n" +
-        " \"name\": \"User\",\n" +
-        " \"fields\": [\n" +
-        "      { \"name\": \"id\", \"type\": \"string\", \"default\": \"default_ID\"},\n" +
-        "      {\n" +
-        "       \"name\": \"value\",\n" +
-        "       \"type\": [\"null\" ,{\n" +
-        "           \"type\": \"record\",\n" +
-        "           \"name\": \"ValueRecord\",\n" +
-        "           \"fields\" : [\n" +
-        "{\"name\": \"favorite_color\", \"type\": \"string\", \"default\": \"blue\"},\n" +
-        "{\"name\": \"favorite_company\", \"type\": \"string\", \"default\": \"linkedin\"},\n" +
-        "{\"name\": \"favorite_number\", \"type\": \"int\", \"default\" : 0}\n";
+    String schemaStr = "{\"namespace\": \"example.avro\",\n" + " \"type\": \"record\",\n" + " \"name\": \"User\",\n"
+        + " \"fields\": [\n" + "      { \"name\": \"id\", \"type\": \"string\", \"default\": \"default_ID\"},\n"
+        + "      {\n" + "       \"name\": \"value\",\n" + "       \"type\": [\"null\" ,{\n"
+        + "           \"type\": \"record\",\n" + "           \"name\": \"ValueRecord\",\n"
+        + "           \"fields\" : [\n"
+        + "{\"name\": \"favorite_color\", \"type\": \"string\", \"default\": \"blue\"},\n"
+        + "{\"name\": \"favorite_company\", \"type\": \"string\", \"default\": \"linkedin\"},\n"
+        + "{\"name\": \"favorite_number\", \"type\": \"int\", \"default\" : 0}\n";
 
-    schemaStr +=
-        "           ]\n" +
-            "      }], " +
-            "     \"default\": null\n" +
-            "    }\n" +
-            " ]\n" +
-            "}";
+    schemaStr += "           ]\n" + "      }], " + "     \"default\": null\n" + "    }\n" + " ]\n" + "}";
     return AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
   }
 }

@@ -1,5 +1,7 @@
 package com.linkedin.venice.hadoop;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.etl.ETLUtils;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
@@ -26,8 +28,6 @@ import org.apache.hadoop.io.NullWritable;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-
 
 public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapper<IndexedRecord>, NullWritable> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceAvroRecordReader.class);
@@ -52,7 +52,13 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
    * @param hdfsPath Path of the avro file in the File system
    * @param etlValueSchemaTransformation The type of transformation that was applied to this schema during ETL. When source data set is not an ETL job, use NONE.
    */
-  public VeniceAvroRecordReader(String topicName, String keyFieldStr, String valueFieldStr, FileSystem fs, Path hdfsPath, ETLValueSchemaTransformation etlValueSchemaTransformation) {
+  public VeniceAvroRecordReader(
+      String topicName,
+      String keyFieldStr,
+      String valueFieldStr,
+      FileSystem fs,
+      Path hdfsPath,
+      ETLValueSchemaTransformation etlValueSchemaTransformation) {
     super(topicName);
     if (fs != null && hdfsPath != null) {
       try {
@@ -60,8 +66,10 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
         avroDataFileStream = new DataFileStream(hdfsInputStream, new GenericDatumReader());
         fileSchema = avroDataFileStream.getSchema();
       } catch (IOException e) {
-        throw new VeniceException("Encountered exception reading Avro data from " + hdfsPath.toString() + ". Check if "
-            + "the file exists and the data is in Avro format.", e);
+        throw new VeniceException(
+            "Encountered exception reading Avro data from " + hdfsPath.toString() + ". Check if "
+                + "the file exists and the data is in Avro format.",
+            e);
       }
     }
     this.etlValueSchemaTransformation = etlValueSchemaTransformation;
@@ -69,14 +77,15 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
   }
 
   public VeniceAvroRecordReader(VeniceProperties props) {
-    this(props.getString(TOPIC_PROP),
+    this(
+        props.getString(TOPIC_PROP),
         AvroSchemaParseUtils.parseSchemaFromJSON(
-                props.getString(SCHEMA_STRING_PROP),
-                props.getBoolean(EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED, DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED)
-        ),
+            props.getString(SCHEMA_STRING_PROP),
+            props.getBoolean(EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED, DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED)),
         props.getString(KEY_FIELD_PROP),
         props.getString(VALUE_FIELD_PROP),
-        ETLValueSchemaTransformation.valueOf(props.getString(ETL_VALUE_SCHEMA_TRANSFORMATION, ETLValueSchemaTransformation.NONE.name())));
+        ETLValueSchemaTransformation
+            .valueOf(props.getString(ETL_VALUE_SCHEMA_TRANSFORMATION, ETLValueSchemaTransformation.NONE.name())));
   }
 
   /**
@@ -87,7 +96,12 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
    * @param valueFieldStr Field name of the value field
    * @param etlValueSchemaTransformation The type of transformation that was applied to this schema during ETL. When source data set is not an ETL job, use NONE.
    */
-  public VeniceAvroRecordReader(String topicName, Schema fileSchema, String keyFieldStr, String valueFieldStr, ETLValueSchemaTransformation etlValueSchemaTransformation) {
+  public VeniceAvroRecordReader(
+      String topicName,
+      Schema fileSchema,
+      String keyFieldStr,
+      String valueFieldStr,
+      ETLValueSchemaTransformation etlValueSchemaTransformation) {
     super(topicName);
     this.fileSchema = fileSchema;
     this.etlValueSchemaTransformation = etlValueSchemaTransformation;
@@ -99,17 +113,21 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
     Schema.Field valueField = fileSchema.getField(valueFieldStr);
 
     if (keyField == null) {
-      throw new VeniceSchemaFieldNotFoundException(keyFieldStr, "Could not find field: " + keyFieldStr + " from " + fileSchema.toString());
+      throw new VeniceSchemaFieldNotFoundException(
+          keyFieldStr,
+          "Could not find field: " + keyFieldStr + " from " + fileSchema.toString());
     }
 
     if (valueField == null) {
-      throw new VeniceSchemaFieldNotFoundException(valueFieldStr, "Could not find field: " + valueFieldStr + " from " + fileSchema.toString());
+      throw new VeniceSchemaFieldNotFoundException(
+          valueFieldStr,
+          "Could not find field: " + valueFieldStr + " from " + fileSchema.toString());
     }
 
     if (!etlValueSchemaTransformation.equals(ETLValueSchemaTransformation.NONE)) {
       List<Schema.Field> storeSchemaFields = new LinkedList<>();
 
-      for (Schema.Field fileField : fileSchema.getFields()) {
+      for (Schema.Field fileField: fileSchema.getFields()) {
         Schema fieldSchema = fileField.schema();
         // In our ETL jobs, when we see a "delete" record, we set the value as "null" and set the DELETED_TS to the
         // timestamp when this record was deleted. To allow the value field to be set as "null", we make the schema of
@@ -122,7 +140,8 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
         storeSchemaFields.add(AvroCompatibilityHelper.newField(fileField).setSchema(fieldSchema).build());
       }
 
-      storeSchema = Schema.createRecord(fileSchema.getName(), fileSchema.getDoc(), fileSchema.getNamespace(), fileSchema.isError());
+      storeSchema = Schema
+          .createRecord(fileSchema.getName(), fileSchema.getDoc(), fileSchema.getNamespace(), fileSchema.isError());
       storeSchema.setFields(storeSchemaFields);
     } else {
       storeSchema = fileSchema;
@@ -201,7 +220,8 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
       try {
         AvroWrapper<IndexedRecord> hadoopKey = new AvroWrapper<>((IndexedRecord) avroObject);
         NullWritable hadoopValue = NullWritable.get();
-        byte[] keyBytes = recordReader.getKeySerializer().serialize(topic, recordReader.getAvroKey(hadoopKey, hadoopValue));
+        byte[] keyBytes =
+            recordReader.getKeySerializer().serialize(topic, recordReader.getAvroKey(hadoopKey, hadoopValue));
         Object avroValue = recordReader.getAvroValue(hadoopKey, hadoopValue);
         byte[] valueBytes = null;
         if (avroValue != null) {

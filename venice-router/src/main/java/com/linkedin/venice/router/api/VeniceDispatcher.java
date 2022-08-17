@@ -1,5 +1,8 @@
 package com.linkedin.venice.router.api;
 
+import static com.linkedin.venice.HttpConstants.*;
+import static io.netty.handler.codec.http.HttpResponseStatus.*;
+
 import com.linkedin.ddsstorage.base.concurrency.AsyncFuture;
 import com.linkedin.ddsstorage.base.concurrency.AsyncPromise;
 import com.linkedin.ddsstorage.netty4.misc.BasicHttpRequest;
@@ -50,9 +53,6 @@ import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.HttpConstants.*;
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
-
 
 public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, VenicePath, RouterKey> {
   private static final Logger logger = LogManager.getLogger(VeniceDispatcher.class);
@@ -60,12 +60,14 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
    * This map is used to capture all the {@link CompletableFuture} returned by {@link #storageNodeClient},
    * and it is used to clean up the leaked futures in {@link LeakedCompletableFutureCleanupService}.
    */
-  private final VeniceConcurrentHashMap<Long, TimedCompletableFuture> responseFutureMap = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<Long, TimedCompletableFuture> responseFutureMap =
+      new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, ReentrantLock> storageNodeLockMap = new VeniceConcurrentHashMap<>();
   private final AtomicLong uniqueRequestId = new AtomicLong(0);
 
   private static final Set<Integer> PASS_THROUGH_ERROR_CODES = Utils.setOf(TOO_MANY_REQUESTS.code());
-  private static final Set<Integer> RETRIABLE_ERROR_CODES = Utils.setOf(INTERNAL_SERVER_ERROR.code(), SERVICE_UNAVAILABLE.code());
+  private static final Set<Integer> RETRIABLE_ERROR_CODES =
+      Utils.setOf(INTERNAL_SERVER_ERROR.code(), SERVICE_UNAVAILABLE.code());
 
   private final VeniceRouterConfig routerConfig;
   private final ReadOnlyStoreRepository storeRepository;
@@ -172,7 +174,9 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     });
   }
 
-  protected CompletableFuture<PortableHttpResponse> sendRequest(Instance storageNode, VenicePath path,
+  protected CompletableFuture<PortableHttpResponse> sendRequest(
+      Instance storageNode,
+      VenicePath path,
       AsyncPromise<HttpResponseStatus> retryFuture) throws RouterException {
 
     String storeName = path.getStoreName();
@@ -180,8 +184,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     RequestType requestType = path.getRequestType();
 
     long startTime = System.nanoTime();
-    TimedCompletableFuture<PortableHttpResponse>
-        responseFuture = new TimedCompletableFuture<>(System.currentTimeMillis(), storageNode.getNodeId());
+    TimedCompletableFuture<PortableHttpResponse> responseFuture =
+        new TimedCompletableFuture<>(System.currentTimeMillis(), storageNode.getNodeId());
 
     /**
      * TODO: Consider removing the per router level pendingRequestThrottler once {@link RouterThrottleHandler} is
@@ -199,7 +203,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
               + pendingRequestThrottler.getCurrentPendingRequestCount());
     }
 
-    ReentrantLock lock = storageNodeLockMap.computeIfAbsent(hostName, id ->  new ReentrantLock());
+    ReentrantLock lock = storageNodeLockMap.computeIfAbsent(hostName, id -> new ReentrantLock());
     boolean isRequestThrottled = false;
     lock.lock();
     try {
@@ -207,15 +211,21 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
 
       if (isStatefulHealthCheckEnabled && pendingRequestCount > routerUnhealthyPendingConnThresholdPerRoute) {
         isRequestThrottled = true;
-        // try to trigger error retry if its not cancelled already. if retry is cancelled throw exception which increases the unhealthy request metric.
+        // try to trigger error retry if its not cancelled already. if retry is cancelled throw exception which
+        // increases the unhealthy request metric.
         if (!retryFuture.isCancelled()) {
           retryFuture.setSuccess(INTERNAL_SERVER_ERROR);
-          responseFuture.completeExceptionally(new VeniceException("Triggering error retry, too many pending request to storage node :" + hostName));
-          perStoreStatsByType.getStatsByType(path.getRequestType()).recordErrorRetryAttemptTriggeredByPendingRequestCheck(storeName);
+          responseFuture.completeExceptionally(
+              new VeniceException("Triggering error retry, too many pending request to storage node :" + hostName));
+          perStoreStatsByType.getStatsByType(path.getRequestType())
+              .recordErrorRetryAttemptTriggeredByPendingRequestCheck(storeName);
           return responseFuture;
         } else {
-          throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName),
-              Optional.of(requestType), SERVICE_UNAVAILABLE, "Too many pending request to storage node : " + hostName);
+          throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+              Optional.of(storeName),
+              Optional.of(requestType),
+              SERVICE_UNAVAILABLE,
+              "Too many pending request to storage node : " + hostName);
         }
       }
       routeHttpRequestStats.recordPendingRequest(storageNode.getNodeId());
@@ -228,7 +238,12 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
          * to decide whether a storage node is suitable for retry request.
          */
         path.requestStorageNode(storageNode.getNodeId());
-        storageNodeClient.query(storageNode, path, responseFuture::complete, responseFuture::completeExceptionally, () -> responseFuture.cancel(false),
+        storageNodeClient.query(
+            storageNode,
+            path,
+            responseFuture::complete,
+            responseFuture::completeExceptionally,
+            () -> responseFuture.cancel(false),
             startTime);
       } catch (Throwable throwable) {
         responseFuture.completeExceptionally(throwable);
@@ -248,7 +263,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     }
   }
 
-  protected VeniceFullHttpResponse buildResponse(VenicePath path, PortableHttpResponse serverResponse) throws IOException {
+  protected VeniceFullHttpResponse buildResponse(VenicePath path, PortableHttpResponse serverResponse)
+      throws IOException {
     int statusCode = serverResponse.getStatusCode();
     ByteBuf content = serverResponse.getContentInByteBuf();
 
@@ -291,8 +307,11 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
             contentDecompressResult = new ContentDecompressResult(content, CompressionStrategy.NO_OP, 0);
             break;
           default:
-            throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(),
-                INTERNAL_SERVER_ERROR, "Unknown request type: " + path.getRequestType());
+            throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
+                Optional.empty(),
+                Optional.empty(),
+                INTERNAL_SERVER_ERROR,
+                "Unknown request type: " + path.getRequestType());
         }
 
         content = contentDecompressResult.getContent();
@@ -303,13 +322,19 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       contentCompression = CompressionStrategy.NO_OP;
     }
 
-    VeniceFullHttpResponse response = new VeniceFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(statusCode), content, decompressionTimeInNs);
+    VeniceFullHttpResponse response = new VeniceFullHttpResponse(
+        HttpVersion.HTTP_1_1,
+        HttpResponseStatus.valueOf(statusCode),
+        content,
+        decompressionTimeInNs);
     response.headers()
         .set(HttpHeaderNames.CONTENT_TYPE, serverResponse.getFirstHeader(HttpHeaders.CONTENT_TYPE))
         .set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes())
         .set(HttpConstants.VENICE_SCHEMA_ID, serverResponse.getFirstHeader(HttpConstants.VENICE_SCHEMA_ID))
         .set(HttpConstants.VENICE_COMPRESSION_STRATEGY, contentCompression.getValue())
-        .set(VENICE_REQUEST_RCU, serverResponse.containsHeader(VENICE_REQUEST_RCU) ? serverResponse.getFirstHeader(VENICE_REQUEST_RCU) : 1);
+        .set(
+            VENICE_REQUEST_RCU,
+            serverResponse.containsHeader(VENICE_REQUEST_RCU) ? serverResponse.getFirstHeader(VENICE_REQUEST_RCU) : 1);
     return response;
   }
 
@@ -346,6 +371,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
   private static class TimedCompletableFuture<T> extends CompletableFuture<T> {
     private final long requestTime;
     private final String hostName;
+
     public TimedCompletableFuture(long requestTime, String hostName) {
       this.requestTime = requestTime;
       this.hostName = hostName;
@@ -365,6 +391,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
   private class LeakedCompletableFutureCleanupService extends Thread {
     private final long pollIntervalMs;
     private final long cleanupThresholdMs;
+
     public LeakedCompletableFutureCleanupService() {
       super("LeakedCompletableFutureCleanupService");
       this.pollIntervalMs = routerConfig.getLeakedFutureCleanupPollIntervalMs();
@@ -376,7 +403,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       while (true) {
         try {
           Thread.sleep(pollIntervalMs);
-          responseFutureMap.forEach( (requestId, responseFuture) -> {
+          responseFutureMap.forEach((requestId, responseFuture) -> {
             if (System.currentTimeMillis() - responseFuture.requestTime >= cleanupThresholdMs) {
               logger.warn("Cleaning up the leaked response future: " + responseFuture);
               responseFuture.completeExceptionally(new VeniceException("Leaking response future"));

@@ -16,13 +16,17 @@ import org.apache.logging.log4j.Logger;
 public class R2ClientCallback implements Callback<RestResponse> {
   private static final Logger logger = LogManager.getLogger(R2ClientCallback.class);
   private final Consumer<PortableHttpResponse> responseConsumer;
-  private final Consumer<Throwable>  failedCallback;
+  private final Consumer<Throwable> failedCallback;
   private final BooleanSupplier cancelledCallBack;
   private static final StackTraceElement[] emptyStackTrace = new StackTraceElement[0];
 
-  protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = RedundantExceptionFilter.getRedundantExceptionFilter();
+  protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
-  public R2ClientCallback(Consumer<PortableHttpResponse> responseConsumer, Consumer<Throwable> failedCallback, BooleanSupplier cancelledCallBack) {
+  public R2ClientCallback(
+      Consumer<PortableHttpResponse> responseConsumer,
+      Consumer<Throwable> failedCallback,
+      BooleanSupplier cancelledCallBack) {
     this.responseConsumer = responseConsumer;
     this.failedCallback = failedCallback;
     this.cancelledCallBack = cancelledCallBack;
@@ -30,7 +34,7 @@ public class R2ClientCallback implements Callback<RestResponse> {
 
   @Override
   public void onError(Throwable e) {
-    if (e instanceof RestException){
+    if (e instanceof RestException) {
       // Get the RestResponse for status codes other than 200
       RestResponse result = ((RestException) e).getResponse();
       onSuccess(result);
@@ -74,7 +78,6 @@ public class R2ClientCallback implements Callback<RestResponse> {
       return Unpooled.wrappedBuffer(response.getEntity().asByteBuffer());
     }
 
-
     @Override
     public boolean containsHeader(String headerName) {
       return response.getHeaders().containsKey(headerName);
@@ -86,4 +89,3 @@ public class R2ClientCallback implements Callback<RestResponse> {
     }
   }
 }
-

@@ -16,10 +16,8 @@ import java.util.Map;
 
 
 public enum ComputeOperationType {
-  DOT_PRODUCT(0, new DotProductOperator()),
-  COSINE_SIMILARITY(1, new CosineSimilarityOperator()),
-  HADAMARD_PRODUCT(2, new HadamardProductOperator()),
-  COUNT(3, new CountOperator());
+  DOT_PRODUCT(0, new DotProductOperator()), COSINE_SIMILARITY(1, new CosineSimilarityOperator()),
+  HADAMARD_PRODUCT(2, new HadamardProductOperator()), COUNT(3, new CountOperator());
 
   private final ReadComputeOperator operator;
   private final int value;
@@ -59,7 +57,7 @@ public enum ComputeOperationType {
 
   private static Map<Integer, ComputeOperationType> getOperationTypeMap() {
     Map<Integer, ComputeOperationType> intToTypeMap = new HashMap<>();
-    for (ComputeOperationType type : ComputeOperationType.values()) {
+    for (ComputeOperationType type: ComputeOperationType.values()) {
       intToTypeMap.put(type.value, type);
     }
     return intToTypeMap;
@@ -69,7 +67,7 @@ public enum ComputeOperationType {
     return value;
   }
 
-  public ReadComputeOperator getOperator(){
+  public ReadComputeOperator getOperator() {
     return operator;
   }
 }

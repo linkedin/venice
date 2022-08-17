@@ -28,12 +28,25 @@ import org.apache.avro.io.BinaryDecoder;
 public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<ChunkedValueInputStream, T> {
   private static final int UNUSED_INPUT_BYTES_LENGTH = -1;
 
-  protected RecordDeserializer<T> getDeserializer(String storeName, int writerSchemaId,
-      ReadOnlySchemaRepository schemaRepo, boolean fastAvroEnabled) {
-    return getDeserializer(storeName, writerSchemaId, schemaRepo.getLatestValueSchema(storeName).getId(), schemaRepo, fastAvroEnabled);
+  protected RecordDeserializer<T> getDeserializer(
+      String storeName,
+      int writerSchemaId,
+      ReadOnlySchemaRepository schemaRepo,
+      boolean fastAvroEnabled) {
+    return getDeserializer(
+        storeName,
+        writerSchemaId,
+        schemaRepo.getLatestValueSchema(storeName).getId(),
+        schemaRepo,
+        fastAvroEnabled);
   }
 
-  protected abstract RecordDeserializer<T> getDeserializer(String storeName, int writerSchemaId, int readerSchemaId, ReadOnlySchemaRepository schemaRepo, boolean fastAvroEnabled);
+  protected abstract RecordDeserializer<T> getDeserializer(
+      String storeName,
+      int writerSchemaId,
+      int readerSchemaId,
+      ReadOnlySchemaRepository schemaRepo,
+      boolean fastAvroEnabled);
 
   @Override
   public T constructValue(
@@ -89,7 +102,10 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
   }
 
   @Override
-  public void addChunkIntoContainer(ChunkedValueInputStream chunkedValueInputStream, int chunkIndex, byte[] valueChunk) {
+  public void addChunkIntoContainer(
+      ChunkedValueInputStream chunkedValueInputStream,
+      int chunkIndex,
+      byte[] valueChunk) {
     chunkedValueInputStream.setChunk(chunkIndex, valueChunk);
   }
 
@@ -137,11 +153,25 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       String storeName,
       StorageEngineBackedCompressorFactory compressorFactory,
       boolean skipCache) {
-    return get(store, schemaRepo.getLatestValueSchema(storeName).getId(), partition, key, isChunked, reusedValue,
-        reusedDecoder, response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory, skipCache);
+    return get(
+        store,
+        schemaRepo.getLatestValueSchema(storeName).getId(),
+        partition,
+        key,
+        isChunked,
+        reusedValue,
+        reusedDecoder,
+        response,
+        compressionStrategy,
+        fastAvroEnabled,
+        schemaRepo,
+        storeName,
+        compressorFactory,
+        skipCache);
   }
 
-  public T get(AbstractStorageEngine store,
+  public T get(
+      AbstractStorageEngine store,
       int readerSchemaID,
       int partition,
       ByteBuffer key,
@@ -158,8 +188,21 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
     if (isChunked) {
       key = ByteBuffer.wrap(ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key));
     }
-    return ChunkingUtils.getFromStorage(this, store, readerSchemaID, partition, key, response, reusedValue,
-        reusedDecoder, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory, skipCache);
+    return ChunkingUtils.getFromStorage(
+        this,
+        store,
+        readerSchemaID,
+        partition,
+        key,
+        response,
+        reusedValue,
+        reusedDecoder,
+        compressionStrategy,
+        fastAvroEnabled,
+        schemaRepo,
+        storeName,
+        compressorFactory,
+        skipCache);
   }
 
   public T get(
@@ -179,8 +222,20 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
     if (isChunked) {
       key = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key);
     }
-    return ChunkingUtils.getFromStorage(this, store, partition, key, reusedRawValue, reusedValue,
-        reusedDecoder, response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory);
+    return ChunkingUtils.getFromStorage(
+        this,
+        store,
+        partition,
+        key,
+        reusedRawValue,
+        reusedValue,
+        reusedDecoder,
+        response,
+        compressionStrategy,
+        fastAvroEnabled,
+        schemaRepo,
+        storeName,
+        compressorFactory);
   }
 
   public T get(
@@ -205,7 +260,20 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       int subPartitionOffset = partitioner.getPartitionId(key, amplificationFactor);
       subPartition = userPartition * amplificationFactor + subPartitionOffset;
     }
-    return get(storeName, store, subPartition, key, reusedRawValue, reusedValue, reusedDecoder, isChunked, compressionStrategy, fastAvroEnabled, schemaRepo, response, compressorFactory);
+    return get(
+        storeName,
+        store,
+        subPartition,
+        key,
+        reusedRawValue,
+        reusedValue,
+        reusedDecoder,
+        isChunked,
+        compressionStrategy,
+        fastAvroEnabled,
+        schemaRepo,
+        response,
+        compressorFactory);
   }
 
   public void getByPartialKey(
@@ -233,56 +301,97 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
     int amplificationFactor = partitionerConfig == null ? 1 : partitionerConfig.getAmplificationFactor();
 
     int subPartitionCount = (userPartition + 1) * amplificationFactor;
-    for (subPartition = userPartition * amplificationFactor; subPartition < subPartitionCount; subPartition++){
-      ChunkingUtils.getFromStorageByPartialKey(this, store, subPartition, keyPrefixBytes, reusedValue, keyRecordDeserializer,
-          reusedDecoder, response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory, computingCallback);
+    for (subPartition = userPartition * amplificationFactor; subPartition < subPartitionCount; subPartition++) {
+      ChunkingUtils.getFromStorageByPartialKey(
+          this,
+          store,
+          subPartition,
+          keyPrefixBytes,
+          reusedValue,
+          keyRecordDeserializer,
+          reusedDecoder,
+          response,
+          compressionStrategy,
+          fastAvroEnabled,
+          schemaRepo,
+          storeName,
+          compressorFactory,
+          computingCallback);
     }
   }
 
-  private final DecompressingDecoderWrapperValueOnly<byte[], T> byteArrayDecompressingDecoderValueOnly =
-      (reusedDecoder, bytes, offset, inputBytesLength, reusedValue, veniceCompressor, deserializer, readResponse) ->
-          deserializer.deserialize(
-              reusedValue,
-              veniceCompressor.decompress(
-                  bytes,
-                  offset,
-                  inputBytesLength),
-              reusedDecoder);
+  private final DecompressingDecoderWrapperValueOnly<byte[], T> byteArrayDecompressingDecoderValueOnly = (
+      reusedDecoder,
+      bytes,
+      offset,
+      inputBytesLength,
+      reusedValue,
+      veniceCompressor,
+      deserializer,
+      readResponse) -> deserializer
+          .deserialize(reusedValue, veniceCompressor.decompress(bytes, offset, inputBytesLength), reusedDecoder);
 
+  private final DecoderWrapper<byte[], T> byteArrayDecoder = (
+      reusedDecoder,
+      bytes,
+      inputBytesLength,
+      reusedValue,
+      compressionStrategy,
+      deserializer,
+      readResponse,
+      compressorFactory,
+      versionTopic) -> deserializer.deserialize(
+          reusedValue,
+          ByteBuffer.wrap(bytes, ValueRecord.SCHEMA_HEADER_LENGTH, inputBytesLength - ValueRecord.SCHEMA_HEADER_LENGTH),
+          reusedDecoder);
 
-  private final DecoderWrapper<byte[], T> byteArrayDecoder =
-      (reusedDecoder, bytes, inputBytesLength, reusedValue, compressionStrategy, deserializer, readResponse, compressorFactory, versionTopic) ->
-          deserializer.deserialize(
-              reusedValue,
-              ByteBuffer.wrap(
-                  bytes,
-                  ValueRecord.SCHEMA_HEADER_LENGTH,
-                  inputBytesLength - ValueRecord.SCHEMA_HEADER_LENGTH),
-              reusedDecoder);
+  private final DecoderWrapper<InputStream, T> decompressingInputStreamDecoder = (
+      reusedDecoder,
+      inputStream,
+      inputBytesLength,
+      reusedValue,
+      compressionStrategy,
+      deserializer,
+      readResponse,
+      compressorFactory,
+      versionTopic) -> {
+    VeniceCompressor compressor = compressorFactory.getCompressor(compressionStrategy, versionTopic);
+    try (InputStream decompressedInputStream = compressor.decompress(inputStream)) {
+      return deserializer.deserialize(reusedValue, decompressedInputStream, reusedDecoder);
+    } catch (IOException e) {
+      throw new VeniceException("Failed to decompress, compressionStrategy: " + compressionStrategy.name(), e);
+    }
+  };
 
-  private final DecoderWrapper<InputStream, T> decompressingInputStreamDecoder =
-      (reusedDecoder, inputStream, inputBytesLength, reusedValue, compressionStrategy, deserializer, readResponse, compressorFactory, versionTopic) -> {
-        VeniceCompressor compressor = compressorFactory.getCompressor(compressionStrategy, versionTopic);
-        try (InputStream decompressedInputStream = compressor.decompress(inputStream)) {
-          return deserializer.deserialize(reusedValue, decompressedInputStream, reusedDecoder);
-        } catch (IOException e) {
-          throw new VeniceException("Failed to decompress, compressionStrategy: " + compressionStrategy.name(), e);
-        }
-      };
+  private final DecoderWrapper<byte[], T> decompressingByteArrayDecoder = (
+      reusedDecoder,
+      bytes,
+      inputBytesLength,
+      reusedValue,
+      compressionStrategy,
+      deserializer,
+      readResponse,
+      compressorFactory,
+      versionTopic) -> {
+    try (InputStream inputStream = new ByteArrayInputStream(
+        bytes,
+        ValueRecord.SCHEMA_HEADER_LENGTH,
+        inputBytesLength - ValueRecord.SCHEMA_HEADER_LENGTH)) {
 
-  private final DecoderWrapper<byte[], T> decompressingByteArrayDecoder =
-      (reusedDecoder, bytes, inputBytesLength, reusedValue, compressionStrategy, deserializer, readResponse, compressorFactory, versionTopic) -> {
-        try (InputStream inputStream = new ByteArrayInputStream(
-            bytes,
-            ValueRecord.SCHEMA_HEADER_LENGTH,
-            inputBytesLength - ValueRecord.SCHEMA_HEADER_LENGTH)) {
-
-          return decompressingInputStreamDecoder.decode(reusedDecoder, inputStream, inputBytesLength, reusedValue,
-              compressionStrategy, deserializer, readResponse, compressorFactory, versionTopic);
-        } catch (IOException e) {
-          throw new VeniceException("Failed to decompress, compressionStrategy: " + compressionStrategy.name(), e);
-        }
-      };
+      return decompressingInputStreamDecoder.decode(
+          reusedDecoder,
+          inputStream,
+          inputBytesLength,
+          reusedValue,
+          compressionStrategy,
+          deserializer,
+          readResponse,
+          compressorFactory,
+          versionTopic);
+    } catch (IOException e) {
+      throw new VeniceException("Failed to decompress, compressionStrategy: " + compressionStrategy.name(), e);
+    }
+  };
 
   private final DecoderWrapper<byte[], T> instrumentedByteArrayDecoder =
       new InstrumentedDecoderWrapper<>(byteArrayDecoder);
@@ -293,22 +402,18 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
   private final DecoderWrapper<InputStream, T> instrumentedDecompressingInputStreamDecoder =
       new InstrumentedDecoderWrapper(decompressingInputStreamDecoder);
 
-  private DecoderWrapper<byte[], T> getByteArrayDecoder(CompressionStrategy compressionStrategy, ReadResponse response) {
+  private DecoderWrapper<byte[], T> getByteArrayDecoder(
+      CompressionStrategy compressionStrategy,
+      ReadResponse response) {
     if (compressionStrategy == CompressionStrategy.NO_OP) {
-      return (null == response)
-          ? byteArrayDecoder
-          : instrumentedByteArrayDecoder;
+      return (null == response) ? byteArrayDecoder : instrumentedByteArrayDecoder;
     } else {
-      return (null == response)
-          ? decompressingByteArrayDecoder
-          : instrumentedDecompressingByteArrayDecoder;
+      return (null == response) ? decompressingByteArrayDecoder : instrumentedDecompressingByteArrayDecoder;
     }
   }
 
   private DecoderWrapper<InputStream, T> getInputStreamDecoder(ReadResponse response) {
-    return (null == response)
-        ? decompressingInputStreamDecoder
-        : instrumentedDecompressingInputStreamDecoder;
+    return (null == response) ? decompressingInputStreamDecoder : instrumentedDecompressingInputStreamDecoder;
   }
 
   private interface DecoderWrapper<INPUT, OUTPUT> {
@@ -366,7 +471,16 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         StorageEngineBackedCompressorFactory compressorFactory,
         String versionTopic) {
       long deserializeStartTimeInNS = System.nanoTime();
-      OUTPUT output = delegate.decode(reusedDecoder, input, inputBytesLength, reusedValue, compressionStrategy, deserializer, response, compressorFactory, versionTopic);
+      OUTPUT output = delegate.decode(
+          reusedDecoder,
+          input,
+          inputBytesLength,
+          reusedValue,
+          compressionStrategy,
+          deserializer,
+          response,
+          compressorFactory,
+          versionTopic);
       response.addReadComputeDeserializationLatency(LatencyUtils.getLatencyInMS(deserializeStartTimeInNS));
       return output;
     }

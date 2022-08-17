@@ -25,17 +25,18 @@ public class HybridStoreConfigImpl implements HybridStoreConfig {
       @JsonProperty("offsetLagThresholdToGoOnline") long offsetLagThresholdToGoOnline,
       @JsonProperty("producerTimestampLagThresholdToGoOnlineInSeconds") long producerTimestampLagThresholdToGoOnlineInSeconds,
       @JsonProperty("dataReplicationPolicy") DataReplicationPolicy dataReplicationPolicy,
-      @JsonProperty("bufferReplayPolicy") BufferReplayPolicy bufferReplayPolicy
-  ) {
+      @JsonProperty("bufferReplayPolicy") BufferReplayPolicy bufferReplayPolicy) {
     this.hybridConfig = new StoreHybridConfig();
     this.hybridConfig.rewindTimeInSeconds = rewindTimeInSeconds;
     this.hybridConfig.offsetLagThresholdToGoOnline = offsetLagThresholdToGoOnline;
-    this.hybridConfig.producerTimestampLagThresholdToGoOnlineInSeconds = producerTimestampLagThresholdToGoOnlineInSeconds;
+    this.hybridConfig.producerTimestampLagThresholdToGoOnlineInSeconds =
+        producerTimestampLagThresholdToGoOnlineInSeconds;
     this.hybridConfig.dataReplicationPolicy = dataReplicationPolicy == null
-        ? DataReplicationPolicy.NON_AGGREGATE.getValue() // for deserializing old hybrid config that didn't have data replication policy
+        ? DataReplicationPolicy.NON_AGGREGATE.getValue() // for deserializing old hybrid config that didn't have data
+                                                         // replication policy
         : dataReplicationPolicy.getValue();
-    this.hybridConfig.bufferReplayPolicy = bufferReplayPolicy == null ? BufferReplayPolicy.REWIND_FROM_EOP.getValue() :
-        bufferReplayPolicy.getValue();
+    this.hybridConfig.bufferReplayPolicy =
+        bufferReplayPolicy == null ? BufferReplayPolicy.REWIND_FROM_EOP.getValue() : bufferReplayPolicy.getValue();
   }
 
   HybridStoreConfigImpl(StoreHybridConfig config) {
@@ -100,7 +101,7 @@ public class HybridStoreConfigImpl implements HybridStoreConfig {
   }
 
   @JsonIgnore
-  public HybridStoreConfig clone(){
+  public HybridStoreConfig clone() {
     return new HybridStoreConfigImpl(
         getRewindTimeInSeconds(),
         getOffsetLagThresholdToGoOnline(),

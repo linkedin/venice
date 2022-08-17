@@ -27,8 +27,10 @@ public abstract class TrackingStreamingCallback<K, V> extends StreamingCallback<
    * @param successKeyCnt, this param indicates the total number of existing keys
    * @param duplicateEntryCnt
    */
-  public abstract void onDeserializationCompletion(Optional<VeniceClientException> veniceException,
-      int successKeyCnt, int duplicateEntryCnt);
+  public abstract void onDeserializationCompletion(
+      Optional<VeniceClientException> veniceException,
+      int successKeyCnt,
+      int duplicateEntryCnt);
 
   public abstract ClientStats getStats();
 

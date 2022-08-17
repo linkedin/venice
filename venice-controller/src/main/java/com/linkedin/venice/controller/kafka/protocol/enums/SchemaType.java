@@ -1,9 +1,9 @@
 package com.linkedin.venice.controller.kafka.protocol.enums;
 
 import com.linkedin.venice.exceptions.VeniceMessageException;
-
 import java.util.HashMap;
 import java.util.Map;
+
 
 public enum SchemaType {
   AVRO_1_4(0);
@@ -17,7 +17,7 @@ public enum SchemaType {
 
   private static Map<Integer, SchemaType> getSchemaTypeMap() {
     Map<Integer, SchemaType> intToTypeMap = new HashMap<>();
-    for (SchemaType type : SchemaType.values()) {
+    for (SchemaType type: SchemaType.values()) {
       intToTypeMap.put(type.value, type);
     }
     return intToTypeMap;

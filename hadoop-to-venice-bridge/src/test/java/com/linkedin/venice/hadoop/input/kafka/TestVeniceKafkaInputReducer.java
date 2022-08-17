@@ -26,7 +26,7 @@ public class TestVeniceKafkaInputReducer {
   public List<BytesWritable> getValues(List<MapperValueType> valueTypes) {
     List<BytesWritable> values = new ArrayList<>();
     long offset = 0;
-    for (MapperValueType valueType : valueTypes) {
+    for (MapperValueType valueType: valueTypes) {
       KafkaInputMapperValue value = new KafkaInputMapperValue();
       value.offset = offset++;
       value.schemaId = -1;
@@ -54,13 +54,11 @@ public class TestVeniceKafkaInputReducer {
     /**
      * Construct a list of values, which contain only 'PUT'.
      */
-    List<BytesWritable> values = getValues(Arrays.asList(
-        MapperValueType.PUT,
-        MapperValueType.PUT,
-        MapperValueType.PUT
-    ));
+    List<BytesWritable> values =
+        getValues(Arrays.asList(MapperValueType.PUT, MapperValueType.PUT, MapperValueType.PUT));
 
-    Optional<VeniceReducer.VeniceWriterMessage> messageOptional = reducer.extract(keyWritable, values.iterator(), Mockito.mock(Reporter.class));
+    Optional<VeniceReducer.VeniceWriterMessage> messageOptional =
+        reducer.extract(keyWritable, values.iterator(), Mockito.mock(Reporter.class));
     Assert.assertTrue(messageOptional.isPresent());
     VeniceReducer.VeniceWriterMessage message = messageOptional.get();
     Assert.assertEquals(message.getKeyBytes(), keyBytes);
@@ -70,11 +68,7 @@ public class TestVeniceKafkaInputReducer {
     /**
      * Construct a list of values, which contains both 'PUT' and 'DELETE', but 'DELETE' is the last one.
      */
-    values = getValues(Arrays.asList(
-        MapperValueType.PUT,
-        MapperValueType.PUT,
-        MapperValueType.DELETE
-    ));
+    values = getValues(Arrays.asList(MapperValueType.PUT, MapperValueType.PUT, MapperValueType.DELETE));
 
     messageOptional = reducer.extract(keyWritable, values.iterator(), Mockito.mock(Reporter.class));
     Assert.assertTrue(messageOptional.isPresent());
@@ -82,11 +76,7 @@ public class TestVeniceKafkaInputReducer {
     /**
      * Construct a list of values, which contains both 'PUT' and 'DELETE', but 'DELETE' is in the middle.
      */
-    values = getValues(Arrays.asList(
-        MapperValueType.PUT,
-        MapperValueType.DELETE,
-        MapperValueType.PUT
-    ));
+    values = getValues(Arrays.asList(MapperValueType.PUT, MapperValueType.DELETE, MapperValueType.PUT));
 
     messageOptional = reducer.extract(keyWritable, values.iterator(), Mockito.mock(Reporter.class));
     Assert.assertTrue(messageOptional.isPresent());

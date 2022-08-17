@@ -1,11 +1,11 @@
 package com.linkedin.davinci.replication.merge;
 
+import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
+
 import com.linkedin.venice.schema.merge.ValueAndReplicationMetadata;
 import java.util.List;
 import java.util.Optional;
 import org.apache.avro.generic.GenericRecord;
-
-import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
 
 
 /**
@@ -14,15 +14,13 @@ import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
  * @param <T> type of value that merge happens on.
  */
 abstract class AbstractMerge<T> implements Merge<T> {
-
   protected ValueAndReplicationMetadata<T> putWithRecordLevelTimestamp(
       final long oldTimestamp,
       ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata,
       final long putOperationTimestamp,
       final long newValueSourceOffset,
       final int newValueSourceBrokerID,
-      T newValue
-  ) {
+      T newValue) {
     final GenericRecord oldReplicationMetadata = oldValueAndReplicationMetadata.getReplicationMetadata();
 
     if (oldTimestamp < putOperationTimestamp) {
@@ -54,8 +52,7 @@ abstract class AbstractMerge<T> implements Merge<T> {
       final long deleteOperationTimestamp,
       final long newValueSourceOffset,
       final int newValueSourceBrokerID,
-      ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata
-  ) {
+      ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata) {
     // Delete wins when old and new write operation timestamps are equal.
     if (oldTimestamp <= deleteOperationTimestamp) {
       oldValueAndReplicationMetadata.setValue(null);
@@ -70,15 +67,16 @@ abstract class AbstractMerge<T> implements Merge<T> {
     return oldValueAndReplicationMetadata;
   }
 
-  protected void updateReplicationCheckpointVector(GenericRecord oldReplicationMetadata, long newValueSourceOffset, int newValueSourceBrokerID) {
+  protected void updateReplicationCheckpointVector(
+      GenericRecord oldReplicationMetadata,
+      long newValueSourceOffset,
+      int newValueSourceBrokerID) {
     oldReplicationMetadata.put(
         REPLICATION_CHECKPOINT_VECTOR_FIELD,
         MergeUtils.mergeOffsetVectors(
             Optional.ofNullable((List<Long>) oldReplicationMetadata.get(REPLICATION_CHECKPOINT_VECTOR_FIELD)),
             newValueSourceOffset,
-            newValueSourceBrokerID
-        )
-    );
+            newValueSourceBrokerID));
   }
 
   /**

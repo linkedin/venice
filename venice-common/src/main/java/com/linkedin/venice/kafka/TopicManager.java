@@ -1,5 +1,7 @@
 package com.linkedin.venice.kafka;
 
+import static com.linkedin.venice.ConfigConstants.*;
+
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -11,9 +13,9 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.RetryUtils;
-import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2LongMap;
 import java.io.Closeable;
@@ -38,8 +40,6 @@ import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.ConfigConstants.*;
-
 
 /**
  * Topic Manager is shared by multiple cluster's controllers running in one physical Venice controller instance.
@@ -50,7 +50,6 @@ import static com.linkedin.venice.ConfigConstants.*;
  * use the same consumer: KafkaConsumer is not safe for multi-threaded access.
  */
 public class TopicManager implements Closeable {
-
   private static final int MINIMUM_TOPIC_DELETION_STATUS_POLL_TIMES = 10;
   private static final int FAST_KAFKA_OPERATION_TIMEOUT_MS = Time.MS_PER_SECOND;
   protected static final long ETERNAL_TOPIC_RETENTION_POLICY_MS = Long.MAX_VALUE;
@@ -76,9 +75,10 @@ public class TopicManager implements Closeable {
    */
   public static final boolean CONCURRENT_TOPIC_DELETION_REQUEST_POLICY = false;
 
-  private static final List<Class<? extends Throwable>> CREATE_TOPIC_RETRIABLE_EXCEPTIONS = Collections.unmodifiableList(Arrays.asList(
-      InvalidReplicationFactorException.class,
-      org.apache.kafka.common.errors.TimeoutException.class));
+  private static final List<Class<? extends Throwable>> CREATE_TOPIC_RETRIABLE_EXCEPTIONS =
+      Collections.unmodifiableList(
+          Arrays
+              .asList(InvalidReplicationFactorException.class, org.apache.kafka.common.errors.TimeoutException.class));
 
   // Immutable state
   private final Logger logger;
@@ -89,25 +89,22 @@ public class TopicManager implements Closeable {
   private final KafkaClientFactory kafkaClientFactory;
 
   private Consumer<byte[], byte[]> kafkaRawBytesConsumer;
-//  private final Lazy<KafkaAdminWrapper> kafkaAdmin;
+  // private final Lazy<KafkaAdminWrapper> kafkaAdmin;
   private final Lazy<KafkaAdminWrapper> kafkaWriteOnlyAdmin;
   private final Lazy<KafkaAdminWrapper> kafkaReadOnlyAdmin;
   private final PartitionOffsetFetcher partitionOffsetFetcher;
 
-  // It's expensive to grab the topic config over and over again, and it changes infrequently.  So we temporarily cache
+  // It's expensive to grab the topic config over and over again, and it changes infrequently. So we temporarily cache
   // queried configs.
-  Cache<String, Properties> topicConfigCache = Caffeine.newBuilder()
-      .expireAfterWrite(5, TimeUnit.MINUTES)
-      .build();
+  Cache<String, Properties> topicConfigCache = Caffeine.newBuilder().expireAfterWrite(5, TimeUnit.MINUTES).build();
 
-  //TODO: Consider adding a builder for this class as the number of constructors is getting high.
+  // TODO: Consider adding a builder for this class as the number of constructors is getting high.
   public TopicManager(
       long kafkaOperationTimeoutMs,
       long topicDeletionStatusPollIntervalMs,
       long topicMinLogCompactionLagMs,
       KafkaClientFactory kafkaClientFactory,
-      Optional<MetricsRepository> optionalMetricsRepository
-  ) {
+      Optional<MetricsRepository> optionalMetricsRepository) {
     this.kafkaOperationTimeoutMs = kafkaOperationTimeoutMs;
     this.topicDeletionStatusPollIntervalMs = topicDeletionStatusPollIntervalMs;
     this.topicMinLogCompactionLagMs = topicMinLogCompactionLagMs;
@@ -117,36 +114,35 @@ public class TopicManager implements Closeable {
 
     this.kafkaReadOnlyAdmin = Lazy.of(() -> {
       KafkaAdminWrapper kafkaReadOnlyAdmin = kafkaClientFactory.getReadOnlyKafkaAdmin(optionalMetricsRepository);
-      logger.info(this.getClass().getSimpleName() + " is using kafka read-only admin client of class: " +
-          kafkaReadOnlyAdmin.getClassName());
+      logger.info(
+          this.getClass().getSimpleName() + " is using kafka read-only admin client of class: "
+              + kafkaReadOnlyAdmin.getClassName());
       return kafkaReadOnlyAdmin;
     });
 
     this.kafkaWriteOnlyAdmin = Lazy.of(() -> {
       KafkaAdminWrapper kafkaWriteOnlyAdmin = kafkaClientFactory.getWriteOnlyKafkaAdmin(optionalMetricsRepository);
-      logger.info(this.getClass().getSimpleName() + " is using kafka write-only admin client of class: " +
-          kafkaWriteOnlyAdmin.getClassName());
+      logger.info(
+          this.getClass().getSimpleName() + " is using kafka write-only admin client of class: "
+              + kafkaWriteOnlyAdmin.getClassName());
       return kafkaWriteOnlyAdmin;
     });
 
-    Optional<MetricsParameters> metricsForPartitionOffsetFetcher = kafkaClientFactory.getMetricsParameters().map(mp ->
-        new MetricsParameters(
-            this.kafkaClientFactory.getClass(),
-            PartitionOffsetFetcher.class,
-            kafkaClientFactory.getKafkaBootstrapServers(),
-            mp.metricsRepository
-        )
-    );
+    Optional<MetricsParameters> metricsForPartitionOffsetFetcher = kafkaClientFactory.getMetricsParameters()
+        .map(
+            mp -> new MetricsParameters(
+                this.kafkaClientFactory.getClass(),
+                PartitionOffsetFetcher.class,
+                kafkaClientFactory.getKafkaBootstrapServers(),
+                mp.metricsRepository));
     this.partitionOffsetFetcher = PartitionOffsetFetcherFactory.createDefaultPartitionOffsetFetcher(
         kafkaClientFactory.clone(
             kafkaClientFactory.getKafkaBootstrapServers(),
             kafkaClientFactory.getKafkaZkAddress(),
-            metricsForPartitionOffsetFetcher
-        ),
+            metricsForPartitionOffsetFetcher),
         kafkaReadOnlyAdmin,
         kafkaOperationTimeoutMs,
-        optionalMetricsRepository
-    );
+        optionalMetricsRepository);
   }
 
   // This constructor is used mostly for testing purpose
@@ -160,8 +156,7 @@ public class TopicManager implements Closeable {
         topicDeletionStatusPollIntervalMs,
         topicMinLogCompactionLagMs,
         kafkaClientFactory,
-        Optional.empty()
-    );
+        Optional.empty());
   }
 
   /**
@@ -170,7 +165,8 @@ public class TopicManager implements Closeable {
    * in server doesn't use the config mentioned above.
    */
   public TopicManager(KafkaClientFactory kafkaClientFactory) {
-    this(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+    this(
+        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
         DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS,
         DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS,
         kafkaClientFactory);
@@ -197,7 +193,12 @@ public class TopicManager implements Closeable {
     createTopic(topicName, numPartitions, replication, eternal, false, Optional.empty(), false);
   }
 
-  public void createTopic(String topicName, int numPartitions, int replication, boolean eternal, boolean logCompaction,
+  public void createTopic(
+      String topicName,
+      int numPartitions,
+      int replication,
+      boolean eternal,
+      boolean logCompaction,
       Optional<Integer> minIsr) {
     createTopic(topicName, numPartitions, replication, eternal, logCompaction, minIsr, true);
   }
@@ -217,17 +218,29 @@ public class TopicManager implements Closeable {
    * @param useFastKafkaOperationTimeout if false, normal kafka operation timeout will be used,
    *                            if true, a much shorter timeout will be used to make topic creation non-blocking.
    */
-  public void createTopic(String topicName, int numPartitions, int replication, boolean eternal, boolean logCompaction,
-      Optional<Integer> minIsr, boolean useFastKafkaOperationTimeout) {
+  public void createTopic(
+      String topicName,
+      int numPartitions,
+      int replication,
+      boolean eternal,
+      boolean logCompaction,
+      Optional<Integer> minIsr,
+      boolean useFastKafkaOperationTimeout) {
     long retentionTimeMs;
     if (eternal) {
       retentionTimeMs = ETERNAL_TOPIC_RETENTION_POLICY_MS;
-    }  else {
+    } else {
       retentionTimeMs = DEFAULT_TOPIC_RETENTION_POLICY_MS;
     }
-    createTopic(topicName, numPartitions, replication, retentionTimeMs, logCompaction, minIsr, useFastKafkaOperationTimeout);
+    createTopic(
+        topicName,
+        numPartitions,
+        replication,
+        retentionTimeMs,
+        logCompaction,
+        minIsr,
+        useFastKafkaOperationTimeout);
   }
-
 
   /**
    * Create a topic, and block until the topic is created, with a default timeout of
@@ -253,7 +266,8 @@ public class TopicManager implements Closeable {
       boolean useFastKafkaOperationTimeout) {
 
     long startTime = System.currentTimeMillis();
-    long deadlineMs = startTime + (useFastKafkaOperationTimeout ? FAST_KAFKA_OPERATION_TIMEOUT_MS : kafkaOperationTimeoutMs);
+    long deadlineMs =
+        startTime + (useFastKafkaOperationTimeout ? FAST_KAFKA_OPERATION_TIMEOUT_MS : kafkaOperationTimeoutMs);
 
     logger.info("Creating topic: " + topicName + " partitions: " + numPartitions + " replication: " + replication);
     Properties topicProperties = new Properties();
@@ -277,11 +291,8 @@ public class TopicManager implements Closeable {
           10,
           Duration.ofMillis(200),
           Duration.ofSeconds(1),
-          Duration.ofMillis(useFastKafkaOperationTimeout
-              ? FAST_KAFKA_OPERATION_TIMEOUT_MS
-              : kafkaOperationTimeoutMs),
-          CREATE_TOPIC_RETRIABLE_EXCEPTIONS
-      );
+          Duration.ofMillis(useFastKafkaOperationTimeout ? FAST_KAFKA_OPERATION_TIMEOUT_MS : kafkaOperationTimeoutMs),
+          CREATE_TOPIC_RETRIABLE_EXCEPTIONS);
     } catch (Exception e) {
       if (ExceptionUtils.recursiveClassEquals(e, TopicExistsException.class)) {
         logger.info("Topic: " + topicName + " already exists, will update retention policy.");
@@ -290,7 +301,10 @@ public class TopicManager implements Closeable {
         logger.info("Updated retention policy to be " + retentionTimeMs + "ms for topic: " + topicName);
         return;
       } else {
-        throw new VeniceOperationAgainstKafkaTimedOut("Timeout while creating topic: " + topicName + ". Topic still does not exist after " + (deadlineMs - startTime) + "ms.", e);
+        throw new VeniceOperationAgainstKafkaTimedOut(
+            "Timeout while creating topic: " + topicName + ". Topic still does not exist after "
+                + (deadlineMs - startTime) + "ms.",
+            e);
       }
     }
     waitUntilTopicCreated(topicName, numPartitions, deadlineMs);
@@ -303,7 +317,8 @@ public class TopicManager implements Closeable {
     while (!containsTopicAndAllPartitionsAreOnline(topicName, partitionCount)) {
       if (System.currentTimeMillis() > deadlineMs) {
         throw new VeniceOperationAgainstKafkaTimedOut(
-            "Timeout while creating topic: " + topicName + ".  Topic still did not pass all the checks after " + (deadlineMs - startTime) + "ms.");
+            "Timeout while creating topic: " + topicName + ".  Topic still did not pass all the checks after "
+                + (deadlineMs - startTime) + "ms.");
       }
       Utils.sleep(200);
     }
@@ -343,13 +358,16 @@ public class TopicManager implements Closeable {
    * @param topicProperties
    * @return true if the retention time gets updated; false if no update is needed.
    */
-  public boolean updateTopicRetention(String topicName, long retentionInMS, Properties topicProperties) throws TopicDoesNotExistException {
+  public boolean updateTopicRetention(String topicName, long retentionInMS, Properties topicProperties)
+      throws TopicDoesNotExistException {
     String retentionInMSStr = Long.toString(retentionInMS);
     if (!topicProperties.containsKey(TopicConfig.RETENTION_MS_CONFIG) || // config doesn't exist
         !topicProperties.getProperty(TopicConfig.RETENTION_MS_CONFIG).equals(retentionInMSStr)) { // config is different
       topicProperties.put(TopicConfig.RETENTION_MS_CONFIG, Long.toString(retentionInMS));
       kafkaWriteOnlyAdmin.get().setTopicConfig(topicName, topicProperties);
-      logger.info("Updated topic: " + topicName + " with retention.ms: " + retentionInMS + " in cluster [" + this.kafkaBootstrapServers + "]");
+      logger.info(
+          "Updated topic: " + topicName + " with retention.ms: " + retentionInMS + " in cluster ["
+              + this.kafkaBootstrapServers + "]");
       return true;
     }
     // Retention time has already been updated for this topic before
@@ -360,17 +378,21 @@ public class TopicManager implements Closeable {
    * Update topic compaction policy.
    * @throws TopicDoesNotExistException, if the topic doesn't exist
    */
-  public synchronized void updateTopicCompactionPolicy(String topicName, boolean logCompaction) throws TopicDoesNotExistException {
+  public synchronized void updateTopicCompactionPolicy(String topicName, boolean logCompaction)
+      throws TopicDoesNotExistException {
     Properties topicProperties = getTopicConfig(topicName);
     // If the compaction policy doesn't exist, by default it is disabled.
-    String currentCompactionPolicy = topicProperties.containsKey(TopicConfig.CLEANUP_POLICY_CONFIG) ?
-        (String)topicProperties.get(TopicConfig.CLEANUP_POLICY_CONFIG) : TopicConfig.CLEANUP_POLICY_DELETE;
-    String expectedCompactionPolicy = logCompaction ? TopicConfig.CLEANUP_POLICY_COMPACT : TopicConfig.CLEANUP_POLICY_DELETE;
-    long currentMinLogCompactionLagMs = topicProperties.containsKey(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG) ?
-        Long.parseLong((String)topicProperties.get(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG)) : 0L;
+    String currentCompactionPolicy = topicProperties.containsKey(TopicConfig.CLEANUP_POLICY_CONFIG)
+        ? (String) topicProperties.get(TopicConfig.CLEANUP_POLICY_CONFIG)
+        : TopicConfig.CLEANUP_POLICY_DELETE;
+    String expectedCompactionPolicy =
+        logCompaction ? TopicConfig.CLEANUP_POLICY_COMPACT : TopicConfig.CLEANUP_POLICY_DELETE;
+    long currentMinLogCompactionLagMs = topicProperties.containsKey(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG)
+        ? Long.parseLong((String) topicProperties.get(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG))
+        : 0L;
     long expectedMinLogCompactionLagMs = logCompaction ? topicMinLogCompactionLagMs : 0L;
     boolean needToUpdateTopicConfig = false;
-    if (! expectedCompactionPolicy.equals(currentCompactionPolicy)) {
+    if (!expectedCompactionPolicy.equals(currentCompactionPolicy)) {
       // Different, then update
       needToUpdateTopicConfig = true;
       topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, expectedCompactionPolicy);
@@ -381,22 +403,24 @@ public class TopicManager implements Closeable {
     }
     if (needToUpdateTopicConfig) {
       kafkaWriteOnlyAdmin.get().setTopicConfig(topicName, topicProperties);
-      logger.info("Kafka compaction policy for topic: " + topicName + " has been updated from " +
-          currentCompactionPolicy + " to " + expectedCompactionPolicy + ", min compaction lag updated from "
-          + currentMinLogCompactionLagMs + " to " + expectedCompactionPolicy);
+      logger.info(
+          "Kafka compaction policy for topic: " + topicName + " has been updated from " + currentCompactionPolicy
+              + " to " + expectedCompactionPolicy + ", min compaction lag updated from " + currentMinLogCompactionLagMs
+              + " to " + expectedCompactionPolicy);
     }
   }
 
   public boolean isTopicCompactionEnabled(String topicName) {
     Properties topicProperties = getCachedTopicConfig(topicName);
-    return topicProperties.containsKey(TopicConfig.CLEANUP_POLICY_CONFIG) &&
-        topicProperties.get(TopicConfig.CLEANUP_POLICY_CONFIG).equals(TopicConfig.CLEANUP_POLICY_COMPACT);
+    return topicProperties.containsKey(TopicConfig.CLEANUP_POLICY_CONFIG)
+        && topicProperties.get(TopicConfig.CLEANUP_POLICY_CONFIG).equals(TopicConfig.CLEANUP_POLICY_COMPACT);
   }
 
   public long getTopicMinLogCompactionLagMs(String topicName) {
     Properties topicProperties = getCachedTopicConfig(topicName);
     return topicProperties.containsKey(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG)
-        ? Long.parseLong((String) topicProperties.get(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG)) : 0L;
+        ? Long.parseLong((String) topicProperties.get(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG))
+        : 0L;
   }
 
   public Map<String, Long> getAllTopicRetentions() {
@@ -458,7 +482,7 @@ public class TopicManager implements Closeable {
 
   public Map<String, Properties> getSomeTopicConfigs(Set<String> topicNames) {
     final Map<String, Properties> topicConfigs = kafkaReadOnlyAdmin.get().getSomeTopicConfigs(topicNames);
-    for (Map.Entry<String, Properties> topicConfig : topicConfigs.entrySet()) {
+    for (Map.Entry<String, Properties> topicConfig: topicConfigs.entrySet()) {
       topicConfigCache.put(topicConfig.getKey(), topicConfig.getValue());
     }
     return topicConfigs;
@@ -494,17 +518,18 @@ public class TopicManager implements Closeable {
     // refactor this method to actually support concurrent topic deletion if that's something we want.
     // This is trying to guard concurrent topic deletion in Kafka.
     if (!CONCURRENT_TOPIC_DELETION_REQUEST_POLICY &&
-        /**
-         * TODO: Add support for this call in the {@link com.linkedin.venice.kafka.admin.KafkaAdminClient}
-         * This is the last remaining call that depends on {@link kafka.utils.ZkUtils}.
-         */
+    /**
+     * TODO: Add support for this call in the {@link com.linkedin.venice.kafka.admin.KafkaAdminClient}
+     * This is the last remaining call that depends on {@link kafka.utils.ZkUtils}.
+     */
         kafkaReadOnlyAdmin.get().isTopicDeletionUnderway()) {
       throw new VeniceException("Delete operation already in progress! Try again later.");
     }
 
     Future<Void> future = ensureTopicIsDeletedAsync(topicName);
     if (future != null) {
-      // Skip additional checks for Java kafka client since the result of the future can guarantee that the topic is deleted.
+      // Skip additional checks for Java kafka client since the result of the future can guarantee that the topic is
+      // deleted.
       try {
         future.get(kafkaOperationTimeoutMs, TimeUnit.MILLISECONDS);
       } catch (InterruptedException e) {
@@ -516,16 +541,17 @@ public class TopicManager implements Closeable {
           throw e;
         }
       } catch (TimeoutException e) {
-        throw new VeniceOperationAgainstKafkaTimedOut("Failed to delete kafka topic: " + topicName + " after "
-            + kafkaOperationTimeoutMs);
+        throw new VeniceOperationAgainstKafkaTimedOut(
+            "Failed to delete kafka topic: " + topicName + " after " + kafkaOperationTimeoutMs);
       }
       logger.info("Topic: " + topicName + " has been deleted");
       // TODO: Remove the checks below once we have fully migrated to use the Kafka admin client.
       return;
     }
     // Since topic deletion is async, we would like to poll until topic doesn't exist any more
-    long MAX_TIMES = topicDeletionStatusPollIntervalMs == 0 ?
-        kafkaOperationTimeoutMs : (kafkaOperationTimeoutMs / topicDeletionStatusPollIntervalMs);
+    long MAX_TIMES = topicDeletionStatusPollIntervalMs == 0
+        ? kafkaOperationTimeoutMs
+        : (kafkaOperationTimeoutMs / topicDeletionStatusPollIntervalMs);
     /**
      * In case we have bad config, MAX_TIMES can not be smaller than {@link #MINIMUM_TOPIC_DELETION_STATUS_POLL_TIMES}.
      */
@@ -555,28 +581,40 @@ public class TopicManager implements Closeable {
         return;
       }
     }
-    throw new VeniceOperationAgainstKafkaTimedOut("Failed to delete kafka topic: " + topicName + " after " + kafkaOperationTimeoutMs + " ms (" + current + " attempts).");
+    throw new VeniceOperationAgainstKafkaTimedOut(
+        "Failed to delete kafka topic: " + topicName + " after " + kafkaOperationTimeoutMs + " ms (" + current
+            + " attempts).");
   }
 
   public void ensureTopicIsDeletedAndBlockWithRetry(String topicName) throws ExecutionException {
     // Topic deletion may time out, so go ahead and retry the operation up the max number of attempts, if we
     // simply cannot succeed, bubble the exception up.
-    int attempts  = 0;
-    while(true) {
+    int attempts = 0;
+    while (true) {
       try {
         ensureTopicIsDeletedAndBlock(topicName);
         return;
       } catch (VeniceOperationAgainstKafkaTimedOut e) {
         attempts++;
-        logger.warn(String.format("Topic deletion for topic %s timed out!  Retry attempt %d / %d", topicName, attempts, MAX_TOPIC_DELETE_RETRIES));
-        if(attempts == MAX_TOPIC_DELETE_RETRIES) {
+        logger.warn(
+            String.format(
+                "Topic deletion for topic %s timed out!  Retry attempt %d / %d",
+                topicName,
+                attempts,
+                MAX_TOPIC_DELETE_RETRIES));
+        if (attempts == MAX_TOPIC_DELETE_RETRIES) {
           logger.error(String.format("Topic deletion for topic %s timed out! Giving up!!", topicName), e);
           throw e;
         }
       } catch (ExecutionException e) {
         attempts++;
-        logger.warn(String.format("Topic deletion for topic %s errored out!  Retry attempt %d / %d", topicName, attempts, MAX_TOPIC_DELETE_RETRIES));
-        if(attempts == MAX_TOPIC_DELETE_RETRIES) {
+        logger.warn(
+            String.format(
+                "Topic deletion for topic %s errored out!  Retry attempt %d / %d",
+                topicName,
+                attempts,
+                MAX_TOPIC_DELETE_RETRIES));
+        if (attempts == MAX_TOPIC_DELETE_RETRIES) {
           logger.error(String.format("Topic deletion for topic %s errored out! Giving up!!", topicName), e);
           throw e;
         }
@@ -611,16 +649,15 @@ public class TopicManager implements Closeable {
       final boolean expectedResult,
       Duration initialBackoff,
       Duration maxBackoff,
-      Duration maxDuration
-  ) {
-    return kafkaReadOnlyAdmin.get().containsTopicWithExpectationAndRetry(
-        topic,
-        maxAttempts,
-        expectedResult,
-        initialBackoff,
-        maxBackoff,
-        maxDuration
-    );
+      Duration maxDuration) {
+    return kafkaReadOnlyAdmin.get()
+        .containsTopicWithExpectationAndRetry(
+            topic,
+            maxAttempts,
+            expectedResult,
+            initialBackoff,
+            maxBackoff,
+            maxDuration);
   }
 
   /**
@@ -648,20 +685,21 @@ public class TopicManager implements Closeable {
 
     if (expectedPartitionCount != null && partitionInfoList.size() != expectedPartitionCount) {
       // Unexpected. Should perhaps even throw...
-      logger.error("getConsumer().partitionsFor() returned the wrong number of partitions for topic: " + topic +
-          ", expectedPartitionCount: " + expectedPartitionCount +
-          ", actual size: " + partitionInfoList.size() +
-          ", partitionInfoList: " + Arrays.toString(partitionInfoList.toArray()));
+      logger.error(
+          "getConsumer().partitionsFor() returned the wrong number of partitions for topic: " + topic
+              + ", expectedPartitionCount: " + expectedPartitionCount + ", actual size: " + partitionInfoList.size()
+              + ", partitionInfoList: " + Arrays.toString(partitionInfoList.toArray()));
       return false;
     }
 
-    boolean allPartitionsHaveAnInSyncReplica = partitionInfoList.stream()
-        .allMatch(partitionInfo -> partitionInfo.inSyncReplicas().length > 0);
+    boolean allPartitionsHaveAnInSyncReplica =
+        partitionInfoList.stream().allMatch(partitionInfo -> partitionInfo.inSyncReplicas().length > 0);
     if (allPartitionsHaveAnInSyncReplica) {
       logger.trace("The following topic has the at least one in-sync replica for each partition: " + topic);
     } else {
-      logger.info("getConsumer().partitionsFor() returned some partitionInfo with no in-sync replica for topic: " + topic +
-          ", partitionInfoList: " + Arrays.toString(partitionInfoList.toArray()));
+      logger.info(
+          "getConsumer().partitionsFor() returned some partitionInfo with no in-sync replica for topic: " + topic
+              + ", partitionInfoList: " + Arrays.toString(partitionInfoList.toArray()));
     }
     return allPartitionsHaveAnInSyncReplica;
   }
@@ -684,13 +722,15 @@ public class TopicManager implements Closeable {
       return true;
     }
 
-    boolean noPartitionStillHasAnyReplica = partitionInfoList.stream()
-        .noneMatch(partitionInfo -> partitionInfo.replicas().length > 0);
+    boolean noPartitionStillHasAnyReplica =
+        partitionInfoList.stream().noneMatch(partitionInfo -> partitionInfo.replicas().length > 0);
     if (noPartitionStillHasAnyReplica) {
-      logger.trace("getConsumer().partitionsFor() returned no partitionInfo still containing a replica for topic: " + topic);
+      logger.trace(
+          "getConsumer().partitionsFor() returned no partitionInfo still containing a replica for topic: " + topic);
     } else {
-      logger.info("The following topic still has at least one replica in at least one partition: " + topic
-          + ", partitionInfoList: " + Arrays.toString(partitionInfoList.toArray()));
+      logger.info(
+          "The following topic still has at least one replica in at least one partition: " + topic
+              + ", partitionInfoList: " + Arrays.toString(partitionInfoList.toArray()));
     }
     return noPartitionStillHasAnyReplica;
   }

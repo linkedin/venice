@@ -1,11 +1,8 @@
 package com.linkedin.venice.schema;
 
-import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
-import com.linkedin.venice.utils.AvroSchemaUtils;
-import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
-import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.Test;
+
 
 public class TestSchemaData {
   @Test
@@ -22,7 +19,7 @@ public class TestSchemaData {
   }
 
   @Test
-  public void  testAddValueSchema() {
+  public void testAddValueSchema() {
     String valueSchemaStr1 = "\"long\"";
     String valueSchemaStr2 = "\"string\"";
 

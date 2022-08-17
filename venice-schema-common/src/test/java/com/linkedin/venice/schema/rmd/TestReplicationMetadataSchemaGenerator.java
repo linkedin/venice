@@ -1,5 +1,8 @@
 package com.linkedin.venice.schema.rmd;
 
+import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
+import static org.apache.avro.Schema.Type.*;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import java.util.ArrayList;
@@ -15,9 +18,6 @@ import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
-import static org.apache.avro.Schema.Type.*;
-
 
 public class TestReplicationMetadataSchemaGenerator {
   private static final Logger logger = LogManager.getLogger(TestReplicationMetadataSchemaGenerator.class);
@@ -28,172 +28,70 @@ public class TestReplicationMetadataSchemaGenerator {
   }
 
   static String primitiveTypedSchemaStr = "{\"type\": \"string\"}";
-  //Expected Replication metadata schema for above Schema
-  static String aaSchemaPrimitive = "{\n"
-      + "  \"type\" : \"record\",\n"
-      + "  \"name\" : \"string_MetadataRecord\",\n"
-      + "  \"namespace\" : \"com.linkedin.venice\",\n"
-      + "  \"fields\" : [ {\n"
-      + "    \"name\" : \"timestamp\",\n"
-      + "    \"type\" : [ \"long\" ],\n"
-      + "    \"doc\" : \"timestamp when the full record was last updated\",\n"
-      + "    \"default\" : 0\n"
-      + "  }, {\n"
-      + "    \"name\" : \"replication_checkpoint_vector\",\n"
-      + "    \"type\" : {\n"
-      + "      \"type\" : \"array\",\n"
-      + "      \"items\" : \"long\"\n" + "    },\n"
-      + "    \"doc\" : \"high watermark remote checkpoints which touched this record\",\n"
-      + "    \"default\" : [ ]\n"
-      + "  } ]\n"
-      + "}";
+  // Expected Replication metadata schema for above Schema
+  static String aaSchemaPrimitive = "{\n" + "  \"type\" : \"record\",\n" + "  \"name\" : \"string_MetadataRecord\",\n"
+      + "  \"namespace\" : \"com.linkedin.venice\",\n" + "  \"fields\" : [ {\n" + "    \"name\" : \"timestamp\",\n"
+      + "    \"type\" : [ \"long\" ],\n" + "    \"doc\" : \"timestamp when the full record was last updated\",\n"
+      + "    \"default\" : 0\n" + "  }, {\n" + "    \"name\" : \"replication_checkpoint_vector\",\n"
+      + "    \"type\" : {\n" + "      \"type\" : \"array\",\n" + "      \"items\" : \"long\"\n" + "    },\n"
+      + "    \"doc\" : \"high watermark remote checkpoints which touched this record\",\n" + "    \"default\" : [ ]\n"
+      + "  } ]\n" + "}";
 
-  static String recordSchemaStr = "{\n"
-      + "  \"type\" : \"record\",\n"
-      + "  \"name\" : \"User\",\n"
-      + "  \"namespace\" : \"example.avro\",\n"
-      + "  \"fields\" : [ {\n"
-      + "    \"name\" : \"id\",\n"
-      + "    \"type\" : \"string\",\n"
-      + "    \"default\" : \"id\"\n"
-      + "  }, {\n"
-      + "    \"name\" : \"name\",\n"
-      + "    \"type\" : \"string\",\n"
-      + "    \"default\" : \"id\"\n"
-      + "  }, {\n"
-      + "    \"name\" : \"age\",\n"
-      + "    \"type\" : \"int\",\n"
-      + "    \"default\" : -1\n"
-      + "  } ]\n"
-      + "}";
-  //Expected Replication metadata schema for above Schema
-  static String aaSchemaRecord = "{\n"
-      + "  \"type\" : \"record\",\n"
-      + "  \"name\" : \"User_MetadataRecord\",\n"
-      + "  \"namespace\" : \"example.avro\",\n"
-      + "  \"fields\" : [ {\n"
-      + "    \"name\" : \"timestamp\",\n"
-      + "    \"type\" : [ \"long\", {\n"
-      + "      \"type\" : \"record\",\n"
-      + "      \"name\" : \"User\",\n"
-      + "      \"fields\" : [ {\n"
-      + "        \"name\" : \"id\",\n"
-      + "        \"type\" : \"long\",\n"
-      + "        \"doc\" : \"timestamp when id of the record was last updated\",\n"
-      + "        \"default\" : 0\n"
-      + "      }, {\n"
-      + "        \"name\" : \"name\",\n"
-      + "        \"type\" : \"long\",\n"
-      + "        \"doc\" : \"timestamp when name of the record was last updated\",\n"
-      + "        \"default\" : 0\n"
-      + "      }, {\n"
-      + "        \"name\" : \"age\",\n"
-      + "        \"type\" : \"long\",\n"
-      + "        \"doc\" : \"timestamp when age of the record was last updated\",\n"
-      + "        \"default\" : 0\n"
-      + "      } ]\n"
-      + "    } ],\n"
-      + "    \"doc\" : \"timestamp when the full record was last updated\",\n"
-      + "    \"default\" : 0\n"
-      + "  }, {\n"
-      + "    \"name\" : \"replication_checkpoint_vector\",\n"
-      + "    \"type\" : {\n"
-      + "      \"type\" : \"array\",\n"
-      + "      \"items\" : \"long\"\n"
-      + "    },\n"
-      + "    \"doc\" : \"high watermark remote checkpoints which touched this record\",\n"
-      + "    \"default\" : [ ]\n"
-      + "  } ]\n"
-      + "}";
-
+  static String recordSchemaStr = "{\n" + "  \"type\" : \"record\",\n" + "  \"name\" : \"User\",\n"
+      + "  \"namespace\" : \"example.avro\",\n" + "  \"fields\" : [ {\n" + "    \"name\" : \"id\",\n"
+      + "    \"type\" : \"string\",\n" + "    \"default\" : \"id\"\n" + "  }, {\n" + "    \"name\" : \"name\",\n"
+      + "    \"type\" : \"string\",\n" + "    \"default\" : \"id\"\n" + "  }, {\n" + "    \"name\" : \"age\",\n"
+      + "    \"type\" : \"int\",\n" + "    \"default\" : -1\n" + "  } ]\n" + "}";
+  // Expected Replication metadata schema for above Schema
+  static String aaSchemaRecord = "{\n" + "  \"type\" : \"record\",\n" + "  \"name\" : \"User_MetadataRecord\",\n"
+      + "  \"namespace\" : \"example.avro\",\n" + "  \"fields\" : [ {\n" + "    \"name\" : \"timestamp\",\n"
+      + "    \"type\" : [ \"long\", {\n" + "      \"type\" : \"record\",\n" + "      \"name\" : \"User\",\n"
+      + "      \"fields\" : [ {\n" + "        \"name\" : \"id\",\n" + "        \"type\" : \"long\",\n"
+      + "        \"doc\" : \"timestamp when id of the record was last updated\",\n" + "        \"default\" : 0\n"
+      + "      }, {\n" + "        \"name\" : \"name\",\n" + "        \"type\" : \"long\",\n"
+      + "        \"doc\" : \"timestamp when name of the record was last updated\",\n" + "        \"default\" : 0\n"
+      + "      }, {\n" + "        \"name\" : \"age\",\n" + "        \"type\" : \"long\",\n"
+      + "        \"doc\" : \"timestamp when age of the record was last updated\",\n" + "        \"default\" : 0\n"
+      + "      } ]\n" + "    } ],\n" + "    \"doc\" : \"timestamp when the full record was last updated\",\n"
+      + "    \"default\" : 0\n" + "  }, {\n" + "    \"name\" : \"replication_checkpoint_vector\",\n"
+      + "    \"type\" : {\n" + "      \"type\" : \"array\",\n" + "      \"items\" : \"long\"\n" + "    },\n"
+      + "    \"doc\" : \"high watermark remote checkpoints which touched this record\",\n" + "    \"default\" : [ ]\n"
+      + "  } ]\n" + "}";
 
   static String arraySchemaStr = "{ \"type\": \"array\", \"items\": \"int\" }";
-  //Expected Replication metadata schema for above Schema
-  static String aaSchemaArray = "{\n"
-      + "  \"type\" : \"record\",\n"
-      + "  \"name\" : \"array_MetadataRecord\",\n"
-      + "  \"namespace\" : \"com.linkedin.venice\",\n"
-      + "  \"fields\" : [ {\n"
-      + "    \"name\" : \"timestamp\",\n"
-      + "    \"type\" : [ \"long\" ],\n"
-      + "    \"doc\" : \"timestamp when the full record was last updated\",\n"
-      + "    \"default\" : 0\n"
-      + "  } , {\n"
-      + "    \"name\" : \"replication_checkpoint_vector\",\n"
-      + "    \"type\" : {\n"
-      + "      \"type\" : \"array\",\n"
-      + "      \"items\" : \"long\"\n"
-      + "    },\n"
-      + "    \"doc\" : \"high watermark remote checkpoints which touched this record\",\n"
-      + "    \"default\" : [ ]\n"
-      + "  } ]\n"
-      + "}";
-
+  // Expected Replication metadata schema for above Schema
+  static String aaSchemaArray = "{\n" + "  \"type\" : \"record\",\n" + "  \"name\" : \"array_MetadataRecord\",\n"
+      + "  \"namespace\" : \"com.linkedin.venice\",\n" + "  \"fields\" : [ {\n" + "    \"name\" : \"timestamp\",\n"
+      + "    \"type\" : [ \"long\" ],\n" + "    \"doc\" : \"timestamp when the full record was last updated\",\n"
+      + "    \"default\" : 0\n" + "  } , {\n" + "    \"name\" : \"replication_checkpoint_vector\",\n"
+      + "    \"type\" : {\n" + "      \"type\" : \"array\",\n" + "      \"items\" : \"long\"\n" + "    },\n"
+      + "    \"doc\" : \"high watermark remote checkpoints which touched this record\",\n" + "    \"default\" : [ ]\n"
+      + "  } ]\n" + "}";
 
   static String mapSchemaStr = "{ \"type\": \"map\", \"values\": \"int\" }";
-  //Expected Replication metadata schema for above Schema
-  static String aaSchemaMap = "{\n"
-      + "  \"type\" : \"record\",\n"
-      + "  \"name\" : \"map_MetadataRecord\",\n"
-      + "  \"namespace\" : \"com.linkedin.venice\",\n"
-      + "  \"fields\" : [ {\n"
-      + "    \"name\" : \"timestamp\",\n"
-      + "    \"type\" : [ \"long\" ],\n"
-      + "    \"doc\" : \"timestamp when the full record was last updated\",\n"
-      + "    \"default\" : 0\n"
-      + "  } , {\n"
-      + "    \"name\" : \"replication_checkpoint_vector\",\n"
-      + "    \"type\" : {\n"
-      + "      \"type\" : \"array\",\n"
-      + "      \"items\" : \"long\"\n"
-      + "    },\n"
-      + "    \"doc\" : \"high watermark remote checkpoints which touched this record\",\n"
-      + "    \"default\" : [ ]\n"
-      + "  } ]\n"
-      + "}";
+  // Expected Replication metadata schema for above Schema
+  static String aaSchemaMap = "{\n" + "  \"type\" : \"record\",\n" + "  \"name\" : \"map_MetadataRecord\",\n"
+      + "  \"namespace\" : \"com.linkedin.venice\",\n" + "  \"fields\" : [ {\n" + "    \"name\" : \"timestamp\",\n"
+      + "    \"type\" : [ \"long\" ],\n" + "    \"doc\" : \"timestamp when the full record was last updated\",\n"
+      + "    \"default\" : 0\n" + "  } , {\n" + "    \"name\" : \"replication_checkpoint_vector\",\n"
+      + "    \"type\" : {\n" + "      \"type\" : \"array\",\n" + "      \"items\" : \"long\"\n" + "    },\n"
+      + "    \"doc\" : \"high watermark remote checkpoints which touched this record\",\n" + "    \"default\" : [ ]\n"
+      + "  } ]\n" + "}";
 
-
-  static String unionSchemaStr = "[ {\n"
-      + "  \"type\" : \"record\",\n"
-      + "  \"name\" : \"namerecord\",\n"
-      + "  \"namespace\" : \"example.avro\",\n"
-      + "  \"fields\" : [ {\n"
-      + "    \"name\" : \"firstname\",\n"
-      + "    \"type\" : \"string\",\n"
-      + "    \"default\" : \"\"\n"
-      + "  }, {\n"
-      + "    \"name\" : \"lastname\",\n"
-      + "    \"type\" : \"string\",\n"
-      + "    \"default\" : \"\"\n"
-      + "  } ]\n"
-      + "}, {\n"
-      + "  \"type\" : \"array\",\n"
-      + "  \"items\" : \"int\"\n"
-      + "}, {\n"
-      + "  \"type\" : \"map\",\n"
-      + "  \"values\" : \"int\"\n"
+  static String unionSchemaStr = "[ {\n" + "  \"type\" : \"record\",\n" + "  \"name\" : \"namerecord\",\n"
+      + "  \"namespace\" : \"example.avro\",\n" + "  \"fields\" : [ {\n" + "    \"name\" : \"firstname\",\n"
+      + "    \"type\" : \"string\",\n" + "    \"default\" : \"\"\n" + "  }, {\n" + "    \"name\" : \"lastname\",\n"
+      + "    \"type\" : \"string\",\n" + "    \"default\" : \"\"\n" + "  } ]\n" + "}, {\n" + "  \"type\" : \"array\",\n"
+      + "  \"items\" : \"int\"\n" + "}, {\n" + "  \"type\" : \"map\",\n" + "  \"values\" : \"int\"\n"
       + "}, \"string\" ]";
-  //Expected Replication metadata schema for above Schema
-  static String rmdSchemaUnion = "{\n"
-      + "  \"type\" : \"record\",\n"
-      + "  \"name\" : \"union_MetadataRecord\",\n"
-      + "  \"namespace\" : \"com.linkedin.venice\",\n"
-      + "  \"fields\" : [ {\n"
-      + "    \"name\" : \"timestamp\",\n"
-      + "    \"type\" : [ \"long\" ],\n"
-      + "    \"doc\" : \"timestamp when the full record was last updated\",\n"
-      + "    \"default\" : 0\n"
-      + "  } , {\n"
-      + "    \"name\" : \"replication_checkpoint_vector\",\n"
-      + "    \"type\" : {\n"
-      + "      \"type\" : \"array\",\n"
-      + "      \"items\" : \"long\"\n"
-      + "    },\n"
-      + "    \"doc\" : \"high watermark remote checkpoints which touched this record\",\n"
-      + "    \"default\" : [ ]\n"
-      + "  } ]\n"
-      + "}";
-
+  // Expected Replication metadata schema for above Schema
+  static String rmdSchemaUnion = "{\n" + "  \"type\" : \"record\",\n" + "  \"name\" : \"union_MetadataRecord\",\n"
+      + "  \"namespace\" : \"com.linkedin.venice\",\n" + "  \"fields\" : [ {\n" + "    \"name\" : \"timestamp\",\n"
+      + "    \"type\" : [ \"long\" ],\n" + "    \"doc\" : \"timestamp when the full record was last updated\",\n"
+      + "    \"default\" : 0\n" + "  } , {\n" + "    \"name\" : \"replication_checkpoint_vector\",\n"
+      + "    \"type\" : {\n" + "      \"type\" : \"array\",\n" + "      \"items\" : \"long\"\n" + "    },\n"
+      + "    \"doc\" : \"high watermark remote checkpoints which touched this record\",\n" + "    \"default\" : [ ]\n"
+      + "  } ]\n" + "}";
 
   @Test
   public void testMetadataSchemaForPrimitive() {
@@ -212,7 +110,9 @@ public class TestReplicationMetadataSchemaGenerator {
     String aaSchemaStr = aaSchema.toString(true);
     logger.info(aaSchemaStr);
     Assert.assertEquals(aaSchema, AvroCompatibilityHelper.parse(aaSchema.toString()));
-    Assert.assertEquals(AvroCompatibilityHelper.parse(aaSchemaPrimitive), AvroCompatibilityHelper.parse(aaSchema.toString()));
+    Assert.assertEquals(
+        AvroCompatibilityHelper.parse(aaSchemaPrimitive),
+        AvroCompatibilityHelper.parse(aaSchema.toString()));
     verifyFullUpdateTsRecordPresent(aaSchema, true);
 
   }
@@ -227,7 +127,9 @@ public class TestReplicationMetadataSchemaGenerator {
     logger.info(aaSchemaStr);
 
     Assert.assertEquals(aaSchema, AvroCompatibilityHelper.parse(aaSchema.toString()));
-    Assert.assertEquals(AvroCompatibilityHelper.parse(aaSchemaRecord), AvroCompatibilityHelper.parse(aaSchema.toString()));
+    Assert.assertEquals(
+        AvroCompatibilityHelper.parse(aaSchemaRecord),
+        AvroCompatibilityHelper.parse(aaSchema.toString()));
 
     verifyFullUpdateTsRecordPresent(aaSchema, false);
     Schema recordTsSchema = aaSchema.getField(TIMESTAMP_FIELD_NAME).schema().getTypes().get(1);
@@ -249,13 +151,11 @@ public class TestReplicationMetadataSchemaGenerator {
     Assert.assertEquals(
         origSchema.getField("field1").schema().getType(),
         origSchema.getField("field2").schema().getType(),
-        "Expect the original schema to have 2 fields with the same type"
-    );
+        "Expect the original schema to have 2 fields with the same type");
     Assert.assertEquals(
         origSchema.getField("field1").schema().getElementType(),
         origSchema.getField("field2").schema().getElementType(),
-        "Expect the original schema to have 2 fields with the same element type"
-    );
+        "Expect the original schema to have 2 fields with the same element type");
 
     final Schema rmdSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema);
     logger.info(origSchema.toString(true));
@@ -274,9 +174,9 @@ public class TestReplicationMetadataSchemaGenerator {
     validateCollectionFieldReplicationMetadata(recordTsSchema, "field2", originalElementSchemaType);
 
     Assert.assertSame(
-        recordTsSchema.getField("field1").schema(), recordTsSchema.getField("field2").schema(),
-        "Both fields should share the same schema object"
-    );
+        recordTsSchema.getField("field1").schema(),
+        recordTsSchema.getField("field2").schema(),
+        "Both fields should share the same schema object");
   }
 
   @Test(dataProvider = "recordWithArraysOfDifferentElementType")
@@ -284,13 +184,11 @@ public class TestReplicationMetadataSchemaGenerator {
     Assert.assertEquals(
         origSchema.getField("field1").schema().getType(),
         origSchema.getField("field2").schema().getType(),
-        "Expect the original schema to have 2 fields with the array type"
-    );
+        "Expect the original schema to have 2 fields with the array type");
     Assert.assertNotEquals(
         origSchema.getField("field1").schema().getElementType(),
         origSchema.getField("field2").schema().getElementType(),
-        "Expect the original schema to have 2 fields with different array element type"
-    );
+        "Expect the original schema to have 2 fields with different array element type");
 
     final Schema rmdSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema);
     logger.info(origSchema.toString(true));
@@ -313,8 +211,7 @@ public class TestReplicationMetadataSchemaGenerator {
 
     Assert.assertTrue(
         recordTsSchema.getField("field1").schema() != recordTsSchema.getField("field2").schema(),
-        "Both fields should NOT share the same schema object"
-    );
+        "Both fields should NOT share the same schema object");
   }
 
   @Test(dataProvider = "recordWithArraysOfHybridElementType")
@@ -322,23 +219,19 @@ public class TestReplicationMetadataSchemaGenerator {
     Assert.assertEquals(
         origSchema.getField("field1").schema().getType(),
         origSchema.getField("field2").schema().getType(),
-        "Expect the original schema to have first 2 fields with the array type"
-    );
+        "Expect the original schema to have first 2 fields with the array type");
     Assert.assertEquals(
         origSchema.getField("field2").schema().getType(),
         origSchema.getField("field3").schema().getType(),
-        "Expect the original schema to have last 2 fields with the array type"
-    );
+        "Expect the original schema to have last 2 fields with the array type");
     Assert.assertEquals(
         origSchema.getField("field1").schema().getElementType(),
         origSchema.getField("field2").schema().getElementType(),
-        "Expect the original schema to have first 2 fields with same array element type"
-    );
+        "Expect the original schema to have first 2 fields with same array element type");
     Assert.assertNotEquals(
         origSchema.getField("field2").schema().getElementType(),
         origSchema.getField("field3").schema().getElementType(),
-        "Expect the original schema to have last 2 fields with different array element type"
-    );
+        "Expect the original schema to have last 2 fields with different array element type");
 
     final Schema rmdSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema);
     logger.info(origSchema.toString(true));
@@ -364,15 +257,16 @@ public class TestReplicationMetadataSchemaGenerator {
 
     Assert.assertTrue(
         recordTsSchema.getField("field1").schema() == recordTsSchema.getField("field2").schema(),
-        "First 2 fields should share the same schema object"
-    );
+        "First 2 fields should share the same schema object");
     Assert.assertTrue(
         recordTsSchema.getField("field2").schema() != recordTsSchema.getField("field3").schema(),
-        "Last 2 fields should NOT share the same schema object"
-    );
+        "Last 2 fields should NOT share the same schema object");
   }
 
-  private void validateCollectionFieldReplicationMetadata(Schema recordTsSchema, String fieldName, Schema.Type expectedElementSchemaType) {
+  private void validateCollectionFieldReplicationMetadata(
+      Schema recordTsSchema,
+      String fieldName,
+      Schema.Type expectedElementSchemaType) {
     Schema field1TsSchema = recordTsSchema.getField(fieldName).schema();
     Assert.assertEquals(field1TsSchema.getType(), RECORD);
     Assert.assertEquals(field1TsSchema.getFields().size(), 6);
@@ -382,7 +276,9 @@ public class TestReplicationMetadataSchemaGenerator {
     Assert.assertEquals(field1TsSchema.getField("activeElementsTimestamps").schema().getType(), ARRAY);
     Assert.assertEquals(field1TsSchema.getField("activeElementsTimestamps").schema().getElementType().getType(), LONG);
     Assert.assertEquals(field1TsSchema.getField("deletedElementsIdentities").schema().getType(), ARRAY);
-    Assert.assertEquals(field1TsSchema.getField("deletedElementsIdentities").schema().getElementType().getType(), expectedElementSchemaType);
+    Assert.assertEquals(
+        field1TsSchema.getField("deletedElementsIdentities").schema().getElementType().getType(),
+        expectedElementSchemaType);
     Assert.assertEquals(field1TsSchema.getField("deletedElementsTimestamps").schema().getType(), ARRAY);
     Assert.assertEquals(field1TsSchema.getField("deletedElementsTimestamps").schema().getElementType().getType(), LONG);
   }
@@ -411,7 +307,9 @@ public class TestReplicationMetadataSchemaGenerator {
     Schema rmdSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema);
     logger.info(origSchema.toString(true));
     logger.info(rmdSchema.toString(true));
-    Assert.assertEquals(AvroCompatibilityHelper.parse(aaSchemaArray), AvroCompatibilityHelper.parse(rmdSchema.toString()));
+    Assert.assertEquals(
+        AvroCompatibilityHelper.parse(aaSchemaArray),
+        AvroCompatibilityHelper.parse(rmdSchema.toString()));
     verifyFullUpdateTsRecordPresent(rmdSchema, true);
   }
 
@@ -433,7 +331,9 @@ public class TestReplicationMetadataSchemaGenerator {
     Schema rmdSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema);
     logger.info(origSchema.toString(true));
     logger.info(rmdSchema.toString(true));
-    Assert.assertEquals(AvroCompatibilityHelper.parse(rmdSchemaUnion), AvroCompatibilityHelper.parse(rmdSchema.toString()));
+    Assert.assertEquals(
+        AvroCompatibilityHelper.parse(rmdSchemaUnion),
+        AvroCompatibilityHelper.parse(rmdSchema.toString()));
     verifyFullUpdateTsRecordPresent(rmdSchema, true);
   }
 
@@ -444,15 +344,15 @@ public class TestReplicationMetadataSchemaGenerator {
     schemasInUnion.add(EMPTY_RECORD_SCHEMA);
     Schema unionFieldSchema = Schema.createUnion(schemasInUnion);
     Schema origSchema = Schema.createRecord("originalSchemaRecord", "", "", false);
-    origSchema.setFields(Collections.singletonList(
-        AvroCompatibilityHelper.newField(null)
-            .setName("unionField")
-            .setSchema(unionFieldSchema)
-            .setDefault(null)
-            .setDoc("")
-            .setOrder(Schema.Field.Order.ASCENDING)
-            .build()
-    ));
+    origSchema.setFields(
+        Collections.singletonList(
+            AvroCompatibilityHelper.newField(null)
+                .setName("unionField")
+                .setSchema(unionFieldSchema)
+                .setDefault(null)
+                .setDoc("")
+                .setOrder(Schema.Field.Order.ASCENDING)
+                .build()));
     Schema rmdSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema);
     verifyFullUpdateTsRecordPresent(rmdSchema, false);
   }
@@ -465,15 +365,15 @@ public class TestReplicationMetadataSchemaGenerator {
     Schema unionFieldSchema = Schema.createUnion(schemasInUnion);
 
     Schema origSchema = Schema.createRecord("originalSchemaRecord", "", "", false);
-    origSchema.setFields(Collections.singletonList(
-        AvroCompatibilityHelper.newField(null)
-            .setName("field1")
-            .setSchema(unionFieldSchema)
-            .setDefault(null)
-            .setDoc("")
-            .setOrder(Schema.Field.Order.ASCENDING)
-            .build()
-    ));
+    origSchema.setFields(
+        Collections.singletonList(
+            AvroCompatibilityHelper.newField(null)
+                .setName("field1")
+                .setSchema(unionFieldSchema)
+                .setDefault(null)
+                .setDoc("")
+                .setOrder(Schema.Field.Order.ASCENDING)
+                .build()));
 
     Schema rmdSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema);
     verifyFullUpdateTsRecordPresent(rmdSchema, false);
@@ -511,42 +411,36 @@ public class TestReplicationMetadataSchemaGenerator {
 
   @DataProvider(name = "recordWithPrimitiveArraysOfSameElementType")
   public static Object[] recordWithPrimitiveArraysOfSameElementType() {
-    return new Object[] {
-        createRecordWithPrimitiveArraysOfSameElementType(INT),
-        createRecordWithPrimitiveArraysOfSameElementType(FLOAT),
-        createRecordWithPrimitiveArraysOfSameElementType(LONG),
+    return new Object[] { createRecordWithPrimitiveArraysOfSameElementType(INT),
+        createRecordWithPrimitiveArraysOfSameElementType(FLOAT), createRecordWithPrimitiveArraysOfSameElementType(LONG),
         createRecordWithPrimitiveArraysOfSameElementType(DOUBLE),
         createRecordWithPrimitiveArraysOfSameElementType(BOOLEAN),
         createRecordWithPrimitiveArraysOfSameElementType(STRING),
-        createRecordWithPrimitiveArraysOfSameElementType(BYTES)
-    };
+        createRecordWithPrimitiveArraysOfSameElementType(BYTES) };
   }
 
   @DataProvider(name = "recordWithArraysOfDifferentElementType")
   public static Object[] recordWithArraysOfDifferentElementType() {
-    return new Object[] {
-        createRecordWithArraysOfDifferentElementType(Schema.create(INT), Schema.create(FLOAT)),
+    return new Object[] { createRecordWithArraysOfDifferentElementType(Schema.create(INT), Schema.create(FLOAT)),
         createRecordWithArraysOfDifferentElementType(Schema.create(FLOAT), Schema.create(LONG)),
         createRecordWithArraysOfDifferentElementType(Schema.create(LONG), Schema.create(DOUBLE)),
         createRecordWithArraysOfDifferentElementType(Schema.create(DOUBLE), EMPTY_RECORD_SCHEMA),
         createRecordWithArraysOfDifferentElementType(Schema.create(BOOLEAN), Schema.create(STRING)),
         createRecordWithArraysOfDifferentElementType(Schema.create(STRING), Schema.create(BYTES)),
-        createRecordWithArraysOfDifferentElementType(Schema.create(BYTES), EMPTY_RECORD_SCHEMA)
-    };
+        createRecordWithArraysOfDifferentElementType(Schema.create(BYTES), EMPTY_RECORD_SCHEMA) };
   }
 
-  // "hybrid element type" means that each record have 3 arrays and only the 1st and 2nd arrays have the same element type.
+  // "hybrid element type" means that each record have 3 arrays and only the 1st and 2nd arrays have the same element
+  // type.
   @DataProvider(name = "recordWithArraysOfHybridElementType")
   public static Object[] recordWithArraysOfHybridElementType() {
-    return new Object[] {
-        createRecordWithArraysOfHybridElementType(Schema.create(INT), Schema.create(FLOAT)),
+    return new Object[] { createRecordWithArraysOfHybridElementType(Schema.create(INT), Schema.create(FLOAT)),
         createRecordWithArraysOfHybridElementType(EMPTY_RECORD_SCHEMA, Schema.create(LONG)),
         createRecordWithArraysOfHybridElementType(Schema.create(LONG), Schema.create(DOUBLE)),
         createRecordWithArraysOfHybridElementType(Schema.create(DOUBLE), EMPTY_RECORD_SCHEMA),
         createRecordWithArraysOfHybridElementType(Schema.create(BOOLEAN), Schema.create(STRING)),
         createRecordWithArraysOfHybridElementType(Schema.create(STRING), Schema.create(BYTES)),
-        createRecordWithArraysOfHybridElementType(Schema.create(BYTES), EMPTY_RECORD_SCHEMA)
-    };
+        createRecordWithArraysOfHybridElementType(Schema.create(BYTES), EMPTY_RECORD_SCHEMA) };
   }
 
   private static Schema createRecordWithPrimitiveArraysOfSameElementType(Schema.Type elementType) {
@@ -577,13 +471,14 @@ public class TestReplicationMetadataSchemaGenerator {
     List<Schema.Field> fields = new ArrayList<>(fieldNameToArrayElementSchema.size());
 
     fieldNameToArrayElementSchema.forEach((fieldName, arrayElementSchema) -> {
-      fields.add(AvroCompatibilityHelper.newField(null)
-          .setName(fieldName)
-          .setSchema(Schema.createArray(arrayElementSchema))
-          .setDoc("")
-          .setDefault(null)
-          .setOrder(Schema.Field.Order.ASCENDING)
-          .build());
+      fields.add(
+          AvroCompatibilityHelper.newField(null)
+              .setName(fieldName)
+              .setSchema(Schema.createArray(arrayElementSchema))
+              .setDoc("")
+              .setDefault(null)
+              .setOrder(Schema.Field.Order.ASCENDING)
+              .build());
     });
     recordSchema.setFields(fields);
     return recordSchema;
@@ -592,12 +487,22 @@ public class TestReplicationMetadataSchemaGenerator {
   private static Schema createRecordOfMap(Schema mapValueSchema) {
     Schema recordSchema = Schema.createRecord("RecordOfMap", "", "", false);
     Schema mapSchema = Schema.createMap(mapValueSchema);
-    recordSchema.setFields(Arrays.asList(
-        AvroCompatibilityHelper.newField(null).setName("field1").setSchema(mapSchema)
-            .setDoc("").setDefault(null).setOrder(Schema.Field.Order.ASCENDING).build(),
-        AvroCompatibilityHelper.newField(null).setName("field2").setSchema(mapSchema)
-            .setDoc("").setDefault(null).setOrder(Schema.Field.Order.ASCENDING).build()
-    ));
+    recordSchema.setFields(
+        Arrays.asList(
+            AvroCompatibilityHelper.newField(null)
+                .setName("field1")
+                .setSchema(mapSchema)
+                .setDoc("")
+                .setDefault(null)
+                .setOrder(Schema.Field.Order.ASCENDING)
+                .build(),
+            AvroCompatibilityHelper.newField(null)
+                .setName("field2")
+                .setSchema(mapSchema)
+                .setDoc("")
+                .setDefault(null)
+                .setOrder(Schema.Field.Order.ASCENDING)
+                .build()));
     return recordSchema;
   }
 }

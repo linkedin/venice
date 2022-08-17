@@ -4,7 +4,7 @@ import org.apache.tools.ant.taskdefs.condition.Os
 plugins {
   id 'idea'
   id 'java'
-  id 'com.diffplug.spotless' version '6.6.1'
+  id 'com.diffplug.spotless' version '6.9.1'
   id 'com.dorongold.task-tree' version '2.1.0'
   id 'com.github.johnrengelman.shadow' version '6.1.0' apply false
   id 'com.github.spotbugs' version '4.8.0' apply false

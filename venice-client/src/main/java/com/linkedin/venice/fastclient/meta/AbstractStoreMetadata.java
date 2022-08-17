@@ -18,7 +18,7 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
 
   public AbstractStoreMetadata(ClientConfig clientConfig) {
     this.instanceHealthMonitor = new InstanceHealthMonitor(clientConfig);
-    if ( null != clientConfig.getClientRoutingStrategy()) {
+    if (null != clientConfig.getClientRoutingStrategy()) {
       this.routingStrategy = clientConfig.getClientRoutingStrategy();
     } else {
       this.routingStrategy = new LeastLoadedClientRoutingStrategy(this.instanceHealthMonitor);
@@ -37,7 +37,12 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
   }
 
   @Override
-  public List<String> getReplicas(long requestId, int version, int partitionId, int requiredReplicaCount, Set<String> excludedInstances) {
+  public List<String> getReplicas(
+      long requestId,
+      int version,
+      int partitionId,
+      int requiredReplicaCount,
+      Set<String> excludedInstances) {
     List<String> replicas = getReplicas(version, partitionId);
     List<String> filteredReplicas;
 

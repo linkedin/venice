@@ -1,5 +1,9 @@
 package com.linkedin.venice.router.api;
 
+import static com.linkedin.ddsstorage.router.api.MetricNames.*;
+import static com.linkedin.venice.HttpConstants.*;
+import static io.netty.handler.codec.http.HttpResponseStatus.*;
+
 import com.linkedin.ddsstorage.base.misc.HeaderNames;
 import com.linkedin.ddsstorage.base.misc.Metrics;
 import com.linkedin.ddsstorage.base.misc.TimeValue;
@@ -34,15 +38,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Nonnull;
-
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.ddsstorage.router.api.MetricNames.*;
-import static com.linkedin.venice.HttpConstants.*;
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
 
 public class VeniceResponseAggregator implements ResponseAggregatorFactory<BasicFullHttpRequest, FullHttpResponse> {
@@ -54,7 +53,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
 
   private HelixGroupSelector helixGroupSelector;
 
-  //timeout is configurable and should be overwritten elsewhere
+  // timeout is configurable and should be overwritten elsewhere
   private long singleGetTardyThresholdInMs = TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS);
   private long multiGetTardyThresholdInMs = TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS);
   private long computeTardyThresholdInMs = TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS);
@@ -67,14 +66,16 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     /**
      * TODO: need to revisit this logic if there are multiple response versions for batch-get are available.
      */
-    MULTI_GET_VALID_HEADER_MAP.put(HttpConstants.VENICE_SCHEMA_ID,
+    MULTI_GET_VALID_HEADER_MAP.put(
+        HttpConstants.VENICE_SCHEMA_ID,
         Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_RESPONSE_V1.getProtocolVersion()));
 
     COMPUTE_VALID_HEADER_MAP.put(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
     /**
      * TODO: need to revisit this logic if there are multiple response versions for read compute are available.
      */
-    COMPUTE_VALID_HEADER_MAP.put(HttpConstants.VENICE_SCHEMA_ID,
+    COMPUTE_VALID_HEADER_MAP.put(
+        HttpConstants.VENICE_SCHEMA_ID,
         Integer.toString(ReadAvroProtocolDefinition.COMPUTE_RESPONSE_V1.getProtocolVersion()));
   }
 
@@ -82,12 +83,12 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     this.routerStats = routerStats;
   }
 
-  public VeniceResponseAggregator withSingleGetTardyThreshold(long timeout, TimeUnit unit){
+  public VeniceResponseAggregator withSingleGetTardyThreshold(long timeout, TimeUnit unit) {
     this.singleGetTardyThresholdInMs = unit.toMillis(timeout);
     return this;
   }
 
-  public VeniceResponseAggregator withMultiGetTardyThreshold(long timeout, TimeUnit unit){
+  public VeniceResponseAggregator withMultiGetTardyThreshold(long timeout, TimeUnit unit) {
     this.multiGetTardyThresholdInMs = unit.toMillis(timeout);
     return this;
   }
@@ -99,7 +100,10 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
 
   public void initHelixGroupSelector(HelixGroupSelector helixGroupSelector) {
     if (this.helixGroupSelector != null) {
-      throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(), INTERNAL_SERVER_ERROR,
+      throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
+          Optional.empty(),
+          Optional.empty(),
+          INTERNAL_SERVER_ERROR,
           "HelixGroupSelector has already been initialized before, and no further update expected!");
     }
     this.helixGroupSelector = helixGroupSelector;
@@ -107,15 +111,20 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
 
   @Nonnull
   @Override
-  public FullHttpResponse buildResponse(@Nonnull BasicFullHttpRequest request, Metrics metrics,
+  public FullHttpResponse buildResponse(
+      @Nonnull BasicFullHttpRequest request,
+      Metrics metrics,
       @Nonnull List<FullHttpResponse> gatheredResponses) {
     if (gatheredResponses.isEmpty()) {
-      throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(),
-          BAD_GATEWAY, "Received empty response!");
+      throw RouterExceptionAndTrackingUtils
+          .newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(), BAD_GATEWAY, "Received empty response!");
     }
     if (null == metrics) {
-      throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(),
-          INTERNAL_SERVER_ERROR, "'metrics' should not be null");
+      throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
+          Optional.empty(),
+          Optional.empty(),
+          INTERNAL_SERVER_ERROR,
+          "'metrics' should not be null");
     }
     VenicePath venicePath = metrics.getPath();
     if (null == venicePath) {
@@ -140,13 +149,14 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
           }
         }
       } catch (URISyntaxException e) {
-        throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(),
-            BAD_REQUEST, "Failed to parse uri");
+        throw RouterExceptionAndTrackingUtils
+            .newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(), BAD_REQUEST, "Failed to parse uri");
       }
       return response;
     }
 
-    // TODO: Need to investigate if any of the early terminations above could cause the in-flight request sensor to "leak"
+    // TODO: Need to investigate if any of the early terminations above could cause the in-flight request sensor to
+    // "leak"
 
     /**
      * Decrease the group counter in the following conditions:
@@ -182,8 +192,11 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
           finalResponse = processComputeResponses(gatheredResponses, storeName);
           break;
         default:
-          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(),
-              INTERNAL_SERVER_ERROR, "Unknown request type: " + requestType);
+          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
+              Optional.empty(),
+              Optional.empty(),
+              INTERNAL_SERVER_ERROR,
+              "Unknown request type: " + requestType);
       }
     }
     stats.recordFanoutRequestCount(storeName, gatheredResponses.size());
@@ -197,11 +210,14 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
      * 2. {@link ROUTER_ROUTING_TIME}
      */
     if (allMetrics.containsKey(ROUTER_SERVER_TIME.name())) {
-      // TODO: When a batch get throws a quota exception, the ROUTER_SERVER_TIME is missing, so we can't record anything here...
-      double latency = LatencyUtils.convertLatencyFromNSToMS(allMetrics.get(ROUTER_SERVER_TIME.name()).getRawValue(TimeUnit.NANOSECONDS));
+      // TODO: When a batch get throws a quota exception, the ROUTER_SERVER_TIME is missing, so we can't record anything
+      // here...
+      double latency = LatencyUtils
+          .convertLatencyFromNSToMS(allMetrics.get(ROUTER_SERVER_TIME.name()).getRawValue(TimeUnit.NANOSECONDS));
       stats.recordLatency(storeName, latency);
       if (HEALTHY_STATUSES.contains(responseStatus)) {
-        routerStats.getStatsByType(RequestType.SINGLE_GET).recordReadQuotaUsage(storeName, venicePath.getPartitionKeys().size());
+        routerStats.getStatsByType(RequestType.SINGLE_GET)
+            .recordReadQuotaUsage(storeName, venicePath.getPartitionKeys().size());
         if (isFastRequest(latency, requestType)) {
           stats.recordHealthyRequest(storeName, latency);
         } else {
@@ -216,15 +232,18 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       }
     }
     if (allMetrics.containsKey(ROUTER_RESPONSE_WAIT_TIME.name())) {
-      double waitingTime = LatencyUtils.convertLatencyFromNSToMS(allMetrics.get(ROUTER_RESPONSE_WAIT_TIME.name()).getRawValue(TimeUnit.NANOSECONDS));
+      double waitingTime = LatencyUtils
+          .convertLatencyFromNSToMS(allMetrics.get(ROUTER_RESPONSE_WAIT_TIME.name()).getRawValue(TimeUnit.NANOSECONDS));
       stats.recordResponseWaitingTime(storeName, waitingTime);
     }
     if (allMetrics.containsKey(ROUTER_PARSE_URI.name())) {
-      double parsingTime = LatencyUtils.convertLatencyFromNSToMS(allMetrics.get(ROUTER_PARSE_URI.name()).getRawValue(TimeUnit.NANOSECONDS));
+      double parsingTime = LatencyUtils
+          .convertLatencyFromNSToMS(allMetrics.get(ROUTER_PARSE_URI.name()).getRawValue(TimeUnit.NANOSECONDS));
       stats.recordRequestParsingLatency(storeName, parsingTime);
     }
     if (allMetrics.containsKey(ROUTER_ROUTING_TIME.name())) {
-      double routingTime = LatencyUtils.convertLatencyFromNSToMS(allMetrics.get(ROUTER_ROUTING_TIME.name()).getRawValue(TimeUnit.NANOSECONDS));
+      double routingTime = LatencyUtils
+          .convertLatencyFromNSToMS(allMetrics.get(ROUTER_ROUTING_TIME.name()).getRawValue(TimeUnit.NANOSECONDS));
       stats.recordRequestRoutingLatency(storeName, routingTime);
     }
     if (HEALTHY_STATUSES.contains(responseStatus) && !venicePath.isStreamingRequest()) {
@@ -236,22 +255,25 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     return finalResponse;
   }
 
-  private FullHttpResponse buildStreamingResponse(List<FullHttpResponse> gatheredResponses, String storeName, int version) {
+  private FullHttpResponse buildStreamingResponse(
+      List<FullHttpResponse> gatheredResponses,
+      String storeName,
+      int version) {
     // Validate the consistency of compression strategy across all the gathered responses
     validateAndExtractCompressionStrategy(gatheredResponses, storeName, version);
     /**
      * If every sub-response is good, return {@link SuccessfulStreamingResponse} to indicate that,
      * otherwise, return the first error response.
      */
-    for (FullHttpResponse subResponse : gatheredResponses) {
-      if (! subResponse.status().equals(OK)) {
+    for (FullHttpResponse subResponse: gatheredResponses) {
+      if (!subResponse.status().equals(OK)) {
         return subResponse;
       }
     }
     return new SuccessfulStreamingResponse();
   }
 
-  private boolean isFastRequest(double requestLatencyMs, RequestType requestType){
+  private boolean isFastRequest(double requestLatencyMs, RequestType requestType) {
     switch (requestType) {
       case SINGLE_GET:
         return requestLatencyMs < singleGetTardyThresholdInMs;
@@ -277,19 +299,29 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     return getCompressionStrategy(response.headers().get(VENICE_COMPRESSION_STRATEGY));
   }
 
-  private CompressionStrategy validateAndExtractCompressionStrategy(List<FullHttpResponse> responses, String storeName, int version) {
+  private CompressionStrategy validateAndExtractCompressionStrategy(
+      List<FullHttpResponse> responses,
+      String storeName,
+      int version) {
     CompressionStrategy compressionStrategy = null;
-    for (FullHttpResponse response : responses) {
+    for (FullHttpResponse response: responses) {
       CompressionStrategy responseCompression = getResponseCompressionStrategy(response);
       if (compressionStrategy == null) {
         compressionStrategy = responseCompression;
       }
       if (responseCompression != compressionStrategy) {
         // Compression strategy should be consistent across all records for a specific store version
-        String errorMsg = String.format("Inconsistent compression strategy returned. Store: %s; Version: %d, ExpectedCompression: %d, ResponseCompression: %d",
-            storeName, version, compressionStrategy.getValue(), responseCompression.getValue());
-        throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(RequestType.MULTI_GET),
-            BAD_GATEWAY, errorMsg);
+        String errorMsg = String.format(
+            "Inconsistent compression strategy returned. Store: %s; Version: %d, ExpectedCompression: %d, ResponseCompression: %d",
+            storeName,
+            version,
+            compressionStrategy.getValue(),
+            responseCompression.getValue());
+        throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
+            Optional.of(storeName),
+            Optional.of(RequestType.MULTI_GET),
+            BAD_GATEWAY,
+            errorMsg);
       }
     }
     return compressionStrategy;
@@ -303,7 +335,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
      */
     CompositeByteBuf content = Unpooled.compositeBuffer();
     int totalRequestRcu = 0;
-    for (FullHttpResponse response : responses) {
+    for (FullHttpResponse response: responses) {
       if (response.status() != OK) {
         // Return error response directly.
         return response;
@@ -311,11 +343,16 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       COMPUTE_VALID_HEADER_MAP.forEach((headerName, headerValue) -> {
         String currentValue = response.headers().get(headerName);
         if (null == currentValue) {
-          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(RequestType.COMPUTE),
-              BAD_GATEWAY, "Header: " + headerName + " is expected in compute sub-response");
+          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
+              Optional.of(storeName),
+              Optional.of(RequestType.COMPUTE),
+              BAD_GATEWAY,
+              "Header: " + headerName + " is expected in compute sub-response");
         }
         if (!headerValue.equals(currentValue)) {
-          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(RequestType.COMPUTE),
+          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
+              Optional.of(storeName),
+              Optional.of(RequestType.COMPUTE),
               BAD_GATEWAY,
               "Incompatible header received for " + headerName + ", values: " + headerValue + ", " + currentValue);
         }
@@ -357,7 +394,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     // Venice only supports either compression of the whole database or no compression at all.
     CompressionStrategy responseCompression = validateAndExtractCompressionStrategy(responses, storeName, version);
 
-    for (FullHttpResponse response : responses) {
+    for (FullHttpResponse response: responses) {
       if (response.status() != OK) {
         response.headers().set(HttpConstants.VENICE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.getValue());
         // Return error response directly for now.
@@ -374,12 +411,18 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       MULTI_GET_VALID_HEADER_MAP.forEach((headerName, headerValue) -> {
         String currentValue = response.headers().get(headerName);
         if (null == currentValue) {
-          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(RequestType.MULTI_GET),
-              BAD_GATEWAY, "Header: " + headerName + " is expected in multi-get sub-response");
+          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
+              Optional.of(storeName),
+              Optional.of(RequestType.MULTI_GET),
+              BAD_GATEWAY,
+              "Header: " + headerName + " is expected in multi-get sub-response");
         }
         if (!headerValue.equals(currentValue)) {
-          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(RequestType.MULTI_GET),
-              BAD_GATEWAY, "Incompatible header received for " + headerName + ", values: " + headerValue + ", " +  currentValue);
+          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
+              Optional.of(storeName),
+              Optional.of(RequestType.MULTI_GET),
+              BAD_GATEWAY,
+              "Incompatible header received for " + headerName + ", values: " + headerValue + ", " + currentValue);
         }
       });
 

@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller.authorization;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.authorization.AceEntry;
 import com.linkedin.venice.authorization.AclBinding;
 import com.linkedin.venice.authorization.AuthorizerService;
@@ -10,21 +12,18 @@ import com.linkedin.venice.authorization.Resource;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.utils.TestUtils;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-
-import com.linkedin.venice.utils.TestUtils;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
-
-import static org.mockito.Mockito.*;
 
 
 public class SystemStoreAclSynchronizationTaskTest {
@@ -44,7 +43,7 @@ public class SystemStoreAclSynchronizationTaskTest {
     allStores.clear();
     clustersLeaderOf.clear();
     // Adding the zk shared system store objects to the store list to ensure they are properly ignored.
-    for (VeniceSystemStoreType veniceSystemStoreType : VeniceSystemStoreType.values()) {
+    for (VeniceSystemStoreType veniceSystemStoreType: VeniceSystemStoreType.values()) {
       Store veniceSystemStoreObject = mock(Store.class);
       String systemStoreName = veniceSystemStoreType.getZkSharedStoreNameInCluster(defaultCluster);
       when(veniceSystemStoreObject.getName()).thenReturn(systemStoreName);
@@ -89,20 +88,21 @@ public class SystemStoreAclSynchronizationTaskTest {
     aclBinding2.addAceEntry(new AceEntry(p2, Method.Read, Permission.ALLOW));
     when(authorizerService.describeAcls(r2)).thenReturn(aclBinding2);
 
-    SystemStoreAclSynchronizationTask task = new SystemStoreAclSynchronizationTask(authorizerService,
-        veniceParentHelixAdmin, SYNCHRONIZATION_CYCLE_DELAY);
+    SystemStoreAclSynchronizationTask task =
+        new SystemStoreAclSynchronizationTask(authorizerService, veniceParentHelixAdmin, SYNCHRONIZATION_CYCLE_DELAY);
     executorService.submit(task);
 
     // The synchronization routine has completed at least once.
     verify(veniceParentHelixAdmin, timeout(200).times(2)).getClustersLeaderOf();
     task.close();
     ArgumentCaptor<AclBinding> aclBindingArgumentCaptor = ArgumentCaptor.forClass(AclBinding.class);
-    verify(veniceParentHelixAdmin, atLeastOnce()).updateSystemStoreAclForStore(eq(defaultCluster), eq(storeName1),
-        aclBindingArgumentCaptor.capture());
+    verify(veniceParentHelixAdmin, atLeastOnce())
+        .updateSystemStoreAclForStore(eq(defaultCluster), eq(storeName1), aclBindingArgumentCaptor.capture());
     Set<AclBinding> aclBindingSet = new HashSet<>(aclBindingArgumentCaptor.getAllValues());
     Assert.assertEquals(aclBindingSet.size(), 1);
-    Assert.assertTrue(aclBindingArgumentCaptor.getAllValues()
-        .contains(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.generateSystemStoreAclBinding(aclBinding1)));
+    Assert.assertTrue(
+        aclBindingArgumentCaptor.getAllValues()
+            .contains(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.generateSystemStoreAclBinding(aclBinding1)));
 
     aclBindingArgumentCaptor = ArgumentCaptor.forClass(AclBinding.class);
     aclBindingSet = new HashSet<>(aclBindingArgumentCaptor.getAllValues());

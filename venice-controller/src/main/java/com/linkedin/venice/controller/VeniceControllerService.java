@@ -1,16 +1,18 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.client.store.ClientFactory.*;
+
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
-import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.lingeringjob.DefaultLingeringStoreVersionChecker;
 import com.linkedin.venice.controller.lingeringjob.HeartbeatBasedCheckerStats;
 import com.linkedin.venice.controller.lingeringjob.HeartbeatBasedLingeringStoreVersionChecker;
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -21,8 +23,6 @@ import java.util.Map;
 import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.client.store.ClientFactory.*;
 
 
 /**
@@ -44,11 +44,16 @@ public class VeniceControllerService extends AbstractVeniceService {
       Optional<AuthorizerService> authorizerService,
       D2Client d2Client,
       Optional<ClientConfig> routerClientConfig,
-      Optional<ICProvider> icProvider
-  ) {
+      Optional<ICProvider> icProvider) {
     this.multiClusterConfigs = multiClusterConfigs;
-    VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(multiClusterConfigs, metricsRepository, sslEnabled, d2Client,
-        sslConfig, accessController, icProvider);
+    VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(
+        multiClusterConfigs,
+        metricsRepository,
+        sslEnabled,
+        d2Client,
+        sslConfig,
+        accessController,
+        icProvider);
 
     if (multiClusterConfigs.isParent()) {
       this.admin = new VeniceParentHelixAdmin(
@@ -59,8 +64,7 @@ public class VeniceControllerService extends AbstractVeniceService {
           accessController,
           authorizerService,
           createLingeringStoreVersionChecker(multiClusterConfigs, metricsRepository),
-          WriteComputeSchemaConverter.getInstance()
-      );
+          WriteComputeSchemaConverter.getInstance());
       logger.info("Controller works as a parent controller.");
     } else {
       this.admin = internalAdmin;
@@ -68,16 +72,24 @@ public class VeniceControllerService extends AbstractVeniceService {
     }
     Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader = Optional.empty();
     try {
-      kafkaMessageEnvelopeSchemaReader = routerClientConfig.isPresent() ? Optional.of(
-          getSchemaReader(ClientConfig.cloneConfig(routerClientConfig.get()).setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()))) : Optional.empty();
+      kafkaMessageEnvelopeSchemaReader = routerClientConfig.isPresent()
+          ? Optional.of(
+              getSchemaReader(
+                  ClientConfig.cloneConfig(routerClientConfig.get())
+                      .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())))
+          : Optional.empty();
     } catch (Exception e) {
       logger.error("Exception in initializing KME schema reader", e);
     }
     // The admin consumer needs to use VeniceHelixAdmin to update Zookeeper directly
     consumerServicesByClusters = new HashMap<>(multiClusterConfigs.getClusters().size());
-    for (String cluster : multiClusterConfigs.getClusters()) {
-      AdminConsumerService adminConsumerService =
-          new AdminConsumerService(cluster, internalAdmin, multiClusterConfigs.getControllerConfig(cluster), metricsRepository, kafkaMessageEnvelopeSchemaReader);
+    for (String cluster: multiClusterConfigs.getClusters()) {
+      AdminConsumerService adminConsumerService = new AdminConsumerService(
+          cluster,
+          internalAdmin,
+          multiClusterConfigs.getControllerConfig(cluster),
+          metricsRepository,
+          kafkaMessageEnvelopeSchemaReader);
       this.consumerServicesByClusters.put(cluster, adminConsumerService);
 
       this.admin.setAdminConsumerService(cluster, adminConsumerService);
@@ -86,17 +98,16 @@ public class VeniceControllerService extends AbstractVeniceService {
 
   private LingeringStoreVersionChecker createLingeringStoreVersionChecker(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
-      MetricsRepository metricsRepository
-  ) {
+      MetricsRepository metricsRepository) {
     if (multiClusterConfigs.getBatchJobHeartbeatEnabled()) {
       logger.info("Batch job heartbeat is enabled. Hence use the heartbeat-based batch job liveness checker.");
       return new HeartbeatBasedLingeringStoreVersionChecker(
           multiClusterConfigs.getBatchJobHeartbeatTimeout(),
           multiClusterConfigs.getBatchJobHeartbeatInitialBufferTime(),
           new DefaultLingeringStoreVersionChecker(),
-          new HeartbeatBasedCheckerStats(metricsRepository)
-      );
-    } {
+          new HeartbeatBasedCheckerStats(metricsRepository));
+    }
+    {
       logger.info("Batch job heartbeat is NOT enabled. Hence use the default batch job liveness checker.");
       return new DefaultLingeringStoreVersionChecker();
     }
@@ -107,7 +118,7 @@ public class VeniceControllerService extends AbstractVeniceService {
    */
   @Override
   public boolean startInner() {
-    for (String clusterName : multiClusterConfigs.getClusters()) {
+    for (String clusterName: multiClusterConfigs.getClusters()) {
       admin.initStorageCluster(clusterName);
       consumerServicesByClusters.get(clusterName).start();
       logger.info("started cluster: " + clusterName);
@@ -122,7 +133,7 @@ public class VeniceControllerService extends AbstractVeniceService {
    */
   @Override
   public void stopInner() {
-    for (String clusterName : multiClusterConfigs.getClusters()) {
+    for (String clusterName: multiClusterConfigs.getClusters()) {
       // We don't need to lock resources here, as we will acquire the lock during the ST leader->standby, which would
       // prevent the partial updates.
       admin.stop(clusterName);
@@ -131,7 +142,7 @@ public class VeniceControllerService extends AbstractVeniceService {
       } catch (Exception e) {
         logger.error("Got exception when stop AdminConsumerService", e);
       }
-      logger.info("Stopped cluster: "+clusterName);
+      logger.info("Stopped cluster: " + clusterName);
     }
     // TODO merge or differentiate the difference between close() and stopVeniceController() explicitly.
     admin.stopVeniceController();

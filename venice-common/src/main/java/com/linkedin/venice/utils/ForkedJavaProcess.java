@@ -36,18 +36,12 @@ import org.apache.logging.log4j.Logger;
  */
 public final class ForkedJavaProcess extends Process {
   private static final Logger LOGGER = LogManager.getLogger(ForkedJavaProcess.class);
-  private static final String FORKED_PROCESS_LOG4J2_PROPERTIES = "status = error\n"
-      + "name = PropertiesConfig\n"
-      + "filters = threshold\n"
-      + "filter.threshold.type = ThresholdFilter\n"
-      + "filter.threshold.level = debug\n"
-      + "appenders = console\n"
-      + "appender.console.type = Console\n"
-      + "appender.console.name = STDOUT\n"
+  private static final String FORKED_PROCESS_LOG4J2_PROPERTIES = "status = error\n" + "name = PropertiesConfig\n"
+      + "filters = threshold\n" + "filter.threshold.type = ThresholdFilter\n" + "filter.threshold.level = debug\n"
+      + "appenders = console\n" + "appender.console.type = Console\n" + "appender.console.name = STDOUT\n"
       + "appender.console.layout.type = PatternLayout\n"
       + "appender.console.layout.pattern =%d{HH:mm:ss} %p [%c{1}] %replace{%m%n}{[\\r\\n]}{|}%throwable{separator(|)}%n\n"
-      + "rootLogger.level = info\n"
-      + "rootLogger.appenderRefs = stdout\n"
+      + "rootLogger.level = info\n" + "rootLogger.appenderRefs = stdout\n"
       + "rootLogger.appenderRef.stdout.ref = STDOUT";
 
   private static final String JAVA_PATH = Paths.get(System.getProperty("java.home"), "bin", "java").toString();
@@ -70,15 +64,22 @@ public final class ForkedJavaProcess extends Process {
     List<String> command = prepareCommandArgList(appClass, classPath, args, jvmArgs);
 
     Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-    Logger logger = LogManager.getLogger(loggerPrefix.map(s -> s + ", ").orElse("") + appClass.getSimpleName() + ", PID=" + getPidOfProcess(process));
+    Logger logger = LogManager.getLogger(
+        loggerPrefix.map(s -> s + ", ").orElse("") + appClass.getSimpleName() + ", PID=" + getPidOfProcess(process));
     return new ForkedJavaProcess(process, logger, killOnExit);
   }
 
-  public static ForkedJavaProcess exec(Class appClass, List<String> args, List<String> jvmArgs, boolean killOnExit, Optional<String> loggerPrefix) throws IOException {
+  public static ForkedJavaProcess exec(
+      Class appClass,
+      List<String> args,
+      List<String> jvmArgs,
+      boolean killOnExit,
+      Optional<String> loggerPrefix) throws IOException {
     return exec(appClass, args, jvmArgs, getClasspath(), killOnExit, loggerPrefix);
   }
 
-  public static ForkedJavaProcess exec(Class appClass, List<String> args, List<String> jvmArgs, boolean killOnExit) throws IOException {
+  public static ForkedJavaProcess exec(Class appClass, List<String> args, List<String> jvmArgs, boolean killOnExit)
+      throws IOException {
     return exec(appClass, args, jvmArgs, killOnExit, Optional.empty());
   }
 
@@ -93,7 +94,7 @@ public final class ForkedJavaProcess extends Process {
   public static String getClasspath() {
     try (ScanResult scanResult = new ClassGraph().scan()) {
       Set<File> classpathDirs = new LinkedHashSet<>();
-      for (File file : scanResult.getClasspathFiles()) {
+      for (File file: scanResult.getClasspathFiles()) {
         if (file.isDirectory() || file.getName().equals("*") || file.getAbsolutePath().contains(".gradle")) {
           classpathDirs.add(file);
         } else {
@@ -105,7 +106,7 @@ public final class ForkedJavaProcess extends Process {
         Prepend WEB-INF/lib classpath to the forked Java process's classpath so the forked
         process will have correct(newest) jar version for every dependency when deployed in regular-war fashion.
        */
-      for (File file : new ArrayList<>(classpathDirs)) {
+      for (File file: new ArrayList<>(classpathDirs)) {
         if (!file.getPath().contains("WEB-INF/lib")) {
           classpathDirs.remove(file);
           classpathDirs.add(file);
@@ -116,7 +117,7 @@ public final class ForkedJavaProcess extends Process {
         Prepend extra_webapp_resources/lib classpath to the forked Java process's classpath so the forked
         process will have correct(newest) jar version for every dependency when deployed in thin-war fashion.
        */
-      for (File file : new ArrayList<>(classpathDirs)) {
+      for (File file: new ArrayList<>(classpathDirs)) {
         if (!file.getPath().contains("extra_webapp_resources")) {
           classpathDirs.remove(file);
           classpathDirs.add(file);
@@ -197,7 +198,7 @@ public final class ForkedJavaProcess extends Process {
       executorService.shutdownNow();
       /*
         Apparently, we can leak FDs if we don't manually close these streams.
-
+      
         Source: http://www.ryanchapin.com/fv-b-4-689/Too-Many-Open-Files-Errors-When-Using-Runtime-exec---or-ProcessBuilder-start---to-Execute-A-Process.html
        */
       Utils.closeQuietlyWithErrorLogged(process.getInputStream());
@@ -265,7 +266,7 @@ public final class ForkedJavaProcess extends Process {
     System.arraycopy(logCharArray, levelEndIndex + 1, logCharArray, levelStartIndex, endIndex - levelEndIndex);
     int totalLength = (levelStartIndex - startIndex) + (endIndex - levelEndIndex);
     logInfo.setLevel(level);
-    logInfo.setLog( new String(logCharArray, startIndex, totalLength));
+    logInfo.setLog(new String(logCharArray, startIndex, totalLength));
   }
 
   private static synchronized long getPidOfProcess(Process process) {
@@ -287,7 +288,8 @@ public final class ForkedJavaProcess extends Process {
   }
 
   private static String generateLog4j2ConfigForForkedProcess() {
-    String configFilePath = Paths.get(Utils.getTempDataDirectory().getAbsolutePath(), "log4j2.properties").toAbsolutePath().toString();
+    String configFilePath =
+        Paths.get(Utils.getTempDataDirectory().getAbsolutePath(), "log4j2.properties").toAbsolutePath().toString();
     File configFile = new File(configFilePath);
     try (FileWriter fw = new FileWriter(configFile)) {
       fw.write(FORKED_PROCESS_LOG4J2_PROPERTIES);
@@ -298,7 +300,11 @@ public final class ForkedJavaProcess extends Process {
     return configFilePath;
   }
 
-  private static List<String> prepareCommandArgList(Class appClass, String classPath, List<String> args, List<String> jvmArgs) {
+  private static List<String> prepareCommandArgList(
+      Class appClass,
+      String classPath,
+      List<String> args,
+      List<String> jvmArgs) {
     List<String> command = new ArrayList<>();
     command.add(JAVA_PATH);
     command.add("-cp");
@@ -311,7 +317,7 @@ public final class ForkedJavaProcess extends Process {
      This config will inherit the log4j2 config file from parent process and set up correct logging level and it will
      inherit all JVM arguments from parent process. Users can provide JVM arguments to override these settings.
      */
-    for (String arg : ManagementFactory.getRuntimeMXBean().getInputArguments()) {
+    for (String arg: ManagementFactory.getRuntimeMXBean().getInputArguments()) {
       /**
        * Explicitly block JVM debugging setup in forked process as (1) it is not used anywhere (2) debug port binding
        * will conflict with main process

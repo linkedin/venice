@@ -26,9 +26,10 @@ public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
   private final ReadOnlyStoreRepository metadataRepository;
 
   // a map of map: each store could have multiple versions and each version has a specific partitioner
-  private final Map<String, Map<Integer, VenicePartitioner>> storeByVersionByPartitionerMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, Map<Integer, VenicePartitioner>> storeByVersionByPartitionerMap =
+      new VeniceConcurrentHashMap<>();
 
-  public VenicePartitionFinder(RoutingDataRepository dataRepository, ReadOnlyStoreRepository metadataRepository){
+  public VenicePartitionFinder(RoutingDataRepository dataRepository, ReadOnlyStoreRepository metadataRepository) {
     this.dataRepository = dataRepository;
     this.metadataRepository = metadataRepository;
     this.metadataRepository.registerStoreDataChangedListener(storeChangeListener);
@@ -42,8 +43,11 @@ public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
    */
   @Override
   public String findPartitionName(String resourceName, RouterKey partitionKey) {
-    int partitionId = findPartitionNumber(partitionKey, getNumPartitions(resourceName),
-        Version.parseStoreFromKafkaTopicName(resourceName), Version.parseVersionFromKafkaTopicName(resourceName));
+    int partitionId = findPartitionNumber(
+        partitionKey,
+        getNumPartitions(resourceName),
+        Version.parseStoreFromKafkaTopicName(resourceName),
+        Version.parseVersionFromKafkaTopicName(resourceName));
     return HelixUtils.getPartitionName(resourceName, partitionId);
   }
 
@@ -53,7 +57,8 @@ public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
 
   @Override
   public List<String> getAllPartitionNames(String resourceName) {
-    return dataRepository.getPartitionAssignments(resourceName).getAllPartitions()
+    return dataRepository.getPartitionAssignments(resourceName)
+        .getAllPartitions()
         .stream()
         .map(p -> HelixUtils.getPartitionName(resourceName, p.getId()))
         .collect(Collectors.toList());
@@ -69,7 +74,8 @@ public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
    * If miss, real search using store info happens in {@link #searchPartitioner}
    */
   private VenicePartitioner findPartitioner(String storeName, int versionNum) {
-    Map<Integer, VenicePartitioner> versionByPartitionerMap = storeByVersionByPartitionerMap.computeIfAbsent(storeName, k -> new VeniceConcurrentHashMap<>());
+    Map<Integer, VenicePartitioner> versionByPartitionerMap =
+        storeByVersionByPartitionerMap.computeIfAbsent(storeName, k -> new VeniceConcurrentHashMap<>());
     return versionByPartitionerMap.computeIfAbsent(versionNum, k -> searchPartitioner(storeName, versionNum));
   }
 
@@ -79,7 +85,7 @@ public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
       throw new VeniceException("Unknown store: " + storeName);
     }
     Optional<Version> version = store.getVersion(versionNum);
-    if (! version.isPresent()) {
+    if (!version.isPresent()) {
       throw new VeniceException("Unknown version: " + versionNum + " in store: " + storeName);
     }
     PartitionerConfig partitionerConfig = version.get().getPartitionerConfig();
@@ -90,20 +96,20 @@ public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
      * Force amplification factor == 1 to avoid using UserPartitionAwarePartitioner, as we are hiding amp factor concept
      * for Router and Helix
      */
-    return PartitionUtils.getVenicePartitioner(partitionerConfig.getPartitionerClass(),
-        1, partitionerProperties);
+    return PartitionUtils.getVenicePartitioner(partitionerConfig.getPartitionerClass(), 1, partitionerProperties);
   }
 
   private final StoreDataChangedListener storeChangeListener = new StoreDataChangedListener() {
     @Override
     public void handleStoreChanged(Store store) {
       String storeName = store.getName();
-      Set<Integer> upToDateVersionsSet = store.getVersions().stream().map(Version::getNumber).collect(Collectors.toSet());
+      Set<Integer> upToDateVersionsSet =
+          store.getVersions().stream().map(Version::getNumber).collect(Collectors.toSet());
 
       // remove out dated versions (if any) from the map
       if (storeByVersionByPartitionerMap.containsKey(storeName)) {
         Map<Integer, VenicePartitioner> versionByPartitionerMap = storeByVersionByPartitionerMap.get(storeName);
-        for (Integer candidateVersion : versionByPartitionerMap.keySet()) {
+        for (Integer candidateVersion: versionByPartitionerMap.keySet()) {
           if (!upToDateVersionsSet.contains(candidateVersion)) {
             versionByPartitionerMap.remove(candidateVersion);
           }
@@ -111,7 +117,7 @@ public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
       }
 
       // add new versions to the map proactively to accelerate future possible access
-      for (Integer version : upToDateVersionsSet) {
+      for (Integer version: upToDateVersionsSet) {
         findPartitioner(storeName, version);
       }
     }

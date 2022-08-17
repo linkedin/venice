@@ -70,16 +70,18 @@ public class MetaStoreWriter implements Closeable {
   private final HelixReadOnlyZKSharedSchemaRepository zkSharedSchemaRepository;
   private int derivedComputeSchemaId = -1;
 
-  public MetaStoreWriter(TopicManager topicManager, VeniceWriterFactory writerFactory,
+  public MetaStoreWriter(
+      TopicManager topicManager,
+      VeniceWriterFactory writerFactory,
       HelixReadOnlyZKSharedSchemaRepository schemaRepo) {
     this.topicManager = topicManager;
     this.writerFactory = writerFactory;
     /**
      * TODO: get the write compute schema from the constructor so that this class does not use {@link WriteComputeSchemaConverter}
      */
-    this.derivedComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(
-        AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema()
-    );
+    this.derivedComputeSchema = WriteComputeSchemaConverter.getInstance()
+        .convertFromValueRecordSchema(
+            AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema());
     this.zkSharedSchemaRepository = schemaRepo;
   }
 
@@ -93,10 +95,12 @@ public class MetaStoreWriter implements Closeable {
           "Param 'store' must be an instance of 'ZKStore' for store name: " + storeName + ", but received: "
               + store.getClass());
     }
-    write(storeName, MetaStoreDataType.STORE_PROPERTIES, () -> new HashMap<String, String>() {{
-      put(KEY_STRING_STORE_NAME, storeName);
-      put(KEY_STRING_CLUSTER_NAME, clusterName);
-    }}, () -> {
+    write(storeName, MetaStoreDataType.STORE_PROPERTIES, () -> new HashMap<String, String>() {
+      {
+        put(KEY_STRING_STORE_NAME, storeName);
+        put(KEY_STRING_CLUSTER_NAME, clusterName);
+      }
+    }, () -> {
       StoreMetaValue value = new StoreMetaValue();
       value.storeProperties = ((ZKStore) store).dataModel();
       return value;
@@ -104,9 +108,11 @@ public class MetaStoreWriter implements Closeable {
   }
 
   public void writeStoreKeySchemas(String storeName, Collection<SchemaEntry> keySchemas) {
-    write(storeName, MetaStoreDataType.STORE_KEY_SCHEMAS, () -> new HashMap<String, String>() {{
-      put(KEY_STRING_STORE_NAME, storeName);
-    }}, () -> {
+    write(storeName, MetaStoreDataType.STORE_KEY_SCHEMAS, () -> new HashMap<String, String>() {
+      {
+        put(KEY_STRING_STORE_NAME, storeName);
+      }
+    }, () -> {
       StoreMetaValue value = new StoreMetaValue();
       StoreKeySchemas storeKeySchemas = new StoreKeySchemas();
       storeKeySchemas.keySchemaMap = buildSchemaMap(keySchemas);
@@ -123,9 +129,11 @@ public class MetaStoreWriter implements Closeable {
     // Update this method to only write the value schema ids without the value schema strings once all DaVinci client is
     // updated. i.e. a map of schema id to empty strings.
     try {
-      write(storeName, MetaStoreDataType.STORE_VALUE_SCHEMAS, () -> new HashMap<String, String>() {{
-        put(KEY_STRING_STORE_NAME, storeName);
-      }}, () -> {
+      write(storeName, MetaStoreDataType.STORE_VALUE_SCHEMAS, () -> new HashMap<String, String>() {
+        {
+          put(KEY_STRING_STORE_NAME, storeName);
+        }
+      }, () -> {
         StoreMetaValue value = new StoreMetaValue();
         StoreValueSchemas storeValueSchemas = new StoreValueSchemas();
         storeValueSchemas.valueSchemaMap = buildSchemaMap(valueSchemas);
@@ -133,11 +141,14 @@ public class MetaStoreWriter implements Closeable {
         return value;
       });
     } catch (RecordTooLargeException recordTooLargeException) {
-      LOGGER.warn("Store: " + storeName + "'s value schemas can no longer fit into a single K/V pair."
-          + " Please update the DaVinci client to versions that can support large value schemas in meta system store.");
-      write(storeName, MetaStoreDataType.STORE_VALUE_SCHEMAS, () -> new HashMap<String, String>() {{
-        put(KEY_STRING_STORE_NAME, storeName);
-      }}, () -> {
+      LOGGER.warn(
+          "Store: " + storeName + "'s value schemas can no longer fit into a single K/V pair."
+              + " Please update the DaVinci client to versions that can support large value schemas in meta system store.");
+      write(storeName, MetaStoreDataType.STORE_VALUE_SCHEMAS, () -> new HashMap<String, String>() {
+        {
+          put(KEY_STRING_STORE_NAME, storeName);
+        }
+      }, () -> {
         StoreMetaValue value = new StoreMetaValue();
         StoreValueSchemas storeValueSchemas = new StoreValueSchemas();
         storeValueSchemas.valueSchemaMap = buildSchemaIdOnlyMap(valueSchemas);
@@ -150,11 +161,11 @@ public class MetaStoreWriter implements Closeable {
 
   public void writeInUseValueSchema(String storeName, int versionNumber, int valueSchemaId) {
     update(storeName, MetaStoreDataType.VALUE_SCHEMAS_WRITTEN_PER_STORE_VERSION, () -> {
-      Map<String,String> map = new HashMap<>(2);
+      Map<String, String> map = new HashMap<>(2);
       map.put(KEY_STRING_STORE_NAME, storeName);
       map.put(KEY_STRING_VERSION_NUMBER, Integer.toString(versionNumber));
       return map;
-      }, () -> {
+    }, () -> {
       // Construct an update
       StoreMetaValueWriteOpRecord writeOpRecord = new StoreMetaValueWriteOpRecord();
       writeOpRecord.timestamp = System.currentTimeMillis();
@@ -168,17 +179,19 @@ public class MetaStoreWriter implements Closeable {
     });
   }
 
-    /**
-     * Improved version of writeStoreValueSchemas. Instead of writing all value schemas into one K/V pair we write it to
-     * a different key space where each K/V pair only represents one version of the value schema. This allows us to store
-     * many versions of a large value schema.
-     */
+  /**
+   * Improved version of writeStoreValueSchemas. Instead of writing all value schemas into one K/V pair we write it to
+   * a different key space where each K/V pair only represents one version of the value schema. This allows us to store
+   * many versions of a large value schema.
+   */
   private void writeStoreValueSchemasIndividually(String storeName, Collection<SchemaEntry> valueSchemas) {
-    for (SchemaEntry schemaEntry : valueSchemas) {
-      write(storeName, MetaStoreDataType.STORE_VALUE_SCHEMA, () -> new HashMap<String, String>() {{
-        put(KEY_STRING_STORE_NAME, storeName);
-        put(KEY_STRING_SCHEMA_ID, Integer.toString(schemaEntry.getId()));
-      }}, () -> {
+    for (SchemaEntry schemaEntry: valueSchemas) {
+      write(storeName, MetaStoreDataType.STORE_VALUE_SCHEMA, () -> new HashMap<String, String>() {
+        {
+          put(KEY_STRING_STORE_NAME, storeName);
+          put(KEY_STRING_SCHEMA_ID, Integer.toString(schemaEntry.getId()));
+        }
+      }, () -> {
         StoreMetaValue value = new StoreMetaValue();
         StoreValueSchema storeValueSchema = new StoreValueSchema();
         storeValueSchema.valueSchema = schemaEntry.getSchema().toString();
@@ -191,17 +204,23 @@ public class MetaStoreWriter implements Closeable {
   /**
    * This function is used to produce a snapshot for replica statuses.
    */
-  public void writeReadyToServerStoreReplicas(String clusterName, String storeName, int version, int partitionId,
+  public void writeReadyToServerStoreReplicas(
+      String clusterName,
+      String storeName,
+      int version,
+      int partitionId,
       Collection<Instance> readyToServeInstances) {
-    write(storeName, MetaStoreDataType.STORE_REPLICA_STATUSES, () -> new HashMap<String, String>() {{
-      put(KEY_STRING_STORE_NAME, storeName);
-      put(KEY_STRING_CLUSTER_NAME, clusterName);
-      put(KEY_STRING_VERSION_NUMBER, Integer.toString(version));
-      put(KEY_STRING_PARTITION_ID, Integer.toString(partitionId));
-    }}, () -> {
+    write(storeName, MetaStoreDataType.STORE_REPLICA_STATUSES, () -> new HashMap<String, String>() {
+      {
+        put(KEY_STRING_STORE_NAME, storeName);
+        put(KEY_STRING_CLUSTER_NAME, clusterName);
+        put(KEY_STRING_VERSION_NUMBER, Integer.toString(version));
+        put(KEY_STRING_PARTITION_ID, Integer.toString(partitionId));
+      }
+    }, () -> {
       StoreMetaValue value = new StoreMetaValue();
       Map<CharSequence, StoreReplicaStatus> replicaMap = new HashMap<>();
-      for (Instance instance : readyToServeInstances) {
+      for (Instance instance: readyToServeInstances) {
         StoreReplicaStatus storeReplicaStatus = new StoreReplicaStatus();
         storeReplicaStatus.status = ExecutionStatus.COMPLETED.getValue();
         replicaMap.put(instance.getUrl(true), storeReplicaStatus);
@@ -214,14 +233,21 @@ public class MetaStoreWriter implements Closeable {
   /**
    * This function should be invoked during ingestion when execution status changes.
    */
-  public void writeStoreReplicaStatus(String clusterName, String storeName, int version, int partitionId,
-      Instance instance, ExecutionStatus executionStatus) {
-    update(storeName, MetaStoreDataType.STORE_REPLICA_STATUSES, () -> new HashMap<String, String>() {{
-      put(KEY_STRING_STORE_NAME, storeName);
-      put(KEY_STRING_CLUSTER_NAME, clusterName);
-      put(KEY_STRING_VERSION_NUMBER, Integer.toString(version));
-      put(KEY_STRING_PARTITION_ID, Integer.toString(partitionId));
-    }}, () -> {
+  public void writeStoreReplicaStatus(
+      String clusterName,
+      String storeName,
+      int version,
+      int partitionId,
+      Instance instance,
+      ExecutionStatus executionStatus) {
+    update(storeName, MetaStoreDataType.STORE_REPLICA_STATUSES, () -> new HashMap<String, String>() {
+      {
+        put(KEY_STRING_STORE_NAME, storeName);
+        put(KEY_STRING_CLUSTER_NAME, clusterName);
+        put(KEY_STRING_VERSION_NUMBER, Integer.toString(version));
+        put(KEY_STRING_PARTITION_ID, Integer.toString(partitionId));
+      }
+    }, () -> {
       // Construct an update
       StoreMetaValueWriteOpRecord writeOpRecord = new StoreMetaValueWriteOpRecord();
       writeOpRecord.timestamp = System.currentTimeMillis();
@@ -243,9 +269,11 @@ public class MetaStoreWriter implements Closeable {
    * by child controllers only.
    */
   public void writeStoreClusterConfig(StoreConfig storeConfig) {
-    write(storeConfig.getStoreName(), MetaStoreDataType.STORE_CLUSTER_CONFIG, () -> new HashMap<String, String>() {{
-      put(KEY_STRING_STORE_NAME, storeConfig.getStoreName());
-    }}, () -> {
+    write(storeConfig.getStoreName(), MetaStoreDataType.STORE_CLUSTER_CONFIG, () -> new HashMap<String, String>() {
+      {
+        put(KEY_STRING_STORE_NAME, storeConfig.getStoreName());
+      }
+    }, () -> {
       StoreMetaValue value = new StoreMetaValue();
       value.storeClusterConfig = storeConfig.dataModel();
       return value;
@@ -255,14 +283,20 @@ public class MetaStoreWriter implements Closeable {
   /**
    * This function should be invoked when Venice SN is dropping any partition replica.
    */
-  public void deleteStoreReplicaStatus(String clusterName, String storeName, int version, int partitionId,
+  public void deleteStoreReplicaStatus(
+      String clusterName,
+      String storeName,
+      int version,
+      int partitionId,
       Instance instance) {
-    update(storeName, MetaStoreDataType.STORE_REPLICA_STATUSES, () -> new HashMap<String, String>() {{
-      put(KEY_STRING_STORE_NAME, storeName);
-      put(KEY_STRING_CLUSTER_NAME, clusterName);
-      put(KEY_STRING_VERSION_NUMBER, Integer.toString(version));
-      put(KEY_STRING_PARTITION_ID, Integer.toString(partitionId));
-    }}, () -> {
+    update(storeName, MetaStoreDataType.STORE_REPLICA_STATUSES, () -> new HashMap<String, String>() {
+      {
+        put(KEY_STRING_STORE_NAME, storeName);
+        put(KEY_STRING_CLUSTER_NAME, clusterName);
+        put(KEY_STRING_VERSION_NUMBER, Integer.toString(version));
+        put(KEY_STRING_PARTITION_ID, Integer.toString(partitionId));
+      }
+    }, () -> {
       // Construct an update WC record
       StoreMetaValueWriteOpRecord writeOpRecord = new StoreMetaValueWriteOpRecord();
       writeOpRecord.timestamp = System.currentTimeMillis();
@@ -284,12 +318,14 @@ public class MetaStoreWriter implements Closeable {
   public void deleteStoreReplicaStatus(String clusterName, String storeName, int version, int partitionId) {
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
     VeniceWriter writer = prepareToWrite(metaStoreName);
-    StoreMetaKey key = MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(new HashMap<String, String>() {{
-      put(KEY_STRING_STORE_NAME, storeName);
-      put(KEY_STRING_CLUSTER_NAME, clusterName);
-      put(KEY_STRING_VERSION_NUMBER, Integer.toString(version));
-      put(KEY_STRING_PARTITION_ID, Integer.toString(partitionId));
-    }});
+    StoreMetaKey key = MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(new HashMap<String, String>() {
+      {
+        put(KEY_STRING_STORE_NAME, storeName);
+        put(KEY_STRING_CLUSTER_NAME, clusterName);
+        put(KEY_STRING_VERSION_NUMBER, Integer.toString(version));
+        put(KEY_STRING_PARTITION_ID, Integer.toString(partitionId));
+      }
+    });
     writer.delete(key, null);
     writer.flush();
   }
@@ -314,7 +350,10 @@ public class MetaStoreWriter implements Closeable {
     return metaStoreWriterMap.get(metaStoreName);
   }
 
-  private void write(String storeName, MetaStoreDataType dataType, Supplier<Map<String, String>> keyStringSupplier,
+  private void write(
+      String storeName,
+      MetaStoreDataType dataType,
+      Supplier<Map<String, String>> keyStringSupplier,
       Supplier<StoreMetaValue> valueSupplier) {
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
     VeniceWriter writer = prepareToWrite(metaStoreName);
@@ -325,7 +364,10 @@ public class MetaStoreWriter implements Closeable {
     writer.flush();
   }
 
-  private void update(String storeName, MetaStoreDataType dataType, Supplier<Map<String, String>> keyStringSupplier,
+  private void update(
+      String storeName,
+      MetaStoreDataType dataType,
+      Supplier<Map<String, String>> keyStringSupplier,
       Supplier<SpecificRecord> updateSupplier) {
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
     VeniceWriter writer = prepareToWrite(metaStoreName);
@@ -334,9 +376,8 @@ public class MetaStoreWriter implements Closeable {
        * Fetch the derived compute schema id on demand for integration test since the meta system store is being created
        * during cluster initialization.
        */
-      Pair<Integer, Integer> derivedSchemaId =
-          zkSharedSchemaRepository.getDerivedSchemaId(VeniceSystemStoreType.META_STORE.getZkSharedStoreName(),
-              derivedComputeSchema.toString());
+      Pair<Integer, Integer> derivedSchemaId = zkSharedSchemaRepository
+          .getDerivedSchemaId(VeniceSystemStoreType.META_STORE.getZkSharedStoreName(), derivedComputeSchema.toString());
       if (derivedSchemaId.getFirst() == SchemaData.INVALID_VALUE_SCHEMA_ID) {
         throw new VeniceException(
             "The derived compute schema for meta system store hasn't been registered to Venice yet");
@@ -345,8 +386,12 @@ public class MetaStoreWriter implements Closeable {
     }
     StoreMetaKey key = dataType.getStoreMetaKey(keyStringSupplier.get());
     SpecificRecord update = updateSupplier.get();
-    writer.update(key, update, AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.currentProtocolVersion.get(),
-        derivedComputeSchemaId, null);
+    writer.update(
+        key,
+        update,
+        AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.currentProtocolVersion.get(),
+        derivedComputeSchemaId,
+        null);
     writer.flush();
   }
 
@@ -357,12 +402,15 @@ public class MetaStoreWriter implements Closeable {
         throw new VeniceException("Realtime topic: " + rtTopic + " doesn't exist or some partitions are not online");
       }
 
-      return writerFactory.createVeniceWriter(rtTopic,
+      return writerFactory.createVeniceWriter(
+          rtTopic,
           new VeniceAvroKafkaSerializer(
               AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
           new VeniceAvroKafkaSerializer(
               AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema()),
-          new VeniceAvroKafkaSerializer(derivedComputeSchema), Optional.empty(), new SystemTime());
+          new VeniceAvroKafkaSerializer(derivedComputeSchema),
+          Optional.empty(),
+          new SystemTime());
     });
   }
 
@@ -393,8 +441,9 @@ public class MetaStoreWriter implements Closeable {
      */
     String rtTopic = Version.composeRealTimeTopic(metaStoreName);
     if (!topicManager.containsTopicAndAllPartitionsAreOnline(rtTopic)) {
-      LOGGER.info("RT topic: " + rtTopic + " for meta system store: " + metaStoreName + " doesn't exist, so here "
-          + " will only close the internal producer without sending END_OF_SEGMENT control messages");
+      LOGGER.info(
+          "RT topic: " + rtTopic + " for meta system store: " + metaStoreName + " doesn't exist, so here "
+              + " will only close the internal producer without sending END_OF_SEGMENT control messages");
       veniceWriter.close(false);
     } else {
       veniceWriter.close();
@@ -405,8 +454,10 @@ public class MetaStoreWriter implements Closeable {
   public void close() throws IOException {
     // Close VeniceWrites in parallel to reduce the time to shut down the server.
     try (Timer ignore = Timer.run(
-        elapsedTimeInMs -> LOGGER.info("MetaStoreWriter takes {} ms to close {} VeniceWriters in parallel",
-            elapsedTimeInMs, metaStoreWriterMap.size()))) {
+        elapsedTimeInMs -> LOGGER.info(
+            "MetaStoreWriter takes {} ms to close {} VeniceWriters in parallel",
+            elapsedTimeInMs,
+            metaStoreWriterMap.size()))) {
       metaStoreWriterMap.entrySet()
           .parallelStream()
           .forEach(entry -> closeVeniceWriter(entry.getKey(), entry.getValue(), false));

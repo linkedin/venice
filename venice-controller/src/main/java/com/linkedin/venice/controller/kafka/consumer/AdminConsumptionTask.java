@@ -58,7 +58,6 @@ import org.apache.logging.log4j.Logger;
  * This class is used to create a task, which will consume the admin messages from the special admin topics.
  */
 public class AdminConsumptionTask implements Runnable, Closeable {
-
   private static class AdminErrorInfo {
     long offset;
     Exception exception;
@@ -73,7 +72,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     ProducerInfo(ProducerMetadata producerMetadata) {
       updateProducerMetadata(producerMetadata);
     }
-
 
     boolean isIncomingMessageValid(ProducerMetadata incomingProducerMetadata) {
       if (!incomingProducerMetadata.producerGUID.equals(producerGUID)) {
@@ -101,7 +99,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
     @Override
     public String toString() {
-      return String.format("{producerGUID: %s, segmentNumber: %d, sequenceNumber: %d}", producerGUID, segmentNumber,
+      return String.format(
+          "{producerGUID: %s, segmentNumber: %d, sequenceNumber: %d}",
+          producerGUID,
+          segmentNumber,
           sequenceNumber);
     }
   }
@@ -116,7 +117,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   /** Used by the storage persona in the admin operations map because the persona operations are not associated with
    * any particular store */
   private static final String STORAGE_PERSONA_MAP_KEY = "STORAGE_PERSONA";
-
 
   private final Logger logger;
 
@@ -152,7 +152,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    */
   private final ConcurrentHashMap<String, AdminErrorInfo> problematicStores;
   private final Queue<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> undelegatedRecords;
-
 
   private final ExecutionIdAccessor executionIdAccessor;
   private final ExecutorService executorService;
@@ -227,7 +226,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    */
   private long lastUpdateTimeForConsumptionOffsetLag = 0;
 
-  public AdminConsumptionTask(String clusterName,
+  public AdminConsumptionTask(
+      String clusterName,
       KafkaConsumerWrapper consumer,
       boolean remoteConsumptionEnabled,
       Optional<String> remoteKafkaServerUrl,
@@ -260,17 +260,24 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
     this.storeAdminOperationsMapWithOffset = new ConcurrentHashMap<>();
     this.problematicStores = new ConcurrentHashMap<>();
-    this.executorService = new ThreadPoolExecutor(1, maxWorkerThreadPoolSize, 60, TimeUnit.SECONDS,
-        new LinkedBlockingQueue<>(), new DaemonThreadFactory("Venice-Admin-Execution-Task"));
+    this.executorService = new ThreadPoolExecutor(
+        1,
+        maxWorkerThreadPoolSize,
+        60,
+        TimeUnit.SECONDS,
+        new LinkedBlockingQueue<>(),
+        new DaemonThreadFactory("Venice-Admin-Execution-Task"));
     this.undelegatedRecords = new LinkedList<>();
     this.stats.setAdminConsumptionFailedOffset(failingOffset);
 
     if (remoteConsumptionEnabled) {
       if (!(remoteKafkaServerUrl.isPresent() && remoteKafkaZkAddress.isPresent())) {
-        throw new VeniceException("Admin topic remote consumption is enabled but no config for the source Kafka "
-            + "bootstrap server url or source Kafka ZK address");
+        throw new VeniceException(
+            "Admin topic remote consumption is enabled but no config for the source Kafka "
+                + "bootstrap server url or source Kafka ZK address");
       }
-      this.sourceKafkaClusterTopicManager = admin.getTopicManager(new Pair<>(remoteKafkaServerUrl.get(), remoteKafkaZkAddress.get()));
+      this.sourceKafkaClusterTopicManager =
+          admin.getTopicManager(new Pair<>(remoteKafkaServerUrl.get(), remoteKafkaZkAddress.get()));
     }
   }
 
@@ -305,8 +312,14 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               continue;
             }
             logger.info(logMessage + "Since this is the parent controller, it will be created it now.");
-            admin.getTopicManager().createTopic(topic, 1, adminTopicReplicationFactor, true,
-                false, Optional.of(adminTopicReplicationFactor - 1));
+            admin.getTopicManager()
+                .createTopic(
+                    topic,
+                    1,
+                    adminTopicReplicationFactor,
+                    true,
+                    false,
+                    Optional.of(adminTopicReplicationFactor - 1));
             logger.info("Admin topic {} is created.", topic);
           }
           subscribe();
@@ -318,7 +331,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           if (null == records || records.isEmpty()) {
             logger.debug("Received null or no records");
           } else {
-            logger.info("Consumed " + records.count() + " admin messages from kafka. Will queue them up for processing");
+            logger
+                .info("Consumed " + records.count() + " admin messages from kafka. Will queue them up for processing");
             recordsIterator = records.iterator();
             while (recordsIterator.hasNext()) {
               ConsumerRecord<KafkaKey, KafkaMessageEnvelope> newRecord = recordsIterator.next();
@@ -327,8 +341,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             }
           }
         } else {
-          logger.info("There are " + undelegatedRecords.size() + " admin messages in the undelegated message queue. "
-              + "Will consume from the undelegated queue first before polling the admin topic.");
+          logger.info(
+              "There are " + undelegatedRecords.size() + " admin messages in the undelegated message queue. "
+                  + "Will consume from the undelegated queue first before polling the admin topic.");
         }
 
         while (!undelegatedRecords.isEmpty()) {
@@ -340,22 +355,26 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             undelegatedRecords.remove();
           } catch (DataValidationException dve) {
             // Very unlikely but DataValidationException could be thrown here.
-            logger.error("Admin consumption task is blocked due to DataValidationException with offset "
-                + undelegatedRecords.peek().offset(), dve);
+            logger.error(
+                "Admin consumption task is blocked due to DataValidationException with offset "
+                    + undelegatedRecords.peek().offset(),
+                dve);
             failingOffset = undelegatedRecords.peek().offset();
             stats.recordFailedAdminConsumption();
             stats.recordAdminTopicDIVErrorReportCount();
             break;
           } catch (Exception e) {
-            logger.error("Admin consumption task is blocked due to Exception with offset "
-                + undelegatedRecords.peek().offset(), e);
+            logger.error(
+                "Admin consumption task is blocked due to Exception with offset " + undelegatedRecords.peek().offset(),
+                e);
             failingOffset = undelegatedRecords.peek().offset();
             stats.recordFailedAdminConsumption();
             break;
           }
         }
 
-        if (remoteConsumptionEnabled && LatencyUtils.getElapsedTimeInMs(lastUpdateTimeForConsumptionOffsetLag) > CONSUMPTION_LAG_UPDATE_INTERVAL_IN_MS) {
+        if (remoteConsumptionEnabled && LatencyUtils
+            .getElapsedTimeInMs(lastUpdateTimeForConsumptionOffsetLag) > CONSUMPTION_LAG_UPDATE_INTERVAL_IN_MS) {
           recordConsumptionLag();
           lastUpdateTimeForConsumptionOffsetLag = System.currentTimeMillis();
         }
@@ -377,7 +396,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       Pair<Long, Long> localAndUpstreamOffsets = AdminTopicMetadataAccessor.getOffsets(metaData);
       localOffsetCheckpointAtStartTime = localAndUpstreamOffsets.getFirst();
       upstreamOffsetCheckpointAtStartTime = localAndUpstreamOffsets.getSecond();
-      lastPersistedOffset = remoteConsumptionEnabled ? upstreamOffsetCheckpointAtStartTime : localOffsetCheckpointAtStartTime;
+      lastPersistedOffset =
+          remoteConsumptionEnabled ? upstreamOffsetCheckpointAtStartTime : localOffsetCheckpointAtStartTime;
       lastPersistedExecutionId = AdminTopicMetadataAccessor.getExecutionId(metaData);
       lastOffset = lastPersistedOffset;
       lastDelegatedExecutionId = lastPersistedExecutionId;
@@ -391,8 +411,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     // Subscribe the admin topic
     consumer.subscribe(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, lastOffset);
     isSubscribed = true;
-    logger.info("Subscribed to topic name: " + topic + ", with offset: " + lastOffset + " and execution id: "
-        + lastPersistedExecutionId + ". Remote consumption flag: " + remoteConsumptionEnabled);
+    logger.info(
+        "Subscribed to topic name: " + topic + ", with offset: " + lastOffset + " and execution id: "
+            + lastPersistedExecutionId + ". Remote consumption flag: " + remoteConsumptionEnabled);
   }
 
   private void unSubscribe() {
@@ -412,8 +433,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       stats.recordStoresWithPendingAdminMessagesCount(UNASSIGNED_VALUE);
       resetConsumptionLag();
       isSubscribed = false;
-      logger.info("Unsubscribed from topic name: " + topic + ". Remote consumption flag before unsubscription: "
-          + remoteConsumptionEnabled);
+      logger.info(
+          "Unsubscribed from topic name: " + topic + ". Remote consumption flag before unsubscription: "
+              + remoteConsumptionEnabled);
     }
   }
 
@@ -426,19 +448,30 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * @throws InterruptedException
    */
   private void executeMessagesAndCollectResults() throws InterruptedException {
-    lastSucceededExecutionIdMap = new ConcurrentHashMap<>(executionIdAccessor.getLastSucceededExecutionIdMap(clusterName));
+    lastSucceededExecutionIdMap =
+        new ConcurrentHashMap<>(executionIdAccessor.getLastSucceededExecutionIdMap(clusterName));
     List<Callable<Void>> tasks = new ArrayList<>();
     List<String> stores = new ArrayList<>();
     // Create a task for each store that has admin messages pending to be processed.
     boolean skipOffsetCommandHasBeenProcessed = false;
-    for (Map.Entry<String, Queue<AdminOperationWrapper>> entry : storeAdminOperationsMapWithOffset.entrySet()) {
+    for (Map.Entry<String, Queue<AdminOperationWrapper>> entry: storeAdminOperationsMapWithOffset.entrySet()) {
       if (!entry.getValue().isEmpty()) {
         if (checkOffsetToSkip(entry.getValue().peek().getOffset(), false)) {
           entry.getValue().remove();
           skipOffsetCommandHasBeenProcessed = true;
         }
-        tasks.add(new AdminExecutionTask(logger, clusterName, entry.getKey(), lastSucceededExecutionIdMap,
-            lastPersistedExecutionId, entry.getValue(), admin, executionIdAccessor, isParentController, stats));
+        tasks.add(
+            new AdminExecutionTask(
+                logger,
+                clusterName,
+                entry.getKey(),
+                lastSucceededExecutionIdMap,
+                lastPersistedExecutionId,
+                entry.getValue(),
+                admin,
+                executionIdAccessor,
+                isParentController,
+                stats));
         stores.add(entry.getKey());
       }
     }
@@ -452,9 +485,11 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         int storesWithPendingAdminMessagesCount = 0;
         long adminExecutionTasksInvokeTime = System.currentTimeMillis();
         // Wait for the worker threads to finish processing the internal admin topics.
-        List<Future<Void>> results = executorService.invokeAll(tasks, processingCycleTimeoutInMs, TimeUnit.MILLISECONDS);
+        List<Future<Void>> results =
+            executorService.invokeAll(tasks, processingCycleTimeoutInMs, TimeUnit.MILLISECONDS);
         stats.recordAdminConsumptionCycleDurationMs(System.currentTimeMillis() - adminExecutionTasksInvokeTime);
-        Map<String, Long> newLastSucceededExecutionIdMap = executionIdAccessor.getLastSucceededExecutionIdMap(clusterName);
+        Map<String, Long> newLastSucceededExecutionIdMap =
+            executionIdAccessor.getLastSucceededExecutionIdMap(clusterName);
         boolean internalQueuesEmptied = true;
         for (int i = 0; i < results.size(); i++) {
           String storeName = stores.get(i);
@@ -462,8 +497,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           try {
             result.get();
             problematicStores.remove(storeName);
-            if (internalQueuesEmptied && storeAdminOperationsMapWithOffset.containsKey(storeName) &&
-                !storeAdminOperationsMapWithOffset.get(storeName).isEmpty()) {
+            if (internalQueuesEmptied && storeAdminOperationsMapWithOffset.containsKey(storeName)
+                && !storeAdminOperationsMapWithOffset.get(storeName).isEmpty()) {
               internalQueuesEmptied = false;
             }
           } catch (ExecutionException | CancellationException e) {
@@ -482,8 +517,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
               if (lastSucceededId == newLastSucceededId && perStorePendingMessagesCount > 0) {
                 // only mark the store problematic if no progress is made and there are still message(s) in the queue.
-                errorInfo.exception =
-                    new VeniceException("Could not finish processing admin message for store " + storeName + " in time");
+                errorInfo.exception = new VeniceException(
+                    "Could not finish processing admin message for store " + storeName + " in time");
                 errorInfo.offset = storeAdminOperationsMapWithOffset.get(storeName).peek().getOffset();
                 problematicStores.put(storeName, errorInfo);
                 logger.warn(errorInfo.exception.getMessage());
@@ -511,7 +546,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           // 2. Find and set the smallest failing offset amongst the problematic stores.
           long smallestOffset = UNASSIGNED_VALUE;
 
-          for (Map.Entry<String, AdminErrorInfo> problematicStore : problematicStores.entrySet()) {
+          for (Map.Entry<String, AdminErrorInfo> problematicStore: problematicStores.entrySet()) {
             if (smallestOffset == UNASSIGNED_VALUE || problematicStore.getValue().offset < smallestOffset) {
               smallestOffset = problematicStore.getValue().offset;
             }
@@ -535,8 +570,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     executorService.shutdownNow();
     try {
       if (!executorService.awaitTermination(processingCycleTimeoutInMs, TimeUnit.MILLISECONDS)) {
-        logger.warn(
-            "Unable to shutdown worker executor thread pool in admin consumption task in time " + consumerTaskId);
+        logger
+            .warn("Unable to shutdown worker executor thread pool in admin consumption task in time " + consumerTaskId);
       }
     } catch (InterruptedException e) {
       logger.warn("Interrupted while waiting for worker executor thread pool to shutdown " + consumerTaskId);
@@ -604,8 +639,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         consecutiveDuplicateMessageCount++;
         logger.info(e.getMessage());
       } else if (consecutiveDuplicateMessageCount == MAX_DUPLICATE_MESSAGE_LOGS) {
-        logger.info("It appears that controller is consuming from a low offset and encounters many admin messages that "
-            + "have already been processed. Will stop logging duplicate messages until a fresh admin message.");
+        logger.info(
+            "It appears that controller is consuming from a low offset and encounters many admin messages that "
+                + "have already been processed. Will stop logging duplicate messages until a fresh admin message.");
       }
       return executionId;
     }
@@ -617,24 +653,37 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       List<Store> stores = admin.getAllStores(clusterName);
       for (Store store: stores) {
         String storeName = store.getName();
-        Queue<AdminOperationWrapper> operationQueue = storeAdminOperationsMapWithOffset.computeIfAbsent(storeName, n -> new LinkedList<>());
-        AdminOperationWrapper adminOperationWrapper = new AdminOperationWrapper(adminOperation, record.offset(),
-            producerTimestamp, brokerTimestamp, System.currentTimeMillis());
+        Queue<AdminOperationWrapper> operationQueue =
+            storeAdminOperationsMapWithOffset.computeIfAbsent(storeName, n -> new LinkedList<>());
+        AdminOperationWrapper adminOperationWrapper = new AdminOperationWrapper(
+            adminOperation,
+            record.offset(),
+            producerTimestamp,
+            brokerTimestamp,
+            System.currentTimeMillis());
         operationQueue.add(adminOperationWrapper);
-        stats.recordAdminMessageMMLatency(Math.max(0,
-            adminOperationWrapper.getLocalBrokerTimestamp() - adminOperationWrapper.getProducerTimestamp()));
-        stats.recordAdminMessageDelegateLatency(Math.max(0,
-            adminOperationWrapper.getDelegateTimestamp() - adminOperationWrapper.getLocalBrokerTimestamp()));
+        stats.recordAdminMessageMMLatency(
+            Math.max(
+                0,
+                adminOperationWrapper.getLocalBrokerTimestamp() - adminOperationWrapper.getProducerTimestamp()));
+        stats.recordAdminMessageDelegateLatency(
+            Math.max(
+                0,
+                adminOperationWrapper.getDelegateTimestamp() - adminOperationWrapper.getLocalBrokerTimestamp()));
       }
     } else {
       long producerTimestamp = kafkaValue.producerMetadata.messageTimestamp;
       long brokerTimestamp = record.timestamp();
-      AdminOperationWrapper adminOperationWrapper = new AdminOperationWrapper(adminOperation, record.offset(),
-          producerTimestamp, brokerTimestamp, System.currentTimeMillis());
-      stats.recordAdminMessageMMLatency(Math.max(0,
-          adminOperationWrapper.getLocalBrokerTimestamp() - adminOperationWrapper.getProducerTimestamp()));
-      stats.recordAdminMessageDelegateLatency(Math.max(0,
-          adminOperationWrapper.getDelegateTimestamp() - adminOperationWrapper.getLocalBrokerTimestamp()));
+      AdminOperationWrapper adminOperationWrapper = new AdminOperationWrapper(
+          adminOperation,
+          record.offset(),
+          producerTimestamp,
+          brokerTimestamp,
+          System.currentTimeMillis());
+      stats.recordAdminMessageMMLatency(
+          Math.max(0, adminOperationWrapper.getLocalBrokerTimestamp() - adminOperationWrapper.getProducerTimestamp()));
+      stats.recordAdminMessageDelegateLatency(
+          Math.max(0, adminOperationWrapper.getDelegateTimestamp() - adminOperationWrapper.getLocalBrokerTimestamp()));
       String storeName = extractStoreName(adminOperation);
       storeAdminOperationsMapWithOffset.putIfAbsent(storeName, new LinkedList<>());
       storeAdminOperationsMapWithOffset.get(storeName).add(adminOperationWrapper);
@@ -656,15 +705,17 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       updateProducerInfo(record.value().producerMetadata);
     } else if (incomingExecutionId <= lastDelegatedExecutionId) {
       updateProducerInfo(record.value().producerMetadata);
-      throw new DuplicateDataException("Skipping message with execution id: " + incomingExecutionId
-          + " because last delegated execution id was: " + lastDelegatedExecutionId);
+      throw new DuplicateDataException(
+          "Skipping message with execution id: " + incomingExecutionId + " because last delegated execution id was: "
+              + lastDelegatedExecutionId);
     } else {
       // Cross-reference with producerInfo to see if the missing data is false positive.
       boolean throwException = true;
       String exceptionString = "Last delegated execution id was: " + lastDelegatedExecutionId
           + " ,but incoming execution id is: " + incomingExecutionId;
-      String producerInfoString = " Previous producer info: " + (producerInfo == null ? "null" :producerInfo.toString())
-          + " Incoming message producer info: " + record.value().producerMetadata;
+      String producerInfoString =
+          " Previous producer info: " + (producerInfo == null ? "null" : producerInfo.toString())
+              + " Incoming message producer info: " + record.value().producerMetadata;
       if (producerInfo != null) {
         throwException = !producerInfo.isIncomingMessageValid(record.value().producerMetadata);
       }
@@ -709,21 +760,28 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         storeName = Version.parseStoreFromKafkaTopicName(message.kafkaTopic.toString());
         break;
       case CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER:
-        throw new VeniceException("Operation " + AdminMessageType.CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER + " is a batch "
-            + "update that affects all existing store in cluster " + clusterName + ". Cannot extract a specific store name.");
+        throw new VeniceException(
+            "Operation " + AdminMessageType.CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER + " is a batch "
+                + "update that affects all existing store in cluster " + clusterName
+                + ". Cannot extract a specific store name.");
       case CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER:
-        throw new VeniceException("Operation " + AdminMessageType.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER + " is a batch "
-            + "update that affects all existing store in cluster " + clusterName + ". Cannot extract a specific store name.");
+        throw new VeniceException(
+            "Operation " + AdminMessageType.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER + " is a batch "
+                + "update that affects all existing store in cluster " + clusterName
+                + ". Cannot extract a specific store name.");
       case CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER:
-        throw new VeniceException("Operation " + AdminMessageType.CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER + " is a batch "
-            + "update that affects all existing store in cluster " + clusterName + ". Cannot extract a specific store name.");
+        throw new VeniceException(
+            "Operation " + AdminMessageType.CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER + " is a batch "
+                + "update that affects all existing store in cluster " + clusterName
+                + ". Cannot extract a specific store name.");
       default:
         try {
           GenericRecord payload = (GenericRecord) adminOperation.payloadUnion;
           storeName = payload.get("storeName").toString();
         } catch (Exception e) {
-          throw new VeniceException("Failed to handle operation type: " + adminOperation.operationType
-              + " because it does not contain a storeName field");
+          throw new VeniceException(
+              "Failed to handle operation type: " + adminOperation.operationType
+                  + " because it does not contain a storeName field");
         }
     }
     return storeName;
@@ -741,8 +799,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       return;
     }
     Map<String, Long> metadata = remoteConsumptionEnabled
-        ? AdminTopicMetadataAccessor.generateMetadataMap(localOffsetCheckpointAtStartTime, lastOffset, lastDelegatedExecutionId)
-        : AdminTopicMetadataAccessor.generateMetadataMap(lastOffset, upstreamOffsetCheckpointAtStartTime, lastDelegatedExecutionId);
+        ? AdminTopicMetadataAccessor
+            .generateMetadataMap(localOffsetCheckpointAtStartTime, lastOffset, lastDelegatedExecutionId)
+        : AdminTopicMetadataAccessor
+            .generateMetadataMap(lastOffset, upstreamOffsetCheckpointAtStartTime, lastDelegatedExecutionId);
     adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
     lastPersistedOffset = lastOffset;
     lastPersistedExecutionId = lastDelegatedExecutionId;
@@ -851,7 +911,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
        *  In the default read_uncommitted isolation level, the end offset is the high watermark (that is, the offset of
        *  the last successfully replicated message plus one), so subtract 1 from the max offset result.
        */
-      long sourceAdminTopicEndOffset = sourceKafkaClusterTopicManager.getPartitionLatestOffsetAndRetry(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, 10) - 1;
+      long sourceAdminTopicEndOffset = sourceKafkaClusterTopicManager
+          .getPartitionLatestOffsetAndRetry(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, 10) - 1;
       /**
        * If the first consumer poll returns nothing, "lastConsumedOffset" will remain as {@link #UNASSIGNED_VALUE}, so a
        * huge lag will be reported, but actually that's not case since consumer is subscribed to the last checkpoint offset.
@@ -861,7 +922,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       }
       stats.setMaxAdminConsumptionOffsetLag(sourceAdminTopicEndOffset - lastPersistedOffset);
     } catch (Exception e) {
-      logger.error("Error when emitting admin consumption lag metrics; only log for warning; admin channel will continue to work.");
+      logger.error(
+          "Error when emitting admin consumption lag metrics; only log for warning; admin channel will continue to work.");
     }
   }
 

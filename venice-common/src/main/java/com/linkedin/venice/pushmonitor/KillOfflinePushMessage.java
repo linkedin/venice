@@ -50,8 +50,6 @@ public class KillOfflinePushMessage extends StatusMessage {
 
   @Override
   public String toString() {
-    return "KillOfflinePushMessage{" +
-        "kafkaTopic='" + kafkaTopic + '\'' +
-        '}';
+    return "KillOfflinePushMessage{" + "kafkaTopic='" + kafkaTopic + '\'' + '}';
   }
 }

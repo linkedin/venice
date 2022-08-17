@@ -47,22 +47,26 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   AggServerQuotaUsageStats quotaUsageStats;
   AggServerQuotaTokenBucketStats quotaTokenBucketStats;
 
-  public HttpChannelInitializer(ReadOnlyStoreRepository storeMetadataRepository,
-                                CompletableFuture<RoutingDataRepository> routingRepository,
-                                MetricsRepository metricsRepository,
-                                Optional<SSLEngineComponentFactory> sslFactory,
-                                VeniceServerConfig serverConfig,
-                                Optional<StaticAccessController> routerAccessController,
-                                Optional<DynamicAccessController> storeAccessController,
-                                StorageReadRequestsHandler requestHandler) {
+  public HttpChannelInitializer(
+      ReadOnlyStoreRepository storeMetadataRepository,
+      CompletableFuture<RoutingDataRepository> routingRepository,
+      MetricsRepository metricsRepository,
+      Optional<SSLEngineComponentFactory> sslFactory,
+      VeniceServerConfig serverConfig,
+      Optional<StaticAccessController> routerAccessController,
+      Optional<DynamicAccessController> storeAccessController,
+      StorageReadRequestsHandler requestHandler) {
     this.serverConfig = serverConfig;
     this.requestHandler = requestHandler;
 
     boolean isKeyValueProfilingEnabled = serverConfig.isKeyValueProfilingEnabled();
 
-    this.singleGetStats = new AggServerHttpRequestStats(metricsRepository, RequestType.SINGLE_GET, isKeyValueProfilingEnabled);
-    this.multiGetStats = new AggServerHttpRequestStats(metricsRepository, RequestType.MULTI_GET, isKeyValueProfilingEnabled);
-    this.computeStats = new AggServerHttpRequestStats(metricsRepository, RequestType.COMPUTE, isKeyValueProfilingEnabled);
+    this.singleGetStats =
+        new AggServerHttpRequestStats(metricsRepository, RequestType.SINGLE_GET, isKeyValueProfilingEnabled);
+    this.multiGetStats =
+        new AggServerHttpRequestStats(metricsRepository, RequestType.MULTI_GET, isKeyValueProfilingEnabled);
+    this.computeStats =
+        new AggServerHttpRequestStats(metricsRepository, RequestType.COMPUTE, isKeyValueProfilingEnabled);
 
     if (serverConfig.isComputeFastAvroEnabled()) {
       LOGGER.info("Fast avro for compute is enabled");
@@ -70,7 +74,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
     this.sslFactory = sslFactory;
     this.storeAclHandler = storeAccessController.isPresent()
-        ? Optional.of(new ServerStoreAclHandler(storeAccessController.get(), storeMetadataRepository)) : Optional.empty();
+        ? Optional.of(new ServerStoreAclHandler(storeAccessController.get(), storeMetadataRepository))
+        : Optional.empty();
     /**
      * If the store-level access handler is present, we don't want to fail fast if the access gets denied by {@link ServerAclHandler}.
      */
@@ -82,13 +87,17 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     String nodeId = Utils.getHelixNodeIdentifier(serverConfig.getListenerPort());
     this.quotaUsageStats = new AggServerQuotaUsageStats(metricsRepository);
     if (serverConfig.isQuotaEnforcementEnabled()) {
-      this.quotaEnforcer = new ReadQuotaEnforcementHandler(serverConfig.getNodeCapacityInRcu(), storeMetadataRepository,
-          routingRepository, nodeId, quotaUsageStats);
+      this.quotaEnforcer = new ReadQuotaEnforcementHandler(
+          serverConfig.getNodeCapacityInRcu(),
+          storeMetadataRepository,
+          routingRepository,
+          nodeId,
+          quotaUsageStats);
 
-      //Token Bucket Stats for a store must be initialized when that store is created
+      // Token Bucket Stats for a store must be initialized when that store is created
       this.quotaTokenBucketStats = new AggServerQuotaTokenBucketStats(metricsRepository, quotaEnforcer);
       storeMetadataRepository.registerStoreDataChangedListener(quotaTokenBucketStats);
-      for (Store store : storeMetadataRepository.getAllStores()) {
+      for (Store store: storeMetadataRepository.getAllStores()) {
         this.quotaTokenBucketStats.initializeStatsForStore(store.getName());
       }
     } else {
@@ -119,9 +128,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
   @Override
   public void initChannel(SocketChannel ch) {
-    if (sslFactory.isPresent()){
-      ch.pipeline()
-          .addLast(new SSLInitializer(sslFactory.get()));
+    if (sslFactory.isPresent()) {
+      ch.pipeline().addLast(new SSLInitializer(sslFactory.get()));
     }
     ChannelPipelineConsumer httpPipelineInitializer = (pipeline, whetherNeedServerCodec) -> {
       StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);
@@ -140,7 +148,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
         if (codecHandler != null) {
           // For HTTP/1.1 code path
           if (!(codecHandler instanceof BasicHttpServerCodec)) {
-            throw new VeniceException("BasicHttpServerCodec is expected when the pipeline is instrumented by 'Http2PipelineInitializer'");
+            throw new VeniceException(
+                "BasicHttpServerCodec is expected when the pipeline is instrumented by 'Http2PipelineInitializer'");
           }
           pipeline.remove(codecHandlerName);
           pipeline.addLast(new HttpServerCodec());
@@ -162,8 +171,11 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
           pipeline.addLast(storeAclHandler.get());
         }
       }
-      pipeline
-          .addLast(new RouterRequestHttpHandler(statsHandler, serverConfig.isComputeFastAvroEnabled(), serverConfig.getStoreToEarlyTerminationThresholdMSMap()));
+      pipeline.addLast(
+          new RouterRequestHttpHandler(
+              statsHandler,
+              serverConfig.isComputeFastAvroEnabled(),
+              serverConfig.getStoreToEarlyTerminationThresholdMSMap()));
       if (quotaEnforcer != null) {
         pipeline.addLast(quotaEnforcer);
       }
@@ -171,7 +183,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     };
 
     if (serverConfig.isHttp2InboundEnabled()) {
-      Http2PipelineInitializer http2PipelineInitializer = http2PipelineInitializerBuilder.createHttp2PipelineInitializer(pipeline -> httpPipelineInitializer.accept(pipeline, false));
+      Http2PipelineInitializer http2PipelineInitializer = http2PipelineInitializerBuilder
+          .createHttp2PipelineInitializer(pipeline -> httpPipelineInitializer.accept(pipeline, false));
       ch.pipeline().addLast(http2PipelineInitializer);
     } else {
       httpPipelineInitializer.accept(ch.pipeline(), true);

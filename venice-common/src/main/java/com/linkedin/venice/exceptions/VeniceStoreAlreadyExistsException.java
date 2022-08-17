@@ -35,7 +35,7 @@ public class VeniceStoreAlreadyExistsException extends VeniceException {
     this.clusterName = "unspecified";
   }
 
-  public String getStoreName(){
+  public String getStoreName() {
     return storeName;
   }
 
@@ -44,7 +44,7 @@ public class VeniceStoreAlreadyExistsException extends VeniceException {
   }
 
   @Override
-  public int getHttpStatusCode(){
+  public int getHttpStatusCode() {
     return HttpStatus.SC_CONFLICT;
   }
 }

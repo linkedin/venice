@@ -4,7 +4,6 @@ import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
@@ -12,12 +11,13 @@ import java.util.stream.Collectors;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+
 /**
  * Test cases for Venice Store.
  */
 public class TestZKStore {
   @Test
-  public void testVersionsAreAddedInOrdered(){
+  public void testVersionsAreAddedInOrdered() {
     Store s = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());
     s.addVersion(new VersionImpl(s.getName(), 4));
     s.addVersion(new VersionImpl(s.getName(), 2));
@@ -26,15 +26,17 @@ public class TestZKStore {
 
     List<Version> versions = s.getVersions();
     Assert.assertEquals(versions.size(), 4, "The Store version list is expected to contain 4 items!");
-    for(int i=0;i<versions.size();i++){
+    for (int i = 0; i < versions.size(); i++) {
       int expectedVersion = i + 1;
-      Assert.assertEquals(versions.get(i).getNumber(), i + 1,
+      Assert.assertEquals(
+          versions.get(i).getNumber(),
+          i + 1,
           "The Store version list is expected to contain version " + expectedVersion + " at index " + i);
     }
   }
 
   @Test
-  public void testDeleteVersion(){
+  public void testDeleteVersion() {
     Store s = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());
     s.addVersion(new VersionImpl(s.getName(), 4));
     s.addVersion(new VersionImpl(s.getName(), 2));
@@ -47,7 +49,7 @@ public class TestZKStore {
     s.deleteVersion(3);
     versions = s.getVersions();
     Assert.assertEquals(versions.size(), 3, "The Store version list is expected to contain 3 items!");
-    for (int i: new int[] {1,2,4}) {
+    for (int i: new int[] { 1, 2, 4 }) {
       boolean foundVersion = false;
       for (Version version: versions) {
         if (version.getNumber() == i) {
@@ -60,7 +62,7 @@ public class TestZKStore {
   }
 
   @Test
-  public void testCloneStore(){
+  public void testCloneStore() {
     Store s = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());
     Store clonedStore = s.cloneStore();
     Assert.assertTrue(s.equals(clonedStore), "The cloned store is expected to be equal!");
@@ -76,23 +78,30 @@ public class TestZKStore {
     Assert.assertNotEquals(s2, s2clone);
   }
 
-  private static void assertVersionsEquals(Store store, int versionToPreserve, List<Version> expectedVersions, String message) {
+  private static void assertVersionsEquals(
+      Store store,
+      int versionToPreserve,
+      List<Version> expectedVersions,
+      String message) {
     List<Version> actualVersions = store.retrieveVersionsToDelete(versionToPreserve);
     Set<Integer> versionSet = actualVersions.stream().map(v -> v.getNumber()).collect(Collectors.toSet());
     // TestNG calls the assertEquals(Collection, Collection) though it should have called
     // assertEquals(set,set) when using the HashSet intermittently.
     // Doing manual set comparison for now
 
-    Assert.assertEquals(actualVersions.size(), expectedVersions.size(),  message + " -->size of lists does not match");
-    for(Version version: expectedVersions) {
-      Assert.assertTrue( versionSet.contains(version.getNumber()) , message + " --> version " + version + " is missing in actual");
+    Assert.assertEquals(actualVersions.size(), expectedVersions.size(), message + " -->size of lists does not match");
+    for (Version version: expectedVersions) {
+      Assert.assertTrue(
+          versionSet.contains(version.getNumber()),
+          message + " --> version " + version + " is missing in actual");
     }
   }
 
   @Test
   public void testRetrieveVersionsToDelete() {
     Store store = TestUtils.createTestStore("retrieveDeleteStore", "owner", System.currentTimeMillis());
-    Assert.assertEquals(store.retrieveVersionsToDelete(1).size(), 0, "Store with no active version returns empty array");
+    Assert
+        .assertEquals(store.retrieveVersionsToDelete(1).size(), 0, "Store with no active version returns empty array");
 
     Version version1 = new VersionImpl(store.getName(), 1);
     store.addVersion(version1);
@@ -103,7 +112,10 @@ public class TestZKStore {
     Assert.assertEquals(store.retrieveVersionsToDelete(1).size(), 1, "two versions, one should be deleted ");
 
     version1.setStatus(VersionStatus.ONLINE);
-    Assert.assertEquals(store.retrieveVersionsToDelete(1).size(), 0, "one version is active and the last version should be preserved, nothing to delete.");
+    Assert.assertEquals(
+        store.retrieveVersionsToDelete(1).size(),
+        0,
+        "one version is active and the last version should be preserved, nothing to delete.");
 
     version2.setStatus(VersionStatus.ONLINE);
     store.setCurrentVersion(2);
@@ -119,14 +131,18 @@ public class TestZKStore {
 
     version3.setStatus(VersionStatus.ERROR);
 
-    assertVersionsEquals( store, 1, Arrays.asList(version1, version3), "error version should be deleted");
+    assertVersionsEquals(store, 1, Arrays.asList(version1, version3), "error version should be deleted");
 
     Version version4 = new VersionImpl(store.getName(), 4);
     store.addVersion(version4);
     version4.setStatus(VersionStatus.ERROR);
 
     assertVersionsEquals(store, 2, Arrays.asList(version3, version4), "error versions should be deleted.");
-    assertVersionsEquals( store, 1, Arrays.asList(version1, version3, version4), "lower active and 2 error version should be deleted");
+    assertVersionsEquals(
+        store,
+        1,
+        Arrays.asList(version1, version3, version4),
+        "lower active and 2 error version should be deleted");
 
     Version version5 = new VersionImpl(store.getName(), 5);
     store.addVersion(version5);
@@ -134,7 +150,7 @@ public class TestZKStore {
     version5.setStatus(VersionStatus.ONLINE);
 
     assertVersionsEquals(store, 2, Arrays.asList(version1, version3, version4), "delete all but 2 active versions");
-    assertVersionsEquals( store, 5, Arrays.asList(version3 , version4),"delete all error versions");
+    assertVersionsEquals(store, 5, Arrays.asList(version3, version4), "delete all error versions");
   }
 
   @Test
@@ -149,47 +165,49 @@ public class TestZKStore {
       store.addVersion(v);
     }
 
-    Assert.assertEquals(store.retrieveVersionsToDelete(2).size(), 0,
+    Assert.assertEquals(
+        store.retrieveVersionsToDelete(2).size(),
+        0,
         "Once enable store level config, this store should preserve all current versions.");
 
     int newNumVersionToPreserve = 1;
     store.setNumVersionsToPreserve(1);
     List<Version> versions = store.retrieveVersionsToDelete(numVersionsToPreserve);
     Assert.assertEquals(versions.size(), numVersionsToPreserve - newNumVersionToPreserve);
-    for (Version v : versions) {
+    for (Version v: versions) {
       // we should keep the latest version.
       Assert.assertTrue(v.getNumber() < numVersionsToPreserve + 1);
     }
   }
 
   @Test
-  public void testDisableStoreWrite(){
+  public void testDisableStoreWrite() {
     String storeName = "testDisableStoreWrite";
     Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
     store.setEnableWrites(false);
     // add a new version to disabled store.
-    try{
+    try {
       store.addVersion(new VersionImpl(storeName, 1));
       Assert.fail("Store is disabled to write, can not add new store to it.");
-    }catch (StoreDisabledException e){
+    } catch (StoreDisabledException e) {
     }
     // increase version number for disabled store.
-    try{
+    try {
       store.increaseVersion();
       Assert.fail("Store is disabled to write, can not add new store to it.");
-    }catch (StoreDisabledException e){
+    } catch (StoreDisabledException e) {
     }
 
-    try{
+    try {
       store.setCurrentVersion(1);
       Assert.fail("Store is disabled to write, can not set current version.");
-    }catch (StoreDisabledException e){
+    } catch (StoreDisabledException e) {
     }
 
-    try{
+    try {
       store.updateVersionStatus(1, VersionStatus.ONLINE);
       Assert.fail("Store is disabled to write, can not activated a new version");
-    }catch (StoreDisabledException e){
+    } catch (StoreDisabledException e) {
     }
 
     store.setEnableWrites(true);
@@ -206,7 +224,7 @@ public class TestZKStore {
   }
 
   @Test
-  public void canCloneDisabledStore(){
+  public void canCloneDisabledStore() {
     String storeName = Utils.getUniqueString("store");
     Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
     store.addVersion(new VersionImpl(storeName, 1));
@@ -223,7 +241,7 @@ public class TestZKStore {
     String storeName = Utils.getUniqueString("store");
     Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
     Version pushedVersion = new VersionImpl(storeName, 1);
-    //Add a pushed version
+    // Add a pushed version
     pushedVersion.setStatus(VersionStatus.PUSHED);
     store.addVersion(new VersionImpl(storeName, 2));
     store.setEnableWrites(false);
@@ -232,8 +250,10 @@ public class TestZKStore {
     // Enable store to write.
     store.setEnableWrites(true);
 
-    for (Version version : store.getVersions()) {
-      Assert.assertEquals(version.getStatus(), VersionStatus.ONLINE,
+    for (Version version: store.getVersions()) {
+      Assert.assertEquals(
+          version.getStatus(),
+          VersionStatus.ONLINE,
           "After enabling a store to write, all of PUSHED version should be activated.");
     }
   }
@@ -245,7 +265,9 @@ public class TestZKStore {
     Version version = store.increaseVersion();
     store.updateVersionStatus(version.getNumber(), VersionStatus.ONLINE);
     store.setCurrentVersion(version.getNumber());
-    Assert.assertEquals(store.getCurrentVersion(), version.getNumber(),
+    Assert.assertEquals(
+        store.getCurrentVersion(),
+        version.getNumber(),
         "Version:" + version.getNumber() + " should be ready to serve");
     // Disable store to read.
     store.setEnableReads(false);
@@ -255,7 +277,9 @@ public class TestZKStore {
     store.updateVersionStatus(version.getNumber(), VersionStatus.ONLINE);
     store.setCurrentVersion(version.getNumber());
     store.setEnableReads(true);
-    Assert.assertEquals(store.getCurrentVersion(), version.getNumber(),
+    Assert.assertEquals(
+        store.getCurrentVersion(),
+        version.getNumber(),
         "After enabling store to read, a current version should be ready to serve.");
   }
 
@@ -265,7 +289,7 @@ public class TestZKStore {
     Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
     store.increaseVersion();
     store.increaseVersion();
-    //largest version number is 2
+    // largest version number is 2
     store.deleteVersion(2);
     Version version = store.increaseVersion();
     Assert.assertEquals(version.getNumber(), 3);
@@ -278,11 +302,11 @@ public class TestZKStore {
     Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
     store.addVersion(new VersionImpl(storeName, 5));
     Assert.assertEquals(store.getVersions().size(), 1);
-    //largest used version is 5
+    // largest used version is 5
     Assert.assertEquals(store.peekNextVersion().getNumber(), 6);
     store.addVersion(new VersionImpl(storeName, 2));
     Assert.assertEquals(store.getVersions().size(), 2);
-    //largest used version is still 5
+    // largest used version is still 5
     Assert.assertEquals(store.peekNextVersion().getNumber(), 6);
     Version version = store.increaseVersion();
     Assert.assertEquals(version.getNumber(), 6);
@@ -306,29 +330,45 @@ public class TestZKStore {
   }
 
   @Test
-  public void testValidStoreNames(){
+  public void testValidStoreNames() {
     List<String> valid = Arrays.asList("foo", "Bar", "foo_bar", "foo-bar", "f00Bar");
     List<String> invalid = Arrays.asList("foo bar", "foo.bar", " foo", ".bar", "!", "@", "#", "$", "%");
-    for (String name : valid){
+    for (String name: valid) {
       Assert.assertTrue(Store.isValidStoreName(name));
     }
-    for (String name : invalid){
+    for (String name: invalid) {
       Assert.assertFalse(Store.isValidStoreName(name));
     }
   }
 
   @Test(expectedExceptions = VeniceException.class)
-  public void invalidStoreNameThrows(){
-    Store store = new ZKStore("My Store Name", "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 1);
+  public void invalidStoreNameThrows() {
+    Store store = new ZKStore(
+        "My Store Name",
+        "owner",
+        System.currentTimeMillis(),
+        PersistenceType.IN_MEMORY,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
   }
 
   /**
    * We're not relying on push ID uniqueness.  We can reenable this test if we start relying on (and enforcing) push ID uniqueness
    */
-  @Test(groups = {"flaky"})
-  public void cannotAddDifferentVersionsWithSamePushId(){
+  @Test(groups = { "flaky" })
+  public void cannotAddDifferentVersionsWithSamePushId() {
     String storeName = "storeName";
-    Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 1);
+    Store store = new ZKStore(
+        storeName,
+        "owner",
+        System.currentTimeMillis(),
+        PersistenceType.IN_MEMORY,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
     String duplicatePushJobId = "pushId";
     Version versionOne = new VersionImpl(storeName, 1, duplicatePushJobId);
     store.addVersion(versionOne);
@@ -336,14 +376,22 @@ public class TestZKStore {
     try {
       store.addVersion(versionTwo);
       Assert.fail("Store must not allow adding a new version with same pushId");
-    } catch (Exception e){
-      //expected
+    } catch (Exception e) {
+      // expected
     }
   }
 
   @Test
-  public void testStoreLevelAcl(){
-    Store store = new ZKStore("storeName", "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 1);
+  public void testStoreLevelAcl() {
+    Store store = new ZKStore(
+        "storeName",
+        "owner",
+        System.currentTimeMillis(),
+        PersistenceType.IN_MEMORY,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
     Assert.assertTrue(store.isAccessControlled());
   }
 }

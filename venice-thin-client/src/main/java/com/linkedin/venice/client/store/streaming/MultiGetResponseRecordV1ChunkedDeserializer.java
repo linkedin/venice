@@ -4,14 +4,14 @@ import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import java.nio.ByteBuffer;
 
 
-public class MultiGetResponseRecordV1ChunkedDeserializer extends ReadEnvelopeChunkedDeserializer<MultiGetResponseRecordV1> {
-
+public class MultiGetResponseRecordV1ChunkedDeserializer
+    extends ReadEnvelopeChunkedDeserializer<MultiGetResponseRecordV1> {
   @Override
   public ValueContainer<MultiGetResponseRecordV1> tryDeserializeRecord(int currentPos) throws NotEnoughBytesException {
     int currentOffset = currentPos;
 
     // keyIndex: int
-    ValueContainer<Integer> keyIndex= tryReadInt(currentOffset);
+    ValueContainer<Integer> keyIndex = tryReadInt(currentOffset);
 
     // value: ByteBuffer
     currentOffset += keyIndex.bytesUsed;

@@ -14,7 +14,11 @@ public class ReplicaState {
     // Dummy constructor for JSON
   }
 
-  public ReplicaState(int partitionId, String participantId, String externalViewStatus, String venicePushStatus,
+  public ReplicaState(
+      int partitionId,
+      String participantId,
+      String externalViewStatus,
+      String venicePushStatus,
       boolean isReadyToServe) {
     this.partitionId = partitionId;
     this.participantId = participantId;

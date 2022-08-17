@@ -9,12 +9,10 @@ import org.testng.annotations.Test;
 
 
 public class StoragePersonaJSONSerializerTest {
-
   String name = "testUser";
   long quotaNumber = 23;
   Set<String> storesToEnforce;
   Set<String> owners;
-
 
   @BeforeMethod
   public void setUp() {
@@ -33,8 +31,7 @@ public class StoragePersonaJSONSerializerTest {
   }
 
   @Test
-  public void testPersonaSerializeAndDeserialize()
-      throws IOException {
+  public void testPersonaSerializeAndDeserialize() throws IOException {
 
     StoragePersona persona = new StoragePersona(name, quotaNumber, storesToEnforce, owners);
     StoragePersonaJSONSerializer serializer = new StoragePersonaJSONSerializer();

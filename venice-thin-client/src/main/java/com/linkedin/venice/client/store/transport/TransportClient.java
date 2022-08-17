@@ -1,11 +1,11 @@
 package com.linkedin.venice.client.store.transport;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
-
 import java.io.Closeable;
 import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+
 
 /**
  * Define interfaces for TransportClient, and the target customer is the sub-classes of {@link AvroGenericStoreClient}
@@ -23,11 +23,17 @@ public abstract class TransportClient implements Closeable {
 
   public abstract CompletableFuture<TransportClientResponse> get(String requestPath, Map<String, String> headers);
 
-  public abstract CompletableFuture<TransportClientResponse> post(String requestPath, Map<String, String> headers,
+  public abstract CompletableFuture<TransportClientResponse> post(
+      String requestPath,
+      Map<String, String> headers,
       byte[] requestBody);
 
-  public abstract void streamPost(String requestPath, Map<String, String> headers, byte[] requestBody,
-      TransportClientStreamingCallback callback, int keyCount);
+  public abstract void streamPost(
+      String requestPath,
+      Map<String, String> headers,
+      byte[] requestBody,
+      TransportClientStreamingCallback callback,
+      int keyCount);
 
   /**
    * If the internal client could not be used by its callback function,
@@ -39,8 +45,8 @@ public abstract class TransportClient implements Closeable {
     return this;
   }
 
-  public static String ensureTrailingSlash(String input){
-    if (input.endsWith("/")){
+  public static String ensureTrailingSlash(String input) {
+    if (input.endsWith("/")) {
       return input;
     } else {
       return input + "/";

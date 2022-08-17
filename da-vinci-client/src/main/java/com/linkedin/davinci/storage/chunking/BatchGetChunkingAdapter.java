@@ -15,7 +15,8 @@ public class BatchGetChunkingAdapter implements ChunkingAdapter<ByteBuffer, Mult
   private static final BatchGetChunkingAdapter BATCH_GET_CHUNKING_ADAPTER = new BatchGetChunkingAdapter();
 
   /** Singleton */
-  private BatchGetChunkingAdapter() {}
+  private BatchGetChunkingAdapter() {
+  }
 
   @Override
   public void addChunkIntoContainer(ByteBuffer byteBuffer, int chunkIndex, byte[] valueChunk) {

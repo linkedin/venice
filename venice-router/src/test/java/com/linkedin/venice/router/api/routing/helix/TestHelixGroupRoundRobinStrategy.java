@@ -5,7 +5,6 @@ import org.testng.annotations.Test;
 
 
 public class TestHelixGroupRoundRobinStrategy {
-
   @Test
   public void testSelectGroup() {
     HelixGroupRoundRobinStrategy strategy = new HelixGroupRoundRobinStrategy();

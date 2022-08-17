@@ -1,5 +1,7 @@
 package com.linkedin.venice;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -21,17 +23,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
-
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.avroutil1.compatibility.AvroVersion;
-
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.testng.Assert;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -41,6 +32,12 @@ import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.testng.Assert;
 
 
 /**
@@ -49,21 +46,16 @@ import java.util.concurrent.TimeUnit;
 public class VeniceClusterInitializer implements AutoCloseable {
   public static final Logger LOGGER = LogManager.getLogger(VeniceClusterInitializer.class);
 
-  public static final String VALUE_SCHEMA_STR = "{" +
-      "  \"namespace\": \"example.compute\",    " +
-      "  \"type\": \"record\",        " +
-      "  \"name\": \"MemberFeature\",       " +
-      "  \"fields\": [        " +
-      "         { \"name\": \"id\", \"type\": \"string\", \"default\": \"default_id\"},             " +
-      "         { \"name\": \"name\", \"type\": \"string\", \"default\": \"default_name\"},           " +
-      "         { \"name\": \"boolean_field\", \"type\": \"boolean\", \"default\": false},           " +
-      "         { \"name\": \"int_field\", \"type\": \"int\", \"default\": 0},           " +
-      "         { \"name\": \"float_field\", \"type\": \"float\", \"default\": 0},           " +
-      "         { \"name\": \"namemap\", \"type\":  {\"type\" : \"map\", \"values\" : \"int\" }},           " +
-      "         { \"name\": \"member_feature\", \"type\": { \"type\": \"array\", \"items\": \"float\" }, \"default\": []}," +
-      "         { \"name\": \"ZookeeperAddress\", \"type\": \"string\"}" +
-      "  ]       " +
-      " }       ";
+  public static final String VALUE_SCHEMA_STR = "{" + "  \"namespace\": \"example.compute\",    "
+      + "  \"type\": \"record\",        " + "  \"name\": \"MemberFeature\",       " + "  \"fields\": [        "
+      + "         { \"name\": \"id\", \"type\": \"string\", \"default\": \"default_id\"},             "
+      + "         { \"name\": \"name\", \"type\": \"string\", \"default\": \"default_name\"},           "
+      + "         { \"name\": \"boolean_field\", \"type\": \"boolean\", \"default\": false},           "
+      + "         { \"name\": \"int_field\", \"type\": \"int\", \"default\": 0},           "
+      + "         { \"name\": \"float_field\", \"type\": \"float\", \"default\": 0},           "
+      + "         { \"name\": \"namemap\", \"type\":  {\"type\" : \"map\", \"values\" : \"int\" }},           "
+      + "         { \"name\": \"member_feature\", \"type\": { \"type\": \"array\", \"items\": \"float\" }, \"default\": []},"
+      + "         { \"name\": \"ZookeeperAddress\", \"type\": \"string\"}" + "  ]       " + " }       ";
   public static final String KEY_SCHEMA_STR = "\"string\"";
   public static final String KEY_PREFIX = "key_";
   public static final String ID_FIELD_PREFIX = "id_";
@@ -84,8 +76,7 @@ public class VeniceClusterInitializer implements AutoCloseable {
   public VeniceClusterInitializer(String storeName, int routerPort) {
     Properties clusterConfig = new Properties();
     clusterConfig.put(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
-    this.veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 1,
-        2, 100, false, false, clusterConfig);
+    this.veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 1, 2, 100, false, false, clusterConfig);
     Properties serverProperties = new Properties();
     serverProperties.put(ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED, true);
     this.veniceCluster.addVeniceServer(new Properties(), serverProperties);
@@ -103,9 +94,11 @@ public class VeniceClusterInitializer implements AutoCloseable {
     this.storeName = storeName;
     // Create test store
     this.controllerClient = this.veniceCluster.getControllerClient();
-    NewStoreResponse newStoreResponse = controllerClient.createNewStore(storeName, "test_owner", KEY_SCHEMA_STR, VALUE_SCHEMA_STR);
+    NewStoreResponse newStoreResponse =
+        controllerClient.createNewStore(storeName, "test_owner", KEY_SCHEMA_STR, VALUE_SCHEMA_STR);
     if (newStoreResponse.isError()) {
-      throw new VeniceException("Failed to create the store: " + storeName + ", and the error: " + newStoreResponse.getError());
+      throw new VeniceException(
+          "Failed to create the store: " + storeName + ", and the error: " + newStoreResponse.getError());
     }
     TestUtils.createMetaSystemStore(controllerClient, storeName, Optional.of(LOGGER));
     // Enable read compute
@@ -113,14 +106,25 @@ public class VeniceClusterInitializer implements AutoCloseable {
     params.setReadComputationEnabled(true);
     ControllerResponse updateStoreResponse = controllerClient.updateStore(storeName, params);
     if (updateStoreResponse.isError()) {
-      throw new VeniceException("Failed to update store: " + storeName + ", and the error: " + updateStoreResponse.getError());
+      throw new VeniceException(
+          "Failed to update store: " + storeName + ", and the error: " + updateStoreResponse.getError());
     }
-    VersionCreationResponse newVersion =
-        controllerClient.requestTopicForWrites(storeName, 10240000, Version.PushType.BATCH,
-            Version.guidBasedDummyPushId(), true, false, false, Optional.empty(),
-            Optional.empty(), Optional.empty(), false, -1);
+    VersionCreationResponse newVersion = controllerClient.requestTopicForWrites(
+        storeName,
+        10240000,
+        Version.PushType.BATCH,
+        Version.guidBasedDummyPushId(),
+        true,
+        false,
+        false,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        false,
+        -1);
     if (newVersion.isError()) {
-      throw new VeniceException("Failed to create a new version for store: " + storeName + ", and error is: " + newVersion.getError());
+      throw new VeniceException(
+          "Failed to create a new version for store: " + storeName + ", and error is: " + newVersion.getError());
     }
     this.pushVersion = newVersion.getVersion();
     this.pushVersionTopic = newVersion.getKafkaTopic();
@@ -129,9 +133,8 @@ public class VeniceClusterInitializer implements AutoCloseable {
     this.keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STR);
     this.valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STR);
 
-    this.regularStoreClient = ClientFactory.getAndStartGenericAvroClient(
-        ClientConfig.defaultGenericClientConfig(storeName)
-            .setVeniceURL(routerAddr));
+    this.regularStoreClient = ClientFactory
+        .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr));
     try {
       pushSyntheticData();
     } catch (Exception e) {
@@ -183,15 +186,14 @@ public class VeniceClusterInitializer implements AutoCloseable {
       value.put(ZK_ADDRESS_FIELD, veniceCluster.getZk().getAddress());
 
       List<Float> features = new ArrayList<>();
-      features.add(Float.valueOf((float)(i + 1)));
-      features.add(Float.valueOf((float)((i + 1) * 10)));
+      features.add(Float.valueOf((float) (i + 1)));
+      features.add(Float.valueOf((float) ((i + 1) * 10)));
       value.put("member_feature", features);
       byte[] serializedBytes = valueSerializer.serialize(pushVersionTopic, value);
       values.add(i, serializedBytes);
     }
 
-    VeniceWriterFactory vwFactory =
-        TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress());
+    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress());
     try (VeniceWriter<Object, byte[], byte[]> veniceWriter =
         vwFactory.createVeniceWriter(pushVersionTopic, keySerializer, new DefaultSerializer(), false)) {
       veniceWriter.broadcastStartOfPush(Collections.emptyMap());

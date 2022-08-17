@@ -12,15 +12,16 @@ import java.nio.ByteBuffer;
  * m bytes - key
  */
 public class GetRequestObject {
-
   public static final int HEADER_SIZE = 16;
 
   private char[] topic;
   private byte[] key;
   private int partition;
 
-  public GetRequestObject(){}
-  public GetRequestObject(char[] topic, int partition, byte[] key){
+  public GetRequestObject() {
+  }
+
+  public GetRequestObject(char[] topic, int partition, byte[] key) {
     this.topic = topic;
     this.key = key;
     this.partition = partition;
@@ -38,15 +39,15 @@ public class GetRequestObject {
     return topic;
   }
 
-  public char[] getStore(){
+  public char[] getStore() {
     return this.getTopic();
   }
 
-  public byte[] getTopicBytes(){
+  public byte[] getTopicBytes() {
     return this.getTopicString().getBytes();
   }
 
-  public byte[] getStoreBytes(){
+  public byte[] getStoreBytes() {
     return this.getTopicBytes();
   }
 
@@ -74,22 +75,23 @@ public class GetRequestObject {
     this.key = key;
   }
 
-  public int getPartition(){
+  public int getPartition() {
     return partition;
   }
 
-  public void setPartition(int partition){
+  public void setPartition(int partition) {
     this.partition = partition;
   }
 
-  public void setPartition(String partition){
+  public void setPartition(String partition) {
     this.partition = Integer.parseInt(partition);
   }
 
-  public byte[] serialize(){
+  public byte[] serialize() {
     int topicNameSize = topic.length;
     int keySize = key.length;
-    int totalSize = 16 + topicNameSize + keySize; //12 for 4 ints (at 4 bytes each), totalSize, keySize, topicNameSize, partition number
+    int totalSize = 16 + topicNameSize + keySize; // 12 for 4 ints (at 4 bytes each), totalSize, keySize, topicNameSize,
+                                                  // partition number
     ByteBuffer payload = ByteBuffer.allocate(totalSize);
     // Worry about payload.order?
     payload.putInt(totalSize);
@@ -101,27 +103,28 @@ public class GetRequestObject {
     return payload.array();
   }
 
-  //This will be wrong if we don't have at least 4 bytes
-  public static int parseSize(byte[] payload){
+  // This will be wrong if we don't have at least 4 bytes
+  public static int parseSize(byte[] payload) {
     return ByteBuffer.wrap(payload).getInt(0);
   }
 
-  static boolean isHeaderComplete(byte[] payload){
+  static boolean isHeaderComplete(byte[] payload) {
     return (payload.length >= HEADER_SIZE);
   }
 
-  public static boolean isPayloadComplete(byte[] payload){
+  public static boolean isPayloadComplete(byte[] payload) {
     return (isHeaderComplete(payload) && payload.length >= parseSize(payload));
   }
 
-  public static GetRequestObject deserialize(byte[] payload){
-    if (!isHeaderComplete(payload)){
+  public static GetRequestObject deserialize(byte[] payload) {
+    if (!isHeaderComplete(payload)) {
       throw new IllegalArgumentException("GetRequestObject must have at least a " + HEADER_SIZE + " byte header");
     }
     ByteBuffer bufferedPayload = ByteBuffer.wrap(payload);
     int totalSize = bufferedPayload.getInt();
-    if (payload.length < totalSize){
-      throw new IllegalArgumentException("GetRequestObject indicates size of " + totalSize + " but only " + payload.length + " bytes available");
+    if (payload.length < totalSize) {
+      throw new IllegalArgumentException(
+          "GetRequestObject indicates size of " + totalSize + " but only " + payload.length + " bytes available");
     }
     GetRequestObject obj = new GetRequestObject();
     int topicNameSize = bufferedPayload.getInt();

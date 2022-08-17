@@ -51,9 +51,8 @@ public class Partition {
    */
   @Deprecated
   public List<Instance> getReadyToServeInstances() {
-    return getInstancesInState(ExecutionStatus.COMPLETED.name()).size() > getInstancesInState(
-        HelixState.ONLINE_STATE).size() ? getInstancesInState(ExecutionStatus.COMPLETED.name())
-        : getReadyInstances();
+    return getInstancesInState(ExecutionStatus.COMPLETED.name()).size() > getInstancesInState(HelixState.ONLINE_STATE)
+        .size() ? getInstancesInState(ExecutionStatus.COMPLETED.name()) : getReadyInstances();
   }
 
   private List<Instance> getReadyInstances() {
@@ -82,7 +81,7 @@ public class Partition {
     return getInstancesInState(HelixState.BOOTSTRAP_STATE);
   }
 
-  public List<Instance> getOfflineInstances(){
+  public List<Instance> getOfflineInstances() {
     return getInstancesInState(HelixState.OFFLINE_STATE);
   }
 
@@ -106,8 +105,8 @@ public class Partition {
 
   public Map<Instance, String> getInstanceToStateMap() {
     Map<Instance, String> instanceToStateMap = new HashMap<>();
-    stateToInstancesMap.forEach((helixState, instanceList) ->
-      instanceList.forEach(instance -> instanceToStateMap.put(instance, helixState)));
+    stateToInstancesMap.forEach(
+        (helixState, instanceList) -> instanceList.forEach(instance -> instanceToStateMap.put(instance, helixState)));
 
     return instanceToStateMap;
   }
@@ -115,12 +114,12 @@ public class Partition {
   /**
    * Find the status of given instance in this partition.
    */
-  public String getInstanceStatusById(String instanceId){
+  public String getInstanceStatusById(String instanceId) {
     for (Map.Entry<String, List<Instance>> entry: stateToInstancesMap.entrySet()) {
       String status = entry.getKey();
       List<Instance> instances = entry.getValue();
-      for (Instance instance : instances){
-        if (instance.getNodeId().equals(instanceId)){
+      for (Instance instance: instances) {
+        if (instance.getNodeId().equals(instanceId)) {
           return status;
         }
       }
@@ -137,7 +136,7 @@ public class Partition {
    */
   public Partition withRemovedInstance(String instanceId) {
     HashMap<String, List<Instance>> newStateToInstancesMap = new HashMap<>();
-    for (Map.Entry<String, List<Instance>> entry : stateToInstancesMap.entrySet()) {
+    for (Map.Entry<String, List<Instance>> entry: stateToInstancesMap.entrySet()) {
 
       List<Instance> newInstances = new ArrayList<>(entry.getValue());
       newInstances.removeIf((Instance instance) -> instance.getNodeId().equals(instanceId));

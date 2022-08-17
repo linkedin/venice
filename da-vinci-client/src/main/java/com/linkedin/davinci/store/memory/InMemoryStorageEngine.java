@@ -1,12 +1,11 @@
 package com.linkedin.davinci.store.memory;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.venice.stats.StatsErrorCode;
-import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.StoragePartitionConfig;
-
+import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.stats.StatsErrorCode;
 import java.util.Collections;
 import java.util.Set;
 
@@ -15,9 +14,11 @@ import java.util.Set;
  * A simple non-persistent, in-memory store.
  */
 public class InMemoryStorageEngine extends AbstractStorageEngine<InMemoryStoragePartition> {
-
   public InMemoryStorageEngine(VeniceStoreVersionConfig storeDef) {
-    super(storeDef.getStoreVersionName(), AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(), AvroProtocolDefinition.PARTITION_STATE.getSerializer());
+    super(
+        storeDef.getStoreVersionName(),
+        AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     restoreStoragePartitions();
   }
 

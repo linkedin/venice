@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
@@ -14,12 +17,8 @@ import org.apache.http.HttpStatus;
 import spark.Request;
 import spark.Route;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
-
 
 public class ControllerRoutes extends AbstractRoute {
-
   public ControllerRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
     super(sslEnabled, accessController);
   }
@@ -66,7 +65,8 @@ public class ControllerRoutes extends AbstractRoute {
     return updateKafkaTopicConfig(admin, adminRequest -> {
       AdminSparkServer.validateParams(adminRequest, UPDATE_KAFKA_TOPIC_LOG_COMPACTION.getParams(), admin);
       String topicName = adminRequest.queryParams(TOPIC);
-      boolean kafkaTopicLogCompactionEnabled = Utils.parseBooleanFromString(adminRequest.queryParams(KAFKA_TOPIC_LOG_COMPACTION_ENABLED),
+      boolean kafkaTopicLogCompactionEnabled = Utils.parseBooleanFromString(
+          adminRequest.queryParams(KAFKA_TOPIC_LOG_COMPACTION_ENABLED),
           KAFKA_TOPIC_LOG_COMPACTION_ENABLED);
 
       TopicManager topicManager = admin.getTopicManager();
@@ -78,8 +78,8 @@ public class ControllerRoutes extends AbstractRoute {
     return updateKafkaTopicConfig(admin, adminRequest -> {
       AdminSparkServer.validateParams(adminRequest, UPDATE_KAFKA_TOPIC_RETENTION.getParams(), admin);
       String topicName = adminRequest.queryParams(TOPIC);
-      long kafkaTopicRetentionIsMs = Utils.parseLongFromString(adminRequest.queryParams(KAFKA_TOPIC_RETENTION_IN_MS),
-          KAFKA_TOPIC_RETENTION_IN_MS);
+      long kafkaTopicRetentionIsMs =
+          Utils.parseLongFromString(adminRequest.queryParams(KAFKA_TOPIC_RETENTION_IN_MS), KAFKA_TOPIC_RETENTION_IN_MS);
       TopicManager topicManager = admin.getTopicManager();
       topicManager.updateTopicRetention(topicName, kafkaTopicRetentionIsMs);
     });

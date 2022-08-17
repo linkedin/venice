@@ -49,9 +49,10 @@ public abstract class ReadEnvelopeChunkedDeserializer<V> {
   /**
    * Exception when the deserialization hits partial record.
    */
-  public static class NotEnoughBytesException extends Exception {}
-  public static final NotEnoughBytesException NOT_ENOUGH_BYTES_EXCEPTION = new NotEnoughBytesException();
+  public static class NotEnoughBytesException extends Exception {
+  }
 
+  public static final NotEnoughBytesException NOT_ENOUGH_BYTES_EXCEPTION = new NotEnoughBytesException();
 
   public List<V> consume() {
     tryDeserializeRecords();
@@ -84,7 +85,7 @@ public abstract class ReadEnvelopeChunkedDeserializer<V> {
           removedBytes = buffers.pop().globalEndOffset + 1;
         }
         final int finalRemovedBytes = removedBytes;
-        buffers.forEach( buffer -> {
+        buffers.forEach(buffer -> {
           buffer.globalStartOffset -= finalRemovedBytes;
           buffer.globalEndOffset -= finalRemovedBytes;
         });
@@ -134,14 +135,13 @@ public abstract class ReadEnvelopeChunkedDeserializer<V> {
     if (offset >= totalBytes) {
       throw NOT_ENOUGH_BYTES_EXCEPTION;
     }
-    for (BytesContainer bytesContainer : buffers) {
+    for (BytesContainer bytesContainer: buffers) {
       if (offset >= bytesContainer.globalStartOffset && offset <= bytesContainer.globalEndOffset) {
         return bytesContainer.bytes.get(offset - bytesContainer.globalStartOffset + bytesContainer.bytes.position());
       }
     }
     throw NOT_ENOUGH_BYTES_EXCEPTION;
   }
-
 
   /**
    * The following implementation is equivalent to {@link BinaryDecoder#readIndex()}
@@ -226,7 +226,7 @@ public abstract class ReadEnvelopeChunkedDeserializer<V> {
     // read bytes
     byte[] value = new byte[bytesLen];
     int copiedLen = 0;
-    for (BytesContainer bytesContainer : buffers) {
+    for (BytesContainer bytesContainer: buffers) {
       int currentStart = bytesContainer.globalStartOffset;
       int currentEnd = bytesContainer.globalEndOffset;
 

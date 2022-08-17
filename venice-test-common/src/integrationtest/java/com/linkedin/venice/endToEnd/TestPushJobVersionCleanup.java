@@ -1,5 +1,9 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.utils.TestPushUtils.*;
+
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.VenicePushJob;
@@ -26,10 +30,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.utils.TestPushUtils.*;
-
 
 public class TestPushJobVersionCleanup {
   private static final int TEST_TIMEOUT = 120_000; // ms
@@ -38,7 +38,7 @@ public class TestPushJobVersionCleanup {
   private static final int NUMBER_OF_CLUSTERS = 1;
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
-      // ["venice-cluster0", "venice-cluster1", ...];
+  // ["venice-cluster0", "venice-cluster1", ...];
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
@@ -54,10 +54,18 @@ public class TestPushJobVersionCleanup {
     controllerProps.put(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, false);
     controllerProps.put(PARTICIPANT_MESSAGE_STORE_ENABLED, true);
 
-    multiColoMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(NUMBER_OF_CHILD_DATACENTERS, NUMBER_OF_CLUSTERS, 1,
-            1, 1, 1, 1, Optional.of(new VeniceProperties(controllerProps)), Optional.of(controllerProps),
-            Optional.of(new VeniceProperties(serverProperties)), false);
+    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+        NUMBER_OF_CHILD_DATACENTERS,
+        NUMBER_OF_CLUSTERS,
+        1,
+        1,
+        1,
+        1,
+        1,
+        Optional.of(new VeniceProperties(controllerProps)),
+        Optional.of(controllerProps),
+        Optional.of(new VeniceProperties(serverProperties)),
+        false);
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
   }
@@ -74,12 +82,13 @@ public class TestPushJobVersionCleanup {
     Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, 50);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    String parentControllerUrls = parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(
-        Collectors.joining(","));
+    String parentControllerUrls =
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
     Properties props = defaultH2VProps(parentControllerUrls, inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
     String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
-    String valueSchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
+    String valueSchemaStr =
+        recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
 
     UpdateStoreQueryParams updateStoreParams =
         new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA).setPartitionCount(2);
@@ -88,7 +97,8 @@ public class TestPushJobVersionCleanup {
     VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
     VeniceServer server = childDataCenter.getClusters().get(clusterName).getVeniceServers().get(0).getVeniceServer();
 
-    try (ControllerClient parentControllerClient = ControllerClient.constructClusterControllerClient(clusterName, parentControllerUrls)) {
+    try (ControllerClient parentControllerClient =
+        ControllerClient.constructClusterControllerClient(clusterName, parentControllerUrls)) {
       /**
        * Run 3 push jobs sequentially and at the end verify the first version is cleaned up properly without any
        * ingestion_failure metrics being reported.
@@ -99,15 +109,16 @@ public class TestPushJobVersionCleanup {
           job.run();
         }
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-          for (int version : parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions().values()) {
+          for (int version: parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions().values()) {
             Assert.assertEquals(version, expectedVersionNumber);
           }
         });
       }
     }
 
-    //There should not be any ingestion_failure.
-    Assert.assertEquals(server.getMetricsRepository().getMetric("." + storeName + "--ingestion_failure.Count").value(),
+    // There should not be any ingestion_failure.
+    Assert.assertEquals(
+        server.getMetricsRepository().getMetric("." + storeName + "--ingestion_failure.Count").value(),
         0.0);
   }
 }

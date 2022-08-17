@@ -11,12 +11,13 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class AggVersionedStorageEngineStats extends AbstractVeniceAggVersionedStats<
-    AggVersionedStorageEngineStats.StorageEngineStats,
-    AggVersionedStorageEngineStats.StorageEngineStatsReporter> {
+public class AggVersionedStorageEngineStats extends
+    AbstractVeniceAggVersionedStats<AggVersionedStorageEngineStats.StorageEngineStats, AggVersionedStorageEngineStats.StorageEngineStatsReporter> {
   private static final Logger LOGGER = LogManager.getLogger(AggVersionedStorageEngineStats.class);
 
-  public AggVersionedStorageEngineStats(MetricsRepository metricsRepository, ReadOnlyStoreRepository metadataRepository) {
+  public AggVersionedStorageEngineStats(
+      MetricsRepository metricsRepository,
+      ReadOnlyStoreRepository metadataRepository) {
     super(metricsRepository, metadataRepository, StorageEngineStats::new, StorageEngineStatsReporter::new);
   }
 
@@ -51,6 +52,7 @@ public class AggVersionedStorageEngineStats extends AbstractVeniceAggVersionedSt
   static class StorageEngineStats {
     private AbstractStorageEngine storageEngine;
     private final AtomicInteger rocksDBOpenFailureCount = new AtomicInteger(0);
+
     public void setStorageEngine(AbstractStorageEngine storageEngine) {
       this.storageEngine = storageEngine;
     }

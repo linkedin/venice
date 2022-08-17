@@ -1,5 +1,7 @@
 package com.linkedin.venice.benchmark;
 
+import static com.linkedin.venice.integration.utils.ServiceFactory.*;
+
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -32,10 +34,8 @@ import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.options.Options;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
 
-import static com.linkedin.venice.integration.utils.ServiceFactory.*;
 
-
-@Fork(value = 1, warmups = 1, jvmArgs = {"-Xms4G", "-Xmx4G"})
+@Fork(value = 1, warmups = 1, jvmArgs = { "-Xms4G", "-Xmx4G" })
 @Warmup(iterations = 5)
 @Measurement(iterations = 10)
 @BenchmarkMode(Mode.SampleTime)
@@ -45,20 +45,19 @@ public class DaVinciClientBenchmark {
   protected static final int KEY_COUNT = 100_000;
   protected static final String VALUE_FIELD = "value";
 
-  @Param({"DENSE_VECTOR"})
+  @Param({ "DENSE_VECTOR" })
   protected String valueType;
 
-  @Param({"2500"})
+  @Param({ "2500" })
   protected int valueLength;
 
   protected VeniceClusterWrapper cluster;
   protected DaVinciClient<Integer, GenericRecord> client;
 
   public static void main(String[] args) throws Exception {
-    Options options = new OptionsBuilder()
-                      .include(DaVinciClientBenchmark.class.getSimpleName())
-                      .addProfiler(GCProfiler.class)
-                      .build();
+    Options options = new OptionsBuilder().include(DaVinciClientBenchmark.class.getSimpleName())
+        .addProfiler(GCProfiler.class)
+        .build();
     new Runner(options).run();
   }
 
@@ -124,14 +123,9 @@ public class DaVinciClientBenchmark {
 
   protected String buildDenseVectorStore(VeniceClusterWrapper cluster) throws Exception {
     Schema schema = Schema.parse(
-            "{" +
-            "  \"namespace\" : \"example.avro\"," +
-            "  \"type\": \"record\"," +
-            "  \"name\": \"DenseVector\"," +
-            "  \"fields\": [" +
-            "     { \"name\": \"value\", \"type\": {\"type\": \"array\", \"items\": \"float\"} }" +
-            "   ]" +
-            "}");
+        "{" + "  \"namespace\" : \"example.avro\"," + "  \"type\": \"record\"," + "  \"name\": \"DenseVector\","
+            + "  \"fields\": [" + "     { \"name\": \"value\", \"type\": {\"type\": \"array\", \"items\": \"float\"} }"
+            + "   ]" + "}");
     GenericRecord record = new GenericData.Record(schema);
     List<Float> values = new ArrayList<>();
     for (int i = 0; i < valueLength; i++) {
@@ -143,15 +137,9 @@ public class DaVinciClientBenchmark {
 
   protected String buildSparseVectorStore(VeniceClusterWrapper cluster) throws Exception {
     Schema schema = Schema.parse(
-            "{" +
-            "  \"namespace\" : \"example.avro\"," +
-            "  \"type\": \"record\"," +
-            "  \"name\": \"SparseVector\"," +
-            "  \"fields\": [" +
-            "     { \"name\": \"index\", \"type\": {\"type\": \"array\", \"items\": \"int\"} }," +
-            "     { \"name\": \"value\", \"type\": {\"type\": \"array\", \"items\": \"float\"} }" +
-            "   ]" +
-            "}");
+        "{" + "  \"namespace\" : \"example.avro\"," + "  \"type\": \"record\"," + "  \"name\": \"SparseVector\","
+            + "  \"fields\": [" + "     { \"name\": \"index\", \"type\": {\"type\": \"array\", \"items\": \"int\"} },"
+            + "     { \"name\": \"value\", \"type\": {\"type\": \"array\", \"items\": \"float\"} }" + "   ]" + "}");
     GenericRecord record = new GenericData.Record(schema);
     List<Integer> indices = new ArrayList<>();
     List<Float> values = new ArrayList<>();

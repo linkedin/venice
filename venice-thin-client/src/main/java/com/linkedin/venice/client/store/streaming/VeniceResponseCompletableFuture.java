@@ -18,7 +18,10 @@ public class VeniceResponseCompletableFuture<T> extends CompletableFuture<T> {
   private final int totalKeyCnt;
   private final Optional<ClientStats> stats;
 
-  public VeniceResponseCompletableFuture(Supplier<VeniceResponseMap> supplier, int totalKeyCnt, Optional<ClientStats> stats) {
+  public VeniceResponseCompletableFuture(
+      Supplier<VeniceResponseMap> supplier,
+      int totalKeyCnt,
+      Optional<ClientStats> stats) {
     this.resultSupplier = supplier;
     this.totalKeyCnt = totalKeyCnt;
     this.stats = stats;
@@ -26,11 +29,11 @@ public class VeniceResponseCompletableFuture<T> extends CompletableFuture<T> {
 
   @Override
   public T get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException {
-    try  {
+    try {
       return super.get(timeout, unit);
     } catch (TimeoutException toE) {
       VeniceResponseMap partialResponse = resultSupplier.get();
-      stats.ifPresent( s -> {
+      stats.ifPresent(s -> {
         s.recordAppTimedOutRequest();
         if (totalKeyCnt > 0) {
           s.recordAppTimedOutRequestResultRatio(
@@ -38,7 +41,7 @@ public class VeniceResponseCompletableFuture<T> extends CompletableFuture<T> {
         }
       });
       // Always return the available result
-      return (T)partialResponse;
+      return (T) partialResponse;
     }
   }
 }

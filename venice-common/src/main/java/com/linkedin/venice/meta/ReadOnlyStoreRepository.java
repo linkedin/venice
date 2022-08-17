@@ -4,7 +4,6 @@ import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
-
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
@@ -23,6 +22,7 @@ public interface ReadOnlyStoreRepository extends VeniceResource {
    * @return Store for given name.
    */
   Store getStore(String storeName);
+
   Store getStoreOrThrow(String storeName) throws VeniceNoStoreException;
 
   /**

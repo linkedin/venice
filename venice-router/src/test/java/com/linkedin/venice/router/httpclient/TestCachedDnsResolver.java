@@ -17,7 +17,6 @@ import org.testng.annotations.Test;
 
 
 public class TestCachedDnsResolver {
-
   private static class MockCachedDnsResolver extends CachedDnsResolver {
     private Map<String, List<InetAddress[]>> dnsMap = new HashMap<>();
     private Map<String, Integer> hostResolvedTimes = new HashMap<>();
@@ -30,23 +29,23 @@ public class TestCachedDnsResolver {
       super(cachedHostPattern, refreshIntervalInMs, null);
       // For host1.abc.com
       List<InetAddress[]> dnsEntriesForHost1 = new ArrayList<>();
-      dnsEntriesForHost1.add(new InetAddress[] {InetAddress.getByName("127.0.0.1")});
-      dnsEntriesForHost1.add(new InetAddress[] {InetAddress.getByName("127.0.0.2")});
-      dnsEntriesForHost1.add(new InetAddress[] {InetAddress.getByName("127.0.0.3")});
+      dnsEntriesForHost1.add(new InetAddress[] { InetAddress.getByName("127.0.0.1") });
+      dnsEntriesForHost1.add(new InetAddress[] { InetAddress.getByName("127.0.0.2") });
+      dnsEntriesForHost1.add(new InetAddress[] { InetAddress.getByName("127.0.0.3") });
       dnsMap.put(HOST1, dnsEntriesForHost1);
       hostResolvedTimes.put(HOST1, 0);
       // For host2.abc.com
       List<InetAddress[]> dnsEntriesForHost2 = new ArrayList<>();
-      dnsEntriesForHost2.add(new InetAddress[] {InetAddress.getByName("127.0.1.1")});
-      dnsEntriesForHost2.add(new InetAddress[] {InetAddress.getByName("127.0.1.2")});
-      dnsEntriesForHost2.add(new InetAddress[] {InetAddress.getByName("127.0.1.3")});
+      dnsEntriesForHost2.add(new InetAddress[] { InetAddress.getByName("127.0.1.1") });
+      dnsEntriesForHost2.add(new InetAddress[] { InetAddress.getByName("127.0.1.2") });
+      dnsEntriesForHost2.add(new InetAddress[] { InetAddress.getByName("127.0.1.3") });
       dnsMap.put(HOST2, dnsEntriesForHost2);
       hostResolvedTimes.put(HOST2, 0);
       // For host3.xyz.com
       List<InetAddress[]> dnsEntriesForHost3 = new ArrayList<>();
-      dnsEntriesForHost3.add(new InetAddress[] {InetAddress.getByName("127.0.2.1")});
-      dnsEntriesForHost3.add(new InetAddress[] {InetAddress.getByName("127.0.2.2")});
-      dnsEntriesForHost3.add(new InetAddress[] {InetAddress.getByName("127.0.2.3")});
+      dnsEntriesForHost3.add(new InetAddress[] { InetAddress.getByName("127.0.2.1") });
+      dnsEntriesForHost3.add(new InetAddress[] { InetAddress.getByName("127.0.2.2") });
+      dnsEntriesForHost3.add(new InetAddress[] { InetAddress.getByName("127.0.2.3") });
       dnsMap.put(HOST3, dnsEntriesForHost3);
       hostResolvedTimes.put(HOST3, 0);
     }
@@ -66,7 +65,6 @@ public class TestCachedDnsResolver {
       return socketAddressList.get(times);
     }
   }
-
 
   private CachedDnsResolver cachedDnsResolver;
 
@@ -105,7 +103,9 @@ public class TestCachedDnsResolver {
     Assert.assertEquals(InetAddress.getByName("127.0.0.1"), cachedDnsResolver.resolve(MockCachedDnsResolver.HOST1)[0]);
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       try {
-        Assert.assertNotEquals(InetAddress.getByName("127.0.0.1"), cachedDnsResolver.resolve(MockCachedDnsResolver.HOST1)[0]);
+        Assert.assertNotEquals(
+            InetAddress.getByName("127.0.0.1"),
+            cachedDnsResolver.resolve(MockCachedDnsResolver.HOST1)[0]);
       } catch (UnknownHostException e) {
         Assert.fail(MockCachedDnsResolver.HOST1 + " should be a known host");
       }

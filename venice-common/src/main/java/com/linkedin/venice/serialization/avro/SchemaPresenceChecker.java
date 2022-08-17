@@ -1,15 +1,15 @@
 package com.linkedin.venice.serialization.avro;
 
-import com.linkedin.venice.schema.SchemaReader;
+import static com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer.*;
 
 
 /**
@@ -45,13 +45,17 @@ public class SchemaPresenceChecker {
         break;
       } catch (Exception e) {
         if (attempt == MAX_ATTEMPTS_FOR_SCHEMA_READER || !retry) {
-          throw new VeniceException("Failed to retrieve new protocol schema version (" + protocolVersion + ") after "
-              + MAX_ATTEMPTS_FOR_SCHEMA_READER + " attempts.", e);
+          throw new VeniceException(
+              "Failed to retrieve new protocol schema version (" + protocolVersion + ") after "
+                  + MAX_ATTEMPTS_FOR_SCHEMA_READER + " attempts.",
+              e);
         }
-        LOGGER.error("Caught an exception while trying to fetch a new protocol schema version (protocol: "
-            + avroProtocolDefinition.name() + ", version: " + protocolVersion + "). Attempt #" + attempt + "/"
-            + MAX_ATTEMPTS_FOR_SCHEMA_READER + ". Will sleep " + WAIT_TIME_BETWEEN_SCHEMA_READER_ATTEMPTS_IN_MS
-            + " ms and try again.", e);
+        LOGGER.error(
+            "Caught an exception while trying to fetch a new protocol schema version (protocol: "
+                + avroProtocolDefinition.name() + ", version: " + protocolVersion + "). Attempt #" + attempt + "/"
+                + MAX_ATTEMPTS_FOR_SCHEMA_READER + ". Will sleep " + WAIT_TIME_BETWEEN_SCHEMA_READER_ATTEMPTS_IN_MS
+                + " ms and try again.",
+            e);
         Utils.sleep(WAIT_TIME_BETWEEN_SCHEMA_READER_ATTEMPTS_IN_MS);
       }
     }
@@ -68,12 +72,12 @@ public class SchemaPresenceChecker {
         protocolVersion.isPresent() ? protocolVersion.get() : avroProtocolDefinition.getCurrentProtocolVersion();
     try {
       verifySchemaIsPresent(version, retry);
-      LOGGER.info("SchemaPresenceChecker: The schema " + avroProtocolDefinition.name() + " current version " + version
-          + " is found");
+      LOGGER.info(
+          "SchemaPresenceChecker: The schema " + avroProtocolDefinition.name() + " current version " + version
+              + " is found");
     } catch (VeniceException e) {
-      String errorMsg =
-          "SchemaVersionNotFound: The schema " + avroProtocolDefinition.name() + " current version " + version
-              + " is not present in ZK, exiting application";
+      String errorMsg = "SchemaVersionNotFound: The schema " + avroProtocolDefinition.name() + " current version "
+          + version + " is not present in ZK, exiting application";
       LOGGER.fatal(errorMsg);
       throw new VeniceException(errorMsg, e);
     }

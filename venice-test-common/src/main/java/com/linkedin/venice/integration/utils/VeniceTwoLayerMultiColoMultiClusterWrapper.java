@@ -1,5 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
+import static com.linkedin.venice.ConfigKeys.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.utils.TestUtils;
@@ -16,8 +18,6 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.IOUtils;
 
-import static com.linkedin.venice.ConfigKeys.*;
-
 
 public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
   public static final String SERVICE_NAME = "VeniceTwoLayerMultiCluster";
@@ -26,8 +26,11 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
   private final ZkServerWrapper zkServerWrapper;
   private final KafkaBrokerWrapper parentKafkaBrokerWrapper;
 
-  VeniceTwoLayerMultiColoMultiClusterWrapper(File dataDirectory, ZkServerWrapper zkServerWrapper,
-      KafkaBrokerWrapper parentKafkaBrokerWrapper, List<VeniceMultiClusterWrapper> clusters,
+  VeniceTwoLayerMultiColoMultiClusterWrapper(
+      File dataDirectory,
+      ZkServerWrapper zkServerWrapper,
+      KafkaBrokerWrapper parentKafkaBrokerWrapper,
+      List<VeniceMultiClusterWrapper> clusters,
       List<VeniceControllerWrapper> parentControllers) {
     super(SERVICE_NAME, dataDirectory);
     this.zkServerWrapper = zkServerWrapper;
@@ -36,19 +39,43 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
     this.clusters = clusters;
   }
 
-  static ServiceProvider<VeniceTwoLayerMultiColoMultiClusterWrapper> generateService(int numberOfColos,
-      int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers,
-      int numberOfRouters, int replicationFactor, Optional<VeniceProperties> parentControllerProperties,
+  static ServiceProvider<VeniceTwoLayerMultiColoMultiClusterWrapper> generateService(
+      int numberOfColos,
+      int numberOfClustersInEachColo,
+      int numberOfParentControllers,
+      int numberOfControllers,
+      int numberOfServers,
+      int numberOfRouters,
+      int replicationFactor,
+      Optional<VeniceProperties> parentControllerProperties,
       Optional<VeniceProperties> serverProperties) {
-    return generateService(numberOfColos, numberOfClustersInEachColo, numberOfParentControllers, numberOfControllers,
-        numberOfServers, numberOfRouters, replicationFactor, parentControllerProperties, Optional.empty(),
-        serverProperties, false, false);
+    return generateService(
+        numberOfColos,
+        numberOfClustersInEachColo,
+        numberOfParentControllers,
+        numberOfControllers,
+        numberOfServers,
+        numberOfRouters,
+        replicationFactor,
+        parentControllerProperties,
+        Optional.empty(),
+        serverProperties,
+        false,
+        false);
   }
 
-  static ServiceProvider<VeniceTwoLayerMultiColoMultiClusterWrapper> generateService(int numberOfColos,
-      int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers,
-      int numberOfRouters, int replicationFactor, Optional<VeniceProperties> parentControllerPropertiesOverride,
-      Optional<Properties> childControllerPropertiesOverride, Optional<VeniceProperties> serverProperties, boolean multiD2,
+  static ServiceProvider<VeniceTwoLayerMultiColoMultiClusterWrapper> generateService(
+      int numberOfColos,
+      int numberOfClustersInEachColo,
+      int numberOfParentControllers,
+      int numberOfControllers,
+      int numberOfServers,
+      int numberOfRouters,
+      int replicationFactor,
+      Optional<VeniceProperties> parentControllerPropertiesOverride,
+      Optional<Properties> childControllerPropertiesOverride,
+      Optional<VeniceProperties> serverProperties,
+      boolean multiD2,
       boolean forkServer) {
     String parentColoName = VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
     final List<VeniceControllerWrapper> parentControllers = new ArrayList<>(numberOfParentControllers);
@@ -71,7 +98,8 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       allKafkaBrokers.add(parentKafka);
 
       Properties parentControllerProps = parentControllerPropertiesOverride.isPresent()
-          ? parentControllerPropertiesOverride.get().getPropertiesCopy() : new Properties();
+          ? parentControllerPropertiesOverride.get().getPropertiesCopy()
+          : new Properties();
       /** Enable participant system store by default in a two-layer multi-colo set-up */
       parentControllerProps.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
       parentControllerPropertiesOverride = Optional.of(new VeniceProperties(parentControllerProps));
@@ -110,9 +138,12 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH, true);
       defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_FOR_HYBRID, true);
       defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID, true);
-      defaultParentControllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES, childColoNames.get(0));
-      defaultParentControllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES, childColoNames.get(0));
-      defaultParentControllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES, childColoNames.get(0));
+      defaultParentControllerProps
+          .put(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES, childColoNames.get(0));
+      defaultParentControllerProps
+          .put(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES, childColoNames.get(0));
+      defaultParentControllerProps
+          .put(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES, childColoNames.get(0));
       defaultParentControllerProps.put(AGGREGATE_REAL_TIME_SOURCE_REGION, parentColoName);
       defaultParentControllerProps.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, childColoList + "," + parentColoName);
 
@@ -123,16 +154,20 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       Properties nativeReplicationRequiredChildControllerProps = new Properties();
       nativeReplicationRequiredChildControllerProps.put(ADMIN_TOPIC_SOURCE_REGION, parentColoName);
       nativeReplicationRequiredChildControllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, parentColoName);
-      nativeReplicationRequiredChildControllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + parentColoName, parentKafka.getAddress());
-      nativeReplicationRequiredChildControllerProps.put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + parentColoName, parentKafka.getZkAddress());
-      for (String coloName : childColoNames) {
+      nativeReplicationRequiredChildControllerProps
+          .put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + parentColoName, parentKafka.getAddress());
+      nativeReplicationRequiredChildControllerProps
+          .put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + parentColoName, parentKafka.getZkAddress());
+      for (String coloName: childColoNames) {
         ZkServerWrapper zkServerWrapper = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
         allKafkaBrokers.add(kafkaBrokerWrapper);
         zkServerByColoName.put(coloName, zkServerWrapper);
         kafkaBrokerByColoName.put(coloName, kafkaBrokerWrapper);
-        nativeReplicationRequiredChildControllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + coloName, kafkaBrokerWrapper.getAddress());
-        nativeReplicationRequiredChildControllerProps.put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + coloName, kafkaBrokerWrapper.getZkAddress());
+        nativeReplicationRequiredChildControllerProps
+            .put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + coloName, kafkaBrokerWrapper.getAddress());
+        nativeReplicationRequiredChildControllerProps
+            .put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + coloName, kafkaBrokerWrapper.getZkAddress());
       }
       Properties activeActiveRequiredChildControllerProps = new Properties();
       activeActiveRequiredChildControllerProps.put(ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, childColoList);
@@ -149,29 +184,28 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       finalChildControllerProperties.putAll(defaultChildControllerProps);
       childControllerPropertiesOverride.ifPresent(finalChildControllerProperties::putAll);
 
-      Optional<Map<String, Map<String, String>>> kafkaClusterMap = addKafkaClusterIDMappingToServerConfigs(serverProperties, parentColoName, childColoNames, allKafkaBrokers);
+      Optional<Map<String, Map<String, String>>> kafkaClusterMap =
+          addKafkaClusterIDMappingToServerConfigs(serverProperties, parentColoName, childColoNames, allKafkaBrokers);
 
       // Create multi-clusters
       for (int i = 0; i < numberOfColos; i++) {
         String coloName = childColoNames.get(i);
-        VeniceMultiClusterWrapper multiClusterWrapper =
-            ServiceFactory.getVeniceMultiClusterWrapper(
-                    coloName,
-                    kafkaBrokerByColoName.get(coloName),
-                    zkServerByColoName.get(coloName),
-                    numberOfClustersInEachColo,
-                    numberOfControllers,
-                    numberOfServers,
-                    numberOfRouters,
-                    replicationFactor,
-                    false,
-                    true,
-                    multiD2,
-                    Optional.of(finalChildControllerProperties),
-                    serverProperties,
-                    forkServer,
-                    kafkaClusterMap
-            );
+        VeniceMultiClusterWrapper multiClusterWrapper = ServiceFactory.getVeniceMultiClusterWrapper(
+            coloName,
+            kafkaBrokerByColoName.get(coloName),
+            zkServerByColoName.get(coloName),
+            numberOfClustersInEachColo,
+            numberOfControllers,
+            numberOfServers,
+            numberOfRouters,
+            replicationFactor,
+            false,
+            true,
+            multiD2,
+            Optional.of(finalChildControllerProperties),
+            serverProperties,
+            forkServer,
+            kafkaClusterMap);
         multiClusters.add(multiClusterWrapper);
       }
 
@@ -179,13 +213,25 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
           multiClusters.stream().map(cluster -> cluster.getRandomController()).toArray(VeniceControllerWrapper[]::new);
 
       // Setup D2 for parent controller
-      D2TestUtils.setupD2Config(parentKafka.getZkAddress(), false, D2TestUtils.CONTROLLER_CLUSTER_NAME, VeniceSystemFactory.VENICE_PARENT_D2_SERVICE, false);
+      D2TestUtils.setupD2Config(
+          parentKafka.getZkAddress(),
+          false,
+          D2TestUtils.CONTROLLER_CLUSTER_NAME,
+          VeniceSystemFactory.VENICE_PARENT_D2_SERVICE,
+          false);
       // Create parentControllers for multi-cluster
       for (int i = 0; i < numberOfParentControllers; i++) {
         // random controller from each multi-cluster, in reality this should include all controllers, not just one
         VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(
-            clusterNames, parentKafka.getZkAddress(), parentKafka, childControllers, clusterToD2, false,
-            replicationFactor, new VeniceProperties(finalParentControllerProperties), Optional.empty());
+            clusterNames,
+            parentKafka.getZkAddress(),
+            parentKafka,
+            childControllers,
+            clusterToD2,
+            false,
+            replicationFactor,
+            new VeniceProperties(finalParentControllerProperties),
+            Optional.empty());
         parentControllers.add(parentController);
       }
 
@@ -193,7 +239,11 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       final KafkaBrokerWrapper finalParentKafka = parentKafka;
 
       return (serviceName) -> new VeniceTwoLayerMultiColoMultiClusterWrapper(
-          null, finalZkServer, finalParentKafka, multiClusters, parentControllers);
+          null,
+          finalZkServer,
+          finalParentKafka,
+          multiClusters,
+          parentControllers);
     } catch (Exception e) {
       parentControllers.forEach(IOUtils::closeQuietly);
       multiClusters.forEach(IOUtils::closeQuietly);
@@ -204,11 +254,10 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
   }
 
   private static Optional<Map<String, Map<String, String>>> addKafkaClusterIDMappingToServerConfigs(
-          Optional<VeniceProperties> serverProperties,
-          String parentColoName,
-          List<String> coloNames,
-          List<KafkaBrokerWrapper> kafkaBrokers
-  ) {
+      Optional<VeniceProperties> serverProperties,
+      String parentColoName,
+      List<String> coloNames,
+      List<KafkaBrokerWrapper> kafkaBrokers) {
     if (serverProperties.isPresent()) {
       Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
 
@@ -218,7 +267,7 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       kafkaClusterMap.put(String.valueOf(0), mapping);
       for (int i = 1; i <= coloNames.size(); i++) {
         mapping = new HashMap<>();
-        mapping.put(KAFKA_CLUSTER_MAP_KEY_NAME, coloNames.get(i-1));
+        mapping.put(KAFKA_CLUSTER_MAP_KEY_NAME, coloNames.get(i - 1));
         mapping.put(KAFKA_CLUSTER_MAP_KEY_URL, kafkaBrokers.get(i).getAddress());
         kafkaClusterMap.put(String.valueOf(i), mapping);
       }
@@ -279,7 +328,7 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
   public VeniceControllerWrapper getLeaderParentControllerWithRetries(String clusterName, long timeoutMs) {
     long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
     while (System.nanoTime() < deadline) {
-      for (VeniceControllerWrapper controller : parentControllers) {
+      for (VeniceControllerWrapper controller: parentControllers) {
         if (controller.isRunning() && controller.isLeaderController(clusterName)) {
           return controller;
         }

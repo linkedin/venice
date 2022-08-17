@@ -31,9 +31,12 @@ public class TestHelixReadOnlyStoreConfigRepository {
     list.add(config);
     Mockito.doReturn(list).when(mockAccessor).getAllStoreConfigs(1, 1000);
     storeConfigRepository.refresh();
-    Assert.assertEquals(storeConfigRepository.getStoreConfig(storeName).get().getCluster(), clusterName,
+    Assert.assertEquals(
+        storeConfigRepository.getStoreConfig(storeName).get().getCluster(),
+        clusterName,
         "Should get the cluster from config correctly.");
-    Assert.assertFalse(storeConfigRepository.getStoreConfig("non-existing-store").isPresent(),
+    Assert.assertFalse(
+        storeConfigRepository.getStoreConfig("non-existing-store").isPresent(),
         "Store config should not exist.");
   }
 
@@ -50,19 +53,21 @@ public class TestHelixReadOnlyStoreConfigRepository {
 
     storeConfigRepository.refresh();
     for (int i = 0; i < storeCount; i++) {
-      Assert.assertEquals(storeConfigRepository.getStoreConfig("testRefreshAndClearStore" + i).get().getCluster(),
-          "testRefreshAndClearCluster" + i, "Should already load all configs correctly.");
+      Assert.assertEquals(
+          storeConfigRepository.getStoreConfig("testRefreshAndClearStore" + i).get().getCluster(),
+          "testRefreshAndClearCluster" + i,
+          "Should already load all configs correctly.");
     }
     storeConfigRepository.clear();
     for (int i = 0; i < storeCount; i++) {
-      Assert.assertFalse(storeConfigRepository.getStoreConfig("testRefreshAndClearStore" + i).isPresent(),
+      Assert.assertFalse(
+          storeConfigRepository.getStoreConfig("testRefreshAndClearStore" + i).isPresent(),
           "Should already clear all configs correctly.");
     }
   }
 
   @Test
-  public void testGetStoreConfigChildrenChangedNotification()
-      throws Exception {
+  public void testGetStoreConfigChildrenChangedNotification() throws Exception {
     HelixReadOnlyStoreConfigRepository.StoreConfigAddedOrDeletedChangedListener listener =
         storeConfigRepository.getStoreConfigAddedOrDeletedListener();
     int storeCount = 10;
@@ -91,13 +96,13 @@ public class TestHelixReadOnlyStoreConfigRepository {
     listener.handleChildChange("", storeNames);
 
     Assert.assertFalse(storeConfigRepository.getStoreConfig("testRefreshAndClearStore" + 0).isPresent());
-    Assert.assertEquals(storeConfigRepository.getStoreConfig(newStoreName).get().getCluster(),
+    Assert.assertEquals(
+        storeConfigRepository.getStoreConfig(newStoreName).get().getCluster(),
         newStoreConfig.getCluster());
   }
 
   @Test
-  public void testGetUpdateStoreConfigNotification()
-      throws Exception {
+  public void testGetUpdateStoreConfigNotification() throws Exception {
     String storeNAme = "testGetUpdateStoreConfigNotification";
     List<StoreConfig> list = new ArrayList<>();
     StoreConfig config = new StoreConfig(storeNAme);
@@ -106,7 +111,8 @@ public class TestHelixReadOnlyStoreConfigRepository {
     Mockito.doReturn(list).when(mockAccessor).getAllStoreConfigs(1, 1000);
     storeConfigRepository.refresh();
 
-    HelixReadOnlyStoreConfigRepository.StoreConfigChangedListener listener = storeConfigRepository.getStoreConfigChangedListener();
+    HelixReadOnlyStoreConfigRepository.StoreConfigChangedListener listener =
+        storeConfigRepository.getStoreConfigChangedListener();
     StoreConfig newConfig = new StoreConfig(storeNAme);
     newConfig.setCluster("newCluster");
     listener.handleDataChange("", newConfig);

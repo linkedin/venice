@@ -16,7 +16,6 @@ import org.apache.commons.lang.Validate;
  */
 @ThreadSafe
 public class AvroCollectionElementComparator {
-
   public static AvroCollectionElementComparator INSTANCE = new AvroCollectionElementComparator();
 
   private AvroCollectionElementComparator() {
@@ -35,7 +34,8 @@ public class AvroCollectionElementComparator {
     if (schema.getType() == Schema.Type.MAP) {
       return true;
     }
-    return SchemaUtils.isNullableUnionPair(schema) && (schema.getTypes().get(0).getType() == Schema.Type.MAP ||  schema.getTypes().get(1).getType() == Schema.Type.MAP);
+    return SchemaUtils.isNullableUnionPair(schema) && (schema.getTypes().get(0).getType() == Schema.Type.MAP
+        || schema.getTypes().get(1).getType() == Schema.Type.MAP);
   }
 
   private int compareMaps(IndexedHashMap<String, Object> map1, IndexedHashMap<String, Object> map2) {
@@ -90,8 +90,9 @@ public class AvroCollectionElementComparator {
     int schemaStrCompareResult = schema1.toString().compareTo(schema2.toString());
     if (schemaStrCompareResult == 0) {
       // Assume this case is rare for now.
-      throw new IllegalStateException("TODO: handle this case where 2 schemas are not equal but their toString forms "
-          + "equal. Schema string: " + schema1);
+      throw new IllegalStateException(
+          "TODO: handle this case where 2 schemas are not equal but their toString forms " + "equal. Schema string: "
+              + schema1);
     } else {
       return schemaStrCompareResult;
     }

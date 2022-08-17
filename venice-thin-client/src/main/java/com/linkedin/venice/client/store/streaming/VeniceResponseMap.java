@@ -3,6 +3,7 @@ package com.linkedin.venice.client.store.streaming;
 import java.util.Map;
 import java.util.Set;
 
+
 /**
  * Venice customized map, which could contains either a full response or a partial response.
  *
@@ -10,7 +11,6 @@ import java.util.Set;
  * or response quality in the future if necessary.
  */
 public interface VeniceResponseMap<K, V> extends Map<K, V> {
-
   /**
    * Whether the result is a full response or not.
    * @return

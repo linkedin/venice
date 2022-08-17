@@ -12,8 +12,7 @@ public class OptimizedKafkaValueSerializer extends KafkaValueSerializer {
   private static final OptimizedBinaryDecoderFactory DECODER_FACTORY = OptimizedBinaryDecoderFactory.defaultFactory();
 
   @Override
-  protected BinaryDecoder createBinaryDecoder(byte[] bytes, int offset,
-      int length, BinaryDecoder reuse) {
+  protected BinaryDecoder createBinaryDecoder(byte[] bytes, int offset, int length, BinaryDecoder reuse) {
     return DECODER_FACTORY.createOptimizedBinaryDecoder(bytes, offset, length);
   }
 }

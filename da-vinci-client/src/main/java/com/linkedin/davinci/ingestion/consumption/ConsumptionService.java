@@ -27,7 +27,6 @@ import java.util.concurrent.CompletableFuture;
  * @param <MESSAGE> Type of consumed data. For example, in the Kafka case, this type could be {@link org.apache.kafka.clients.consumer.ConsumerRecords}
  */
 public interface ConsumptionService<MESSAGE_QUEUE, MESSAGE> {
-
   /**
    * Start consuming a message queue at an given offset. This method must be non-blocking. In other words, it must return immediately.
    *
@@ -42,7 +41,10 @@ public interface ConsumptionService<MESSAGE_QUEUE, MESSAGE> {
    *         Note that the {@link CompletableFuture} should guarantee to be completed by a fixed amount of time. This
    *         guaranteed upper bound must be provided by its implementations.
    */
-  CompletableFuture<Exception> startConsuming(MESSAGE_QUEUE queue, ConsumedDataReceiver<MESSAGE> consumedDataReceiver, long startingOffset);
+  CompletableFuture<Exception> startConsuming(
+      MESSAGE_QUEUE queue,
+      ConsumedDataReceiver<MESSAGE> consumedDataReceiver,
+      long startingOffset);
 
   /**
    * A batch version of {@link #startConsuming}. This method could be useful when there are a large number of message queues
@@ -54,7 +56,8 @@ public interface ConsumptionService<MESSAGE_QUEUE, MESSAGE> {
    *         Note that the {@link CompletableFuture} should guarantee to be completed by a fixed amount of time. This
    *         guaranteed upper bound must be provided by its implementations.
    */
-  CompletableFuture<Exception> startBatchConsuming(Map<MessageQueueOffset<MESSAGE_QUEUE>, ConsumedDataReceiver<MESSAGE>> queueOffsetConsumedDataReceiverMap);
+  CompletableFuture<Exception> startBatchConsuming(
+      Map<MessageQueueOffset<MESSAGE_QUEUE>, ConsumedDataReceiver<MESSAGE>> queueOffsetConsumedDataReceiverMap);
 
   /**
    * Stop consuming a message queue. This method must be non-blocking. In other words, it must return immediately.

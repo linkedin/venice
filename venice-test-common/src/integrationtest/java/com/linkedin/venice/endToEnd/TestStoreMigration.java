@@ -1,5 +1,10 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.system.store.MetaStoreWriter.*;
+import static com.linkedin.venice.utils.TestPushUtils.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
@@ -54,11 +59,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.system.store.MetaStoreWriter.*;
-import static com.linkedin.venice.utils.TestPushUtils.*;
-import static org.testng.Assert.*;
-
 
 /**
  * The suite includes integration tests for all store migration tools, including migrate-store, complete-migration,
@@ -67,13 +67,13 @@ import static org.testng.Assert.*;
  * Test stores are hybrid stores created in {@link TestStoreMigration#createAndPushStore(String, String, String)}.
  * Test stores enable L/F in child datacenter dc-0 and disable L/F in parent datacenter.
  */
-@Test(singleThreaded = true, groups = "flaky") //TODO: remove "flaky" once tests passed consistently in Venice-Flaky
+@Test(singleThreaded = true, groups = "flaky") // TODO: remove "flaky" once tests passed consistently in Venice-Flaky
 public class TestStoreMigration {
   private static final int TEST_TIMEOUT = 120 * Time.MS_PER_SECOND;
   private static final int RECORD_COUNT = 20;
   private static final String NEW_OWNER = "newtest@linkedin.com";
   private static final String FABRIC0 = "dc-0";
-  private static final boolean[] ABORT_MIGRATION_PROMPTS_OVERRIDE = {false, true, true};
+  private static final boolean[] ABORT_MIGRATION_PROMPTS_OVERRIDE = { false, true, true };
   private static final Logger logger = LogManager.getLogger(TestStoreMigration.class);
 
   private VeniceTwoLayerMultiColoMultiClusterWrapper twoLayerMultiColoMultiClusterWrapper;
@@ -87,10 +87,13 @@ public class TestStoreMigration {
   public void setUp() {
     Properties parentControllerProperties = new Properties();
     // Disable topic cleanup since parent and child are sharing the same kafka cluster.
-    parentControllerProperties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
+    parentControllerProperties
+        .setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
     // Required by metadata system store
     parentControllerProperties.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
-    parentControllerProperties.setProperty(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, String.valueOf(true));
+    parentControllerProperties.setProperty(
+        CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED,
+        String.valueOf(true));
 
     // Enable system store auto-materialization
     parentControllerProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, "true");
@@ -99,14 +102,16 @@ public class TestStoreMigration {
     Properties childControllerProperties = new Properties();
     // Required by metadata system store
     childControllerProperties.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
-    childControllerProperties.setProperty(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, String.valueOf(true));
+    childControllerProperties.setProperty(
+        CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED,
+        String.valueOf(true));
 
     Properties serverProperties = new Properties();
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
 
     // 1 parent controller, 1 child colo, 2 clusters per child colo, 2 servers per cluster
     // RF=2 to test both leader and follower SNs
-    twoLayerMultiColoMultiClusterWrapper=  ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+    twoLayerMultiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
         1,
         2,
         1,
@@ -124,7 +129,8 @@ public class TestStoreMigration {
     Arrays.sort(clusterNames);
     srcClusterName = clusterNames[0]; // venice-cluster0
     destClusterName = clusterNames[1]; // venice-cluster1
-    parentControllerUrl = twoLayerMultiColoMultiClusterWrapper.getParentControllers().stream()
+    parentControllerUrl = twoLayerMultiColoMultiClusterWrapper.getParentControllers()
+        .stream()
         .map(VeniceControllerWrapper::getControllerUrl)
         .collect(Collectors.joining(","));
     childControllerUrl0 = multiClusterWrapper.getControllerConnectString();
@@ -142,10 +148,10 @@ public class TestStoreMigration {
 
     String srcD2ServiceName = "venice-" + srcClusterName.substring(srcClusterName.length() - 1);
     String destD2ServiceName = "venice-" + destClusterName.substring(destClusterName.length() - 1);
-    D2Client d2Client = D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress());
-    ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName)
-        .setD2ServiceName(srcD2ServiceName)
-        .setD2Client(d2Client);
+    D2Client d2Client =
+        D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress());
+    ClientConfig clientConfig =
+        ClientConfig.defaultGenericClientConfig(storeName).setD2ServiceName(srcD2ServiceName).setD2Client(d2Client);
 
     try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(clientConfig)) {
       readFromStore(client);
@@ -156,7 +162,8 @@ public class TestStoreMigration {
         // cluster discovery changes and redirect the request to dest store. Client's d2ServiceName will be updated.
         readFromStore(client);
         AbstractAvroStoreClient<String, Object> castClient =
-            (AbstractAvroStoreClient<String, Object>) ((StatTrackingStoreClient<String, Object>) client).getInnerStoreClient();
+            (AbstractAvroStoreClient<String, Object>) ((StatTrackingStoreClient<String, Object>) client)
+                .getInnerStoreClient();
         Assert.assertTrue(castClient.toString().contains(destD2ServiceName));
       });
     }
@@ -213,12 +220,13 @@ public class TestStoreMigration {
 
         // Test replication metadata version id in src cluster is updated
         storeResponse = srcParentControllerClient.getStore(storeName);
-        int replicationMetadataVersionId  = storeResponse.getStore().getVersions().get(1).getReplicationMetadataVersionId();
+        int replicationMetadataVersionId =
+            storeResponse.getStore().getVersions().get(1).getReplicationMetadataVersionId();
         Assert.assertEquals(replicationMetadataVersionId, 1);
 
         // Test replication metadata version id in dest cluster is updated
         storeResponse = destParentControllerClient.getStore(storeName);
-        replicationMetadataVersionId  = storeResponse.getStore().getVersions().get(1).getReplicationMetadataVersionId();
+        replicationMetadataVersionId = storeResponse.getStore().getVersions().get(1).getReplicationMetadataVersionId();
         Assert.assertEquals(replicationMetadataVersionId, 1);
       });
     }
@@ -233,28 +241,36 @@ public class TestStoreMigration {
       // Enable the meta system store
       String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
       VersionCreationResponse versionCreationResponseForMetaSystemStore =
-          srcParentControllerClient.emptyPush(metaSystemStoreName,"test_meta_system_store_push_1", 10000);
-      assertFalse(versionCreationResponseForMetaSystemStore.isError(),
-          "New version creation for meta system store: " + metaSystemStoreName
-              + " should success, but got error: " + versionCreationResponseForMetaSystemStore.getError());
-      TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponseForMetaSystemStore.getKafkaTopic(),
-          srcParentControllerClient, 30, TimeUnit.SECONDS);
+          srcParentControllerClient.emptyPush(metaSystemStoreName, "test_meta_system_store_push_1", 10000);
+      assertFalse(
+          versionCreationResponseForMetaSystemStore.isError(),
+          "New version creation for meta system store: " + metaSystemStoreName + " should success, but got error: "
+              + versionCreationResponseForMetaSystemStore.getError());
+      TestUtils.waitForNonDeterministicPushCompletion(
+          versionCreationResponseForMetaSystemStore.getKafkaTopic(),
+          srcParentControllerClient,
+          30,
+          TimeUnit.SECONDS);
 
       String srcD2ServiceName = "venice-" + srcClusterName.substring(srcClusterName.length() - 1);
-      D2Client d2Client = D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress());
+      D2Client d2Client =
+          D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress());
 
-      ClientConfig<StoreMetaValue> clientConfig = ClientConfig.defaultSpecificClientConfig(
-          metaSystemStoreName, StoreMetaValue.class)
-          .setD2ServiceName(srcD2ServiceName)
-          .setD2Client(d2Client)
-          .setStoreName(metaSystemStoreName);
+      ClientConfig<StoreMetaValue> clientConfig =
+          ClientConfig.defaultSpecificClientConfig(metaSystemStoreName, StoreMetaValue.class)
+              .setD2ServiceName(srcD2ServiceName)
+              .setD2Client(d2Client)
+              .setStoreName(metaSystemStoreName);
 
       try (AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> client =
           ClientFactory.getAndStartSpecificAvroClient(clientConfig)) {
-        StoreMetaKey storePropertiesKey = MetaStoreDataType.STORE_PROPERTIES.getStoreMetaKey(new HashMap<String, String>() {{
-          put(KEY_STRING_STORE_NAME, storeName);
-          put(KEY_STRING_CLUSTER_NAME, srcClusterName);
-        }});
+        StoreMetaKey storePropertiesKey =
+            MetaStoreDataType.STORE_PROPERTIES.getStoreMetaKey(new HashMap<String, String>() {
+              {
+                put(KEY_STRING_STORE_NAME, storeName);
+                put(KEY_STRING_CLUSTER_NAME, srcClusterName);
+              }
+            });
         StoreMetaValue storeProperties = client.get(storePropertiesKey).get();
         assertTrue(storeProperties != null && storeProperties.storeProperties != null);
 
@@ -262,10 +278,13 @@ public class TestStoreMigration {
         completeMigration(parentControllerUrl, storeName);
 
         // Verify the meta system store is materialized in the destination cluster and contains correct values.
-        StoreMetaKey storePropertiesKeyInDestCluster = MetaStoreDataType.STORE_PROPERTIES.getStoreMetaKey(new HashMap<String, String>() {{
-          put(KEY_STRING_STORE_NAME, storeName);
-          put(KEY_STRING_CLUSTER_NAME, destClusterName);
-        }});
+        StoreMetaKey storePropertiesKeyInDestCluster =
+            MetaStoreDataType.STORE_PROPERTIES.getStoreMetaKey(new HashMap<String, String>() {
+              {
+                put(KEY_STRING_STORE_NAME, storeName);
+                put(KEY_STRING_CLUSTER_NAME, destClusterName);
+              }
+            });
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
           try {
             StoreMetaValue storePropertiesInDestCluster = client.get(storePropertiesKeyInDestCluster).get();
@@ -285,23 +304,34 @@ public class TestStoreMigration {
 
     try (ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl)) {
       // Enable the da vinci push status system store
-      String daVinciPushStatusSystemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
-      VersionCreationResponse versionCreationResponseForDaVinciPushStatusSystemStore =
-          srcParentControllerClient.emptyPush(daVinciPushStatusSystemStoreName,"test_davinci_push_status_system_store_push_1", 10000);
-      assertFalse(versionCreationResponseForDaVinciPushStatusSystemStore.isError(),
+      String daVinciPushStatusSystemStoreName =
+          VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
+      VersionCreationResponse versionCreationResponseForDaVinciPushStatusSystemStore = srcParentControllerClient
+          .emptyPush(daVinciPushStatusSystemStoreName, "test_davinci_push_status_system_store_push_1", 10000);
+      assertFalse(
+          versionCreationResponseForDaVinciPushStatusSystemStore.isError(),
           "New version creation for da vinci push status system store: " + daVinciPushStatusSystemStoreName
               + " should success, but got error: " + versionCreationResponseForDaVinciPushStatusSystemStore.getError());
-      TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponseForDaVinciPushStatusSystemStore.getKafkaTopic(),
-          srcParentControllerClient, 30, TimeUnit.SECONDS);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          versionCreationResponseForDaVinciPushStatusSystemStore.getKafkaTopic(),
+          srcParentControllerClient,
+          30,
+          TimeUnit.SECONDS);
     }
 
-    VeniceProperties backendConfig = DaVinciTestContext.getDaVinciPropertyBuilder(multiClusterWrapper.getZkServerWrapper()
-        .getAddress()).put(PUSH_STATUS_STORE_ENABLED, true)
-        .build();
+    VeniceProperties backendConfig =
+        DaVinciTestContext.getDaVinciPropertyBuilder(multiClusterWrapper.getZkServerWrapper().getAddress())
+            .put(PUSH_STATUS_STORE_ENABLED, true)
+            .build();
 
-    D2Client srcD2Client = D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress());
+    D2Client srcD2Client =
+        D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress());
     PushStatusStoreReader srcReader = new PushStatusStoreReader(srcD2Client, TimeUnit.MINUTES.toSeconds(10));
-    try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, multiClusterWrapper.getClusters().get(srcClusterName), new DaVinciConfig(), backendConfig)) {
+    try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(
+        storeName,
+        multiClusterWrapper.getClusters().get(srcClusterName),
+        new DaVinciConfig(),
+        backendConfig)) {
       daVinciClient.subscribeAll().get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         assertEquals(srcReader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 1);
@@ -317,9 +347,14 @@ public class TestStoreMigration {
     endMigration(parentControllerUrl, storeName);
 
     // verify if push status is reporting in destination cluster
-    D2Client destD2Client = D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(destClusterName).getZk().getAddress());
+    D2Client destD2Client =
+        D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(destClusterName).getZk().getAddress());
     PushStatusStoreReader destReader = new PushStatusStoreReader(destD2Client, TimeUnit.MINUTES.toSeconds(10));
-    try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, multiClusterWrapper.getClusters().get(destClusterName), new DaVinciConfig(), backendConfig)) {
+    try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(
+        storeName,
+        multiClusterWrapper.getClusters().get(destClusterName),
+        new DaVinciConfig(),
+        backendConfig)) {
       daVinciClient.subscribeAll().get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         assertEquals(destReader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 1);
@@ -346,15 +381,16 @@ public class TestStoreMigration {
     Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, RECORD_COUNT);
     Properties props = defaultH2VProps(controllerUrl, inputDirPath, storeName);
     String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
-    String valueSchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
+    String valueSchemaStr =
+        recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
 
-    UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams()
-        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-        .setHybridRewindSeconds(TEST_TIMEOUT)
-        .setHybridOffsetLagThreshold(2L);
+    UpdateStoreQueryParams updateStoreQueryParams =
+        new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+            .setHybridRewindSeconds(TEST_TIMEOUT)
+            .setHybridOffsetLagThreshold(2L);
     TestPushUtils.createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreQueryParams).close();
     try (ControllerClient client = new ControllerClient(clusterName, controllerUrl)) {
-     TestUtils.createMetaSystemStore(client, storeName, Optional.of(logger));
+      TestUtils.createMetaSystemStore(client, storeName, Optional.of(logger));
     }
 
     // L/F is enabled in dc-0 and disabled in parent.
@@ -364,8 +400,7 @@ public class TestStoreMigration {
         StoreInfo storeInfo = response.getStore();
         assertNotNull(storeInfo);
       });
-      UpdateStoreQueryParams enableLeaderFollower = new UpdateStoreQueryParams()
-          .setLeaderFollowerModel(true);
+      UpdateStoreQueryParams enableLeaderFollower = new UpdateStoreQueryParams().setLeaderFollowerModel(true);
       childControllerClient0.updateStore(storeName, enableLeaderFollower);
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
         StoreResponse response = childControllerClient0.getStore(storeName);
@@ -380,7 +415,8 @@ public class TestStoreMigration {
       job.run();
 
       // Write streaming records
-      veniceProducer0 = getSamzaProducer(multiClusterWrapper.getClusters().get(clusterName), storeName, Version.PushType.STREAM);
+      veniceProducer0 =
+          getSamzaProducer(multiClusterWrapper.getClusters().get(clusterName), storeName, Version.PushType.STREAM);
       for (int i = 1; i <= 10; i++) {
         sendStreamingRecord(veniceProducer0, storeName, i);
       }
@@ -396,21 +432,14 @@ public class TestStoreMigration {
   }
 
   private void startMigration(String controllerUrl, String storeName) throws Exception {
-    String[] startMigrationArgs = {"--migrate-store",
-        "--url", controllerUrl,
-        "--store", storeName,
-        "--cluster-src", srcClusterName,
-        "--cluster-dest", destClusterName};
+    String[] startMigrationArgs = { "--migrate-store", "--url", controllerUrl, "--store", storeName, "--cluster-src",
+        srcClusterName, "--cluster-dest", destClusterName };
     AdminTool.main(startMigrationArgs);
   }
 
   private void completeMigration(String controllerUrl, String storeName) {
-    String[] completeMigration0 = {"--complete-migration",
-        "--url", controllerUrl,
-        "--store", storeName,
-        "--cluster-src", srcClusterName,
-        "--cluster-dest", destClusterName,
-        "--fabric", FABRIC0};
+    String[] completeMigration0 = { "--complete-migration", "--url", controllerUrl, "--store", storeName,
+        "--cluster-src", srcClusterName, "--cluster-dest", destClusterName, "--fabric", FABRIC0 };
 
     try (ControllerClient destParentControllerClient = new ControllerClient(destClusterName, controllerUrl)) {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
@@ -423,11 +452,8 @@ public class TestStoreMigration {
   }
 
   private void endMigration(String controllerUrl, String storeName) throws Exception {
-    String[] endMigration = {"--end-migration",
-        "--url", controllerUrl,
-        "--store", storeName,
-        "--cluster-src", srcClusterName,
-        "--cluster-dest", destClusterName};
+    String[] endMigration = { "--end-migration", "--url", controllerUrl, "--store", storeName, "--cluster-src",
+        srcClusterName, "--cluster-dest", destClusterName };
     AdminTool.main(endMigration);
 
     try (ControllerClient srcControllerClient = new ControllerClient(srcClusterName, controllerUrl);
@@ -451,11 +477,19 @@ public class TestStoreMigration {
   }
 
   private void abortMigration(String controllerUrl, String storeName, boolean force) {
-    AdminTool.abortMigration(controllerUrl, storeName, srcClusterName, destClusterName, force, ABORT_MIGRATION_PROMPTS_OVERRIDE);
+    AdminTool.abortMigration(
+        controllerUrl,
+        storeName,
+        srcClusterName,
+        destClusterName,
+        force,
+        ABORT_MIGRATION_PROMPTS_OVERRIDE);
   }
 
-  private void checkStatusAfterAbortMigration(ControllerClient srcControllerClient,
-      ControllerClient destControllerClient, String storeName) {
+  private void checkStatusAfterAbortMigration(
+      ControllerClient srcControllerClient,
+      ControllerClient destControllerClient,
+      String storeName) {
     // Migration flag should be false
     // Store should be deleted in dest cluster
     // Cluster discovery should point to src cluster
@@ -470,8 +504,11 @@ public class TestStoreMigration {
 
   private void checkChildStatusAfterAbortMigration(String storeName) {
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      try (ControllerClient srcChildControllerClient = new ControllerClient(srcClusterName, multiClusterWrapper.getControllerConnectString());
-          ControllerClient destChildControllerClient = new ControllerClient(destClusterName, multiClusterWrapper.getControllerConnectString())) {
+      try (
+          ControllerClient srcChildControllerClient =
+              new ControllerClient(srcClusterName, multiClusterWrapper.getControllerConnectString());
+          ControllerClient destChildControllerClient =
+              new ControllerClient(destClusterName, multiClusterWrapper.getControllerConnectString())) {
         checkStatusAfterAbortMigration(srcChildControllerClient, destChildControllerClient, storeName);
       }
     });

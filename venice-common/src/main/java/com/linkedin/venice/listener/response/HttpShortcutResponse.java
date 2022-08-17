@@ -10,7 +10,7 @@ public class HttpShortcutResponse {
   private final String message;
   private final HttpResponseStatus status;
 
-  public HttpShortcutResponse(String message, HttpResponseStatus status){
+  public HttpShortcutResponse(String message, HttpResponseStatus status) {
     this.message = message;
     this.status = status;
   }

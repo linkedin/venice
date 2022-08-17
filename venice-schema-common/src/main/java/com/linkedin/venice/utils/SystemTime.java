@@ -2,11 +2,11 @@ package com.linkedin.venice.utils;
 
 import java.util.Date;
 
+
 /**
  * {@link Time} implementation that just reads from the system clock
  */
 public class SystemTime implements Time {
-
   public static final SystemTime INSTANCE = new SystemTime();
 
   public Date getCurrentDate() {

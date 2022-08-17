@@ -12,7 +12,6 @@ import java.util.function.Supplier;
  * Fork of the {@link org.apache.commons.lang3.concurrent.LazyInitializer} with some additional APIs.
  */
 public class LazyImpl<T> implements Lazy<T> {
-
   private static final Object NO_INIT = new Object();
   private Supplier<T> supplier;
   @SuppressWarnings("unchecked")

@@ -1,5 +1,6 @@
-#!/bin/sh
+#!/bin/sh -e
 
 echo 'Running pre-commit checks...'
+[ -z "$(git diff --staged --name-only)" ] && exit 0
 ./gradlew spotlessApply
 git diff --staged --name-only | xargs git add

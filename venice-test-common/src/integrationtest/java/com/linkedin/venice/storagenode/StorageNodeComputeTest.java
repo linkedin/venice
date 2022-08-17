@@ -1,5 +1,7 @@
 package com.linkedin.venice.storagenode;
 
+import static com.linkedin.venice.utils.ByteUtils.*;
+
 import com.github.luben.zstd.ZstdDictTrainer;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -53,38 +55,36 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.utils.ByteUtils.*;
-
 
 @Test(singleThreaded = true)
 public class StorageNodeComputeTest {
   private static final Logger LOGGER = LogManager.getLogger(StorageNodeComputeTest.class);
 
   enum AvroImpl {
-    VANILLA_AVRO(false),
-    FAST_AVRO(true);
+    VANILLA_AVRO(false), FAST_AVRO(true);
 
     final boolean config;
+
     AvroImpl(boolean config) {
       this.config = config;
     }
   }
 
   enum ValueSize {
-    SMALL_VALUE(false),
-    LARGE_VALUE(true);
+    SMALL_VALUE(false), LARGE_VALUE(true);
 
     final boolean config;
+
     ValueSize(boolean config) {
       this.config = config;
     }
   }
 
   enum SerializerReuse {
-    NO_REUSE(false),
-    REUSE(true);
+    NO_REUSE(false), REUSE(true);
 
     final boolean config;
+
     SerializerReuse(boolean config) {
       this.config = config;
     }
@@ -101,17 +101,13 @@ public class StorageNodeComputeTest {
 
   private CompressorFactory compressorFactory;
 
-  private static final String valueSchemaForCompute = "{" +
-      "  \"namespace\": \"example.compute\",    " +
-      "  \"type\": \"record\",        " +
-      "  \"name\": \"MemberFeature\",       " +
-      "  \"fields\": [        " +
-      "         { \"name\": \"id\", \"type\": \"string\" },             " +
-      "         { \"name\": \"name\", \"type\": \"string\" },           " +
-      "         { \"name\": \"namemap\", \"type\":  {\"type\" : \"map\", \"values\" : \"int\" }},           " +
-      "         { \"name\": \"member_feature\", \"type\": { \"type\": \"array\", \"items\": \"float\" } }        " +
-      "  ]       " +
-      " }       ";
+  private static final String valueSchemaForCompute = "{" + "  \"namespace\": \"example.compute\",    "
+      + "  \"type\": \"record\",        " + "  \"name\": \"MemberFeature\",       " + "  \"fields\": [        "
+      + "         { \"name\": \"id\", \"type\": \"string\" },             "
+      + "         { \"name\": \"name\", \"type\": \"string\" },           "
+      + "         { \"name\": \"namemap\", \"type\":  {\"type\" : \"map\", \"values\" : \"int\" }},           "
+      + "         { \"name\": \"member_feature\", \"type\": { \"type\": \"array\", \"items\": \"float\" } }        "
+      + "  ]       " + " }       ";
 
   @BeforeClass(alwaysRun = true)
   public void setUp() throws InterruptedException, ExecutionException, VeniceClientException {
@@ -140,15 +136,16 @@ public class StorageNodeComputeTest {
     keySerializer = new VeniceAvroKafkaSerializer(keySchema);
     valueSerializer = new VeniceAvroKafkaSerializer(valueSchemaForCompute);
 
-    for (AvroImpl fastAvro : AvroImpl.values()) {
-      for (SerializerReuse serializerReuse : SerializerReuse.values()) {
-        clientsMap.computeIfAbsent(fastAvro, ignored -> new HashMap<>()).put(
-            serializerReuse,
-            ClientFactory.getAndStartGenericAvroClient(
-                ClientConfig.defaultGenericClientConfig(storeName)
-                    .setVeniceURL(routerAddr)
-                    .setUseFastAvro(fastAvro.config)
-                    .setReuseObjectsForSerialization(serializerReuse.config)));
+    for (AvroImpl fastAvro: AvroImpl.values()) {
+      for (SerializerReuse serializerReuse: SerializerReuse.values()) {
+        clientsMap.computeIfAbsent(fastAvro, ignored -> new HashMap<>())
+            .put(
+                serializerReuse,
+                ClientFactory.getAndStartGenericAvroClient(
+                    ClientConfig.defaultGenericClientConfig(storeName)
+                        .setVeniceURL(routerAddr)
+                        .setUseFastAvro(fastAvro.config)
+                        .setReuseObjectsForSerialization(serializerReuse.config)));
       }
     }
 
@@ -160,28 +157,28 @@ public class StorageNodeComputeTest {
     if (veniceCluster != null) {
       veniceCluster.close();
     }
-    clientsMap.forEach((ignored, clientMap) ->
-        clientMap.forEach((ignored2, client) ->
-            Utils.closeQuietlyWithErrorLogged(client)));
+    clientsMap.forEach(
+        (ignored, clientMap) -> clientMap.forEach((ignored2, client) -> Utils.closeQuietlyWithErrorLogged(client)));
     Utils.closeQuietlyWithErrorLogged(compressorFactory);
   }
 
   @DataProvider(name = "testPermutations")
   public static Object[][] testPermutations() {
     // Config dimensions:
-    CompressionStrategy[] compressionStrategies = new CompressionStrategy[]{CompressionStrategy.NO_OP, CompressionStrategy.GZIP, CompressionStrategy.ZSTD_WITH_DICT};
+    CompressionStrategy[] compressionStrategies = new CompressionStrategy[] { CompressionStrategy.NO_OP,
+        CompressionStrategy.GZIP, CompressionStrategy.ZSTD_WITH_DICT };
 
     List<Object[]> returnList = new ArrayList<>();
-    for (CompressionStrategy compressionStrategy : compressionStrategies) {
-      for (AvroImpl fastAvro : AvroImpl.values()) {
-        for (ValueSize valueLargerThan1MB : ValueSize.values()) {
-          for (SerializerReuse serializerReuse : SerializerReuse.values()) {
-            returnList.add(new Object[]{compressionStrategy, fastAvro, serializerReuse, valueLargerThan1MB});
+    for (CompressionStrategy compressionStrategy: compressionStrategies) {
+      for (AvroImpl fastAvro: AvroImpl.values()) {
+        for (ValueSize valueLargerThan1MB: ValueSize.values()) {
+          for (SerializerReuse serializerReuse: SerializerReuse.values()) {
+            returnList.add(new Object[] { compressionStrategy, fastAvro, serializerReuse, valueLargerThan1MB });
           }
         }
       }
     }
-    Object[][] valuesToReturn= new Object[returnList.size()][5];
+    Object[][] valuesToReturn = new Object[returnList.size()][5];
     return returnList.toArray(valuesToReturn);
   }
 
@@ -206,12 +203,19 @@ public class StorageNodeComputeTest {
     String keyPrefix = "key_";
     String valuePrefix = "value_";
 
-    VeniceWriterFactory vwFactory =
-        TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress());
+    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress());
     try (VeniceWriter<Object, byte[], byte[]> veniceWriter =
         vwFactory.createVeniceWriter(topic, keySerializer, new DefaultSerializer(), valueLargerThan1MB.config)) {
-      pushSyntheticDataForCompute(topic, keyPrefix, valuePrefix, keyCount, veniceCluster,
-          veniceWriter, pushVersion, compressionStrategy, valueLargerThan1MB.config);
+      pushSyntheticDataForCompute(
+          topic,
+          keyPrefix,
+          valuePrefix,
+          keyCount,
+          veniceCluster,
+          veniceWriter,
+          pushVersion,
+          compressionStrategy,
+          valueLargerThan1MB.config);
     }
 
     AvroGenericStoreClient<String, Object> storeClient = clientsMap.get(fastAvro).get(serializerReuse);
@@ -255,7 +259,8 @@ public class StorageNodeComputeTest {
           // check cosine similarity result; should be double for V1 request
           float dotProductResult = cosP.get(0) * (float) (keyIdx + 1) + cosP.get(1) * (float) ((keyIdx + 1) * 10);
           float valueVectorMagnitude = (float) Math.sqrt(
-              ((float) (keyIdx + 1) * (float) (keyIdx + 1) + ((float) (keyIdx + 1) * 10.0f) * ((float) (keyIdx + 1) * 10.0f)));
+              ((float) (keyIdx + 1) * (float) (keyIdx + 1)
+                  + ((float) (keyIdx + 1) * 10.0f) * ((float) (keyIdx + 1) * 10.0f)));
           float parameterVectorMagnitude = (float) Math.sqrt((cosP.get(0) * cosP.get(0) + cosP.get(1) * cosP.get(1)));
           float expectedCosineSimilarity = dotProductResult / (parameterVectorMagnitude * valueVectorMagnitude);
           Assert.assertEquals((float) value.get("cosine_similarity_result"), expectedCosineSimilarity, 0.000001f);
@@ -275,19 +280,29 @@ public class StorageNodeComputeTest {
      * 10 keys, 1 dot product, 1 cosine similarity, 1 hadamard product per request, 100 rounds; considering retries,
      * compute operation counts should be higher.
      */
-    Assert.assertTrue(MetricsUtils.getSum("." + storeName + "--compute_dot_product_count.Total", veniceCluster.getVeniceServers()) >= rounds * keyCount);
-    Assert.assertTrue(MetricsUtils.getSum("." + storeName + "--compute_cosine_similarity_count.Total", veniceCluster.getVeniceServers()) >= rounds * keyCount);
-    Assert.assertTrue(MetricsUtils.getSum("." + storeName + "--compute_hadamard_product_count.Total", veniceCluster.getVeniceServers()) >= rounds * keyCount);
+    Assert.assertTrue(
+        MetricsUtils.getSum(
+            "." + storeName + "--compute_dot_product_count.Total",
+            veniceCluster.getVeniceServers()) >= rounds * keyCount);
+    Assert.assertTrue(
+        MetricsUtils.getSum(
+            "." + storeName + "--compute_cosine_similarity_count.Total",
+            veniceCluster.getVeniceServers()) >= rounds * keyCount);
+    Assert.assertTrue(
+        MetricsUtils.getSum(
+            "." + storeName + "--compute_hadamard_product_count.Total",
+            veniceCluster.getVeniceServers()) >= rounds * keyCount);
 
     // Check retry requests
-    Assert.assertTrue(MetricsUtils.getSum(".total--compute_streaming_retry_count.LambdaStat", veniceCluster.getVeniceRouters()) > 0,
+    Assert.assertTrue(
+        MetricsUtils.getSum(".total--compute_streaming_retry_count.LambdaStat", veniceCluster.getVeniceRouters()) > 0,
         "After " + rounds + " reads, there should be some compute retry requests");
   }
 
   /**
    * The goal of this test is to find the breaking point at which a compute request gets split into more than 1 part.
    */
-  @Test(timeOut = 30000, groups = {"flaky"})
+  @Test(timeOut = 30000, groups = { "flaky" })
   public void testComputeRequestSize() throws Exception {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setReadComputationEnabled(true);
@@ -296,16 +311,26 @@ public class StorageNodeComputeTest {
     VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName, 1024);
     final int pushVersion = newVersion.getVersion();
 
-    try (VeniceWriter<Object, byte[], byte[]> veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress())
-        .createVeniceWriter(newVersion.getKafkaTopic(), keySerializer, new DefaultSerializer());
-        AvroGenericStoreClient<String, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
-            .setVeniceURL(routerAddr))) {
+    try (
+        VeniceWriter<Object, byte[], byte[]> veniceWriter =
+            TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress())
+                .createVeniceWriter(newVersion.getKafkaTopic(), keySerializer, new DefaultSerializer());
+        AvroGenericStoreClient<String, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr))) {
 
       String keyPrefix = "key_";
       String valuePrefix = "value_";
       int numberOfRecords = 10;
-      pushSyntheticDataForCompute(newVersion.getKafkaTopic(), keyPrefix, valuePrefix, numberOfRecords, veniceCluster,
-          veniceWriter, pushVersion, CompressionStrategy.NO_OP, false);
+      pushSyntheticDataForCompute(
+          newVersion.getKafkaTopic(),
+          keyPrefix,
+          valuePrefix,
+          numberOfRecords,
+          veniceCluster,
+          veniceWriter,
+          pushVersion,
+          CompressionStrategy.NO_OP,
+          false);
 
       // Run multiple rounds
       int rounds = 100;
@@ -330,22 +355,23 @@ public class StorageNodeComputeTest {
             .get(2, TimeUnit.SECONDS);
         Assert.assertEquals(computeResult.size(), numberOfRecords);
 
-        LOGGER.info("Current round: " + cur + "/" + rounds
-            + "\n - max part_count: "
-            + MetricsUtils.getMax(".total--compute_request_part_count.Max", veniceCluster.getVeniceServers())
-            + "\n - min part_count: "
-            + MetricsUtils.getMin(".total--compute_request_part_count.Min", veniceCluster.getVeniceServers())
-            + "\n - avg part_count: "
-            + MetricsUtils.getAvg(".total--compute_request_part_count.Avg", veniceCluster.getVeniceServers())
-            + "\n - max request size: "
-            + MetricsUtils.getMax(".total--compute_request_size_in_bytes.Max", veniceCluster.getVeniceServers())
-            + "\n - min request size: "
-            + MetricsUtils.getMin(".total--compute_request_size_in_bytes.Min", veniceCluster.getVeniceServers())
-            + "\n - avg request size: "
-            + MetricsUtils.getAvg(".total--compute_request_size_in_bytes.Avg", veniceCluster.getVeniceServers())
-        );
+        LOGGER.info(
+            "Current round: " + cur + "/" + rounds + "\n - max part_count: "
+                + MetricsUtils.getMax(".total--compute_request_part_count.Max", veniceCluster.getVeniceServers())
+                + "\n - min part_count: "
+                + MetricsUtils.getMin(".total--compute_request_part_count.Min", veniceCluster.getVeniceServers())
+                + "\n - avg part_count: "
+                + MetricsUtils.getAvg(".total--compute_request_part_count.Avg", veniceCluster.getVeniceServers())
+                + "\n - max request size: "
+                + MetricsUtils.getMax(".total--compute_request_size_in_bytes.Max", veniceCluster.getVeniceServers())
+                + "\n - min request size: "
+                + MetricsUtils.getMin(".total--compute_request_size_in_bytes.Min", veniceCluster.getVeniceServers())
+                + "\n - avg request size: "
+                + MetricsUtils.getAvg(".total--compute_request_size_in_bytes.Avg", veniceCluster.getVeniceServers()));
 
-        Assert.assertEquals(MetricsUtils.getMax(".total--compute_request_part_count.Max", veniceCluster.getVeniceServers()), 1.0,
+        Assert.assertEquals(
+            MetricsUtils.getMax(".total--compute_request_part_count.Max", veniceCluster.getVeniceServers()),
+            1.0,
             "Expected a max of one part in compute request");
       }
     }
@@ -358,9 +384,16 @@ public class StorageNodeComputeTest {
     return Integer.parseInt(key.substring(keyPrefix.length()));
   }
 
-  private void pushSyntheticDataForCompute(String topic, String keyPrefix, String valuePrefix, int numOfRecords,
-                                           VeniceClusterWrapper veniceCluster, VeniceWriter<Object, byte[], byte[]> veniceWriter,
-                                           int pushVersion, CompressionStrategy compressionStrategy, boolean valueLargerThan1MB) throws Exception {
+  private void pushSyntheticDataForCompute(
+      String topic,
+      String keyPrefix,
+      String valuePrefix,
+      int numOfRecords,
+      VeniceClusterWrapper veniceCluster,
+      VeniceWriter<Object, byte[], byte[]> veniceWriter,
+      int pushVersion,
+      CompressionStrategy compressionStrategy,
+      boolean valueLargerThan1MB) throws Exception {
     Schema valueSchema = Schema.parse(valueSchemaForCompute);
     // Insert test record
     List<byte[]> values = new ArrayList<>(numOfRecords);
@@ -378,8 +411,8 @@ public class StorageNodeComputeTest {
       value.put("namemap", Collections.emptyMap());
 
       List<Float> features = new ArrayList<>();
-      features.add(Float.valueOf((float)(i + 1)));
-      features.add(Float.valueOf((float)((i + 1) * 10)));
+      features.add(Float.valueOf((float) (i + 1)));
+      features.add(Float.valueOf((float) ((i + 1) * 10)));
       value.put("member_feature", features);
       values.add(i, valueSerializer.serialize(topic, value));
     }
@@ -388,7 +421,7 @@ public class StorageNodeComputeTest {
     VeniceCompressor compressor;
     if (compressionStrategy.equals(CompressionStrategy.ZSTD_WITH_DICT)) {
       ZstdDictTrainer trainer = new ZstdDictTrainer(200 * BYTES_PER_MB, 100 * BYTES_PER_KB);
-      for (byte[] value : values) {
+      for (byte[] value: values) {
         trainer.addSample(value);
       }
 
@@ -396,12 +429,14 @@ public class StorageNodeComputeTest {
       byte[] compressionDictionaryBytes = trainer.trainSamples();
       compressionDictionary = Optional.of(ByteBuffer.wrap(compressionDictionaryBytes));
 
-      compressor = compressorFactory.createVersionSpecificCompressorIfNotExist(compressionStrategy, topic, compressionDictionaryBytes);
+      compressor = compressorFactory
+          .createVersionSpecificCompressorIfNotExist(compressionStrategy, topic, compressionDictionaryBytes);
     } else {
       compressor = compressorFactory.getCompressor(compressionStrategy);
     }
 
-    veniceWriter.broadcastStartOfPush(false, valueLargerThan1MB, compressionStrategy, compressionDictionary, new HashMap<>());
+    veniceWriter
+        .broadcastStartOfPush(false, valueLargerThan1MB, compressionStrategy, compressionDictionary, new HashMap<>());
 
     Future[] writerFutures = new Future[numOfRecords];
     for (int i = 0; i < numOfRecords; i++) {

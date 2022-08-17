@@ -1,5 +1,10 @@
 package com.linkedin.venice.router.api.path;
 
+import static com.linkedin.venice.HttpConstants.*;
+import static com.linkedin.venice.compute.ComputeRequestWrapper.*;
+import static com.linkedin.venice.router.api.VenicePathParser.*;
+import static io.netty.handler.codec.http.HttpResponseStatus.*;
+
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.r2.message.rest.RestRequestBuilder;
@@ -25,10 +30,6 @@ import javax.annotation.Nonnull;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
-import static com.linkedin.venice.HttpConstants.*;
-import static com.linkedin.venice.compute.ComputeRequestWrapper.*;
-import static com.linkedin.venice.router.api.VenicePathParser.*;
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
 public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKeyV1> {
   // Compute request is useless for now in router, until we support ranking in the future.
@@ -39,11 +40,20 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
 
   private final int computeRequestVersion;
 
-  public VeniceComputePath(String resourceName, BasicFullHttpRequest request, VenicePartitionFinder partitionFinder,
-      int maxKeyCount, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs, boolean useFastAvro,
-      int longTailRetryMaxRouteForMultiKeyReq)
-      throws RouterException {
-    super(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs, longTailRetryMaxRouteForMultiKeyReq);
+  public VeniceComputePath(
+      String resourceName,
+      BasicFullHttpRequest request,
+      VenicePartitionFinder partitionFinder,
+      int maxKeyCount,
+      boolean smartLongTailRetryEnabled,
+      int smartLongTailRetryAbortThresholdMs,
+      boolean useFastAvro,
+      int longTailRetryMaxRouteForMultiKeyReq) throws RouterException {
+    super(
+        resourceName,
+        smartLongTailRetryEnabled,
+        smartLongTailRetryAbortThresholdMs,
+        longTailRetryMaxRouteForMultiKeyReq);
 
     // Get API version
     computeRequestVersion = Integer.parseInt(request.headers().get(HttpConstants.VENICE_API_VERSION));
@@ -51,8 +61,12 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
     valueSchemaId = schemaHeader.map(charSequence -> Integer.parseInt((String) charSequence)).orElse(-1);
 
     if (computeRequestVersion <= 0 || computeRequestVersion > LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST) {
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(getStoreName()), Optional.of(getRequestType()), BAD_REQUEST,
-          "Compute API version " + computeRequestVersion + " is invalid. Latest version is " + LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST);
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+          Optional.of(getStoreName()),
+          Optional.of(getRequestType()),
+          BAD_REQUEST,
+          "Compute API version " + computeRequestVersion + " is invalid. Latest version is "
+              + LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST);
     }
 
     Iterable<ByteBuffer> keys = null;
@@ -64,30 +78,45 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
      * and the result schema string for now; deserialize the first part and record the length of the first part
      */
     computeRequestWrapper = new ComputeRequestWrapper(computeRequestVersion);
-    BinaryDecoder decoder =
-        OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(requestContent, 0, requestContent.length);
+    BinaryDecoder decoder = OptimizedBinaryDecoderFactory.defaultFactory()
+        .createOptimizedBinaryDecoder(requestContent, 0, requestContent.length);
     computeRequestWrapper.deserialize(decoder, useFastAvro);
     try {
       // record the length of the serialized ComputeRequest
       computeRequestLengthInBytes = requestContent.length - decoder.inputStream().available();
     } catch (IOException e) {
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(getStoreName()), Optional.of(getRequestType()),
-          BAD_REQUEST,"Exception while getting available number of bytes in request content");
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+          Optional.of(getStoreName()),
+          Optional.of(getRequestType()),
+          BAD_REQUEST,
+          "Exception while getting available number of bytes in request content");
     }
 
     // deserialize the second part of the request content using the same decoder
-    RecordDeserializer<ByteBuffer> keyDeserializer = SerializerDeserializerFactory.getAvroGenericDeserializer(
-        ReadAvroProtocolDefinition.COMPUTE_REQUEST_CLIENT_KEY_V1.getSchema());
+    RecordDeserializer<ByteBuffer> keyDeserializer = SerializerDeserializerFactory
+        .getAvroGenericDeserializer(ReadAvroProtocolDefinition.COMPUTE_REQUEST_CLIENT_KEY_V1.getSchema());
     keys = keyDeserializer.deserializeObjects(decoder);
 
     initialize(resourceName, keys, partitionFinder, maxKeyCount, Optional.empty());
   }
 
-  private VeniceComputePath(String resourceName, Map<RouterKey, ComputeRouterRequestKeyV1> routerKeyMap,
-      Map<Integer, RouterKey> keyIdxToRouterKey, ComputeRequestWrapper computeRequestWrapper, byte[] requestContent,
-      int computeRequestLengthInBytes, int computeRequestVersion, boolean smartLongTailRetryEnabled,
-      int smartLongTailRetryAbortThresholdMs, int longTailRetryMaxRouteForMultiKeyReq) {
-    super(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs, routerKeyMap, keyIdxToRouterKey,
+  private VeniceComputePath(
+      String resourceName,
+      Map<RouterKey, ComputeRouterRequestKeyV1> routerKeyMap,
+      Map<Integer, RouterKey> keyIdxToRouterKey,
+      ComputeRequestWrapper computeRequestWrapper,
+      byte[] requestContent,
+      int computeRequestLengthInBytes,
+      int computeRequestVersion,
+      boolean smartLongTailRetryEnabled,
+      int smartLongTailRetryAbortThresholdMs,
+      int longTailRetryMaxRouteForMultiKeyReq) {
+    super(
+        resourceName,
+        smartLongTailRetryEnabled,
+        smartLongTailRetryAbortThresholdMs,
+        routerKeyMap,
+        keyIdxToRouterKey,
         longTailRetryMaxRouteForMultiKeyReq);
     this.computeRequestWrapper = computeRequestWrapper;
     this.requestContent = requestContent;
@@ -100,9 +129,7 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
   @Override
   public String getLocation() {
     StringBuilder sb = new StringBuilder();
-    sb.append(TYPE_COMPUTE)
-        .append(VenicePathParser.SEP)
-        .append(getResourceName());
+    sb.append(TYPE_COMPUTE).append(VenicePathParser.SEP).append(getResourceName());
     return sb.toString();
   }
 
@@ -120,11 +147,20 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
    * @return
    */
   @Override
-  protected VeniceComputePath fixRetryRequestForSubPath(Map<RouterKey, ComputeRouterRequestKeyV1> routerKeyMap,
+  protected VeniceComputePath fixRetryRequestForSubPath(
+      Map<RouterKey, ComputeRouterRequestKeyV1> routerKeyMap,
       Map<Integer, RouterKey> keyIdxToRouterKey) {
-    VeniceComputePath subPath = new VeniceComputePath(getResourceName(), routerKeyMap, keyIdxToRouterKey,
-        this.computeRequestWrapper, this.requestContent, this.computeRequestLengthInBytes, this.computeRequestVersion,
-        isSmartLongTailRetryEnabled(), getSmartLongTailRetryAbortThresholdMs(), getLongTailRetryMaxRouteForMultiKeyReq());
+    VeniceComputePath subPath = new VeniceComputePath(
+        getResourceName(),
+        routerKeyMap,
+        keyIdxToRouterKey,
+        this.computeRequestWrapper,
+        this.requestContent,
+        this.computeRequestLengthInBytes,
+        this.computeRequestVersion,
+        isSmartLongTailRetryEnabled(),
+        getSmartLongTailRetryAbortThresholdMs(),
+        getLongTailRetryMaxRouteForMultiKeyReq());
     subPath.setupRetryRelatedInfo(this);
     subPath.setValueSchemaId(this.getValueSchemaId());
     return subPath;
@@ -152,8 +188,7 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
     return serializer.serializeObjects(
         routerKeyMap.values(),
         ByteBuffer.wrap(requestContent, 0, computeRequestLengthInBytes),
-        AvroSerializer.REUSE.get()
-    );
+        AvroSerializer.REUSE.get());
   }
 
   @Override

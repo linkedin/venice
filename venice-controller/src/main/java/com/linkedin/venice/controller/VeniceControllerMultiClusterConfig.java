@@ -14,19 +14,18 @@ import java.util.Set;
 
 
 public class VeniceControllerMultiClusterConfig {
-
   private final Map<String, VeniceControllerConfig> clusterToControllerConfigMap;
 
   public VeniceControllerMultiClusterConfig(Collection<VeniceProperties> controllerClusterProperties) {
     clusterToControllerConfigMap = new HashMap<>();
-    for (VeniceProperties properties : controllerClusterProperties) {
+    for (VeniceProperties properties: controllerClusterProperties) {
       final VeniceControllerConfig controllerClusterConfig = new VeniceControllerConfig(properties);
       clusterToControllerConfigMap.put(controllerClusterConfig.getClusterName(), controllerClusterConfig);
     }
   }
 
   // This contructor is used for testing.
-  public VeniceControllerMultiClusterConfig(Map<String, VeniceControllerConfig> clusterToControllerConfigMap){
+  public VeniceControllerMultiClusterConfig(Map<String, VeniceControllerConfig> clusterToControllerConfigMap) {
     this.clusterToControllerConfigMap = new HashMap<>(clusterToControllerConfigMap);
   }
 
@@ -154,7 +153,7 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getTopicCreationThrottlingTimeWindowMs();
   }
 
-  public Map<String,String> getClusterToD2Map() {
+  public Map<String, String> getClusterToD2Map() {
     return getCommonConfig().getClusterToD2Map();
   }
 

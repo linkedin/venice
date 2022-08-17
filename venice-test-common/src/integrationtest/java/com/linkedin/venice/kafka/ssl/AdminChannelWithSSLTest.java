@@ -17,7 +17,6 @@ import org.testng.annotations.Test;
 
 
 public class AdminChannelWithSSLTest {
-
   /**
    * End-to-end test with SSL enabled
    */
@@ -30,9 +29,12 @@ public class AdminChannelWithSSLTest {
         VeniceControllerWrapper childControllerWrapper =
             ServiceFactory.getVeniceChildController(clusterName, kafkaBrokerWrapper, 1, 10, 0, 1, true);
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
-        VeniceControllerWrapper controllerWrapper =
-            ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
-                new VeniceControllerWrapper[]{childControllerWrapper}, true)) {
+        VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceParentController(
+            clusterName,
+            parentZk.getAddress(),
+            kafkaBrokerWrapper,
+            new VeniceControllerWrapper[] { childControllerWrapper },
+            true)) {
       String secureControllerUrl = controllerWrapper.getSecureControllerUrl();
       // Adding store
       String storeName = "test_store";
@@ -40,7 +42,8 @@ public class AdminChannelWithSSLTest {
       String keySchemaStr = "\"long\"";
       String valueSchemaStr = "\"string\"";
 
-      try (ControllerClient controllerClient = new ControllerClient(clusterName, secureControllerUrl, Optional.of(SslUtils.getVeniceLocalSslFactory()))) {
+      try (ControllerClient controllerClient =
+          new ControllerClient(clusterName, secureControllerUrl, Optional.of(SslUtils.getVeniceLocalSslFactory()))) {
         controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaStr);
         TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
           MultiStoreResponse response = controllerClient.queryStoreList(false);
@@ -51,7 +54,9 @@ public class AdminChannelWithSSLTest {
         });
       }
 
-      try (ControllerClient childControllerClient = new ControllerClient(clusterName, childControllerWrapper.getSecureControllerUrl(),
+      try (ControllerClient childControllerClient = new ControllerClient(
+          clusterName,
+          childControllerWrapper.getSecureControllerUrl(),
           Optional.of(SslUtils.getVeniceLocalSslFactory()))) {
         // Child controller is talking SSL to Kafka
         TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {

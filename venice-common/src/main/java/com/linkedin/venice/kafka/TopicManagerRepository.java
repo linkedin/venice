@@ -1,5 +1,9 @@
 package com.linkedin.venice.kafka;
 
+import static com.linkedin.venice.ConfigConstants.*;
+import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.kafka.TopicManager.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
 import com.linkedin.venice.utils.Pair;
@@ -13,10 +17,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.ConfigConstants.*;
-import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.kafka.TopicManager.*;
 
 
 public class TopicManagerRepository implements Closeable {
@@ -39,8 +39,7 @@ public class TopicManagerRepository implements Closeable {
       int topicDeletionStatusPollIntervalMs,
       long topicMinLogCompactionLagMs,
       KafkaClientFactory kafkaClientFactory,
-      MetricsRepository metricsRepository
-  ) {
+      MetricsRepository metricsRepository) {
     this.localKafkaBootstrapServers = localKafkaBootstrapServers;
     this.localKafkaZkAddress = localKafkaZkAddress;
     this.kafkaOperationTimeoutMs = kafkaOperationTimeoutMs;
@@ -52,32 +51,27 @@ public class TopicManagerRepository implements Closeable {
           this.kafkaClientFactory.getClass(),
           TopicManager.class,
           kafkaServerAndZk.getFirst(),
-          metricsRepository
-      );
-      final KafkaClientFactory kafkaClientFactoryClone = this.kafkaClientFactory.clone(
-          kafkaServerAndZk.getFirst(),
-          kafkaServerAndZk.getSecond(),
-          Optional.of(metricsParameters)
-      );
+          metricsRepository);
+      final KafkaClientFactory kafkaClientFactoryClone = this.kafkaClientFactory
+          .clone(kafkaServerAndZk.getFirst(), kafkaServerAndZk.getSecond(), Optional.of(metricsParameters));
       return new TopicManager(
           this.kafkaOperationTimeoutMs,
           this.topicDeletionStatusPollIntervalMs,
           this.topicMinLogCompactionLagMs,
           kafkaClientFactoryClone,
-          Optional.of(metricsRepository)
-      );
+          Optional.of(metricsRepository));
     };
-    this.localTopicManager = Lazy.of(() -> topicManagersMap.computeIfAbsent(
-        this.localKafkaBootstrapServers,
-        k -> topicManagerCreator.apply(Pair.create(this.localKafkaBootstrapServers, this.localKafkaZkAddress))));
+    this.localTopicManager = Lazy.of(
+        () -> topicManagersMap.computeIfAbsent(
+            this.localKafkaBootstrapServers,
+            k -> topicManagerCreator.apply(Pair.create(this.localKafkaBootstrapServers, this.localKafkaZkAddress))));
   }
 
   public TopicManagerRepository(
       String localKafkaBootstrapServers,
       String localKafkaZkAddress,
       KafkaClientFactory kafkaClientFactory,
-      MetricsRepository metricsRepository
-  ) {
+      MetricsRepository metricsRepository) {
     this(
         localKafkaBootstrapServers,
         localKafkaZkAddress,
@@ -85,8 +79,7 @@ public class TopicManagerRepository implements Closeable {
         DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS,
         DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS,
         kafkaClientFactory,
-        metricsRepository
-    );
+        metricsRepository);
   }
 
   /**
@@ -97,7 +90,8 @@ public class TopicManagerRepository implements Closeable {
   }
 
   public TopicManager getTopicManager(Pair<String, String> kafkaServerAndZk) {
-    return topicManagersMap.computeIfAbsent(kafkaServerAndZk.getFirst(), k -> topicManagerCreator.apply(kafkaServerAndZk));
+    return topicManagersMap
+        .computeIfAbsent(kafkaServerAndZk.getFirst(), k -> topicManagerCreator.apply(kafkaServerAndZk));
   }
 
   /**
@@ -110,8 +104,8 @@ public class TopicManagerRepository implements Closeable {
     if (kafkaClientFactory.getKafkaAdminClass().contains(SCALA_BASED_KAFKA_ADMIN_CLIENT_CLASS_NAME)) {
       throw new VeniceException("Kafka ZK address is required by Scala Kafka admin client.");
     }
-    return topicManagersMap.computeIfAbsent(kafkaBootstrapServers,
-        k -> topicManagerCreator.apply(Pair.create(kafkaBootstrapServers, "")));
+    return topicManagersMap
+        .computeIfAbsent(kafkaBootstrapServers, k -> topicManagerCreator.apply(Pair.create(kafkaBootstrapServers, "")));
   }
 
   @Override

@@ -4,20 +4,23 @@ import org.apache.http.HttpStatus;
 
 
 public class PartitionerSchemaMismatchException extends VeniceException {
-
-  public PartitionerSchemaMismatchException(){
+  public PartitionerSchemaMismatchException() {
     super();
   }
-  public PartitionerSchemaMismatchException(String s){
+
+  public PartitionerSchemaMismatchException(String s) {
     super(s);
   }
-  public PartitionerSchemaMismatchException(Throwable t){
+
+  public PartitionerSchemaMismatchException(Throwable t) {
     super(t);
   }
-  public PartitionerSchemaMismatchException(String s, Throwable t){
-    super(s,t);
+
+  public PartitionerSchemaMismatchException(String s, Throwable t) {
+    super(s, t);
   }
-  public int getHttpStatusCode(){
+
+  public int getHttpStatusCode() {
     return HttpStatus.SC_BAD_REQUEST;
   }
 

@@ -4,7 +4,6 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 
 
 public class QuotaExceededException extends VeniceException {
-
   public QuotaExceededException(String throttlerName, String currentUsage, String quota) {
     super(getErrorMessage(throttlerName, currentUsage, quota));
   }

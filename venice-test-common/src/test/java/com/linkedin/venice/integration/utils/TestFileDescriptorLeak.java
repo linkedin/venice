@@ -15,19 +15,20 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+
 public class TestFileDescriptorLeak {
   private static final Logger LOGGER = LogManager.getLogger(TestFileDescriptorLeak.class);
 
   private static final boolean FORCE_GC = false;
 
-  @Test(invocationCount = 25000, groups = {"flaky"})
+  @Test(invocationCount = 25000, groups = { "flaky" })
   public void testZookeeperLeak() {
     try (ZkServerWrapper zkServerWrapper = ServiceFactory.getZkServer()) {
       LOGGER.info("Created ZkServerWrapper: " + zkServerWrapper.getAddress());
     }
   }
 
-  @Test(invocationCount = 20, groups = {"flaky"})
+  @Test(invocationCount = 20, groups = { "flaky" })
   public void testKafkaBrokerLeak() {
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer)) {
@@ -35,7 +36,7 @@ public class TestFileDescriptorLeak {
     }
   }
 
-  @Test(invocationCount = 20, groups = {"flaky"})
+  @Test(invocationCount = 20, groups = { "flaky" })
   public void testVeniceClusterLeak() {
     try (VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster()) {
       LOGGER.info("Created VeniceClusterWrapper: " + veniceClusterWrapper.getClusterName());
@@ -54,17 +55,26 @@ public class TestFileDescriptorLeak {
     Utils.closeQuietlyWithErrorLogged(this.veniceClusterWrapper);
   }
 
-  @Test(invocationCount = 20, groups = {"flaky"})
+  @Test(invocationCount = 20, groups = { "flaky" })
   public void testVeniceServerLeak() {
-    testVeniceInstanceLeak(() -> this.veniceClusterWrapper.addVeniceServer(new Properties(), new Properties()), port -> this.veniceClusterWrapper.removeVeniceServer(port), 3);
+    testVeniceInstanceLeak(
+        () -> this.veniceClusterWrapper.addVeniceServer(new Properties(), new Properties()),
+        port -> this.veniceClusterWrapper.removeVeniceServer(port),
+        3);
   }
 
-  @Test(invocationCount = 20, groups = {"flaky"})
+  @Test(invocationCount = 20, groups = { "flaky" })
   public void testVeniceRouterLeak() {
-    testVeniceInstanceLeak(() -> this.veniceClusterWrapper.addVeniceRouter(new Properties()), port -> this.veniceClusterWrapper.removeVeniceRouter(port), 6);
+    testVeniceInstanceLeak(
+        () -> this.veniceClusterWrapper.addVeniceRouter(new Properties()),
+        port -> this.veniceClusterWrapper.removeVeniceRouter(port),
+        6);
   }
 
-  private <T extends ProcessWrapper> void testVeniceInstanceLeak(Supplier<T> addFunction, Consumer<Integer> removeFunction, int toleratedFDsLeakPerInstance) {
+  private <T extends ProcessWrapper> void testVeniceInstanceLeak(
+      Supplier<T> addFunction,
+      Consumer<Integer> removeFunction,
+      int toleratedFDsLeakPerInstance) {
     UnixOperatingSystemMXBean osMXBean = ((UnixOperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean());
     LOGGER.info("Max FD Count: " + osMXBean.getMaxFileDescriptorCount());
     long startFDsCount = osMXBean.getOpenFileDescriptorCount();
@@ -83,9 +93,11 @@ public class TestFileDescriptorLeak {
       LOGGER.info("End FD Count (after explicit GC): " + endFDsCount);
     }
     int toleratedLeaks = numberOfInstances * toleratedFDsLeakPerInstance;
-    Assert.assertTrue((endFDsCount - toleratedLeaks) <= startFDsCount,
-        "The end FD count (minus tolerated leaks of " + toleratedLeaks + ") should be equal or less than at the beginning! "
-            + "Start FD count: " + startFDsCount + ", end FD count: " + endFDsCount + ".");
+    Assert.assertTrue(
+        (endFDsCount - toleratedLeaks) <= startFDsCount,
+        "The end FD count (minus tolerated leaks of " + toleratedLeaks
+            + ") should be equal or less than at the beginning! " + "Start FD count: " + startFDsCount
+            + ", end FD count: " + endFDsCount + ".");
   }
 
 }

@@ -10,8 +10,8 @@ import java.util.stream.Stream;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 
-public class BatchGetAvroStoreClientGzipTest extends BatchGetAvroStoreClientTest{
 
+public class BatchGetAvroStoreClientGzipTest extends BatchGetAvroStoreClientTest {
   protected void prepareData() throws Exception {
     keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STR);
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STR);
@@ -26,11 +26,11 @@ public class BatchGetAvroStoreClientGzipTest extends BatchGetAvroStoreClientTest
       return new AbstractMap.SimpleEntry<>(keyPrefix + i, record);
     });
 
-    storeName = veniceCluster.createStore(KEY_SCHEMA_STR, VALUE_SCHEMA_STR, genericRecordStream, CompressionStrategy.GZIP,
-        topic -> {
-      storeVersionName = topic;
-      return null;
-    });
+    storeName = veniceCluster
+        .createStore(KEY_SCHEMA_STR, VALUE_SCHEMA_STR, genericRecordStream, CompressionStrategy.GZIP, topic -> {
+          storeVersionName = topic;
+          return null;
+        });
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
   }
 

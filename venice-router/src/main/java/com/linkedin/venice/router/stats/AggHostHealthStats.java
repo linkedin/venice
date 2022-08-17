@@ -10,9 +10,10 @@ import java.util.Map;
 public class AggHostHealthStats extends AbstractVeniceAggStats<HostHealthStats> {
   private final Map<String, HostHealthStats> hostHealthStatsMap = new VeniceConcurrentHashMap<>();
 
-
   public AggHostHealthStats(MetricsRepository metricsRepository) {
-    super(metricsRepository, (repo, hostName) -> new HostHealthStats(repo, StatsUtils.convertHostnameToMetricName(hostName)));
+    super(
+        metricsRepository,
+        (repo, hostName) -> new HostHealthStats(repo, StatsUtils.convertHostnameToMetricName(hostName)));
   }
 
   private HostHealthStats getHostStats(String hostName) {

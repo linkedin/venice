@@ -19,16 +19,28 @@ public class CompressorFactory implements Closeable, AutoCloseable {
     return compressorMap.computeIfAbsent(compressionStrategy, key -> createCompressor(compressionStrategy));
   }
 
-  public VeniceCompressor createVersionSpecificCompressorIfNotExist(CompressionStrategy compressionStrategy, String kafkaTopic, final byte[] dictionary) {
+  public VeniceCompressor createVersionSpecificCompressorIfNotExist(
+      CompressionStrategy compressionStrategy,
+      String kafkaTopic,
+      final byte[] dictionary) {
     if (compressionStrategy != CompressionStrategy.ZSTD_WITH_DICT) {
       return getCompressor(compressionStrategy);
     } else {
-      return createVersionSpecificCompressorIfNotExist(compressionStrategy, kafkaTopic, dictionary, Zstd.maxCompressionLevel());
+      return createVersionSpecificCompressorIfNotExist(
+          compressionStrategy,
+          kafkaTopic,
+          dictionary,
+          Zstd.maxCompressionLevel());
     }
   }
 
-  public VeniceCompressor createVersionSpecificCompressorIfNotExist(CompressionStrategy compressionStrategy, String kafkaTopic, final byte[] dictionary, int level) {
-    return versionSpecificCompressorMap.computeIfAbsent(kafkaTopic, key -> createCompressorWithDictionary(compressionStrategy, dictionary, level));
+  public VeniceCompressor createVersionSpecificCompressorIfNotExist(
+      CompressionStrategy compressionStrategy,
+      String kafkaTopic,
+      final byte[] dictionary,
+      int level) {
+    return versionSpecificCompressorMap
+        .computeIfAbsent(kafkaTopic, key -> createCompressorWithDictionary(compressionStrategy, dictionary, level));
   }
 
   public VeniceCompressor getVersionSpecificCompressor(String kafkaTopic) {
@@ -41,8 +53,9 @@ public class CompressorFactory implements Closeable, AutoCloseable {
       try {
         previousCompressor.close();
       } catch (IOException e) {
-        logger.warn("Previous compressor with strategy " + previousCompressor.getCompressionStrategy() + " for "
-            + kafkaTopic + " exists but it could not be closed due to IO Exception: " + e.toString());
+        logger.warn(
+            "Previous compressor with strategy " + previousCompressor.getCompressionStrategy() + " for " + kafkaTopic
+                + " exists but it could not be closed due to IO Exception: " + e.toString());
       }
     }
   }
@@ -61,21 +74,25 @@ public class CompressorFactory implements Closeable, AutoCloseable {
     throw new IllegalArgumentException("unsupported compression strategy: " + compressionStrategy.toString());
   }
 
-  public VeniceCompressor createCompressorWithDictionary(CompressionStrategy compressionStrategy, final byte[] dictionary, int level) {
+  public VeniceCompressor createCompressorWithDictionary(
+      CompressionStrategy compressionStrategy,
+      final byte[] dictionary,
+      int level) {
     if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
       return new ZstdWithDictCompressor(dictionary, level);
     }
 
-    throw new IllegalArgumentException("unsupported compression strategy with dictionary: " + compressionStrategy.toString());
+    throw new IllegalArgumentException(
+        "unsupported compression strategy with dictionary: " + compressionStrategy.toString());
   }
 
   @Override
   public void close() {
-    for (VeniceCompressor compressor : compressorMap.values()) {
+    for (VeniceCompressor compressor: compressorMap.values()) {
       IOUtils.closeQuietly(compressor, logger::error);
     }
 
-    for (String topic : versionSpecificCompressorMap.keySet()) {
+    for (String topic: versionSpecificCompressorMap.keySet()) {
       removeVersionSpecificCompressor(topic);
     }
   }

@@ -14,7 +14,6 @@ import org.testng.annotations.Test;
 
 
 public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHandlerTestBase {
-
   @Test
   public void testHandleMapOpsCase1() {
     // Same colo and second Put wins.
@@ -27,9 +26,10 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
 
     List<CollectionOperation> allCollectionOps = Arrays.asList(
         new PutMapOperation(10L, COLO_ID_1, map1, MAP_FIELD_NAME),
-        new PutMapOperation(12L, COLO_ID_1, map2, MAP_FIELD_NAME)
-    );
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, map2));
+        new PutMapOperation(12L, COLO_ID_1, map2, MAP_FIELD_NAME));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, map2));
   }
 
   @Test
@@ -44,9 +44,10 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
 
     List<CollectionOperation> allCollectionOps = Arrays.asList(
         new PutMapOperation(13L, COLO_ID_1, map1, MAP_FIELD_NAME),
-        new PutMapOperation(12L, COLO_ID_1, map2, MAP_FIELD_NAME)
-    );
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, map1));
+        new PutMapOperation(12L, COLO_ID_1, map2, MAP_FIELD_NAME));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, map1));
   }
 
   @Test
@@ -60,8 +61,9 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
         new PutMapOperation(10L, COLO_ID_1, map1, MAP_FIELD_NAME),
         new DeleteMapOperation(12L, COLO_ID_1, MAP_FIELD_NAME) // Delete has a higher timestamp.
     );
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, Collections
-        .emptyMap()));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, Collections.emptyMap()));
   }
 
   @Test
@@ -83,9 +85,10 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
 
     List<CollectionOperation> allCollectionOps = Arrays.asList(
         new PutMapOperation(10L, COLO_ID_1, map1, MAP_FIELD_NAME),
-        new PutMapOperation(10L, COLO_ID_2, map2, MAP_FIELD_NAME)
-    );
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, map2));
+        new PutMapOperation(10L, COLO_ID_2, map2, MAP_FIELD_NAME));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, map2));
   }
 
   @Test
@@ -107,9 +110,10 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
 
     List<CollectionOperation> allCollectionOps = Arrays.asList(
         new PutMapOperation(12L, COLO_ID_1, map1, MAP_FIELD_NAME),
-        new PutMapOperation(11L, COLO_ID_2, map2, MAP_FIELD_NAME)
-    );
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, map1));
+        new PutMapOperation(11L, COLO_ID_2, map2, MAP_FIELD_NAME));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, map1));
   }
 
   @Test
@@ -128,9 +132,10 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
 
     List<CollectionOperation> allCollectionOps = Arrays.asList(
         new PutMapOperation(12L, COLO_ID_1, map1, MAP_FIELD_NAME),
-        new DeleteMapOperation(12L, COLO_ID_2, MAP_FIELD_NAME)
-    );
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, Collections.emptyMap()));
+        new DeleteMapOperation(12L, COLO_ID_2, MAP_FIELD_NAME));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, Collections.emptyMap()));
   }
 
   @Test
@@ -149,9 +154,10 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
 
     List<CollectionOperation> allCollectionOps = Arrays.asList(
         new DeleteMapOperation(10L, COLO_ID_1, MAP_FIELD_NAME),
-        new PutMapOperation(12L, COLO_ID_2, map1, MAP_FIELD_NAME)
-    );
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, map1));
+        new PutMapOperation(12L, COLO_ID_2, map1, MAP_FIELD_NAME));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, map1));
   }
 
   @Test
@@ -170,9 +176,10 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
 
     List<CollectionOperation> allCollectionOps = Arrays.asList(
         new DeleteMapOperation(12L, COLO_ID_1, MAP_FIELD_NAME),
-        new PutMapOperation(10L, COLO_ID_2, map1, MAP_FIELD_NAME)
-    );
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, Collections.emptyMap()));
+        new PutMapOperation(10L, COLO_ID_2, map1, MAP_FIELD_NAME));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, Collections.emptyMap()));
   }
 
   @Test
@@ -191,34 +198,23 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
      *    change.
      */
     List<CollectionOperation> allCollectionOps = Arrays.asList(
-        new PutMapOperation(
-            3L,
-            COLO_ID_1,
-            createMap(Arrays.asList("k1", "k2"), Arrays.asList(1, 2)),
-            MAP_FIELD_NAME
-        ),
+        new PutMapOperation(3L, COLO_ID_1, createMap(Arrays.asList("k1", "k2"), Arrays.asList(1, 2)), MAP_FIELD_NAME),
         new MergeMapOperation(
             6L,
             COLO_ID_1,
             createMap(Collections.singletonList("k5"), Collections.singletonList(5)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new PutMapOperation(
             3L,
             COLO_ID_2,
             createMap(Arrays.asList("k4", "k3", "k2"), Arrays.asList(4, 3, 2)),
-            MAP_FIELD_NAME
-        ),
-        new MergeMapOperation(
-            7L,
-            COLO_ID_2,
-            Collections.emptyMap(), Collections.singletonList("k3"),
-            MAP_FIELD_NAME
-        )
-    );
+            MAP_FIELD_NAME),
+        new MergeMapOperation(7L, COLO_ID_2, Collections.emptyMap(), Collections.singletonList("k3"), MAP_FIELD_NAME));
     Map<String, Object> expectedMapResult = createMap(Arrays.asList("k4", "k2", "k5"), Arrays.asList(4, 2, 5));
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
   }
 
   @Test
@@ -240,9 +236,10 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
     List<CollectionOperation> allCollectionOps = getCollectionOpsForTestCase10();
     Map<String, Object> expectedMapResult = createMap(
         Arrays.asList("k1", "k2", "k10", "k9", "k8", "k7", "k6", "k5"),
-        Arrays.asList(1, 2, 10, 9, 8, 7, 6, 5)
-    );
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
+        Arrays.asList(1, 2, 10, 9, 8, 7, 6, 5));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
   }
 
   private List<CollectionOperation> getCollectionOpsForTestCase10() {
@@ -251,57 +248,44 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
             1L,
             COLO_ID_1,
             createMap(Arrays.asList("k2", "k3", "k4"), Arrays.asList(2, 3, 4)),
-            MAP_FIELD_NAME
-        ),
-        new PutMapOperation(
-            2L,
-            COLO_ID_2,
-            createMap(Arrays.asList("k1", "k2"), Arrays.asList(1, 2)),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
+        new PutMapOperation(2L, COLO_ID_2, createMap(Arrays.asList("k1", "k2"), Arrays.asList(1, 2)), MAP_FIELD_NAME),
         new MergeMapOperation(
             3L,
             COLO_ID_1,
             createMap(Collections.singletonList("k10"), Collections.singletonList(10)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             4L,
             COLO_ID_2,
             createMap(Collections.singletonList("k9"), Collections.singletonList(9)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             5L,
             COLO_ID_1,
             createMap(Collections.singletonList("k8"), Collections.singletonList(8)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             6L,
             COLO_ID_2,
             createMap(Collections.singletonList("k7"), Collections.singletonList(7)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             7L,
             COLO_ID_1,
             createMap(Collections.singletonList("k6"), Collections.singletonList(6)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             8L,
             COLO_ID_2,
             createMap(Collections.singletonList("k5"), Collections.singletonList(5)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        )
-    );
+            MAP_FIELD_NAME));
   }
 
   @Test
@@ -326,9 +310,10 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
     List<CollectionOperation> allCollectionOps = getCollectionOpsForTestCase11();
     Map<String, Object> expectedMapResult = createMap(
         Arrays.asList("k1", "k2", "k10", "k5", "k6", "k7", "k8", "k9"),
-        Arrays.asList(1, 2, 10, 5, 6, 7, 8, 9)
-    );
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
+        Arrays.asList(1, 2, 10, 5, 6, 7, 8, 9));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
   }
 
   private List<CollectionOperation> getCollectionOpsForTestCase11() {
@@ -337,57 +322,44 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
             1L,
             COLO_ID_1,
             createMap(Arrays.asList("k2", "k3", "k4"), Arrays.asList(2, 3, 4)),
-            MAP_FIELD_NAME
-        ),
-        new PutMapOperation(
-            2L,
-            COLO_ID_2,
-            createMap(Arrays.asList("k1", "k2"), Arrays.asList(1, 2)),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
+        new PutMapOperation(2L, COLO_ID_2, createMap(Arrays.asList("k1", "k2"), Arrays.asList(1, 2)), MAP_FIELD_NAME),
         new MergeMapOperation(
             3L,
             COLO_ID_1,
             createMap(Collections.singletonList("k10"), Collections.singletonList(10)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             3L,
             COLO_ID_2,
             createMap(Collections.singletonList("k9"), Collections.singletonList(9)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             3L,
             COLO_ID_3,
             createMap(Collections.singletonList("k8"), Collections.singletonList(8)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             3L,
             COLO_ID_4,
             createMap(Collections.singletonList("k7"), Collections.singletonList(7)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             3L,
             COLO_ID_5,
             createMap(Collections.singletonList("k6"), Collections.singletonList(6)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             3L,
             COLO_ID_6,
             createMap(Collections.singletonList("k5"), Collections.singletonList(5)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        )
-    );
+            MAP_FIELD_NAME));
   }
 
   @Test
@@ -408,11 +380,10 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
      *    of these entries are determined by timestamps of when they are added.
      */
     List<CollectionOperation> allCollectionOps = getCollectionOpsForTestCase12();
-    Map<String, Object> expectedMapResult = createMap(
-        Arrays.asList("k6", "k7", "k8", "k9"),
-        Arrays.asList(6, 7, 8, 9)
-    );
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
+    Map<String, Object> expectedMapResult = createMap(Arrays.asList("k6", "k7", "k8", "k9"), Arrays.asList(6, 7, 8, 9));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
   }
 
   private List<CollectionOperation> getCollectionOpsForTestCase12() {
@@ -421,43 +392,36 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
             1L,
             COLO_ID_1,
             createMap(Arrays.asList("k2", "k3", "k4"), Arrays.asList(2, 3, 4)),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new PutMapOperation(
             2L,
             COLO_ID_2,
             createMap(Arrays.asList("k9", "k8", "k7", "k6"), Arrays.asList(9, 8, 7, 6)),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             3L,
             COLO_ID_1,
             createMap(Collections.singletonList("k6"), Collections.singletonList(6)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             4L,
             COLO_ID_2,
             createMap(Collections.singletonList("k7"), Collections.singletonList(7)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             5L,
             COLO_ID_1,
             createMap(Collections.singletonList("k8"), Collections.singletonList(8)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             6L,
             COLO_ID_2,
             createMap(Collections.singletonList("k9"), Collections.singletonList(9)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        )
-    );
+            MAP_FIELD_NAME));
   }
 
   @Test
@@ -477,11 +441,10 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
      *    All keys are removed except k8 and k6. The relative order between k8 and k6 remains the same.
      */
     List<CollectionOperation> allCollectionOps = getCollectionOpsForTestCase13();
-    Map<String, Object> expectedMapResult = createMap(
-        Arrays.asList("k8", "k6"),
-        Arrays.asList(8, 6)
-    );
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
+    Map<String, Object> expectedMapResult = createMap(Arrays.asList("k8", "k6"), Arrays.asList(8, 6));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
   }
 
   private List<CollectionOperation> getCollectionOpsForTestCase13() {
@@ -490,43 +453,16 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
             1L,
             COLO_ID_1,
             createMap(Arrays.asList("k2", "k3", "k4"), Arrays.asList(2, 3, 4)),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new PutMapOperation(
             2L,
             COLO_ID_2,
             createMap(Arrays.asList("k9", "k8", "k7", "k6"), Arrays.asList(9, 8, 7, 6)),
-            MAP_FIELD_NAME
-        ),
-        new MergeMapOperation(
-            3L,
-            COLO_ID_1,
-            Collections.emptyMap(),
-            Collections.singletonList("k11"),
-            MAP_FIELD_NAME
-        ),
-        new MergeMapOperation(
-            4L,
-            COLO_ID_2,
-            Collections.emptyMap(),
-            Collections.singletonList("k7"),
-            MAP_FIELD_NAME
-        ),
-        new MergeMapOperation(
-            5L,
-            COLO_ID_1,
-            Collections.emptyMap(),
-            Collections.singletonList("k10"),
-            MAP_FIELD_NAME
-        ),
-        new MergeMapOperation(
-            6L,
-            COLO_ID_2,
-            Collections.emptyMap(),
-            Collections.singletonList("k9"),
-            MAP_FIELD_NAME
-        )
-    );
+            MAP_FIELD_NAME),
+        new MergeMapOperation(3L, COLO_ID_1, Collections.emptyMap(), Collections.singletonList("k11"), MAP_FIELD_NAME),
+        new MergeMapOperation(4L, COLO_ID_2, Collections.emptyMap(), Collections.singletonList("k7"), MAP_FIELD_NAME),
+        new MergeMapOperation(5L, COLO_ID_1, Collections.emptyMap(), Collections.singletonList("k10"), MAP_FIELD_NAME),
+        new MergeMapOperation(6L, COLO_ID_2, Collections.emptyMap(), Collections.singletonList("k9"), MAP_FIELD_NAME));
   }
 
   @Test
@@ -546,11 +482,11 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
      *    part. Note that collection merges with higher timestamps do NOT prevent Put from being applied.
      */
     List<CollectionOperation> allCollectionOps = getCollectionOpsForTestCase14();
-    Map<String, Object> expectedMapResult = createMap(
-        Arrays.asList("k7", "k8", "k9", "k1", "k2", "k3", "k4"),
-        Arrays.asList(7, 8, 9, 1, 2, 3, 4)
-    );
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
+    Map<String, Object> expectedMapResult =
+        createMap(Arrays.asList("k7", "k8", "k9", "k1", "k2", "k3", "k4"), Arrays.asList(7, 8, 9, 1, 2, 3, 4));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
   }
 
   private List<CollectionOperation> getCollectionOpsForTestCase14() {
@@ -560,36 +496,30 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
             COLO_ID_1,
             createMap(Collections.singletonList("k1"), Collections.singletonList(1)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             1L,
             COLO_ID_2,
             createMap(Collections.singletonList("k2"), Collections.singletonList(2)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             2L,
             COLO_ID_1,
             createMap(Collections.singletonList("k3"), Collections.singletonList(3)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             2L,
             COLO_ID_2,
             createMap(Collections.singletonList("k4"), Collections.singletonList(4)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new PutMapOperation(
             0L,
             COLO_ID_1,
             createMap(Arrays.asList("k7", "k8", "k9"), Arrays.asList(7, 8, 9)),
-            MAP_FIELD_NAME
-        )
-    );
+            MAP_FIELD_NAME));
   }
 
   @Test
@@ -608,11 +538,10 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
      *    The last Put has the highest timestamp. So, it overwrites everything else.
      */
     List<CollectionOperation> allCollectionOps = getCollectionOpsForTestCase15();
-    Map<String, Object> expectedMapResult = createMap(
-        Arrays.asList("k7", "k8", "k9"),
-        Arrays.asList(7, 8, 9)
-    );
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
+    Map<String, Object> expectedMapResult = createMap(Arrays.asList("k7", "k8", "k9"), Arrays.asList(7, 8, 9));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
   }
 
   private List<CollectionOperation> getCollectionOpsForTestCase15() {
@@ -622,36 +551,30 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
             COLO_ID_1,
             createMap(Collections.singletonList("k1"), Collections.singletonList(1)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             1L,
             COLO_ID_2,
             createMap(Collections.singletonList("k2"), Collections.singletonList(2)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             2L,
             COLO_ID_1,
             createMap(Collections.singletonList("k3"), Collections.singletonList(3)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             2L,
             COLO_ID_2,
             createMap(Collections.singletonList("k4"), Collections.singletonList(4)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new PutMapOperation(
             3L,
             COLO_ID_1,
             createMap(Arrays.asList("k7", "k8", "k9"), Arrays.asList(7, 8, 9)),
-            MAP_FIELD_NAME
-        )
-    );
+            MAP_FIELD_NAME));
   }
 
   @Test
@@ -672,11 +595,11 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
      *    The first 2 collection-merge-added entries are removed by the Put (which has a higher timestamp).
      */
     List<CollectionOperation> allCollectionOps = getCollectionOpsForTestCase16();
-    Map<String, Object> expectedMapResult = createMap(
-        Arrays.asList("k7", "k8", "k9", "k3", "k4"),
-        Arrays.asList(7, 8, 9, 3, 4)
-    );
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
+    Map<String, Object> expectedMapResult =
+        createMap(Arrays.asList("k7", "k8", "k9", "k3", "k4"), Arrays.asList(7, 8, 9, 3, 4));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
   }
 
   private List<CollectionOperation> getCollectionOpsForTestCase16() {
@@ -686,36 +609,30 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
             COLO_ID_1,
             createMap(Collections.singletonList("k1"), Collections.singletonList(1)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             1L,
             COLO_ID_2,
             createMap(Collections.singletonList("k2"), Collections.singletonList(2)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             3L,
             COLO_ID_1,
             createMap(Collections.singletonList("k3"), Collections.singletonList(3)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             3L,
             COLO_ID_2,
             createMap(Collections.singletonList("k4"), Collections.singletonList(4)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new PutMapOperation(
             2L,
             COLO_ID_1,
             createMap(Arrays.asList("k7", "k8", "k9"), Arrays.asList(7, 8, 9)),
-            MAP_FIELD_NAME
-        )
-    );
+            MAP_FIELD_NAME));
   }
 
   @Test
@@ -735,50 +652,23 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
      *    The first 4 entries in the Put are removed.
      */
     List<CollectionOperation> allCollectionOps = getCollectionOpsForTestCase17();
-    Map<String, Object> expectedMapResult = createMap(
-        Collections.singletonList("k5"),
-        Collections.singletonList(5)
-    );
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
+    Map<String, Object> expectedMapResult = createMap(Collections.singletonList("k5"), Collections.singletonList(5));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
   }
 
   private List<CollectionOperation> getCollectionOpsForTestCase17() {
     return Arrays.asList(
-        new MergeMapOperation(
-            1L,
-            COLO_ID_1,
-            Collections.emptyMap(),
-            Collections.singletonList("k1"),
-            MAP_FIELD_NAME
-        ),
-        new MergeMapOperation(
-            1L,
-            COLO_ID_2,
-            Collections.emptyMap(),
-            Collections.singletonList("k2"),
-            MAP_FIELD_NAME
-        ),
-        new MergeMapOperation(
-            2L,
-            COLO_ID_1,
-            Collections.emptyMap(),
-            Collections.singletonList("k3"),
-            MAP_FIELD_NAME
-        ),
-        new MergeMapOperation(
-            2L,
-            COLO_ID_2,
-            Collections.emptyMap(),
-            Collections.singletonList("k4"),
-            MAP_FIELD_NAME
-        ),
+        new MergeMapOperation(1L, COLO_ID_1, Collections.emptyMap(), Collections.singletonList("k1"), MAP_FIELD_NAME),
+        new MergeMapOperation(1L, COLO_ID_2, Collections.emptyMap(), Collections.singletonList("k2"), MAP_FIELD_NAME),
+        new MergeMapOperation(2L, COLO_ID_1, Collections.emptyMap(), Collections.singletonList("k3"), MAP_FIELD_NAME),
+        new MergeMapOperation(2L, COLO_ID_2, Collections.emptyMap(), Collections.singletonList("k4"), MAP_FIELD_NAME),
         new PutMapOperation(
             0L,
             COLO_ID_1,
             createMap(Arrays.asList("k1", "k2", "k3", "k4", "k5"), Arrays.asList(1, 2, 3, 4, 5)),
-            MAP_FIELD_NAME
-        )
-    );
+            MAP_FIELD_NAME));
   }
 
   @Test
@@ -797,50 +687,24 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
      *    The last Put has the highest timestamp. So, no entry is removed from it.
      */
     List<CollectionOperation> allCollectionOps = getCollectionOpsForTestCase18();
-    Map<String, Object> expectedMapResult = createMap(
-        Arrays.asList("k1", "k2", "k3", "k4", "k5"),
-        Arrays.asList(1, 2, 3, 4, 5)
-    );
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
+    Map<String, Object> expectedMapResult =
+        createMap(Arrays.asList("k1", "k2", "k3", "k4", "k5"), Arrays.asList(1, 2, 3, 4, 5));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
   }
 
   private List<CollectionOperation> getCollectionOpsForTestCase18() {
     return Arrays.asList(
-        new MergeMapOperation(
-            1L,
-            COLO_ID_1,
-            Collections.emptyMap(),
-            Collections.singletonList("k1"),
-            MAP_FIELD_NAME
-        ),
-        new MergeMapOperation(
-            1L,
-            COLO_ID_2,
-            Collections.emptyMap(),
-            Collections.singletonList("k2"),
-            MAP_FIELD_NAME
-        ),
-        new MergeMapOperation(
-            2L,
-            COLO_ID_1,
-            Collections.emptyMap(),
-            Collections.singletonList("k3"),
-            MAP_FIELD_NAME
-        ),
-        new MergeMapOperation(
-            2L,
-            COLO_ID_2,
-            Collections.emptyMap(),
-            Collections.singletonList("k4"),
-            MAP_FIELD_NAME
-        ),
+        new MergeMapOperation(1L, COLO_ID_1, Collections.emptyMap(), Collections.singletonList("k1"), MAP_FIELD_NAME),
+        new MergeMapOperation(1L, COLO_ID_2, Collections.emptyMap(), Collections.singletonList("k2"), MAP_FIELD_NAME),
+        new MergeMapOperation(2L, COLO_ID_1, Collections.emptyMap(), Collections.singletonList("k3"), MAP_FIELD_NAME),
+        new MergeMapOperation(2L, COLO_ID_2, Collections.emptyMap(), Collections.singletonList("k4"), MAP_FIELD_NAME),
         new PutMapOperation(
             3L,
             COLO_ID_1,
             createMap(Arrays.asList("k1", "k2", "k3", "k4", "k5"), Arrays.asList(1, 2, 3, 4, 5)),
-            MAP_FIELD_NAME
-        )
-    );
+            MAP_FIELD_NAME));
   }
 
   @Test
@@ -859,50 +723,23 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
      *    Entries k3->3 and k4->4 are removed from the last Put.
      */
     List<CollectionOperation> allCollectionOps = getCollectionOpsForTestCase19();
-    Map<String, Object> expectedMapResult = createMap(
-        Arrays.asList("k1", "k2", "k5"),
-        Arrays.asList(1, 2, 5)
-    );
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
+    Map<String, Object> expectedMapResult = createMap(Arrays.asList("k1", "k2", "k5"), Arrays.asList(1, 2, 5));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
   }
 
   private List<CollectionOperation> getCollectionOpsForTestCase19() {
     return Arrays.asList(
-        new MergeMapOperation(
-            1L,
-            COLO_ID_1,
-            Collections.emptyMap(),
-            Collections.singletonList("k1"),
-            MAP_FIELD_NAME
-        ),
-        new MergeMapOperation(
-            1L,
-            COLO_ID_2,
-            Collections.emptyMap(),
-            Collections.singletonList("k2"),
-            MAP_FIELD_NAME
-        ),
-        new MergeMapOperation(
-            3L,
-            COLO_ID_1,
-            Collections.emptyMap(),
-            Collections.singletonList("k3"),
-            MAP_FIELD_NAME
-        ),
-        new MergeMapOperation(
-            3L,
-            COLO_ID_2,
-            Collections.emptyMap(),
-            Collections.singletonList("k4"),
-            MAP_FIELD_NAME
-        ),
+        new MergeMapOperation(1L, COLO_ID_1, Collections.emptyMap(), Collections.singletonList("k1"), MAP_FIELD_NAME),
+        new MergeMapOperation(1L, COLO_ID_2, Collections.emptyMap(), Collections.singletonList("k2"), MAP_FIELD_NAME),
+        new MergeMapOperation(3L, COLO_ID_1, Collections.emptyMap(), Collections.singletonList("k3"), MAP_FIELD_NAME),
+        new MergeMapOperation(3L, COLO_ID_2, Collections.emptyMap(), Collections.singletonList("k4"), MAP_FIELD_NAME),
         new PutMapOperation(
             2L,
             COLO_ID_1,
             createMap(Arrays.asList("k1", "k2", "k3", "k4", "k5"), Arrays.asList(1, 2, 3, 4, 5)),
-            MAP_FIELD_NAME
-        )
-    );
+            MAP_FIELD_NAME));
   }
 
   @Test
@@ -921,11 +758,10 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
      *    All entries are added by the collection-merge add ops and the Delete is ignored.
      */
     List<CollectionOperation> allCollectionOps = getCollectionOpsForTestCase20();
-    Map<String, Object> expectedMapResult = createMap(
-        Arrays.asList("k1", "k2", "k3", "k4"),
-        Arrays.asList(1, 2, 3, 4)
-    );
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
+    Map<String, Object> expectedMapResult = createMap(Arrays.asList("k1", "k2", "k3", "k4"), Arrays.asList(1, 2, 3, 4));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
   }
 
   private List<CollectionOperation> getCollectionOpsForTestCase20() {
@@ -935,35 +771,26 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
             COLO_ID_1,
             createMap(Collections.singletonList("k1"), Collections.singletonList(1)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             1L,
             COLO_ID_2,
             createMap(Collections.singletonList("k2"), Collections.singletonList(2)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             2L,
             COLO_ID_1,
             createMap(Collections.singletonList("k3"), Collections.singletonList(3)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             2L,
             COLO_ID_2,
             createMap(Collections.singletonList("k4"), Collections.singletonList(4)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
-        new DeleteMapOperation(
-            0L,
-            COLO_ID_1,
-            MAP_FIELD_NAME
-        )
-    );
+            MAP_FIELD_NAME),
+        new DeleteMapOperation(0L, COLO_ID_1, MAP_FIELD_NAME));
   }
 
   @Test
@@ -982,11 +809,10 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
      *    Entries k1->1 and k2->2 are deleted.
      */
     List<CollectionOperation> allCollectionOps = getCollectionOpsForTestCase21();
-    Map<String, Object> expectedMapResult = createMap(
-        Arrays.asList("k3", "k4"),
-        Arrays.asList(3, 4)
-    );
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
+    Map<String, Object> expectedMapResult = createMap(Arrays.asList("k3", "k4"), Arrays.asList(3, 4));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
   }
 
   private List<CollectionOperation> getCollectionOpsForTestCase21() {
@@ -996,35 +822,26 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
             COLO_ID_1,
             createMap(Collections.singletonList("k1"), Collections.singletonList(1)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             1L,
             COLO_ID_2,
             createMap(Collections.singletonList("k2"), Collections.singletonList(2)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             3L,
             COLO_ID_1,
             createMap(Collections.singletonList("k3"), Collections.singletonList(3)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             3L,
             COLO_ID_2,
             createMap(Collections.singletonList("k4"), Collections.singletonList(4)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
-        new DeleteMapOperation(
-            2L,
-            COLO_ID_1,
-            MAP_FIELD_NAME
-        )
-    );
+            MAP_FIELD_NAME),
+        new DeleteMapOperation(2L, COLO_ID_1, MAP_FIELD_NAME));
   }
 
   @Test
@@ -1044,7 +861,9 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
      */
     List<CollectionOperation> allCollectionOps = getCollectionOpsForTestCase22();
     Map<String, Object> expectedMapResult = Collections.emptyMap();
-    applyAllOperationsOnValue(allCollectionOps, ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
   }
 
   private List<CollectionOperation> getCollectionOpsForTestCase22() {
@@ -1054,35 +873,26 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
             COLO_ID_1,
             createMap(Collections.singletonList("k1"), Collections.singletonList(1)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             1L,
             COLO_ID_2,
             createMap(Collections.singletonList("k2"), Collections.singletonList(2)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             2L,
             COLO_ID_1,
             createMap(Collections.singletonList("k3"), Collections.singletonList(3)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
+            MAP_FIELD_NAME),
         new MergeMapOperation(
             2L,
             COLO_ID_2,
             createMap(Collections.singletonList("k4"), Collections.singletonList(4)),
             Collections.emptyList(),
-            MAP_FIELD_NAME
-        ),
-        new DeleteMapOperation(
-            3L,
-            COLO_ID_1,
-            MAP_FIELD_NAME
-        )
-    );
+            MAP_FIELD_NAME),
+        new DeleteMapOperation(3L, COLO_ID_1, MAP_FIELD_NAME));
   }
 
   private IndexedHashMap<String, Object> createMap(List<String> keys, List<Integer> values) {

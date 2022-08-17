@@ -1,5 +1,10 @@
 package com.linkedin.davinci.replication.merge;
 
+import static com.linkedin.davinci.replication.merge.TestMergeConflictSchemaConstants.*;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.davinci.serialization.avro.MapOrderingPreservingSerDeFactory;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
@@ -17,11 +22,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.testng.annotations.BeforeClass;
-
-import static com.linkedin.davinci.replication.merge.TestMergeConflictSchemaConstants.*;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.*;
 
 
 public class TestMergeConflictResolver {
@@ -57,12 +57,11 @@ public class TestMergeConflictResolver {
     this.personSchemaV3 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(PERSON_SCHEMA_STR_V3);
     this.personRmdSchemaV3 = ReplicationMetadataSchemaGenerator.generateMetadataSchema(personSchemaV3, RMD_VERSION_ID);
     this.serializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(valueRecordSchemaV1);
-    this.deserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(valueRecordSchemaV1,
-        valueRecordSchemaV1);
+    this.deserializer =
+        FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(valueRecordSchemaV1, valueRecordSchemaV1);
 
     validateTestInputSchemas();
-    ReplicationMetadataSchemaEntry rmdSchemaEntry
-        = new ReplicationMetadataSchemaEntry(1, RMD_VERSION_ID, rmdSchemaV1);
+    ReplicationMetadataSchemaEntry rmdSchemaEntry = new ReplicationMetadataSchemaEntry(1, RMD_VERSION_ID, rmdSchemaV1);
     doReturn(rmdSchemaEntry).when(schemaRepository).getReplicationMetadataSchema(anyString(), anyInt(), anyInt());
 
     SchemaEntry valueSchemaEntry = new SchemaEntry(1, valueRecordSchemaV1);
@@ -72,13 +71,11 @@ public class TestMergeConflictResolver {
   private void validateTestInputSchemas() {
     if (!AvroSupersetSchemaUtils.isSupersetSchema(personSchemaV3, personSchemaV2)) {
       throw new IllegalStateException(
-          "Person V3 schema should be superset schema of Person V2 schema. Please double check these 2 schemas"
-      );
+          "Person V3 schema should be superset schema of Person V2 schema. Please double check these 2 schemas");
     }
     if (!AvroSupersetSchemaUtils.isSupersetSchema(personSchemaV3, personSchemaV1)) {
       throw new IllegalStateException(
-          "Person V3 schema should be superset schema of Person V1 schema. Please double check these 2 schemas"
-      );
+          "Person V3 schema should be superset schema of Person V1 schema. Please double check these 2 schemas");
     }
   }
 
@@ -89,7 +86,9 @@ public class TestMergeConflictResolver {
     return rmdRecord;
   }
 
-  protected GenericRecord createRmdWithFieldLevelTimestamp(Schema rmdSchema, Map<String, Long> fieldNameToTimestampMap) {
+  protected GenericRecord createRmdWithFieldLevelTimestamp(
+      Schema rmdSchema,
+      Map<String, Long> fieldNameToTimestampMap) {
     final GenericRecord rmdRecord = new GenericData.Record(rmdSchema);
     final Schema fieldLevelTimestampSchema = rmdSchema.getFields().get(0).schema().getTypes().get(1);
     GenericRecord fieldTimestampsRecord = new GenericData.Record(fieldLevelTimestampSchema);

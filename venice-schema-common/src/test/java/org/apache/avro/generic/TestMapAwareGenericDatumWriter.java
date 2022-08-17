@@ -14,7 +14,6 @@ import org.testng.annotations.Test;
 
 
 public class TestMapAwareGenericDatumWriter {
-
   /**
    * a helper String class that can config hash code manually
    */
@@ -34,7 +33,7 @@ public class TestMapAwareGenericDatumWriter {
 
   @Test
   public void testWriterCanWriteMapInOrder() throws IOException {
-    //construct 2 elements that have the same hash code
+    // construct 2 elements that have the same hash code
     TestString string1 = new TestString(1, "a");
     TestString string2 = new TestString(1, "b");
 
@@ -53,18 +52,18 @@ public class TestMapAwareGenericDatumWriter {
     map2.put(string2, 2);
     map2.put(string1, 1);
 
-    //Since GenericDatumWriter doesn't sort the entries before serializing,
-    //the output byte arrays will look differently between map1 and map2.
+    // Since GenericDatumWriter doesn't sort the entries before serializing,
+    // the output byte arrays will look differently between map1 and map2.
     GenericDatumWriter genericDatumWriter = new GenericDatumWriter(mapSchema);
-    Assert.assertFalse(Arrays.equals(serialize(genericDatumWriter, map1),
-        serialize(genericDatumWriter, map2)));
+    Assert.assertFalse(Arrays.equals(serialize(genericDatumWriter, map1), serialize(genericDatumWriter, map2)));
 
-    DeterministicMapOrderGenericDatumWriter mapAwareGenericDatumWriter = new DeterministicMapOrderGenericDatumWriter(mapSchema);
-    Assert.assertTrue(Arrays.equals(serialize(mapAwareGenericDatumWriter, map1),
-        serialize(mapAwareGenericDatumWriter, map2)));
+    DeterministicMapOrderGenericDatumWriter mapAwareGenericDatumWriter =
+        new DeterministicMapOrderGenericDatumWriter(mapSchema);
+    Assert.assertTrue(
+        Arrays.equals(serialize(mapAwareGenericDatumWriter, map1), serialize(mapAwareGenericDatumWriter, map2)));
   }
 
-  //helper method that serializes the object
+  // helper method that serializes the object
   private byte[] serialize(GenericDatumWriter writer, Map map) throws IOException {
     ByteArrayOutputStream output = new ByteArrayOutputStream();
     Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(output, true, null);

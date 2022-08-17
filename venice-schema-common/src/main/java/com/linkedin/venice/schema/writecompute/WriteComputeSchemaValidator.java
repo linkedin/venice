@@ -1,17 +1,17 @@
 package com.linkedin.venice.schema.writecompute;
 
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.*;
+import static org.apache.avro.Schema.Type.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.List;
 import org.apache.avro.Schema;
 
-import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.*;
-import static org.apache.avro.Schema.Type.*;
 
 /**
  * validate if a write-compute schema can be pair with value schema
  */
 public class WriteComputeSchemaValidator {
-
   private WriteComputeSchemaValidator() {
     // Utility class
   }
@@ -63,7 +63,7 @@ public class WriteComputeSchemaValidator {
       }
     }
 
-    for (Schema.Field field : valueSchema.getFields()) {
+    for (Schema.Field field: valueSchema.getFields()) {
       Schema writeComputeFieldSchema = writeComputeSchema.getField(field.name()).schema();
       if (writeComputeFieldSchema == null) {
         return false;
@@ -78,8 +78,8 @@ public class WriteComputeSchemaValidator {
         return false;
       }
 
-      //strip out NoOp operation before passing it to next layer.
-      //This will make the logic consistent for both non-field schema
+      // strip out NoOp operation before passing it to next layer.
+      // This will make the logic consistent for both non-field schema
       // and schema in inside the field.
       Schema subTypesSchema;
       List<Schema> subtypesWithoutNoOp = unionSubTypes.subList(1, unionSubTypes.size());
@@ -103,9 +103,9 @@ public class WriteComputeSchemaValidator {
     } else if (originalSchema.getType() == MAP) {
       operation = MAP_OPS;
     } else {
-      //defensive code. Shouldn't be here
-      throw new VeniceException("The write compute schema is not a collection type schema." +
-          writeComputeSchema.toString(true));
+      // defensive code. Shouldn't be here
+      throw new VeniceException(
+          "The write compute schema is not a collection type schema." + writeComputeSchema.toString(true));
     }
 
     List<Schema> unionSubTypes = writeComputeSchema.getTypes();
@@ -113,8 +113,8 @@ public class WriteComputeSchemaValidator {
       return false;
     }
 
-    if (unionSubTypes.get(0).getType() != RECORD ||
-        !unionSubTypes.get(0).getName().toLowerCase().endsWith(operation.name.toLowerCase())) {
+    if (unionSubTypes.get(0).getType() != RECORD
+        || !unionSubTypes.get(0).getName().toLowerCase().endsWith(operation.name.toLowerCase())) {
       return false;
     }
 
@@ -126,20 +126,25 @@ public class WriteComputeSchemaValidator {
     List<Schema> writeComputeSubSchemas = writeComputeSchema.getTypes();
 
     int writeComputeSchemaIndex = 0;
-    for (int originalSchemaIndex = 0; originalSchemaIndex < originalSubSchemas.size();
-        originalSchemaIndex ++, writeComputeSchemaIndex ++) {
+    for (int originalSchemaIndex = 0; originalSchemaIndex < originalSubSchemas
+        .size(); originalSchemaIndex++, writeComputeSchemaIndex++) {
       try {
-        //Validate the element's type one by one. If union contains collectional
-        //elements, it will validate both the elements and available operations.
-        if (originalSubSchemas.get(originalSchemaIndex).getType() == ARRAY || originalSubSchemas.get(originalSchemaIndex).getType() == MAP) {
-          Schema collectionSchemaUnion = Schema.createUnion(writeComputeSubSchemas.subList(writeComputeSchemaIndex, writeComputeSchemaIndex + 2));
+        // Validate the element's type one by one. If union contains collectional
+        // elements, it will validate both the elements and available operations.
+        if (originalSubSchemas.get(originalSchemaIndex).getType() == ARRAY
+            || originalSubSchemas.get(originalSchemaIndex).getType() == MAP) {
+          Schema collectionSchemaUnion =
+              Schema.createUnion(writeComputeSubSchemas.subList(writeComputeSchemaIndex, writeComputeSchemaIndex + 2));
           if (!validateCollectionSchema(originalSubSchemas.get(originalSchemaIndex), collectionSchemaUnion)) {
             return false;
           }
 
           writeComputeSchemaIndex++;
         } else {
-          if (!validateSchema(originalSubSchemas.get(originalSchemaIndex), writeComputeSubSchemas.get(writeComputeSchemaIndex), true)) {
+          if (!validateSchema(
+              originalSubSchemas.get(originalSchemaIndex),
+              writeComputeSubSchemas.get(writeComputeSchemaIndex),
+              true)) {
             return false;
           }
         }
@@ -147,7 +152,6 @@ public class WriteComputeSchemaValidator {
         return false;
       }
     }
-
 
     if (writeComputeSchemaIndex != writeComputeSubSchemas.size()) {
       return false;
@@ -160,10 +164,14 @@ public class WriteComputeSchemaValidator {
     InvalidWriteComputeException(String msg) {
       super(msg);
     }
+
     InvalidWriteComputeException(Schema originalSchema, Schema writeComputeSchema) {
-      super(String.format("write compute schema is inconsistent with original schema.\n" +
-              "original schema: \n%s\n" + "write compute schema: \n%s", originalSchema.toString(true),
-          writeComputeSchema.toString(true)));
+      super(
+          String.format(
+              "write compute schema is inconsistent with original schema.\n" + "original schema: \n%s\n"
+                  + "write compute schema: \n%s",
+              originalSchema.toString(true),
+              writeComputeSchema.toString(true)));
     }
   }
 }

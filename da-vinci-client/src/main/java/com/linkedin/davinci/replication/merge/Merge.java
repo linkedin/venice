@@ -62,8 +62,7 @@ public interface Merge<T> {
       long putOperationTimestamp,
       int putOperationColoID,
       long newValueSourceOffset,
-      int newValueSourceBrokerID
-  );
+      int newValueSourceBrokerID);
 
   /**
    * @param oldValueAndReplicationMetadata the old value and replication metadata which are persisted in the server prior to the write operation
@@ -82,8 +81,7 @@ public interface Merge<T> {
       long deleteOperationTimestamp,
       int deleteOperationColoID,
       long newValueSourceOffset,
-      int newValueSourceBrokerID
-  );
+      int newValueSourceBrokerID);
 
   /**
    * @param oldValueAndReplicationMetadata the old value and replication metadata which are persisted in the server prior to the write operation
@@ -109,6 +107,5 @@ public interface Merge<T> {
       long updateOperationTimestamp,
       int updateOperationColoID,
       long newValueSourceOffset,
-      int newValueSourceBrokerID
-  );
+      int newValueSourceBrokerID);
 }

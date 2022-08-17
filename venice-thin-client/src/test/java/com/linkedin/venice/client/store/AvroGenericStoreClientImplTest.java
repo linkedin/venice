@@ -47,6 +47,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
+
 @Test(singleThreaded = true)
 public class AvroGenericStoreClientImplTest {
   private static final Logger LOGGER = LogManager.getLogger(AvroGenericStoreClientImplTest.class);
@@ -79,18 +80,21 @@ public class AvroGenericStoreClientImplTest {
   public void setupStoreClient() throws VeniceClientException, IOException {
     routerServer.clearResponseMapping();
     // Push key schema: string
-    FullHttpResponse schemaResponse = StoreClientTestUtils.constructHttpSchemaResponse(storeName, 1, defaultKeySchemaStr);
+    FullHttpResponse schemaResponse =
+        StoreClientTestUtils.constructHttpSchemaResponse(storeName, 1, defaultKeySchemaStr);
     String keySchemaPath = "/" + RouterBackedSchemaReader.TYPE_KEY_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(keySchemaPath, schemaResponse);
-    String clusterDiscoveryPath = "/"+ D2ServiceDiscovery.TYPE_D2_SERVICE_DISCOVERY+"/"+storeName;
+    String clusterDiscoveryPath = "/" + D2ServiceDiscovery.TYPE_D2_SERVICE_DISCOVERY + "/" + storeName;
 
-    routerServer.addResponseForUri(clusterDiscoveryPath, StoreClientTestUtils.constructHttpClusterDiscoveryResponse(storeName, "test_cluster", D2TestUtils.DEFAULT_TEST_SERVICE_NAME));
+    routerServer.addResponseForUri(
+        clusterDiscoveryPath,
+        StoreClientTestUtils
+            .constructHttpClusterDiscoveryResponse(storeName, "test_cluster", D2TestUtils.DEFAULT_TEST_SERVICE_NAME));
     // http based client
     String routerUrl = "http://" + routerHost + ":" + port + "/";
     MetricsRepository httpClientMetricsRepository = new MetricsRepository();
-    AvroGenericStoreClient<String, Object> httpStoreClient =
-        ClientFactory.getAndStartGenericAvroClient(ClientConfig
-            .defaultGenericClientConfig(storeName)
+    AvroGenericStoreClient<String, Object> httpStoreClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(routerUrl)
             .setMetricsRepository(httpClientMetricsRepository));
     storeClients.put(HttpTransportClient.class.getSimpleName(), httpStoreClient);
@@ -98,9 +102,8 @@ public class AvroGenericStoreClientImplTest {
     // d2 based client
     d2Client = D2TestUtils.getAndStartD2Client(routerServer.getZkAddress());
     MetricsRepository d2ClientMetricsRepository = new MetricsRepository();
-    AvroGenericStoreClient<String, Object> d2StoreClient =
-        ClientFactory.getAndStartGenericAvroClient(ClientConfig
-            .defaultGenericClientConfig(storeName)
+    AvroGenericStoreClient<String, Object> d2StoreClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
             .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
             .setD2Client(d2Client)
             .setMetricsRepository(d2ClientMetricsRepository));
@@ -108,22 +111,22 @@ public class AvroGenericStoreClientImplTest {
     storeClientMetricsRepositories.put(d2StoreClient, d2ClientMetricsRepository);
     // test store client with fast avro
     MetricsRepository d2ClientWithFastAvroMetricsRepository = new MetricsRepository();
-    AvroGenericStoreClient<String, Object> d2StoreClientWithFastAvro =
-        ClientFactory.getAndStartGenericAvroClient(ClientConfig
-            .defaultGenericClientConfig(storeName)
+    AvroGenericStoreClient<String, Object> d2StoreClientWithFastAvro = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
             .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
             .setD2Client(d2Client)
             .setMetricsRepository(d2ClientWithFastAvroMetricsRepository)
             .setUseFastAvro(true));
     storeClients.put(D2TransportClient.class.getSimpleName() + "-fast_avro", d2StoreClientWithFastAvro);
     storeClientMetricsRepositories.put(d2StoreClientWithFastAvro, d2ClientWithFastAvroMetricsRepository);
-    DelegatingStoreClient<String, Object> delegatingStoreClient = (DelegatingStoreClient<String, Object>)httpStoreClient;
-    someStoreClient = (AbstractAvroStoreClient<String, Object>)delegatingStoreClient.getInnerStoreClient();
+    DelegatingStoreClient<String, Object> delegatingStoreClient =
+        (DelegatingStoreClient<String, Object>) httpStoreClient;
+    someStoreClient = (AbstractAvroStoreClient<String, Object>) delegatingStoreClient.getInnerStoreClient();
   }
 
   @AfterMethod
   public void closeStoreClient() {
-    for (AvroGenericStoreClient<String, Object> storeClient : storeClients.values()) {
+    for (AvroGenericStoreClient<String, Object> storeClient: storeClients.values()) {
       Utils.closeQuietlyWithErrorLogged(storeClient);
     }
     storeClients.clear();
@@ -137,9 +140,8 @@ public class AvroGenericStoreClientImplTest {
       throws InterruptedException, ExecutionException, IOException {
     D2Client lateStartD2Client = D2TestUtils.getD2Client(routerServer.getZkAddress(), false);
     MetricsRepository metricsRepository = new MetricsRepository();
-    try (AvroGenericStoreClient<String, Object> d2StoreClient =
-        ClientFactory.getAndStartGenericAvroClient(ClientConfig
-            .defaultGenericClientConfig(storeName)
+    try (AvroGenericStoreClient<String, Object> d2StoreClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
             .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
             .setD2Client(lateStartD2Client)
             .setMetricsRepository(metricsRepository))) {
@@ -158,26 +160,23 @@ public class AvroGenericStoreClientImplTest {
   @Test
   public void getSchemaTest() throws Exception {
     int valueSchemaId = 1;
-    String valueSchemaStr = "{\n" +
-        "\t\"type\": \"record\",\n" +
-        "\t\"name\": \"test\",\n" +
-        "\t\"fields\" : [\n" +
-        "\t \t{\"name\": \"a\", \"type\": \"long\"},\n" +
-        "\t\t{\"name\": \"b\", \"type\": \"string\"}\n" +
-        "\t]\n" +
-        "}";
+    String valueSchemaStr = "{\n" + "\t\"type\": \"record\",\n" + "\t\"name\": \"test\",\n" + "\t\"fields\" : [\n"
+        + "\t \t{\"name\": \"a\", \"type\": \"long\"},\n" + "\t\t{\"name\": \"b\", \"type\": \"string\"}\n" + "\t]\n"
+        + "}";
     Map<Integer, String> valueSchemaEntries = new HashMap<>();
     valueSchemaEntries.put(valueSchemaId, valueSchemaStr);
 
     // Push value schema
-    FullHttpResponse valueSchemaResponse = StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId, valueSchemaStr);
+    FullHttpResponse valueSchemaResponse =
+        StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId, valueSchemaStr);
     String valueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/" + valueSchemaId;
     routerServer.addResponseForUri(valueSchemaPath, valueSchemaResponse);
 
-    FullHttpResponse multiValueSchemaResponse = StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
+    FullHttpResponse multiValueSchemaResponse =
+        StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
     String multiValueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(multiValueSchemaPath, multiValueSchemaResponse);
-    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
+    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
       LOGGER.info("Execute test for transport client: " + entry.getKey());
       Assert.assertEquals(entry.getValue().getKeySchema(), Schema.parse(defaultKeySchemaStr));
       Assert.assertEquals(entry.getValue().getLatestValueSchema(), Schema.parse(valueSchemaStr));
@@ -185,11 +184,12 @@ public class AvroGenericStoreClientImplTest {
   }
 
   @Test
-  public void getByRequestPathTest() throws VeniceClientException, ExecutionException, InterruptedException, IOException {
+  public void getByRequestPathTest()
+      throws VeniceClientException, ExecutionException, InterruptedException, IOException {
     String keySchemaPath = RouterBackedSchemaReader.TYPE_KEY_SCHEMA + "/" + storeName;
-    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
+    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
       LOGGER.info("Execute test for transport client: " + entry.getKey());
-      byte[] byteResponse = ((InternalAvroStoreClient<String, Object>)entry.getValue()).getRaw(keySchemaPath).get();
+      byte[] byteResponse = ((InternalAvroStoreClient<String, Object>) entry.getValue()).getRaw(keySchemaPath).get();
       SchemaResponse ret = mapper.readValue(byteResponse, SchemaResponse.class);
       Assert.assertEquals(ret.getName(), storeName);
       Assert.assertEquals(ret.getId(), 1);
@@ -198,11 +198,12 @@ public class AvroGenericStoreClientImplTest {
   }
 
   @Test
-  public void getByRequestPathTestWithNonExistingPath() throws VeniceClientException, ExecutionException, InterruptedException, IOException {
+  public void getByRequestPathTestWithNonExistingPath()
+      throws VeniceClientException, ExecutionException, InterruptedException, IOException {
     String nonExistingPath = "sdfwirwoer";
-    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
+    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
       LOGGER.info("Execute test for transport client: " + entry.getKey());
-      byte[] byteResponse = ((InternalAvroStoreClient<String, Object>)entry.getValue()).getRaw(nonExistingPath).get();
+      byte[] byteResponse = ((InternalAvroStoreClient<String, Object>) entry.getValue()).getRaw(nonExistingPath).get();
       Assert.assertNull(byteResponse);
     }
   }
@@ -215,23 +216,20 @@ public class AvroGenericStoreClientImplTest {
   private void getByStoreKeyTest(Map<String, AvroGenericStoreClient<String, Object>> storeClientMap)
       throws IOException, VeniceClientException, ExecutionException, InterruptedException {
     int valueSchemaId = 1;
-    String valueSchemaStr = "{\n" +
-        "\t\"type\": \"record\",\n" +
-        "\t\"name\": \"test\",\n" +
-        "\t\"fields\" : [\n" +
-        "\t \t{\"name\": \"a\", \"type\": \"long\"},\n" +
-        "\t\t{\"name\": \"b\", \"type\": \"string\"}\n" +
-        "\t]\n" +
-        "}";
+    String valueSchemaStr = "{\n" + "\t\"type\": \"record\",\n" + "\t\"name\": \"test\",\n" + "\t\"fields\" : [\n"
+        + "\t \t{\"name\": \"a\", \"type\": \"long\"},\n" + "\t\t{\"name\": \"b\", \"type\": \"string\"}\n" + "\t]\n"
+        + "}";
     Map<Integer, String> valueSchemaEntries = new HashMap<>();
     valueSchemaEntries.put(valueSchemaId, valueSchemaStr);
 
     // Push value schema
-    FullHttpResponse valueSchemaResponse = StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId, valueSchemaStr);
+    FullHttpResponse valueSchemaResponse =
+        StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId, valueSchemaStr);
     String valueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/" + valueSchemaId;
     routerServer.addResponseForUri(valueSchemaPath, valueSchemaResponse);
 
-    FullHttpResponse multiValueSchemaResponse = StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
+    FullHttpResponse multiValueSchemaResponse =
+        StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
     String multiValueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(multiValueSchemaPath, multiValueSchemaResponse);
 
@@ -245,7 +243,7 @@ public class AvroGenericStoreClientImplTest {
     String storeRequestPath = "/" + someStoreClient.getRequestPathByKey(key);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
 
-    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClientMap.entrySet()) {
+    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClientMap.entrySet()) {
       LOGGER.info("Execute test for transport client: " + entry.getKey());
       Object value = entry.getValue().get(key).get();
       Assert.assertTrue(value instanceof GenericData.Record);
@@ -260,7 +258,7 @@ public class AvroGenericStoreClientImplTest {
   @Test
   public void getByStoreKeyTestWithNonExistingKey() throws Throwable {
     String key = "test_key";
-    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
+    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
       LOGGER.info("Execute test for transport client: " + entry.getKey());
       Object value = entry.getValue().get(key).get();
       Assert.assertNull(value);
@@ -277,24 +275,28 @@ public class AvroGenericStoreClientImplTest {
     valueSchemaEntries.put(valueSchemaId, valueSchemaStr);
 
     // Push value schema
-    FullHttpResponse valueSchemaResponse = StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId, valueSchemaStr);
+    FullHttpResponse valueSchemaResponse =
+        StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId, valueSchemaStr);
     String valueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/" + valueSchemaId;
     routerServer.addResponseForUri(valueSchemaPath, valueSchemaResponse);
-    FullHttpResponse multiValueSchemaResponse = StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
+    FullHttpResponse multiValueSchemaResponse =
+        StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
     String multiValueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(multiValueSchemaPath, multiValueSchemaResponse);
 
     int nonExistingSchemaId = 2;
-    FullHttpResponse valueResponse = StoreClientTestUtils.constructStoreResponse(nonExistingSchemaId, valueStr.getBytes());
+    FullHttpResponse valueResponse =
+        StoreClientTestUtils.constructStoreResponse(nonExistingSchemaId, valueStr.getBytes());
     String storeRequestPath = "/" + someStoreClient.getRequestPathByKey(keyStr);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
-    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
+    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
       LOGGER.info("Execute test for transport client: " + entry.getKey());
       try {
         entry.getValue().get(keyStr).get();
       } catch (ExecutionException e) {
         Assert.assertTrue(e.getCause() instanceof VeniceClientException);
-        Assert.assertTrue(e.getCause().getMessage().contains("Failed to get value schema for store: test_store and id: 2"));
+        Assert.assertTrue(
+            e.getCause().getMessage().contains("Failed to get value schema for store: test_store and id: 2"));
         continue;
       } catch (Throwable t) {
       }
@@ -321,30 +323,41 @@ public class AvroGenericStoreClientImplTest {
     valueSchemaEntries.put(valueSchemaId, valueSchemaStr);
 
     int nonExistingSchemaId = 2;
-    FullHttpResponse valueResponse = StoreClientTestUtils.constructStoreResponse(nonExistingSchemaId, valueStr.getBytes());
+    FullHttpResponse valueResponse =
+        StoreClientTestUtils.constructStoreResponse(nonExistingSchemaId, valueStr.getBytes());
     String storeRequestPath = "/" + someStoreClient.getRequestPathByKey(keyStr);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
     for (int i = 0; i < TEST_ITERATIONS; i++) {
       LOGGER.info("Iteration: " + i);
-      for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
+      for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
         LOGGER.trace("Execute test for transport client: " + entry.getKey());
         try {
           entry.getValue().get(keyStr).get();
         } catch (ExecutionException e) {
           Throwable cause = e.getCause();
           boolean causeOfCorrectType = cause instanceof VeniceClientException;
-          boolean correctMessage = cause.getMessage().contains("Failed to get latest value schema for store: test_store");
+          boolean correctMessage =
+              cause.getMessage().contains("Failed to get latest value schema for store: test_store");
           if (!causeOfCorrectType || !correctMessage) {
-            LOGGER.error("Received ExecutionException, as expected, but it doesn't have the right characteristics. Logging stacktrace. Client: " + entry.getKey(), e);
+            LOGGER.error(
+                "Received ExecutionException, as expected, but it doesn't have the right characteristics. Logging stacktrace. Client: "
+                    + entry.getKey(),
+                e);
           }
-          Assert.assertTrue(causeOfCorrectType, "Expected to get a VeniceClientException but instead got a " + cause.getClass().getSimpleName());
-          Assert.assertTrue(correctMessage,"Expected to get an exception message containing 'Failed to get latest value schema for store: test_store', but instead got the following message:" + cause.getMessage());
+          Assert.assertTrue(
+              causeOfCorrectType,
+              "Expected to get a VeniceClientException but instead got a " + cause.getClass().getSimpleName());
+          Assert.assertTrue(
+              correctMessage,
+              "Expected to get an exception message containing 'Failed to get latest value schema for store: test_store', but instead got the following message:"
+                  + cause.getMessage());
           continue;
         } catch (Throwable t) {
           LOGGER.error("Received a Throwable other than an ExecutionException from " + entry.getKey(), t);
           Assert.fail("Received a Throwable other than an ExecutionException! Type: " + t.getClass().getSimpleName());
         }
-        Assert.fail("There should have been a VeniceClientException by now, but did not receive any from " + entry.getKey());
+        Assert.fail(
+            "There should have been a VeniceClientException by now, but did not receive any from " + entry.getKey());
       }
     }
   }
@@ -362,7 +375,7 @@ public class AvroGenericStoreClientImplTest {
     valueResponse.headers().remove(HttpConstants.VENICE_SCHEMA_ID);
     String storeRequestPath = "/" + someStoreClient.getRequestPathByKey(keyStr);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
-    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
+    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
       LOGGER.info("Execute test for transport client: " + entry.getKey());
       try {
         entry.getValue().get(keyStr).get();
@@ -377,39 +390,32 @@ public class AvroGenericStoreClientImplTest {
   }
 
   @Test
-  public void getByStoreKeyTestWithDifferentSchemaId() throws IOException, VeniceClientException, ExecutionException, InterruptedException {
+  public void getByStoreKeyTestWithDifferentSchemaId()
+      throws IOException, VeniceClientException, ExecutionException, InterruptedException {
     Map<Integer, String> valueSchemaEntries = new HashMap<>();
     int valueSchemaId1 = 1;
-    String valueSchemaStr1 = "{\n" +
-        "\t\"type\": \"record\",\n" +
-        "\t\"name\": \"test\",\n" +
-        "\t\"fields\" : [\n" +
-        "\t \t{\"name\": \"a\", \"type\": \"long\"},\n" +
-        "\t\t{\"name\": \"b\", \"type\": \"string\"}\n" +
-        "\t]\n" +
-        "}";
+    String valueSchemaStr1 = "{\n" + "\t\"type\": \"record\",\n" + "\t\"name\": \"test\",\n" + "\t\"fields\" : [\n"
+        + "\t \t{\"name\": \"a\", \"type\": \"long\"},\n" + "\t\t{\"name\": \"b\", \"type\": \"string\"}\n" + "\t]\n"
+        + "}";
     valueSchemaEntries.put(valueSchemaId1, valueSchemaStr1);
     int valueSchemaId2 = 2;
-    String valueSchemaStr2 = "{\n" +
-        "\t\"type\": \"record\",\n" +
-        "\t\"name\": \"test\",\n" +
-        "\t\"fields\" : [\n" +
-        "\t \t{\"name\": \"a\", \"type\": \"long\"},\n" +
-        "\t\t{\"name\": \"b\", \"type\": \"string\"},\n" +
-        "\t\t{\"name\": \"c\", \"type\": \"string\", \"default\": \"c_default_value\"}\n" +
-        "\t]\n" +
-        "}";
+    String valueSchemaStr2 = "{\n" + "\t\"type\": \"record\",\n" + "\t\"name\": \"test\",\n" + "\t\"fields\" : [\n"
+        + "\t \t{\"name\": \"a\", \"type\": \"long\"},\n" + "\t\t{\"name\": \"b\", \"type\": \"string\"},\n"
+        + "\t\t{\"name\": \"c\", \"type\": \"string\", \"default\": \"c_default_value\"}\n" + "\t]\n" + "}";
     valueSchemaEntries.put(valueSchemaId2, valueSchemaStr2);
 
     // Push value schema
-    FullHttpResponse valueSchemaResponse1 = StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId1, valueSchemaStr1);
+    FullHttpResponse valueSchemaResponse1 =
+        StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId1, valueSchemaStr1);
     String valueSchemaPath1 = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/" + valueSchemaId1;
     routerServer.addResponseForUri(valueSchemaPath1, valueSchemaResponse1);
-    FullHttpResponse valueSchemaResponse2 = StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId2, valueSchemaStr2);
+    FullHttpResponse valueSchemaResponse2 =
+        StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId2, valueSchemaStr2);
     String valueSchemaPath2 = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/" + valueSchemaId2;
     routerServer.addResponseForUri(valueSchemaPath2, valueSchemaResponse2);
 
-    FullHttpResponse multiValueSchemaResponse = StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
+    FullHttpResponse multiValueSchemaResponse =
+        StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
     String multiValueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(multiValueSchemaPath, multiValueSchemaResponse);
 
@@ -434,8 +440,7 @@ public class AvroGenericStoreClientImplTest {
     String storeRequestPath2 = "/" + someStoreClient.getRequestPathByKey(key2);
     routerServer.addResponseForUri(storeRequestPath2, valueResponse2);
 
-
-    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
+    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
       LOGGER.info("Execute test for transport client: " + entry.getKey());
 
       // Query value 1 while not having encountered any schema yet.
@@ -462,10 +467,12 @@ public class AvroGenericStoreClientImplTest {
     valueSchemaEntries.put(valueSchemaId, valueSchemaStr);
 
     // Push value schema
-    FullHttpResponse valueSchemaResponse = StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId, valueSchemaStr);
+    FullHttpResponse valueSchemaResponse =
+        StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId, valueSchemaStr);
     String valueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/" + valueSchemaId;
     routerServer.addResponseForUri(valueSchemaPath, valueSchemaResponse);
-    FullHttpResponse multiValueSchemaResponse = StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
+    FullHttpResponse multiValueSchemaResponse =
+        StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
     String multiValueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(multiValueSchemaPath, multiValueSchemaResponse);
 
@@ -485,7 +492,8 @@ public class AvroGenericStoreClientImplTest {
     String valueSchemaStr = "\"string\"";
     Set<String> keys = setupSchemaAndRequest(valueSchemaId, valueSchemaStr);
     // Construct MultiGetResponse
-    RecordSerializer<Object> keySerializer = SerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(valueSchemaStr));
+    RecordSerializer<Object> keySerializer =
+        SerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(valueSchemaStr));
     List<Object> records = new ArrayList<>();
     MultiGetResponseRecordV1 dataRecord1 = new MultiGetResponseRecordV1();
     dataRecord1.keyIndex = 1;
@@ -499,14 +507,15 @@ public class AvroGenericStoreClientImplTest {
     dataRecord3.value = ByteBuffer.wrap(keySerializer.serialize("value3"));
     records.add(dataRecord3);
     // Serialize MultiGetResponse
-    RecordSerializer<Object> responseSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
+    RecordSerializer<Object> responseSerializer =
+        SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
     byte[] responseBytes = responseSerializer.serializeObjects(records);
     int responseSchemaId = 1;
 
     FullHttpResponse httpResponse = StoreClientTestUtils.constructStoreResponse(responseSchemaId, responseBytes);
     routerServer.addResponseForUri("/" + AbstractAvroStoreClient.TYPE_STORAGE + "/" + storeName, httpResponse);
 
-    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
+    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
       LOGGER.info("Execute test for transport client: " + entry.getKey());
       Map<String, Object> result = entry.getValue().batchGet(keys).get();
       Assert.assertFalse(result.containsKey("key0"));
@@ -515,7 +524,10 @@ public class AvroGenericStoreClientImplTest {
       Assert.assertEquals(result.get("key1").toString(), "value1");
       Assert.assertEquals(result.get("key3").toString(), "value3");
 
-      TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> testMetric(entry.getValue(), RequestType.MULTI_GET_STREAMING));
+      TestUtils.waitForNonDeterministicAssertion(
+          3,
+          TimeUnit.SECONDS,
+          () -> testMetric(entry.getValue(), RequestType.MULTI_GET_STREAMING));
     }
   }
 
@@ -527,11 +539,14 @@ public class AvroGenericStoreClientImplTest {
     Metric healthyRequestMetric = metrics.get(metricPrefix + "healthy_request.OccurrenceRate");
     Metric unhealthyRequestMetric = metrics.get(metricPrefix + "unhealthy_request.OccurrenceRate");
     Metric requestSerializationTimeMetric = metrics.get(metricPrefix + "request_serialization_time.Avg");
-    Metric requestSubmissionToResponseHandlingTimeMetric = metrics.get(metricPrefix + "request_submission_to_response_handling_time.Avg");
+    Metric requestSubmissionToResponseHandlingTimeMetric =
+        metrics.get(metricPrefix + "request_submission_to_response_handling_time.Avg");
     Metric responseDeserializationTimeMetric = metrics.get(metricPrefix + "response_deserialization_time.Avg");
     Metric requestSerializationTimeMetric99 = metrics.get(metricPrefix + "request_serialization_time.99thPercentile");
-    Metric requestSubmissionToResponseHandlingTimeMetric99 = metrics.get(metricPrefix + "request_submission_to_response_handling_time.99thPercentile");
-    Metric responseDeserializationTimeMetric99 = metrics.get(metricPrefix + "response_deserialization_time.99thPercentile");
+    Metric requestSubmissionToResponseHandlingTimeMetric99 =
+        metrics.get(metricPrefix + "request_submission_to_response_handling_time.99thPercentile");
+    Metric responseDeserializationTimeMetric99 =
+        metrics.get(metricPrefix + "response_deserialization_time.99thPercentile");
 
     Assert.assertTrue(requestMetric.value() > 0.0);
     Assert.assertTrue(healthyRequestMetric.value() > 0.0);
@@ -545,11 +560,10 @@ public class AvroGenericStoreClientImplTest {
      * and other {@link com.linkedin.venice.client.store.deserialization.BatchDeserializer} implementations as well.
      * To make sure the metric is available during verification, the following wait is necessary.
      */
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS,
-        () -> {
-          Double responseDeserializationTimeMetricValue = responseDeserializationTimeMetric.value();
-          Assert.assertFalse(responseDeserializationTimeMetricValue.isNaN());
-        });
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      Double responseDeserializationTimeMetricValue = responseDeserializationTimeMetric.value();
+      Assert.assertFalse(responseDeserializationTimeMetricValue.isNaN());
+    });
     Assert.assertTrue(responseDeserializationTimeMetric.value() > 0.0);
     Assert.assertTrue(responseDeserializationTimeMetric99.value() > 0.0);
 
@@ -565,7 +579,8 @@ public class AvroGenericStoreClientImplTest {
 
     int nonExistingDataSchemaId = 100;
     // Construct MultiGetResponse
-    RecordSerializer<Object> keySerializer = SerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(valueSchemaStr));
+    RecordSerializer<Object> keySerializer =
+        SerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(valueSchemaStr));
     List<Object> records = new ArrayList<>();
     MultiGetResponseRecordV1 dataRecord1 = new MultiGetResponseRecordV1();
     dataRecord1.keyIndex = 1;
@@ -574,14 +589,15 @@ public class AvroGenericStoreClientImplTest {
     records.add(dataRecord1);
 
     // Serialize MultiGetResponse
-    RecordSerializer<Object> responseSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
+    RecordSerializer<Object> responseSerializer =
+        SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
     byte[] responseBytes = responseSerializer.serializeObjects(records);
     int responseSchemaId = 1;
 
     FullHttpResponse httpResponse = StoreClientTestUtils.constructStoreResponse(responseSchemaId, responseBytes);
     routerServer.addResponseForUri("/" + AbstractAvroStoreClient.TYPE_STORAGE + "/" + storeName, httpResponse);
 
-    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
+    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
       LOGGER.info("Execute test for transport client: " + entry.getKey());
       try {
         Map<String, Object> result = entry.getValue().batchGet(keys).get(10, TimeUnit.SECONDS);
@@ -600,7 +616,8 @@ public class AvroGenericStoreClientImplTest {
     String valueSchemaStr = "\"string\"";
     Set<String> keys = new HashSet<>();
     // Construct MultiGetResponse
-    RecordSerializer<Object> keySerializer = SerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(valueSchemaStr));
+    RecordSerializer<Object> keySerializer =
+        SerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(valueSchemaStr));
     List<Object> records = new ArrayList<>();
     MultiGetResponseRecordV1 dataRecord1 = new MultiGetResponseRecordV1();
     dataRecord1.keyIndex = 1;
@@ -609,14 +626,15 @@ public class AvroGenericStoreClientImplTest {
     records.add(dataRecord1);
 
     // Serialize MultiGetResponse
-    RecordSerializer<Object> responseSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
+    RecordSerializer<Object> responseSerializer =
+        SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
     byte[] responseBytes = responseSerializer.serializeObjects(records);
     int responseSchemaId = 1;
 
     FullHttpResponse httpResponse = StoreClientTestUtils.constructStoreResponse(responseSchemaId, responseBytes);
     routerServer.addResponseForUri("/" + AbstractAvroStoreClient.TYPE_STORAGE + "/" + storeName, httpResponse);
 
-    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
+    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
       LOGGER.info("Execute test for transport client: " + entry.getKey());
       Map<String, Object> result = entry.getValue().batchGet(keys).get();
       // Batch get request with empty key set shouldn't be sent to server side

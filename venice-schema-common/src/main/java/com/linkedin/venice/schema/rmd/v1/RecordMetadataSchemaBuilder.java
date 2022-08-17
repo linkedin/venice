@@ -1,5 +1,8 @@
 package com.linkedin.venice.schema.rmd.v1;
 
+import static com.linkedin.venice.schema.rmd.v1.ReplicationMetadataSchemaGeneratorV1.*;
+import static org.apache.avro.Schema.Type.*;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.SchemaUtils;
@@ -10,9 +13,6 @@ import java.util.List;
 import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaNormalization;
-
-import static com.linkedin.venice.schema.rmd.v1.ReplicationMetadataSchemaGeneratorV1.*;
-import static org.apache.avro.Schema.Type.*;
 
 
 /**
@@ -33,8 +33,12 @@ class RecordMetadataSchemaBuilder {
 
   void setValueRecordSchema(Schema valueRecordSchema) {
     if (Utils.notNull(valueRecordSchema).getType() != Schema.Type.RECORD) {
-      throw new VeniceException(String.format("Expect schema with type %s. Got: %s with name %s",
-          Schema.Type.RECORD, valueRecordSchema.getType(), valueRecordSchema.getName()));
+      throw new VeniceException(
+          String.format(
+              "Expect schema with type %s. Got: %s with name %s",
+              Schema.Type.RECORD,
+              valueRecordSchema.getType(),
+              valueRecordSchema.getName()));
     }
     this.valueRecordSchema = valueRecordSchema;
   }
@@ -47,10 +51,13 @@ class RecordMetadataSchemaBuilder {
     if (valueRecordSchema == null) {
       throw new VeniceException("Value record schema has not been set yet");
     }
-    Schema rmdSchema = Schema.createRecord(valueRecordSchema.getName(), valueRecordSchema.getDoc(), valueRecordSchema.getNamespace(),
+    Schema rmdSchema = Schema.createRecord(
+        valueRecordSchema.getName(),
+        valueRecordSchema.getDoc(),
+        valueRecordSchema.getNamespace(),
         valueRecordSchema.isError());
     List<Schema.Field> newFields = new ArrayList<>(valueRecordSchema.getFields().size());
-    for (Schema.Field existingField : valueRecordSchema.getFields()) {
+    for (Schema.Field existingField: valueRecordSchema.getFields()) {
       newFields.add(generateMetadataField(existingField, namespace));
     }
     rmdSchema.setFields(newFields);
@@ -65,14 +72,15 @@ class RecordMetadataSchemaBuilder {
     } else if (fieldMetadataSchema.getType() == RECORD) {
       defaultValue = SchemaUtils.createGenericRecord(fieldMetadataSchema);
     } else {
-      throw new IllegalStateException("Generated field metadata schema is expected to be either of a type Long or of a "
-          + "type Record. But got schema: " + fieldMetadataSchema);
+      throw new IllegalStateException(
+          "Generated field metadata schema is expected to be either of a type Long or of a "
+              + "type Record. But got schema: " + fieldMetadataSchema);
     }
 
     return AvroCompatibilityHelper.newField(null)
         .setName(existingField.name())
         .setSchema(fieldMetadataSchema)
-        .setDoc("timestamp when " + existingField.name()  + " of the record was last updated")
+        .setDoc("timestamp when " + existingField.name() + " of the record was last updated")
         .setDefault(defaultValue)
         .setOrder(existingField.order())
         .build();
@@ -97,7 +105,8 @@ class RecordMetadataSchemaBuilder {
   }
 
   private Schema generateSchemaForMapField(Schema.Field mapField, String namespace) {
-    return normalizedSchemaToMetadataSchemaMap.computeIfAbsent(SchemaNormalization.toParsingForm(mapField.schema()),
+    return normalizedSchemaToMetadataSchemaMap.computeIfAbsent(
+        SchemaNormalization.toParsingForm(mapField.schema()),
         k -> CollectionReplicationMetadata.createCollectionTimeStampSchema(
             constructCollectionMetadataFieldSchemaName(mapField),
             namespace,
@@ -106,12 +115,12 @@ class RecordMetadataSchemaBuilder {
   }
 
   private Schema generateSchemaForArrayField(Schema.Field arrayField, String namespace) {
-    return normalizedSchemaToMetadataSchemaMap.computeIfAbsent(SchemaNormalization.toParsingForm(arrayField.schema()),
+    return normalizedSchemaToMetadataSchemaMap.computeIfAbsent(
+        SchemaNormalization.toParsingForm(arrayField.schema()),
         k -> CollectionReplicationMetadata.createCollectionTimeStampSchema(
             constructCollectionMetadataFieldSchemaName(arrayField),
             namespace,
-            arrayField.schema().getElementType()
-        ));
+            arrayField.schema().getElementType()));
   }
 
   private Schema generateSchemaForUnionField(Schema.Field unionField, String namespace) {
@@ -119,8 +128,7 @@ class RecordMetadataSchemaBuilder {
       return LONG_TYPE_TIMESTAMP_SCHEMA;
     }
     List<Schema> internalSchemas = unionField.schema().getTypes();
-    Schema actualSchema = internalSchemas.get(0).getType() == NULL ?
-        internalSchemas.get(1) : internalSchemas.get(0);
+    Schema actualSchema = internalSchemas.get(0).getType() == NULL ? internalSchemas.get(1) : internalSchemas.get(0);
 
     Schema.Field fieldWithoutNull = AvroCompatibilityHelper.newField(null)
         .setName(unionField.name())
@@ -139,6 +147,7 @@ class RecordMetadataSchemaBuilder {
     if (fieldSchemaType != ARRAY && fieldSchemaType != MAP) {
       throw new VeniceException("Not support type: " + fieldSchemaType);
     }
-    return String.format("%s_%s_%d", fieldSchemaType.getName(), COLLECTION_TS_RECORD_SUFFIX, collectionFieldSchemaNameSuffix++);
+    return String
+        .format("%s_%s_%d", fieldSchemaType.getName(), COLLECTION_TS_RECORD_SUFFIX, collectionFieldSchemaNameSuffix++);
   }
 }

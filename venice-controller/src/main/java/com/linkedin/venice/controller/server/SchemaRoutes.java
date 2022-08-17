@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
@@ -24,9 +27,6 @@ import java.util.stream.Collectors;
 import org.apache.http.HttpStatus;
 import spark.Route;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
-
 
 public class SchemaRoutes extends AbstractRoute {
   public SchemaRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
@@ -43,8 +43,7 @@ public class SchemaRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, GET_KEY_SCHEMA.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));
-        SchemaEntry keySchemaEntry = admin.getKeySchema(responseObject.getCluster(),
-            responseObject.getName());
+        SchemaEntry keySchemaEntry = admin.getKeySchema(responseObject.getCluster(), responseObject.getName());
         if (null == keySchemaEntry) {
           throw new VeniceException("Key schema doesn't exist for store: " + responseObject.getName());
         }
@@ -82,15 +81,14 @@ public class SchemaRoutes extends AbstractRoute {
               responseObject.getName(),
               request.queryParams(VALUE_SCHEMA),
               Integer.parseInt(schemaIdString),
-              false
-          );
+              false);
         } else {
           valueSchemaEntry = admin.addValueSchema(
               responseObject.getCluster(),
               responseObject.getName(),
               request.queryParams(VALUE_SCHEMA),
               SchemaEntry.DEFAULT_SCHEMA_CREATION_COMPATIBILITY_TYPE
-              // TODO: Make compat type configurable to allow force registration
+          // TODO: Make compat type configurable to allow force registration
           );
         }
         responseObject.setId(valueSchemaEntry.getId());
@@ -118,8 +116,8 @@ public class SchemaRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, ADD_DERIVED_SCHEMA.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
-        int valueSchemaId = Utils.parseIntFromString(request.queryParams(ControllerApiConstants.SCHEMA_ID),
-            "value schema id");
+        int valueSchemaId =
+            Utils.parseIntFromString(request.queryParams(ControllerApiConstants.SCHEMA_ID), "value schema id");
 
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
@@ -127,18 +125,23 @@ public class SchemaRoutes extends AbstractRoute {
         // Fail on adding derived schema if the value schema doesn't exist
         SchemaEntry valueSchemaEntry = admin.getValueSchema(clusterName, storeName, valueSchemaId);
         if (null == valueSchemaEntry) {
-          throw new VeniceException("Value schema for schema id: " + valueSchemaId + " of store: " + storeName
-              + " doesn't exist");
+          throw new VeniceException(
+              "Value schema for schema id: " + valueSchemaId + " of store: " + storeName + " doesn't exist");
         }
 
         String derivedSchemaIdString = request.queryParams(DERIVED_SCHEMA_ID);
         DerivedSchemaEntry derivedSchemaEntry;
         if (derivedSchemaIdString != null) {
           // Derived schema id is specified which suggests that the request is coming from metadata copy.
-          derivedSchemaEntry = admin.addDerivedSchema(clusterName, storeName, valueSchemaId,
-              Integer.parseInt(derivedSchemaIdString), request.queryParams(DERIVED_SCHEMA));
+          derivedSchemaEntry = admin.addDerivedSchema(
+              clusterName,
+              storeName,
+              valueSchemaId,
+              Integer.parseInt(derivedSchemaIdString),
+              request.queryParams(DERIVED_SCHEMA));
         } else {
-          derivedSchemaEntry = admin.addDerivedSchema(clusterName, storeName, valueSchemaId, request.queryParams(DERIVED_SCHEMA));
+          derivedSchemaEntry =
+              admin.addDerivedSchema(clusterName, storeName, valueSchemaId, request.queryParams(DERIVED_SCHEMA));
         }
         responseObject.setId(derivedSchemaEntry.getValueSchemaID());
         responseObject.setDerivedSchemaId(derivedSchemaEntry.getId());
@@ -162,12 +165,13 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));
         String schemaId = request.queryParams(SCHEMA_ID);
-        SchemaEntry valueSchemaEntry = admin.getValueSchema(responseObject.getCluster(),
+        SchemaEntry valueSchemaEntry = admin.getValueSchema(
+            responseObject.getCluster(),
             responseObject.getName(),
             Utils.parseIntFromString(schemaId, "schema id"));
         if (null == valueSchemaEntry) {
-          throw new VeniceException("Value schema for schema id: " + schemaId
-              + " of store: " + responseObject.getName() + " doesn't exist");
+          throw new VeniceException(
+              "Value schema for schema id: " + schemaId + " of store: " + responseObject.getName() + " doesn't exist");
         }
         responseObject.setId(valueSchemaEntry.getId());
         responseObject.setSchemaStr(valueSchemaEntry.getSchema().toString());
@@ -198,8 +202,9 @@ public class SchemaRoutes extends AbstractRoute {
         int valueSchemaId = admin.getValueSchemaId(cluster, store, schemaStr);
 
         if (SchemaData.INVALID_VALUE_SCHEMA_ID == valueSchemaId) {
-          throw new InvalidVeniceSchemaException("Can not find any registered value schema for the store " + store
-              + " that matches the schema of data being pushed.\n" + schemaStr);
+          throw new InvalidVeniceSchemaException(
+              "Can not find any registered value schema for the store " + store
+                  + " that matches the schema of data being pushed.\n" + schemaStr);
         }
 
         responseObject.setId(valueSchemaId);
@@ -231,15 +236,15 @@ public class SchemaRoutes extends AbstractRoute {
         if (SchemaData.INVALID_VALUE_SCHEMA_ID == id) {
           Pair<Integer, Integer> idPair = admin.getDerivedSchemaId(cluster, store, schemaStr);
           if (SchemaData.INVALID_VALUE_SCHEMA_ID == idPair.getFirst()) {
-            throw new VeniceException("Can not find any registered derived schema for the store " + store +
-                " that matches the schema of data being pushed. mismatched derived schema: \n" + schemaStr);
+            throw new VeniceException(
+                "Can not find any registered derived schema for the store " + store
+                    + " that matches the schema of data being pushed. mismatched derived schema: \n" + schemaStr);
           }
           responseObject.setId(idPair.getFirst());
           responseObject.setDerivedSchemaId(idPair.getSecond());
         } else {
           responseObject.setId(id);
         }
-
 
       } catch (Throwable e) {
         responseObject.setError(e);
@@ -248,7 +253,6 @@ public class SchemaRoutes extends AbstractRoute {
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }
-
 
   // Route to handle retrieving all value schema for a given store
   public Route getAllValueSchema(Admin admin) {
@@ -270,7 +274,7 @@ public class SchemaRoutes extends AbstractRoute {
         int schemaNum = valueSchemaEntries.size();
         MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[schemaNum];
         int cur = 0;
-        for (SchemaEntry entry : valueSchemaEntries) {
+        for (SchemaEntry entry: valueSchemaEntries) {
           schemas[cur] = new MultiSchemaResponse.Schema();
           schemas[cur].setId(entry.getId());
           schemas[cur].setSchemaStr(entry.getSchema().toString());
@@ -346,11 +350,12 @@ public class SchemaRoutes extends AbstractRoute {
         int schemaId = Utils.parseIntFromString(request.queryParams(SCHEMA_ID), "schema id");
         int derivedSchemaId = Utils.parseIntFromString(request.queryParams(DERIVED_SCHEMA_ID), "derived schema id");
 
-        DerivedSchemaEntry
-            removedDerivedSchemaEntry = admin.removeDerivedSchema(cluster, store, schemaId, derivedSchemaId);
+        DerivedSchemaEntry removedDerivedSchemaEntry =
+            admin.removeDerivedSchema(cluster, store, schemaId, derivedSchemaId);
         if (null == removedDerivedSchemaEntry) {
           throw new VeniceException(
-              "Derived schema for schema id: " + schemaId + " of store: " + responseObject.getName() + " doesn't exist");
+              "Derived schema for schema id: " + schemaId + " of store: " + responseObject.getName()
+                  + " doesn't exist");
         }
 
         responseObject.setCluster(cluster);
@@ -382,7 +387,7 @@ public class SchemaRoutes extends AbstractRoute {
                 .collect(Collectors.toList());
         MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[valueSchemaEntries.size()];
         int cur = 0;
-        for (SchemaEntry entry : valueSchemaEntries) {
+        for (SchemaEntry entry: valueSchemaEntries) {
           schemas[cur] = new MultiSchemaResponse.Schema();
           schemas[cur].setId(entry.getId());
           schemas[cur].setSchemaStr(entry.getSchema().toString());

@@ -1,5 +1,7 @@
 package com.linkedin.davinci.writecompute;
 
+import static com.linkedin.venice.schema.rmd.v1.CollectionReplicationMetadata.*;
+
 import com.linkedin.venice.schema.SchemaUtils;
 import java.util.List;
 import org.apache.avro.Schema;
@@ -7,7 +9,6 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang.Validate;
 
-import static com.linkedin.venice.schema.rmd.v1.CollectionReplicationMetadata.*;
 
 /**
  * This class should only be used in tests for write compute to generate timestamp replication metadata generic record
@@ -15,7 +16,6 @@ import static com.linkedin.venice.schema.rmd.v1.CollectionReplicationMetadata.*;
  *
  */
 public class CollectionTimestampBuilder {
-
   private final static int DEFAULT_CAPACITY = 10;
 
   private Schema collectionTimestampSchema;
@@ -29,9 +29,11 @@ public class CollectionTimestampBuilder {
   public CollectionTimestampBuilder(Schema elementSchema) {
     this.collectionTimestampSchema = null;
     this.topLevelFieldTimestamp = 0L;
-    this.activeElementTimestamps = new GenericData.Array<>(DEFAULT_CAPACITY, Schema.createArray(Schema.create(Schema.Type.LONG)));
+    this.activeElementTimestamps =
+        new GenericData.Array<>(DEFAULT_CAPACITY, Schema.createArray(Schema.create(Schema.Type.LONG)));
     this.deletedElements = new GenericData.Array<>(DEFAULT_CAPACITY, Schema.createArray(elementSchema));
-    this.deletedTimestamps = new GenericData.Array<>(DEFAULT_CAPACITY, Schema.createArray(Schema.create(Schema.Type.LONG)));
+    this.deletedTimestamps =
+        new GenericData.Array<>(DEFAULT_CAPACITY, Schema.createArray(Schema.create(Schema.Type.LONG)));
   }
 
   public void setCollectionTimestampSchema(Schema collectionTimestampSchema) {
@@ -59,14 +61,15 @@ public class CollectionTimestampBuilder {
 
   public void setActiveElementsTimestamps(List<Long> activeElementsTimestamps) {
     long prevTs = Long.MIN_VALUE;
-    for (long ts : activeElementsTimestamps) {
+    for (long ts: activeElementsTimestamps) {
       if (ts < prevTs) {
         throw new IllegalArgumentException("Expect active element timestamps to be an increasing sequence.");
       }
       prevTs = ts;
     }
 
-    this.activeElementTimestamps = new GenericData.Array<>(Schema.createArray(Schema.create(Schema.Type.LONG)), activeElementsTimestamps);
+    this.activeElementTimestamps =
+        new GenericData.Array<>(Schema.createArray(Schema.create(Schema.Type.LONG)), activeElementsTimestamps);
   }
 
   public void setDeletedElements(Schema elementSchema, List<Object> deletedElements) {
@@ -74,7 +77,8 @@ public class CollectionTimestampBuilder {
   }
 
   public void setDeletedElementTimestamps(List<Long> deletedElementTimestamps) {
-    this.deletedTimestamps = new GenericData.Array<>(Schema.createArray(Schema.create(Schema.Type.LONG)), deletedElementTimestamps);
+    this.deletedTimestamps =
+        new GenericData.Array<>(Schema.createArray(Schema.create(Schema.Type.LONG)), deletedElementTimestamps);
   }
 
   public GenericRecord build() {
@@ -83,16 +87,17 @@ public class CollectionTimestampBuilder {
     }
 
     if (deletedElements.size() != deletedTimestamps.size()) {
-      throw new IllegalStateException("Expect deleted elements and deleted timestamps to have the same number of elements.");
+      throw new IllegalStateException(
+          "Expect deleted elements and deleted timestamps to have the same number of elements.");
     }
 
-    for (long ts : activeElementTimestamps) {
+    for (long ts: activeElementTimestamps) {
       if (ts < topLevelFieldTimestamp) {
         throw new IllegalStateException("Active element timestamp cannot be smaller than the top level timestamp.");
       }
     }
 
-    for (long ts : deletedTimestamps) {
+    for (long ts: deletedTimestamps) {
       if (ts < topLevelFieldTimestamp) {
         throw new IllegalStateException("Deleted element timestamp cannot be smaller than the top level timestamp.");
       }

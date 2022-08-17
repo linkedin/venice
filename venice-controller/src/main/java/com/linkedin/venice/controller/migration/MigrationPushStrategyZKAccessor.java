@@ -53,8 +53,9 @@ public class MigrationPushStrategyZKAccessor {
     try {
       MigrationPushStrategy.valueOf(pushStrategyStr);
     } catch (IllegalArgumentException iae) {
-      throw new VeniceException("Invalid push strategy: " + pushStrategyStr + ", should be one of the following: ["
-      + MigrationPushStrategy.getAllEnumString() + "]");
+      throw new VeniceException(
+          "Invalid push strategy: " + pushStrategyStr + ", should be one of the following: ["
+              + MigrationPushStrategy.getAllEnumString() + "]");
     }
     LOGGER.info("Setup push strategy: " + pushStrategyStr + " for Voldemort store: " + voldemortStoreName);
 

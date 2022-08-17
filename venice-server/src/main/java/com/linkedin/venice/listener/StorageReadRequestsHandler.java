@@ -128,23 +128,26 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     final ByteBuffer reusedByteBuffer = ByteBuffer.allocate(1024 * 1024);
 
     // LRU cache for storing schema->record map for object reuse of value and result record
-    final LinkedHashMap<Schema, GenericRecord> reuseValueRecordMap = new LinkedHashMap<Schema, GenericRecord>(100, 0.75f, true){
-      protected boolean removeEldestEntry(Map.Entry <Schema, GenericRecord> eldest) {
-        return size() > 100;
-      }
-    };
+    final LinkedHashMap<Schema, GenericRecord> reuseValueRecordMap =
+        new LinkedHashMap<Schema, GenericRecord>(100, 0.75f, true) {
+          protected boolean removeEldestEntry(Map.Entry<Schema, GenericRecord> eldest) {
+            return size() > 100;
+          }
+        };
 
-    final LinkedHashMap<Schema, GenericRecord> reuseResultRecordMap = new LinkedHashMap<Schema, GenericRecord>(100, 0.75f, true){
-      protected boolean removeEldestEntry(Map.Entry <Schema, GenericRecord> eldest) {
-        return size() > 100;
-      }
-    };
+    final LinkedHashMap<Schema, GenericRecord> reuseResultRecordMap =
+        new LinkedHashMap<Schema, GenericRecord>(100, 0.75f, true) {
+          protected boolean removeEldestEntry(Map.Entry<Schema, GenericRecord> eldest) {
+            return size() > 100;
+          }
+        };
 
     final BinaryDecoder binaryDecoder =
         AvroCompatibilityHelper.newBinaryDecoder(BINARY_DECODER_PARAM, 0, BINARY_DECODER_PARAM.length, null);
   }
-  private final ThreadLocal<StorageExecReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(
-      StorageExecReusableObjects::new);
+
+  private final ThreadLocal<StorageExecReusableObjects> threadLocalReusableObjects =
+      ThreadLocal.withInitial(StorageExecReusableObjects::new);
 
   public StorageReadRequestsHandler(
       ThreadPoolExecutor executor,
@@ -152,9 +155,13 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       StorageEngineRepository storageEngineRepository,
       ReadOnlyStoreRepository metadataStoreRepository,
       ReadOnlySchemaRepository schemaRepository,
-      MetadataRetriever metadataRetriever, DiskHealthCheckService healthCheckService,
-      boolean fastAvroEnabled, boolean parallelBatchGetEnabled, int parallelBatchGetChunkSize,
-      VeniceServerConfig serverConfig, StorageEngineBackedCompressorFactory compressorFactory,
+      MetadataRetriever metadataRetriever,
+      DiskHealthCheckService healthCheckService,
+      boolean fastAvroEnabled,
+      boolean parallelBatchGetEnabled,
+      int parallelBatchGetChunkSize,
+      VeniceServerConfig serverConfig,
+      StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ResourceReadUsageTracker> resourceReadUsageTracker) {
     this.executor = executor;
     this.computeExecutor = computeExecutor;
@@ -203,8 +210,12 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       // Check before putting the request to the intermediate queue
       if (request.shouldRequestBeTerminatedEarly()) {
         // Try to make the response short
-        VeniceRequestEarlyTerminationException earlyTerminationException = new VeniceRequestEarlyTerminationException(request.getStoreName());
-        context.writeAndFlush(new HttpShortcutResponse(earlyTerminationException.getMessage(), earlyTerminationException.getHttpResponseStatus()));
+        VeniceRequestEarlyTerminationException earlyTerminationException =
+            new VeniceRequestEarlyTerminationException(request.getStoreName());
+        context.writeAndFlush(
+            new HttpShortcutResponse(
+                earlyTerminationException.getMessage(),
+                earlyTerminationException.getHttpResponseStatus()));
         return;
       }
       /**
@@ -214,14 +225,19 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
        */
       if (parallelBatchGetEnabled && request.getRequestType().equals(RequestType.MULTI_GET)) {
         handleMultiGetRequestInParallel((MultiGetRouterRequestWrapper) request, parallelBatchGetChunkSize)
-            .whenComplete( (v, e) -> {
+            .whenComplete((v, e) -> {
               if (e != null) {
                 if (e instanceof VeniceRequestEarlyTerminationException) {
-                  VeniceRequestEarlyTerminationException earlyTerminationException = (VeniceRequestEarlyTerminationException)e;
-                  context.writeAndFlush(new HttpShortcutResponse(earlyTerminationException.getMessage(), earlyTerminationException.getHttpResponseStatus()));
+                  VeniceRequestEarlyTerminationException earlyTerminationException =
+                      (VeniceRequestEarlyTerminationException) e;
+                  context.writeAndFlush(
+                      new HttpShortcutResponse(
+                          earlyTerminationException.getMessage(),
+                          earlyTerminationException.getHttpResponseStatus()));
                 } else {
                   logger.error("Exception thrown in parallel batch get for " + request.getResourceName(), e);
-                  context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
+                  context.writeAndFlush(
+                      new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
                 }
               } else {
                 context.writeAndFlush(v);
@@ -271,8 +287,13 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       if (diskHealthCheckService.isDiskHealthy()) {
         context.writeAndFlush(new HttpShortcutResponse("OK", HttpResponseStatus.OK));
       } else {
-        context.writeAndFlush(new HttpShortcutResponse("Venice storage node hardware is not healthy!", HttpResponseStatus.INTERNAL_SERVER_ERROR));
-        logger.error("Disk is not healthy according to the disk health check service: " + diskHealthCheckService.getErrorMessage());
+        context.writeAndFlush(
+            new HttpShortcutResponse(
+                "Venice storage node hardware is not healthy!",
+                HttpResponseStatus.INTERNAL_SERVER_ERROR));
+        logger.error(
+            "Disk is not healthy according to the disk health check service: "
+                + diskHealthCheckService.getErrorMessage());
       }
     } else if (message instanceof DictionaryFetchRequest) {
       BinaryResponse response = handleDictionaryFetchRequest((DictionaryFetchRequest) message);
@@ -281,8 +302,10 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       AdminResponse response = handleServerAdminRequest((AdminRequest) message);
       context.writeAndFlush(response);
     } else {
-      context.writeAndFlush(new HttpShortcutResponse("Unrecognized object in StorageExecutionHandler",
-          HttpResponseStatus.INTERNAL_SERVER_ERROR));
+      context.writeAndFlush(
+          new HttpShortcutResponse(
+              "Unrecognized object in StorageExecutionHandler",
+              HttpResponseStatus.INTERNAL_SERVER_ERROR));
     }
   }
 
@@ -298,7 +321,11 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     }
   }
 
-  private int getSubPartitionId(int userPartition, String resourceName, PartitionerConfig partitionerConfig, byte[] keyBytes) {
+  private int getSubPartitionId(
+      int userPartition,
+      String resourceName,
+      PartitionerConfig partitionerConfig,
+      byte[] keyBytes) {
     if (partitionerConfig == null || partitionerConfig.getAmplificationFactor() == 1) {
       return userPartition;
     }
@@ -308,8 +335,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
         partitionerParams.putAll(partitionerConfig.getPartitionerParams());
       }
       // specify amplificationFactor as 1 to avoid using UserPartitionAwarePartitioner
-      return PartitionUtils.getVenicePartitioner(partitionerConfig.getPartitionerClass(),
-          1, new VeniceProperties(partitionerParams));
+      return PartitionUtils
+          .getVenicePartitioner(partitionerConfig.getPartitionerClass(), 1, new VeniceProperties(partitionerParams));
     });
     int subPartitionOffset = venicePartitioner.getPartitionId(keyBytes, partitionerConfig.getAmplificationFactor());
     int subPartition = userPartition * partitionerConfig.getAmplificationFactor() + subPartitionOffset;
@@ -337,8 +364,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
 
   private ReadResponse handleSingleGetRequest(GetRouterRequest request) {
     PartitionerConfig partitionerConfig = getPartitionerConfig(request.getResourceName());
-    int subPartition = getSubPartitionId(request.getPartition(), request.getResourceName(),
-        partitionerConfig, request.getKeyBytes());
+    int subPartition =
+        getSubPartitionId(request.getPartition(), request.getResourceName(), partitionerConfig, request.getKeyBytes());
     String topic = request.getResourceName();
     byte[] key = request.getKeyBytes();
     boolean isChunked = metadataRetriever.isStoreVersionChunked(topic);
@@ -359,7 +386,9 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     return response;
   }
 
-  private CompletableFuture<ReadResponse> handleMultiGetRequestInParallel(MultiGetRouterRequestWrapper request, int parallelChunkSize) {
+  private CompletableFuture<ReadResponse> handleMultiGetRequestInParallel(
+      MultiGetRouterRequestWrapper request,
+      int parallelChunkSize) {
     String topic = request.getResourceName();
     Iterable<MultiGetRouterRequestKeyV1> keys = request.getKeys();
     AbstractStorageEngine store = storageEngineRepository.getLocalStorageEngine(topic);
@@ -373,18 +402,18 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     if (!(keys instanceof ArrayList)) {
       throw new VeniceException("'keys' in MultiGetResponseWrapper should be an ArrayList");
     }
-    final ArrayList<MultiGetRouterRequestKeyV1> keyList = (ArrayList)keys;
+    final ArrayList<MultiGetRouterRequestKeyV1> keyList = (ArrayList) keys;
     int totalKeyNum = keyList.size();
-    int splitSize = (int)Math.ceil((double)totalKeyNum / parallelChunkSize);
+    int splitSize = (int) Math.ceil((double) totalKeyNum / parallelChunkSize);
 
     ReentrantLock requestLock = new ReentrantLock();
     CompletableFuture[] chunkFutures = new CompletableFuture[splitSize];
     PartitionerConfig partitionerConfig = getPartitionerConfig(request.getResourceName());
 
-    Optional<List<Integer>> optionalKeyList =  keyValueProfilingEnabled
-        ? Optional.of(new ArrayList<>(totalKeyNum)) : Optional.empty();
-    Optional<List<Integer>> optionalValueList = keyValueProfilingEnabled
-        ? Optional.of(new ArrayList<>(totalKeyNum)) : Optional.empty();
+    Optional<List<Integer>> optionalKeyList =
+        keyValueProfilingEnabled ? Optional.of(new ArrayList<>(totalKeyNum)) : Optional.empty();
+    Optional<List<Integer>> optionalValueList =
+        keyValueProfilingEnabled ? Optional.of(new ArrayList<>(totalKeyNum)) : Optional.empty();
 
     for (int cur = 0; cur < splitSize; ++cur) {
       final int finalCur = cur;
@@ -397,8 +426,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
         for (int subChunkCur = startPos; subChunkCur < endPos; ++subChunkCur) {
           final MultiGetRouterRequestKeyV1 key = keyList.get(subChunkCur);
           optionalKeyList.ifPresent(list -> list.add(key.keyBytes.remaining()));
-          int subPartitionId = getSubPartitionId(key.partitionId, request.getResourceName(),
-              partitionerConfig, key.keyBytes.array());
+          int subPartitionId =
+              getSubPartitionId(key.partitionId, request.getResourceName(), partitionerConfig, key.keyBytes.array());
           MultiGetResponseRecordV1 record =
               BatchGetChunkingAdapter.get(store, subPartitionId, key.keyBytes, isChunked, responseWrapper);
           if (null == record) {
@@ -453,9 +482,9 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     responseWrapper.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
     responseWrapper.setDatabaseLookupLatency(0);
     boolean isChunked = metadataRetriever.isStoreVersionChunked(topic);
-    for (MultiGetRouterRequestKeyV1 key : keys) {
-      int subPartitionId = getSubPartitionId(key.partitionId, request.getResourceName(),
-          partitionerConfig, key.keyBytes.array());
+    for (MultiGetRouterRequestKeyV1 key: keys) {
+      int subPartitionId =
+          getSubPartitionId(key.partitionId, request.getResourceName(), partitionerConfig, key.keyBytes.array());
       MultiGetResponseRecordV1 record =
           BatchGetChunkingAdapter.get(store, subPartitionId, key.keyBytes, isChunked, responseWrapper);
       if (null == record) {
@@ -502,7 +531,11 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     if (computeResultSchema == null) {
       computeResultSchema = Schema.parse(computeResultSchemaStr.toString());
       // sanity check on the result schema
-      ComputeUtils.checkResultSchema(computeResultSchema, valueSchema, computeRequestWrapper.getComputeRequestVersion(), computeRequestWrapper.getOperations());
+      ComputeUtils.checkResultSchema(
+          computeResultSchema,
+          valueSchema,
+          computeRequestWrapper.getComputeRequestVersion(),
+          computeRequestWrapper.getOperations());
       computeResultSchemaCache.putIfAbsent(computeResultSchemaStr, computeResultSchema);
     }
 
@@ -520,9 +553,11 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
 
     StorageExecReusableObjects reusableObjects = threadLocalReusableObjects.get();
 
-    GenericRecord reuseValueRecord = reusableObjects.reuseValueRecordMap.computeIfAbsent(valueSchema, k -> new GenericData.Record(valueSchema));
+    GenericRecord reuseValueRecord =
+        reusableObjects.reuseValueRecordMap.computeIfAbsent(valueSchema, k -> new GenericData.Record(valueSchema));
     Schema finalComputeResultSchema1 = computeResultSchema;
-    GenericRecord reuseResultRecord =  reusableObjects.reuseResultRecordMap.computeIfAbsent(computeResultSchema, k -> new GenericData.Record(finalComputeResultSchema1));
+    GenericRecord reuseResultRecord = reusableObjects.reuseResultRecordMap
+        .computeIfAbsent(computeResultSchema, k -> new GenericData.Record(finalComputeResultSchema1));
 
     // Reuse the same value record and result record instances for all values
     ByteBuffer reusedRawValue = null;
@@ -538,29 +573,29 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     }
 
     Map<String, Object> globalContext = new HashMap<>();
-    for (ComputeRouterRequestKeyV1 key : keys) {
+    for (ComputeRouterRequestKeyV1 key: keys) {
       clearFieldsInReusedRecord(reuseResultRecord, computeResultSchema);
-      int subPartitionId = getSubPartitionId(key.partitionId, request.getResourceName(),
-          partitionerConfig, key.keyBytes.array());
-      ComputeResponseRecordV1 record = computeResult(store,
-                                                     storeName,
-                                                     key.keyBytes,
-                                                     key.keyIndex,
-                                                     subPartitionId,
-                                                     computeRequestWrapper.getComputeRequestVersion(),
-                                                     computeRequestWrapper.getOperations(),
-                                                     compressionStrategy,
-                                                     computeResultSchema,
-                                                     resultSerializer,
-                                                     reuseValueRecord,
-                                                     reuseResultRecord,
-                                                     reusableObjects,
-                                                     isChunked,
-                                                     request.isStreamingRequest(),
-                                                     responseWrapper,
-                                                     globalContext,
-                                                     reusedRawValue
-                                                     );
+      int subPartitionId =
+          getSubPartitionId(key.partitionId, request.getResourceName(), partitionerConfig, key.keyBytes.array());
+      ComputeResponseRecordV1 record = computeResult(
+          store,
+          storeName,
+          key.keyBytes,
+          key.keyIndex,
+          subPartitionId,
+          computeRequestWrapper.getComputeRequestVersion(),
+          computeRequestWrapper.getOperations(),
+          compressionStrategy,
+          computeResultSchema,
+          resultSerializer,
+          reuseValueRecord,
+          reuseResultRecord,
+          reusableObjects,
+          isChunked,
+          request.isStreamingRequest(),
+          responseWrapper,
+          globalContext,
+          reusedRawValue);
       if (null != record) {
         // TODO: streaming support in storage node
         responseWrapper.addRecord(record);
@@ -605,14 +640,36 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
 
     switch (rocksDBComputeAccessMode) {
       case SINGLE_GET:
-        reuseValueRecord =
-            GenericRecordChunkingAdapter.INSTANCE.get(store, partition, key, isChunked, reuseValueRecord,
-                reusableObjects.binaryDecoder, response, compressionStrategy, fastAvroEnabled, this.schemaRepo, storeName, compressorFactory,
-                false);
+        reuseValueRecord = GenericRecordChunkingAdapter.INSTANCE.get(
+            store,
+            partition,
+            key,
+            isChunked,
+            reuseValueRecord,
+            reusableObjects.binaryDecoder,
+            response,
+            compressionStrategy,
+            fastAvroEnabled,
+            this.schemaRepo,
+            storeName,
+            compressorFactory,
+            false);
         break;
       case SINGLE_GET_WITH_REUSE:
-        reuseValueRecord = GenericRecordChunkingAdapter.INSTANCE.get(storeName, store, partition, ByteUtils.extractByteArray(key),
-          reuseRawValue, reuseValueRecord, reusableObjects.binaryDecoder, isChunked, compressionStrategy, fastAvroEnabled, this.schemaRepo, response, compressorFactory);
+        reuseValueRecord = GenericRecordChunkingAdapter.INSTANCE.get(
+            storeName,
+            store,
+            partition,
+            ByteUtils.extractByteArray(key),
+            reuseRawValue,
+            reuseValueRecord,
+            reusableObjects.binaryDecoder,
+            isChunked,
+            compressionStrategy,
+            fastAvroEnabled,
+            this.schemaRepo,
+            response,
+            compressorFactory);
         break;
       default:
         throw new VeniceException("Unknown rocksDB compute storage operation");
@@ -634,25 +691,28 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     Map<String, String> computationErrorMap = new HashMap<>();
 
     // go through all operation
-    for (ComputeOperation operation : operations) {
+    for (ComputeOperation operation: operations) {
       ReadComputeOperator operator = ComputeOperationType.valueOf(operation).getOperator();
       String fieldName = operator.getOperatorFieldName(operation);
-      String errorMessage = ComputeOperationUtils.validateNullableFieldAndGetErrorMsg(
-          operator,
-          reuseValueRecord,
-          fieldName
-      ).orElse(null);
+      String errorMessage =
+          ComputeOperationUtils.validateNullableFieldAndGetErrorMsg(operator, reuseValueRecord, fieldName).orElse(null);
       if (errorMessage != null) {
         operator.putDefaultResult(reuseResultRecord, operator.getResultFieldName(operation));
         computationErrorMap.put(operator.getResultFieldName(operation), errorMessage);
         continue;
       }
       incrementOperatorCount(response, operation);
-      operator.compute(computeRequestVersion, operation, reuseValueRecord, reuseResultRecord, computationErrorMap, globalContext);
+      operator.compute(
+          computeRequestVersion,
+          operation,
+          reuseValueRecord,
+          reuseResultRecord,
+          computationErrorMap,
+          globalContext);
     }
 
     // fill the empty field in result schema
-    for (Schema.Field field : computeResultSchema.getFields()) {
+    for (Schema.Field field: computeResultSchema.getFields()) {
       if (reuseResultRecord.get(field.pos()) == null) {
         if (field.name().equals(VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)) {
           reuseResultRecord.put(field.pos(), computationErrorMap);
@@ -681,7 +741,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       case DUMP_INGESTION_STATE:
         String topicName = adminRequest.getStoreVersion();
         Integer partitionId = adminRequest.getPartition();
-        ComplementSet<Integer> partitions = (partitionId == null) ? ComplementSet.universalSet() : ComplementSet.of(partitionId);
+        ComplementSet<Integer> partitions =
+            (partitionId == null) ? ComplementSet.universalSet() : ComplementSet.of(partitionId);
         AdminResponse response = metadataRetriever.getConsumptionSnapshots(topicName, partitions);
         return response;
       case DUMP_SERVER_CONFIGS:
@@ -698,8 +759,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     }
   }
 
-  private void incrementOperatorCount(ComputeResponseWrapper response, ComputeOperation operation){
-    switch(ComputeOperationType.valueOf(operation)){
+  private void incrementOperatorCount(ComputeResponseWrapper response, ComputeOperation operation) {
+    switch (ComputeOperationType.valueOf(operation)) {
       case DOT_PRODUCT:
         response.incrementDotProductCount();
         break;

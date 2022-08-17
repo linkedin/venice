@@ -1,9 +1,9 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.serialization.avro.MapOrderingPreservingSerDeFactory;
-import com.linkedin.venice.schema.merge.MergeRecordHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.schema.merge.MergeRecordHelper;
 import com.linkedin.venice.schema.writecompute.WriteComputeProcessor;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaValidator;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
@@ -13,11 +13,10 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Optional;
+import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang.Validate;
-
-import javax.annotation.Nonnull;
 
 
 /**
@@ -31,7 +30,10 @@ public class StoreWriteComputeProcessor {
   private final Map<SchemaIds, ValueAndWriteComputeSchemas> schemaIdsToSchemasMap;
   private final Map<Schema, AvroSerializer<GenericRecord>> valueSchemaSerializerMap;
 
-  public StoreWriteComputeProcessor(@Nonnull String storeName, @Nonnull ReadOnlySchemaRepository schemaRepo, MergeRecordHelper mergeRecordHelper) {
+  public StoreWriteComputeProcessor(
+      @Nonnull String storeName,
+      @Nonnull ReadOnlySchemaRepository schemaRepo,
+      MergeRecordHelper mergeRecordHelper) {
     Validate.notEmpty(storeName);
     Validate.notNull(schemaRepo);
     this.storeName = storeName;
@@ -54,16 +56,19 @@ public class StoreWriteComputeProcessor {
    *
    * @return Serialized bytes from the write-compute-updated original value.
    */
-  public byte[] applyWriteCompute(Optional<GenericRecord> currValue, int writerValueSchemaId, int readerValueSchemaId, ByteBuffer writeComputeBytes, int writeComputeSchemaId) {
+  public byte[] applyWriteCompute(
+      Optional<GenericRecord> currValue,
+      int writerValueSchemaId,
+      int readerValueSchemaId,
+      ByteBuffer writeComputeBytes,
+      int writeComputeSchemaId) {
     GenericRecord writeComputeRecord = deserializeWriteComputeRecord(
-        writeComputeBytes, writerValueSchemaId, readerValueSchemaId, writeComputeSchemaId
-    );
+        writeComputeBytes,
+        writerValueSchemaId,
+        readerValueSchemaId,
+        writeComputeSchemaId);
     Schema valueSchema = getValueSchema(readerValueSchemaId);
-    GenericRecord updatedValue = writeComputeProcessor.updateRecord(
-        valueSchema,
-        currValue,
-        writeComputeRecord
-    );
+    GenericRecord updatedValue = writeComputeProcessor.updateRecord(valueSchema, currValue, writeComputeRecord);
 
     // If write compute is enabled and the record is deleted, the updatedValue will be null.
     if (updatedValue == null) {
@@ -87,15 +92,17 @@ public class StoreWriteComputeProcessor {
       ByteBuffer writeComputeBytes,
       int writerValueSchemaId,
       int readerValueSchemaId,
-      int writeComputeSchemaId
-  ) {
-    Schema writerSchema = getValueAndWriteComputeSchemas(writerValueSchemaId, writeComputeSchemaId).getWriteComputeSchema();
-    Schema readerSchema = getValueAndWriteComputeSchemas(readerValueSchemaId, writeComputeSchemaId).getWriteComputeSchema();
+      int writeComputeSchemaId) {
+    Schema writerSchema =
+        getValueAndWriteComputeSchemas(writerValueSchemaId, writeComputeSchemaId).getWriteComputeSchema();
+    Schema readerSchema =
+        getValueAndWriteComputeSchemas(readerValueSchemaId, writeComputeSchemaId).getWriteComputeSchema();
 
     // Map in write compute needs to have consistent ordering. On the sender side, users may not care about ordering
     // in their maps. However, on the receiver side, we still want to make sure that the same serialized map bytes
     // always get deserialized into maps with the same entry ordering.
-    AvroGenericDeserializer<GenericRecord> deserializer = MapOrderingPreservingSerDeFactory.getDeserializer(writerSchema, readerSchema);
+    AvroGenericDeserializer<GenericRecord> deserializer =
+        MapOrderingPreservingSerDeFactory.getDeserializer(writerSchema, readerSchema);
     return deserializer.deserialize(writeComputeBytes);
   }
 
@@ -106,8 +113,8 @@ public class StoreWriteComputeProcessor {
   private Schema getValueSchema(int valueSchemaId) {
     Schema valueSchema = schemaRepo.getValueSchema(storeName, valueSchemaId).getSchema();
     if (valueSchema == null) {
-      throw new VeniceException(String.format("Cannot find value schema for store: %s, value schema id: %d",
-          storeName, valueSchemaId));
+      throw new VeniceException(
+          String.format("Cannot find value schema for store: %s, value schema id: %d", storeName, valueSchemaId));
     }
     return valueSchema;
   }
@@ -115,8 +122,12 @@ public class StoreWriteComputeProcessor {
   private Schema getWriteComputeSchema(int valueSchemaId, int writeComputeSchemaId) {
     Schema writeComputeSchema = schemaRepo.getDerivedSchema(storeName, valueSchemaId, writeComputeSchemaId).getSchema();
     if (writeComputeSchema == null) {
-      throw new VeniceException(String.format("Cannot find write-compute schema for store: %s, value schema id: %d,"
-          + " write-compute schema id: %d", storeName, valueSchemaId, writeComputeSchemaId));
+      throw new VeniceException(
+          String.format(
+              "Cannot find write-compute schema for store: %s, value schema id: %d," + " write-compute schema id: %d",
+              storeName,
+              valueSchemaId,
+              writeComputeSchemaId));
     }
     return writeComputeSchema;
   }
@@ -133,7 +144,8 @@ public class StoreWriteComputeProcessor {
       this.writeComputeSchemaId = writeComputeSchemaId;
     }
 
-    @Override public int hashCode() {
+    @Override
+    public int hashCode() {
       return Pair.calculateHashCode(valueSchemaId, writeComputeSchemaId);
     }
 
@@ -145,7 +157,8 @@ public class StoreWriteComputeProcessor {
       if (other == null || getClass() != other.getClass()) {
         return false;
       }
-      return this.valueSchemaId == ((SchemaIds) other).valueSchemaId && this.writeComputeSchemaId == ((SchemaIds) other).writeComputeSchemaId;
+      return this.valueSchemaId == ((SchemaIds) other).valueSchemaId
+          && this.writeComputeSchemaId == ((SchemaIds) other).writeComputeSchemaId;
     }
   }
 

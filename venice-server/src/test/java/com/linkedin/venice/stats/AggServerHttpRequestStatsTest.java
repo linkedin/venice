@@ -9,6 +9,7 @@ import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
+
 public class AggServerHttpRequestStatsTest {
   protected MetricsRepository metricsRepository;
   protected MockTehutiReporter reporter;
@@ -44,11 +45,14 @@ public class AggServerHttpRequestStatsTest {
     singleGetStats.recordErrorRequest(STORE_FOO);
     singleGetStats.recordErrorRequest();
 
-    Assert.assertTrue(reporter.query("." + STORE_FOO + "--success_request.OccurrenceRate").value() > 0,
+    Assert.assertTrue(
+        reporter.query("." + STORE_FOO + "--success_request.OccurrenceRate").value() > 0,
         "success_request rate should be positive");
-    Assert.assertTrue(reporter.query(".total--error_request.OccurrenceRate").value() > 0,
+    Assert.assertTrue(
+        reporter.query(".total--error_request.OccurrenceRate").value() > 0,
         "error_request rate should be positive");
-    Assert.assertTrue(reporter.query(".total--success_request_ratio.RatioStat").value() > 0,
+    Assert.assertTrue(
+        reporter.query(".total--success_request_ratio.RatioStat").value() > 0,
         "success_request_ratio should be positive");
   }
 
@@ -58,11 +62,13 @@ public class AggServerHttpRequestStatsTest {
     String storeName = "storeName";
     Percentiles percentiles = TehutiUtils.getPercentileStatForNetworkLatency(sensorName, storeName);
     percentiles.stats().stream().map(namedMeasurable -> namedMeasurable.name()).forEach(System.out::println);
-    String[] percentileStrings = new String[]{"50", "77", "90", "95", "99", "99_9"};
+    String[] percentileStrings = new String[] { "50", "77", "90", "95", "99", "99_9" };
 
     for (int i = 0; i < percentileStrings.length; i++) {
       String expectedName = sensorName + "--" + storeName + "." + percentileStrings[i] + "thPercentile";
-      Assert.assertTrue(percentiles.stats().stream()
+      Assert.assertTrue(
+          percentiles.stats()
+              .stream()
               .map(namedMeasurable -> namedMeasurable.name())
               .anyMatch(s -> s.equals(expectedName)),
           "The Percentiles don't contain the expected name! Missing percentile with name: " + expectedName);
@@ -80,19 +86,30 @@ public class AggServerHttpRequestStatsTest {
     singleGetStats.recordMultiChunkLargeValueCount(STORE_WITH_LARGE_VALUES, 1);
 
     // Sanity check
-    Assert.assertTrue(reporter.query("." + STORE_WITH_SMALL_VALUES + "--success_request.OccurrenceRate").value() > 0,
+    Assert.assertTrue(
+        reporter.query("." + STORE_WITH_SMALL_VALUES + "--success_request.OccurrenceRate").value() > 0,
         "success_request rate should be positive");
-    Assert.assertTrue(reporter.query("." + STORE_WITH_LARGE_VALUES + "--success_request.OccurrenceRate").value() > 0,
+    Assert.assertTrue(
+        reporter.query("." + STORE_WITH_LARGE_VALUES + "--success_request.OccurrenceRate").value() > 0,
         "success_request rate should be positive");
 
     // Main test
-    Assert.assertEquals((int) reporter.query("." + STORE_WITH_SMALL_VALUES + "--storage_engine_large_value_lookup.OccurrenceRate").value(), 0,
+    Assert.assertEquals(
+        (int) reporter.query("." + STORE_WITH_SMALL_VALUES + "--storage_engine_large_value_lookup.OccurrenceRate")
+            .value(),
+        0,
         "storage_engine_large_value_lookup rate should be zero");
-    Assert.assertEquals((int) reporter.query("." + STORE_WITH_SMALL_VALUES + "--storage_engine_large_value_lookup.Max").value(), 0,
+    Assert.assertEquals(
+        (int) reporter.query("." + STORE_WITH_SMALL_VALUES + "--storage_engine_large_value_lookup.Max").value(),
+        0,
         "storage_engine_large_value_lookup rate should be zero");
-    Assert.assertTrue(reporter.query("." + STORE_WITH_LARGE_VALUES + "--storage_engine_large_value_lookup.OccurrenceRate").value() > 0,
+    Assert.assertTrue(
+        reporter.query("." + STORE_WITH_LARGE_VALUES + "--storage_engine_large_value_lookup.OccurrenceRate")
+            .value() > 0,
         "storage_engine_large_value_lookup rate should be positive");
-    Assert.assertEquals((int) reporter.query("." + STORE_WITH_LARGE_VALUES + "--storage_engine_large_value_lookup.Max").value(), 1,
+    Assert.assertEquals(
+        (int) reporter.query("." + STORE_WITH_LARGE_VALUES + "--storage_engine_large_value_lookup.Max").value(),
+        1,
         "storage_engine_large_value_lookup rate should be positive");
 
     batchGetStats.recordSuccessRequest(STORE_WITH_SMALL_VALUES);
@@ -103,23 +120,40 @@ public class AggServerHttpRequestStatsTest {
     batchGetStats.recordMultiChunkLargeValueCount(STORE_WITH_LARGE_VALUES, 15);
 
     // Sanity check
-    Assert.assertTrue(reporter.query("." + STORE_WITH_SMALL_VALUES + "--multiget_success_request.OccurrenceRate").value() > 0,
+    Assert.assertTrue(
+        reporter.query("." + STORE_WITH_SMALL_VALUES + "--multiget_success_request.OccurrenceRate").value() > 0,
         "success_request rate should be positive");
-    Assert.assertTrue(reporter.query("." + STORE_WITH_LARGE_VALUES + "--multiget_success_request.OccurrenceRate").value() > 0,
+    Assert.assertTrue(
+        reporter.query("." + STORE_WITH_LARGE_VALUES + "--multiget_success_request.OccurrenceRate").value() > 0,
         "success_request rate should be positive");
 
     // Main test
-    Assert.assertTrue((int) reporter.query("." + STORE_WITH_SMALL_VALUES + "--multiget_storage_engine_large_value_lookup.OccurrenceRate").value() == 0,
+    Assert.assertTrue(
+        (int) reporter
+            .query("." + STORE_WITH_SMALL_VALUES + "--multiget_storage_engine_large_value_lookup.OccurrenceRate")
+            .value() == 0,
         "storage_engine_large_value_lookup rate should be zero");
-    Assert.assertEquals((int) reporter.query("." + STORE_WITH_SMALL_VALUES + "--multiget_storage_engine_large_value_lookup.Max").value(), 0,
+    Assert.assertEquals(
+        (int) reporter.query("." + STORE_WITH_SMALL_VALUES + "--multiget_storage_engine_large_value_lookup.Max")
+            .value(),
+        0,
         "storage_engine_large_value_lookup rate should be zero");
-    Assert.assertTrue(reporter.query("." + STORE_WITH_LARGE_VALUES + "--multiget_storage_engine_large_value_lookup.OccurrenceRate").value() > 0,
+    Assert.assertTrue(
+        reporter.query("." + STORE_WITH_LARGE_VALUES + "--multiget_storage_engine_large_value_lookup.OccurrenceRate")
+            .value() > 0,
         "storage_engine_large_value_lookup rate should be positive");
-    Assert.assertTrue(reporter.query("." + STORE_WITH_LARGE_VALUES + "--multiget_storage_engine_large_value_lookup.Rate").value() > 0,
+    Assert.assertTrue(
+        reporter.query("." + STORE_WITH_LARGE_VALUES + "--multiget_storage_engine_large_value_lookup.Rate").value() > 0,
         "storage_engine_large_value_lookup rate should be positive");
-    Assert.assertEquals((int) reporter.query("." + STORE_WITH_LARGE_VALUES + "--multiget_storage_engine_large_value_lookup.Max").value(), 15,
+    Assert.assertEquals(
+        (int) reporter.query("." + STORE_WITH_LARGE_VALUES + "--multiget_storage_engine_large_value_lookup.Max")
+            .value(),
+        15,
         "storage_engine_large_value_lookup rate should be positive");
-    Assert.assertEquals((int) reporter.query("." + STORE_WITH_LARGE_VALUES + "--multiget_storage_engine_large_value_lookup.Avg").value(), 10,
+    Assert.assertEquals(
+        (int) reporter.query("." + STORE_WITH_LARGE_VALUES + "--multiget_storage_engine_large_value_lookup.Avg")
+            .value(),
+        10,
         "storage_engine_large_value_lookup rate should be positive");
   }
 }

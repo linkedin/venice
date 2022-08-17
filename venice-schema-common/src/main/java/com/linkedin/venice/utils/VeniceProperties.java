@@ -28,22 +28,16 @@ public class VeniceProperties {
 
   public VeniceProperties(Properties properties) {
     Map<String, String> tmpProps = new HashMap<>(properties.size());
-    for (Map.Entry<Object, Object> e : properties.entrySet()) {
-      tmpProps.put(
-          (String) e.getKey(),
-          null == e.getValue() ? null : e.getValue().toString()
-      );
+    for (Map.Entry<Object, Object> e: properties.entrySet()) {
+      tmpProps.put((String) e.getKey(), null == e.getValue() ? null : e.getValue().toString());
     }
     props = Collections.unmodifiableMap(tmpProps);
   }
 
   public VeniceProperties(Map<CharSequence, CharSequence> properties) {
     Map<String, String> tmpProps = new HashMap<>(properties.size());
-    for (Map.Entry<CharSequence, CharSequence> e : properties.entrySet()) {
-      tmpProps.put(
-          e.getKey().toString(),
-          null == e.getValue() ? null : e.getValue().toString()
-      );
+    for (Map.Entry<CharSequence, CharSequence> e: properties.entrySet()) {
+      tmpProps.put(e.getKey().toString(), null == e.getValue() ? null : e.getValue().toString());
     }
     props = Collections.unmodifiableMap(tmpProps);
   }
@@ -65,11 +59,11 @@ public class VeniceProperties {
   }
 
   private String get(String key) {
-    if(props.containsKey(key)) {
+    if (props.containsKey(key)) {
       return props.get(key);
     } else {
-      throw new UndefinedPropertyException("Property " + key +
-              " is not defined, some codePath is calling without calling containsKeys");
+      throw new UndefinedPropertyException(
+          "Property " + key + " is not defined, some codePath is calling without calling containsKeys");
     }
   }
 
@@ -87,15 +81,15 @@ public class VeniceProperties {
    */
   public VeniceProperties clipAndFilterNamespace(String nameSpace) {
     PropertyBuilder builder = new PropertyBuilder();
-    if(!nameSpace.endsWith(".")) {
+    if (!nameSpace.endsWith(".")) {
       nameSpace = nameSpace + ".";
     }
 
-    for (Map.Entry<String,String> entry: this.props.entrySet()) {
+    for (Map.Entry<String, String> entry: this.props.entrySet()) {
       String key = entry.getKey();
-      if(key.startsWith(nameSpace)) {
-         String extractedKey = key.substring(nameSpace.length());
-         builder.put(extractedKey , this.props.get(key));
+      if (key.startsWith(nameSpace)) {
+        String extractedKey = key.substring(nameSpace.length());
+        builder.put(extractedKey, this.props.get(key));
       }
     }
     return builder.build();
@@ -121,10 +115,10 @@ public class VeniceProperties {
     PropertyBuilder builder = new PropertyBuilder();
     Properties storeOverrideProperties = new Properties();
 
-    for (Map.Entry<String,String> entry: this.props.entrySet()) {
+    for (Map.Entry<String, String> entry: this.props.entrySet()) {
       String key = entry.getKey();
-      if(key.startsWith(STORE_PREFIX)) { // Filter all store related overrides
-        if(key.startsWith(nameSpace)) {  // Save only current store related properties.
+      if (key.startsWith(STORE_PREFIX)) { // Filter all store related overrides
+        if (key.startsWith(nameSpace)) { // Save only current store related properties.
           String extractedKey = key.substring(nameSpace.length());
           storeOverrideProperties.setProperty(extractedKey, entry.getValue());
         }
@@ -166,22 +160,19 @@ public class VeniceProperties {
   public String toString(boolean prettyPrint) {
     StringBuilder builder = new StringBuilder("{");
     final AtomicBoolean first = new AtomicBoolean(true); // ah... the things we do for closures...
-    this.props.entrySet()
-        .stream()
-        .sorted((o1, o2) -> o1.getKey().compareTo(o2.getKey()))
-        .forEach(entry -> {
-          if (first.get()) {
-            first.set(false);
-          } else {
-            builder.append(", ");
-          }
-          if (prettyPrint) {
-            builder.append("\n\t");
-          }
-          builder.append(entry.getKey());
-          builder.append(": ");
-          builder.append(entry.getValue());
-        });
+    this.props.entrySet().stream().sorted((o1, o2) -> o1.getKey().compareTo(o2.getKey())).forEach(entry -> {
+      if (first.get()) {
+        first.set(false);
+      } else {
+        builder.append(", ");
+      }
+      if (prettyPrint) {
+        builder.append("\n\t");
+      }
+      builder.append(entry.getKey());
+      builder.append(": ");
+      builder.append(entry.getValue());
+    });
     if (prettyPrint && !props.isEmpty()) {
       builder.append("\n");
     }
@@ -196,8 +187,7 @@ public class VeniceProperties {
    * @throws IOException If there is an error writing
    */
   public void storeFlattened(File file) throws IOException {
-    try (FileOutputStream fos = new FileOutputStream(file);
-        BufferedOutputStream out = new BufferedOutputStream(fos);) {
+    try (FileOutputStream fos = new FileOutputStream(file); BufferedOutputStream out = new BufferedOutputStream(fos);) {
       storeFlattened(out);
     }
   }
@@ -210,7 +200,7 @@ public class VeniceProperties {
    */
   public void storeFlattened(OutputStream out) throws IOException {
     Properties p = new Properties();
-    for (String key : this.props.keySet()) {
+    for (String key: this.props.keySet()) {
       if (!p.containsKey(key)) {
         p.setProperty(key, get(key));
       }
@@ -235,10 +225,10 @@ public class VeniceProperties {
     }
   }
 
-  public String getStringWithAlternative(String preferredKey , String altKey, String defaultValue) {
+  public String getStringWithAlternative(String preferredKey, String altKey, String defaultValue) {
     if (containsKey(preferredKey)) {
       return get(preferredKey);
-    } else if (containsKey(altKey) ){
+    } else if (containsKey(altKey)) {
       return get(altKey);
     } else {
       return defaultValue;
@@ -258,7 +248,7 @@ public class VeniceProperties {
       return get(preferredKey);
     } else if (containsKey(altKey)) {
       return get(altKey);
-    }  else {
+    } else {
       throw new UndefinedPropertyException(preferredKey);
     }
   }
@@ -271,7 +261,7 @@ public class VeniceProperties {
     }
   }
 
-  public boolean getBooleanWithAlternative(String preferredKey, String altKey ,  boolean defaultValue) {
+  public boolean getBooleanWithAlternative(String preferredKey, String altKey, boolean defaultValue) {
     if (containsKey(preferredKey)) {
       return "true".equalsIgnoreCase(get(preferredKey));
     } else if (containsKey(altKey)) {
@@ -352,6 +342,7 @@ public class VeniceProperties {
       return defaultValue;
     }
   }
+
   public long getSizeInBytes(String name) {
     if (!containsKey(name)) {
       throw new UndefinedPropertyException(name);
@@ -393,7 +384,7 @@ public class VeniceProperties {
     String value = "";
     if (containsKey(preferredKey)) {
       value = get(preferredKey);
-    } else if (containsKey(altKey)){
+    } else if (containsKey(altKey)) {
       value = get(altKey);
     }
 
@@ -422,7 +413,7 @@ public class VeniceProperties {
     Map<String, String> map = new HashMap<>();
     List<String> keyValuePairs = this.getList(key);
 
-    for (String pair : keyValuePairs) {
+    for (String pair: keyValuePairs) {
       Pair<String, String> keyValuePair = splitAnEntryToKeyValuePair(pair);
       map.put(keyValuePair.getFirst(), keyValuePair.getSecond());
     }
@@ -447,7 +438,7 @@ public class VeniceProperties {
     }
     Map<Integer, String> rMap = new HashMap<>();
     Map<String, String> map = getMap(key);
-    for (Map.Entry<String, String> entry : map.entrySet()) {
+    for (Map.Entry<String, String> entry: map.entrySet()) {
       rMap.put(Integer.parseInt(entry.getKey()), entry.getValue());
     }
     return rMap;

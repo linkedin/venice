@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
@@ -32,9 +35,6 @@ import java.util.Optional;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.kafka.common.TopicPartition;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
-
 
 /**
  * A common base class to provide setup and teardown routines to be used in venice ParentHelixAdmin related test cases.
@@ -44,8 +44,8 @@ public class AbstractTestVeniceParentHelixAdmin {
   static int KAFKA_REPLICA_FACTOR = 3;
   static final String PUSH_JOB_DETAILS_STORE_NAME = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
   static final int MAX_PARTITION_NUM = 1024;
-  static final String TEST_SCHEMA = "{\"type\":\"record\", \"name\":\"ValueRecord\", \"fields\": [{\"name\":\"number\", "
-      + "\"type\":\"int\"}]}";
+  static final String TEST_SCHEMA =
+      "{\"type\":\"record\", \"name\":\"ValueRecord\", \"fields\": [{\"name\":\"number\", " + "\"type\":\"int\"}]}";
 
   final String clusterName = "test-cluster";
   final String coloName = "test-colo";
@@ -70,7 +70,7 @@ public class AbstractTestVeniceParentHelixAdmin {
   ClusterLockManager clusterLockManager;
   StoragePersonaRepository personaRepository;
 
-  public void setupInternalMocks()  {
+  public void setupInternalMocks() {
     topicManager = mock(TopicManager.class);
     doReturn(new HashSet<String>(Arrays.asList(topicName))).when(topicManager).listTopics();
     Map<String, Long> topicRetentions = new HashMap<>();
@@ -92,8 +92,8 @@ public class AbstractTestVeniceParentHelixAdmin {
     doReturn(0L).when(executionIdAccessor).getLastSucceededExecutionId(any());
 
     // Occasionally the startStoreMigrationMonitor will run and throw NPE's unless the internal
-    // helix admin can proffer a set of StoreConfigRepo.  So we set up mocks for this
-    // that... do a funny thing to get it to leave us alone.  This SHOULD be mocked to return a proper
+    // helix admin can proffer a set of StoreConfigRepo. So we set up mocks for this
+    // that... do a funny thing to get it to leave us alone. This SHOULD be mocked to return a proper
     // list of store configs for the sake of correctness, but async scheduled threads can be the bane
     // of reliable unit tests. TODO: Return a real list of store configs in this mock.
     readOnlyStoreConfigRepository = mock(HelixReadOnlyStoreConfigRepository.class);
@@ -113,7 +113,8 @@ public class AbstractTestVeniceParentHelixAdmin {
     config = mockConfig(clusterName);
     doReturn(1).when(config).getReplicationMetadataVersionId();
 
-    controllerClients.put(coloName, ControllerClient.constructClusterControllerClient(clusterName, "localhost", Optional.empty()));
+    controllerClients
+        .put(coloName, ControllerClient.constructClusterControllerClient(clusterName, "localhost", Optional.empty()));
     doReturn(controllerClients).when(internalAdmin).getControllerClientMap(any());
 
     resources = mockResources(config, clusterName);
@@ -143,9 +144,12 @@ public class AbstractTestVeniceParentHelixAdmin {
    * concurrency issues. i.e. change mock's behavior in test thread while it's being used in some background threads.
    */
   public void initializeParentAdmin(Optional<AuthorizerService> authorizerService) {
-    parentAdmin =
-        new VeniceParentHelixAdmin(internalAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config), false,
-            Optional.empty(), authorizerService);
+    parentAdmin = new VeniceParentHelixAdmin(
+        internalAdmin,
+        TestUtils.getMultiClusterConfigFromOneCluster(config),
+        false,
+        Optional.empty(),
+        authorizerService);
     ControllerClient mockControllerClient = mock(ControllerClient.class);
     doReturn(new ControllerResponse()).when(mockControllerClient).checkResourceCleanupForStoreCreation(anyString());
     doReturn(new StoreResponse()).when(mockControllerClient).getStore(anyString());

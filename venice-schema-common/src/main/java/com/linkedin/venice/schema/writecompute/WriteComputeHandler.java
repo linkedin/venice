@@ -9,7 +9,6 @@ import org.apache.avro.generic.GenericRecord;
  * This interface provides methods to execute write-compute operation a value
  */
 public interface WriteComputeHandler {
-
   /**
    * Execute write-compute operation on a value record.
    *
@@ -21,5 +20,8 @@ public interface WriteComputeHandler {
    *
    * @return updated value record.
    */
-  GenericRecord updateValueRecord(Schema valueSchema, Optional<GenericRecord> valueRecord, GenericRecord writeComputeRecord);
+  GenericRecord updateValueRecord(
+      Schema valueSchema,
+      Optional<GenericRecord> valueRecord,
+      GenericRecord writeComputeRecord);
 }

@@ -5,7 +5,6 @@ package com.linkedin.venice.schema.rmd;
  * a replication metadata record.
  */
 public class ReplicationMetadataConstants {
-
   private ReplicationMetadataConstants() {
     // Utility class
   }

@@ -49,26 +49,51 @@ import org.apache.avro.util.Utf8;
  *
  * TODO: In the future, we could consider to use avro json serialization directly to make it simpler.
  */
-public class ZKStore extends AbstractStore implements DataModelBackedStructure<StoreProperties>  {
+public class ZKStore extends AbstractStore implements DataModelBackedStructure<StoreProperties> {
   /**
    * Internal data model
    */
   private final StoreProperties storeProperties;
 
-  public ZKStore(String name, String owner, long createdTimeMs, PersistenceType persistenceType,
-      RoutingStrategy routingStrategy, ReadStrategy readStrategy, OfflinePushStrategy offlinePushStrategy,
+  public ZKStore(
+      String name,
+      String owner,
+      long createdTimeMs,
+      PersistenceType persistenceType,
+      RoutingStrategy routingStrategy,
+      ReadStrategy readStrategy,
+      OfflinePushStrategy offlinePushStrategy,
       int replicationFactor) {
-    this(name, owner, createdTimeMs, persistenceType, routingStrategy, readStrategy, offlinePushStrategy,
-        NON_EXISTING_VERSION, DEFAULT_STORAGE_QUOTA, DEFAULT_READ_QUOTA, null,
+    this(
+        name,
+        owner,
+        createdTimeMs,
+        persistenceType,
+        routingStrategy,
+        readStrategy,
+        offlinePushStrategy,
+        NON_EXISTING_VERSION,
+        DEFAULT_STORAGE_QUOTA,
+        DEFAULT_READ_QUOTA,
+        null,
         new PartitionerConfigImpl(), // Every store comes with default partitioner settings.
         replicationFactor);
   }
 
-  public ZKStore(String name, String owner, long createdTime, PersistenceType persistenceType,
-      RoutingStrategy routingStrategy, ReadStrategy readStrategy,
-      OfflinePushStrategy offlinePushStrategy, int currentVersion,
-      long storageQuotaInByte, long readQuotaInCU, HybridStoreConfig hybridStoreConfig,
-      PartitionerConfig partitionerConfig, int replicationFactor) {
+  public ZKStore(
+      String name,
+      String owner,
+      long createdTime,
+      PersistenceType persistenceType,
+      RoutingStrategy routingStrategy,
+      ReadStrategy readStrategy,
+      OfflinePushStrategy offlinePushStrategy,
+      int currentVersion,
+      long storageQuotaInByte,
+      long readQuotaInCU,
+      HybridStoreConfig hybridStoreConfig,
+      PartitionerConfig partitionerConfig,
+      int replicationFactor) {
     if (!Store.isValidStoreName(name)) {
       throw new VeniceException("Invalid store name: " + name);
     }
@@ -117,7 +142,9 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
 
       @Override
       public List<Version> getForRead() {
-        return storeProperties.versions.stream().map(sv -> new ReadOnlyStore.ReadOnlyVersion(new VersionImpl(sv))).collect(Collectors.toList());
+        return storeProperties.versions.stream()
+            .map(sv -> new ReadOnlyStore.ReadOnlyVersion(new VersionImpl(sv)))
+            .collect(Collectors.toList());
       }
     });
   }
@@ -135,14 +162,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
 
       @Override
       public List<Version> getForRead() {
-        return storeProperties.versions.stream().map(v -> new ReadOnlyStore.ReadOnlyVersion(new VersionImpl(v))).collect(
-            Collectors.toList());
+        return storeProperties.versions.stream()
+            .map(v -> new ReadOnlyStore.ReadOnlyVersion(new VersionImpl(v)))
+            .collect(Collectors.toList());
       }
     });
   }
 
   public ZKStore(Store store) {
-    this(store.getName(),
+    this(
+        store.getName(),
         store.getOwner(),
         store.getCreatedTime(),
         store.getPersistenceType(),
@@ -191,7 +220,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setApplyTargetVersionFilterForIncPush(store.isApplyTargetVersionFilterForIncPush());
     setRmdVersionID(store.getRmdVersionID());
 
-    for (Version storeVersion : store.getVersions()) {
+    for (Version storeVersion: store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);
     }
 
@@ -257,7 +286,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
   @JsonProperty("currentVersion")
   @Override
-  public void setCurrentVersionWithoutCheck(int currentVersion){
+  public void setCurrentVersionWithoutCheck(int currentVersion) {
     this.storeProperties.currentVersion = currentVersion;
   }
 
@@ -304,12 +333,11 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setVersions(List<Version> versions) {
     super.setVersions(versions);
-    //Backward capability for the old store in ZK.
+    // Backward capability for the old store in ZK.
     if (this.storeProperties.largestUsedVersionNumber == 0 && !versions.isEmpty()) {
       this.storeProperties.largestUsedVersionNumber = versions.get(versions.size() - 1).getNumber();
     }
   }
-
 
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
   @Override
@@ -326,9 +354,11 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
   @Override
   public long getStorageQuotaInByte() {
-    //This is a safeguard in case that some old stores do not have storage quota field
-    return (this.storeProperties.storageQuotaInByte <= 0 && this.storeProperties.storageQuotaInByte != UNLIMITED_STORAGE_QUOTA)
-        ? DEFAULT_STORAGE_QUOTA : this.storeProperties.storageQuotaInByte;
+    // This is a safeguard in case that some old stores do not have storage quota field
+    return (this.storeProperties.storageQuotaInByte <= 0
+        && this.storeProperties.storageQuotaInByte != UNLIMITED_STORAGE_QUOTA)
+            ? DEFAULT_STORAGE_QUOTA
+            : this.storeProperties.storageQuotaInByte;
   }
 
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
@@ -471,7 +501,6 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   public void setIncrementalPushEnabled(boolean incrementalPushEnabled) {
     this.storeProperties.incrementalPushEnabled = incrementalPushEnabled;
   }
-
 
   /**
    * @deprecated The store level accessControlled flag is no longer valid to be used to skip ACL checks.
@@ -755,13 +784,14 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public Map<String, SystemStoreAttributes> getSystemStores() {
     Map<String, SystemStoreAttributes> systemStoreMap = new HashMap<>();
-    this.storeProperties.systemStores.forEach( (k, v) -> systemStoreMap.put(k.toString(), new SystemStoreAttributesImpl(v)));
+    this.storeProperties.systemStores
+        .forEach((k, v) -> systemStoreMap.put(k.toString(), new SystemStoreAttributesImpl(v)));
     return systemStoreMap;
   }
 
   @Override
   public void setSystemStores(Map<String, SystemStoreAttributes> systemStores) {
-    systemStores.forEach( (k, v) -> {
+    systemStores.forEach((k, v) -> {
       this.storeProperties.systemStores.put(new Utf8(k), v.dataModel());
     });
   }
@@ -785,8 +815,9 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
    * Set all of PUSHED version to ONLINE once store is enabled to write.
    */
   private void setPushedVersionsOnline() {
-    // TODO, if the PUSHED version is the latest vesion, after store is enabled to write, shall we put this version as the current version?
-    for (StoreVersion storeVersion : this.storeProperties.versions) {
+    // TODO, if the PUSHED version is the latest vesion, after store is enabled to write, shall we put this version as
+    // the current version?
+    for (StoreVersion storeVersion: this.storeProperties.versions) {
       Version version = new VersionImpl(storeVersion);
       if (version.getStatus().equals(VersionStatus.PUSHED)) {
         updateVersionStatus(version.getNumber(), VersionStatus.ONLINE);

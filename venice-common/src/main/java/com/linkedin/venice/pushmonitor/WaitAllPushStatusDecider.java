@@ -1,8 +1,8 @@
 package com.linkedin.venice.pushmonitor;
 
-import com.linkedin.venice.meta.OfflinePushStrategy;
-
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
+
+import com.linkedin.venice.meta.OfflinePushStrategy;
 
 
 /**

@@ -1,8 +1,5 @@
 package com.linkedin.venice.fastclient.stats;
 
-import com.linkedin.venice.fastclient.ClientConfig;
-import com.linkedin.venice.fastclient.meta.DaVinciClientBasedMetadata;
-import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.stats.StatsUtils;
@@ -83,7 +80,7 @@ public class ClusterStats extends AbstractVeniceStats {
       String instanceName = instanceUrl;
       try {
         URL url = new URL(instanceUrl);
-        instanceName = url.getHost()  + "_" + url.getPort();
+        instanceName = url.getHost() + "_" + url.getPort();
       } catch (MalformedURLException e) {
         LOGGER.error("Invalid instance url: " + instanceUrl);
       }

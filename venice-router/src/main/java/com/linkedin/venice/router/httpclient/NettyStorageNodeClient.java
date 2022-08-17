@@ -1,5 +1,7 @@
 package com.linkedin.venice.router.httpclient;
 
+import static com.linkedin.venice.HttpConstants.*;
+
 import com.linkedin.ddsstorage.base.misc.Msg;
 import com.linkedin.ddsstorage.base.monitoring.CallTracker;
 import com.linkedin.ddsstorage.base.monitoring.CallTrackerImpl;
@@ -63,8 +65,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.util.StringBuilderFormattable;
 
-import static com.linkedin.venice.HttpConstants.*;
-
 
 /**
  * The netty client will maintain a channel pool for each SN; and all the events for a channel will be
@@ -77,7 +77,7 @@ import static com.linkedin.venice.HttpConstants.*;
  *
  * The performance of the netty client can be scaled up by increasing the number of event loop (#threads).
  */
-public class NettyStorageNodeClient implements StorageNodeClient  {
+public class NettyStorageNodeClient implements StorageNodeClient {
   private static final Logger logger = LogManager.getLogger(NettyStorageNodeClient.class);
   private static final boolean loggerDebugEnabled = logger.isDebugEnabled();
   private static final AsciiString X_QUEUE_NAME = AsciiString.of("X-Queue-Name");
@@ -99,23 +99,27 @@ public class NettyStorageNodeClient implements StorageNodeClient  {
 
   private MultithreadEventLoopGroup eventLoopGroup;
 
-  public NettyStorageNodeClient(VeniceRouterConfig config, Optional<SSLEngineComponentFactory> sslFactoryForRequests,
-      RouterStats<AggRouterHttpRequestStats> routerStats, MultithreadEventLoopGroup workerEventLoopGroup, Class<? extends Channel> channelClass) {
+  public NettyStorageNodeClient(
+      VeniceRouterConfig config,
+      Optional<SSLEngineComponentFactory> sslFactoryForRequests,
+      RouterStats<AggRouterHttpRequestStats> routerStats,
+      MultithreadEventLoopGroup workerEventLoopGroup,
+      Class<? extends Channel> channelClass) {
     this.scheme = config.isSslToStorageNodes() ? HTTPS_PREFIX : HTTP_PREFIX;
     this.routerStats = routerStats;
     this.eventLoopGroup = workerEventLoopGroup;
 
     Bootstrap bootstrap =
-        new ResolveAllBootstrap(NullCallTracker.INSTANCE, NullCallTracker.INSTANCE).channel(channelClass).handler(new ChannelInitializer<Channel>() {
-          @Override
-          protected void initChannel(Channel ch) throws Exception {
-            ChannelPipeline pipeline = ch.pipeline();
+        new ResolveAllBootstrap(NullCallTracker.INSTANCE, NullCallTracker.INSTANCE).channel(channelClass)
+            .handler(new ChannelInitializer<Channel>() {
+              @Override
+              protected void initChannel(Channel ch) throws Exception {
+                ChannelPipeline pipeline = ch.pipeline();
 
-            pipeline
-                .addLast(new HttpObjectAggregator(config.getNettyClientMaxAggregatedObjectLength(), true))
-                .addLast(new HttpClientResponseHandler());
-          }
-        });
+                pipeline.addLast(new HttpObjectAggregator(config.getNettyClientMaxAggregatedObjectLength(), true))
+                    .addLast(new HttpClientResponseHandler());
+              }
+            });
     if (config.isSslToStorageNodes()) {
       SslContext sslContext = new JdkSslContext(sslFactoryForRequests.get().getSSLContext(), true, ClientAuth.NONE);
       bootstrap.attr(Http2AwareChannelPoolFactory.SSL_CONTEXT, sslContext);
@@ -123,20 +127,22 @@ public class NettyStorageNodeClient implements StorageNodeClient  {
 
     ConcurrentMap<SocketAddress, CallTracker> healthCallTrackerMap = new VeniceConcurrentHashMap<>();
     ChannelPoolResolver resolver = new BasicDnsResolver();
-    Http2AwareChannelPoolFactory factory =
-        new Http2AwareChannelPoolFactory(
-            bootstrap,
-            config.getNettyClientChannelPoolAcquireTimeoutMs(),
-            config.getNettyClientChannelPoolMinConnections(),
-            config.getNettyClientChannelPoolMaxConnections(),
-            config.getNettyClientChannelPoolMaxPendingAcquires(),
-            true,
-            config.getNettyClientChannelPoolHealthCheckIntervalMs(),
-            healthChecker,
-            socketAddress -> healthCallTrackerMap.computeIfAbsent(socketAddress, ignored -> new CallTrackerImpl())
-        );
+    Http2AwareChannelPoolFactory factory = new Http2AwareChannelPoolFactory(
+        bootstrap,
+        config.getNettyClientChannelPoolAcquireTimeoutMs(),
+        config.getNettyClientChannelPoolMinConnections(),
+        config.getNettyClientChannelPoolMaxConnections(),
+        config.getNettyClientChannelPoolMaxPendingAcquires(),
+        true,
+        config.getNettyClientChannelPoolHealthCheckIntervalMs(),
+        healthChecker,
+        socketAddress -> healthCallTrackerMap.computeIfAbsent(socketAddress, ignored -> new CallTrackerImpl()));
 
-    manager = new ChannelPoolManagerImpl(eventLoopGroup, factory, resolver, config.getNettyClientChannelPoolMaxPendingAcquires());
+    manager = new ChannelPoolManagerImpl(
+        eventLoopGroup,
+        factory,
+        resolver,
+        config.getNettyClientChannelPoolMaxPendingAcquires());
   }
 
   @Override
@@ -164,8 +170,14 @@ public class NettyStorageNodeClient implements StorageNodeClient  {
     String storeName = path.getStoreName();
     String hostAndPort = host.getHost() + ":" + host.getPort();
     String address = this.scheme + hostAndPort + "/" + path.getLocation();
-    BasicFullHttpRequest request = new BasicFullHttpRequest(HttpVersion.HTTP_1_1, path.getHttpMethod(), address,
-        path.getRequestBody(), false, System.currentTimeMillis(), System.nanoTime());
+    BasicFullHttpRequest request = new BasicFullHttpRequest(
+        HttpVersion.HTTP_1_1,
+        path.getHttpMethod(),
+        address,
+        path.getRequestBody(),
+        false,
+        System.currentTimeMillis(),
+        System.nanoTime());
     request.headers()
         .set(HttpHeaderNames.HOST, hostAndPort)
         .set(HttpHeaderNames.CONTENT_LENGTH, request.content().readableBytes());
@@ -233,7 +245,8 @@ public class NettyStorageNodeClient implements StorageNodeClient  {
                     .addListener((ChannelFuture closeFuture) -> manager.release(closeFuture.channel()));
               }
               if (responsePromise.trySuccess(fullHttpResponse)) {
-                NettyClientPortableHttpResponse portableResponse = new NettyClientPortableHttpResponse(fullHttpResponse);
+                NettyClientPortableHttpResponse portableResponse =
+                    new NettyClientPortableHttpResponse(fullHttpResponse);
                 completedCallBack.accept(portableResponse);
               } else {
                 // TODO: Determine what to do here...?
@@ -243,13 +256,17 @@ public class NettyStorageNodeClient implements StorageNodeClient  {
           }
         };
         if (loggerDebugEnabled) {
-          logger.debug("Channel: " + channelFuture.getNow() + " className: " + channelFuture.getNow() + channelFuture.getNow()
-              .getClass()
-              .getSimpleName() + Msg.make(channelFuture.getNow().pipeline(), pipeline -> (StringBuilderFormattable) buffer -> pipeline.iterator()
-              .forEachRemaining(entry -> buffer.append("\n  Name: ")
-                  .append(entry.getKey())
-                  .append("  Handler: ")
-                  .append(entry.getValue().getClass().getSimpleName()))));
+          logger.debug(
+              "Channel: " + channelFuture.getNow() + " className: " + channelFuture.getNow()
+                  + channelFuture.getNow().getClass().getSimpleName()
+                  + Msg.make(
+                      channelFuture.getNow().pipeline(),
+                      pipeline -> (StringBuilderFormattable) buffer -> pipeline.iterator()
+                          .forEachRemaining(
+                              entry -> buffer.append("\n  Name: ")
+                                  .append(entry.getKey())
+                                  .append("  Handler: ")
+                                  .append(entry.getValue().getClass().getSimpleName()))));
         }
         channelFuture.getNow()
             .writeAndFlush(new FullHttpRequestResponseConsumer(request, responseConsumer))
@@ -305,11 +322,17 @@ public class NettyStorageNodeClient implements StorageNodeClient  {
     }
   }
 
-  static final class FullHttpRequestResponseConsumer extends DefaultFullHttpRequest implements HttpClientResponseHandler.ResponseConsumer {
+  static final class FullHttpRequestResponseConsumer extends DefaultFullHttpRequest
+      implements HttpClientResponseHandler.ResponseConsumer {
     private final Consumer<Object> _responseConsumer;
 
     FullHttpRequestResponseConsumer(FullHttpRequest request, Consumer<Object> responseConsumer) {
-      super(request.protocolVersion(), request.method(), request.uri(), request.content(), request.headers(),
+      super(
+          request.protocolVersion(),
+          request.method(),
+          request.uri(),
+          request.content(),
+          request.headers(),
           request.trailingHeaders());
       _responseConsumer = responseConsumer;
     }
