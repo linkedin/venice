@@ -6,6 +6,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.utils.Utils;
@@ -77,6 +78,22 @@ public class ClusterRoutes extends AbstractRoute {
         veniceResponse.setCluster(cluster);
         storeName.ifPresent(veniceResponse::setName);
         admin.wipeCluster(cluster, fabric, storeName, versionNum);
+      }
+    };
+  }
+
+  /**
+   * Endpoint intended to be called via the admin tool manually to trigger cleanup for any lingering ZNodes produced
+   * from bugs/errors for instance level customized states.
+   */
+  public Route cleanupInstanceCustomizedStates(Admin admin) {
+    return new VeniceRouteHandler<MultiStoreTopicsResponse>(MultiStoreTopicsResponse.class) {
+      @Override
+      public void internalHandle(Request request, MultiStoreTopicsResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, CLEANUP_INSTANCE_CUSTOMIZED_STATES.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        veniceResponse.setCluster(clusterName);
+        veniceResponse.setTopics(admin.cleanupInstanceCustomizedStates(clusterName));
       }
     };
   }

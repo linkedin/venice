@@ -991,6 +991,18 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     Assert.assertTrue(childControllerAdmin.isTopicTruncated(topicToDelete));
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testCleanupInstanceCustomizedStates() {
+    String clusterName = cluster.getClusterName();
+    String storeName = Utils.getUniqueString("cleanupInstanceCustomizedStatesTest");
+    VeniceHelixAdmin childControllerAdmin = cluster.getRandmonVeniceController().getVeniceHelixAdmin();
+    childControllerAdmin.createStore(clusterName, storeName, "test", "\"string\"", "\"string\"");
+    childControllerAdmin.incrementVersionIdempotent(clusterName, storeName, "test", 1, 1);
+    MultiStoreTopicsResponse response = controllerClient.cleanupInstanceCustomizedStates();
+    Assert.assertFalse(response.isError());
+    Assert.assertTrue(response.getTopics().isEmpty());
+  }
+
   private void deleteStore(String storeName) {
     deleteStore(controllerClient, storeName);
   }

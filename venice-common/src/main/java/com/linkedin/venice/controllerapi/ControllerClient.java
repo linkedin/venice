@@ -1117,6 +1117,11 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.GET_CLUSTER_STORAGE_PERSONAS, params, MultiStoragePersonaResponse.class);
   }
 
+  public MultiStoreTopicsResponse cleanupInstanceCustomizedStates() {
+    QueryParams params = newParams().add(CLUSTER, clusterName);
+    return request(ControllerRoute.CLEANUP_INSTANCE_CUSTOMIZED_STATES, params, MultiStoreTopicsResponse.class);
+  }
+
   /***
    * Add all global parameters in this method. Always use a form of this method to generate
    * a new list of NameValuePair objects for making HTTP requests.
