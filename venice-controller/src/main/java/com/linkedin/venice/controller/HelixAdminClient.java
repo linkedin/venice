@@ -8,7 +8,6 @@ import java.util.Map;
  * Interface and wrapper for Helix related admin operations needed by Venice when running Helix as a service.
  */
 public interface HelixAdminClient {
-
   /**
    * Check if the Venice controller cluster is created and configured.
    * @return true or false.
@@ -34,7 +33,9 @@ public interface HelixAdminClient {
    * @param helixClusterProperties to be applied to the new cluster.
    * @param isControllerInAzureFabric whether the controller is in Azure fabric.
    */
-  void createVeniceStorageCluster(String clusterName, Map<String, String> helixClusterProperties,
+  void createVeniceStorageCluster(
+      String clusterName,
+      Map<String, String> helixClusterProperties,
       boolean isControllerInAzureFabric);
 
   /**
@@ -78,8 +79,12 @@ public interface HelixAdminClient {
    * @param resourceName
    * @param partitionNames
    */
-  void enablePartition(boolean enabled, String clusterName, String instanceName,
-      String resourceName, List<String> partitionNames);
+  void enablePartition(
+      boolean enabled,
+      String clusterName,
+      String instanceName,
+      String resourceName,
+      List<String> partitionNames);
 
   /**
    * Get a list of instances under a cluster
@@ -96,8 +101,12 @@ public interface HelixAdminClient {
    * @param replicationFactor
    * @param isLeaderFollowerStateModel
    */
-  void createVeniceStorageClusterResources(String clusterName, String kafkaTopic , int numberOfPartition ,
-      int replicationFactor, boolean isLeaderFollowerStateModel);
+  void createVeniceStorageClusterResources(
+      String clusterName,
+      String kafkaTopic,
+      int numberOfPartition,
+      int replicationFactor,
+      boolean isLeaderFollowerStateModel);
 
   /**
    * Drop a resource from a cluster

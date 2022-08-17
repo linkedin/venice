@@ -1,10 +1,12 @@
 package com.linkedin.venice.samza;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.schema.AvroSchemaParseUtils.*;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.venice.D2.D2ClientUtils;
-import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
@@ -22,6 +24,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushmonitor.RouterBasedHybridStoreQuotaMonitor;
 import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
@@ -62,9 +65,6 @@ import org.apache.samza.SamzaException;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.schema.AvroSchemaParseUtils.*;
-
 
 public class VeniceSystemProducer implements SystemProducer, Closeable {
   private static final Logger LOGGER = LogManager.getLogger(VeniceSystemProducer.class);
@@ -98,13 +98,13 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private final String runningFabric;
   private final boolean verifyLatestProtocolPresent;
 
-
   // Mutable, lazily initialized, state
   private Schema keySchema;
   private String canonicalKeySchemaStr;
   // To avoid the excessive usage of the cache in case each message is using a unique key schema
   private Map<Schema, String> canonicalSchemaStrCache = new BoundedHashMap<>(10, true);
-  private final VeniceConcurrentHashMap<Schema, Pair<Integer, Integer>> valueSchemaIds = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<Schema, Pair<Integer, Integer>> valueSchemaIds =
+      new VeniceConcurrentHashMap<>();
 
   /**
    * key is schema
@@ -126,16 +126,43 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private Optional<RouterBasedPushMonitor> pushMonitor = Optional.empty();
   private Optional<RouterBasedHybridStoreQuotaMonitor> hybridStoreQuotaMonitor = Optional.empty();
 
-  public VeniceSystemProducer(String veniceD2ZKHost, String d2ServiceName, String storeName,
-      Version.PushType pushType, String samzaJobId, String runningFabric, boolean verifyLatestProtocolPresent,
-      VeniceSystemFactory factory, Optional<SSLFactory> sslFactory, Optional<String> partitioners) {
-    this(veniceD2ZKHost, d2ServiceName, storeName, pushType, samzaJobId, runningFabric, verifyLatestProtocolPresent, factory,
-        sslFactory, partitioners, SystemTime.INSTANCE);
+  public VeniceSystemProducer(
+      String veniceD2ZKHost,
+      String d2ServiceName,
+      String storeName,
+      Version.PushType pushType,
+      String samzaJobId,
+      String runningFabric,
+      boolean verifyLatestProtocolPresent,
+      VeniceSystemFactory factory,
+      Optional<SSLFactory> sslFactory,
+      Optional<String> partitioners) {
+    this(
+        veniceD2ZKHost,
+        d2ServiceName,
+        storeName,
+        pushType,
+        samzaJobId,
+        runningFabric,
+        verifyLatestProtocolPresent,
+        factory,
+        sslFactory,
+        partitioners,
+        SystemTime.INSTANCE);
   }
 
-  public VeniceSystemProducer(String veniceD2ZKHost, String d2ServiceName, String storeName,
-      Version.PushType pushType, String samzaJobId, String runningFabric, boolean verifyLatestProtocolPresent,
-      VeniceSystemFactory factory, Optional<SSLFactory> sslFactory, Optional<String> partitioners, Time time) {
+  public VeniceSystemProducer(
+      String veniceD2ZKHost,
+      String d2ServiceName,
+      String storeName,
+      Version.PushType pushType,
+      String samzaJobId,
+      String runningFabric,
+      boolean verifyLatestProtocolPresent,
+      VeniceSystemFactory factory,
+      Optional<SSLFactory> sslFactory,
+      Optional<String> partitioners,
+      Time time) {
     this.veniceD2ZKHost = veniceD2ZKHost;
     this.d2ServiceName = d2ServiceName;
     this.storeName = storeName;
@@ -196,7 +223,9 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   /**
    * Please don't remove this method since it is still being used by LinkedIn internally.
    */
-  protected VeniceWriter<byte[], byte[],byte[]> getVeniceWriter(VersionCreationResponse store, Properties veniceWriterProperties) {
+  protected VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(
+      VersionCreationResponse store,
+      Properties veniceWriterProperties) {
     int amplificationFactor = store.getAmplificationFactor();
     Optional<Integer> partitionCount = pushType.isBatchOrStreamReprocessing()
         ? Optional.of(store.getPartitions() * amplificationFactor)
@@ -209,10 +238,12 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         : Optional.empty();
     Properties partitionerProperties = new Properties();
     partitionerProperties.putAll(store.getPartitionerParams());
-    VenicePartitioner
-        venicePartitioner = PartitionUtils.getVenicePartitioner(store.getPartitionerClass(), amplificationFactor, new VeniceProperties(partitionerProperties));
-    return new VeniceWriterFactory(veniceWriterProperties).createBasicVeniceWriter(store.getKafkaTopic(), time,
-        isChunkingEnabled, venicePartitioner, partitionCount);
+    VenicePartitioner venicePartitioner = PartitionUtils.getVenicePartitioner(
+        store.getPartitionerClass(),
+        amplificationFactor,
+        new VeniceProperties(partitionerProperties));
+    return new VeniceWriterFactory(veniceWriterProperties)
+        .createBasicVeniceWriter(store.getKafkaTopic(), time, isChunkingEnabled, venicePartitioner, partitionCount);
   }
 
   @Override
@@ -222,8 +253,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
     this.isStarted = true;
 
-    this.d2Client = new D2ClientBuilder()
-        .setZkHosts(veniceD2ZKHost)
+    this.d2Client = new D2ClientBuilder().setZkHosts(veniceD2ZKHost)
         .setSSLContext(sslFactory.isPresent() ? sslFactory.get().getSSLContext() : null)
         .setIsSSLEnabled(sslFactory.isPresent())
         .setSSLParameters(sslFactory.isPresent() ? sslFactory.get().getSSLParameters() : null)
@@ -232,9 +262,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         .build();
     D2ClientUtils.startClient(d2Client);
     // Discover cluster
-    D2ServiceDiscoveryResponse discoveryResponse = (D2ServiceDiscoveryResponse)
-        controllerRequestWithRetry(() -> D2ControllerClient.discoverCluster(d2Client, d2ServiceName, this.storeName)
-        );
+    D2ServiceDiscoveryResponse discoveryResponse = (D2ServiceDiscoveryResponse) controllerRequestWithRetry(
+        () -> D2ControllerClient.discoverCluster(d2Client, d2ServiceName, this.storeName));
     String clusterName = discoveryResponse.getCluster();
     LOGGER.info("Found cluster: " + clusterName + " for store: " + storeName);
 
@@ -247,21 +276,23 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       LOGGER.info("Start verifying the latest protocols at runtime are valid in Venice backend.");
       // Discover the D2 service name for the system store
       String kafkaMessageEnvelopSchemaSysStore = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName();
-      D2ServiceDiscoveryResponse sysStoreDiscoveryResponse = (D2ServiceDiscoveryResponse)
-          controllerRequestWithRetry(() -> D2ControllerClient.discoverCluster(d2Client, d2ServiceName, kafkaMessageEnvelopSchemaSysStore)
-          );
-      ClientConfig clientConfigForKafkaMessageEnvelopeSchemaReader = ClientConfig.defaultGenericClientConfig(kafkaMessageEnvelopSchemaSysStore);
+      D2ServiceDiscoveryResponse sysStoreDiscoveryResponse = (D2ServiceDiscoveryResponse) controllerRequestWithRetry(
+          () -> D2ControllerClient.discoverCluster(d2Client, d2ServiceName, kafkaMessageEnvelopSchemaSysStore));
+      ClientConfig clientConfigForKafkaMessageEnvelopeSchemaReader =
+          ClientConfig.defaultGenericClientConfig(kafkaMessageEnvelopSchemaSysStore);
       clientConfigForKafkaMessageEnvelopeSchemaReader.setD2ServiceName(sysStoreDiscoveryResponse.getD2Service());
       clientConfigForKafkaMessageEnvelopeSchemaReader.setD2Client(d2Client);
-      SchemaReader kafkaMessageEnvelopeSchemaReader = ClientFactory.getSchemaReader(clientConfigForKafkaMessageEnvelopeSchemaReader);
-      new SchemaPresenceChecker(kafkaMessageEnvelopeSchemaReader, AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE).verifySchemaVersionPresentOrExit();
+      SchemaReader kafkaMessageEnvelopeSchemaReader =
+          ClientFactory.getSchemaReader(clientConfigForKafkaMessageEnvelopeSchemaReader);
+      new SchemaPresenceChecker(kafkaMessageEnvelopeSchemaReader, AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE)
+          .verifySchemaVersionPresentOrExit();
       LOGGER.info("Successfully verified the latest protocols at runtime are valid in Venice backend.");
     }
 
     this.controllerClient = new D2ControllerClient(d2ServiceName, clusterName, d2Client, sslFactory);
 
     // Request all the necessary info from Venice Controller
-    VersionCreationResponse versionCreationResponse = (VersionCreationResponse)controllerRequestWithRetry(
+    VersionCreationResponse versionCreationResponse = (VersionCreationResponse) controllerRequestWithRetry(
         () -> this.controllerClient.requestTopicForWrites(
             this.storeName,
             1,
@@ -274,46 +305,50 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
             Optional.empty(),
             Optional.ofNullable(runningFabric),
             false,
-            -1
-        )
-    );
+            -1));
     LOGGER.info("Got [store: " + this.storeName + "] VersionCreationResponse: " + versionCreationResponse);
     this.topicName = versionCreationResponse.getKafkaTopic();
     this.kafkaBootstrapServers = versionCreationResponse.getKafkaBootstrapServers();
 
-    StoreResponse storeResponse = (StoreResponse) controllerRequestWithRetry(
-        () -> this.controllerClient.getStore(storeName));
+    StoreResponse storeResponse =
+        (StoreResponse) controllerRequestWithRetry(() -> this.controllerClient.getStore(storeName));
     this.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
 
     boolean hybridStoreDiskQuotaEnabled = storeResponse.getStore().isHybridStoreDiskQuotaEnabled();
 
-    SchemaResponse keySchemaResponse = (SchemaResponse)controllerRequestWithRetry(
-        () -> this.controllerClient.getKeySchema(this.storeName)
-    );
+    SchemaResponse keySchemaResponse =
+        (SchemaResponse) controllerRequestWithRetry(() -> this.controllerClient.getKeySchema(this.storeName));
     LOGGER.info("Got [store: " + this.storeName + "] SchemaResponse for key schema: " + keySchemaResponse);
     this.keySchema = parseSchemaFromJSONStrictValidation(keySchemaResponse.getSchemaStr());
     this.canonicalKeySchemaStr = AvroCompatibilityHelper.toParsingForm(this.keySchema);
 
-    MultiSchemaResponse valueSchemaResponse = (MultiSchemaResponse)controllerRequestWithRetry(
-        () -> this.controllerClient.getAllValueAndDerivedSchema(this.storeName)
-    );
+    MultiSchemaResponse valueSchemaResponse = (MultiSchemaResponse) controllerRequestWithRetry(
+        () -> this.controllerClient.getAllValueAndDerivedSchema(this.storeName));
     LOGGER.info("Got [store: " + this.storeName + "] SchemaResponse for value schemas: " + valueSchemaResponse);
-    for (MultiSchemaResponse.Schema valueSchema : valueSchemaResponse.getSchemas()) {
-      valueSchemaIds.put(parseSchemaFromJSONLooseValidation(valueSchema.getSchemaStr()), new Pair<>(valueSchema.getId(), valueSchema.getDerivedSchemaId()));
+    for (MultiSchemaResponse.Schema valueSchema: valueSchemaResponse.getSchemas()) {
+      valueSchemaIds.put(
+          parseSchemaFromJSONLooseValidation(valueSchema.getSchemaStr()),
+          new Pair<>(valueSchema.getId(), valueSchema.getDerivedSchemaId()));
     }
 
     if (pushType.equals(Version.PushType.STREAM_REPROCESSING)) {
       String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
-      pushMonitor = Optional.of(new RouterBasedPushMonitor(
-          new D2TransportClient(discoveryResponse.getD2Service(), d2Client), versionTopic, factory, this)
-      );
+      pushMonitor = Optional.of(
+          new RouterBasedPushMonitor(
+              new D2TransportClient(discoveryResponse.getD2Service(), d2Client),
+              versionTopic,
+              factory,
+              this));
       pushMonitor.get().start();
     }
 
     if (pushType.isBatchOrStreamReprocessing()) {
       int versionNumber = versionCreationResponse.getVersion();
-      Version version = storeResponse.getStore().getVersion(versionNumber)
-          .orElseThrow(() -> new VeniceException("Version info for version " + versionNumber + " not available in store response"));
+      Version version = storeResponse.getStore()
+          .getVersion(versionNumber)
+          .orElseThrow(
+              () -> new VeniceException(
+                  "Version info for version " + versionNumber + " not available in store response"));
       // For pushes made to VT or SR topic, the producer should chunk the data
       this.isChunkingEnabled = version.isChunkingEnabled();
     } else {
@@ -329,13 +364,19 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
        */
       ExecutionStatus currentStatus = pushMonitor.get().getCurrentStatus();
       if (ExecutionStatus.ERROR.equals(currentStatus)) {
-        throw new VeniceException("Push job for resource " + topicName + " is in error state; please reach out to Venice team.");
+        throw new VeniceException(
+            "Push job for resource " + topicName + " is in error state; please reach out to Venice team.");
       }
     }
 
-    if ((pushType.equals(Version.PushType.STREAM) || pushType.equals(Version.PushType.STREAM_REPROCESSING)) && hybridStoreDiskQuotaEnabled) {
-      hybridStoreQuotaMonitor = Optional.of(new RouterBasedHybridStoreQuotaMonitor(
-          new D2TransportClient(discoveryResponse.getD2Service(), d2Client), storeName, pushType, topicName));
+    if ((pushType.equals(Version.PushType.STREAM) || pushType.equals(Version.PushType.STREAM_REPROCESSING))
+        && hybridStoreDiskQuotaEnabled) {
+      hybridStoreQuotaMonitor = Optional.of(
+          new RouterBasedHybridStoreQuotaMonitor(
+              new D2TransportClient(discoveryResponse.getD2Service(), d2Client),
+              storeName,
+              pushType,
+              topicName));
       hybridStoreQuotaMonitor.get().start();
     }
   }
@@ -398,9 +439,10 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   @Override
   public void send(String source, OutgoingMessageEnvelope outgoingMessageEnvelope) {
     String storeOfIncomingMessage = outgoingMessageEnvelope.getSystemStream().getStream();
-    if (! storeOfIncomingMessage.equals(storeName)) {
-      throw new SamzaException("The store of the incoming message: " + storeOfIncomingMessage +
-          " is unexpected, and it should be " + storeName);
+    if (!storeOfIncomingMessage.equals(storeName)) {
+      throw new SamzaException(
+          "The store of the incoming message: " + storeOfIncomingMessage + " is unexpected, and it should be "
+              + storeName);
     }
 
     if (pushMonitor.isPresent() && Version.PushType.STREAM_REPROCESSING.equals(pushType)) {
@@ -411,7 +453,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
            * If there are multiple stream reprocessing SystemProducer in one Samza job, one failed push will
            * also affect other push jobs.
            */
-          throw new VeniceException("Push job for resource " + topicName + " is in error state; please reach out to Venice team.");
+          throw new VeniceException(
+              "Push job for resource " + topicName + " is in error state; please reach out to Venice team.");
         case END_OF_PUSH_RECEIVED:
         case COMPLETED:
           LOGGER.info("Stream reprocessing for resource " + topicName + " has finished. No message will be sent.");
@@ -420,8 +463,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
           // no-op
       }
     }
-    if (hybridStoreQuotaMonitor.isPresent() &&
-        (Version.PushType.STREAM.equals(pushType) || Version.PushType.STREAM_REPROCESSING.equals(pushType))) {
+    if (hybridStoreQuotaMonitor.isPresent()
+        && (Version.PushType.STREAM.equals(pushType) || Version.PushType.STREAM_REPROCESSING.equals(pushType))) {
       HybridStoreQuotaStatus currentStatus = hybridStoreQuotaMonitor.get().getCurrentStatus();
       switch (currentStatus) {
         case QUOTA_VIOLATED:
@@ -429,8 +472,11 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
            * If there are multiple stream SystemProducer in one Samza job, one failed push will
            * also affect other push jobs.
            */
-          LOGGER.error("Current hybrid store quota status: " + currentStatus + ", should throw exception to kill the job.");
-          throw new VeniceException("Push job for resource " + topicName + " is in hybrid quota violated mode; please reach out to Venice team.");
+          LOGGER.error(
+              "Current hybrid store quota status: " + currentStatus + ", should throw exception to kill the job.");
+          throw new VeniceException(
+              "Push job for resource " + topicName
+                  + " is in hybrid quota violated mode; please reach out to Venice team.");
         case QUOTA_NOT_VIOLATED:
         default:
           // no-op
@@ -442,25 +488,27 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   protected CompletableFuture<Void> send(Object keyObject, Object valueObject) {
     Schema keyObjectSchema = getSchemaFromObject(keyObject);
-    String canonicalSchemaStr = canonicalSchemaStrCache.computeIfAbsent(keyObjectSchema,
-        k -> AvroCompatibilityHelper.toParsingForm(keyObjectSchema));
+    String canonicalSchemaStr = canonicalSchemaStrCache
+        .computeIfAbsent(keyObjectSchema, k -> AvroCompatibilityHelper.toParsingForm(keyObjectSchema));
 
     if (!canonicalKeySchemaStr.equals(canonicalSchemaStr)) {
-      throw new SamzaException("Cannot write record to Venice store " + storeName + ", key object has schema " + canonicalSchemaStr
-          + " which does not match Venice key schema " + canonicalKeySchemaStr + ".");
+      throw new SamzaException(
+          "Cannot write record to Venice store " + storeName + ", key object has schema " + canonicalSchemaStr
+              + " which does not match Venice key schema " + canonicalKeySchemaStr + ".");
     }
 
     byte[] key = serializeObject(topicName, keyObject);
     final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
-    final Callback callback = new CompletableFutureCallback(
-        completableFuture);
+    final Callback callback = new CompletableFutureCallback(completableFuture);
 
     long logicalTimestamp = -1;
     if (valueObject instanceof VeniceObjectWithTimestamp) {
-      VeniceObjectWithTimestamp objectWithTimestamp = (VeniceObjectWithTimestamp)valueObject;
+      VeniceObjectWithTimestamp objectWithTimestamp = (VeniceObjectWithTimestamp) valueObject;
       logicalTimestamp = objectWithTimestamp.getTimestamp();
       if (logicalTimestamp <= 0) {
-        throw new SamzaException("Timestamp specified in passed `VeniceObjectWithTimestamp` object should be positive, but received: " + logicalTimestamp);
+        throw new SamzaException(
+            "Timestamp specified in passed `VeniceObjectWithTimestamp` object should be positive, but received: "
+                + logicalTimestamp);
       }
       valueObject = objectWithTimestamp.getObject();
     }
@@ -475,14 +523,13 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       Schema valueObjectSchema = getSchemaFromObject(valueObject);
 
       Pair<Integer, Integer> valueSchemaIdPair = valueSchemaIds.computeIfAbsent(valueObjectSchema, valueSchema -> {
-        SchemaResponse valueSchemaResponse = (SchemaResponse)controllerRequestWithRetry(
-            () -> controllerClient.getValueOrDerivedSchemaId(storeName, valueSchema.toString())
-        );
+        SchemaResponse valueSchemaResponse = (SchemaResponse) controllerRequestWithRetry(
+            () -> controllerClient.getValueOrDerivedSchemaId(storeName, valueSchema.toString()));
         LOGGER.info("Got [store: " + this.storeName + "] SchemaResponse for schema: " + valueSchema);
         return new Pair<>(valueSchemaResponse.getId(), valueSchemaResponse.getDerivedSchemaId());
       });
 
-       byte[] value = serializeObject(topicName, valueObject);
+      byte[] value = serializeObject(topicName, valueObject);
 
       if (valueSchemaIdPair.getSecond() == -1) {
         if (logicalTimestamp > 0) {
@@ -491,12 +538,19 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
           veniceWriter.put(key, value, valueSchemaIdPair.getFirst(), callback);
         }
       } else {
-        if(!isWriteComputeEnabled) {
-          throw new SamzaException("Cannot write partial update record to Venice store " + storeName + " "
-              + "because write-compute is not enabled for it. Please contact Venice team to configure it.");
+        if (!isWriteComputeEnabled) {
+          throw new SamzaException(
+              "Cannot write partial update record to Venice store " + storeName + " "
+                  + "because write-compute is not enabled for it. Please contact Venice team to configure it.");
         }
         if (logicalTimestamp > 0) {
-          veniceWriter.update(key, value, valueSchemaIdPair.getFirst(), valueSchemaIdPair.getSecond(), callback, logicalTimestamp);
+          veniceWriter.update(
+              key,
+              value,
+              valueSchemaIdPair.getFirst(),
+              valueSchemaIdPair.getSecond(),
+              callback,
+              logicalTimestamp);
         } else {
           veniceWriter.update(key, value, valueSchemaIdPair.getFirst(), valueSchemaIdPair.getSecond(), callback);
         }
@@ -542,14 +596,16 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     } else if (object instanceof Boolean) {
       return BOOL_SCHEMA;
     } else {
-      throw new SamzaException("Venice System Producer only supports Avro objects, and primitives, found object of class: " + object.getClass().toString());
+      throw new SamzaException(
+          "Venice System Producer only supports Avro objects, and primitives, found object of class: "
+              + object.getClass().toString());
     }
   }
 
   private byte[] serializeObject(String topic, Object input) {
     if (input instanceof IndexedRecord) {
-      VeniceAvroKafkaSerializer serializer = serializers.computeIfAbsent(
-          ((IndexedRecord) input).getSchema().toString(), VeniceAvroKafkaSerializer::new);
+      VeniceAvroKafkaSerializer serializer =
+          serializers.computeIfAbsent(((IndexedRecord) input).getSchema().toString(), VeniceAvroKafkaSerializer::new);
       return serializer.serialize(topic, input);
     } else if (input instanceof CharSequence) {
       return serializePrimitive(new Utf8(input.toString()), STRING_DATUM_WRITER);
@@ -568,7 +624,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     } else if (input instanceof Boolean) {
       return serializePrimitive((Boolean) input, BOOL_DATUM_WRITER);
     } else {
-      throw new SamzaException("Can only serialize avro objects, and primitives, cannot serialize: " + input.getClass().toString());
+      throw new SamzaException(
+          "Can only serialize avro objects, and primitives, cannot serialize: " + input.getClass().toString());
     }
   }
 

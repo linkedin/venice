@@ -1,5 +1,11 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.utils.TestPushUtils.*;
+import static com.linkedin.venice.writer.SharedKafkaProducerService.*;
+
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -35,12 +41,6 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.utils.TestPushUtils.*;
-import static com.linkedin.venice.writer.SharedKafkaProducerService.*;
-
 
 /**
  * The purpose of this test is to run parallel push job in Native replication mode with shared producer pool size of 1
@@ -56,7 +56,7 @@ public class TestPushJobWithNativeReplicationSharedProducer {
   private static final int NUMBER_OF_CLUSTERS = 1;
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
-      // ["venice-cluster0", "venice-cluster1", ...];
+  // ["venice-cluster0", "venice-cluster1", ...];
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
@@ -64,7 +64,7 @@ public class TestPushJobWithNativeReplicationSharedProducer {
 
   @DataProvider(name = "storeSize")
   public static Object[][] storeSize() {
-    return new Object[][]{{1000, 2}};
+    return new Object[][] { { 1000, 2 } };
   }
 
   @BeforeClass(alwaysRun = true)
@@ -81,18 +81,26 @@ public class TestPushJobWithNativeReplicationSharedProducer {
     serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
 
-    //shared producer related configs.
+    // shared producer related configs.
     serverProperties.put(SERVER_SHARED_KAFKA_PRODUCER_ENABLED, "true");
     serverProperties.put(SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER, "1");
-    //this is to make sure config override works for shared producer.
+    // this is to make sure config override works for shared producer.
     serverProperties.put(SHARED_KAFKA_PRODUCER_CONFIG_PREFIX + ProducerConfig.BATCH_SIZE_CONFIG, 32864);
 
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
-    multiColoMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(NUMBER_OF_CHILD_DATACENTERS, NUMBER_OF_CLUSTERS, 1,
-            1, 2, 1, 2, Optional.of(new VeniceProperties(controllerProps)), Optional.of(controllerProps),
-            Optional.of(new VeniceProperties(serverProperties)), false);
+    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+        NUMBER_OF_CHILD_DATACENTERS,
+        NUMBER_OF_CLUSTERS,
+        1,
+        1,
+        2,
+        1,
+        2,
+        Optional.of(new VeniceProperties(controllerProps)),
+        Optional.of(controllerProps),
+        Optional.of(new VeniceProperties(serverProperties)),
+        false);
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
   }
@@ -112,8 +120,8 @@ public class TestPushJobWithNativeReplicationSharedProducer {
 
     String clusterName = CLUSTER_NAMES[0];
     File inputDir = getTempDataDirectory();
-    String parentControllerUrls = parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(
-        Collectors.joining(","));
+    String parentControllerUrls =
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
 
     try {
@@ -141,12 +149,13 @@ public class TestPushJobWithNativeReplicationSharedProducer {
         parentControllerClient = createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams);
         parentControllerClients[i] = parentControllerClient;
 
-        try (ControllerClient dc0Client = new ControllerClient(clusterName,
-            childDatacenters.get(0).getControllerConnectString());
-            ControllerClient dc1Client = new ControllerClient(clusterName,
-                childDatacenters.get(1).getControllerConnectString())) {
+        try (
+            ControllerClient dc0Client =
+                new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+            ControllerClient dc1Client =
+                new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
 
-          //verify the update store command has taken effect before starting the push job.
+          // verify the update store command has taken effect before starting the push job.
           NativeReplicationTestUtils.verifyDCConfigNativeRepl(Arrays.asList(dc0Client, dc1Client), storeName, true);
         }
       }
@@ -154,7 +163,8 @@ public class TestPushJobWithNativeReplicationSharedProducer {
       logger.info("NRSP: Finished setting up stores");
       for (int i = 0; i < storeCount; i++) {
         int id = i;
-        Thread pushJobThread = new Thread(() -> TestPushUtils.runPushJob("Test push job " + id, storeProps[id]), "PushJob-" + i);
+        Thread pushJobThread =
+            new Thread(() -> TestPushUtils.runPushJob("Test push job " + id, storeProps[id]), "PushJob-" + i);
         threads[i] = pushJobThread;
       }
 
@@ -176,16 +186,20 @@ public class TestPushJobWithNativeReplicationSharedProducer {
         }
       }
 
-      try (ControllerClient parentControllerClient = ControllerClient.constructClusterControllerClient(clusterName, parentControllerUrls)) {
+      try (ControllerClient parentControllerClient =
+          ControllerClient.constructClusterControllerClient(clusterName, parentControllerUrls)) {
         for (int i = 0; i < storeCount; i++) {
           String storeName = storeNames[i];
           TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
             // Current version should become 1
-            for (int version : parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions().values()) {
+            for (int version: parentControllerClient.getStore(storeName)
+                .getStore()
+                .getColoToCurrentVersions()
+                .values()) {
               Assert.assertEquals(version, 1);
             }
 
-            //Verify the data in the second child fabric which consumes remotely
+            // Verify the data in the second child fabric which consumes remotely
             VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
             String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
             try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
@@ -213,7 +227,9 @@ public class TestPushJobWithNativeReplicationSharedProducer {
       }
       for (int i = 0; i < storeCount; i++) {
         if (null != parentControllerClients[i]) {
-          Assert.assertFalse(deleteStoreResponses[i].isError(), "Failed to delete the test store: " + deleteStoreResponses[i].getError());
+          Assert.assertFalse(
+              deleteStoreResponses[i].isError(),
+              "Failed to delete the test store: " + deleteStoreResponses[i].getError());
         }
       }
       FileUtils.deleteDirectory(inputDir);

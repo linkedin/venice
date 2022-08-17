@@ -1,18 +1,17 @@
 package com.linkedin.venice.kafka.validation.checksum;
 
 import com.linkedin.venice.exceptions.VeniceMessageException;
-
 import java.util.HashMap;
 import java.util.Map;
+
 
 /**
  * Types of checksum algorithms supported by Venice's Data Ingest Validation.
  */
 public enum CheckSumType {
-  NONE(0, true),
-  MD5(1, true),
-  @Deprecated ADLER32(2, false),
-  @Deprecated CRC32(3, false);
+  NONE(0, true), MD5(1, true), @Deprecated
+  ADLER32(2, false), @Deprecated
+  CRC32(3, false);
 
   /** The value is the byte used on the wire format */
   private final int value;
@@ -34,7 +33,7 @@ public enum CheckSumType {
 
   private static Map<Integer, CheckSumType> getTypeMap() {
     Map<Integer, CheckSumType> intToTypeMap = new HashMap<>();
-    for (CheckSumType type : CheckSumType.values()) {
+    for (CheckSumType type: CheckSumType.values()) {
       intToTypeMap.put(type.value, type);
     }
     return intToTypeMap;

@@ -1,7 +1,10 @@
 package com.linkedin.venice.compression;
 
+import static com.linkedin.venice.utils.ByteUtils.*;
+
 import com.github.luben.zstd.ZstdCompressCtx;
 import com.github.luben.zstd.ZstdDictTrainer;
+import com.github.luben.zstd.ZstdInputStream;
 import com.linkedin.venice.compression.protocol.FakeCompressingSchema;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.ByteUtils;
@@ -9,14 +12,11 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
-import com.github.luben.zstd.ZstdInputStream;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.IOUtils;
-
-import static com.linkedin.venice.utils.ByteUtils.*;
 
 
 public class ZstdWithDictCompressor extends VeniceCompressor {
@@ -36,9 +36,9 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
 
   @Override
   public ByteBuffer compress(ByteBuffer data) {
-    if(data.isDirect()) {
+    if (data.isDirect()) {
       // TODO: It might be a decent refactor to add a pool of direct memory buffers so as to always leverage the this
-      // interface and copy the results of the compression back into the passed in ByteBuffer.  That would avoid
+      // interface and copy the results of the compression back into the passed in ByteBuffer. That would avoid
       // some of the data copy going on here.
       return compressor.compress(data);
     } else {
@@ -81,7 +81,7 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
    */
   public static byte[] buildDictionaryOnSyntheticAvroData() {
     AvroSerializer serializer = new AvroSerializer<Object>(FakeCompressingSchema.getClassSchema());
-    // Insert fake records.  We need to generate at least some data for the
+    // Insert fake records. We need to generate at least some data for the
     // dictionary as failing to do so will result in the library throwing
     // an exception (it's only able to generate a dictionary with a minimum threshold of test data).
     // So we train on a small amount of basic avro data to
@@ -95,7 +95,7 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
       values.add(i, serializer.serialize(value, AvroSerializer.REUSE.get()));
     }
     ZstdDictTrainer trainer = new ZstdDictTrainer(200 * BYTES_PER_MB, 100 * BYTES_PER_KB);
-    for (byte[] value : values) {
+    for (byte[] value: values) {
       trainer.addSample(value);
     }
     return trainer.trainSamples();

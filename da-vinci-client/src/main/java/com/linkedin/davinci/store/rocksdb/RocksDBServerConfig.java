@@ -50,7 +50,8 @@ public class RocksDBServerConfig {
   /**
    * Shared block cache for compressed data.
    */
-  public static final String ROCKSDB_BLOCK_CACHE_COMPRESSED_SIZE_IN_BYTES = "rocksdb.block.cache.compressed.size.in.bytes";
+  public static final String ROCKSDB_BLOCK_CACHE_COMPRESSED_SIZE_IN_BYTES =
+      "rocksdb.block.cache.compressed.size.in.bytes";
 
   /**
    * number of bits to count cache shards, total shard count would be 2 to the power of this number.
@@ -172,9 +173,12 @@ public class RocksDBServerConfig {
   public static final String ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER = "rocksdb.level0.slowdown.writes.trigger";
   public static final String ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER = "rocksdb.level0.stops.writes.trigger";
 
-  public static final String ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER_WRITE_ONLY_VERSION = "rocksdb.level0.file.num.compaction.trigger.write.only.version";
-  public static final String ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER_WRITE_ONLY_VERSION = "rocksdb.level0.slowdown.writes.trigger.write.only.version";
-  public static final String ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION = "rocksdb.level0.stops.writes.trigger.write.only.version";
+  public static final String ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER_WRITE_ONLY_VERSION =
+      "rocksdb.level0.file.num.compaction.trigger.write.only.version";
+  public static final String ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER_WRITE_ONLY_VERSION =
+      "rocksdb.level0.slowdown.writes.trigger.write.only.version";
+  public static final String ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION =
+      "rocksdb.level0.stops.writes.trigger.write.only.version";
 
   public static final String ROCKSDB_COMPUTE_ACCESS_MODE = "rocksdb.compute.access.mode";
 
@@ -224,7 +228,6 @@ public class RocksDBServerConfig {
 
   private final long rocksDBBytesPerSync;
 
-
   private final boolean rocksDBStatisticsEnabled;
 
   private final boolean rocksDBPlainTableFormatEnabled;
@@ -244,7 +247,6 @@ public class RocksDBServerConfig {
   private final long writeQuotaBytesPerSecond;
   private final boolean autoTunedRateLimiterEnabled;
 
-
   private final int level0FileNumCompactionTrigger;
   private final int level0SlowdownWritesTrigger;
   private final int level0StopWritesTrigger;
@@ -259,7 +261,7 @@ public class RocksDBServerConfig {
 
   public RocksDBServerConfig(VeniceProperties props) {
     // Do not use Direct IO for reads by default
-    this.rocksDBUseDirectReads = props.getBoolean(ROCKSDB_OPTIONS_USE_DIRECT_READS,false);
+    this.rocksDBUseDirectReads = props.getBoolean(ROCKSDB_OPTIONS_USE_DIRECT_READS, false);
 
     this.rocksDBEnvFlushPoolSize = props.getInt(ROCKSDB_ENV_FLUSH_POOL_SIZE, 1);
     this.rocksDBEnvCompactionPoolSize = props.getInt(ROCKSDB_ENV_COMPACTION_POOL_SIZE, 8);
@@ -268,20 +270,28 @@ public class RocksDBServerConfig {
     try {
       this.rocksDBOptionsCompressionType = CompressionType.valueOf(compressionType);
     } catch (IllegalArgumentException e) {
-      throw new VeniceException("Invalid compression type: " + compressionType + ", available types: " + Arrays.toString(CompressionType.values()));
+      throw new VeniceException(
+          "Invalid compression type: " + compressionType + ", available types: "
+              + Arrays.toString(CompressionType.values()));
     }
     String compactionStyle = props.getString(ROCKSDB_OPTIONS_COMPACTION_STYLE, CompactionStyle.LEVEL.name());
     try {
       this.rocksDBOptionsCompactionStyle = CompactionStyle.valueOf(compactionStyle);
     } catch (IllegalArgumentException e) {
-      throw new VeniceException("Invalid compaction style: " + compactionStyle + ", available styles: " + Arrays.toString(CompactionStyle.values()));
+      throw new VeniceException(
+          "Invalid compaction style: " + compactionStyle + ", available styles: "
+              + Arrays.toString(CompactionStyle.values()));
     }
 
-    this.rocksDBBlockCacheSizeInBytes = props.getSizeInBytes(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 16 * 1024 * 1024 * 1024L); // 16GB
-    this.rocksDBBlockCacheCompressedSizeInBytes = props.getSizeInBytes(ROCKSDB_BLOCK_CACHE_COMPRESSED_SIZE_IN_BYTES, 0L); // disable compressed cache
+    this.rocksDBBlockCacheSizeInBytes =
+        props.getSizeInBytes(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 16 * 1024 * 1024 * 1024L); // 16GB
+    this.rocksDBBlockCacheCompressedSizeInBytes =
+        props.getSizeInBytes(ROCKSDB_BLOCK_CACHE_COMPRESSED_SIZE_IN_BYTES, 0L); // disable compressed cache
 
-    this.rocksDBBlockCacheImplementation = RocksDBBlockCacheImplementations.valueOf(props.getString(ROCKSDB_BLOCK_CACHE_IMPLEMENTATION, RocksDBBlockCacheImplementations.LRU.toString()));
-    // settting the following to false, trying to mitigate `Caused by: org.rocksdb.RocksDBException: Insert failed due to LRU cache being full.` exception
+    this.rocksDBBlockCacheImplementation = RocksDBBlockCacheImplementations
+        .valueOf(props.getString(ROCKSDB_BLOCK_CACHE_IMPLEMENTATION, RocksDBBlockCacheImplementations.LRU.toString()));
+    // settting the following to false, trying to mitigate `Caused by: org.rocksdb.RocksDBException: Insert failed due
+    // to LRU cache being full.` exception
     this.rocksDBBlockCacheStrictCapacityLimit = props.getBoolean(ROCKSDB_BLOCK_CACHE_STRICT_CAPACITY_LIMIT, false);
     this.rocksDBSetCacheIndexAndFilterBlocks = props.getBoolean(ROCKSDB_SET_CACHE_INDEX_AND_FILTER_BLOCKS, true);
     this.rocksDBBlockCacheShardBits = props.getInt(ROCKSDB_BLOCK_CACHE_SHARD_BITS, 4); // 16 shards
@@ -317,14 +327,16 @@ public class RocksDBServerConfig {
     // DO NOT ENABLE except for new stores. https://github.com/facebook/rocksdb/wiki/PlainTable-Format
     this.rocksDBPlainTableFormatEnabled = props.getBoolean(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
     if (rocksDBPlainTableFormatEnabled && rocksDBUseDirectReads) {
-      throw new VeniceException("Invalid configuration combination, " + ROCKSDB_OPTIONS_USE_DIRECT_READS
-          + " must be disabled to enable " + ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED);
+      throw new VeniceException(
+          "Invalid configuration combination, " + ROCKSDB_OPTIONS_USE_DIRECT_READS + " must be disabled to enable "
+              + ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED);
     }
     this.rocksDBStoreIndexInFile = props.getBoolean(ROCKSDB_STORE_INDEX_IN_FILE, true);
     this.rocksDBHugePageTlbSize = props.getInt(ROCKSDB_HUGE_PAGE_TLB_SIZE, 0);
     this.rocksDBBloomBitsPerKey = props.getInt(ROCKSDB_BLOOM_BITS_PER_KEY, 10);
 
-    this.rocksDBTotalMemtableUsageCapInBytes = props.getSizeInBytes(ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES, 2 * 1024 * 1024 * 1024L); // 2GB
+    this.rocksDBTotalMemtableUsageCapInBytes =
+        props.getSizeInBytes(ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES, 2 * 1024 * 1024 * 1024L); // 2GB
     this.maxOpenFiles = props.getInt(ROCKSDB_MAX_OPEN_FILES, -1);
 
     this.targetFileSizeInBytes = props.getInt(ROCKSDB_TARGET_FILE_SIZE_IN_BYTES, 64 * 1024 * 1024); // default: 64MB
@@ -332,25 +344,32 @@ public class RocksDBServerConfig {
     this.maxFileOpeningThreads = props.getInt(ROCKSDB_MAX_FILE_OPENING_THREADS, 16);
     this.databaseOpenOperationThrottle = props.getInt(ROCKSDB_DB_OPEN_OPERATION_THROTTLE, 3);
     this.cappedPrefixExtractorLength = props.getInt(CAPPED_PREFIX_EXTRACTOR_LENGTH, 16);
-    this.writeQuotaBytesPerSecond = props.getSizeInBytes(ROCKSDB_WRITE_QUOTA_BYTES_PER_SECOND, 100L * 1024 * 1024); // 100MB by default
+    this.writeQuotaBytesPerSecond = props.getSizeInBytes(ROCKSDB_WRITE_QUOTA_BYTES_PER_SECOND, 100L * 1024 * 1024); // 100MB
+                                                                                                                    // by
+                                                                                                                    // default
     this.autoTunedRateLimiterEnabled = props.getBoolean(ROCKSDB_AUTO_TUNED_RATE_LIMITER_ENABLED, false);
     this.level0FileNumCompactionTrigger = props.getInt(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER, 40);
     this.level0SlowdownWritesTrigger = props.getInt(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER, 60);
     this.level0StopWritesTrigger = props.getInt(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER, 80);
 
-    this.level0FileNumCompactionTriggerWriteOnlyVersion = props.getInt(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER_WRITE_ONLY_VERSION, 100);
-    this.level0SlowdownWritesTriggerWriteOnlyVersion = props.getInt(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER_WRITE_ONLY_VERSION, 120);
-    this.level0StopWritesTriggerWriteOnlyVersion = props.getInt(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION, 160);
+    this.level0FileNumCompactionTriggerWriteOnlyVersion =
+        props.getInt(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER_WRITE_ONLY_VERSION, 100);
+    this.level0SlowdownWritesTriggerWriteOnlyVersion =
+        props.getInt(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER_WRITE_ONLY_VERSION, 120);
+    this.level0StopWritesTriggerWriteOnlyVersion =
+        props.getInt(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION, 160);
 
     this.putReuseByteBufferEnabled = props.getBoolean(ROCKSDB_PUT_REUSE_BYTE_BUFFER, false);
     this.atomicFlushEnabled = props.getBoolean(ROCKSDB_ATOMIC_FLUSH_ENABLED, true);
 
-    String rocksDBOperationType = props.getString(ROCKSDB_COMPUTE_ACCESS_MODE, RocksDBComputeAccessMode.SINGLE_GET.name());
+    String rocksDBOperationType =
+        props.getString(ROCKSDB_COMPUTE_ACCESS_MODE, RocksDBComputeAccessMode.SINGLE_GET.name());
     try {
       this.serverStorageOperation = RocksDBComputeAccessMode.valueOf(rocksDBOperationType);
     } catch (IllegalArgumentException e) {
-      throw new VeniceException("Invalid operation type: " + rocksDBOperationType + ", available types: " + Arrays.toString(
-          RocksDBComputeAccessMode.values()));
+      throw new VeniceException(
+          "Invalid operation type: " + rocksDBOperationType + ", available types: "
+              + Arrays.toString(RocksDBComputeAccessMode.values()));
     }
 
   }

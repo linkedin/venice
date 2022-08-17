@@ -1,14 +1,13 @@
 package com.linkedin.venice.schema.merge;
 
-import com.linkedin.venice.utils.IndexedHashMap;
+import static org.apache.avro.Schema.Type.*;
+
 import com.linkedin.venice.schema.rmd.v1.CollectionReplicationMetadata;
-//import com.linkedin.venice.utils.IndexedHashMap;
+import com.linkedin.venice.utils.IndexedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
-
-import static org.apache.avro.Schema.Type.*;
 
 
 /**
@@ -19,12 +18,12 @@ import static org.apache.avro.Schema.Type.*;
  * If a record does not have any collection field, this class behavior should be identical to {@link PerFieldTimestampMergeRecordHelper}
  */
 public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMergeRecordHelper {
-
   private final CollectionFieldOperationHandler collectionFieldOperationHandler;
 
   public CollectionTimestampMergeRecordHelper() {
     // TODO: get this variable as a argument passed to this constructor.
-    this.collectionFieldOperationHandler = new SortBasedCollectionFieldOpHandler(AvroCollectionElementComparator.INSTANCE);
+    this.collectionFieldOperationHandler =
+        new SortBasedCollectionFieldOpHandler(AvroCollectionElementComparator.INSTANCE);
   }
 
   @Override
@@ -34,23 +33,35 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
       String fieldName,
       Object newFieldValue,
       final long newPutTimestamp,
-      final int putOperationColoID
-  ) {
+      final int putOperationColoID) {
     Object oldFieldValue = oldRecord.get(fieldName);
     if (oldFieldValue instanceof List || oldFieldValue instanceof Map) {
       // Collection field must have collection timestamp at this point.
       Object collectionFieldTimestampObj = oldTimestampRecord.get(fieldName);
       if (!(collectionFieldTimestampObj instanceof GenericRecord)) {
         throw new IllegalStateException(
-            String.format("Expect field %s to be a generic record from timestamp record %s", fieldName,
+            String.format(
+                "Expect field %s to be a generic record from timestamp record %s",
+                fieldName,
                 oldTimestampRecord));
       }
       GenericRecord collectionFieldTimestamp = (GenericRecord) collectionFieldTimestampObj;
-      return putOnFieldWithCollectionTimestamp(collectionFieldTimestamp, oldRecord, newFieldValue, fieldName,
-          newPutTimestamp, putOperationColoID);
+      return putOnFieldWithCollectionTimestamp(
+          collectionFieldTimestamp,
+          oldRecord,
+          newFieldValue,
+          fieldName,
+          newPutTimestamp,
+          putOperationColoID);
 
     } else {
-      return super.putOnField(oldRecord, oldTimestampRecord, fieldName, newFieldValue, newPutTimestamp, putOperationColoID);
+      return super.putOnField(
+          oldRecord,
+          oldTimestampRecord,
+          fieldName,
+          newFieldValue,
+          newPutTimestamp,
+          putOperationColoID);
     }
   }
 
@@ -71,9 +82,9 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
       Object putFieldValue,
       String fieldName,
       final long putOperationTimestamp,
-      final int putOperationColoID
-  ) {
-    final CollectionReplicationMetadata collectionRmd = new CollectionReplicationMetadata(collectionFieldTimestampRecord);
+      final int putOperationColoID) {
+    final CollectionReplicationMetadata collectionRmd =
+        new CollectionReplicationMetadata(collectionFieldTimestampRecord);
     Object currFieldValue = currValueRecord.get(fieldName);
 
     if (currFieldValue instanceof List<?>) {
@@ -83,12 +94,12 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
           (List<Object>) putFieldValue,
           collectionRmd,
           currValueRecord,
-          fieldName
-      );
+          fieldName);
 
     } else if (currFieldValue instanceof Map) {
       if (!(putFieldValue instanceof IndexedHashMap)) {
-        throw new IllegalStateException("Expect the value to put on the field to be an IndexedHashMap. Got: " + putFieldValue.getClass());
+        throw new IllegalStateException(
+            "Expect the value to put on the field to be an IndexedHashMap. Got: " + putFieldValue.getClass());
       }
       return collectionFieldOperationHandler.handlePutMap(
           putOperationTimestamp,
@@ -96,11 +107,12 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
           (IndexedHashMap<String, Object>) putFieldValue,
           collectionRmd,
           currValueRecord,
-          fieldName
-      );
+          fieldName);
 
     } else {
-      throw new IllegalStateException("Expect a field that is of a collection type (Map or List). Got: " + currFieldValue + " for field " + fieldName);
+      throw new IllegalStateException(
+          "Expect a field that is of a collection type (Map or List). Got: " + currFieldValue + " for field "
+              + fieldName);
     }
   }
 
@@ -110,13 +122,15 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
       GenericRecord currTimestampRecord,
       final String fieldName,
       final long deleteTimestamp,
-      final int coloID
-  ) {
+      final int coloID) {
     if (isCollectionField(currValueRecord, fieldName)) {
       Object timestamp = currTimestampRecord.get(fieldName);
       if (timestamp instanceof Long) {
         throw new IllegalStateException(
-            String.format("Expect collection timestamp record for field %s. But got timestamp: %d", fieldName, timestamp));
+            String.format(
+                "Expect collection timestamp record for field %s. But got timestamp: %d",
+                fieldName,
+                timestamp));
       }
       Object currFieldValue = currValueRecord.get(fieldName);
 
@@ -126,8 +140,7 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
             coloID,
             new CollectionReplicationMetadata((GenericRecord) timestamp),
             currValueRecord,
-            fieldName
-        );
+            fieldName);
 
       } else if (currFieldValue instanceof Map) {
         return collectionFieldOperationHandler.handleDeleteMap(
@@ -135,11 +148,12 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
             coloID,
             new CollectionReplicationMetadata((GenericRecord) timestamp),
             currValueRecord,
-            fieldName
-        );
+            fieldName);
 
       } else {
-        throw new IllegalStateException("Expect a field that is of a collection type (Map or List). Got: " + currFieldValue + " for field " + fieldName);
+        throw new IllegalStateException(
+            "Expect a field that is of a collection type (Map or List). Got: " + currFieldValue + " for field "
+                + fieldName);
       }
 
     } else {

@@ -10,11 +10,15 @@ import java.util.List;
 import java.util.Optional;
 
 
-public class NoopRouterThrottler implements RouterThrottler, RoutersClusterManager.RouterCountChangedListener, StoreDataChangedListener {
+public class NoopRouterThrottler
+    implements RouterThrottler, RoutersClusterManager.RouterCountChangedListener, StoreDataChangedListener {
   private final ZkRoutersClusterManager zkRoutersManager;
   private final ReadOnlyStoreRepository storeRepository;
   private final AggRouterHttpRequestStats stats;
-  public NoopRouterThrottler(ZkRoutersClusterManager zkRoutersManager, ReadOnlyStoreRepository storeRepository,
+
+  public NoopRouterThrottler(
+      ZkRoutersClusterManager zkRoutersManager,
+      ReadOnlyStoreRepository storeRepository,
       AggRouterHttpRequestStats stats) {
     this.zkRoutersManager = zkRoutersManager;
     this.storeRepository = storeRepository;
@@ -26,7 +30,7 @@ public class NoopRouterThrottler implements RouterThrottler, RoutersClusterManag
 
   @Override
   public void mayThrottleRead(String storeName, double readCapacityUnit, Optional<String> storageNodeId) {
-    //noop
+    // noop
   }
 
   @Override
@@ -36,7 +40,7 @@ public class NoopRouterThrottler implements RouterThrottler, RoutersClusterManag
 
   private void buildAllStoreReadQuotaStats() {
     List<Store> allStores = storeRepository.getAllStores();
-    for (Store store : allStores) {
+    for (Store store: allStores) {
       buildStoreReadQuotaStats(store.getName(), store.getReadQuotaInCU());
     }
   }
@@ -46,9 +50,7 @@ public class NoopRouterThrottler implements RouterThrottler, RoutersClusterManag
         ? zkRoutersManager.getLiveRoutersCount()
         : zkRoutersManager.getExpectedRoutersCount();
 
-    long storeQuotaPerRouter = routerCount > 0
-        ? storeReadQuota / routerCount
-        : 0;
+    long storeQuotaPerRouter = routerCount > 0 ? storeReadQuota / routerCount : 0;
 
     stats.recordQuota(storeName, storeQuotaPerRouter);
   }

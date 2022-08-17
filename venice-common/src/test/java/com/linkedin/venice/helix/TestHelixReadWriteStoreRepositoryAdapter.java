@@ -1,5 +1,7 @@
 package com.linkedin.venice.helix;
 
+import static org.testng.Assert.*;
+
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -17,8 +19,6 @@ import org.apache.zookeeper.CreateMode;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-
-import static org.testng.Assert.*;
 
 
 public class TestHelixReadWriteStoreRepositoryAdapter {
@@ -45,20 +45,29 @@ public class TestHelixReadWriteStoreRepositoryAdapter {
     zkClient.create(clusterPath, null, CreateMode.PERSISTENT);
     zkClient.create(clusterPath + storesPath, null, CreateMode.PERSISTENT);
 
-    HelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository = new HelixReadOnlyZKSharedSystemStoreRepository(zkClient, adapter, cluster);
+    HelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository =
+        new HelixReadOnlyZKSharedSystemStoreRepository(zkClient, adapter, cluster);
     zkSharedSystemStoreRepository.refresh();
-    HelixReadWriteStoreRepository writeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster,
-        Optional.empty(), new ClusterLockManager(cluster));
+    HelixReadWriteStoreRepository writeRepo = new HelixReadWriteStoreRepository(
+        zkClient,
+        adapter,
+        cluster,
+        Optional.empty(),
+        new ClusterLockManager(cluster));
     writeRepo.refresh();
 
     writeRepoAdapter = new HelixReadWriteStoreRepositoryAdapter(zkSharedSystemStoreRepository, writeRepo, cluster);
     // Create zk shared store first
-    Store zkSharedStore = TestUtils.createTestStore(systemStoreType.getZkSharedStoreName(), "test_system_store_owner", 1);
+    Store zkSharedStore =
+        TestUtils.createTestStore(systemStoreType.getZkSharedStoreName(), "test_system_store_owner", 1);
     zkSharedStore.setLeaderFollowerModelEnabled(true);
     zkSharedStore.setBatchGetLimit(1);
     zkSharedStore.setReadComputationEnabled(false);
     writeRepo.addStore(zkSharedStore);
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> assertTrue(writeRepo.hasStore(systemStoreType.getZkSharedStoreName())));
+    TestUtils.waitForNonDeterministicAssertion(
+        10,
+        TimeUnit.SECONDS,
+        () -> assertTrue(writeRepo.hasStore(systemStoreType.getZkSharedStoreName())));
     // Create one regular store
     regularStoreName = Utils.getUniqueString("test_store");
     Store s1 = TestUtils.createTestStore(regularStoreName, "owner", System.currentTimeMillis());
@@ -93,7 +102,9 @@ public class TestHelixReadWriteStoreRepositoryAdapter {
       assertTrue(writeRepoAdapter.hasStore(systemStoreType.getSystemStoreName(anotherRegularStoreName)));
     });
     // Adding a system store directly will fail
-    assertThrows(() -> writeRepoAdapter.addStore(TestUtils.createTestStore(systemStoreType.getSystemStoreName(anotherRegularStoreName), "test_owner", 0)));
+    assertThrows(
+        () -> writeRepoAdapter.addStore(
+            TestUtils.createTestStore(systemStoreType.getSystemStoreName(anotherRegularStoreName), "test_owner", 0)));
   }
 
   @Test
@@ -146,7 +157,8 @@ public class TestHelixReadWriteStoreRepositoryAdapter {
     systemStore.addVersion(new VersionImpl(systemStore.getName(), 1, "test_push_id_1"));
     writeRepoAdapter.updateStore(systemStore);
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      Map<String, SystemStoreAttributes> systemStores = readOnlyRepo.getStore(anotherRegularStoreName).getSystemStores();
+      Map<String, SystemStoreAttributes> systemStores =
+          readOnlyRepo.getStore(anotherRegularStoreName).getSystemStores();
       assertEquals(systemStores.size(), 1);
       assertTrue(systemStores.containsKey(systemStoreType.getPrefix()));
       // a new system store version should present

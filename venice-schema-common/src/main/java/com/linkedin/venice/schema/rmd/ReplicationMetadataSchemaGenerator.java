@@ -28,7 +28,8 @@ public class ReplicationMetadataSchemaGenerator {
     REPLICATION_METADATA_SCHEMA_GENERATOR = Collections.unmodifiableMap(tmpMap);
   }
 
-  private ReplicationMetadataSchemaGenerator() {}
+  private ReplicationMetadataSchemaGenerator() {
+  }
 
   public static Schema generateMetadataSchema(String schemaStr, int version) {
     return generateMetadataSchema(AvroCompatibilityHelper.parse(schemaStr), version);

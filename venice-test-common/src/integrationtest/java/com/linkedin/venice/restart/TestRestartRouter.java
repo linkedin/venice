@@ -12,13 +12,13 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-
-import java.util.concurrent.TimeUnit;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
+
 
 @Test(singleThreaded = true)
 public class TestRestartRouter {
@@ -45,26 +45,39 @@ public class TestRestartRouter {
     String keySchema = "\"string\"";
     String valueSchema = "\"string\"";
     VeniceRouterWrapper routerWrapper = cluster.getRandomVeniceRouter();
-    ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), "http://"+routerWrapper.getAddress());
+    ControllerClient controllerClient =
+        new ControllerClient(cluster.getClusterName(), "http://" + routerWrapper.getAddress());
     NewStoreResponse storeResponse = controllerClient.createNewStore(storeName, storeOwner, keySchema, valueSchema);
     Assert.assertFalse(storeResponse.isError());
 
     // stop the selected router
     cluster.stopVeniceRouter(routerWrapper.getPort());
 
-    VersionCreationResponse versionCreationResponse = controllerClient.requestTopicForWrites(storeName, 100,
-        Version.PushType.BATCH, Version.guidBasedDummyPushId(), true, true, false, Optional.empty(),
-        Optional.empty(), Optional.empty(), false, -1);
-    Assert.assertTrue(versionCreationResponse.isError(),
+    VersionCreationResponse versionCreationResponse = controllerClient.requestTopicForWrites(
+        storeName,
+        100,
+        Version.PushType.BATCH,
+        Version.guidBasedDummyPushId(),
+        true,
+        true,
+        false,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        false,
+        -1);
+    Assert.assertTrue(
+        versionCreationResponse.isError(),
         "Router has already been shutdown, should not handle the request.");
 
-    // Choose another router to handle request. Cluster will help us to find another running router and send the request to.
+    // Choose another router to handle request. Cluster will help us to find another running router and send the request
+    // to.
     VersionCreationResponse response = cluster.getNewVersion(storeName, 100);
     int versionNum = response.getVersion();
     Assert.assertEquals(versionNum, 1);
-    //restart
+    // restart
     cluster.restartVeniceRouter(routerWrapper.getPort());
-    //wait unit find the leader controller.(After restart, it need some time to read data from zk.)
+    // wait unit find the leader controller.(After restart, it need some time to read data from zk.)
     TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
       RoutingDataRepository repository = routerWrapper.getRoutingDataRepository();
       try {
@@ -76,11 +89,21 @@ public class TestRestartRouter {
     });
 
     // The restarted router could continue to handle request.
-    response = controllerClient.requestTopicForWrites(storeName, 100, Version.PushType.BATCH,
-        Version.guidBasedDummyPushId(), true, true, false, Optional.empty(),
-        Optional.empty(), Optional.empty(), false, -1);
+    response = controllerClient.requestTopicForWrites(
+        storeName,
+        100,
+        Version.PushType.BATCH,
+        Version.guidBasedDummyPushId(),
+        true,
+        true,
+        false,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        false,
+        -1);
     Assert.assertFalse(response.isError());
-    Assert.assertEquals(response.getVersion(), versionNum +1);
+    Assert.assertEquals(response.getVersion(), versionNum + 1);
 
   }
 }

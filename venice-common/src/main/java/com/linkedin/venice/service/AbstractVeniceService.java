@@ -14,9 +14,7 @@ public abstract class AbstractVeniceService implements Closeable {
   protected final Logger logger = LogManager.getLogger(getClass());
 
   protected enum ServiceState {
-    STOPPED,
-    STARTING,
-    STARTED
+    STOPPED, STARTING, STARTED
   }
 
   protected final AtomicReference<ServiceState> serviceState = new AtomicReference<>(ServiceState.STOPPED);
@@ -31,8 +29,9 @@ public abstract class AbstractVeniceService implements Closeable {
 
   public synchronized void start() {
     if (!serviceState.compareAndSet(ServiceState.STOPPED, ServiceState.STARTING)) {
-      throw new VeniceException("Service can only be started when in " + ServiceState.STOPPED +
-                                    " state! Service:" + getName() + " Current state: " + serviceState.get());
+      throw new VeniceException(
+          "Service can only be started when in " + ServiceState.STOPPED + " state! Service:" + getName()
+              + " Current state: " + serviceState.get());
     }
 
     try {
@@ -75,6 +74,7 @@ public abstract class AbstractVeniceService implements Closeable {
    * @throws Exception
    */
   public abstract boolean startInner() throws Exception;
+
   public abstract void stopInner() throws Exception;
 
   @Override

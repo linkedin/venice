@@ -1,11 +1,16 @@
 package com.linkedin.venice.listener;
 
+import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_LENGTH;
+import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
+import static io.netty.handler.codec.http.HttpResponseStatus.*;
+import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
+
 import com.linkedin.davinci.listener.response.AdminResponse;
+import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.listener.response.BinaryResponse;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
-import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.venice.utils.ExceptionUtils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -17,10 +22,6 @@ import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.nio.charset.StandardCharsets;
 
-import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_LENGTH;
-import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
-import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
 /***
  * wraps raw bytes into an HTTP response object that HttpServerCodec expects
@@ -72,7 +73,7 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
         responseRcu = obj.getRCU();
       } else if (msg instanceof HttpShortcutResponse) {
         // For Early terminated requests
-        HttpShortcutResponse shortcutResponse = (HttpShortcutResponse)msg;
+        HttpShortcutResponse shortcutResponse = (HttpShortcutResponse) msg;
         responseStatus = shortcutResponse.getStatus();
         String message = shortcutResponse.getMessage();
         if (null == message) {
@@ -105,19 +106,21 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
           contentType = HttpConstants.TEXT_PLAIN;
           responseStatus = INTERNAL_SERVER_ERROR;
         }
-      } else if (msg instanceof DefaultFullHttpResponse){
+      } else if (msg instanceof DefaultFullHttpResponse) {
         ctx.writeAndFlush(msg);
         return;
       } else {
         responseStatus = INTERNAL_SERVER_ERROR;
         body = Unpooled.wrappedBuffer(
-            "Internal Server Error: Unrecognized object in OutboundHttpWrapperHandler".getBytes(StandardCharsets.UTF_8));
+            "Internal Server Error: Unrecognized object in OutboundHttpWrapperHandler"
+                .getBytes(StandardCharsets.UTF_8));
         contentType = HttpConstants.TEXT_PLAIN;
       }
     } catch (Exception e) {
       responseStatus = INTERNAL_SERVER_ERROR;
-      body = Unpooled.wrappedBuffer(("Internal Server Error:\n\n" + ExceptionUtils.stackTraceToString(e)
-          + "\n(End of server-side stacktrace)\n").getBytes(StandardCharsets.UTF_8));
+      body = Unpooled.wrappedBuffer(
+          ("Internal Server Error:\n\n" + ExceptionUtils.stackTraceToString(e) + "\n(End of server-side stacktrace)\n")
+              .getBytes(StandardCharsets.UTF_8));
       contentType = HttpConstants.TEXT_PLAIN;
     } finally {
       statsHandler.setResponseStatus(responseStatus);

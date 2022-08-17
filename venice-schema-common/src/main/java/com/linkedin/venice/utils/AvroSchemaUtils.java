@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
 import com.linkedin.avroutil1.compatibility.AvroSchemaVerifier;
-import com.linkedin.avroutil1.compatibility.FieldBuilder;
 import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -25,7 +24,6 @@ import org.apache.commons.lang.StringUtils;
 
 
 public class AvroSchemaUtils {
-
   private AvroSchemaUtils() {
     // Utility class.
   }
@@ -41,11 +39,12 @@ public class AvroSchemaUtils {
    * @param schemas to be filtered.
    * @return
    */
-  public static List<SchemaEntry> filterCanonicalizedSchemas(SchemaEntry referenceSchema,
+  public static List<SchemaEntry> filterCanonicalizedSchemas(
+      SchemaEntry referenceSchema,
       Collection<SchemaEntry> schemas) {
     List<SchemaEntry> results = new ArrayList<>();
     String cannonicalizedReferenceSchema = AvroCompatibilityHelper.toParsingForm(referenceSchema.getSchema());
-    for (SchemaEntry entry : schemas) {
+    for (SchemaEntry entry: schemas) {
       if (cannonicalizedReferenceSchema.equals(AvroCompatibilityHelper.toParsingForm(entry.getSchema())))
         results.add(entry);
     }
@@ -91,7 +90,7 @@ public class AvroSchemaUtils {
    */
   public static List<SchemaEntry> filterSchemas(SchemaEntry referenceSchema, Collection<SchemaEntry> schemas) {
     List<SchemaEntry> results = new ArrayList<>();
-    for (SchemaEntry entry : schemas) {
+    for (SchemaEntry entry: schemas) {
       if (referenceSchema.getSchema().equals(entry.getSchema())
           && !hasDocFieldChange(referenceSchema.getSchema(), entry.getSchema())) {
         results.add(entry);
@@ -116,7 +115,7 @@ public class AvroSchemaUtils {
    * Extracted from avro-1.7.7 avro/io/parsing/Symbol.java to work with legacy avro versions
    */
   private static boolean hasErrors(Symbol symbol) {
-    switch(symbol.kind) {
+    switch (symbol.kind) {
       case ALTERNATIVE:
         return hasErrors(symbol, ((Symbol.Alternative) symbol).symbols);
       case EXPLICIT_ACTION:
@@ -139,8 +138,8 @@ public class AvroSchemaUtils {
    * Extracted from avro-1.7.7 avro/io/parsing/Symbol.java to work with legacy avro versions
    */
   private static boolean hasErrors(Symbol root, Symbol[] symbols) {
-    if(null != symbols) {
-      for(Symbol s: symbols) {
+    if (null != symbols) {
+      for (Symbol s: symbols) {
         if (s == root) {
           continue;
         }
@@ -203,7 +202,7 @@ public class AvroSchemaUtils {
 
   private static boolean compareSchemaUnion(List<Schema> list1, List<Schema> list2) {
     Map<String, Schema> s2Schema = list2.stream().collect(Collectors.toMap(s -> s.getName(), s -> s));
-    for (Schema s1 : list1) {
+    for (Schema s1: list1) {
       Schema s2 = s2Schema.get(s1.getName());
       if (s2 == null || !compareSchemaIgnoreFieldOrder(s1, s2)) {
         return false;
@@ -217,7 +216,9 @@ public class AvroSchemaUtils {
    */
   @Nullable
   public static Object getFieldDefault(Schema.Field field) {
-    return AvroCompatibilityHelper.fieldHasDefault(field) ? AvroCompatibilityHelper.getNullableGenericDefaultValue(field) : null;
+    return AvroCompatibilityHelper.fieldHasDefault(field)
+        ? AvroCompatibilityHelper.getNullableGenericDefaultValue(field)
+        : null;
   }
 
   private static boolean compareFields(Schema s1, Schema s2) {
@@ -225,9 +226,10 @@ public class AvroSchemaUtils {
       return false;
     }
 
-    for (Schema.Field f1 : s1.getFields()) {
+    for (Schema.Field f1: s1.getFields()) {
       Schema.Field f2 = s2.getField(f1.name());
-      if (f2 == null || !Objects.equals(getFieldDefault(f1), getFieldDefault(f2)) || !compareSchemaIgnoreFieldOrder(f1.schema(), f2.schema())) {
+      if (f2 == null || !Objects.equals(getFieldDefault(f1), getFieldDefault(f2))
+          || !compareSchemaIgnoreFieldOrder(f1.schema(), f2.schema())) {
         return false;
       }
     }
@@ -260,7 +262,7 @@ public class AvroSchemaUtils {
 
     // Check whether one of the existing schemas is the same as the generated superset schema.
     SchemaEntry existingSupersetSchemaEntry = null;
-    for (SchemaEntry valueSchemaEntry : valueSchemaEntries) {
+    for (SchemaEntry valueSchemaEntry: valueSchemaEntries) {
       if (AvroSchemaUtils.compareSchemaIgnoreFieldOrder(valueSchemaEntry.getSchema(), supersetSchema)) {
         existingSupersetSchemaEntry = valueSchemaEntry;
         break;
@@ -300,8 +302,6 @@ public class AvroSchemaUtils {
 
   // Visible for testing.
 
-
-
   /**
    * Given s1 and s2 returned SchemaEntry#equals(s1,s2) true, verify they have doc field change.
    * It assumes rest of the fields are exactly same. DO NOT USE this to compare schemas.
@@ -331,7 +331,7 @@ public class AvroSchemaUtils {
 
   private static boolean hasDocFieldChangeFieldsUnion(List<Schema> list1, List<Schema> list2) {
     Map<String, Schema> s2Schema = list2.stream().collect(Collectors.toMap(s -> s.getName(), s -> s));
-    for (Schema s1 : list1) {
+    for (Schema s1: list1) {
       Schema s2 = s2Schema.get(s1.getName());
       if (s2 == null) {
         throw new VeniceException("Schemas dont match!");
@@ -350,7 +350,7 @@ public class AvroSchemaUtils {
 
     // Recurse down for RECORD type schemas only. s1 and s2 have same schema type.
     if (s1.getType() == Schema.Type.RECORD) {
-      for (Schema.Field f1 : s1.getFields()) {
+      for (Schema.Field f1: s1.getFields()) {
         Schema.Field f2 = s2.getField(f1.name());
         if (f2 == null) {
           throw new VeniceException("Schemas dont match!");

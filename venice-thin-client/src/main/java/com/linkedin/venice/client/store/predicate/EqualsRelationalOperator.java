@@ -6,12 +6,12 @@ import java.util.Objects;
 import org.apache.avro.generic.GenericRecord;
 
 
-public class EqualsRelationalOperator implements Predicate{
+public class EqualsRelationalOperator implements Predicate {
   private final String fieldName;
   private final Object expectedValue;
 
-  EqualsRelationalOperator(String fieldName, Object expectedValue){
-    if (null == fieldName){
+  EqualsRelationalOperator(String fieldName, Object expectedValue) {
+    if (null == fieldName) {
       throw new VeniceClientException("fieldName cannot be null.");
     }
     this.fieldName = fieldName;
@@ -28,12 +28,12 @@ public class EqualsRelationalOperator implements Predicate{
   }
 
   @Experimental
-  public String getFieldName(){
+  public String getFieldName() {
     return fieldName;
   }
 
   @Experimental
-  public Object getExpectedValue(){
+  public Object getExpectedValue() {
     return expectedValue;
   }
 }

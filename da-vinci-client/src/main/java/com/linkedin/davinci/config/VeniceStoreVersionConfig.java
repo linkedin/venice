@@ -1,5 +1,7 @@
 package com.linkedin.davinci.config;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
+
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
@@ -7,15 +9,12 @@ import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Optional;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
-
 
 /**
  * class that maintains all properties that are not specific to a venice server and cluster.
  * Includes individual store properties and other properties that can be overwritten.
  */
 public class VeniceStoreVersionConfig extends VeniceServerConfig {
-
   private String storeVersionName;
   /**
    * This config indicates the persistence type being used in local node.
@@ -31,7 +30,7 @@ public class VeniceStoreVersionConfig extends VeniceServerConfig {
   private boolean restoreMetadataPartition = true;
 
   public VeniceStoreVersionConfig(String storeVersionName, VeniceProperties storeProperties)
-    throws ConfigurationException {
+      throws ConfigurationException {
     super(storeProperties);
     this.storeVersionName = storeVersionName;
 
@@ -41,9 +40,10 @@ public class VeniceStoreVersionConfig extends VeniceServerConfig {
         .build();
   }
 
-  public VeniceStoreVersionConfig(String storeVersionName, VeniceProperties storeProperties,
-      PersistenceType storePersistenceType)
-      throws ConfigurationException {
+  public VeniceStoreVersionConfig(
+      String storeVersionName,
+      VeniceProperties storeProperties,
+      PersistenceType storePersistenceType) throws ConfigurationException {
     this(storeVersionName, storeProperties);
     this.storePersistenceType = Optional.of(storePersistenceType);
   }
@@ -54,7 +54,8 @@ public class VeniceStoreVersionConfig extends VeniceServerConfig {
 
   public PersistenceType getStorePersistenceType() {
     if (!storePersistenceType.isPresent()) {
-      throw new VeniceException("The persistence type of store: " + storeVersionName + " is still unknown, something wrong happened");
+      throw new VeniceException(
+          "The persistence type of store: " + storeVersionName + " is still unknown, something wrong happened");
     }
     return storePersistenceType.get();
   }
@@ -100,8 +101,9 @@ public class VeniceStoreVersionConfig extends VeniceServerConfig {
         // nothing changes.
         return;
       }
-      throw new VeniceException("Store persistence type is not mutable, and the previous type: " +
-          this.storePersistenceType.get() + " and new wanted type: " + storePersistenceType);
+      throw new VeniceException(
+          "Store persistence type is not mutable, and the previous type: " + this.storePersistenceType.get()
+              + " and new wanted type: " + storePersistenceType);
     }
 
     this.storePersistenceType = Optional.of(storePersistenceType);

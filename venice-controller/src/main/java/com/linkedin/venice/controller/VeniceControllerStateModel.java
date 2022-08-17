@@ -31,7 +31,7 @@ import org.apache.logging.log4j.Logger;
  * initialization but it is the private member of DistClusterControllerStateModel, so we can't get it in sub-class. So
  * we don't extend it right now. //TODO Will ask Helix team to modify the visibility.
  */
-@StateModelInfo(initialState = HelixState.OFFLINE_STATE, states = {HelixState.LEADER_STATE, HelixState.STANDBY_STATE})
+@StateModelInfo(initialState = HelixState.OFFLINE_STATE, states = { HelixState.LEADER_STATE, HelixState.STANDBY_STATE })
 public class VeniceControllerStateModel extends StateModel {
   private static final String PARTITION_SUFFIX = "_0";
   private static final Logger logger = LogManager.getLogger(VeniceControllerStateModel.class);
@@ -51,11 +51,17 @@ public class VeniceControllerStateModel extends StateModel {
   private SafeHelixManager helixManager;
   private HelixVeniceClusterResources clusterResources;
 
-
-  public VeniceControllerStateModel(String clusterName, ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
-      VeniceControllerMultiClusterConfig multiClusterConfigs, VeniceHelixAdmin admin, MetricsRepository metricsRepository,
-      ClusterLeaderInitializationRoutine controllerInitialization, RealTimeTopicSwitcher realTimeTopicSwitcher,
-      Optional<DynamicAccessController> accessController, HelixAdminClient helixAdminClient) {
+  public VeniceControllerStateModel(
+      String clusterName,
+      ZkClient zkClient,
+      HelixAdapterSerializer adapterSerializer,
+      VeniceControllerMultiClusterConfig multiClusterConfigs,
+      VeniceHelixAdmin admin,
+      MetricsRepository metricsRepository,
+      ClusterLeaderInitializationRoutine controllerInitialization,
+      RealTimeTopicSwitcher realTimeTopicSwitcher,
+      Optional<DynamicAccessController> accessController,
+      HelixAdminClient helixAdminClient) {
     this._currentState = new StateModelParser().getInitialState(VeniceControllerStateModel.class);
     this.clusterName = clusterName;
     this.zkClient = zkClient;
@@ -128,20 +134,27 @@ public class VeniceControllerStateModel extends StateModel {
       logger.info(controllerName + " becoming leader from standby for " + clusterName);
 
       if (helixManagerInitialized()) {
-        // TODO: It seems like this should throw an exception.  Otherwise the case would be you'd have an instance be leader
-        // in Helix that hadn't subscribed to any resource.  This could happen if a state transition thread timed out and ERROR'd
+        // TODO: It seems like this should throw an exception. Otherwise the case would be you'd have an instance be
+        // leader
+        // in Helix that hadn't subscribed to any resource. This could happen if a state transition thread timed out and
+        // ERROR'd
         // and the partition was 'reset' instead of bouncing the process.
         logger.error(
-            String.format("Helix manager already exists for instance %s on cluster %s and received controller name %s",
+            String.format(
+                "Helix manager already exists for instance %s on cluster %s and received controller name %s",
                 helixManager.getInstanceName(),
                 clusterName,
-                controllerName
-            ));
+                controllerName));
 
       } else {
         initHelixManager(controllerName);
         initClusterResources();
-        logger.info(String.format("Controller %s with instance %s is the leader of cluster %s", controllerName, helixManager.getInstanceName(), clusterName));
+        logger.info(
+            String.format(
+                "Controller %s with instance %s is the leader of cluster %s",
+                controllerName,
+                helixManager.getInstanceName(),
+                clusterName));
       }
     });
   }
@@ -153,10 +166,15 @@ public class VeniceControllerStateModel extends StateModel {
   private void initHelixManager(String controllerName) throws Exception {
     if (helixManagerInitialized()) {
       throw new VeniceException(
-          String.format("Helix manager has been initialized with instance %s for cluster %s", helixManager.getInstanceName(), clusterName));
+          String.format(
+              "Helix manager has been initialized with instance %s for cluster %s",
+              helixManager.getInstanceName(),
+              clusterName));
     }
-    InstanceType instanceType = clusterConfig.isVeniceClusterLeaderHAAS() ? InstanceType.SPECTATOR : InstanceType.CONTROLLER;
-    helixManager = new SafeHelixManager(HelixManagerFactory.getZKHelixManager(clusterName, controllerName, instanceType, zkClient.getServers()));
+    InstanceType instanceType =
+        clusterConfig.isVeniceClusterLeaderHAAS() ? InstanceType.SPECTATOR : InstanceType.CONTROLLER;
+    helixManager = new SafeHelixManager(
+        HelixManagerFactory.getZKHelixManager(clusterName, controllerName, instanceType, zkClient.getServers()));
     helixManager.connect();
     helixManager.startTimerTasks();
   }
@@ -175,8 +193,7 @@ public class VeniceControllerStateModel extends StateModel {
         metricsRepository,
         realTimeTopicSwitcher,
         accessController,
-        helixAdminClient
-    );
+        helixAdminClient);
     clusterResources.refresh();
     clusterResources.startErrorPartitionResetTask();
     clusterResources.startLeakedPushStatusCleanUpService();
@@ -296,7 +313,7 @@ public class VeniceControllerStateModel extends StateModel {
    * @return Venice cluster name.
    */
   protected static String getVeniceClusterNameFromPartitionName(String partitionName) {
-    //Exclude the partition id.
+    // Exclude the partition id.
     if (!partitionName.endsWith(PARTITION_SUFFIX)) {
       throw new VeniceException("Invalid partition name:" + partitionName + " should end with " + PARTITION_SUFFIX);
     }

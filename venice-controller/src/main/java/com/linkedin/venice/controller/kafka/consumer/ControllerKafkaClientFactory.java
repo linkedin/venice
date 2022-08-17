@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import static com.linkedin.venice.ConfigKeys.*;
+
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -10,14 +12,16 @@ import java.util.Optional;
 import java.util.Properties;
 import org.apache.kafka.clients.CommonClientConfigs;
 
-import static com.linkedin.venice.ConfigKeys.*;
 
 /**
  * A factory used by the Venice controller to create Kafka clients, specifically Kafka consumer and Kafka admin client.
  */
 public class ControllerKafkaClientFactory extends KafkaClientFactory {
   private final VeniceControllerConfig controllerConfig;
-  public ControllerKafkaClientFactory(VeniceControllerConfig controllerConfig, Optional<MetricsParameters> metricsParameters) {
+
+  public ControllerKafkaClientFactory(
+      VeniceControllerConfig controllerConfig,
+      Optional<MetricsParameters> metricsParameters) {
     super(Optional.empty(), metricsParameters, controllerConfig.isAutoCloseIdleConsumersEnabled());
     this.controllerConfig = controllerConfig;
   }
@@ -30,7 +34,8 @@ public class ControllerKafkaClientFactory extends KafkaClientFactory {
       }
       properties.putAll(sslConfig.get().getKafkaSSLConfig());
       properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, controllerConfig.getKafkaSecurityProtocol());
-      properties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, controllerConfig.getSslKafkaBootstrapServers());
+      properties
+          .setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, controllerConfig.getSslKafkaBootstrapServers());
     } else {
       properties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, controllerConfig.getKafkaBootstrapServers());
     }
@@ -59,11 +64,16 @@ public class ControllerKafkaClientFactory extends KafkaClientFactory {
 
   @Override
   public String getKafkaBootstrapServers() {
-    return controllerConfig.isSslToKafka() ? controllerConfig.getSslKafkaBootstrapServers() : controllerConfig.getKafkaBootstrapServers();
+    return controllerConfig.isSslToKafka()
+        ? controllerConfig.getSslKafkaBootstrapServers()
+        : controllerConfig.getKafkaBootstrapServers();
   }
 
   @Override
-  protected KafkaClientFactory clone(String kafkaBootstrapServers, String kafkaZkAddress, Optional<MetricsParameters> metricsParameters) {
+  protected KafkaClientFactory clone(
+      String kafkaBootstrapServers,
+      String kafkaZkAddress,
+      Optional<MetricsParameters> metricsParameters) {
     VeniceProperties originalPros = this.controllerConfig.getProps();
     Properties clonedProperties = originalPros.toProperties();
     if (originalPros.getBoolean(SSL_TO_KAFKA, false)) {
@@ -74,7 +84,6 @@ public class ControllerKafkaClientFactory extends KafkaClientFactory {
     clonedProperties.setProperty(KAFKA_ZK_ADDRESS, kafkaZkAddress);
     return new ControllerKafkaClientFactory(
         new VeniceControllerConfig(new VeniceProperties(clonedProperties)),
-        metricsParameters
-    );
+        metricsParameters);
   }
 }

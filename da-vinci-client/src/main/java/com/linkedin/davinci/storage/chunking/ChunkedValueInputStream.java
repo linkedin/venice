@@ -28,7 +28,8 @@ public class ChunkedValueInputStream extends InputStream {
 
   public void setChunk(int chunkIndex, byte[] chunkContent) {
     if (chunkIndex >= chunks.length) {
-      throw new IllegalArgumentException("chunkIndex out of bound, chunkIndex: " + chunkIndex + ", chunks.length: " + chunks.length);
+      throw new IllegalArgumentException(
+          "chunkIndex out of bound, chunkIndex: " + chunkIndex + ", chunks.length: " + chunks.length);
     }
     if (null != chunks[chunkIndex]) {
       throw new IllegalArgumentException("chunk already set at index: " + chunkIndex);
@@ -110,7 +111,8 @@ public class ChunkedValueInputStream extends InputStream {
     offsetInCurrentChunk = STARTING_OFFSET_IN_EACH_CHUNK;
     if (!isFullyRead() && null == chunks[currentChunk]) {
       // Defensive code. Should never happen, unless there is a regression in the code.
-      throw new IllegalStateException("All chunks should be set prior to calling read(), yet currentChunk (" + currentChunk + ") is null.");
+      throw new IllegalStateException(
+          "All chunks should be set prior to calling read(), yet currentChunk (" + currentChunk + ") is null.");
     }
   }
 

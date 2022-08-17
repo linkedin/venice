@@ -1,17 +1,18 @@
 package com.linkedin.venice.helix;
 
+import static com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.ZkDataAccessException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.meta.OfflinePushStrategy;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -22,8 +23,6 @@ import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
-
-import static com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor.*;
 
 
 public class HelixOfflinePushMonitorAccessorTest {
@@ -88,12 +87,12 @@ public class HelixOfflinePushMonitorAccessorTest {
   }
 
   @Test
-  public void testUpdateReplicaStatusThatDoesNotExist(){
+  public void testUpdateReplicaStatusThatDoesNotExist() {
     int partitionId = 1;
     try {
       accessor.updateReplicaStatus(topic, partitionId, "i1", ExecutionStatus.COMPLETED, 0, "");
       Assert.assertNull(accessor.getPartitionStatus(topic, partitionId));
-    }catch (ZkDataAccessException e){
+    } catch (ZkDataAccessException e) {
       Assert.fail("Should skip the update instead of throw a exception here.");
     }
   }
@@ -105,14 +104,22 @@ public class HelixOfflinePushMonitorAccessorTest {
     int replicationFactor = 3;
     Map<String, OfflinePushStatus> pushesMap = new HashMap<>();
     for (int i = 0; i < offlinePushCount; i++) {
-      OfflinePushStatus push = new OfflinePushStatus(topic + i, partitionCount, replicationFactor,
+      OfflinePushStatus push = new OfflinePushStatus(
+          topic + i,
+          partitionCount,
+          replicationFactor,
           OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
       pushesMap.put(topic + i, push);
       accessor.createOfflinePushStatusAndItsPartitionStatuses(push);
       for (int j = 0; j < partitionCount; j++) {
         for (int k = 0; k < replicationFactor; k++) {
-          accessor
-              .updateReplicaStatus(topic + i, j, "i" + k, ExecutionStatus.COMPLETED, (long) (Math.random() * 10000), "");
+          accessor.updateReplicaStatus(
+              topic + i,
+              j,
+              "i" + k,
+              ExecutionStatus.COMPLETED,
+              (long) (Math.random() * 10000),
+              "");
         }
         push.setPartitionStatus(ReadOnlyPartitionStatus.fromPartitionStatus(accessor.getPartitionStatus(topic + i, j)));
       }
@@ -120,7 +127,7 @@ public class HelixOfflinePushMonitorAccessorTest {
 
     List<OfflinePushStatus> loadedPushes = accessor.loadOfflinePushStatusesAndPartitionStatuses();
     Assert.assertEquals(loadedPushes.size(), offlinePushCount);
-    for (OfflinePushStatus loadedPush : loadedPushes) {
+    for (OfflinePushStatus loadedPush: loadedPushes) {
       Assert.assertEquals(loadedPush, pushesMap.get(loadedPush.getKafkaTopic()));
     }
   }
@@ -130,21 +137,25 @@ public class HelixOfflinePushMonitorAccessorTest {
     final int partitionNum = 20;
     final int replicationFactor = 3;
     final String topicName = "test_store_v1";
-    final String offlinePushStatusPath = HelixUtils.getHelixClusterZkPath(clusterName) + "/" + OFFLINE_PUSH_SUB_PATH + "/" + topicName;
+    final String offlinePushStatusPath =
+        HelixUtils.getHelixClusterZkPath(clusterName) + "/" + OFFLINE_PUSH_SUB_PATH + "/" + topicName;
 
     ZkBaseDataAccessor<OfflinePushStatus> offlinePushStatusAccessor = new ZkBaseDataAccessor<>(zkClient);
     ZkBaseDataAccessor<PartitionStatus> partitionStatusAccessor = new ZkBaseDataAccessor<>(zkClient);
     // build the offline push status ZK path for the test topic
-    OfflinePushStatus completeOfflinePushStatus = new OfflinePushStatus(topicName, partitionNum, replicationFactor,
+    OfflinePushStatus completeOfflinePushStatus = new OfflinePushStatus(
+        topicName,
+        partitionNum,
+        replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     HelixUtils.create(offlinePushStatusAccessor, offlinePushStatusPath, completeOfflinePushStatus);
 
     // build only part of the partitions: [0, 10, 2, 18]
-    int[] partialPartitionIds = {0, 10, 2, 18};
+    int[] partialPartitionIds = { 0, 10, 2, 18 };
     List<String> partitionPaths = new ArrayList<>(4);
     List<PartitionStatus> partitionStatuses = new ArrayList<>(4);
 
-    for (int partitionId : partialPartitionIds) {
+    for (int partitionId: partialPartitionIds) {
       partitionPaths.add(offlinePushStatusPath + "/" + partitionId);
       partitionStatuses.add(new PartitionStatus(partitionId));
     }

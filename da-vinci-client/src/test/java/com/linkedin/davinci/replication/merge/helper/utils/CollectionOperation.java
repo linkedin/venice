@@ -4,7 +4,6 @@ package com.linkedin.davinci.replication.merge.helper.utils;
  * This class models an operation on a collection field.
  */
 public abstract class CollectionOperation {
-
   private final long opTimestamp;
   private final int opColoID;
   private final String fieldName;

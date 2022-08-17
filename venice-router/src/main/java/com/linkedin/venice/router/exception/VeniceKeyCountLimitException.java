@@ -9,9 +9,14 @@ public class VeniceKeyCountLimitException extends VeniceException {
   private final RequestType requestType;
   private final int requestKeyCount;
 
-  public VeniceKeyCountLimitException(String storeName, RequestType requestType, int requestKeyCount, int keyCountLimit) {
-    super("Request with type: " + requestType + " to store: " + storeName + " is rejected since the request key count: "
-        + requestKeyCount + " exceeds key count limit: " + keyCountLimit);
+  public VeniceKeyCountLimitException(
+      String storeName,
+      RequestType requestType,
+      int requestKeyCount,
+      int keyCountLimit) {
+    super(
+        "Request with type: " + requestType + " to store: " + storeName + " is rejected since the request key count: "
+            + requestKeyCount + " exceeds key count limit: " + keyCountLimit);
     this.storeName = storeName;
     this.requestType = requestType;
     this.requestKeyCount = requestKeyCount;

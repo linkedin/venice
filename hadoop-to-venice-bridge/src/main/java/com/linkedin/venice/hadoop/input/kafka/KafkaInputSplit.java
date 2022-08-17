@@ -15,7 +15,6 @@ import org.apache.kafka.common.TopicPartition;
  * and end offsets.
  */
 public class KafkaInputSplit implements InputSplit {
-
   private long startingOffset;
   private long endingOffset;
   private TopicPartition topicPartition;
@@ -23,7 +22,8 @@ public class KafkaInputSplit implements InputSplit {
   /**
    * Nullary Constructor for creating the instance inside the Mapper instance.
    */
-  public KafkaInputSplit() {}
+  public KafkaInputSplit() {
+  }
 
   /**
    * Constructs an input split for the provided {@param topic} and {@param partition} restricting data to be between
@@ -48,7 +48,7 @@ public class KafkaInputSplit implements InputSplit {
 
   @Override
   public String[] getLocations() throws IOException {
-    //Leave empty since data locality not really an issue.
+    // Leave empty since data locality not really an issue.
     return new String[0];
   }
 

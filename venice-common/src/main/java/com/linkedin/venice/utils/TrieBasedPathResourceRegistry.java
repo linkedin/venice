@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+
 /**
  * This class implements a generic trie-based lookup tree.
  * One feature in this implementation is to support wildcard match,
@@ -45,7 +46,7 @@ public class TrieBasedPathResourceRegistry<T> implements PathResourceRegistry<T>
   private List<String> getPathList(String path) {
     String[] paths = path.split("/");
     List<String> pathList = new ArrayList<>();
-    for (String cPath : paths) {
+    for (String cPath: paths) {
       if (!cPath.isEmpty()) {
         pathList.add(cPath);
       }
@@ -91,7 +92,7 @@ public class TrieBasedPathResourceRegistry<T> implements PathResourceRegistry<T>
     private T resource;
 
     public TrieNode() {
-      this(null,null);
+      this(null, null);
     }
 
     public TrieNode(String path, TrieNode<T> parent) {

@@ -1,6 +1,5 @@
 package com.linkedin.venice.controllerapi;
 
-
 public class StoreMigrationResponse extends ControllerResponse {
   private String srcClusterName;
 
@@ -24,7 +23,7 @@ public class StoreMigrationResponse extends ControllerResponse {
 
   @Override
   public String toString() {
-      return StoreMigrationResponse.class.getSimpleName() + "(src cluster: " + srcClusterName + ", super: "
-          + super.toString() + ")";
+    return StoreMigrationResponse.class.getSimpleName() + "(src cluster: " + srcClusterName + ", super: "
+        + super.toString() + ")";
   }
 }

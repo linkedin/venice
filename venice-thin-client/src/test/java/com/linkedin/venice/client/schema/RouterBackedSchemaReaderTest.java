@@ -16,6 +16,7 @@ import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+
 public class RouterBackedSchemaReaderTest {
   private static ObjectMapper mapper = ObjectMapperFactory.getInstance();
   private final int TIMEOUT = 3;
@@ -43,8 +44,9 @@ public class RouterBackedSchemaReaderTest {
     Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
   }
 
-  @Test (expectedExceptions = VeniceClientException.class)
-  public void testGetKeySchemaWhenNotExists() throws IOException, ExecutionException, InterruptedException, VeniceClientException {
+  @Test(expectedExceptions = VeniceClientException.class)
+  public void testGetKeySchemaWhenNotExists()
+      throws IOException, ExecutionException, InterruptedException, VeniceClientException {
     String storeName = "test_store";
     AbstractAvroStoreClient mockClient = Mockito.mock(AbstractAvroStoreClient.class);
     Mockito.doReturn(storeName).when(mockClient).getStoreName();
@@ -55,7 +57,7 @@ public class RouterBackedSchemaReaderTest {
     schemaReader.getKeySchema();
   }
 
-  @Test (expectedExceptions = VeniceClientException.class)
+  @Test(expectedExceptions = VeniceClientException.class)
   public void testGetKeySchemaWhenServerError() throws ExecutionException, InterruptedException, VeniceClientException {
     String storeName = "test_store";
     AbstractAvroStoreClient mockClient = Mockito.mock(AbstractAvroStoreClient.class);
@@ -115,7 +117,8 @@ public class RouterBackedSchemaReaderTest {
   }
 
   @Test
-  public void testGetValueSchemaWhenNotExists() throws IOException, ExecutionException, InterruptedException, VeniceClientException {
+  public void testGetValueSchemaWhenNotExists()
+      throws IOException, ExecutionException, InterruptedException, VeniceClientException {
     String storeName = "test_store";
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
@@ -140,7 +143,6 @@ public class RouterBackedSchemaReaderTest {
     Assert.assertNull(cachedSchema);
     Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(2)).getRaw(Mockito.anyString());
 
-
     MultiSchemaResponse multiSchemaResponse = new MultiSchemaResponse();
     MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[1];
     MultiSchemaResponse.Schema schema1 = new MultiSchemaResponse.Schema();
@@ -156,8 +158,9 @@ public class RouterBackedSchemaReaderTest {
     Assert.assertEquals(schemaReader.getLatestValueSchema().toString(), valueSchemaStr);
   }
 
-  @Test (expectedExceptions = RuntimeException.class)
-  public void testGetValueSchemaWhenServerError() throws ExecutionException, InterruptedException, VeniceClientException, IOException {
+  @Test(expectedExceptions = RuntimeException.class)
+  public void testGetValueSchemaWhenServerError()
+      throws ExecutionException, InterruptedException, VeniceClientException, IOException {
     String storeName = "test_store";
     String keySchemaStr = "\"string\"";
     int valueSchemaId = 1;
@@ -178,7 +181,8 @@ public class RouterBackedSchemaReaderTest {
   }
 
   @Test
-  public void testGetLatestValueSchema() throws IOException, ExecutionException, InterruptedException, VeniceClientException {
+  public void testGetLatestValueSchema()
+      throws IOException, ExecutionException, InterruptedException, VeniceClientException {
     String storeName = "test_store";
     String keySchemaStr = "\"string\"";
     int valueSchemaId1 = 1;
@@ -217,7 +221,8 @@ public class RouterBackedSchemaReaderTest {
   }
 
   @Test
-  public void testGetLatestValueSchemaWhenNoValueSchema() throws IOException, ExecutionException, InterruptedException, VeniceClientException {
+  public void testGetLatestValueSchemaWhenNoValueSchema()
+      throws IOException, ExecutionException, InterruptedException, VeniceClientException {
     String storeName = "test_store";
     String keySchemaStr = "\"string\"";
     MultiSchemaResponse multiSchemaResponse = new MultiSchemaResponse();
@@ -236,13 +241,15 @@ public class RouterBackedSchemaReaderTest {
 
     Mockito.doReturn(mapper.writeValueAsBytes(multiSchemaResponse)).when(mockFuture).get();
     Mockito.doReturn(storeName).when(mockClient).getStoreName();
-    Mockito.doReturn(mockFuture).when(mockClient).getRaw("value_schema/" + storeName);;
+    Mockito.doReturn(mockFuture).when(mockClient).getRaw("value_schema/" + storeName);
+    ;
     Assert.assertNull(schemaReader.getLatestValueSchema());
     Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
   }
 
-  @Test (expectedExceptions = VeniceClientException.class)
-  public void testGetLatestValueSchemaWhenServerError() throws ExecutionException, InterruptedException, VeniceClientException, IOException {
+  @Test(expectedExceptions = VeniceClientException.class)
+  public void testGetLatestValueSchemaWhenServerError()
+      throws ExecutionException, InterruptedException, VeniceClientException, IOException {
     String storeName = "test_store";
     String keySchemaStr = "\"string\"";
     // setup key schema
@@ -262,8 +269,7 @@ public class RouterBackedSchemaReaderTest {
   }
 
   @Test
-  public void testGetSchemaWithAnExtraFieldInResponse()
-      throws Exception {
+  public void testGetSchemaWithAnExtraFieldInResponse() throws Exception {
     String storeName = "test_store";
     String keySchemaStr = "\"string\"";
     // Create a repsonse with an extra field.
@@ -279,14 +285,13 @@ public class RouterBackedSchemaReaderTest {
     Mockito.doReturn(mockFuture).when(mockClient).getRaw(Mockito.anyString());
     try {
       SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient);
-    } catch (VeniceClientException e){
+    } catch (VeniceClientException e) {
       Assert.fail("The unrecognized field should be ignored.");
     }
   }
 
   @Test
-  public void testGetMultiSchemaWithAnExtraFieldInResponse()
-      throws Exception {
+  public void testGetMultiSchemaWithAnExtraFieldInResponse() throws Exception {
     String storeName = "test_store";
     String valueSchemaStr = "\"string\"";
     int valueSchemaId2 = 2;
@@ -308,7 +313,6 @@ public class RouterBackedSchemaReaderTest {
     multiSchemaResponse.setSuperSetSchemaId(valueSchemaId2);
     multiSchemaResponse.setExtraField(100);
 
-
     AbstractAvroStoreClient mockClient = Mockito.mock(AbstractAvroStoreClient.class);
     Mockito.doReturn(storeName).when(mockClient).getStoreName();
     CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
@@ -318,14 +322,13 @@ public class RouterBackedSchemaReaderTest {
       SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient);
       Mockito.doReturn(mapper.writeValueAsBytes(multiSchemaResponse)).when(mockFuture).get();
       Assert.assertNotNull(schemaReader.getValueSchema(2));
-    } catch (VeniceClientException e){
+    } catch (VeniceClientException e) {
       Assert.fail("The unrecognized field should be ignored.");
     }
   }
 
   @Test(enabled = false)
-  public void testGetMultiSchemaBackwardCompat()
-      throws Exception {
+  public void testGetMultiSchemaBackwardCompat() throws Exception {
     String storeName = "test_store";
     String valueSchemaStr = "\"string\"";
     // Create a repsonse with an extra field.
@@ -338,21 +341,21 @@ public class RouterBackedSchemaReaderTest {
     multiSchemaResponse.setSchemas(schemas);
     multiSchemaResponse.setSuperSetSchemaId(10);
 
-
     AbstractAvroStoreClient mockClient = Mockito.mock(AbstractAvroStoreClient.class);
     Mockito.doReturn(storeName).when(mockClient).getStoreName();
     CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(mapper.writeValueAsBytes(multiSchemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw(Mockito.anyString());
     try {
-      MultiSchemaResponseWithExtraField schemaResponse = mapper.readValue(mapper.writeValueAsBytes(multiSchemaResponse), MultiSchemaResponseWithExtraField.class);
+      MultiSchemaResponseWithExtraField schemaResponse =
+          mapper.readValue(mapper.writeValueAsBytes(multiSchemaResponse), MultiSchemaResponseWithExtraField.class);
       schemaResponse.getSuperSetSchemaId();
-    } catch (VeniceClientException e){
+    } catch (VeniceClientException e) {
       Assert.fail("The unrecognized field should be ignored.");
     }
   }
 
-  private class SchemaResponseWithExtraField extends SchemaResponse{
+  private class SchemaResponseWithExtraField extends SchemaResponse {
     private int extraField;
 
     public int getExtraField() {

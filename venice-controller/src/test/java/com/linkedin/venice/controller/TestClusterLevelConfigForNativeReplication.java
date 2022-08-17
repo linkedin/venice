@@ -1,12 +1,16 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.controller.VeniceHelixAdmin.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
-
 import java.io.IOException;
 import java.util.Optional;
 import java.util.Properties;
@@ -14,11 +18,6 @@ import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.controller.VeniceHelixAdmin.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
 
 
 public class TestClusterLevelConfigForNativeReplication extends AbstractTestVeniceHelixAdmin {
@@ -65,8 +64,23 @@ public class TestClusterLevelConfigForNativeReplication extends AbstractTestVeni
     /**
      * Add a version
      */
-    veniceAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId1, VERSION_ID_UNSET, 1, 1,
-        false, true, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty(), false);
+    veniceAdmin.addVersionAndTopicOnly(
+        clusterName,
+        storeName,
+        pushJobId1,
+        VERSION_ID_UNSET,
+        1,
+        1,
+        false,
+        true,
+        Version.PushType.BATCH,
+        null,
+        null,
+        Optional.empty(),
+        -1,
+        1,
+        Optional.empty(),
+        false);
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);
     // L/F should be enabled by cluster-level config
@@ -74,13 +88,25 @@ public class TestClusterLevelConfigForNativeReplication extends AbstractTestVeni
     // native replication should be enabled by cluster-level config
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).isNativeReplicationEnabled(), true);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getNativeReplicationSourceFabric(), "dc-batch");
-    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(1L).setHybridOffsetLagThreshold(1L));
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setHybridRewindSeconds(1L).setHybridOffsetLagThreshold(1L));
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getNativeReplicationSourceFabric(), "dc-hybrid");
-    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(-1L).setHybridOffsetLagThreshold(-1L));
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setHybridRewindSeconds(-1L).setHybridOffsetLagThreshold(-1L));
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getNativeReplicationSourceFabric(), "dc-batch");
-    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true)
-        .setHybridRewindSeconds(1L).setHybridOffsetLagThreshold(10));
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getNativeReplicationSourceFabric(), "dc-incremental-push");
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setIncrementalPushEnabled(true)
+            .setHybridRewindSeconds(1L)
+            .setHybridOffsetLagThreshold(10));
+    Assert.assertEquals(
+        veniceAdmin.getStore(clusterName, storeName).getNativeReplicationSourceFabric(),
+        "dc-incremental-push");
 
     // Set topic original topic manager back
     veniceAdmin.setTopicManagerRepository(originalTopicManagerRepository);

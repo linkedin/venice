@@ -28,7 +28,7 @@ public class LeastLoadedClientRoutingStrategy implements ClientRoutingStrategy {
       return Collections.emptyList();
     }
     int replicaCnt = replicas.size();
-    int startPos = (int)requestId % replicaCnt;
+    int startPos = (int) requestId % replicaCnt;
     List<String> availReplicas = new ArrayList<>();
     for (int i = 0; i < replicaCnt; ++i) {
       String replica = replicas.get((i + startPos) % replicaCnt);
@@ -60,7 +60,8 @@ public class LeastLoadedClientRoutingStrategy implements ClientRoutingStrategy {
          *    much as possible.
          */
         int backfillingHealthyReplicaCnt = 0;
-        for (int i = requiredReplicaCount; i < availReplicas.size() && backfillingHealthyReplicaCnt < selectedUnhealthyReplicaCnt; ++i) {
+        for (int i = requiredReplicaCount; i < availReplicas.size()
+            && backfillingHealthyReplicaCnt < selectedUnhealthyReplicaCnt; ++i) {
           String currentReplica = availReplicas.get(i);
           if (instanceHealthMonitor.isInstanceHealthy(currentReplica)) {
             selectedReplicas.add(currentReplica);

@@ -2,6 +2,7 @@ package com.linkedin.venice.utils;
 
 import io.tehuti.utils.Time;
 
+
 public class LatencyUtils {
   /**
    * @param startTimeInNS input start time should use nanosecond unit
@@ -12,7 +13,7 @@ public class LatencyUtils {
   }
 
   public static double convertLatencyFromNSToMS(long latencyInNS) {
-    return ((double)latencyInNS) / Time.NS_PER_MS;
+    return ((double) latencyInNS) / Time.NS_PER_MS;
   }
 
   /**

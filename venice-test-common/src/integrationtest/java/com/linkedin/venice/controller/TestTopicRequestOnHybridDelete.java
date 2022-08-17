@@ -1,5 +1,10 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.kafka.TopicManager.*;
+import static com.linkedin.venice.meta.Version.*;
+import static com.linkedin.venice.utils.TestPushUtils.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -18,11 +23,10 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.Optional;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.io.IOUtils;
 import org.apache.samza.system.SystemProducer;
@@ -30,16 +34,9 @@ import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-import org.testng.asserts.Assertion;
-
-import static com.linkedin.venice.kafka.TopicManager.*;
-import static com.linkedin.venice.meta.Version.*;
-import static com.linkedin.venice.utils.TestPushUtils.*;
-import static org.testng.Assert.*;
 
 
 public class TestTopicRequestOnHybridDelete {
-
   VeniceClusterWrapper venice = null;
 
   @BeforeClass
@@ -66,9 +63,9 @@ public class TestTopicRequestOnHybridDelete {
       makeStoreHybrid(venice, storeName, 100L, 5L);
       controllerClient.emptyPush(storeName, Utils.getUniqueString("push-id"), 1L);
 
-      //write streaming records
+      // write streaming records
       veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM);
-      for (int i=1; i<=10; i++) {
+      for (int i = 1; i <= 10; i++) {
         sendStreamingRecord(veniceProducer, storeName, i);
       }
       veniceProducer.stop();
@@ -78,7 +75,7 @@ public class TestTopicRequestOnHybridDelete {
       final AvroGenericStoreClient finalClient = client;
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         try {
-          assertEquals(finalClient.get("9").get(),new Utf8("stream_9"));
+          assertEquals(finalClient.get("9").get(), new Utf8("stream_9"));
         } catch (Exception e) {
           fail("Got an exception while querying Venice!", e);
           // throw new VeniceException(e);
@@ -96,13 +93,12 @@ public class TestTopicRequestOnHybridDelete {
         Assert.fail("Must not be able to create a store that already exists");
       } catch (AssertionError e) {
         Assert.assertTrue(e.getMessage().contains("already exists"));
-        //expected
+        // expected
       }
 
-      //disable store
-      controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
-          .setEnableReads(false)
-          .setEnableWrites(false));
+      // disable store
+      controllerClient
+          .updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
 
       // delete store should return immediately without any error.
       ControllerResponse response = finalControllerClient.deleteStore(storeName);
@@ -123,7 +119,7 @@ public class TestTopicRequestOnHybridDelete {
         Assert.assertFalse(finalControllerClient.checkResourceCleanupForStoreCreation(storeName).isError());
       });
 
-      //recreate store
+      // recreate store
       venice.getNewStore(storeName);
       Assert.assertEquals(controllerClient.getStore(storeName).getStore().getVersions().size(), 0);
       makeStoreHybrid(venice, storeName, 100L, 5L);
@@ -136,20 +132,19 @@ public class TestTopicRequestOnHybridDelete {
         Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), expectedCurrentVersion);
       });
 
-
-      //write more streaming records
+      // write more streaming records
       veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM);
-      for (int i=11; i<=20; i++) {
+      for (int i = 11; i <= 20; i++) {
         sendStreamingRecord(veniceProducer, storeName, i);
       }
 
       // Ugh... I don't like doing this. Feels sketchy.
       venice.refreshAllRouterMetaData();
 
-      //verify new records appear
+      // verify new records appear
       TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
         try {
-          assertEquals(finalClient.get("19").get(),new Utf8("stream_19"));
+          assertEquals(finalClient.get("19").get(), new Utf8("stream_19"));
         } catch (Exception e) {
           throw new VeniceException(e);
         }
@@ -159,7 +154,7 @@ public class TestTopicRequestOnHybridDelete {
       List<Version> beforeRestartVersions = storeResponseBeforeRestart.getStore().getVersions();
 
       boolean foundCurrent = false;
-      for (Version version : beforeRestartVersions){
+      for (Version version: beforeRestartVersions) {
         if (version.getNumber() == expectedCurrentVersion) {
           Assert.assertEquals(version.getStatus(), VersionStatus.ONLINE);
           foundCurrent = true;
@@ -167,7 +162,7 @@ public class TestTopicRequestOnHybridDelete {
       }
       Assert.assertTrue(foundCurrent, "Store's versions must contain the current version " + expectedCurrentVersion);
 
-      //TODO restart a storage node, and verify version is still online.
+      // TODO restart a storage node, and verify version is still online.
 
     } finally {
       IOUtils.closeQuietly(client);
@@ -179,36 +174,48 @@ public class TestTopicRequestOnHybridDelete {
     }
   }
 
-  //TODO this test passes, but the same workflow should be tested in a multi-colo simulation
+  // TODO this test passes, but the same workflow should be tested in a multi-colo simulation
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
-  public void deleteStoreAfterStartedPushAllowsNewPush(){
+  public void deleteStoreAfterStartedPushAllowsNewPush() {
     ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
-    TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(venice.getKafka()));
+    TopicManager topicManager = new TopicManager(
+        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+        100,
+        0l,
+        TestUtils.getVeniceConsumerFactory(venice.getKafka()));
 
     String storeName = Utils.getUniqueString("hybrid-store");
     venice.getNewStore(storeName);
     makeStoreHybrid(venice, storeName, 100L, 5L);
 
-    //new version, but don't write records
-    VersionCreationResponse startedVersion =
-        controllerClient.requestTopicForWrites(storeName, 1L, Version.PushType.BATCH,
-            Utils.getUniqueString("pushId"), true, true, false, Optional.empty(),
-            Optional.empty(), Optional.empty(), false, -1);
-    Assert.assertFalse(startedVersion.isError(),
+    // new version, but don't write records
+    VersionCreationResponse startedVersion = controllerClient.requestTopicForWrites(
+        storeName,
+        1L,
+        Version.PushType.BATCH,
+        Utils.getUniqueString("pushId"),
+        true,
+        true,
+        false,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        false,
+        -1);
+    Assert.assertFalse(
+        startedVersion.isError(),
         "The call to controllerClient.requestTopicForWrites() returned an error: " + startedVersion.getError());
-    Assert.assertEquals(controllerClient.queryJobStatus(startedVersion.getKafkaTopic()).getStatus(), ExecutionStatus.STARTED.toString());
+    Assert.assertEquals(
+        controllerClient.queryJobStatus(startedVersion.getKafkaTopic()).getStatus(),
+        ExecutionStatus.STARTED.toString());
     Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(startedVersion.getKafkaTopic()));
 
-    //disable store
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
-        .setEnableReads(false)
-        .setEnableWrites(false));
-    //delete versions
+    // disable store
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
+    // delete versions
     controllerClient.deleteAllVersions(storeName);
-    //enable store
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
-        .setEnableReads(true)
-        .setEnableWrites(true));
+    // enable store
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(true).setEnableWrites(true));
 
     controllerClient.emptyPush(storeName, Utils.getUniqueString("push-id3"), 1L);
 

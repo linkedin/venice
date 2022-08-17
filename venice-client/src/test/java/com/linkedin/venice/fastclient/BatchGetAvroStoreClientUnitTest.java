@@ -31,7 +31,6 @@ import org.testng.annotations.Test;
  * Multithreaded scenario and testing
  */
 public class BatchGetAvroStoreClientUnitTest {
-
   private static final Logger LOGGER = LogManager.getLogger(BatchGetAvroStoreClientUnitTest.class);
   private static final long TIME_OUT_IN_SECONDS = 10;
 
@@ -43,30 +42,26 @@ public class BatchGetAvroStoreClientUnitTest {
   public void testSimpleStreamingBatchGet() throws InterruptedException, ExecutionException, TimeoutException {
 
     TestClientSimulator client = new TestClientSimulator();
-    client
-        .generateKeyValues(0, 1000)
+    client.generateKeyValues(0, 1000)
         .partitionKeys(1)
         .assignRouteToPartitions("https://host1.linkedin.com", 0)
-        .expectRequestWithKeysForPartitionOnRoute(1,1, "https://host1.linkedin.com", 0)
-        .respondToRequestWithKeyValues(5,1)
+        .expectRequestWithKeysForPartitionOnRoute(1, 1, "https://host1.linkedin.com", 0)
+        .respondToRequestWithKeyValues(5, 1)
         .simulate();
 
     callStreamingBatchGetAndVerifyResults(client.getFastClient(), client.getKeyValues(), client.getSimulatorComplete());
   }
-
 
   @Test
   public void testSimpleStreamingBatchGetMultiplePartitions()
       throws InterruptedException, ExecutionException, TimeoutException {
 
     TestClientSimulator client = new TestClientSimulator();
-    client
-        .generateKeyValues(0, 1000)
+    client.generateKeyValues(0, 1000)
         .partitionKeys(5)
         .assignRouteToPartitions("https://host1.linkedin.com", 0, 1, 2, 3, 4)
-        .expectRequestWithKeysForPartitionOnRoute(1,1, "https://host1.linkedin.com",
-            0, 1, 2, 3, 4)
-        .respondToRequestWithKeyValues(5,1)
+        .expectRequestWithKeysForPartitionOnRoute(1, 1, "https://host1.linkedin.com", 0, 1, 2, 3, 4)
+        .respondToRequestWithKeyValues(5, 1)
         .simulate();
 
     callStreamingBatchGetAndVerifyResults(client.getFastClient(), client.getKeyValues(), client.getSimulatorComplete());
@@ -77,54 +72,48 @@ public class BatchGetAvroStoreClientUnitTest {
       throws InterruptedException, ExecutionException, TimeoutException {
 
     TestClientSimulator client = new TestClientSimulator();
-    client
-        .generateKeyValues(0, 12)
+    client.generateKeyValues(0, 12)
         .partitionKeys(3)
         .assignRouteToPartitions("https://host0.linkedin.com", 0)
         .assignRouteToPartitions("https://host1.linkedin.com", 1)
         .assignRouteToPartitions("https://host2.linkedin.com", 2)
-        .expectRequestWithKeysForPartitionOnRoute(1,1, "https://host0.linkedin.com",
-            0)
-        .expectRequestWithKeysForPartitionOnRoute(1,2, "https://host1.linkedin.com",
-            1)
-        .expectRequestWithKeysForPartitionOnRoute(1,3, "https://host2.linkedin.com",
-            2)
-        .respondToRequestWithKeyValues(5,1)
-        .respondToRequestWithKeyValues(6,2)
-        .respondToRequestWithKeyValues(7,3)
+        .expectRequestWithKeysForPartitionOnRoute(1, 1, "https://host0.linkedin.com", 0)
+        .expectRequestWithKeysForPartitionOnRoute(1, 2, "https://host1.linkedin.com", 1)
+        .expectRequestWithKeysForPartitionOnRoute(1, 3, "https://host2.linkedin.com", 2)
+        .respondToRequestWithKeyValues(5, 1)
+        .respondToRequestWithKeyValues(6, 2)
+        .respondToRequestWithKeyValues(7, 3)
         .simulate();
 
     callStreamingBatchGetAndVerifyResults(client.getFastClient(), client.getKeyValues(), client.getSimulatorComplete());
   }
-
 
   @Test
   public void testStreamingBatchGetMultiplePartitionsPerRoute()
       throws InterruptedException, ExecutionException, TimeoutException {
 
     TestClientSimulator client = new TestClientSimulator();
-    client
-        .generateKeyValues(0, 12)
+    client.generateKeyValues(0, 12)
         .partitionKeys(3)
         .assignRouteToPartitions("https://host0.linkedin.com", 0, 1)
         .assignRouteToPartitions("https://host1.linkedin.com", 1, 2)
         .assignRouteToPartitions("https://host2.linkedin.com", 2, 0)
         // whenever I get a request for a partition and numberofreplicas respond with
-        .expectReplicaRequestForPartitionAndRespondWithReplicas(0,
-            Lists.newArrayList("https://host0.linkedin.com","https://host1.linkedin.com"))
-        .expectReplicaRequestForPartitionAndRespondWithReplicas(1,
-            Lists.newArrayList("https://host1.linkedin.com","https://host0.linkedin.com"))
-        .expectReplicaRequestForPartitionAndRespondWithReplicas(2,
-            Lists.newArrayList("https://host2.linkedin.com","https://host0.linkedin.com"))
-        .expectRequestWithKeysForPartitionOnRoute(1,1, "https://host0.linkedin.com",
-            0)
-        .expectRequestWithKeysForPartitionOnRoute(1,2, "https://host1.linkedin.com",
-            1)
-        .expectRequestWithKeysForPartitionOnRoute(1,3, "https://host2.linkedin.com",
-            2)
-        .respondToRequestWithKeyValues(5,1)
-        .respondToRequestWithKeyValues(6,2)
-        .respondToRequestWithKeyValues(7,3)
+        .expectReplicaRequestForPartitionAndRespondWithReplicas(
+            0,
+            Lists.newArrayList("https://host0.linkedin.com", "https://host1.linkedin.com"))
+        .expectReplicaRequestForPartitionAndRespondWithReplicas(
+            1,
+            Lists.newArrayList("https://host1.linkedin.com", "https://host0.linkedin.com"))
+        .expectReplicaRequestForPartitionAndRespondWithReplicas(
+            2,
+            Lists.newArrayList("https://host2.linkedin.com", "https://host0.linkedin.com"))
+        .expectRequestWithKeysForPartitionOnRoute(1, 1, "https://host0.linkedin.com", 0)
+        .expectRequestWithKeysForPartitionOnRoute(1, 2, "https://host1.linkedin.com", 1)
+        .expectRequestWithKeysForPartitionOnRoute(1, 3, "https://host2.linkedin.com", 2)
+        .respondToRequestWithKeyValues(5, 1)
+        .respondToRequestWithKeyValues(6, 2)
+        .respondToRequestWithKeyValues(7, 3)
         .simulate();
 
     callStreamingBatchGetAndVerifyResults(client.getFastClient(), client.getKeyValues(), client.getSimulatorComplete());
@@ -136,15 +125,12 @@ public class BatchGetAvroStoreClientUnitTest {
 
     TestClientSimulator client = new TestClientSimulator();
     setupLongTailRetryWithMultiplePartitions(client)
-        .expectRequestWithKeysForPartitionOnRoute(1,1, "https://host0.linkedin.com",
-            0)
-        .expectRequestWithKeysForPartitionOnRoute(1,2, "https://host1.linkedin.com",
-            1)
-        .expectRequestWithKeysForPartitionOnRoute(1,3, "https://host2.linkedin.com",
-            2)
-        .respondToRequestWithKeyValues(5,1)
-        .respondToRequestWithKeyValues(6,2)
-        .respondToRequestWithKeyValues(10,3)
+        .expectRequestWithKeysForPartitionOnRoute(1, 1, "https://host0.linkedin.com", 0)
+        .expectRequestWithKeysForPartitionOnRoute(1, 2, "https://host1.linkedin.com", 1)
+        .expectRequestWithKeysForPartitionOnRoute(1, 3, "https://host2.linkedin.com", 2)
+        .respondToRequestWithKeyValues(5, 1)
+        .respondToRequestWithKeyValues(6, 2)
+        .respondToRequestWithKeyValues(10, 3)
         .simulate();
 
     callStreamingBatchGetAndVerifyResults(client.getFastClient(), client.getKeyValues(), client.getSimulatorComplete());
@@ -156,23 +142,18 @@ public class BatchGetAvroStoreClientUnitTest {
 
     TestClientSimulator client = new TestClientSimulator();
     setupLongTailRetryWithMultiplePartitions(client)
-        .expectRequestWithKeysForPartitionOnRoute(1,1, "https://host0.linkedin.com",
-            0)
-        .expectRequestWithKeysForPartitionOnRoute(1,2, "https://host1.linkedin.com",
-            1)
+        .expectRequestWithKeysForPartitionOnRoute(1, 1, "https://host0.linkedin.com", 0)
+        .expectRequestWithKeysForPartitionOnRoute(1, 2, "https://host1.linkedin.com", 1)
         // Simulate slow route which never actually comes back
-        .expectRequestWithKeysForPartitionOnRoute(1,3, "https://host2.linkedin.com",
-            2)
-        .respondToRequestWithKeyValues(5,1)
-        .respondToRequestWithKeyValues(6,2)
-        .expectRequestWithKeysForPartitionOnRoute(50,4, "https://host1.linkedin.com",
-            2)
-        .respondToRequestWithKeyValues(55,4)
+        .expectRequestWithKeysForPartitionOnRoute(1, 3, "https://host2.linkedin.com", 2)
+        .respondToRequestWithKeyValues(5, 1)
+        .respondToRequestWithKeyValues(6, 2)
+        .expectRequestWithKeysForPartitionOnRoute(50, 4, "https://host1.linkedin.com", 2)
+        .respondToRequestWithKeyValues(55, 4)
         .simulate();
 
     callStreamingBatchGetAndVerifyResults(client.getFastClient(), client.getKeyValues(), client.getSimulatorComplete());
   }
-
 
   @Test
   public void testStreamingBatchGetLongTailRetryMultiplePartitionsOrigResponseLate()
@@ -180,19 +161,15 @@ public class BatchGetAvroStoreClientUnitTest {
 
     TestClientSimulator client = new TestClientSimulator();
     setupLongTailRetryWithMultiplePartitions(client)
-        .expectRequestWithKeysForPartitionOnRoute(1,1, "https://host0.linkedin.com",
-            0)
-        .expectRequestWithKeysForPartitionOnRoute(1,2, "https://host1.linkedin.com",
-            1)
+        .expectRequestWithKeysForPartitionOnRoute(1, 1, "https://host0.linkedin.com", 0)
+        .expectRequestWithKeysForPartitionOnRoute(1, 2, "https://host1.linkedin.com", 1)
         // Simulate slow route
-        .expectRequestWithKeysForPartitionOnRoute(1,3, "https://host2.linkedin.com",
-            2)
-        .respondToRequestWithKeyValues(5,1)
-        .respondToRequestWithKeyValues(6,2)
-        .expectRequestWithKeysForPartitionOnRoute(50,4, "https://host1.linkedin.com",
-            2)
-        .respondToRequestWithKeyValues(55,4)
-        .respondToRequestWithKeyValues(70,3) // Response from original request was late
+        .expectRequestWithKeysForPartitionOnRoute(1, 3, "https://host2.linkedin.com", 2)
+        .respondToRequestWithKeyValues(5, 1)
+        .respondToRequestWithKeyValues(6, 2)
+        .expectRequestWithKeysForPartitionOnRoute(50, 4, "https://host1.linkedin.com", 2)
+        .respondToRequestWithKeyValues(55, 4)
+        .respondToRequestWithKeyValues(70, 3) // Response from original request was late
         .simulate();
 
     callStreamingBatchGetAndVerifyResults(client.getFastClient(), client.getKeyValues(), client.getSimulatorComplete());
@@ -204,19 +181,15 @@ public class BatchGetAvroStoreClientUnitTest {
 
     TestClientSimulator client = new TestClientSimulator();
     setupLongTailRetryWithMultiplePartitions(client)
-        .expectRequestWithKeysForPartitionOnRoute(1,1, "https://host0.linkedin.com",
-            0)
-        .expectRequestWithKeysForPartitionOnRoute(1,2, "https://host1.linkedin.com",
-            1)
+        .expectRequestWithKeysForPartitionOnRoute(1, 1, "https://host0.linkedin.com", 0)
+        .expectRequestWithKeysForPartitionOnRoute(1, 2, "https://host1.linkedin.com", 1)
         // Simulate slow route
-        .expectRequestWithKeysForPartitionOnRoute(1,3, "https://host2.linkedin.com",
-            2)
-        .respondToRequestWithKeyValues(5,1)
-        .respondToRequestWithKeyValues(6,2)
-        .expectRequestWithKeysForPartitionOnRoute(50,4, "https://host1.linkedin.com",
-            2)
-        .respondToRequestWithKeyValues(55,3) // Response from original request came earlier
-        .respondToRequestWithKeyValues(70,4)
+        .expectRequestWithKeysForPartitionOnRoute(1, 3, "https://host2.linkedin.com", 2)
+        .respondToRequestWithKeyValues(5, 1)
+        .respondToRequestWithKeyValues(6, 2)
+        .expectRequestWithKeysForPartitionOnRoute(50, 4, "https://host1.linkedin.com", 2)
+        .respondToRequestWithKeyValues(55, 3) // Response from original request came earlier
+        .respondToRequestWithKeyValues(70, 4)
         .simulate();
 
     callStreamingBatchGetAndVerifyResults(client.getFastClient(), client.getKeyValues(), client.getSimulatorComplete());
@@ -228,21 +201,16 @@ public class BatchGetAvroStoreClientUnitTest {
 
     TestClientSimulator client = new TestClientSimulator();
     setupLongTailRetryWithMultiplePartitions(client)
-        .expectRequestWithKeysForPartitionOnRoute(1,1, "https://host0.linkedin.com",
-            0)
+        .expectRequestWithKeysForPartitionOnRoute(1, 1, "https://host0.linkedin.com", 0)
         // Route is little slow
-        .expectRequestWithKeysForPartitionOnRoute(1,2, "https://host1.linkedin.com",
-            1)
+        .expectRequestWithKeysForPartitionOnRoute(1, 2, "https://host1.linkedin.com", 1)
         // Route is very slow never
-        .expectRequestWithKeysForPartitionOnRoute(1,3, "https://host2.linkedin.com",
-            2)
-        .respondToRequestWithKeyValues(5,1)
-        .expectRequestWithKeysForPartitionOnRoute(50,4, "https://host0.linkedin.com",
-            1)
-        .expectRequestWithKeysForPartitionOnRoute(50,5, "https://host1.linkedin.com",
-            2)
-        .respondToRequestWithKeyValues(55,2)
-        .respondToRequestWithKeyValues(60,5)
+        .expectRequestWithKeysForPartitionOnRoute(1, 3, "https://host2.linkedin.com", 2)
+        .respondToRequestWithKeyValues(5, 1)
+        .expectRequestWithKeysForPartitionOnRoute(50, 4, "https://host0.linkedin.com", 1)
+        .expectRequestWithKeysForPartitionOnRoute(50, 5, "https://host1.linkedin.com", 2)
+        .respondToRequestWithKeyValues(55, 2)
+        .respondToRequestWithKeyValues(60, 5)
         .simulate();
 
     callStreamingBatchGetAndVerifyResults(client.getFastClient(), client.getKeyValues(), client.getSimulatorComplete());
@@ -254,22 +222,17 @@ public class BatchGetAvroStoreClientUnitTest {
 
     TestClientSimulator client = new TestClientSimulator();
     setupLongTailRetryWithMultiplePartitions(client)
-        .expectRequestWithKeysForPartitionOnRoute(1,1, "https://host0.linkedin.com",
-            0)
+        .expectRequestWithKeysForPartitionOnRoute(1, 1, "https://host0.linkedin.com", 0)
         // Route is little slow
-        .expectRequestWithKeysForPartitionOnRoute(1,2, "https://host1.linkedin.com",
-            1)
-        .expectRequestWithKeysForPartitionOnRoute(1,3, "https://host2.linkedin.com",
-            2)
-        .respondToRequestWithKeyValues(5,1)
-        .expectRequestWithKeysForPartitionOnRoute(50,4, "https://host0.linkedin.com",
-            1)
-        .expectRequestWithKeysForPartitionOnRoute(50,5, "https://host1.linkedin.com",
-            2)
+        .expectRequestWithKeysForPartitionOnRoute(1, 2, "https://host1.linkedin.com", 1)
+        .expectRequestWithKeysForPartitionOnRoute(1, 3, "https://host2.linkedin.com", 2)
+        .respondToRequestWithKeyValues(5, 1)
+        .expectRequestWithKeysForPartitionOnRoute(50, 4, "https://host0.linkedin.com", 1)
+        .expectRequestWithKeysForPartitionOnRoute(50, 5, "https://host1.linkedin.com", 2)
         // Route returns error before even retry starts
-        .respondToRequestWithError(40,3, 500)
-        .respondToRequestWithKeyValues(55,2)
-        .respondToRequestWithKeyValues(60,5)
+        .respondToRequestWithError(40, 3, 500)
+        .respondToRequestWithKeyValues(55, 2)
+        .respondToRequestWithKeyValues(60, 5)
         .simulate();
 
     callStreamingBatchGetAndVerifyResults(client.getFastClient(), client.getKeyValues(), client.getSimulatorComplete());
@@ -281,22 +244,17 @@ public class BatchGetAvroStoreClientUnitTest {
 
     TestClientSimulator client = new TestClientSimulator();
     setupLongTailRetryWithMultiplePartitions(client)
-        .expectRequestWithKeysForPartitionOnRoute(1,1, "https://host0.linkedin.com",
-            0)
+        .expectRequestWithKeysForPartitionOnRoute(1, 1, "https://host0.linkedin.com", 0)
         // Route is little slow
-        .expectRequestWithKeysForPartitionOnRoute(1,2, "https://host1.linkedin.com",
-            1)
-        .expectRequestWithKeysForPartitionOnRoute(1,3, "https://host2.linkedin.com",
-            2)
-        .respondToRequestWithKeyValues(5,1)
-        .expectRequestWithKeysForPartitionOnRoute(50,4, "https://host0.linkedin.com",
-            1)
-        .expectRequestWithKeysForPartitionOnRoute(50,5, "https://host1.linkedin.com",
-            2)
+        .expectRequestWithKeysForPartitionOnRoute(1, 2, "https://host1.linkedin.com", 1)
+        .expectRequestWithKeysForPartitionOnRoute(1, 3, "https://host2.linkedin.com", 2)
+        .respondToRequestWithKeyValues(5, 1)
+        .expectRequestWithKeysForPartitionOnRoute(50, 4, "https://host0.linkedin.com", 1)
+        .expectRequestWithKeysForPartitionOnRoute(50, 5, "https://host1.linkedin.com", 2)
         // Route returns error before even retry starts
-        .respondToRequestWithError(53,3, 500)
-        .respondToRequestWithKeyValues(55,2)
-        .respondToRequestWithKeyValues(60,5)
+        .respondToRequestWithError(53, 3, 500)
+        .respondToRequestWithKeyValues(55, 2)
+        .respondToRequestWithKeyValues(60, 5)
         .simulate();
 
     callStreamingBatchGetAndVerifyResults(client.getFastClient(), client.getKeyValues(), client.getSimulatorComplete());
@@ -308,19 +266,15 @@ public class BatchGetAvroStoreClientUnitTest {
 
     TestClientSimulator client = new TestClientSimulator();
     setupLongTailRetryWithMultiplePartitions(client)
-        .expectRequestWithKeysForPartitionOnRoute(1,1, "https://host0.linkedin.com",
-            0)
-        .expectRequestWithKeysForPartitionOnRoute(1,2, "https://host1.linkedin.com",
-            1)
+        .expectRequestWithKeysForPartitionOnRoute(1, 1, "https://host0.linkedin.com", 0)
+        .expectRequestWithKeysForPartitionOnRoute(1, 2, "https://host1.linkedin.com", 1)
         // Simulate slow route
-        .expectRequestWithKeysForPartitionOnRoute(1,3, "https://host2.linkedin.com",
-            2)
-        .respondToRequestWithKeyValues(5,1)
-        .respondToRequestWithKeyValues(6,2)
-        .expectRequestWithKeysForPartitionOnRoute(50,4, "https://host1.linkedin.com",
-            2)
-        .respondToRequestWithError(55,4,500)
-        .respondToRequestWithKeyValues(70,3) // Response from original request was late
+        .expectRequestWithKeysForPartitionOnRoute(1, 3, "https://host2.linkedin.com", 2)
+        .respondToRequestWithKeyValues(5, 1)
+        .respondToRequestWithKeyValues(6, 2)
+        .expectRequestWithKeysForPartitionOnRoute(50, 4, "https://host1.linkedin.com", 2)
+        .respondToRequestWithError(55, 4, 500)
+        .respondToRequestWithKeyValues(70, 3) // Response from original request was late
         .simulate();
 
     callStreamingBatchGetAndVerifyResults(client.getFastClient(), client.getKeyValues(), client.getSimulatorComplete());
@@ -332,23 +286,22 @@ public class BatchGetAvroStoreClientUnitTest {
 
     TestClientSimulator client = new TestClientSimulator();
     setupLongTailRetryWithMultiplePartitions(client)
-        .expectRequestWithKeysForPartitionOnRoute(1,1, "https://host0.linkedin.com",
-            0)
-        .expectRequestWithKeysForPartitionOnRoute(1,2, "https://host1.linkedin.com",
-            1)
+        .expectRequestWithKeysForPartitionOnRoute(1, 1, "https://host0.linkedin.com", 0)
+        .expectRequestWithKeysForPartitionOnRoute(1, 2, "https://host1.linkedin.com", 1)
         // Simulate slow route
-        .expectRequestWithKeysForPartitionOnRoute(1,3, "https://host2.linkedin.com",
-            2)
-        .respondToRequestWithKeyValues(5,1)
-        .respondToRequestWithKeyValues(6,2)
-        .expectRequestWithKeysForPartitionOnRoute(50,4, "https://host1.linkedin.com",
-            2)
-        .respondToRequestWithError(55,4,500)
-        .respondToRequestWithError(70,3, 500) // Error response
+        .expectRequestWithKeysForPartitionOnRoute(1, 3, "https://host2.linkedin.com", 2)
+        .respondToRequestWithKeyValues(5, 1)
+        .respondToRequestWithKeyValues(6, 2)
+        .expectRequestWithKeysForPartitionOnRoute(50, 4, "https://host1.linkedin.com", 2)
+        .respondToRequestWithError(55, 4, 500)
+        .respondToRequestWithError(70, 3, 500) // Error response
         .simulate();
 
-    callStreamingBatchGetAndVerifyResults(client.getFastClient(), client.getKeyValues(), client.getSimulatorComplete()
-    , true);
+    callStreamingBatchGetAndVerifyResults(
+        client.getFastClient(),
+        client.getKeyValues(),
+        client.getSimulatorComplete(),
+        true);
   }
 
   private TestClientSimulator setupLongTailRetryWithMultiplePartitions(TestClientSimulator client) {
@@ -361,22 +314,30 @@ public class BatchGetAvroStoreClientUnitTest {
         .assignRouteToPartitions("https://host1.linkedin.com", 1, 2)
         .assignRouteToPartitions("https://host2.linkedin.com", 2, 0)
         // whenever I get a request for a partition respond with the priority order as specified
-        .expectReplicaRequestForPartitionAndRespondWithReplicas(0,
+        .expectReplicaRequestForPartitionAndRespondWithReplicas(
+            0,
             Lists.newArrayList("https://host0.linkedin.com", "https://host2.linkedin.com"))
-        .expectReplicaRequestForPartitionAndRespondWithReplicas(1,
+        .expectReplicaRequestForPartitionAndRespondWithReplicas(
+            1,
             Lists.newArrayList("https://host1.linkedin.com", "https://host0.linkedin.com"))
-        .expectReplicaRequestForPartitionAndRespondWithReplicas(2,
+        .expectReplicaRequestForPartitionAndRespondWithReplicas(
+            2,
             Lists.newArrayList("https://host2.linkedin.com", "https://host1.linkedin.com"));
   }
 
-  private void callStreamingBatchGetAndVerifyResults(AvroGenericStoreClient<String, Utf8> fastClient,
-      Map<String,String> keyValues, CompletableFuture<Integer> simulatorCompletion)
+  private void callStreamingBatchGetAndVerifyResults(
+      AvroGenericStoreClient<String, Utf8> fastClient,
+      Map<String, String> keyValues,
+      CompletableFuture<Integer> simulatorCompletion)
       throws ExecutionException, InterruptedException, TimeoutException {
     callStreamingBatchGetAndVerifyResults(fastClient, keyValues, simulatorCompletion, false);
   }
-  private void callStreamingBatchGetAndVerifyResults(AvroGenericStoreClient<String, Utf8> fastClient,
-      Map<String,String> keyValues, CompletableFuture<Integer> simulatorCompletion, boolean expectedError)
-      throws InterruptedException, ExecutionException, TimeoutException {
+
+  private void callStreamingBatchGetAndVerifyResults(
+      AvroGenericStoreClient<String, Utf8> fastClient,
+      Map<String, String> keyValues,
+      CompletableFuture<Integer> simulatorCompletion,
+      boolean expectedError) throws InterruptedException, ExecutionException, TimeoutException {
     Map<String, String> results = new ConcurrentHashMap<>();
     AtomicBoolean isComplete = new AtomicBoolean();
     CompletableFuture<Integer> recordCompletion = new CompletableFuture<>();
@@ -384,10 +345,10 @@ public class BatchGetAvroStoreClientUnitTest {
       @Override
       public void onRecordReceived(String key, Utf8 value) {
         LOGGER.info("Record received " + key + ":" + value);
-        if ( "nonExisting".equals(key)) {
+        if ("nonExisting".equals(key)) {
           Assert.assertNull(value);
         } else {
-          if ( results.containsKey(key)) {
+          if (results.containsKey(key)) {
             Assert.fail("Duplicate value received for key " + key);
           }
           results.put(key, value.toString());
@@ -396,10 +357,10 @@ public class BatchGetAvroStoreClientUnitTest {
 
       @Override
       public void onCompletion(Optional<Exception> exception) {
-        LOGGER.info("OnCompletion called . Exception: {} isComplete: {} " , exception, isComplete.get());
-        if ( !exception.isPresent()) {
-          Assert.assertEquals(exception,Optional.empty());
-          Assert.assertTrue(isComplete.compareAndSet(false,true));
+        LOGGER.info("OnCompletion called . Exception: {} isComplete: {} ", exception, isComplete.get());
+        if (!exception.isPresent()) {
+          Assert.assertEquals(exception, Optional.empty());
+          Assert.assertTrue(isComplete.compareAndSet(false, true));
           recordCompletion.complete(0);
         } else {
           recordCompletion.completeExceptionally(exception.get());
@@ -409,9 +370,9 @@ public class BatchGetAvroStoreClientUnitTest {
 
     CompletableFuture<Void> allCompletion = CompletableFuture.allOf(recordCompletion, simulatorCompletion);
     allCompletion.whenComplete((v, e) -> {
-      if ( e != null) {
-        LOGGER.error("Exception received" , e);
-        if ( expectedError) {
+      if (e != null) {
+        LOGGER.error("Exception received", e);
+        if (expectedError) {
           Assert.assertFalse(isComplete.get());
         } else {
           Assert.fail("Exception received");
@@ -424,9 +385,10 @@ public class BatchGetAvroStoreClientUnitTest {
     try {
       allCompletion.get(TIME_OUT_IN_SECONDS, TimeUnit.SECONDS);
     } catch (ExecutionException exception) {
-      if ( expectedError) {
+      if (expectedError) {
         LOGGER.info("Test completed successfully because was expecting an exception");
-      } else throw exception;
+      } else
+        throw exception;
     }
   }
 }

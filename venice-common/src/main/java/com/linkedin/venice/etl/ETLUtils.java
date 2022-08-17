@@ -33,7 +33,8 @@ public class ETLUtils {
       case NONE:
         etlValueSchema = valueSchema;
         break;
-      default: throw new VeniceException("Invalid ETL Value schema transformation: " + transformation);
+      default:
+        throw new VeniceException("Invalid ETL Value schema transformation: " + transformation);
     }
 
     return etlValueSchema;
@@ -46,7 +47,9 @@ public class ETLUtils {
    * @param transformation The transformation that was applied to construct the schema of the "value" field in ETL data from the store's value schema.
    * @return The store's value schema that would have been used to construct the schema of "value" field in ETL data.
    */
-  public static Schema getValueSchemaFromETLValueSchema(Schema etlValueSchema, ETLValueSchemaTransformation transformation) {
+  public static Schema getValueSchemaFromETLValueSchema(
+      Schema etlValueSchema,
+      ETLValueSchemaTransformation transformation) {
     Schema pushValueSchema;
 
     switch (transformation) {
@@ -55,14 +58,16 @@ public class ETLUtils {
         break;
       case ADD_NULL_TO_UNION:
         List<Schema> schemasInUnion = etlValueSchema.getTypes();
-        List<Schema> nullStrippedUnionSchema = schemasInUnion.stream().filter(schema -> !schema.getType().equals(Schema.Type.NULL)).collect(
-            Collectors.toList());
+        List<Schema> nullStrippedUnionSchema = schemasInUnion.stream()
+            .filter(schema -> !schema.getType().equals(Schema.Type.NULL))
+            .collect(Collectors.toList());
         pushValueSchema = Schema.createUnion(nullStrippedUnionSchema);
         break;
       case NONE:
         pushValueSchema = etlValueSchema;
         break;
-      default: throw new VeniceException("Invalid ETL Value schema transformation: " + transformation);
+      default:
+        throw new VeniceException("Invalid ETL Value schema transformation: " + transformation);
     }
 
     return pushValueSchema;

@@ -8,23 +8,29 @@ import org.apache.avro.generic.GenericRecord;
 
 
 public class DotProductOperator implements ReadComputeOperator {
-
   @Override
-  public void compute(int computeRequestVersion, ComputeOperation op, GenericRecord valueRecord, GenericRecord resultRecord,
-      Map<String, String> computationErrorMap, Map<String, Object> context) {
+  public void compute(
+      int computeRequestVersion,
+      ComputeOperation op,
+      GenericRecord valueRecord,
+      GenericRecord resultRecord,
+      Map<String, String> computationErrorMap,
+      Map<String, Object> context) {
     DotProduct dotProduct = (DotProduct) op.operation;
     try {
-      List<Float> valueVector = ComputeOperationUtils.getNullableFieldValueAsList(valueRecord, dotProduct.field.toString());
-          List<Float> dotProductParam = dotProduct.dotProductParam;
+      List<Float> valueVector =
+          ComputeOperationUtils.getNullableFieldValueAsList(valueRecord, dotProduct.field.toString());
+      List<Float> dotProductParam = dotProduct.dotProductParam;
 
       if (valueVector.size() == 0 || dotProductParam.size() == 0) {
         putResult(resultRecord, dotProduct.resultFieldName.toString(), null);
         return;
       } else if (valueVector.size() != dotProductParam.size()) {
         putResult(resultRecord, dotProduct.resultFieldName.toString(), 0.0f);
-        computationErrorMap.put(dotProduct.resultFieldName.toString(),
-            "Failed to compute because size of dot product parameter is: " + dotProduct.dotProductParam.size() +
-                " while the size of value vector(" + dotProduct.field.toString() + ") is: " + valueVector.size());
+        computationErrorMap.put(
+            dotProduct.resultFieldName.toString(),
+            "Failed to compute because size of dot product parameter is: " + dotProduct.dotProductParam.size()
+                + " while the size of value vector(" + dotProduct.field.toString() + ") is: " + valueVector.size());
         return;
       }
 
@@ -37,7 +43,8 @@ public class DotProductOperator implements ReadComputeOperator {
       putResult(resultRecord, dotProduct.resultFieldName.toString(), dotProductResult);
     } catch (Exception e) {
       putResult(resultRecord, dotProduct.resultFieldName.toString(), 0.0f);
-      String msg = e.getClass().getSimpleName() + " : " + (e.getMessage() == null ? "Failed to execute dot-product operator." : e.getMessage());
+      String msg = e.getClass().getSimpleName() + " : "
+          + (e.getMessage() == null ? "Failed to execute dot-product operator." : e.getMessage());
       computationErrorMap.put(dotProduct.resultFieldName.toString(), msg);
     }
   }

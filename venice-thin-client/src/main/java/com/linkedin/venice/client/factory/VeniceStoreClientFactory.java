@@ -17,13 +17,19 @@ public interface VeniceStoreClientFactory {
    * client = veniceStoreClientFactory.getAndStartAvroGenericStoreClient(storeName, (config) -> config.setVsonClient(true));
    * @return
    */
-  default <K, V> AvroGenericStoreClient<K, V> getAndStartAvroGenericStoreClient(String storeName, ClientConfigUpdater configUpdater) {
+  default <K, V> AvroGenericStoreClient<K, V> getAndStartAvroGenericStoreClient(
+      String storeName,
+      ClientConfigUpdater configUpdater) {
     throw new UnsupportedOperationException();
   }
 
-  <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartAvroSpecificStoreClient(String storeName, Class<V> specificRecordClass);
+  <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartAvroSpecificStoreClient(
+      String storeName,
+      Class<V> specificRecordClass);
 
-  default <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartAvroSpecificStoreClient(String storeName, Class<V> specificRecordClass,
+  default <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartAvroSpecificStoreClient(
+      String storeName,
+      Class<V> specificRecordClass,
       ClientConfigUpdater configUpdater) {
     throw new UnsupportedOperationException();
   }

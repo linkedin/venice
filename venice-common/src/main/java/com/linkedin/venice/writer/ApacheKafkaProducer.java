@@ -50,8 +50,16 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
     Properties properties = getKafkaPropertiesFromVeniceProps(props);
 
     // TODO : For sending control message, this is not required. Move this higher in the stack.
-    validateClassProp(properties, strictConfigs, ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class.getName());
-    validateClassProp(properties, strictConfigs, ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class.getName());
+    validateClassProp(
+        properties,
+        strictConfigs,
+        ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,
+        KafkaKeySerializer.class.getName());
+    validateClassProp(
+        properties,
+        strictConfigs,
+        ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
+        KafkaValueSerializer.class.getName());
 
     // This is to guarantee ordering, even in the face of failures.
     validateProp(properties, strictConfigs, ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, "1");
@@ -77,7 +85,9 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
     }
 
     if (properties.containsKey(ProducerConfig.COMPRESSION_TYPE_CONFIG)) {
-      LOGGER.info("Compression type explicitly specified by config: " + properties.getProperty(ProducerConfig.COMPRESSION_TYPE_CONFIG));
+      LOGGER.info(
+          "Compression type explicitly specified by config: "
+              + properties.getProperty(ProducerConfig.COMPRESSION_TYPE_CONFIG));
     } else {
       /**
        * In general, 'gzip' compression ratio is the best among all the available codecs:
@@ -99,7 +109,8 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
     }
 
     if (!properties.containsKey(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG)) {
-      throw new ConfigurationException("Props key not found: " + PROPERTIES_KAFKA_PREFIX + ProducerConfig.BOOTSTRAP_SERVERS_CONFIG);
+      throw new ConfigurationException(
+          "Props key not found: " + PROPERTIES_KAFKA_PREFIX + ProducerConfig.BOOTSTRAP_SERVERS_CONFIG);
     }
 
     LOGGER.info("Constructing KafkaProducer with the following properties: " + properties);
@@ -113,23 +124,31 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
    *
    * TODO: Decide if this belongs here or higher up the call-stack
    */
-  private void validateProp(Properties properties, boolean strictConfigs, String requiredConfigKey, String requiredConfigValue) {
+  private void validateProp(
+      Properties properties,
+      boolean strictConfigs,
+      String requiredConfigKey,
+      String requiredConfigValue) {
     String actualConfigValue = properties.getProperty(requiredConfigKey);
     if (actualConfigValue == null) {
       properties.setProperty(requiredConfigKey, requiredConfigValue);
     } else if (!actualConfigValue.equals(requiredConfigValue) && strictConfigs) {
       // We fail fast rather than attempting to use non-standard serializers
-      throw new VeniceException("The Kafka Producer must use certain configuration settings in order to work properly. " +
-          "requiredConfigKey: '" + requiredConfigKey +
-          "', requiredConfigValue: '" + requiredConfigValue +
-          "', actualConfigValue: '" + actualConfigValue + "'.");
+      throw new VeniceException(
+          "The Kafka Producer must use certain configuration settings in order to work properly. "
+              + "requiredConfigKey: '" + requiredConfigKey + "', requiredConfigValue: '" + requiredConfigValue
+              + "', actualConfigValue: '" + actualConfigValue + "'.");
     }
   }
 
   /**
    * Validate and load Class properties.
    */
-  private void validateClassProp(Properties properties, boolean strictConfigs, String requiredConfigKey, String requiredConfigValue) {
+  private void validateClassProp(
+      Properties properties,
+      boolean strictConfigs,
+      String requiredConfigKey,
+      String requiredConfigValue) {
     validateProp(properties, strictConfigs, requiredConfigKey, requiredConfigValue);
     String className = properties.getProperty(requiredConfigKey);
     if (className != null) {
@@ -142,8 +161,9 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
          */
         properties.put(requiredConfigKey, Class.forName(className));
       } catch (ClassNotFoundException e) {
-        throw new VeniceClientException("Failed to load the specified class: " +  className
-            + " for key: " + requiredConfigKey, e);
+        throw new VeniceClientException(
+            "Failed to load the specified class: " + className + " for key: " + requiredConfigKey,
+            e);
       }
     }
   }
@@ -169,7 +189,12 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
    * @param callback - The callback function, which will be triggered when Kafka client sends out the message.
    * */
   @Override
-  public Future<RecordMetadata> sendMessage(String topic, KafkaKey key, KafkaMessageEnvelope value, int partition, Callback callback) {
+  public Future<RecordMetadata> sendMessage(
+      String topic,
+      KafkaKey key,
+      KafkaMessageEnvelope value,
+      int partition,
+      Callback callback) {
     ProducerRecord<KafkaKey, KafkaMessageEnvelope> kafkaRecord = new ProducerRecord<>(topic, partition, key, value);
     return sendMessage(kafkaRecord, callback);
   }
@@ -185,9 +210,11 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
     ensureProducerIsNotClosed();
     try {
       return producer.send(record, callback);
-     } catch (Exception e) {
+    } catch (Exception e) {
       throw new VeniceException(
-          "Got an error while trying to produce message into Kafka. Topic: '" + record.topic() + "', partition: " + record.partition(), e);
+          "Got an error while trying to produce message into Kafka. Topic: '" + record.topic() + "', partition: "
+              + record.partition(),
+          e);
     }
   }
 
@@ -228,15 +255,16 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
       return Collections.emptyMap();
     }
     Map<String, Double> extractedMetrics = new HashMap<>();
-    for (Map.Entry<MetricName, ? extends Metric> entry : producer.metrics().entrySet()) {
+    for (Map.Entry<MetricName, ? extends Metric> entry: producer.metrics().entrySet()) {
       try {
         Object value = entry.getValue().metricValue();
         if (value instanceof Double) {
           extractedMetrics.put(entry.getKey().name(), (Double) value);
         }
       } catch (Exception e) {
-        LOGGER.info("Caught exception: " + e.getMessage() + " when attempting to get producer metrics. "
-            + "Incomplete metrics might be returned.");
+        LOGGER.info(
+            "Caught exception: " + e.getMessage() + " when attempting to get producer metrics. "
+                + "Incomplete metrics might be returned.");
       }
     }
     return extractedMetrics;

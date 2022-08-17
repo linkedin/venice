@@ -8,6 +8,7 @@ import org.testng.Assert;
 import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
 
+
 public class AggRouterHttpRequestStatsTest {
   MetricsRepository metricsRepository;
   private MockTehutiReporter reporter;
@@ -36,7 +37,6 @@ public class AggRouterHttpRequestStatsTest {
     Assert.assertEquals(reporter.query(".total--request.Count").value(), 2d);
     Assert.assertEquals(reporter.query(".store1--request.Count").value(), 1d);
 
-
     for (int i = 1; i <= 100; i += 1) {
       stats.recordLatency("store2", i);
     }
@@ -52,8 +52,7 @@ public class AggRouterHttpRequestStatsTest {
 
   @Test
   public void TestProfilingMetrics() {
-    AggRouterHttpRequestStats stats =
-        new AggRouterHttpRequestStats(metricsRepository, RequestType.COMPUTE, true);
+    AggRouterHttpRequestStats stats = new AggRouterHttpRequestStats(metricsRepository, RequestType.COMPUTE, true);
 
     for (int i = 1; i <= 100; i += 1) {
       stats.recordKeySize("store1", i);

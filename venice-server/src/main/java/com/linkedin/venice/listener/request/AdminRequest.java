@@ -23,7 +23,7 @@ public class AdminRequest {
   public static AdminRequest parseAdminHttpRequest(HttpRequest request) {
     URI fullUri = URI.create(request.uri());
     String[] requestParts = fullUri.getRawPath().split("/");
-    //   [0]""/[1]"action"/[2]"store_version"/[3]"admin_action"/[4](optional)"partition_id"
+    // [0]""/[1]"action"/[2]"store_version"/[3]"admin_action"/[4](optional)"partition_id"
     if (4 <= requestParts.length && requestParts.length <= 5) {
       String topicName = requestParts[2];
       if (!Version.isVersionTopic(topicName)) {

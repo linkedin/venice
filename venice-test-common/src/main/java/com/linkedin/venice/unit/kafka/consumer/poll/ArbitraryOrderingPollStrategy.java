@@ -1,10 +1,10 @@
 package com.linkedin.venice.unit.kafka.consumer.poll;
 
-import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.Pair;
 import java.util.Map;
 import java.util.Queue;
 import org.apache.kafka.common.TopicPartition;
+
 
 /**
  * A {@link PollStrategy} implementation which delivers messages in the order specified

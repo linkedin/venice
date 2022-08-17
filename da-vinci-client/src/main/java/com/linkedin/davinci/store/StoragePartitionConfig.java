@@ -91,7 +91,8 @@ public class StoragePartitionConfig {
 
   @Override
   public String toString() {
-    return "Store: " + storeName + ", partition id: " + partitionId + ", deferred-write: " + deferredWrite +
-        ", read-only: " + readOnly + ", write-only: " + writeOnlyConfig + ", disableAutoCompaction: " + disableAutoCompaction;
+    return "Store: " + storeName + ", partition id: " + partitionId + ", deferred-write: " + deferredWrite
+        + ", read-only: " + readOnly + ", write-only: " + writeOnlyConfig + ", disableAutoCompaction: "
+        + disableAutoCompaction;
   }
 }

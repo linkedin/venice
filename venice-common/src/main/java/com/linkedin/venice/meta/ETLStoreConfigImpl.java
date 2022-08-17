@@ -21,8 +21,7 @@ public class ETLStoreConfigImpl implements ETLStoreConfig {
   public ETLStoreConfigImpl(
       @JsonProperty("etledUserProxyAccount") String etledUserProxyAccount,
       @JsonProperty("regularVersionETLEnabled") boolean regularVersionETLEnabled,
-      @JsonProperty("futureVersionETLEnabled") boolean futureVersionETLEnabled
-  ) {
+      @JsonProperty("futureVersionETLEnabled") boolean futureVersionETLEnabled) {
     this.etlConfig = new StoreETLConfig();
     this.etlConfig.etledUserProxyAccount = etledUserProxyAccount;
     this.etlConfig.regularVersionETLEnabled = regularVersionETLEnabled;
@@ -90,7 +89,10 @@ public class ETLStoreConfigImpl implements ETLStoreConfig {
   }
 
   @JsonIgnore
-  public ETLStoreConfig clone(){
-    return new ETLStoreConfigImpl(getEtledUserProxyAccount(), isRegularVersionETLEnabled(), isFutureVersionETLEnabled());
+  public ETLStoreConfig clone() {
+    return new ETLStoreConfigImpl(
+        getEtledUserProxyAccount(),
+        isRegularVersionETLEnabled(),
+        isFutureVersionETLEnabled());
   }
 }

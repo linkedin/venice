@@ -5,5 +5,5 @@ package com.linkedin.venice.utils;
  */
 @FunctionalInterface
 public interface VeniceCheckedRunnable {
-    void run() throws Throwable;
+  void run() throws Throwable;
 }

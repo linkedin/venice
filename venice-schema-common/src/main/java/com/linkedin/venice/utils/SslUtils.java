@@ -1,5 +1,7 @@
 package com.linkedin.venice.utils;
 
+import static com.linkedin.venice.CommonConfigKeys.*;
+
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -14,8 +16,6 @@ import java.util.Properties;
 import java.util.UUID;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.CommonConfigKeys.*;
 
 
 public class SslUtils {
@@ -137,8 +137,7 @@ public class SslUtils {
    *
    * TODO: This function should be removed after Router and Server migrate to {@link SSLFactory}
    */
-  public static SSLEngineComponentFactory getSSLEngineComponentFactory(Properties sslProperties)
-      throws Exception {
+  public static SSLEngineComponentFactory getSSLEngineComponentFactory(Properties sslProperties) throws Exception {
     SSLEngineComponentFactoryImpl.Config config = new SSLEngineComponentFactoryImpl.Config();
     config.setSslEnabled(Boolean.valueOf(sslProperties.getProperty(SSL_ENABLED)));
     config.setKeyStoreType(sslProperties.getProperty(SSL_KEYSTORE_TYPE));
@@ -166,9 +165,8 @@ public class SslUtils {
   public static SSLFactory getSSLFactory(Properties sslProperties, String factoryClassName) {
     Class<SSLFactory> factoryClass = ReflectUtils.loadClass(factoryClassName);
     Class<Properties> propertiesClass = ReflectUtils.loadClass(Properties.class.getName());
-    SSLFactory sslFactory = ReflectUtils.callConstructor(factoryClass,
-        new Class[]{propertiesClass},
-        new Object[]{sslProperties});
+    SSLFactory sslFactory =
+        ReflectUtils.callConstructor(factoryClass, new Class[] { propertiesClass }, new Object[] { sslProperties });
     return sslFactory;
   }
 
@@ -183,8 +181,7 @@ public class SslUtils {
    * truststore.password=local_password
    * truststore.path=/etc/riddler/cacerts
    */
-  public static Properties loadSSLConfig(String configFilePath)
-      throws IOException {
+  public static Properties loadSSLConfig(String configFilePath) throws IOException {
     Properties props = new Properties();
     try (FileInputStream inputStream = new FileInputStream(configFilePath)) {
       props.load(inputStream);

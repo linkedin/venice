@@ -6,6 +6,5 @@ import org.apache.hadoop.mapred.RunningJob;
 
 
 public interface JobClientWrapper {
-
   RunningJob runJobWithConfig(JobConf jobConf) throws IOException;
 }

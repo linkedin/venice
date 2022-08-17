@@ -22,7 +22,7 @@ public class TestVsonAvroDatumWriter {
   public void testWriterCanWritePrimitive() throws IOException {
     testWriter("\"int32\"", () -> 123);
     testWriter("\"int64\"", () -> 123l);
-    testWriter("\"int64\"", () -> 123, () -> 123l); //let integers be supplied for longs
+    testWriter("\"int64\"", () -> 123, () -> 123l); // let integers be supplied for longs
     testWriter("\"float32\"", () -> 123f);
     testWriter("\"float64\"", () -> 123d);
     testWriter("\"boolean\"", () -> true);
@@ -41,7 +41,7 @@ public class TestVsonAvroDatumWriter {
     testWriteNullValue("\"int8\"");
 
     testWriter("\"int16\"", () -> (short) -2, avroObject -> {
-      Assert.assertTrue(avroObject instanceof  GenericData.Fixed);
+      Assert.assertTrue(avroObject instanceof GenericData.Fixed);
       byte[] byteArray = ((GenericData.Fixed) avroObject).bytes();
       Assert.assertEquals(byteArray.length, 2);
       // -2 is equal to 11111110 (0xFFFE)
@@ -62,11 +62,11 @@ public class TestVsonAvroDatumWriter {
       Assert.assertEquals(((GenericData.Record) avroObject).get("member_id"), 1);
       Assert.assertEquals(((GenericData.Record) avroObject).get("score"), 2f);
 
-      //test querying an invalid field. By default, Avro is gonna return null.
+      // test querying an invalid field. By default, Avro is gonna return null.
       Assert.assertNull(((GenericData.Record) avroObject).get("unknown field"));
     });
 
-    //record with null field
+    // record with null field
     record.put("score", null);
     testWriter(vsonSchemaStr, () -> record, (avroObject) -> {
       Assert.assertNull(((GenericData.Record) avroObject).get("score"));
@@ -85,11 +85,12 @@ public class TestVsonAvroDatumWriter {
       Assert.assertEquals(((GenericData.Array) avroObject).get(1), 2);
       Assert.assertNull(((GenericData.Array) avroObject).get(2));
 
-      //test querying an invalid element
+      // test querying an invalid element
       try {
         ((GenericData.Array) avroObject).get(3);
         Assert.fail();
-      } catch (IndexOutOfBoundsException e) {}
+      } catch (IndexOutOfBoundsException e) {
+      }
     });
 
     testWriteNullValue(vsonSchemaStr);
@@ -99,7 +100,8 @@ public class TestVsonAvroDatumWriter {
     testWriter(vsonSchemaStr, valueSupplier, valueSupplier);
   }
 
-  private void testWriter(String vsonSchemaStr, Supplier valueSupplier, Supplier finalValueSupplier) throws IOException {
+  private void testWriter(String vsonSchemaStr, Supplier valueSupplier, Supplier finalValueSupplier)
+      throws IOException {
     testWriter(vsonSchemaStr, valueSupplier, (avroObject) -> Assert.assertEquals(avroObject, finalValueSupplier.get()));
     testWriteNullValue(vsonSchemaStr);
   }

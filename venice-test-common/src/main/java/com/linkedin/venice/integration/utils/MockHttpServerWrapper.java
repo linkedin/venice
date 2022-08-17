@@ -31,7 +31,8 @@ import org.apache.logging.log4j.Logger;
 //TODO: It seems that each request goes through the channel twice. (checkout AvroGenericStoreClientImplTest)
 //TODO: The request has no msg at the second time and trigger ""Unknown message type" exception.
 
-public class  MockHttpServerWrapper extends ProcessWrapper {
+
+public class MockHttpServerWrapper extends ProcessWrapper {
   private static final Logger logger = LogManager.getLogger(MockHttpServerWrapper.class);
 
   private final ServerBootstrap bootstrap;
@@ -54,16 +55,17 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
     workerGroup = new NioEventLoopGroup();
 
     bootstrap = new ServerBootstrap();
-    bootstrap.group(bossGroup, workerGroup).channel(NioServerSocketChannel.class)
+    bootstrap.group(bossGroup, workerGroup)
+        .channel(NioServerSocketChannel.class)
         .childHandler(new ChannelInitializer<SocketChannel>() {
           @Override
           protected void initChannel(SocketChannel ch) throws Exception {
             ch.pipeline()
                 .addLast(new HttpServerCodec())
-            /**
-             * To consolidate multiple parts of one request, so the downstream handler will receive
-             * {@link FullHttpRequest}.
-              */
+                /**
+                 * To consolidate multiple parts of one request, so the downstream handler will receive
+                 * {@link FullHttpRequest}.
+                  */
                 .addLast(new HttpObjectAggregator(1024 * 1024)) // Maximum request is 1MB, will return 413 if exceeds.
                 .addLast(new MockServerHandler(uriToResponseMap, uriPatternToResponseMap));
           }
@@ -100,8 +102,7 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
   }
 
   @Override
-  protected void newProcess()
-      throws Exception {
+  protected void newProcess() throws Exception {
     throw new UnsupportedOperationException("Mock Http server does not support restart.");
   }
 
@@ -117,7 +118,6 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
     uriToResponseMap.clear();
   }
 
-
   private static class MockServerHandler extends SimpleChannelInboundHandler {
     private static final Logger logger = LogManager.getLogger(MockServerHandler.class);
     private final Map<String, FullHttpResponse> responseMap;
@@ -125,16 +125,23 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
     private final FullHttpResponse notFoundResponse;
     private final FullHttpResponse internalErrorResponse;
 
-    public MockServerHandler(Map<String, FullHttpResponse> responseMap, Map<String, FullHttpResponse> uriPatternToResponseMap) {
+    public MockServerHandler(
+        Map<String, FullHttpResponse> responseMap,
+        Map<String, FullHttpResponse> uriPatternToResponseMap) {
       this.responseMap = responseMap;
       this.uriPatternToResponseMap = uriPatternToResponseMap;
 
-      this.notFoundResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.NOT_FOUND, Unpooled.buffer(1));
+      this.notFoundResponse =
+          new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.NOT_FOUND, Unpooled.buffer(1));
       this.notFoundResponse.headers().add(HttpHeaderNames.CONTENT_TYPE, "text/plain");
       this.notFoundResponse.headers().add(HttpHeaderNames.CONTENT_LENGTH, notFoundResponse.content().readableBytes());
-      this.internalErrorResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.INTERNAL_SERVER_ERROR, Unpooled.buffer(1));
+      this.internalErrorResponse = new DefaultFullHttpResponse(
+          HttpVersion.HTTP_1_1,
+          HttpResponseStatus.INTERNAL_SERVER_ERROR,
+          Unpooled.buffer(1));
       this.internalErrorResponse.headers().add(HttpHeaderNames.CONTENT_TYPE, "text/plain");
-      this.internalErrorResponse.headers().add(HttpHeaderNames.CONTENT_LENGTH, internalErrorResponse.content().readableBytes());
+      this.internalErrorResponse.headers()
+          .add(HttpHeaderNames.CONTENT_LENGTH, internalErrorResponse.content().readableBytes());
     }
 
     @Override
@@ -146,7 +153,7 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
     public void channelRead0(ChannelHandlerContext ctx, Object msg) {
       if (msg instanceof HttpRequest) {
         URI uri = URI.create(((HttpRequest) msg).uri());
-        //stripe URI scheme, host and port
+        // stripe URI scheme, host and port
         String uriStr = uri.getPath();
         uriStr = uri.getQuery() == null ? uriStr : uriStr + "?" + uri.getQuery();
         logger.trace("Receive request uri: " + uriStr);
@@ -155,7 +162,7 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
           logger.trace("Found matched response");
           ctx.writeAndFlush(responseMap.get(uriStr).copy());
         } else {
-          for (Map.Entry<String, FullHttpResponse> entry : uriPatternToResponseMap.entrySet()) {
+          for (Map.Entry<String, FullHttpResponse> entry: uriPatternToResponseMap.entrySet()) {
             String uriPattern = entry.getKey();
             if (uriStr.matches(uriPattern)) {
               logger.trace("Found matched response by uri pattern: " + uriPattern);

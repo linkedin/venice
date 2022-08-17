@@ -1,5 +1,8 @@
 package com.linkedin.davinci.storage.chunking;
 
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -26,9 +29,6 @@ import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.Mockito.*;
-
 
 public class ChunkingTest {
   @DataProvider(name = "recordProvider")
@@ -36,20 +36,10 @@ public class ChunkingTest {
     List<GenericRecord> params = new ArrayList<>();
 
     // First flavor:
-    Schema schema1 = new Schema.Parser().parse("{\n"
-        + "  \"type\": \"record\",\n"
-        + "  \"name\": \"SomeRecordWithALongArray\",\n"
-        + "  \"fields\": [\n"
-        + "    {\n"
-        + "      \"name\": \"test\",\n"
-        + "      \"type\": {\n"
-        + "        \"type\": \"array\",\n"
-        + "        \"items\": \"long\"\n"
-        + "      },\n"
-        + "      \"default\": []\n"
-        + "    }\n"
-        + "  ]\n"
-        + "}");
+    Schema schema1 = new Schema.Parser().parse(
+        "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"SomeRecordWithALongArray\",\n" + "  \"fields\": [\n"
+            + "    {\n" + "      \"name\": \"test\",\n" + "      \"type\": {\n" + "        \"type\": \"array\",\n"
+            + "        \"items\": \"long\"\n" + "      },\n" + "      \"default\": []\n" + "    }\n" + "  ]\n" + "}");
 
     for (int size = 10; size < 1000000; size = size * 2) {
       final int finalSize = size;
@@ -69,20 +59,10 @@ public class ChunkingTest {
     }
 
     // Second flavor:
-    Schema schema2 = new Schema.Parser().parse("{\n"
-        + "  \"type\": \"record\",\n"
-        + "  \"name\": \"SomeRecordWithALongArray\",\n"
-        + "  \"fields\": [\n"
-        + "    {\n"
-        + "      \"name\": \"test\",\n"
-        + "      \"type\": {\n"
-        + "        \"type\": \"array\",\n"
-        + "        \"items\": \"float\"\n"
-        + "      },\n"
-        + "      \"default\": []\n"
-        + "    }\n"
-        + "  ]\n"
-        + "}");
+    Schema schema2 = new Schema.Parser().parse(
+        "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"SomeRecordWithALongArray\",\n" + "  \"fields\": [\n"
+            + "    {\n" + "      \"name\": \"test\",\n" + "      \"type\": {\n" + "        \"type\": \"array\",\n"
+            + "        \"items\": \"float\"\n" + "      },\n" + "      \"default\": []\n" + "    }\n" + "  ]\n" + "}");
 
     for (int size = 10; size < 1000000; size = size * 2) {
       final int finalSize = size;
@@ -102,38 +82,17 @@ public class ChunkingTest {
     }
 
     // Third flavor:
-    String schema3subRecordSchema = "{\n"
-        + "          \"type\": \"record\",\n"
-        + "          \"name\": \"SubRecord\",\n"
-        + "          \"fields\": [\n"
-        + "            {\n"
-        + "              \"name\": \"someInt\",\n"
-        + "              \"type\": \"int\"\n"
-        + "            },\n"
-        + "            {\n"
-        + "              \"name\": \"someDouble\",\n"
-        + "              \"type\": \"double\"\n"
-        + "            },\n"
-        + "            {\n"
-        + "              \"name\": \"someBoolean\",\n"
-        + "              \"type\": \"boolean\"\n"
-        + "            }\n"
-        + "          ]\n"
-        + "        }";
-    Schema schema3 = new Schema.Parser().parse("{\n"
-        + "  \"type\": \"record\",\n"
-        + "  \"name\": \"SomeRecordWithAnArrayOfSubRecords\",\n"
-        + "  \"fields\": [\n"
-        + "    {\n"
-        + "      \"name\": \"test\",\n"
-        + "      \"type\": {\n"
-        + "        \"type\": \"array\",\n"
-        + "        \"items\": " + schema3subRecordSchema + "\n"
-        + "      },\n"
-        + "      \"default\": []\n"
-        + "    }\n"
-        + "  ]\n"
-        + "}");
+    String schema3subRecordSchema = "{\n" + "          \"type\": \"record\",\n" + "          \"name\": \"SubRecord\",\n"
+        + "          \"fields\": [\n" + "            {\n" + "              \"name\": \"someInt\",\n"
+        + "              \"type\": \"int\"\n" + "            },\n" + "            {\n"
+        + "              \"name\": \"someDouble\",\n" + "              \"type\": \"double\"\n" + "            },\n"
+        + "            {\n" + "              \"name\": \"someBoolean\",\n" + "              \"type\": \"boolean\"\n"
+        + "            }\n" + "          ]\n" + "        }";
+    Schema schema3 = new Schema.Parser().parse(
+        "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"SomeRecordWithAnArrayOfSubRecords\",\n"
+            + "  \"fields\": [\n" + "    {\n" + "      \"name\": \"test\",\n" + "      \"type\": {\n"
+            + "        \"type\": \"array\",\n" + "        \"items\": " + schema3subRecordSchema + "\n" + "      },\n"
+            + "      \"default\": []\n" + "    }\n" + "  ]\n" + "}");
     Schema schema3subRecord = new Schema.Parser().parse(schema3subRecordSchema);
 
     for (int size = 10; size < 1000000; size = size * 2) {
@@ -159,17 +118,10 @@ public class ChunkingTest {
     }
 
     // Fourth flavor:
-    Schema schema4 = new Schema.Parser().parse("{\n"
-        + "  \"type\": \"record\",\n"
-        + "  \"name\": \"SomeRecordWithAString\",\n"
-        + "  \"fields\": [\n"
-        + "    {\n"
-        + "      \"name\": \"test\",\n"
-        + "      \"type\": \"string\",\n"
-        + "      \"default\": \"\"\n"
-        + "    }\n"
-        + "  ]\n"
-        + "}");
+    Schema schema4 = new Schema.Parser().parse(
+        "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"SomeRecordWithAString\",\n" + "  \"fields\": [\n"
+            + "    {\n" + "      \"name\": \"test\",\n" + "      \"type\": \"string\",\n" + "      \"default\": \"\"\n"
+            + "    }\n" + "  ]\n" + "}");
 
     Random random = new Random();
     for (int size = 10; size < 1000000; size = size * 2) {
@@ -199,7 +151,10 @@ public class ChunkingTest {
     return paramsToReturn;
   }
 
-  private void runTest(GenericRecord record, AbstractAvroChunkingAdapter chunkingAdapter, Function<Object, Void> assertions) {
+  private void runTest(
+      GenericRecord record,
+      AbstractAvroChunkingAdapter chunkingAdapter,
+      Function<Object, Void> assertions) {
     int partition = 9;
     String storeName = "test";
     byte[] keyBytes = ByteUtils.fromHexString("040647454ff4baf2630a5449544c45440010494d504c49434954");
@@ -213,7 +168,12 @@ public class ChunkingTest {
     ByteUtils.writeInt(chunk1Bytes, AvroProtocolDefinition.CHUNK.currentProtocolVersion.get(), 0);
     ByteUtils.writeInt(chunk2Bytes, AvroProtocolDefinition.CHUNK.currentProtocolVersion.get(), 0);
     System.arraycopy(serializedRecord, 0, chunk1Bytes, ValueRecord.SCHEMA_HEADER_LENGTH, cutOff);
-    System.arraycopy(serializedRecord, cutOff, chunk2Bytes, ValueRecord.SCHEMA_HEADER_LENGTH, serializedRecord.length - cutOff);
+    System.arraycopy(
+        serializedRecord,
+        cutOff,
+        chunk2Bytes,
+        ValueRecord.SCHEMA_HEADER_LENGTH,
+        serializedRecord.length - cutOff);
 
     SchemaEntry schemaEntry = new SchemaEntry(1, schema);
     HelixReadOnlySchemaRepository schemaRepository = mock(HelixReadOnlySchemaRepository.class);
@@ -221,30 +181,51 @@ public class ChunkingTest {
     doReturn(schemaEntry).when(schemaRepository).getLatestValueSchema(storeName);
 
     AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
-    byte[] firstKey = ByteUtils.fromHexString("040647454FF4BAF2630A5449544C45440010494D504C494349540036EB0A5300374C6A9C5EEBB468C58E4300CE984E0001");
-    byte[] secondKey = ByteUtils.fromHexString("040647454FF4BAF2630A5449544C45440010494D504C494349540036EB0A5300374C6A9C5EEBB468C58E4300CE984E0201");
+    byte[] firstKey = ByteUtils.fromHexString(
+        "040647454FF4BAF2630A5449544C45440010494D504C494349540036EB0A5300374C6A9C5EEBB468C58E4300CE984E0001");
+    byte[] secondKey = ByteUtils.fromHexString(
+        "040647454FF4BAF2630A5449544C45440010494D504C494349540036EB0A5300374C6A9C5EEBB468C58E4300CE984E0201");
 
     ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
     chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(2);
     chunkedValueManifest.keysWithChunkIdSuffix.add(ByteBuffer.wrap(firstKey));
     chunkedValueManifest.keysWithChunkIdSuffix.add(ByteBuffer.wrap(secondKey));
     chunkedValueManifest.schemaId = 1;
-    chunkedValueManifest.size = chunk1Bytes.length + chunk2Bytes.length - chunkedValueManifest.keysWithChunkIdSuffix.size() * ValueRecord.SCHEMA_HEADER_LENGTH;
-    byte[] serializedCVM = SerializerDeserializerFactory.getAvroGenericSerializer(ChunkedValueManifest.SCHEMA$).serialize(chunkedValueManifest);
+    chunkedValueManifest.size = chunk1Bytes.length + chunk2Bytes.length
+        - chunkedValueManifest.keysWithChunkIdSuffix.size() * ValueRecord.SCHEMA_HEADER_LENGTH;
+    byte[] serializedCVM = SerializerDeserializerFactory.getAvroGenericSerializer(ChunkedValueManifest.SCHEMA$)
+        .serialize(chunkedValueManifest);
     byte[] serializedCVMwithHeader = new byte[serializedCVM.length + ValueRecord.SCHEMA_HEADER_LENGTH];
-    ByteUtils.writeInt(serializedCVMwithHeader, AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.currentProtocolVersion.get(), 0);
+    ByteUtils.writeInt(
+        serializedCVMwithHeader,
+        AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.currentProtocolVersion.get(),
+        0);
     System.arraycopy(serializedCVM, 0, serializedCVMwithHeader, ValueRecord.SCHEMA_HEADER_LENGTH, serializedCVM.length);
 
-    doReturn(serializedCVMwithHeader).when(storageEngine).get(eq(partition), eq(ByteBuffer.wrap(serializeNonChunkedKey)), anyBoolean());
+    doReturn(serializedCVMwithHeader).when(storageEngine)
+        .get(eq(partition), eq(ByteBuffer.wrap(serializeNonChunkedKey)), anyBoolean());
     doReturn(chunk1Bytes).when(storageEngine).get(eq(partition), eq(firstKey), anyBoolean());
     doReturn(chunk2Bytes).when(storageEngine).get(eq(partition), eq(secondKey), anyBoolean());
 
     RecordDeserializer deserializer = chunkingAdapter.getDeserializer(storeName, 1, schemaRepository, true);
 
-    try (StorageEngineBackedCompressorFactory compressorFactory = new StorageEngineBackedCompressorFactory(mock(
-        StorageMetadataService.class))) {
-      assertions.apply(chunkingAdapter.get(storageEngine, partition, ByteBuffer.wrap(keyBytes), true, null,
-              null, null, CompressionStrategy.NO_OP, true, schemaRepository, storeName, compressorFactory, false));
+    try (StorageEngineBackedCompressorFactory compressorFactory =
+        new StorageEngineBackedCompressorFactory(mock(StorageMetadataService.class))) {
+      assertions.apply(
+          chunkingAdapter.get(
+              storageEngine,
+              partition,
+              ByteBuffer.wrap(keyBytes),
+              true,
+              null,
+              null,
+              null,
+              CompressionStrategy.NO_OP,
+              true,
+              schemaRepository,
+              storeName,
+              compressorFactory,
+              false));
     }
   }
 
@@ -259,10 +240,11 @@ public class ChunkingTest {
 
   @Test(dataProvider = "recordProvider")
   public void testRawBytesChunkingAdapter(GenericRecord record) {
-    byte[] serializedRecord = SerializerDeserializerFactory.getAvroGenericSerializer(record.getSchema()).serialize(record);
+    byte[] serializedRecord =
+        SerializerDeserializerFactory.getAvroGenericSerializer(record.getSchema()).serialize(record);
     runTest(record, RawBytesChunkingAdapter.INSTANCE, (valueFromStorageEngine) -> {
       Assert.assertTrue(valueFromStorageEngine instanceof ByteBuffer);
-      Assert.assertEquals(ByteUtils.extractByteArray((ByteBuffer)valueFromStorageEngine), serializedRecord);
+      Assert.assertEquals(ByteUtils.extractByteArray((ByteBuffer) valueFromStorageEngine), serializedRecord);
       return null;
     });
   }

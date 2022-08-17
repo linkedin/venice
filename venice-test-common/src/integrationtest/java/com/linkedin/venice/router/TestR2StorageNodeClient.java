@@ -1,13 +1,13 @@
 package com.linkedin.venice.router;
 
+import static org.mockito.Mockito.*;
+import static org.testng.AssertJUnit.*;
+
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.router.httpclient.R2StorageNodeClient;
 import java.util.ArrayList;
 import java.util.List;
 import org.testng.annotations.Test;
-
-import static org.mockito.Mockito.*;
-import static org.testng.AssertJUnit.*;
 
 
 public class TestR2StorageNodeClient {

@@ -1,5 +1,8 @@
 package com.linkedin.davinci.config;
 
+import static com.linkedin.davinci.config.BlockingQueueType.*;
+import static com.linkedin.venice.ConfigKeys.*;
+
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModelFactory;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
@@ -24,9 +27,6 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-
-import static com.linkedin.davinci.config.BlockingQueueType.*;
-import static com.linkedin.venice.ConfigKeys.*;
 
 
 /**
@@ -54,7 +54,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   // The maximum number of threads in thread pool for the future version Helix leader follower state transition.
   private final int maxFutureVersionLeaderFollowerStateTransitionThreadNumber;
 
-  // Leader follower thread pool strategy configuration specifies how thread pools are allocated for Helix state transition.
+  // Leader follower thread pool strategy configuration specifies how thread pools are allocated for Helix state
+  // transition.
   private final LeaderFollowerPartitionStateModelFactory.LeaderFollowerThreadPoolStrategy leaderFollowerThreadPoolStrategy;
 
   /**
@@ -71,7 +72,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    * Thread pool size of unsorted ingestion drainer when dedicatedDrainerQueue is enabled.
    */
   private final int drainerPoolSizeUnsortedInput;
-
 
   /**
    * Buffer capacity being used by each writer.
@@ -279,27 +279,34 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long optimizeDatabaseForBackupVersionNoReadThresholdMS;
   private final long optimizeDatabaseServiceScheduleIntervalSeconds;
 
-
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Optional.empty());
   }
 
-  public VeniceServerConfig(VeniceProperties serverProperties, Optional<Map<String, Map<String, String>>> kafkaClusterMap) throws ConfigurationException {
+  public VeniceServerConfig(
+      VeniceProperties serverProperties,
+      Optional<Map<String, Map<String, String>>> kafkaClusterMap) throws ConfigurationException {
     super(serverProperties, kafkaClusterMap);
     listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
-    dataBasePath = serverProperties.getString(DATA_BASE_PATH,
+    dataBasePath = serverProperties.getString(
+        DATA_BASE_PATH,
         Paths.get(System.getProperty("java.io.tmpdir"), "venice-server-data").toAbsolutePath().toString());
     autoCreateDataPath = Boolean.parseBoolean(serverProperties.getString(AUTOCREATE_DATA_PATH, "true"));
     rocksDBServerConfig = new RocksDBServerConfig(serverProperties);
-    enableServerAllowList = serverProperties.getBooleanWithAlternative(ENABLE_SERVER_WHITE_LIST, ENABLE_SERVER_ALLOW_LIST, false);
-    maxLeaderFollowerStateTransitionThreadNumber = serverProperties.getInt(MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER, 20);
+    enableServerAllowList =
+        serverProperties.getBooleanWithAlternative(ENABLE_SERVER_WHITE_LIST, ENABLE_SERVER_ALLOW_LIST, false);
+    maxLeaderFollowerStateTransitionThreadNumber =
+        serverProperties.getInt(MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER, 20);
 
-    String lfThreadPoolStrategyStr = serverProperties.getString(LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY,
+    String lfThreadPoolStrategyStr = serverProperties.getString(
+        LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY,
         LeaderFollowerPartitionStateModelFactory.LeaderFollowerThreadPoolStrategy.SINGLE_POOL_STRATEGY.name());
     try {
-      leaderFollowerThreadPoolStrategy = LeaderFollowerPartitionStateModelFactory.LeaderFollowerThreadPoolStrategy.valueOf(lfThreadPoolStrategyStr);
+      leaderFollowerThreadPoolStrategy =
+          LeaderFollowerPartitionStateModelFactory.LeaderFollowerThreadPoolStrategy.valueOf(lfThreadPoolStrategyStr);
     } catch (IllegalArgumentException e) {
-      throw new VeniceException(String.format("Invalid leader follower thread pool strategy: %s", lfThreadPoolStrategyStr));
+      throw new VeniceException(
+          String.format("Invalid leader follower thread pool strategy: %s", lfThreadPoolStrategyStr));
     }
     maxFutureVersionLeaderFollowerStateTransitionThreadNumber =
         serverProperties.getInt(MAX_FUTURE_VERSION_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER, 10);
@@ -308,39 +315,70 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     drainerPoolSizeUnsortedInput = serverProperties.getInt(UNSORTED_INPUT_DRAINER_SIZE, 8);
 
     // To minimize the GC impact during heavy ingestion.
-    storeWriterBufferMemoryCapacity = serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_MEMORY_CAPACITY, 10 * 1024 * 1024); // 10MB
+    storeWriterBufferMemoryCapacity =
+        serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_MEMORY_CAPACITY, 10 * 1024 * 1024); // 10MB
     storeWriterBufferNotifyDelta = serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_NOTIFY_DELTA, 1 * 1024 * 1024); // 1MB
     restServiceStorageThreadNum = serverProperties.getInt(SERVER_REST_SERVICE_STORAGE_THREAD_NUM, 16);
     serverComputeThreadNum = serverProperties.getInt(SERVER_COMPUTE_THREAD_NUM, 16);
-    nettyIdleTimeInSeconds = serverProperties.getInt(SERVER_NETTY_IDLE_TIME_SECONDS, (int) TimeUnit.HOURS.toSeconds(3)); // 3 hours
-    maxRequestSize = (int)serverProperties.getSizeInBytes(SERVER_MAX_REQUEST_SIZE, 256 * 1024); // 256KB
-    topicOffsetCheckIntervalMs = serverProperties.getInt(SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS, (int) TimeUnit.SECONDS.toMillis(60));
-    nettyGracefulShutdownPeriodSeconds = serverProperties.getInt(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 30); //30 seconds
+    nettyIdleTimeInSeconds = serverProperties.getInt(SERVER_NETTY_IDLE_TIME_SECONDS, (int) TimeUnit.HOURS.toSeconds(3)); // 3
+                                                                                                                         // hours
+    maxRequestSize = (int) serverProperties.getSizeInBytes(SERVER_MAX_REQUEST_SIZE, 256 * 1024); // 256KB
+    topicOffsetCheckIntervalMs =
+        serverProperties.getInt(SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS, (int) TimeUnit.SECONDS.toMillis(60));
+    nettyGracefulShutdownPeriodSeconds = serverProperties.getInt(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 30); // 30
+                                                                                                                     // seconds
     nettyWorkerThreadCount = serverProperties.getInt(SERVER_NETTY_WORKER_THREADS, 0);
 
-    remoteIngestionRepairSleepInterval = serverProperties.getInt(SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS,
+    remoteIngestionRepairSleepInterval = serverProperties.getInt(
+        SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS,
         RemoteIngestionRepairService.DEFAULT_REPAIR_THREAD_SLEEP_INTERVAL_SECONDS);
 
-    databaseSyncBytesIntervalForTransactionalMode = serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, 32 * 1024 * 1024); // 32MB
-    databaseSyncBytesIntervalForDeferredWriteMode = serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, 60 * 1024 * 1024); // 60MB
+    databaseSyncBytesIntervalForTransactionalMode =
+        serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, 32 * 1024 * 1024); // 32MB
+    databaseSyncBytesIntervalForDeferredWriteMode =
+        serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, 60 * 1024 * 1024); // 60MB
     diskFullThreshold = serverProperties.getDouble(SERVER_DISK_FULL_THRESHOLD, 0.95);
-    partitionGracefulDropDelaySeconds = serverProperties.getInt(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 30); // 30 seconds
-    leakedResourceCleanUpIntervalInMS = TimeUnit.MINUTES.toMillis(serverProperties.getLong(SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES, 10)); // 10 mins by default
-    readOnlyForBatchOnlyStoreEnabled = serverProperties.getBoolean(SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED, true);
+    partitionGracefulDropDelaySeconds = serverProperties.getInt(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 30); // 30
+                                                                                                                      // seconds
+    leakedResourceCleanUpIntervalInMS =
+        TimeUnit.MINUTES.toMillis(serverProperties.getLong(SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES, 10)); // 10
+                                                                                                                      // mins
+                                                                                                                      // by
+                                                                                                                      // default
+    readOnlyForBatchOnlyStoreEnabled =
+        serverProperties.getBoolean(SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED, true);
     quotaEnforcementEnabled = serverProperties.getBoolean(SERVER_QUOTA_ENFORCEMENT_ENABLED, false);
-    serverCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled = serverProperties.getBoolean(SEVER_CALCULATE_QUOTA_USAGE_BASED_ON_PARTITIONS_ASSIGNMENT_ENABLED, true);
-    //June 2018, venice-6 nodes were hitting ~20k keys per second. August 2018, no cluster has nodes above 3.5k keys per second
+    serverCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled =
+        serverProperties.getBoolean(SEVER_CALCULATE_QUOTA_USAGE_BASED_ON_PARTITIONS_ASSIGNMENT_ENABLED, true);
+    // June 2018, venice-6 nodes were hitting ~20k keys per second. August 2018, no cluster has nodes above 3.5k keys
+    // per second
     nodeCapacityInRcu = serverProperties.getLong(SERVER_NODE_CAPACITY_RCU, 50000);
     kafkaMaxPollRecords = serverProperties.getInt(SERVER_KAFKA_MAX_POLL_RECORDS, 100);
     kafkaPollRetryTimes = serverProperties.getInt(SERVER_KAFKA_POLL_RETRY_TIMES, 100);
     kafkaPollRetryBackoffMs = serverProperties.getInt(SERVER_KAFKA_POLL_RETRY_BACKOFF_MS, 0);
-    diskHealthCheckIntervalInMS = TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS, 10)); // 10 seconds by default
-    diskHealthCheckTimeoutInMs = TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_DISK_HEALTH_CHECK_TIMEOUT_IN_SECONDS, 30)); // 30 seconds by default
+    diskHealthCheckIntervalInMS =
+        TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS, 10)); // 10
+                                                                                                               // seconds
+                                                                                                               // by
+                                                                                                               // default
+    diskHealthCheckTimeoutInMs =
+        TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_DISK_HEALTH_CHECK_TIMEOUT_IN_SECONDS, 30)); // 30
+                                                                                                              // seconds
+                                                                                                              // by
+                                                                                                              // default
     diskHealthCheckServiceEnabled = serverProperties.getBoolean(SERVER_DISK_HEALTH_CHECK_SERVICE_ENABLED, true);
     computeFastAvroEnabled = serverProperties.getBoolean(SERVER_COMPUTE_FAST_AVRO_ENABLED, true);
     participantMessageConsumptionDelayMs = serverProperties.getLong(PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS, 60000);
-    serverPromotionToLeaderReplicaDelayMs = TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 300));  // 5 minutes by default
-    serverSystemStorePromotionToLeaderReplicaDelayMs = TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_SYSTEM_STORE_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1)); // 1 second by default
+    serverPromotionToLeaderReplicaDelayMs =
+        TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 300)); // 5
+                                                                                                                    // minutes
+                                                                                                                    // by
+                                                                                                                    // default
+    serverSystemStorePromotionToLeaderReplicaDelayMs = TimeUnit.SECONDS
+        .toMillis(serverProperties.getLong(SERVER_SYSTEM_STORE_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1)); // 1
+                                                                                                               // second
+                                                                                                               // by
+                                                                                                               // default
     hybridQuotaEnabled = serverProperties.getBoolean(HYBRID_QUOTA_ENFORCEMENT_ENABLED, false);
 
     enableParallelBatchGet = serverProperties.getBoolean(SERVER_ENABLE_PARALLEL_BATCH_GET, false);
@@ -349,10 +387,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     keyValueProfilingEnabled = serverProperties.getBoolean(KEY_VALUE_PROFILING_ENABLED, false);
     enableDatabaseMemoryStats = serverProperties.getBoolean(SERVER_DATABASE_MEMORY_STATS_ENABLED, true);
 
-    Map<String, String> storeToEarlyTerminationThresholdMSMapProp = serverProperties.getMap(
-        SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP, Collections.emptyMap());
+    Map<String, String> storeToEarlyTerminationThresholdMSMapProp =
+        serverProperties.getMap(SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP, Collections.emptyMap());
     storeToEarlyTerminationThresholdMSMap = new HashMap<>();
-    storeToEarlyTerminationThresholdMSMapProp.forEach( (storeName, thresholdStr) -> {
+    storeToEarlyTerminationThresholdMSMapProp.forEach((storeName, thresholdStr) -> {
       storeToEarlyTerminationThresholdMSMap.put(storeName, Integer.parseInt(thresholdStr.trim()));
     });
     databaseLookupQueueCapacity = serverProperties.getInt(SERVER_DATABASE_LOOKUP_QUEUE_CAPACITY, Integer.MAX_VALUE);
@@ -367,7 +405,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
      * disappear, but other nodes could start high latency.
      * After switching to {@link java.util.concurrent.LinkedBlockingQueue}, this issue never happened.
      */
-    String blockingQueueTypeStr = serverProperties.getString(SERVER_BLOCKING_QUEUE_TYPE, BlockingQueueType.LINKED_BLOCKING_QUEUE.name());
+    String blockingQueueTypeStr =
+        serverProperties.getString(SERVER_BLOCKING_QUEUE_TYPE, BlockingQueueType.LINKED_BLOCKING_QUEUE.name());
     try {
       blockingQueueType = BlockingQueueType.valueOf(blockingQueueTypeStr);
     } catch (IllegalArgumentException e) {
@@ -381,50 +420,75 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     // Disable it by default, and when router connection warming is enabled, we need to adjust this config.
     routerConnectionWarmingDelayMs = serverProperties.getLong(SERVER_ROUTER_CONNECTION_WARMING_DELAY_MS, 0);
     sharedConsumerPoolEnabled = serverProperties.getBoolean(SERVER_SHARED_CONSUMER_POOL_ENABLED, true);
-    String sharedConsumerAssignmentStrategyStr = serverProperties.getString(SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY,
+    String sharedConsumerAssignmentStrategyStr = serverProperties.getString(
+        SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY,
         KafkaConsumerService.ConsumerAssignmentStrategy.TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY.name());
     try {
-      sharedConsumerAssignmentStrategy = KafkaConsumerService.ConsumerAssignmentStrategy.valueOf(sharedConsumerAssignmentStrategyStr);
+      sharedConsumerAssignmentStrategy =
+          KafkaConsumerService.ConsumerAssignmentStrategy.valueOf(sharedConsumerAssignmentStrategyStr);
     } catch (IllegalArgumentException e) {
-      throw new VeniceException("Invalid consumer assignment strategy: " + Arrays.toString(KafkaConsumerService.ConsumerAssignmentStrategy.values()));
+      throw new VeniceException(
+          "Invalid consumer assignment strategy: "
+              + Arrays.toString(KafkaConsumerService.ConsumerAssignmentStrategy.values()));
     }
 
     consumerPoolSizePerKafkaCluster = serverProperties.getInt(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, 5);
     if (consumerPoolSizePerKafkaCluster < MINIMUM_CONSUMER_NUM_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER) {
-      throw new VeniceException(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER + " shouldn't be less than: " +
-          MINIMUM_CONSUMER_NUM_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER + ", but it is " + consumerPoolSizePerKafkaCluster);
+      throw new VeniceException(
+          SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER + " shouldn't be less than: "
+              + MINIMUM_CONSUMER_NUM_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER + ", but it is "
+              + consumerPoolSizePerKafkaCluster);
     }
     leakedResourceCleanupEnabled = serverProperties.getBoolean(SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED, true);
-    cacheWarmingBeforeReadyToServeEnabled = serverProperties.getBoolean(SERVER_CACHE_WARMING_BEFORE_READY_TO_SERVE_ENABLED, false);
-    List<String> cacheWarmingStoreList = serverProperties.getList(SERVER_CACHE_WARMING_STORE_LIST, Collections.emptyList());
+    cacheWarmingBeforeReadyToServeEnabled =
+        serverProperties.getBoolean(SERVER_CACHE_WARMING_BEFORE_READY_TO_SERVE_ENABLED, false);
+    List<String> cacheWarmingStoreList =
+        serverProperties.getList(SERVER_CACHE_WARMING_STORE_LIST, Collections.emptyList());
     cacheWarmingStoreSet = new HashSet<>(cacheWarmingStoreList);
     cacheWarmingThreadPoolSize = serverProperties.getInt(SERVER_CACHE_WARMING_THREAD_POOL_SIZE, 4);
     delayReadyToServeMS = serverProperties.getLong(SERVER_DELAY_REPORT_READY_TO_SERVE_MS, 0); // by default no delay
 
-    ingestionMode = IngestionMode.valueOf(serverProperties.getString(SERVER_INGESTION_MODE, IngestionMode.BUILT_IN.toString()));
+    ingestionMode =
+        IngestionMode.valueOf(serverProperties.getString(SERVER_INGESTION_MODE, IngestionMode.BUILT_IN.toString()));
     ingestionServicePort = serverProperties.getInt(SERVER_INGESTION_ISOLATION_SERVICE_PORT, 27015);
     ingestionApplicationPort = serverProperties.getInt(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, 27016);
-    databaseChecksumVerificationEnabled = serverProperties.getBoolean(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, false);
+    databaseChecksumVerificationEnabled =
+        serverProperties.getBoolean(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, false);
 
-    kafkaConsumerConfigsForLocalConsumption = serverProperties.clipAndFilterNamespace(SERVER_LOCAL_CONSUMER_CONFIG_PREFIX);
-    kafkaConsumerConfigsForRemoteConsumption = serverProperties.clipAndFilterNamespace(SERVER_REMOTE_CONSUMER_CONFIG_PREFIX);
+    kafkaConsumerConfigsForLocalConsumption =
+        serverProperties.clipAndFilterNamespace(SERVER_LOCAL_CONSUMER_CONFIG_PREFIX);
+    kafkaConsumerConfigsForRemoteConsumption =
+        serverProperties.clipAndFilterNamespace(SERVER_REMOTE_CONSUMER_CONFIG_PREFIX);
 
-    rocksDbStorageEngineConfigCheckEnabled = serverProperties.getBoolean(SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED, true);
+    rocksDbStorageEngineConfigCheckEnabled =
+        serverProperties.getBoolean(SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED, true);
 
-    freezeIngestionIfReadyToServeOrLocalDataExists = serverProperties.getBoolean(FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS, false);
+    freezeIngestionIfReadyToServeOrLocalDataExists =
+        serverProperties.getBoolean(FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS, false);
 
     systemSchemaClusterName = serverProperties.getString(SYSTEM_SCHEMA_CLUSTER_NAME, "");
-    sharedConsumerNonExistingTopicCleanupDelayMS = serverProperties.getLong(SERVER_SHARED_CONSUMER_NON_EXISTING_TOPIC_CLEANUP_DELAY_MS, TimeUnit.MINUTES.toMillis(10)); // default 10 mins
-    enableAutoCompactionForSamzaReprocessingJob = serverProperties.getBoolean(SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED, true);
+    sharedConsumerNonExistingTopicCleanupDelayMS = serverProperties
+        .getLong(SERVER_SHARED_CONSUMER_NON_EXISTING_TOPIC_CLEANUP_DELAY_MS, TimeUnit.MINUTES.toMillis(10)); // default
+                                                                                                             // 10 mins
+    enableAutoCompactionForSamzaReprocessingJob =
+        serverProperties.getBoolean(SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED, true);
     sharedKafkaProducerEnabled = serverProperties.getBoolean(SERVER_SHARED_KAFKA_PRODUCER_ENABLED, false);
-    sharedProducerPoolSizePerKafkaCluster = serverProperties.getInt(SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER, 8);
+    sharedProducerPoolSizePerKafkaCluster =
+        serverProperties.getInt(SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER, 8);
 
-    List<String> kafkaProducerMetricsList = serverProperties.getList(KAFKA_PRODUCER_METRICS, Arrays.asList("outgoing-byte-rate",
-        "record-send-rate","batch-size-max","batch-size-avg","buffer-available-bytes","buffer-exhausted-rate"));
+    List<String> kafkaProducerMetricsList = serverProperties.getList(
+        KAFKA_PRODUCER_METRICS,
+        Arrays.asList(
+            "outgoing-byte-rate",
+            "record-send-rate",
+            "batch-size-max",
+            "batch-size-avg",
+            "buffer-available-bytes",
+            "buffer-exhausted-rate"));
     kafkaProducerMetrics = new HashSet<>(kafkaProducerMetricsList);
 
     isDaVinciClient = serverProperties.getBoolean(INGESTION_USE_DA_VINCI_CLIENT, false);
-    unsubscribeAfterBatchpushEnabled = serverProperties.getBoolean(SERVER_UNSUB_AFTER_BATCHPUSH,false);
+    unsubscribeAfterBatchpushEnabled = serverProperties.getBoolean(SERVER_UNSUB_AFTER_BATCHPUSH, false);
 
     http2InboundEnabled = serverProperties.getBoolean(SERVER_HTTP2_INBOUND_ENABLED, false);
     http2MaxConcurrentStreams = serverProperties.getInt(SERVER_HTTP2_MAX_CONCURRENT_STREAMS, 100);
@@ -433,16 +497,21 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     http2HeaderTableSize = serverProperties.getInt(SERVER_HTTP2_HEADER_TABLE_SIZE, 4096);
     http2MaxHeaderListSize = serverProperties.getInt(SERVER_HTTP2_MAX_HEADER_LIST_SIZE, 8192);
 
-    offsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart = serverProperties.getInt(
-        OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART, 2);
-    enableKafkaConsumerOffsetCollection = serverProperties.getBoolean(SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED, true);
-    dedicatedDrainerQueueEnabled = serverProperties.getBoolean(SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED, false);
+    offsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart =
+        serverProperties.getInt(OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART, 2);
+    enableKafkaConsumerOffsetCollection =
+        serverProperties.getBoolean(SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED, true);
+    dedicatedDrainerQueueEnabled =
+        serverProperties.getBoolean(SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED, false);
     debugLoggingEnabled = serverProperties.getBoolean(SERVER_DEBUG_LOGGING_ENABLED, false);
-    numSchemaFastClassWarmup = serverProperties.getInt(SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP,10);
-    fastClassSchemaWarmupTimeout = serverProperties.getLong(SERVER_SCHEMA_FAST_CLASS_WARMUP_TIMEOUT, 2*Time.MS_PER_MINUTE);
+    numSchemaFastClassWarmup = serverProperties.getInt(SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP, 10);
+    fastClassSchemaWarmupTimeout =
+        serverProperties.getLong(SERVER_SCHEMA_FAST_CLASS_WARMUP_TIMEOUT, 2 * Time.MS_PER_MINUTE);
     schemaPresenceCheckEnabled = serverProperties.getBoolean(SERVER_SCHEMA_PRESENCE_CHECK_ENABLED, true);
-    enableLiveConfigBasedKafkaThrottling = serverProperties.getBoolean(SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING, false);
-    autoCloseIdleConsumersEnabled = serverProperties.getBoolean(AUTO_CLOSE_IDLE_CONSUMERS_ENABLED, KafkaClientFactory.DEFAULT_AUTO_CLOSE_IDLE_CONSUMERS_ENABLED);
+    enableLiveConfigBasedKafkaThrottling =
+        serverProperties.getBoolean(SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING, false);
+    autoCloseIdleConsumersEnabled = serverProperties
+        .getBoolean(AUTO_CLOSE_IDLE_CONSUMERS_ENABLED, KafkaClientFactory.DEFAULT_AUTO_CLOSE_IDLE_CONSUMERS_ENABLED);
     /**
      * Enable graceful shutdown by default.
      * Speculative risks when disabling graceful shutdown:
@@ -453,18 +522,22 @@ public class VeniceServerConfig extends VeniceClusterConfig {
      *    online hybrid replicas can become online faster after nodes restart.
      * 2. Reduce checkpoint threshold
      */
-    serverIngestionCheckpointDuringGracefulShutdownEnabled = serverProperties.getBoolean(SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED, true);
-    optimizeDatabaseForBackupVersionEnabled = serverProperties.getBoolean(SERVER_OPTIMIZE_DATABASE_FOR_BACKUP_VERSION_ENABLED, false);
-    optimizeDatabaseForBackupVersionNoReadThresholdMS = serverProperties.getLong(
-        SERVER_OPTIMIZE_DATABASE_FOR_BACKUP_VERSION_NO_READ_THRESHOLD_SECONDS, TimeUnit.MINUTES.toMillis(3)); // default 3 mins
-    optimizeDatabaseServiceScheduleIntervalSeconds = serverProperties.getLong(
-        SERVER_OPTIMIZE_DATABASE_SERVICE_SCHEDULE_INTERNAL_SECONDS, TimeUnit.MINUTES.toSeconds(1)); // default 1 min
+    serverIngestionCheckpointDuringGracefulShutdownEnabled =
+        serverProperties.getBoolean(SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED, true);
+    optimizeDatabaseForBackupVersionEnabled =
+        serverProperties.getBoolean(SERVER_OPTIMIZE_DATABASE_FOR_BACKUP_VERSION_ENABLED, false);
+    optimizeDatabaseForBackupVersionNoReadThresholdMS = serverProperties
+        .getLong(SERVER_OPTIMIZE_DATABASE_FOR_BACKUP_VERSION_NO_READ_THRESHOLD_SECONDS, TimeUnit.MINUTES.toMillis(3)); // default
+                                                                                                                       // 3
+                                                                                                                       // mins
+    optimizeDatabaseServiceScheduleIntervalSeconds = serverProperties
+        .getLong(SERVER_OPTIMIZE_DATABASE_SERVICE_SCHEDULE_INTERNAL_SECONDS, TimeUnit.MINUTES.toSeconds(1)); // default
+                                                                                                             // 1 min
   }
 
   public int getListenerPort() {
     return listenerPort;
   }
-
 
   /**
    * Get base path of Venice storage data.
@@ -475,7 +548,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return this.dataBasePath;
   }
 
-  public boolean isAutoCreateDataPath(){
+  public boolean isAutoCreateDataPath() {
     return autoCreateDataPath;
   }
 
@@ -547,7 +620,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return databaseSyncBytesIntervalForDeferredWriteMode;
   }
 
-  public double getDiskFullThreshold(){
+  public double getDiskFullThreshold() {
     return diskFullThreshold;
   }
 
@@ -571,7 +644,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return serverCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled;
   }
 
-  public long getNodeCapacityInRcu(){
+  public long getNodeCapacityInRcu() {
     return nodeCapacityInRcu;
   }
 
@@ -617,7 +690,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return computeFastAvroEnabled;
   }
 
-  public long getParticipantMessageConsumptionDelayMs() { return participantMessageConsumptionDelayMs; }
+  public long getParticipantMessageConsumptionDelayMs() {
+    return participantMessageConsumptionDelayMs;
+  }
 
   public long getServerPromotionToLeaderReplicaDelayMs() {
     return serverPromotionToLeaderReplicaDelayMs;
@@ -627,7 +702,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return serverSystemStorePromotionToLeaderReplicaDelayMs;
   }
 
-  public boolean isHybridQuotaEnabled() { return hybridQuotaEnabled; }
+  public boolean isHybridQuotaEnabled() {
+    return hybridQuotaEnabled;
+  }
 
   public boolean isEnableParallelBatchGet() {
     return enableParallelBatchGet;
@@ -672,7 +749,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   public String getKafkaReadOnlyClass() {
     return kafkaReadOnlyClass;
   }
-
 
   public boolean isKafkaOpenSSLEnabled() {
     return kafkaOpenSSLEnabled;
@@ -734,7 +810,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return ingestionApplicationPort;
   }
 
-  public boolean isDatabaseChecksumVerificationEnabled() { return databaseChecksumVerificationEnabled;}
+  public boolean isDatabaseChecksumVerificationEnabled() {
+    return databaseChecksumVerificationEnabled;
+  }
 
   public VeniceProperties getKafkaConsumerConfigsForLocalConsumption() {
     return kafkaConsumerConfigsForLocalConsumption;
@@ -783,7 +861,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   public boolean isUnsubscribeAfterBatchpushEnabled() {
     return unsubscribeAfterBatchpushEnabled;
   }
-
 
   public boolean isHttp2InboundEnabled() {
     return http2InboundEnabled;
@@ -841,7 +918,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return fastClassSchemaWarmupTimeout;
   }
 
-  public boolean isSchemaPresenceCheckEnabled() { return schemaPresenceCheckEnabled;}
+  public boolean isSchemaPresenceCheckEnabled() {
+    return schemaPresenceCheckEnabled;
+  }
 
   public boolean isLiveConfigBasedKafkaThrottlingEnabled() {
     return enableLiveConfigBasedKafkaThrottling;

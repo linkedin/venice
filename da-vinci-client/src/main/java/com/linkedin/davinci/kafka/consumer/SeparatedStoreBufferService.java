@@ -28,33 +28,48 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
   SeparatedStoreBufferService(VeniceServerConfig serverConfig) {
     this.sortedPoolSize = serverConfig.getDrainerPoolSizeSortedInput();
     this.unsortedPoolSize = serverConfig.getDrainerPoolSizeUnsortedInput();
-    this.sortedServiceDelegate = new StoreBufferService(sortedPoolSize, serverConfig.getStoreWriterBufferMemoryCapacity(),
+    this.sortedServiceDelegate = new StoreBufferService(
+        sortedPoolSize,
+        serverConfig.getStoreWriterBufferMemoryCapacity(),
         serverConfig.getStoreWriterBufferNotifyDelta());
-    this.unsortedServiceDelegate = new StoreBufferService(unsortedPoolSize, serverConfig.getStoreWriterBufferMemoryCapacity(),
+    this.unsortedServiceDelegate = new StoreBufferService(
+        unsortedPoolSize,
+        serverConfig.getStoreWriterBufferMemoryCapacity(),
         serverConfig.getStoreWriterBufferNotifyDelta());
-    LOGGER.info("Created separated store buffer service with " + sortedPoolSize + " sorted drainers and "
-        + unsortedPoolSize + " unsorted drainers queues with capacity of " + serverConfig.getStoreWriterBufferMemoryCapacity());
+    LOGGER.info(
+        "Created separated store buffer service with " + sortedPoolSize + " sorted drainers and " + unsortedPoolSize
+            + " unsorted drainers queues with capacity of " + serverConfig.getStoreWriterBufferMemoryCapacity());
   }
 
   @Override
-  public void putConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      StoreIngestionTask ingestionTask, LeaderProducedRecordContext leaderProducedRecordContext, int subPartition,
+  public void putConsumerRecord(
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      StoreIngestionTask ingestionTask,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      int subPartition,
       String kafkaUrl) throws InterruptedException {
-    Optional<PartitionConsumptionState> partitionConsumptionState = ingestionTask.getPartitionConsumptionState(subPartition);
+    Optional<PartitionConsumptionState> partitionConsumptionState =
+        ingestionTask.getPartitionConsumptionState(subPartition);
 
     boolean sortedInput = false;
     if (partitionConsumptionState.isPresent()) {
       boolean currentState;
 
-      // there is could be cases the following flag does not represent actual message's ingestion state as control message
-      // which updates the `isDeferredWrite` flag may not yet be processed. This might cause inefficiency but not logical incorrectness.
+      // there is could be cases the following flag does not represent actual message's ingestion state as control
+      // message
+      // which updates the `isDeferredWrite` flag may not yet be processed. This might cause inefficiency but not
+      // logical incorrectness.
       sortedInput = partitionConsumptionState.get().isDeferredWrite();
       if (topicToSortedIngestionMode.containsKey(consumerRecord.topic())) {
         currentState = topicToSortedIngestionMode.get(consumerRecord.topic());
         // If there is a change in deferredWrite mode, drain the buffers
         if (currentState != sortedInput) {
-          LOGGER.info("Switching drainer buffer for topic " + consumerRecord.topic() + " to use " + (sortedInput ? "sorted queue." : "unsorted queue."));
-          drainBufferedRecordsFromTopicPartition(consumerRecord.topic(), partitionConsumptionState.get().getPartition());
+          LOGGER.info(
+              "Switching drainer buffer for topic " + consumerRecord.topic() + " to use "
+                  + (sortedInput ? "sorted queue." : "unsorted queue."));
+          drainBufferedRecordsFromTopicPartition(
+              consumerRecord.topic(),
+              partitionConsumptionState.get().getPartition());
           topicToSortedIngestionMode.put(consumerRecord.topic(), sortedInput);
         }
       } else {
@@ -62,16 +77,16 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
       }
     }
     if (sortedInput) {
-      sortedServiceDelegate.putConsumerRecord(consumerRecord, ingestionTask, leaderProducedRecordContext, subPartition,
-          kafkaUrl);
+      sortedServiceDelegate
+          .putConsumerRecord(consumerRecord, ingestionTask, leaderProducedRecordContext, subPartition, kafkaUrl);
     } else {
-      unsortedServiceDelegate.putConsumerRecord(consumerRecord, ingestionTask, leaderProducedRecordContext,
-          subPartition, kafkaUrl);
+      unsortedServiceDelegate
+          .putConsumerRecord(consumerRecord, ingestionTask, leaderProducedRecordContext, subPartition, kafkaUrl);
     }
   }
 
   @Override
-  public void drainBufferedRecordsFromTopicPartition(String topic, int partition) throws InterruptedException{
+  public void drainBufferedRecordsFromTopicPartition(String topic, int partition) throws InterruptedException {
     sortedServiceDelegate.drainBufferedRecordsFromTopicPartition(topic, partition);
     unsortedServiceDelegate.drainBufferedRecordsFromTopicPartition(topic, partition);
   }

@@ -1,17 +1,16 @@
 package com.linkedin.venice.utils;
 
+import static org.testng.Assert.*;
+
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import java.util.Properties;
 import org.testng.annotations.Test;
-
-import static org.testng.Assert.*;
 
 
 /**
  * Created by athirupa on 4/21/16.
  */
 public class PropertyBuilderTest {
-
   @Test
   public void testStringPutAPI() {
     PropertyBuilder builder = new PropertyBuilder();
@@ -24,7 +23,7 @@ public class PropertyBuilderTest {
       builder.build().getString(key);
       fail("Expected an undefined property exception for Key " + key);
     } catch (UndefinedPropertyException ex) {
-      //expected
+      // expected
     }
 
     // Non Existent with default should return default value.
@@ -55,7 +54,7 @@ public class PropertyBuilderTest {
       builder.build().getInt(key);
       fail("Expected an undefined property exception for Key " + key);
     } catch (UndefinedPropertyException ex) {
-      //expected
+      // expected
     }
 
     // Non Existent with default should return default value.
@@ -81,13 +80,12 @@ public class PropertyBuilderTest {
     long originalValue = Long.MIN_VALUE;
     long anotherValue = Long.MAX_VALUE;
 
-
     // Non Existent Get should throw Exception
     try {
       builder.build().getLong(key);
       fail("Expected an undefined property exception for Key " + key);
     } catch (UndefinedPropertyException ex) {
-      //expected
+      // expected
     }
 
     // Non Existent with default should return default value.
@@ -118,7 +116,7 @@ public class PropertyBuilderTest {
       builder.build().getBoolean(key);
       fail("Expected an undefined property exception for Key " + key);
     } catch (UndefinedPropertyException ex) {
-      //expected
+      // expected
     }
 
     // Non Existent with default should return default value.
@@ -147,7 +145,7 @@ public class PropertyBuilderTest {
       builder.build().getSizeInBytes(key);
       fail("Expected an undefined property exception for Key " + key);
     } catch (UndefinedPropertyException ex) {
-      //expected
+      // expected
     }
 
     long defaultValue = Long.MAX_VALUE;
@@ -172,13 +170,13 @@ public class PropertyBuilderTest {
   @Test
   public void testExtractProperties() {
     Properties props = new Properties();
-    props.setProperty("cluster.name","test-cluster");
-    props.setProperty("kafka.brokers","localhost");
-    props.setProperty("helix.enabled","false");
-    props.setProperty("kafka.broker.port","9092");
-    props.setProperty("default.persistence.type","IN_MEMORY");
-    props.setProperty("kafka.consumer.fetch.buffer.size","65536");
-    props.setProperty("zookeeper.address","localhost:2181");
+    props.setProperty("cluster.name", "test-cluster");
+    props.setProperty("kafka.brokers", "localhost");
+    props.setProperty("helix.enabled", "false");
+    props.setProperty("kafka.broker.port", "9092");
+    props.setProperty("default.persistence.type", "IN_MEMORY");
+    props.setProperty("kafka.consumer.fetch.buffer.size", "65536");
+    props.setProperty("zookeeper.address", "localhost:2181");
 
     VeniceProperties originalProps = new VeniceProperties(props);
 
@@ -192,7 +190,7 @@ public class PropertyBuilderTest {
     VeniceProperties otherComputedProps = originalProps.clipAndFilterNamespace("kafka.");
 
     assertEquals(expectedProps, computedProps, "Stripped props does not match");
-    assertEquals(otherComputedProps , computedProps , "Stripped props does not match");
+    assertEquals(otherComputedProps, computedProps, "Stripped props does not match");
     assertNotEquals(originalProps, computedProps, " two properties should not match");
   }
 
@@ -200,16 +198,16 @@ public class PropertyBuilderTest {
   public void testStoreProperties() {
     PropertyBuilder builder = new PropertyBuilder();
     builder.put("base.only", 123)
-            .put("base.only2", "large")
-            // Pick only this store value
-            .put("base.overridden", "12")
-            .put("store-foobar.base.overridden", "34")
-            .put("store-ignore.base.overridden", "56")
-            // If other stores are overriden, it should be ignored and should get base.
-            .put("base.value", "base")
-            .put("store-ignore.base.value", "dontGetThis")
-            // Pick properties that are not present in base, but only specific store.
-            .put("store-foobar.store.only", 567);
+        .put("base.only2", "large")
+        // Pick only this store value
+        .put("base.overridden", "12")
+        .put("store-foobar.base.overridden", "34")
+        .put("store-ignore.base.overridden", "56")
+        // If other stores are overriden, it should be ignored and should get base.
+        .put("base.value", "base")
+        .put("store-ignore.base.value", "dontGetThis")
+        // Pick properties that are not present in base, but only specific store.
+        .put("store-foobar.store.only", 567);
 
     VeniceProperties props = builder.build();
 
@@ -217,14 +215,14 @@ public class PropertyBuilderTest {
 
     PropertyBuilder storePropsBuilder = new PropertyBuilder();
     storePropsBuilder.put("base.only", 123)
-            .put("base.only2", "large")
-            .put("base.overridden", "34")
-            .put("base.value", "base")
-            .put("store.only", 567);
+        .put("base.only2", "large")
+        .put("base.overridden", "34")
+        .put("base.value", "base")
+        .put("store.only", 567);
 
     VeniceProperties storeProps = storePropsBuilder.build();
 
-    assertEquals(storeProps , computedStoreProps , "Store Properties are not the expected");
+    assertEquals(storeProps, computedStoreProps, "Store Properties are not the expected");
 
   }
 }

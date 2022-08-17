@@ -25,9 +25,8 @@ public class HostHealthStats extends AbstractVeniceStats {
   private final Sensor unhealthyPendingQueueDuration;
   private final Sensor unhealthyPendingRateSensor;
   private final Sensor unhealthyHostDelayJoinSensor;
-  private  Optional<Sensor> unhealthyHostCountCausedByPendingQueueSensor = Optional.empty();
-  private  Optional<Sensor> unhealthyHostCountCausedByHeartBeatSensor = Optional.empty();
-
+  private Optional<Sensor> unhealthyHostCountCausedByPendingQueueSensor = Optional.empty();
+  private Optional<Sensor> unhealthyHostCountCausedByHeartBeatSensor = Optional.empty();
 
   public HostHealthStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
@@ -37,13 +36,17 @@ public class HostHealthStats extends AbstractVeniceStats {
     this.unhealthyHostHeartBeatFailure = registerSensor("unhealthy_host_heart_beat_failure", new Count());
     this.pendingRequestCount = registerSensor("pending_request_count", new Max());
     this.leakedPendingRequestCount = registerSensor("leaked_pending_request_count", new Count());
-    this.unhealthyPendingQueueDuration  = registerSensor("unhealthy_pending_queue_duration", new Avg(), new Min(), new Max(), new SampledTotal());;
+    this.unhealthyPendingQueueDuration =
+        registerSensor("unhealthy_pending_queue_duration", new Avg(), new Min(), new Max(), new SampledTotal());
+    ;
     this.unhealthyPendingRateSensor = registerSensor("unhealthy_pending_queue", new OccurrenceRate());
     this.unhealthyHostDelayJoinSensor = registerSensor("unhealthy_host_delay_join", new OccurrenceRate());
     if (name.equals(AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT)) {
       // This is trying to avoid emit unnecessary metrics per route
-      this.unhealthyHostCountCausedByPendingQueueSensor = Optional.of(registerSensor("unhealthy_host_count_caused_by_pending_queue", new Avg(), new Min(), new Max()));
-      this.unhealthyHostCountCausedByHeartBeatSensor = Optional.of(registerSensor("unhealthy_host_count_caused_by_router_heart_beat", new Avg(), new Min(), new Max()));
+      this.unhealthyHostCountCausedByPendingQueueSensor =
+          Optional.of(registerSensor("unhealthy_host_count_caused_by_pending_queue", new Avg(), new Min(), new Max()));
+      this.unhealthyHostCountCausedByHeartBeatSensor = Optional
+          .of(registerSensor("unhealthy_host_count_caused_by_router_heart_beat", new Avg(), new Min(), new Max()));
     }
   }
 

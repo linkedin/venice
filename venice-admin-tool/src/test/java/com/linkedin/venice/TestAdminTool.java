@@ -1,42 +1,39 @@
 package com.linkedin.venice;
 
+import static com.linkedin.venice.Arg.*;
+import static com.linkedin.venice.Command.*;
+
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
-import com.linkedin.venice.controllerapi.StoragePersonaResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.persona.StoragePersona;
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Consumer;
 import org.apache.commons.cli.CommandLine;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.Arg.*;
-import static com.linkedin.venice.Command.*;
-
 
 public class TestAdminTool {
   @Test
-  public void testPrintObject(){
+  public void testPrintObject() {
     List<String> output = new ArrayList<>();
     Consumer<String> printCapture = (String s) -> output.add(s);
 
     MultiReplicaResponse multiReplicaResponse = new MultiReplicaResponse();
     AdminTool.printObject(multiReplicaResponse, printCapture);
 
-    Assert.assertFalse(output.get(output.size()-1).contains("topic"), "Printed multi-replica response should not contain a topic field");
+    Assert.assertFalse(
+        output.get(output.size() - 1).contains("topic"),
+        "Printed multi-replica response should not contain a topic field");
   }
 
   @Test(enabled = false) // disable until SSL config file becomes a mandatory config
   public void testAdminToolRequiresSSLConfigFile() {
-    String[] args = {"--delete-store", "--url", "https://localhost:7036", "--cluster", "test-cluster", "--store", "testStore"};
+    String[] args =
+        { "--delete-store", "--url", "https://localhost:7036", "--cluster", "test-cluster", "--store", "testStore" };
     try {
       AdminTool.main(args);
     } catch (Exception e) {
@@ -48,12 +45,8 @@ public class TestAdminTool {
   @Test
   public void testAdminUpdateStoreArg() {
     final String K1 = "k1", V1 = "v1", K2 = "k2", V2 = "v2", K3 = "k3", V3 = "v3";
-    String[] args = {
-        "--update-store",
-        "--url", "http://localhost:7036",
-        "--cluster", "test-cluster",
-        "--store", "testStore",
-        "--partitioner-params", K1 + "=" + V1 + "," + K2 + "=" + V2 + "," + K3 + "=" + V3};
+    String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
+        "testStore", "--partitioner-params", K1 + "=" + V1 + "," + K2 + "=" + V2 + "," + K3 + "=" + V3 };
 
     try {
       CommandLine commandLine = AdminTool.getCommandLine(args);
@@ -76,23 +69,25 @@ public class TestAdminTool {
     String regionName = "region0";
     int kafkaFetchQuota = 1000;
 
-    String[] args = {"--update-cluster-config",
-        "--url", controllerUrl,
-        "--cluster", clusterName,
-        "--fabric", regionName,
-        "--" + SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND.getArgName(), String.valueOf(kafkaFetchQuota)
-    };
+    String[] args = { "--update-cluster-config", "--url", controllerUrl, "--cluster", clusterName, "--fabric",
+        regionName, "--" + SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND.getArgName(), String.valueOf(kafkaFetchQuota) };
 
     try {
       CommandLine commandLine = AdminTool.getCommandLine(args);
       UpdateClusterConfigQueryParams params = AdminTool.getUpdateClusterConfigQueryParams(commandLine);
-      Optional<Map<String, Integer>> serverKafkaFetchQuotaRecordsPerSecond = params.getServerKafkaFetchQuotaRecordsPerSecond();
+      Optional<Map<String, Integer>> serverKafkaFetchQuotaRecordsPerSecond =
+          params.getServerKafkaFetchQuotaRecordsPerSecond();
       Assert.assertTrue(serverKafkaFetchQuotaRecordsPerSecond.isPresent(), "Kafka fetch quota not parsed from args");
-      Assert.assertTrue(serverKafkaFetchQuotaRecordsPerSecond.get().containsKey(regionName), "Kafka fetch quota does not have info for region");
-      Assert.assertEquals((int) serverKafkaFetchQuotaRecordsPerSecond.get().get(regionName), kafkaFetchQuota, "Kafka fetch quota has incorrect info for region");
+      Assert.assertTrue(
+          serverKafkaFetchQuotaRecordsPerSecond.get().containsKey(regionName),
+          "Kafka fetch quota does not have info for region");
+      Assert.assertEquals(
+          (int) serverKafkaFetchQuotaRecordsPerSecond.get().get(regionName),
+          kafkaFetchQuota,
+          "Kafka fetch quota has incorrect info for region");
     } catch (Exception e) {
       Assert.fail("All options are not added to update-store arg doc");
     }
   }
-  
+
 }

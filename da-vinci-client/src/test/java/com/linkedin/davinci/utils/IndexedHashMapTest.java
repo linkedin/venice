@@ -1,5 +1,7 @@
 package com.linkedin.davinci.utils;
 
+import static org.testng.Assert.*;
+
 import com.linkedin.venice.utils.IndexedHashMap;
 import com.linkedin.venice.utils.IndexedMap;
 import java.util.ArrayList;
@@ -19,17 +21,16 @@ import java.util.function.Consumer;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import static org.testng.Assert.*;
 
 public class IndexedHashMapTest {
   private static final List<Class> MAPS_WITH_EQUIVALENT_INSERTION_AND_ITERATION_ORDER =
       Arrays.asList(LinkedHashMap.class, IndexedHashMap.class);
   private static final String KEY_PREFIX = "Key_";
-  private static final List[] LISTS = {new ArrayList(), new LinkedList(), new CopyOnWriteArrayList(), new Vector()};
+  private static final List[] LISTS = { new ArrayList(), new LinkedList(), new CopyOnWriteArrayList(), new Vector() };
 
   @DataProvider
   Object[][] mapAndListImplementations() {
-    Map[] maps = {new HashMap(), new TreeMap(), new LinkedHashMap(), new IndexedHashMap()};
+    Map[] maps = { new HashMap(), new TreeMap(), new LinkedHashMap(), new IndexedHashMap() };
     Object[][] params = new Object[maps.length * LISTS.length][2];
     int permutationCount = 0;
     for (int m = 0; m < maps.length; m++) {
@@ -183,7 +184,8 @@ public class IndexedHashMapTest {
           if (THRESHOLD_ABOVE_WHICH_THE_ELEMENTS_WERE_TRAVERSED == 0) {
             assertEquals((int) value, index.get() * 10);
           }
-        } else if (index.get() > (THRESHOLD_ABOVE_WHICH_THE_ELEMENTS_WERE_TRAVERSED + THRESHOLD_UNDER_WHICH_THE_MOVED_ELEMENTS_ARE)) {
+        } else if (index.get() > (THRESHOLD_ABOVE_WHICH_THE_ELEMENTS_WERE_TRAVERSED
+            + THRESHOLD_UNDER_WHICH_THE_MOVED_ELEMENTS_ARE)) {
           assertFalse(value % 10 == 0, "Expected not to find value " + value + " above index " + index.get());
         }
       };
@@ -223,7 +225,8 @@ public class IndexedHashMapTest {
     final AtomicInteger index = new AtomicInteger(0);
 
     // Move 1/10th of the entries to the beginning
-    for (int i = INITIAL_NUMBER_OF_ENTRIES, j = 0; i < INITIAL_NUMBER_OF_ENTRIES + NUMBER_OF_ADDITIONAL_ENTRIES; i++, j++) {
+    for (int i = INITIAL_NUMBER_OF_ENTRIES,
+        j = 0; i < INITIAL_NUMBER_OF_ENTRIES + NUMBER_OF_ADDITIONAL_ENTRIES; i++, j++) {
       indexedMap.putByIndex(KEY_PREFIX + i, i, j);
     }
     assertEquals(indexedMap.size(), INITIAL_NUMBER_OF_ENTRIES + NUMBER_OF_ADDITIONAL_ENTRIES);

@@ -1,13 +1,12 @@
 package com.linkedin.davinci.utils;
 
-import com.linkedin.davinci.utils.StoragePartitionDiskUsage;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
-
-import static org.mockito.Mockito.*;
 
 
 @Test
@@ -35,7 +34,7 @@ public class StoragePartitionDiskUsageTest {
 
   @Test
   public void testAddAndGetPartitionUsage() {
-    boolean added = partitionDiskUsage.add(smallRecordSizeToBeAdded );
+    boolean added = partitionDiskUsage.add(smallRecordSizeToBeAdded);
     Assert.assertTrue(added);
     Assert.assertEquals(smallRecordSizeToBeAdded, partitionDiskUsage.getUsage());
     // negative record size shouldn't be appended to partition diskUsage

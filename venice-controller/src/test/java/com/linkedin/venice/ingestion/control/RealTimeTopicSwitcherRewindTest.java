@@ -1,5 +1,8 @@
 package com.linkedin.venice.ingestion.control;
 
+import static org.mockito.Mockito.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicException;
 import com.linkedin.venice.kafka.TopicManager;
@@ -23,8 +26,6 @@ import java.util.Optional;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
 
 public class RealTimeTopicSwitcherRewindTest {
   private RealTimeTopicSwitcher topicReplicator;
@@ -49,10 +50,7 @@ public class RealTimeTopicSwitcherRewindTest {
     when(topicReplicator.getVeniceWriterFactory()).thenReturn(veniceWriterFactory);
     when(topicReplicator.getTimer()).thenReturn(mockTime);
     when(topicManager.containsTopicAndAllPartitionsAreOnline(anyString())).thenReturn(true);
-    when(veniceWriterFactory.createBasicVeniceWriter(
-        anyString(),
-        any(Time.class)))
-        .thenReturn(veniceWriter);
+    when(veniceWriterFactory.createBasicVeniceWriter(anyString(), any(Time.class))).thenReturn(veniceWriter);
 
     // Methods under test
     doCallRealMethod().when(topicReplicator).ensurePreconditions(anyString(), anyString(), any(), any());
@@ -65,15 +63,22 @@ public class RealTimeTopicSwitcherRewindTest {
     final Store store = TestUtils.createTestStore(Utils.getUniqueString("store"), "owner", 1);
     final long REWIND_TIME_IN_SECONDS = 5;
     final long VERSION_CREATION_TIME_MS = 15000;
-    Optional<HybridStoreConfig> hybridStoreConfig  = Optional.of((new HybridStoreConfigImpl(REWIND_TIME_IN_SECONDS, 1,
-        HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP)));
+    Optional<HybridStoreConfig> hybridStoreConfig = Optional.of(
+        (new HybridStoreConfigImpl(
+            REWIND_TIME_IN_SECONDS,
+            1,
+            HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+            DataReplicationPolicy.NON_AGGREGATE,
+            BufferReplayPolicy.REWIND_FROM_EOP)));
     final String sourceTopicName = "source topic name";
     final String destinationTopicName = "destination topic name";
 
     topicReplicator.ensurePreconditions(sourceTopicName, destinationTopicName, store, hybridStoreConfig);
-    long rewindStartTime = topicReplicator.getRewindStartTime(mock(Version.class), hybridStoreConfig, VERSION_CREATION_TIME_MS);
-    assertEquals(rewindStartTime, mockTime.getMilliseconds() - Time.MS_PER_SECOND * REWIND_TIME_IN_SECONDS,
+    long rewindStartTime =
+        topicReplicator.getRewindStartTime(mock(Version.class), hybridStoreConfig, VERSION_CREATION_TIME_MS);
+    assertEquals(
+        rewindStartTime,
+        mockTime.getMilliseconds() - Time.MS_PER_SECOND * REWIND_TIME_IN_SECONDS,
         "Rewind start timestamp is not calculated properly");
     topicReplicator.sendTopicSwitch(sourceTopicName, destinationTopicName, rewindStartTime, null);
 
@@ -92,15 +97,23 @@ public class RealTimeTopicSwitcherRewindTest {
     final Store store = TestUtils.createTestStore(Utils.getUniqueString("store"), "owner", 1);
     final long REWIND_TIME_IN_SECONDS = 5;
     final long VERSION_CREATION_TIME_MS = 15000;
-    Optional<HybridStoreConfig> hybridStoreConfig  = Optional.of((new HybridStoreConfigImpl(REWIND_TIME_IN_SECONDS, 1,
-        HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_SOP)));
+    Optional<HybridStoreConfig> hybridStoreConfig = Optional.of(
+        (new HybridStoreConfigImpl(
+            REWIND_TIME_IN_SECONDS,
+            1,
+            HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+            DataReplicationPolicy.NON_AGGREGATE,
+            BufferReplayPolicy.REWIND_FROM_SOP)));
     final String sourceTopicName = "source topic name";
     final String destinationTopicName = "destination topic name";
 
     topicReplicator.ensurePreconditions(sourceTopicName, destinationTopicName, store, hybridStoreConfig);
-    long rewindStartTime = topicReplicator.getRewindStartTime(mock(Version.class), hybridStoreConfig, VERSION_CREATION_TIME_MS);
-    assertEquals(rewindStartTime, VERSION_CREATION_TIME_MS - Time.MS_PER_SECOND * REWIND_TIME_IN_SECONDS, "Rewind start timestamp is not calculated properly");
+    long rewindStartTime =
+        topicReplicator.getRewindStartTime(mock(Version.class), hybridStoreConfig, VERSION_CREATION_TIME_MS);
+    assertEquals(
+        rewindStartTime,
+        VERSION_CREATION_TIME_MS - Time.MS_PER_SECOND * REWIND_TIME_IN_SECONDS,
+        "Rewind start timestamp is not calculated properly");
     topicReplicator.sendTopicSwitch(sourceTopicName, destinationTopicName, rewindStartTime, null);
 
     verify(topicReplicator).sendTopicSwitch(sourceTopicName, destinationTopicName, rewindStartTime, null);

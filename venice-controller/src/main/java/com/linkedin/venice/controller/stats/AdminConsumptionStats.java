@@ -82,18 +82,27 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
     adminConsumeFailRetriableMessageCountSensor = registerSensor("failed_retriable_admin_messages", new Count());
     adminTopicDIVErrorReportCountSensor = registerSensor("admin_message_div_error_report_count", new Count());
     registerSensor("failed_admin_message_offset", new Gauge(() -> adminConsumptionFailedOffset));
-    adminConsumptionCycleDurationMsSensor = registerSensor("admin_consumption_cycle_duration_ms",
-        new Avg(), new Min(), new Max());
-    pendingAdminMessagesCountSensor = registerSensor("pending_admin_messages_count",
-        new Gauge(() -> pendingAdminMessagesCountGauge), new Avg(), new Min(), new Max());
-    storesWithPendingAdminMessagesCountSensor = registerSensor("stores_with_pending_admin_messages_count",
-        new Gauge(() -> storesWithPendingAdminMessagesCountGauge), new Avg(), new Min(), new Max());
+    adminConsumptionCycleDurationMsSensor =
+        registerSensor("admin_consumption_cycle_duration_ms", new Avg(), new Min(), new Max());
+    pendingAdminMessagesCountSensor = registerSensor(
+        "pending_admin_messages_count",
+        new Gauge(() -> pendingAdminMessagesCountGauge),
+        new Avg(),
+        new Min(),
+        new Max());
+    storesWithPendingAdminMessagesCountSensor = registerSensor(
+        "stores_with_pending_admin_messages_count",
+        new Gauge(() -> storesWithPendingAdminMessagesCountGauge),
+        new Avg(),
+        new Min(),
+        new Max());
     adminMessageMMLatencySensor = registerSensor("admin_message_mm_latency_ms", new Avg(), new Max());
     adminMessageDelegateLatencySensor = registerSensor("admin_message_delegate_latency_ms", new Avg(), new Max());
-    adminMessageStartProcessingLatencySensor = registerSensor("admin_message_start_processing_latency_ms", new Avg(), new Max());
+    adminMessageStartProcessingLatencySensor =
+        registerSensor("admin_message_start_processing_latency_ms", new Avg(), new Max());
     adminMessageProcessLatencySensor = registerSensor("admin_message_process_latency_ms", new Avg(), new Max());
-    adminMessageAddVersionProcessLatencySensor = registerSensor("admin_message_add_version_process_latency_ms",
-        new Avg(), new Max());
+    adminMessageAddVersionProcessLatencySensor =
+        registerSensor("admin_message_add_version_process_latency_ms", new Avg(), new Max());
     adminMessageTotalLatencySensor = registerSensor("admin_message_total_latency_ms", new Avg(), new Max());
     registerSensor("admin_consumption_offset_lag", new Gauge(() -> this.adminConsumptionOffsetLag));
     registerSensor("max_admin_consumption_offset_lag", new Gauge(() -> this.maxAdminConsumptionOffsetLag));
@@ -167,7 +176,9 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
    * controller node will not result in the metric value dipping to 0.
    */
   public void registerAdminConsumptionCheckpointOffset() {
-    registerSensorIfAbsent("admin_consumption_checkpoint_offset", new Gauge(() -> this.adminConsumptionCheckpointOffset));
+    registerSensorIfAbsent(
+        "admin_consumption_checkpoint_offset",
+        new Gauge(() -> this.adminConsumptionCheckpointOffset));
   }
 
   public void setAdminConsumptionOffsetLag(long adminConsumptionOffsetLag) {

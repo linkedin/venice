@@ -1,5 +1,9 @@
 package com.linkedin.venice.schema;
 
+import static com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType.*;
+import static com.linkedin.venice.schema.avro.SchemaCompatibility.*;
+import static com.linkedin.venice.schema.avro.SchemaCompatibility.SchemaCompatibilityType.*;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -11,9 +15,6 @@ import org.apache.avro.SchemaParseException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType.*;
-import static com.linkedin.venice.schema.avro.SchemaCompatibility.*;
-import static com.linkedin.venice.schema.avro.SchemaCompatibility.SchemaCompatibilityType.*;
 
 /**
  * {@link SchemaEntry} is composed of a schema and its corresponding id.
@@ -29,6 +30,7 @@ public class SchemaEntry {
   private Schema schema;
   private boolean failedParsing = false;
   private String schemaStr;
+
   /**
    * Primary constructor taking a literal id and schema.
    */
@@ -41,10 +43,13 @@ public class SchemaEntry {
     try {
       this.schema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(schemaStr);
     } catch (Exception e) {
-      if ((e instanceof AvroTypeException) && (AvroCompatibilityHelper.getRuntimeAvroVersion().laterThan(AvroVersion.AVRO_1_8))) {
+      if ((e instanceof AvroTypeException)
+          && (AvroCompatibilityHelper.getRuntimeAvroVersion().laterThan(AvroVersion.AVRO_1_8))) {
         this.schema = Schema.create(Schema.Type.NULL);
         this.failedParsing = true;
-        logger.warn("Avro 1.9 and newer version enforces stricter schema validation during parsing, will treat failed value schema as deprecated old value schema and ignore it. Error trace: ", e);
+        logger.warn(
+            "Avro 1.9 and newer version enforces stricter schema validation during parsing, will treat failed value schema as deprecated old value schema and ignore it. Error trace: ",
+            e);
       } else {
         logger.error("Failed to parse schema: " + schemaStr + " with exception: ", e);
         throw new SchemaParseException(e);
@@ -132,26 +137,30 @@ public class SchemaEntry {
 
     if (Arrays.asList(BACKWARD, FULL).contains(expectedCompatibilityType)) {
       SchemaCompatibility.SchemaPairCompatibility backwardCompatibility = checkReaderWriterCompatibility(
-          /** reader */ newSchemaEntry.schema,
-          /** writer */ this.schema
-      );
+          /** reader */
+          newSchemaEntry.schema,
+          /** writer */
+          this.schema);
       if (backwardCompatibility.getType() == INCOMPATIBLE) {
-        logger.info("New schema (id " + newSchemaEntry.getId() +
-            ") is not backward compatible with (i.e.: cannot read data written by) existing schema (id "
-            + this.id + "), Full message:\n" + backwardCompatibility.getDescription());
+        logger.info(
+            "New schema (id " + newSchemaEntry.getId()
+                + ") is not backward compatible with (i.e.: cannot read data written by) existing schema (id " + this.id
+                + "), Full message:\n" + backwardCompatibility.getDescription());
         return false;
       }
     }
 
     if (Arrays.asList(FORWARD, FULL).contains(expectedCompatibilityType)) {
       SchemaCompatibility.SchemaPairCompatibility forwardCompatibility = checkReaderWriterCompatibility(
-          /** reader */ this.schema,
-          /** writer */ newSchemaEntry.schema
-      );
+          /** reader */
+          this.schema,
+          /** writer */
+          newSchemaEntry.schema);
       if (forwardCompatibility.getType() == INCOMPATIBLE) {
-        logger.info("New schema id (" + newSchemaEntry.getId() +
-            ") is not forward compatible with (i.e.: cannot have its written data read by) existing schema id ("
-            + this.id + "), Full message:\n" + forwardCompatibility.getDescription());
+        logger.info(
+            "New schema id (" + newSchemaEntry.getId()
+                + ") is not forward compatible with (i.e.: cannot have its written data read by) existing schema id ("
+                + this.id + "), Full message:\n" + forwardCompatibility.getDescription());
         return false;
       }
     }
@@ -159,4 +168,3 @@ public class SchemaEntry {
     return true;
   }
 }
-

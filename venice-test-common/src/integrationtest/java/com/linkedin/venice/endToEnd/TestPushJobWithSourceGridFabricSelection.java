@@ -1,5 +1,10 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.utils.TestPushUtils.*;
+
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -30,18 +35,16 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.utils.TestPushUtils.*;
-
 
 public class TestPushJobWithSourceGridFabricSelection {
   private static final int TEST_TIMEOUT_MS = 90_000; // 90 seconds
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
-  private static final String[] CLUSTER_NAMES = IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new); // ["venice-cluster0", "venice-cluster1", ...];
+  private static final String[] CLUSTER_NAMES =
+      IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new); // ["venice-cluster0",
+                                                                                                         // "venice-cluster1",
+                                                                                                         // ...];
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
@@ -49,7 +52,7 @@ public class TestPushJobWithSourceGridFabricSelection {
 
   @DataProvider(name = "storeSize")
   public static Object[][] storeSize() {
-    return new Object[][]{{50, 2}};
+    return new Object[][] { { 50, 2 } };
   }
 
   @BeforeClass(alwaysRun = true)
@@ -68,20 +71,19 @@ public class TestPushJobWithSourceGridFabricSelection {
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
     controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
 
-    multiColoMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
-            NUMBER_OF_CHILD_DATACENTERS,
-            NUMBER_OF_CLUSTERS,
-            1,
-            1,
-            2,
-            1,
-            2,
-            Optional.of(new VeniceProperties(controllerProps)),
-            Optional.of(controllerProps),
-            Optional.of(new VeniceProperties(serverProperties)),
-            false,
-            false);
+    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+        NUMBER_OF_CHILD_DATACENTERS,
+        NUMBER_OF_CLUSTERS,
+        1,
+        1,
+        2,
+        1,
+        2,
+        Optional.of(new VeniceProperties(controllerProps)),
+        Optional.of(controllerProps),
+        Optional.of(new VeniceProperties(serverProperties)),
+        false,
+        false);
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
   }
@@ -101,22 +103,27 @@ public class TestPushJobWithSourceGridFabricSelection {
     Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    String parentControllerUrls = parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(
-        Collectors.joining(","));
+    String parentControllerUrls =
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
 
-    // Enable NR in all colos and A/A in parent colo and 1 child colo only. The NR source fabric cluster level config is dc-0 by default.
+    // Enable NR in all colos and A/A in parent colo and 1 child colo only. The NR source fabric cluster level config is
+    // dc-0 by default.
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
       Assert.assertFalse(
-          parentControllerClient.configureNativeReplicationForCluster(
-              true,
-              VeniceUserStoreType.BATCH_ONLY.toString(),
-              Optional.empty(),
-              Optional.of("dc-parent-0.parent,dc-0,dc-1")).isError());
+          parentControllerClient
+              .configureNativeReplicationForCluster(
+                  true,
+                  VeniceUserStoreType.BATCH_ONLY.toString(),
+                  Optional.empty(),
+                  Optional.of("dc-parent-0.parent,dc-0,dc-1"))
+              .isError());
       Assert.assertFalse(
-          parentControllerClient.configureActiveActiveReplicationForCluster(
-              true,
-              VeniceUserStoreType.BATCH_ONLY.toString(),
-              Optional.of("dc-parent-0.parent,dc-0")).isError());
+          parentControllerClient
+              .configureActiveActiveReplicationForCluster(
+                  true,
+                  VeniceUserStoreType.BATCH_ONLY.toString(),
+                  Optional.of("dc-parent-0.parent,dc-0"))
+              .isError());
     }
 
     Properties props = defaultH2VProps(parentControllerUrls, inputDirPath, storeName);
@@ -124,9 +131,10 @@ public class TestPushJobWithSourceGridFabricSelection {
     props.put(SOURCE_GRID_FABRIC, "dc-1");
 
     String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
-    String valueSchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
+    String valueSchemaStr =
+        recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
 
-    //Enable L/F and native replication features.
+    // Enable L/F and native replication features.
     UpdateStoreQueryParams updateStoreParams =
         new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
             .setPartitionCount(partitionCount)
@@ -136,41 +144,44 @@ public class TestPushJobWithSourceGridFabricSelection {
 
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
 
-    //Start a batch push specifying SOURCE_GRID_FABRIC as dc-1. This should be ignored as A/A is not enabled in all colo.
+    // Start a batch push specifying SOURCE_GRID_FABRIC as dc-1. This should be ignored as A/A is not enabled in all
+    // colo.
     try (VenicePushJob job = new VenicePushJob("Test push job 1", props)) {
       job.run();
-      //Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
+      // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
       Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
     }
 
-    //Enable A/A in all colo now start another batch push. Verify the batch push source address is dc-1.
+    // Enable A/A in all colo now start another batch push. Verify the batch push source address is dc-1.
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
       // Enable hybrid config, Leader/Follower state model and A/A replication policy
       Assert.assertFalse(
-          parentControllerClient.configureActiveActiveReplicationForCluster(
-              true,
-              VeniceUserStoreType.BATCH_ONLY.toString(),
-              Optional.of("dc-parent-0.parent,dc-0,dc-1")).isError());
+          parentControllerClient
+              .configureActiveActiveReplicationForCluster(
+                  true,
+                  VeniceUserStoreType.BATCH_ONLY.toString(),
+                  Optional.of("dc-parent-0.parent,dc-0,dc-1"))
+              .isError());
     }
 
     try (VenicePushJob job = new VenicePushJob("Test push job 2", props)) {
       job.run();
-      //Verify the kafka URL being returned to the push job is the same as dc-1 kafka url.
+      // Verify the kafka URL being returned to the push job is the same as dc-1 kafka url.
       Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
     }
 
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         // Current version should become 2
-        for (int version : parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions().values()) {
+        for (int version: parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions().values()) {
           Assert.assertEquals(version, 2);
         }
 
         // Verify the data in the first child fabric which consumes remotely
         VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(0);
         String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
-        try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
-            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+        try (AvroGenericStoreClient<String, Object> client = ClientFactory
+            .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
           for (int i = 1; i <= recordCount; ++i) {
             String expected = "test_name_" + i;
             String actual = client.get(Integer.toString(i)).get().toString();

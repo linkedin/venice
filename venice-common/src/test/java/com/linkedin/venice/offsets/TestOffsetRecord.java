@@ -6,11 +6,13 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+
 public class TestOffsetRecord {
   @Test
   public void testToBytes() {
     OffsetRecord offsetRecord1 = TestUtils.getOffsetRecord(100);
-    OffsetRecord offsetRecord2 = new OffsetRecord(offsetRecord1.toBytes(), AvroProtocolDefinition.PARTITION_STATE.getSerializer());
+    OffsetRecord offsetRecord2 =
+        new OffsetRecord(offsetRecord1.toBytes(), AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     Assert.assertTrue(offsetRecord2.getProducerPartitionStateMap() instanceof VeniceConcurrentHashMap);
     Assert.assertEquals(offsetRecord2, offsetRecord1);
 

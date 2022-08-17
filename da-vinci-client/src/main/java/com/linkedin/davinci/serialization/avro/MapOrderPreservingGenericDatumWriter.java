@@ -11,7 +11,6 @@ import org.apache.avro.io.Encoder;
 
 
 public class MapOrderPreservingGenericDatumWriter<T> extends GenericDatumWriter<T> {
-
   public MapOrderPreservingGenericDatumWriter(Schema schema) {
     super(schema);
   }
@@ -23,9 +22,10 @@ public class MapOrderPreservingGenericDatumWriter<T> extends GenericDatumWriter<
       return;
     }
     if (!(datum instanceof LinkedHashMap || datum instanceof IndexedHashMap || datum instanceof SortedMap)) {
-      throw new IllegalStateException("Expect map to be either a LinkedHashMap or a IndexedHashMap or a SortedMap because"
-          + " the notion of ordering is required. Otherwise, it does not make sense to preserve \"order\". "
-          + "Got datum type: " + datum.getClass());
+      throw new IllegalStateException(
+          "Expect map to be either a LinkedHashMap or a IndexedHashMap or a SortedMap because"
+              + " the notion of ordering is required. Otherwise, it does not make sense to preserve \"order\". "
+              + "Got datum type: " + datum.getClass());
     }
     super.writeMap(schema, datum, out);
   }

@@ -31,16 +31,21 @@ public class HelixStoreGraveyard implements StoreGraveyard {
   // TODO we could put the Store gravyard znode to upper level to make it non-cluster-specific.
   private final Set<String> clusterNames;
 
-  public HelixStoreGraveyard(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
+  public HelixStoreGraveyard(
+      ZkClient zkClient,
+      HelixAdapterSerializer adapterSerializer,
       Collection<String> clusterNames) {
     this(zkClient, adapterSerializer, clusterNames, new StoreJSONSerializer());
   }
 
-  public HelixStoreGraveyard(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
-      Collection<String> clusterNames, VeniceSerializer<Store> storeSerializer) {
+  public HelixStoreGraveyard(
+      ZkClient zkClient,
+      HelixAdapterSerializer adapterSerializer,
+      Collection<String> clusterNames,
+      VeniceSerializer<Store> storeSerializer) {
     this.clusterNames = new HashSet<>(clusterNames);
-    adapterSerializer.registerSerializer(getGeneralDeletedStorePath(PathResourceRegistry.WILDCARD_MATCH_ANY),
-        storeSerializer);
+    adapterSerializer
+        .registerSerializer(getGeneralDeletedStorePath(PathResourceRegistry.WILDCARD_MATCH_ANY), storeSerializer);
     zkClient.setZkSerializer(adapterSerializer);
     dataAccessor = new ZkBaseDataAccessor<>(zkClient);
   }
@@ -65,19 +70,22 @@ public class HelixStoreGraveyard implements StoreGraveyard {
       return Store.NON_EXISTING_VERSION;
     }
     int largestUsedVersionNumber = Store.NON_EXISTING_VERSION;
-    for (Store deletedStore : stores) {
+    for (Store deletedStore: stores) {
       if (deletedStore.getLargestUsedVersionNumber() > largestUsedVersionNumber) {
         largestUsedVersionNumber = deletedStore.getLargestUsedVersionNumber();
       }
     }
 
-    logger.info("Found store: " + storeName + " in the store graveyard. Will initialize the new store at version: "
-        + largestUsedVersionNumber);
+    logger.info(
+        "Found store: " + storeName + " in the store graveyard. Will initialize the new store at version: "
+            + largestUsedVersionNumber);
     return largestUsedVersionNumber;
   }
 
   @Override
-  public int getPerUserStoreSystemStoreLargestUsedVersionNumber(String userStoreName, VeniceSystemStoreType systemStoreType) {
+  public int getPerUserStoreSystemStoreLargestUsedVersionNumber(
+      String userStoreName,
+      VeniceSystemStoreType systemStoreType) {
     String systemStoreName = systemStoreType.getSystemStoreName(userStoreName);
     List<Store> deletedStores = getStoreFromAllClusters(userStoreName);
     if (deletedStores.isEmpty()) {
@@ -87,11 +95,13 @@ public class HelixStoreGraveyard implements StoreGraveyard {
       return Store.NON_EXISTING_VERSION;
     }
     int largestUsedVersionNumber = Store.NON_EXISTING_VERSION;
-    for (Store deletedStore : deletedStores) {
+    for (Store deletedStore: deletedStores) {
       Map<String, SystemStoreAttributes> systemStoreNamesToAttributes = deletedStore.getSystemStores();
-      SystemStoreAttributes systemStoreAttributes = systemStoreNamesToAttributes.get(VeniceSystemStoreType.getSystemStoreType(systemStoreName).getPrefix());
+      SystemStoreAttributes systemStoreAttributes =
+          systemStoreNamesToAttributes.get(VeniceSystemStoreType.getSystemStoreType(systemStoreName).getPrefix());
       if (systemStoreAttributes != null) {
-        largestUsedVersionNumber = Math.max(largestUsedVersionNumber, systemStoreAttributes.getLargestUsedVersionNumber());
+        largestUsedVersionNumber =
+            Math.max(largestUsedVersionNumber, systemStoreAttributes.getLargestUsedVersionNumber());
       }
     }
 
@@ -100,7 +110,6 @@ public class HelixStoreGraveyard implements StoreGraveyard {
     }
     return largestUsedVersionNumber;
   }
-
 
   @Override
   public void putStoreIntoGraveyard(String clusterName, Store store) {
@@ -130,14 +139,15 @@ public class HelixStoreGraveyard implements StoreGraveyard {
        * This check will address to this situation, and keep the largest version number in both graveyards the same.
        */
       if (largestUsedVersionNumber > store.getLargestUsedVersionNumber()) {
-        logger.info("Increased largestUsedVersionNumber for migrating store " + store.getName() + " from "
-            + store.getLargestUsedVersionNumber() + " to " + largestUsedVersionNumber);
+        logger.info(
+            "Increased largestUsedVersionNumber for migrating store " + store.getName() + " from "
+                + store.getLargestUsedVersionNumber() + " to " + largestUsedVersionNumber);
         store.setLargestUsedVersionNumber(largestUsedVersionNumber);
       }
     } else if (store.getLargestUsedVersionNumber() < largestUsedVersionNumber) {
       // largestUsedVersion number in re-created store is smaller than the deleted store. It's should be a issue.
-      String errorMsg = "Invalid largestUsedVersionNumber: " + store.getLargestUsedVersionNumber() +
-          " in Store: " + store.getName() + ", it's smaller than one found in graveyard: " + largestUsedVersionNumber;
+      String errorMsg = "Invalid largestUsedVersionNumber: " + store.getLargestUsedVersionNumber() + " in Store: "
+          + store.getName() + ", it's smaller than one found in graveyard: " + largestUsedVersionNumber;
       logger.error(errorMsg);
       throw new VeniceException(errorMsg);
     }
@@ -145,7 +155,8 @@ public class HelixStoreGraveyard implements StoreGraveyard {
     // Store does not exist in graveyard OR store already exists but the re-created store is deleted again so we need to
     // update the ZNode.
     HelixUtils.update(dataAccessor, getClusterDeletedStorePath(clusterName, store.getName()), store);
-    logger.info("Put store: " + store.getName() + " into graveyard with largestUsedVersionNumber " + largestUsedVersionNumber);
+    logger.info(
+        "Put store: " + store.getName() + " into graveyard with largestUsedVersionNumber " + largestUsedVersionNumber);
   }
 
   public void removeStoreFromGraveyard(String clusterName, String storeName) {
@@ -165,7 +176,7 @@ public class HelixStoreGraveyard implements StoreGraveyard {
    */
   private List<Store> getStoreFromAllClusters(String storeName) {
     List<Store> stores = new ArrayList<>();
-    for (String clusterName : clusterNames) {
+    for (String clusterName: clusterNames) {
       Store store = dataAccessor.get(getClusterDeletedStorePath(clusterName, storeName), null, AccessOption.PERSISTENT);
       if (store != null) {
         stores.add(store);

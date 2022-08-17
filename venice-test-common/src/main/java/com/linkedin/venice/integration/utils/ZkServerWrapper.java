@@ -226,7 +226,8 @@ public class ZkServerWrapper extends ProcessWrapper {
       while (!zkServer.isRunning() && zkThread.exception == null) {
         if (expirationTime < System.currentTimeMillis()) {
           close();
-          throw new VeniceException("Unable to start ZK within the maximum allotted time (" + MAX_WAIT_TIME_DURING_STARTUP + " ms).");
+          throw new VeniceException(
+              "Unable to start ZK within the maximum allotted time (" + MAX_WAIT_TIME_DURING_STARTUP + " ms).");
         }
         Thread.sleep(100);
       }
@@ -281,7 +282,9 @@ public class ZkServerWrapper extends ProcessWrapper {
     if (null == zooKeeper) {
       try {
         zooKeeper = new ZooKeeper(zkConnection, MAX_SESSION_TIMEOUT, event -> {});
-        TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS,
+        TestUtils.waitForNonDeterministicCompletion(
+            5,
+            TimeUnit.SECONDS,
             () -> zooKeeper.getState().equals(ZooKeeper.States.CONNECTED));
       } catch (Exception e) {
         throw new RuntimeException("Failed to initialize ZK client: " + zkConnection, e);

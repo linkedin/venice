@@ -1,5 +1,7 @@
 package com.linkedin.venice.helix;
 
+import static com.linkedin.venice.helix.ResourceAssignment.ResourceAssignmentChanges;
+
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -13,11 +15,8 @@ import java.util.stream.Stream;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.helix.ResourceAssignment.ResourceAssignmentChanges;
-
 
 public class ResourceAssignmentTest {
-
   @Test
   public void testAddAndGetPartitionAssignment() {
     String resource = "test";
@@ -42,27 +41,27 @@ public class ResourceAssignmentTest {
 
   @Test
   public void testUpdateResourceAssignmentGenerateChange() {
-    //init 2 resource assignments
+    // init 2 resource assignments
     ResourceAssignment resourceAssignment = new ResourceAssignment();
     ResourceAssignment newResourceAssignment = new ResourceAssignment();
 
-    for (String resource : new String[] {"1", "2", "3", "4"}) {
+    for (String resource: new String[] { "1", "2", "3", "4" }) {
       resourceAssignment.setPartitionAssignment(resource, getDefaultPartitionAssignment(resource, HelixState.STANDBY));
     }
 
-    //resource 1 is the same in both resource assignments
+    // resource 1 is the same in both resource assignments
     newResourceAssignment.setPartitionAssignment("1", getDefaultPartitionAssignment("1", HelixState.STANDBY));
 
-    //resource 2 has different Helix state in new resource assignment
+    // resource 2 has different Helix state in new resource assignment
     newResourceAssignment.setPartitionAssignment("2", getDefaultPartitionAssignment("2", HelixState.ERROR));
 
-    //resource 3 has different partitions  in new resource assignment
+    // resource 3 has different partitions in new resource assignment
     PartitionAssignment partitionAssignment = new PartitionAssignment("3", 2);
     partitionAssignment.addPartition(getDefaultPartition(0, 1, HelixState.STANDBY));
     partitionAssignment.addPartition(getDefaultPartition(1, 1, HelixState.STANDBY));
     newResourceAssignment.setPartitionAssignment("3", partitionAssignment);
 
-    //resource 4 is removed in new assignment and resource 5 is a new assignment
+    // resource 4 is removed in new assignment and resource 5 is a new assignment
     newResourceAssignment.setPartitionAssignment("5", getDefaultPartitionAssignment("5", HelixState.STANDBY));
 
     ResourceAssignmentChanges changes = resourceAssignment.updateResourceAssignment(newResourceAssignment);
@@ -81,13 +80,13 @@ public class ResourceAssignmentTest {
     ResourceAssignment resourceAssignment = new ResourceAssignment();
     ResourceAssignment newResourceAssignment = new ResourceAssignment();
 
-    String[] resources = new String[]{"1", "2", "3"};
-    String[] newResources = new String[]{"4", "2", "5"};
+    String[] resources = new String[] { "1", "2", "3" };
+    String[] newResources = new String[] { "4", "2", "5" };
 
-    for (String resource : resources) {
+    for (String resource: resources) {
       resourceAssignment.setPartitionAssignment(resource, new PartitionAssignment(resource, 1));
     }
-    for (String newResource : newResources) {
+    for (String newResource: newResources) {
       newResourceAssignment.setPartitionAssignment(newResource, new PartitionAssignment(newResource, 1));
     }
     Set<String> deletedResources = resourceAssignment.compareAndGetDeletedResources(newResourceAssignment);
@@ -98,15 +97,18 @@ public class ResourceAssignmentTest {
 
   @Test
   public void testUpdateResourceAssignmentNoChange() {
-    //init 2 resource assignments
+    // init 2 resource assignments
     ResourceAssignment resourceAssignment = new ResourceAssignment();
-    ResourceAssignment newResourceAssignment = new ResourceAssignment();    for (String resource : new String[] {"1", "2"}) {
+    ResourceAssignment newResourceAssignment = new ResourceAssignment();
+    for (String resource: new String[] { "1", "2" }) {
       resourceAssignment.setPartitionAssignment(resource, getDefaultPartitionAssignment(resource, HelixState.STANDBY));
-      newResourceAssignment.setPartitionAssignment(resource, getDefaultPartitionAssignment(resource, HelixState.STANDBY));
+      newResourceAssignment
+          .setPartitionAssignment(resource, getDefaultPartitionAssignment(resource, HelixState.STANDBY));
     }
     ResourceAssignmentChanges changes = resourceAssignment.updateResourceAssignment(newResourceAssignment);
     Set<String> deletedResources = changes.deletedResources;
-    Set<String> updatedResources = changes.updatedResources;    Assert.assertEquals(deletedResources.size(), 0);
+    Set<String> updatedResources = changes.updatedResources;
+    Assert.assertEquals(deletedResources.size(), 0);
     Assert.assertEquals(updatedResources.size(), 0);
   }
 
@@ -120,8 +122,9 @@ public class ResourceAssignmentTest {
 
   private Partition getDefaultPartition(int partitionId, int replicaNum, HelixState helixState) {
     Map<String, List<Instance>> stateToInstancesMap = new HashMap<>();
-    for (int i = 0; i < replicaNum; i ++) {
-      stateToInstancesMap.put(helixState.name(), Collections.singletonList(new Instance(String.valueOf(i), "localhost", i)));
+    for (int i = 0; i < replicaNum; i++) {
+      stateToInstancesMap
+          .put(helixState.name(), Collections.singletonList(new Instance(String.valueOf(i), "localhost", i)));
     }
 
     return new Partition(partitionId, stateToInstancesMap);

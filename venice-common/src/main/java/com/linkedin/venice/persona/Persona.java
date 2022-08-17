@@ -3,12 +3,12 @@ package com.linkedin.venice.persona;
 import java.util.HashSet;
 import java.util.Set;
 
+
 /**
  * A class to represent a Persona, a relationship between stores and a quota system that is enforced.
  * This class is created to be serialized into ZooKeeper.
  */
 public class Persona {
-
   String name;
   long quotaNumber;
   Set<String> storesToEnforce;
@@ -60,7 +60,7 @@ public class Persona {
   }
 
   public void setOwners(Set<String> owners) {
-     this.owners = owners;
+    this.owners = owners;
   }
 
   @Override
@@ -72,8 +72,8 @@ public class Persona {
   }
 
   boolean equals(Persona persona) {
-    return this.name.equals(persona.name) && this.quotaNumber == persona.quotaNumber &&
-        this.storesToEnforce.equals(persona.storesToEnforce) && this.owners.equals(persona.owners);
+    return this.name.equals(persona.name) && this.quotaNumber == persona.quotaNumber
+        && this.storesToEnforce.equals(persona.storesToEnforce) && this.owners.equals(persona.owners);
   }
 
 }

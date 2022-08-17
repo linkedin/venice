@@ -10,7 +10,6 @@ import java.util.Set;
  * The resource list may be changed at runtime.
  */
 public interface DynamicAccessController extends AccessController {
-
   /**
    * Initialize access controller.
    *

@@ -3,26 +3,23 @@ package com.linkedin.venice.stats;
 import io.tehuti.metrics.*;
 import io.tehuti.metrics.stats.Percentile;
 import io.tehuti.metrics.stats.Percentiles;
-
 import io.tehuti.metrics.stats.Rate;
 import java.util.Arrays;
+
 
 /**
  * Utils for venice metrics
  */
 public class TehutiUtils {
-
   private static final int DEFAULT_HISTOGRAM_SIZE_IN_BYTES = 40000;
   private static final double DEFAULT_HISTOGRAM_MAX_VALUE = 10000;
-  private static final double[] DEFAULT_HISTOGRAM_PERCENTILES = new double[]{50, 95, 99};
+  private static final double[] DEFAULT_HISTOGRAM_PERCENTILES = new double[] { 50, 95, 99 };
 
-  //a fine grained percentiles. Please use it with cautions as it will emit more 20
-  //metrics. It's likely to degrade critical path performance
+  // a fine grained percentiles. Please use it with cautions as it will emit more 20
+  // metrics. It's likely to degrade critical path performance
   private static final double[] FINE_GRAINED_HISTOGRAM_PERCENTILES =
-      new double[]{0.01, 0.1, 1, 2, 3, 4, 5,
-                   10, 20, 30, 40, 50, 60, 70,
-                   80, 90, 95, 99, 99.9};
-  private static final double[] HISTOGRAM_PERCENTILES_FOR_NETWORK_LATENCY = new double[]{50, 77, 90, 95, 99, 99.9};
+      new double[] { 0.01, 0.1, 1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 99, 99.9 };
+  private static final double[] HISTOGRAM_PERCENTILES_FOR_NETWORK_LATENCY = new double[] { 50, 77, 90, 95, 99, 99.9 };
   private static final String ROUND_NUMBER_SUFFIX = ".0";
 
   /**
@@ -48,7 +45,11 @@ public class TehutiUtils {
    */
   public static Percentiles getPercentileStatForNetworkLatency(String sensorName, String storeName) {
     String name = sensorName + AbstractVeniceStats.DELIMITER + storeName;
-    return getPercentileStat(name, DEFAULT_HISTOGRAM_SIZE_IN_BYTES, DEFAULT_HISTOGRAM_MAX_VALUE, HISTOGRAM_PERCENTILES_FOR_NETWORK_LATENCY);
+    return getPercentileStat(
+        name,
+        DEFAULT_HISTOGRAM_SIZE_IN_BYTES,
+        DEFAULT_HISTOGRAM_MAX_VALUE,
+        HISTOGRAM_PERCENTILES_FOR_NETWORK_LATENCY);
   }
 
   /**
@@ -57,7 +58,11 @@ public class TehutiUtils {
    * @return 3 sub stats that emit p50, P95, and P99 values.
    */
   public static Percentiles getPercentileStat(String name) {
-    return getPercentileStat(name, DEFAULT_HISTOGRAM_SIZE_IN_BYTES, DEFAULT_HISTOGRAM_MAX_VALUE, DEFAULT_HISTOGRAM_PERCENTILES);
+    return getPercentileStat(
+        name,
+        DEFAULT_HISTOGRAM_SIZE_IN_BYTES,
+        DEFAULT_HISTOGRAM_MAX_VALUE,
+        DEFAULT_HISTOGRAM_PERCENTILES);
   }
 
   /**

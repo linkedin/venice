@@ -1,5 +1,8 @@
 package com.linkedin.davinci.ingestion.main;
 
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
+import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.*;
+
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.HttpClientTransport;
 import com.linkedin.davinci.ingestion.IsolatedIngestionProcessStats;
@@ -28,9 +31,6 @@ import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
-import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.*;
-
 
 /**
  * MainIngestionRequestClient sends requests to isolated ingestion process and retrieves responses.
@@ -52,7 +52,7 @@ public class MainIngestionRequestClient implements Closeable {
     ForkedJavaProcess forkedIngestionProcess = null;
 
     List<String> jvmArgs = new ArrayList<>();
-    for (String jvmArg : configLoader.getCombinedProperties()
+    for (String jvmArg: configLoader.getCombinedProperties()
         .getString(ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST, "")
         .split(";")) {
       if (jvmArg.length() != 0) {
@@ -75,12 +75,8 @@ public class MainIngestionRequestClient implements Closeable {
          * In the worst case that above graceful shutdown does not happen, forked ingestion process should also shut itself
          * down after specified timeout SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS (By default 1 min.)
          */
-        forkedIngestionProcess = ForkedJavaProcess.exec(
-            IsolatedIngestionServer.class,
-            Collections.singletonList(configFilePath),
-            jvmArgs,
-            false
-        );
+        forkedIngestionProcess = ForkedJavaProcess
+            .exec(IsolatedIngestionServer.class, Collections.singletonList(configFilePath), jvmArgs, false);
         logger.info("Forked new isolated ingestion process at PID: " + forkedIngestionProcess.pid());
         IsolatedIngestionUtils.saveForkedIngestionProcessMetadata(configLoader, forkedIngestionProcess);
         // Wait for server in forked child process to bind the listening port.
@@ -92,7 +88,9 @@ public class MainIngestionRequestClient implements Closeable {
         if (currentAttempt == totalAttempts) {
           throw new VeniceException("Exception caught during initialization of ingestion service:", e);
         } else {
-          logger.warn("Caught exception when initializing forked process in attempt " + currentAttempt + "/" + totalAttempts, e);
+          logger.warn(
+              "Caught exception when initializing forked process in attempt " + currentAttempt + "/" + totalAttempts,
+              e);
           continue;
         }
       }
@@ -154,7 +152,12 @@ public class MainIngestionRequestClient implements Closeable {
     ingestionTaskCommand.commandType = IngestionCommandType.PROMOTE_TO_LEADER.getValue();
     ingestionTaskCommand.topicName = topicName;
     ingestionTaskCommand.partitionId = partition;
-    return sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.of(partition), REQUEST_MAX_ATTEMPT, false);
+    return sendIngestionCommandWithRetry(
+        ingestionTaskCommand,
+        topicName,
+        Optional.of(partition),
+        REQUEST_MAX_ATTEMPT,
+        false);
   }
 
   public boolean demoteToStandby(String topicName, int partition) {
@@ -162,23 +165,31 @@ public class MainIngestionRequestClient implements Closeable {
     ingestionTaskCommand.commandType = IngestionCommandType.DEMOTE_TO_STANDBY.getValue();
     ingestionTaskCommand.topicName = topicName;
     ingestionTaskCommand.partitionId = partition;
-    return sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.of(partition), REQUEST_MAX_ATTEMPT, false);
+    return sendIngestionCommandWithRetry(
+        ingestionTaskCommand,
+        topicName,
+        Optional.of(partition),
+        REQUEST_MAX_ATTEMPT,
+        false);
   }
 
   public boolean updateMetadata(IngestionStorageMetadata ingestionStorageMetadata) {
     try {
-      logger.info("Sending UPDATE_METADATA request to child process: " +
-          IngestionMetadataUpdateType.valueOf(ingestionStorageMetadata.metadataUpdateType) + " for topic: " + ingestionStorageMetadata.topicName
-          + " partition: " + ingestionStorageMetadata.partitionId);
-      IngestionTaskReport report = httpClientTransport.sendRequest(IngestionAction.UPDATE_METADATA, ingestionStorageMetadata);
+      logger.info(
+          "Sending UPDATE_METADATA request to child process: "
+              + IngestionMetadataUpdateType.valueOf(ingestionStorageMetadata.metadataUpdateType) + " for topic: "
+              + ingestionStorageMetadata.topicName + " partition: " + ingestionStorageMetadata.partitionId);
+      IngestionTaskReport report =
+          httpClientTransport.sendRequest(IngestionAction.UPDATE_METADATA, ingestionStorageMetadata);
       return report.isPositive;
     } catch (Exception e) {
       /**
        * We only log the exception when failing to persist metadata updates into child process.
        * Child process might crash, but it will be respawned and will be able to receive future updates.
        */
-      logger.warn("Encounter exception when sending metadata updates to child process for topic: "
-          + ingestionStorageMetadata.topicName + ", partition: " + ingestionStorageMetadata.partitionId);
+      logger.warn(
+          "Encounter exception when sending metadata updates to child process for topic: "
+              + ingestionStorageMetadata.topicName + ", partition: " + ingestionStorageMetadata.partitionId);
       return false;
     }
   }
@@ -199,7 +210,8 @@ public class MainIngestionRequestClient implements Closeable {
     try {
       IngestionMetricsReport metricsReport = httpClientTransport.sendRequest(IngestionAction.METRIC, getDummyCommand());
       if (logger.isDebugEnabled()) {
-        logger.debug("Collected " + metricsReport.aggregatedMetrics.size() + " metrics from isolated ingestion service.");
+        logger
+            .debug("Collected " + metricsReport.aggregatedMetrics.size() + " metrics from isolated ingestion service.");
       }
       isolatedIngestionProcessStats.updateMetricMap(metricsReport.aggregatedMetrics);
       return true;
@@ -231,10 +243,15 @@ public class MainIngestionRequestClient implements Closeable {
     this.httpClientTransport = clientTransport;
   }
 
-  private boolean sendIngestionCommandWithRetry(IngestionTaskCommand command, String topicName,
-      Optional<Integer> partitionId, int requestMaxAttempt, boolean throwExceptionOnFailure) {
+  private boolean sendIngestionCommandWithRetry(
+      IngestionTaskCommand command,
+      String topicName,
+      Optional<Integer> partitionId,
+      int requestMaxAttempt,
+      boolean throwExceptionOnFailure) {
     String commandType = IngestionCommandType.valueOf(command.commandType).toString();
-    String commandInfo = " for topic: " + topicName + (partitionId.map(integer -> (", partition: " + integer)).orElse(""));
+    String commandInfo =
+        " for topic: " + topicName + (partitionId.map(integer -> (", partition: " + integer)).orElse(""));
     logger.info("Sending request: " + commandType + " to forked process" + commandInfo);
     IngestionTaskReport report;
     try {
@@ -257,7 +274,9 @@ public class MainIngestionRequestClient implements Closeable {
     while (true) {
       try {
         if (sendHeartbeatRequest()) {
-          logger.info("Ingestion service server health check passed in " + (System.currentTimeMillis() - startTimeInMs) + " ms.");
+          logger.info(
+              "Ingestion service server health check passed in " + (System.currentTimeMillis() - startTimeInMs)
+                  + " ms.");
           break;
         } else {
           throw new VeniceException("Got non-OK response from ingestion service.");

@@ -6,10 +6,10 @@ import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
-
 import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.utils.EnumUtils;
 import com.linkedin.venice.utils.VeniceEnumValue;
+
 
 /**
  * A simple enum to map the values of
@@ -19,10 +19,7 @@ import com.linkedin.venice.utils.VeniceEnumValue;
  *       not support evolution (i.e.: adding values) properly.
  */
 public enum MessageType implements VeniceEnumValue {
-  PUT(0, (byte) 0),
-  DELETE(1, (byte) 0),
-  CONTROL_MESSAGE(2, (byte) 2),
-  UPDATE(3, (byte) 4);
+  PUT(0, (byte) 0), DELETE(1, (byte) 0), CONTROL_MESSAGE(2, (byte) 2), UPDATE(3, (byte) 4);
 
   private static final MessageType[] TYPES_ARRAY = EnumUtils.getEnumValuesArray(MessageType.class);
 
@@ -61,11 +58,16 @@ public enum MessageType implements VeniceEnumValue {
    */
   public Object getNewInstance() {
     switch (valueOf(value)) {
-      case PUT: return new Put();
-      case DELETE: return new Delete();
-      case CONTROL_MESSAGE: return new ControlMessage();
-      case UPDATE: return new Update();
-      default: throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
+      case PUT:
+        return new Put();
+      case DELETE:
+        return new Delete();
+      case CONTROL_MESSAGE:
+        return new ControlMessage();
+      case UPDATE:
+        return new Update();
+      default:
+        throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }
   }
 

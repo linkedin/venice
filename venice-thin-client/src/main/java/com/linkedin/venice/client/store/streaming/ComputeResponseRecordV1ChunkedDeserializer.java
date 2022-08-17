@@ -4,13 +4,14 @@ import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import java.nio.ByteBuffer;
 
 
-public class ComputeResponseRecordV1ChunkedDeserializer extends ReadEnvelopeChunkedDeserializer<ComputeResponseRecordV1> {
+public class ComputeResponseRecordV1ChunkedDeserializer
+    extends ReadEnvelopeChunkedDeserializer<ComputeResponseRecordV1> {
   @Override
   public ValueContainer<ComputeResponseRecordV1> tryDeserializeRecord(int currentPos) throws NotEnoughBytesException {
     int currentOffset = currentPos;
 
     // keyIndex: int
-    ValueContainer<Integer> keyIndex= tryReadInt(currentOffset);
+    ValueContainer<Integer> keyIndex = tryReadInt(currentOffset);
 
     // value: ByteBuffer
     currentOffset += keyIndex.bytesUsed;

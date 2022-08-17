@@ -3,11 +3,17 @@
  * 
  * DO NOT EDIT DIRECTLY
  */
-package com.linkedin.venice.schema;  
+package com.linkedin.venice.schema;
+
 @SuppressWarnings("all")
 @org.apache.avro.specific.AvroGenerated
-public enum EnumType { 
-  A, B  ;
-  public static final org.apache.avro.Schema SCHEMA$ = new org.apache.avro.Schema.Parser().parse("{\"type\":\"enum\",\"name\":\"EnumType\",\"namespace\":\"com.linkedin.venice.schema\",\"symbols\":[\"A\",\"B\"]}");
-  public static org.apache.avro.Schema getClassSchema() { return SCHEMA$; }
+public enum EnumType {
+  A, B;
+
+  public static final org.apache.avro.Schema SCHEMA$ = new org.apache.avro.Schema.Parser().parse(
+      "{\"type\":\"enum\",\"name\":\"EnumType\",\"namespace\":\"com.linkedin.venice.schema\",\"symbols\":[\"A\",\"B\"]}");
+
+  public static org.apache.avro.Schema getClassSchema() {
+    return SCHEMA$;
+  }
 }

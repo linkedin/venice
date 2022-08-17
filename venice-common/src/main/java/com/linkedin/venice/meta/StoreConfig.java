@@ -45,8 +45,14 @@ public class StoreConfig implements DataModelBackedStructure<StoreClusterConfig>
   }
 
   public String getMigrationSrcCluster() {
-    return storeClusterConfig.migrationSrcCluster == null ? null
-        : storeClusterConfig.migrationSrcCluster.toString();  // This will return null if does not exist
+    return storeClusterConfig.migrationSrcCluster == null ? null : storeClusterConfig.migrationSrcCluster.toString(); // This
+                                                                                                                      // will
+                                                                                                                      // return
+                                                                                                                      // null
+                                                                                                                      // if
+                                                                                                                      // does
+                                                                                                                      // not
+                                                                                                                      // exist
   }
 
   public void setMigrationSrcCluster(String srcClusterName) {
@@ -54,8 +60,14 @@ public class StoreConfig implements DataModelBackedStructure<StoreClusterConfig>
   }
 
   public String getMigrationDestCluster() {
-    return storeClusterConfig.migrationDestCluster == null ? null
-        : storeClusterConfig.migrationDestCluster.toString(); // This will return null if does not exist
+    return storeClusterConfig.migrationDestCluster == null ? null : storeClusterConfig.migrationDestCluster.toString(); // This
+                                                                                                                        // will
+                                                                                                                        // return
+                                                                                                                        // null
+                                                                                                                        // if
+                                                                                                                        // does
+                                                                                                                        // not
+                                                                                                                        // exist
   }
 
   public void setMigrationDestCluster(String destClusterName) {

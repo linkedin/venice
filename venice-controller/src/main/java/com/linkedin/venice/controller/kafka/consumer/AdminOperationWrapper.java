@@ -21,8 +21,12 @@ public class AdminOperationWrapper {
    * @param localBrokerTimestamp the time when this admin operation arrived at the local admin kafka topic or broker.
    * @param delegateTimestamp the time when this admin operation was read and placed in the in-memory topics.
    */
-  AdminOperationWrapper(AdminOperation adminOperation, long offset, long producerTimestamp,
-      long localBrokerTimestamp, long delegateTimestamp) {
+  AdminOperationWrapper(
+      AdminOperation adminOperation,
+      long offset,
+      long producerTimestamp,
+      long localBrokerTimestamp,
+      long delegateTimestamp) {
     this.adminOperation = adminOperation;
     this.offset = offset;
     this.producerTimestamp = producerTimestamp;

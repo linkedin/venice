@@ -1,14 +1,10 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.kafka.consumer.ConsumerAction;
-import com.linkedin.davinci.kafka.consumer.ConsumerActionType;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Random;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ThreadLocalRandom;
-
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -35,7 +31,8 @@ public class ConsumerActionTest {
       }
       ConsumerAction expectedAction = iter.next();
 
-      Assert.assertTrue(actualActionInQueue.equals(expectedAction),
+      Assert.assertTrue(
+          actualActionInQueue.equals(expectedAction),
           "ConsumerActionQueue return actions with the same priority in wrong order.");
     }
   }
@@ -61,8 +58,9 @@ public class ConsumerActionTest {
         Assert.fail("Consumer action with high priority is not moved to the head of the queue.");
       } else if (action.getType().getActionPriority() == previousPriority) {
         if (action.getSequenceNumber() <= previousSequenceNumber) {
-          Assert.fail("For actions that share the same priority, "
-              + "an action with smaller sequence number somehow ends up at the back of the queue.");
+          Assert.fail(
+              "For actions that share the same priority, "
+                  + "an action with smaller sequence number somehow ends up at the back of the queue.");
         }
       }
     }

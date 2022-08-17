@@ -67,14 +67,21 @@ public class ControllerTransport implements AutoCloseable {
     Utils.closeQuietlyWithErrorLogged(this.httpClient);
   }
 
-  public <T extends ControllerResponse> T request(String controllerUrl, ControllerRoute route, QueryParams params, Class<T> responseType)
-      throws ExecutionException, TimeoutException {
+  public <T extends ControllerResponse> T request(
+      String controllerUrl,
+      ControllerRoute route,
+      QueryParams params,
+      Class<T> responseType) throws ExecutionException, TimeoutException {
     return request(controllerUrl, route, params, responseType, DEFAULT_REQUEST_TIMEOUT_MS, null);
   }
 
-  public <T extends ControllerResponse> T request(String controllerUrl, ControllerRoute route, QueryParams params,
-      Class<T> responseType, int timeoutMs, byte[] data)
-      throws ExecutionException, TimeoutException {
+  public <T extends ControllerResponse> T request(
+      String controllerUrl,
+      ControllerRoute route,
+      QueryParams params,
+      Class<T> responseType,
+      int timeoutMs,
+      byte[] data) throws ExecutionException, TimeoutException {
     HttpMethod httpMethod = route.getHttpMethod();
     if (httpMethod.equals(HttpMethod.GET)) {
       return executeGet(controllerUrl, route.getPath(), params, responseType, timeoutMs);
@@ -86,25 +93,39 @@ public class ControllerTransport implements AutoCloseable {
     throw new VeniceException("Controller route specifies unsupported http method: " + httpMethod);
   }
 
-  public <T extends ControllerResponse> T executeGet(String controllerUrl, String path, QueryParams params, Class<T> responseType)
-      throws ExecutionException, TimeoutException {
+  public <T extends ControllerResponse> T executeGet(
+      String controllerUrl,
+      String path,
+      QueryParams params,
+      Class<T> responseType) throws ExecutionException, TimeoutException {
     return executeGet(controllerUrl, path, params, responseType, DEFAULT_REQUEST_TIMEOUT_MS);
   }
 
-  public <T extends ControllerResponse> T executeGet(String controllerUrl, String path, QueryParams params, Class<T> responseType, int timeoutMs)
-      throws ExecutionException, TimeoutException {
+  public <T extends ControllerResponse> T executeGet(
+      String controllerUrl,
+      String path,
+      QueryParams params,
+      Class<T> responseType,
+      int timeoutMs) throws ExecutionException, TimeoutException {
     String encodedParams = URLEncodedUtils.format(params.getNameValuePairs(), StandardCharsets.UTF_8);
     HttpGet request = new HttpGet(controllerUrl + "/" + StringUtils.stripStart(path, "/") + "?" + encodedParams);
     return executeRequest(request, responseType, timeoutMs);
   }
 
-  public <T extends ControllerResponse> T executePost(String controllerUrl, String path, QueryParams params, Class<T> responseType)
-      throws ExecutionException, TimeoutException {
+  public <T extends ControllerResponse> T executePost(
+      String controllerUrl,
+      String path,
+      QueryParams params,
+      Class<T> responseType) throws ExecutionException, TimeoutException {
     return executePost(controllerUrl, path, params, responseType, DEFAULT_REQUEST_TIMEOUT_MS);
   }
 
-  public <T extends ControllerResponse> T executePost(String controllerUrl, String path, QueryParams params, Class<T> responseType, int timeoutMs)
-      throws ExecutionException, TimeoutException {
+  public <T extends ControllerResponse> T executePost(
+      String controllerUrl,
+      String path,
+      QueryParams params,
+      Class<T> responseType,
+      int timeoutMs) throws ExecutionException, TimeoutException {
     HttpPost request = new HttpPost(controllerUrl + "/" + StringUtils.stripStart(path, "/"));
     try {
       request.setEntity(new UrlEncodedFormEntity(params.getNameValuePairs()));
@@ -118,8 +139,13 @@ public class ControllerTransport implements AutoCloseable {
    * This method shoves the POST string query params into the URL so the body will only contain the byte array data
    * to make processing/deserializing easier. Please make sure the query params doesn't exceed the URL limit of 2048 chars.
    */
-  public <T extends ControllerResponse> T executePost(String controllerUrl, String path, QueryParams params,
-      Class<T> responseType, int timeoutMs, byte[] data) throws TimeoutException, ExecutionException {
+  public <T extends ControllerResponse> T executePost(
+      String controllerUrl,
+      String path,
+      QueryParams params,
+      Class<T> responseType,
+      int timeoutMs,
+      byte[] data) throws TimeoutException, ExecutionException {
     String encodedParams = URLEncodedUtils.format(params.getNameValuePairs(), StandardCharsets.UTF_8);
     HttpPost request = new HttpPost(controllerUrl + "/" + path + "?" + encodedParams);
     try {
@@ -130,8 +156,10 @@ public class ControllerTransport implements AutoCloseable {
     return executeRequest(request, responseType, timeoutMs);
   }
 
-  protected <T extends ControllerResponse> T executeRequest(HttpRequestBase request, Class<T> responseType, int timeoutMs)
-      throws ExecutionException, TimeoutException {
+  protected <T extends ControllerResponse> T executeRequest(
+      HttpRequestBase request,
+      Class<T> responseType,
+      int timeoutMs) throws ExecutionException, TimeoutException {
     HttpResponse response;
     try {
       response = this.httpClient.execute(request, null).get(timeoutMs, TimeUnit.MILLISECONDS);
@@ -156,11 +184,14 @@ public class ControllerTransport implements AutoCloseable {
     ContentType contentType = ContentType.getOrDefault(response.getEntity());
     if (!contentType.getMimeType().equals(ContentType.APPLICATION_JSON.getMimeType())) {
       logger.warn("Bad controller response, request=" + request + ", response=" + response + ", content=" + content);
-      throw new VeniceHttpException(statusCode, "Controller returned unsupported content-type: " + contentType + " with content: " + content, ErrorType.BAD_REQUEST);
+      throw new VeniceHttpException(
+          statusCode,
+          "Controller returned unsupported content-type: " + contentType + " with content: " + content,
+          ErrorType.BAD_REQUEST);
     }
 
     T result;
-    try  {
+    try {
       result = objectMapper.readValue(content, responseType);
     } catch (Exception e) {
       logger.warn("Bad controller response, request=" + request + ", response=" + response + ", content=" + content);

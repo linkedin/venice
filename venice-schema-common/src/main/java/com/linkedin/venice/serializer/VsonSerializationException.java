@@ -4,7 +4,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 
 
 public class VsonSerializationException extends VeniceException {
-
   protected VsonSerializationException() {
     super();
   }

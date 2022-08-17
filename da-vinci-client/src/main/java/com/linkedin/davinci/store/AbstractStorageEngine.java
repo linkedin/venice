@@ -13,7 +13,6 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SparseConcurrentList;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -79,9 +78,10 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    */
   private final ReadWriteLock rwLockForStoragePartitionAdjustment = new ReentrantReadWriteLock();
 
-  public AbstractStorageEngine(String storeName,
-                               InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
-                               InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
+  public AbstractStorageEngine(
+      String storeName,
+      InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
     this.storeName = storeName;
     this.metadataPartition = null;
     this.storeVersionStateSerializer = storeVersionStateSerializer;
@@ -98,6 +98,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   }
 
   public abstract PersistenceType getType();
+
   public abstract long getStoreSizeInBytes();
 
   public long getRMDSizeInBytes() {
@@ -105,13 +106,16 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   }
 
   protected abstract Set<Integer> getPersistedPartitionIds();
+
   public abstract Partition createStoragePartition(StoragePartitionConfig partitionConfig);
 
   /**
    * Load the existing storage partitions.
    * The implementation should decide when to call this function properly to restore partitions.
    */
-  protected synchronized void restoreStoragePartitions(boolean restoreMetadataPartition, boolean restoreDataPartitions) {
+  protected synchronized void restoreStoragePartitions(
+      boolean restoreMetadataPartition,
+      boolean restoreDataPartitions) {
     Set<Integer> partitionIds = getPersistedPartitionIds();
 
     /**
@@ -128,7 +132,9 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
     if (restoreDataPartitions) {
       logger.info("Data partitions restore enabled. Restoring data partitions.");
-      partitionIds.stream().sorted((o1, o2) -> Integer.compare(o2, o1)) // reverse order, to minimize array resizing in {@link SparseConcurrentList}
+      partitionIds.stream()
+          .sorted((o1, o2) -> Integer.compare(o2, o1)) // reverse order, to minimize array resizing in {@link
+                                                       // SparseConcurrentList}
           .forEach(this::addStoragePartition);
     }
   }
@@ -218,8 +224,11 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
 
     if (containsPartition(partitionId)) {
-      logger.error("Failed to add a storage partition for partitionId: " + partitionId + " Store " + this.getStoreName() +" . This partition already exists!");
-      throw new StorageInitializationException("Partition " + partitionId + " of store " + this.getStoreName() + " already exists.");
+      logger.error(
+          "Failed to add a storage partition for partitionId: " + partitionId + " Store " + this.getStoreName()
+              + " . This partition already exists!");
+      throw new StorageInitializationException(
+          "Partition " + partitionId + " of store " + this.getStoreName() + " already exists.");
     }
 
     Partition partition = createStoragePartition(storagePartitionConfig);
@@ -229,12 +238,12 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   public synchronized void closePartition(int partitionId) {
     AbstractStoragePartition partition = this.partitionList.remove(partitionId);
     if (partition == null) {
-      logger.error("Failed to close a non existing partition: " + partitionId + " Store " + this.getStoreName() );
+      logger.error("Failed to close a non existing partition: " + partitionId + " Store " + this.getStoreName());
       return;
     }
     partition.close();
     if (getNumberOfPartitions() == 0) {
-      logger.info("All Partitions closed for store " + this.getStoreName() );
+      logger.info("All Partitions closed for store " + this.getStoreName());
     }
   }
 
@@ -259,7 +268,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
      *    Else there can be situations where the data is consumed from Kafka and not persisted.
      */
     if (!containsPartition(partitionId)) {
-      logger.error("Failed to remove a non existing partition: " + partitionId + " Store " + this.getStoreName() );
+      logger.error("Failed to remove a non existing partition: " + partitionId + " Store " + this.getStoreName());
       return;
     }
     logger.info("Removing Partition: " + partitionId + " Store " + this.getStoreName());
@@ -277,7 +286,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     partition.drop();
 
     if (getNumberOfPartitions() == 0) {
-      logger.info("All Partitions deleted for Store " + this.getStoreName() );
+      logger.info("All Partitions deleted for Store " + this.getStoreName());
       /**
        * The reason to invoke {@link #drop} here is that storage engine might need to do some cleanup
        * in the store level.
@@ -332,7 +341,11 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     // SparseConcurrentList does not support parallelStream, copy to a tmp list.
     partitionList.forEach(p -> tmpList.add(p));
     tmpList.parallelStream().forEach(Partition::close);
-    logger.info("Closing {} rockDB partitions of store {} took {} ms", partitionList.size(), storeName, LatencyUtils.getElapsedTimeInMs(startTime));
+    logger.info(
+        "Closing {} rockDB partitions of store {} took {} ms",
+        partitionList.size(),
+        storeName,
+        LatencyUtils.getElapsedTimeInMs(startTime));
     partitionList.clear();
     closeMetadataPartition();
   }
@@ -342,9 +355,13 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    * number of writes (puts/deletes) against the data source. This method puts
    * the storage engine in this batch write mode
    */
-  public synchronized void beginBatchWrite(StoragePartitionConfig storagePartitionConfig,
-      Map<String, String> checkpointedInfo, Optional<Supplier<byte[]>> checksumSupplier) {
-    logger.info("Begin batch write for storage partition config: " + storagePartitionConfig + " with checkpointed info: " + checkpointedInfo);
+  public synchronized void beginBatchWrite(
+      StoragePartitionConfig storagePartitionConfig,
+      Map<String, String> checkpointedInfo,
+      Optional<Supplier<byte[]>> checksumSupplier) {
+    logger.info(
+        "Begin batch write for storage partition config: " + storagePartitionConfig + " with checkpointed info: "
+            + checkpointedInfo);
     /**
      * We want to adjust the storage partition first since it will possibly re-open the underlying database in
      * different mode.
@@ -380,7 +397,8 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     partition.put(key, value);
   }
 
-  public void putWithReplicationMetadata(int partitionId, byte[] key, ByteBuffer value, byte[] replicationMetadata) throws VeniceException {
+  public void putWithReplicationMetadata(int partitionId, byte[] key, ByteBuffer value, byte[] replicationMetadata)
+      throws VeniceException {
     AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
     partition.putWithReplicationMetadata(key, value, replicationMetadata);
   }
@@ -395,7 +413,8 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     return partition.get(key, skipCache);
   }
 
-  public ByteBuffer get(int partitionId, byte[] key, ByteBuffer valueToBePopulated, boolean skipCache) throws VeniceException {
+  public ByteBuffer get(int partitionId, byte[] key, ByteBuffer valueToBePopulated, boolean skipCache)
+      throws VeniceException {
     AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
     return partition.get(key, valueToBePopulated, skipCache);
   }
@@ -405,7 +424,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     return partition.get(keyBuffer, skipCache);
   }
 
-  public void getByKeyPrefix(int partitionId, byte[] partialKey, BytesStreamingCallback bytesStreamingCallback){
+  public void getByKeyPrefix(int partitionId, byte[] partialKey, BytesStreamingCallback bytesStreamingCallback) {
     AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
     partition.getByKeyPrefix(partialKey, bytesStreamingCallback);
   }
@@ -415,7 +434,8 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     partition.delete(key);
   }
 
-  public void deleteWithReplicationMetadata(int partitionId, byte[] key, byte[] replicationMetadata) throws VeniceException {
+  public void deleteWithReplicationMetadata(int partitionId, byte[] key, byte[] replicationMetadata)
+      throws VeniceException {
     AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
     partition.deleteWithReplicationMetadata(key, replicationMetadata);
   }
@@ -469,7 +489,8 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       throw new StorageInitializationException("Metadata partition not created!");
     }
     if (partitionId == METADATA_PARTITION_ID) {
-      throw new IllegalArgumentException("Metadata partition id should not be used as argument in clearPartitionOffset.");
+      throw new IllegalArgumentException(
+          "Metadata partition id should not be used as argument in clearPartitionOffset.");
     }
     if (partitionId < 0) {
       throw new IllegalArgumentException("Invalid partition id argument in clearPartitionOffset");
@@ -528,7 +549,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
   public synchronized boolean containsPartition(int userPartition, PartitionerConfig partitionerConfig) {
     int amplificationFactor = partitionerConfig == null ? 1 : partitionerConfig.getAmplificationFactor();
-    for (int subPartition : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
+    for (int subPartition: PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
       if (!containsPartition(subPartition)) {
         return false;
       }
@@ -553,9 +574,9 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    */
   public synchronized Set<Integer> getPartitionIds() {
     return this.partitionList.stream()
-               .filter(Objects::nonNull)
-               .map(Partition::getPartitionId)
-               .collect(Collectors.toSet());
+        .filter(Objects::nonNull)
+        .map(Partition::getPartitionId)
+        .collect(Collectors.toSet());
   }
 
   public AbstractStoragePartition getPartitionOrThrow(int partitionId) {
@@ -567,7 +588,8 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       rwLockForStoragePartitionAdjustment.readLock().unlock();
     }
     if (partition == null) {
-      VeniceException e = new PersistenceFailureException("Partition: " + partitionId + " of store: " + getStoreName() + " does not exist");
+      VeniceException e = new PersistenceFailureException(
+          "Partition: " + partitionId + " of store: " + getStoreName() + " does not exist");
       logger.error(e.getMessage(), e.getCause());
       throw e;
     }
@@ -589,7 +611,9 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
   private void validateStoreName(StoragePartitionConfig storagePartitionConfig) {
     if (!storagePartitionConfig.getStoreName().equals(getStoreName())) {
-      throw new VeniceException("Store name in partition config: " + storagePartitionConfig.getStoreName() + " doesn't match current store engine: " + getStoreName());
+      throw new VeniceException(
+          "Store name in partition config: " + storagePartitionConfig.getStoreName()
+              + " doesn't match current store engine: " + getStoreName());
     }
   }
 }

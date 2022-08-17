@@ -6,24 +6,35 @@
 package com.linkedin.venice.fastclient.schema;
 
 @SuppressWarnings("all")
-public class TestValueSchema extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"TestValueSchema\",\"namespace\":\"com.linkedin.venice.fastclient.schema\",\"fields\":[{\"name\":\"int_field\",\"type\":\"int\"}]}");
+public class TestValueSchema extends org.apache.avro.specific.SpecificRecordBase
+    implements org.apache.avro.specific.SpecificRecord {
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse(
+      "{\"type\":\"record\",\"name\":\"TestValueSchema\",\"namespace\":\"com.linkedin.venice.fastclient.schema\",\"fields\":[{\"name\":\"int_field\",\"type\":\"int\"}]}");
   public int int_field;
-  public org.apache.avro.Schema getSchema() { return SCHEMA$; }
-  // Used by DatumWriter.  Applications should not call.
+
+  public org.apache.avro.Schema getSchema() {
+    return SCHEMA$;
+  }
+
+  // Used by DatumWriter. Applications should not call.
   public java.lang.Object get(int field$) {
     switch (field$) {
-      case 0: return int_field;
-      default: throw new org.apache.avro.AvroRuntimeException("Bad index");
+      case 0:
+        return int_field;
+      default:
+        throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
-  // Used by DatumReader.  Applications should not call.
-  @SuppressWarnings(value="unchecked")
+
+  // Used by DatumReader. Applications should not call.
+  @SuppressWarnings(value = "unchecked")
   public void put(int field$, java.lang.Object value$) {
     switch (field$) {
-      case 0: int_field = (java.lang.Integer)value$; break;
-      default: throw new org.apache.avro.AvroRuntimeException("Bad index");
+      case 0:
+        int_field = (java.lang.Integer) value$;
+        break;
+      default:
+        throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
 }
-

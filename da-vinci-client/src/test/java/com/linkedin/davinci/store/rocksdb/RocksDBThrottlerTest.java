@@ -5,17 +5,14 @@ import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
-import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class RocksDBThrottlerTest {
-
   private static class TestSupplier implements RocksDBThrottler.RocksDBSupplier {
     private static final Logger LOGGER = LogManager.getLogger(TestSupplier.class);
     private final int threadId;
@@ -31,7 +28,6 @@ public class RocksDBThrottlerTest {
       return null;
     }
   }
-
 
   @Test
   public void testThrottle() throws InterruptedException {

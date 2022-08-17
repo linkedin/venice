@@ -18,14 +18,16 @@ import java.util.Map;
  *
  */
 public class KafkaKeySerializer implements VeniceKafkaSerializer<KafkaKey> {
-
   private static final int KEY_HEADER_OFFSET = 0;
   private static final int KEY_HEADER_SIZE = 1;
   private static final int KEY_PAYLOAD_OFFSET = KEY_HEADER_OFFSET + KEY_HEADER_SIZE;
+
   private static class ReusableObjects {
     final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
   }
-  private static final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(ReusableObjects::new);
+
+  private static final ThreadLocal<ReusableObjects> threadLocalReusableObjects =
+      ThreadLocal.withInitial(ReusableObjects::new);
 
   public KafkaKeySerializer() {
     /* This constructor is not used, but is required for compilation */

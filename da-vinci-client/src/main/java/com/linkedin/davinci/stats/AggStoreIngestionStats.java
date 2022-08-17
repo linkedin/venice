@@ -4,11 +4,11 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import io.tehuti.metrics.MetricsRepository;
 
+
 //TODO: once we've migrated this stats to multi-version. We might want to consider merge it with DIVStats
 public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestionStats> {
-  public AggStoreIngestionStats(MetricsRepository  metricsRepository, VeniceServerConfig serverConfig) {
-    super(metricsRepository,
-          (metricsRepo, storeName) -> new StoreIngestionStats(metricsRepo, serverConfig, storeName));
+  public AggStoreIngestionStats(MetricsRepository metricsRepository, VeniceServerConfig serverConfig) {
+    super(metricsRepository, (metricsRepo, storeName) -> new StoreIngestionStats(metricsRepo, serverConfig, storeName));
   }
 
   /**
@@ -59,12 +59,12 @@ public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestio
   }
 
   public void recordKeySize(String storeName, long bytes) {
-    //keySize aggregation among multiple stores is not necessary
+    // keySize aggregation among multiple stores is not necessary
     getStoreStats(storeName).recordKeySize(bytes);
   }
 
   public void recordValueSize(String storeName, long bytes) {
-    //valueSize aggregation among multiple stores is not necessary
+    // valueSize aggregation among multiple stores is not necessary
     getStoreStats(storeName).recordValueSize(bytes);
   }
 

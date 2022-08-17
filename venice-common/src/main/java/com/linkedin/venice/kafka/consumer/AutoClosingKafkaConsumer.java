@@ -2,8 +2,8 @@ package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.utils.lazy.LazyResettable;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.lazy.LazyResettable;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
@@ -403,7 +403,8 @@ public class AutoClosingKafkaConsumer<K, V> implements Consumer<K, V> {
   }
 
   @Override
-  public Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes(Map<TopicPartition, Long> timestampsToSearch,
+  public Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes(
+      Map<TopicPartition, Long> timestampsToSearch,
       Duration timeout) {
     try {
       return kafkaConsumer.get().offsetsForTimes(timestampsToSearch, timeout);

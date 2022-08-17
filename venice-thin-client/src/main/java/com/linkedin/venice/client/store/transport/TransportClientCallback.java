@@ -3,11 +3,10 @@ package com.linkedin.venice.client.store.transport;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.exceptions.VeniceClientRateExceededException;
 import com.linkedin.venice.compression.CompressionStrategy;
-
-import org.apache.http.HttpStatus;
-
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
+import org.apache.http.HttpStatus;
+
 
 /**
  * Define the common functions for call back of {@link TransportClient}
@@ -29,7 +28,7 @@ public class TransportClientCallback {
     } else if (statusCode == HttpStatus.SC_NOT_FOUND) {
       valueFuture.complete(null);
     } else {
-      //Only convert body from `byte[]` to `String` when necessary since it is quite expensive
+      // Only convert body from `byte[]` to `String` when necessary since it is quite expensive
       String msg = new String(body, StandardCharsets.UTF_8);
       Throwable exception;
       switch (statusCode) {

@@ -74,7 +74,8 @@ public class StoreClientBenchmark {
   public byte[] getBatchGetResponse(int recordCnt) {
     Schema valueSchema = Schema.parse(valueSchemaStr);
     List<MultiGetResponseRecordV1> records = new ArrayList<>();
-    RecordSerializer<GenericData.Record> recordSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(valueSchema);
+    RecordSerializer<GenericData.Record> recordSerializer =
+        SerializerDeserializerFactory.getAvroGenericSerializer(valueSchema);
     for (int i = 0; i < recordCnt; ++i) {
       GenericData.Record record = new GenericData.Record(valueSchema);
       record.put("floatField1", 1000.0f);
@@ -90,7 +91,8 @@ public class StoreClientBenchmark {
       recordV1.value = ByteBuffer.wrap(recordSerializer.serialize(record));
       records.add(recordV1);
     }
-    RecordSerializer<MultiGetResponseRecordV1> serializer = SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
+    RecordSerializer<MultiGetResponseRecordV1> serializer =
+        SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
     return serializer.serializeObjects(records);
   }
 
@@ -102,16 +104,18 @@ public class StoreClientBenchmark {
     return keySet;
   }
 
-
   public void setupStoreClient() throws VeniceClientException, IOException {
     routerServer.clearResponseMapping();
     // Push key schema: string
-    FullHttpResponse schemaResponse = StoreClientTestUtils.constructHttpSchemaResponse(storeName, 1, defaultKeySchemaStr);
+    FullHttpResponse schemaResponse =
+        StoreClientTestUtils.constructHttpSchemaResponse(storeName, 1, defaultKeySchemaStr);
     String keySchemaPath = "/" + RouterBackedSchemaReader.TYPE_KEY_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(keySchemaPath, schemaResponse);
-    String clusterDiscoveryPath = "/"+ D2ServiceDiscovery.TYPE_D2_SERVICE_DISCOVERY+"/"+storeName;
-    routerServer.addResponseForUri(clusterDiscoveryPath,
-        StoreClientTestUtils.constructHttpClusterDiscoveryResponse(storeName, "test_cluster", D2TestUtils.DEFAULT_TEST_SERVICE_NAME));
+    String clusterDiscoveryPath = "/" + D2ServiceDiscovery.TYPE_D2_SERVICE_DISCOVERY + "/" + storeName;
+    routerServer.addResponseForUri(
+        clusterDiscoveryPath,
+        StoreClientTestUtils
+            .constructHttpClusterDiscoveryResponse(storeName, "test_cluster", D2TestUtils.DEFAULT_TEST_SERVICE_NAME));
 
     // Push value schemas
     int valueSchemaId = 1;
@@ -119,11 +123,13 @@ public class StoreClientBenchmark {
     valueSchemaEntries.put(valueSchemaId, valueSchemaStr);
 
     // Push value schema
-    FullHttpResponse valueSchemaResponse = StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId, valueSchemaStr);
+    FullHttpResponse valueSchemaResponse =
+        StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId, valueSchemaStr);
     String valueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/" + valueSchemaId;
     routerServer.addResponseForUri(valueSchemaPath, valueSchemaResponse);
 
-    FullHttpResponse multiValueSchemaResponse = StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
+    FullHttpResponse multiValueSchemaResponse =
+        StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
     String multiValueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(multiValueSchemaPath, multiValueSchemaResponse);
 
@@ -135,9 +141,8 @@ public class StoreClientBenchmark {
     // d2 based client
     d2Client = D2TestUtils.getAndStartD2Client(routerServer.getZkAddress());
     MetricsRepository d2ClientMetricsRepository = new MetricsRepository();
-    d2StoreClient =
-        ClientFactory.getAndStartGenericAvroClient(ClientConfig
-            .defaultGenericClientConfig(storeName)
+    d2StoreClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
             .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
             .setD2Client(d2Client)
             .setMetricsRepository(d2ClientMetricsRepository)
@@ -151,9 +156,8 @@ public class StoreClientBenchmark {
 
   public AvroGenericStoreClient<String, Object> getD2StoreClient(boolean useFastAvro) {
     MetricsRepository d2ClientMetricsRepository = new MetricsRepository();
-    return
-        ClientFactory.getAndStartGenericAvroClient(ClientConfig
-            .defaultGenericClientConfig(storeName)
+    return ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
             .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
             .setD2Client(d2Client)
             .setMetricsRepository(d2ClientMetricsRepository)
@@ -163,8 +167,8 @@ public class StoreClientBenchmark {
   @DataProvider(name = "useFastAvroOptionsProvider")
   public Object[][] useFastAvroOptions() {
     // Benchmark should be ran separately to get consistent result since each test will consume a lot of CPU resources.
-    return new Object[][]{{true}};
-//    return new Object[][]{{false}};
+    return new Object[][] { { true } };
+    // return new Object[][]{{false}};
   }
 
   @Test(dataProvider = "useFastAvroOptionsProvider", enabled = false)
@@ -192,7 +196,8 @@ public class StoreClientBenchmark {
     }
 
     executorService.shutdownNow();
-    System.out.println("This test with useFastAvro: " + useFastAvro + " took " + (System.currentTimeMillis() - startTs)
-        + "ms, and it finished " + totalFetchCnt.get() + " requests");
+    System.out.println(
+        "This test with useFastAvro: " + useFastAvro + " took " + (System.currentTimeMillis() - startTs)
+            + "ms, and it finished " + totalFetchCnt.get() + " requests");
   }
 }

@@ -73,8 +73,12 @@ public class DiskHealthCheckService extends AbstractVeniceService {
     }
   }
 
-  public DiskHealthCheckService(boolean serviceEnabled, long healthCheckIntervalMs, long diskOperationTimeout,
-      String databasePath, long diskFailServerShutdownTimeMs) {
+  public DiskHealthCheckService(
+      boolean serviceEnabled,
+      long healthCheckIntervalMs,
+      long diskOperationTimeout,
+      String databasePath,
+      long diskFailServerShutdownTimeMs) {
     this.serviceEnabled = serviceEnabled;
     this.healthCheckIntervalMs = healthCheckIntervalMs;
     this.healthCheckTimeoutMs = Math.max(HEALTH_CHECK_HARD_TIMEOUT, healthCheckIntervalMs + diskOperationTimeout);
@@ -134,9 +138,11 @@ public class DiskHealthCheckService extends AbstractVeniceService {
 
   private class DiskHealthCheckTask implements Runnable {
     private volatile boolean stop = false;
-    protected void setStop(){
+
+    protected void setStop() {
       stop = true;
     }
+
     private long unhealthyStartTime;
 
     @Override
@@ -149,8 +155,9 @@ public class DiskHealthCheckService extends AbstractVeniceService {
             if (unhealthyStartTime != 0) {
               long duration = System.currentTimeMillis() - unhealthyStartTime;
               if (duration > diskFailServerShutdownTimeMs) {
-                Utils.exit("Disk health service reported unhealthy disk for " + duration / Time.MS_PER_SECOND
-                    + " seconds, STOPPING THE SERVER NOW!");
+                Utils.exit(
+                    "Disk health service reported unhealthy disk for " + duration / Time.MS_PER_SECOND
+                        + " seconds, STOPPING THE SERVER NOW!");
               }
             } else {
               unhealthyStartTime = System.currentTimeMillis();
@@ -192,12 +199,14 @@ public class DiskHealthCheckService extends AbstractVeniceService {
             // Check data in it.
             errorMessage = null;
             boolean fileReadableAndCorrect = true;
-            try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(tmpFile), StandardCharsets.UTF_8))) {
+            try (BufferedReader br =
+                new BufferedReader(new InputStreamReader(new FileInputStream(tmpFile), StandardCharsets.UTF_8))) {
               for (int i = 0; i < repeats; i++) {
                 String newLine = br.readLine();
                 if (!Objects.equals(newLine, message)) {
-                  errorMessage = "Content in health check file is different from what was written to it; expect message: "
-                      + message + "; actual content: " + newLine;
+                  errorMessage =
+                      "Content in health check file is different from what was written to it; expect message: "
+                          + message + "; actual content: " + newLine;
                   fileReadableAndCorrect = false;
                   break;
                 }

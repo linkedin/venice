@@ -1,7 +1,5 @@
 package com.linkedin.venice.controllerapi;
 
-import java.util.Optional;
-
 public class AdminTopicMetadataResponse extends ControllerResponse {
   /**
    * The last persisted admin message's execution id, which could be store-level or cluster-level. Store-level

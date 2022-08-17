@@ -52,8 +52,7 @@ public class VeniceHttpException extends VeniceException {
 
   @Override
   public String getMessage() {
-    return new StringBuilder()
-        .append("Http Status ")
+    return new StringBuilder().append("Http Status ")
         .append(getHttpStatusCode())
         .append(" - ")
         .append(super.getMessage())

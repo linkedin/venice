@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.ConfigKeys.*;
+
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -14,8 +16,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
-import static com.linkedin.venice.ConfigKeys.*;
-
 
 /**
  * A common base class to provide setup and teardown routines to be used in venice AdminSparkServer related test cases.
@@ -29,7 +29,9 @@ public class AbstractTestAdminSparkServer {
   protected VeniceControllerWrapper parentController;
   protected ZkServerWrapper parentZk;
 
-  public void setUp(boolean useParentRestEndpoint, Optional<AuthorizerService> authorizerService,
+  public void setUp(
+      boolean useParentRestEndpoint,
+      Optional<AuthorizerService> authorizerService,
       Properties extraProperties) {
     cluster = ServiceFactory.getVeniceCluster(1, STORAGE_NODE_COUNT, 0, 1, 100, false, false, extraProperties);
 
@@ -37,20 +39,28 @@ public class AbstractTestAdminSparkServer {
     // The cluster does not have router setup
     extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, "false");
     extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, "false");
-    parentController =
-        ServiceFactory.getVeniceParentController(new String[]{cluster.getClusterName()}, parentZk.getAddress(),
-            cluster.getKafka(), new VeniceControllerWrapper[]{cluster.getLeaderVeniceController()}, null, false, 1,
-            new VeniceProperties(extraProperties), authorizerService);
+    parentController = ServiceFactory.getVeniceParentController(
+        new String[] { cluster.getClusterName() },
+        parentZk.getAddress(),
+        cluster.getKafka(),
+        new VeniceControllerWrapper[] { cluster.getLeaderVeniceController() },
+        null,
+        false,
+        1,
+        new VeniceProperties(extraProperties),
+        authorizerService);
 
     if (!useParentRestEndpoint) {
       controllerClient =
           ControllerClient.constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
     } else {
-      controllerClient = ControllerClient.constructClusterControllerClient(cluster.getClusterName(),
-          parentController.getControllerUrl());
+      controllerClient = ControllerClient
+          .constructClusterControllerClient(cluster.getClusterName(), parentController.getControllerUrl());
     }
 
-    TestUtils.waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
+    TestUtils.waitForNonDeterministicCompletion(
+        TEST_TIMEOUT,
+        TimeUnit.MILLISECONDS,
         () -> parentController.isLeaderController(cluster.getClusterName()));
   }
 

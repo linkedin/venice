@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller.kafka;
 
+import static org.mockito.Mockito.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
@@ -10,7 +13,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -24,9 +26,6 @@ import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
-
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
 
 
 public class TestTopicCleanupService {
@@ -69,7 +68,8 @@ public class TestTopicCleanupService {
 
     doReturn(storeTopics).when(topicManager).getAllTopicRetentions();
 
-    Map<String, Map<String, Long>> filteredStoreTopics = TopicCleanupService.getAllVeniceStoreTopicsRetentions(admin.getTopicManager());
+    Map<String, Map<String, Long>> filteredStoreTopics =
+        TopicCleanupService.getAllVeniceStoreTopicsRetentions(admin.getTopicManager());
     Assert.assertEquals(filteredStoreTopics.size(), 2);
     Assert.assertEquals(filteredStoreTopics.get("store1").size(), 4);
     Assert.assertEquals(filteredStoreTopics.get("store2").size(), 2);
@@ -87,8 +87,8 @@ public class TestTopicCleanupService {
     topicRetentions1.put("store1_v3", HIGH_RETENTION_POLICY);
     topicRetentions1.put("store1_v4", HIGH_RETENTION_POLICY);
     List<String> expectedResult1 = Arrays.asList("store1_v1", "store1_v2");
-    List<String> actualResult1 = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicRetentions1,
-        admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), 0);
+    List<String> actualResult1 = TopicCleanupService
+        .extractVersionTopicsToCleanup(admin, topicRetentions1, admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), 0);
     actualResult1.sort(String::compareTo);
     Assert.assertEquals(actualResult1, expectedResult1);
 
@@ -98,8 +98,8 @@ public class TestTopicCleanupService {
     topicRetentions2.put("store1_v3", LOW_RETENTION_POLICY);
     topicRetentions2.put("store1_v4", LOW_RETENTION_POLICY);
     List<String> expectedResult2 = Arrays.asList("store1_v3", "store1_v4");
-    List<String> actualResult2 = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicRetentions2,
-        admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), 0);
+    List<String> actualResult2 = TopicCleanupService
+        .extractVersionTopicsToCleanup(admin, topicRetentions2, admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), 0);
     actualResult2.sort(String::compareTo);
     Assert.assertEquals(actualResult2, expectedResult2);
 
@@ -109,8 +109,8 @@ public class TestTopicCleanupService {
     topicRetentions3.put("store1_v3", LOW_RETENTION_POLICY);
     topicRetentions3.put("store1_v4", HIGH_RETENTION_POLICY);
     List<String> expectedResult3 = Arrays.asList("store1_v1", "store1_v3");
-    List<String> actualResult3 = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicRetentions3,
-        admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), 0);
+    List<String> actualResult3 = TopicCleanupService
+        .extractVersionTopicsToCleanup(admin, topicRetentions3, admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), 0);
     actualResult3.sort(String::compareTo);
     Assert.assertEquals(actualResult3, expectedResult3);
 
@@ -121,8 +121,8 @@ public class TestTopicCleanupService {
     topicRetentions4.put("existent_store_v3", LOW_RETENTION_POLICY);
     topicRetentions4.put("existent_store_v4", LOW_RETENTION_POLICY);
     List<String> expectedResult4 = Arrays.asList("existent_store_v1", "existent_store_v2", "existent_store_v3");
-    List<String> actualResult4 = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicRetentions4,
-        admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), 0);
+    List<String> actualResult4 = TopicCleanupService
+        .extractVersionTopicsToCleanup(admin, topicRetentions4, admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), 0);
     actualResult4.sort(String::compareTo);
     Assert.assertEquals(actualResult4, expectedResult4);
   }
@@ -184,8 +184,10 @@ public class TestTopicCleanupService {
 
     Map<String, Long> storeTopics3 = new HashMap<>();
 
-    when(topicManager.getAllTopicRetentions()).thenReturn(storeTopics1).thenReturn(storeTopics2)
-        .thenReturn(storeTopics3).thenReturn(new HashMap<>());
+    when(topicManager.getAllTopicRetentions()).thenReturn(storeTopics1)
+        .thenReturn(storeTopics2)
+        .thenReturn(storeTopics3)
+        .thenReturn(new HashMap<>());
 
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(Long.MAX_VALUE);
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000L);
@@ -195,7 +197,8 @@ public class TestTopicCleanupService {
 
     topicCleanupService.start();
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-      // As long as topicManager#getAllTopicRetentions has been invoked 4 times, all the store cleanup logic should be done already
+      // As long as topicManager#getAllTopicRetentions has been invoked 4 times, all the store cleanup logic should be
+      // done already
       verify(topicManager, atLeast(4)).getAllTopicRetentions();
     });
 
@@ -232,7 +235,8 @@ public class TestTopicCleanupService {
 
     topicCleanupService.start();
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-      // As long as admin#isLeaderControllerOfControllerCluster has been invoked 3 times, all the store cleanup logic should be done already
+      // As long as admin#isLeaderControllerOfControllerCluster has been invoked 3 times, all the store cleanup logic
+      // should be done already
       verify(admin, atLeast(3)).isLeaderControllerOfControllerCluster();
     });
     verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName1 + "_v1");
@@ -263,7 +267,8 @@ public class TestTopicCleanupService {
 
     topicCleanupService.start();
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-      // As long as topicManager#getAllTopicRetentions has been invoked 2 times, all the store cleanup logic should be done already
+      // As long as topicManager#getAllTopicRetentions has been invoked 2 times, all the store cleanup logic should be
+      // done already
       verify(topicManager, atLeast(2)).getAllTopicRetentions();
     });
 
@@ -302,7 +307,8 @@ public class TestTopicCleanupService {
     storeConfig.setCluster(cluster);
     doReturn(Optional.of(storeConfig)).when(repository).getStoreConfig(storeName);
     doReturn(repository).when(admin).getStoreConfigRepo();
-    String rtTopicForMetaSystemStore = Version.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName));
+    String rtTopicForMetaSystemStore =
+        Version.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName));
     TopicManager topicManager = mock(TopicManager.class);
     doReturn(false).when(topicManager).containsTopic(rtTopicForMetaSystemStore);
     doReturn(topicManager).when(admin).getTopicManager();
@@ -322,7 +328,8 @@ public class TestTopicCleanupService {
     storeConfig.setCluster(cluster);
     doReturn(Optional.of(storeConfig)).when(repository).getStoreConfig(storeName);
     doReturn(repository).when(admin).getStoreConfigRepo();
-    String rtTopicForMetaSystemStore = Version.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName));
+    String rtTopicForMetaSystemStore =
+        Version.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName));
     TopicManager topicManager = mock(TopicManager.class);
     doReturn(true).when(topicManager).containsTopic(rtTopicForMetaSystemStore);
     doReturn(topicManager).when(admin).getTopicManager();

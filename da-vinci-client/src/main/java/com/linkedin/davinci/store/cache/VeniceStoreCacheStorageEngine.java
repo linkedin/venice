@@ -12,15 +12,22 @@ import org.apache.avro.Schema;
 
 
 public class VeniceStoreCacheStorageEngine extends AbstractStorageEngine<VeniceStoreCacheStoragePartition> {
-
   private final ObjectCacheConfig cacheConfig;
   private final VeniceStoreCacheStoragePartition omniPartition;
 
-  public VeniceStoreCacheStorageEngine(String storeName, ObjectCacheConfig config, Schema keySchema, AsyncCacheLoader asyncCacheLoader) {
-    super(storeName, AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(), AvroProtocolDefinition.PARTITION_STATE.getSerializer());
+  public VeniceStoreCacheStorageEngine(
+      String storeName,
+      ObjectCacheConfig config,
+      Schema keySchema,
+      AsyncCacheLoader asyncCacheLoader) {
+    super(
+        storeName,
+        AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     cacheConfig = config;
     omniPartition = new VeniceStoreCacheStoragePartition(0, cacheConfig, keySchema, asyncCacheLoader);
-    // Add the 0 partitionId automatically in order to satisfy the supers metadata (and we automatically created the omniPartition for this engine)
+    // Add the 0 partitionId automatically in order to satisfy the supers metadata (and we automatically created the
+    // omniPartition for this engine)
     this.addStoragePartition(0);
   }
 
@@ -42,11 +49,13 @@ public class VeniceStoreCacheStorageEngine extends AbstractStorageEngine<VeniceS
 
   @Override
   public VeniceStoreCacheStoragePartition createStoragePartition(StoragePartitionConfig partitionConfig) {
-    // TODO: We create a single VeniceStoreCacheStoragePartition and pass that around.  This makes look ups more efficient
+    // TODO: We create a single VeniceStoreCacheStoragePartition and pass that around. This makes look ups more
+    // efficient
     // as we no longer need to discover the correct partition to read from, but it means that we can't efficiently
     // evict out data for partitions we are no longer subscribed to (as we can't just drop the specific partition).
-    // this is an explicit tradeoff decision based on the idea that lookup speed is more important then immediate clean up
-    // on unsubscription.  We can revisit clean up, but adding a TTL might be the right way to go.
+    // this is an explicit tradeoff decision based on the idea that lookup speed is more important then immediate clean
+    // up
+    // on unsubscription. We can revisit clean up, but adding a TTL might be the right way to go.
     return omniPartition;
   }
 
@@ -55,10 +64,9 @@ public class VeniceStoreCacheStorageEngine extends AbstractStorageEngine<VeniceS
     return omniPartition;
   }
 
-  public<K, V> void putDeserializedValue(K key, V value) {
+  public <K, V> void putDeserializedValue(K key, V value) {
     omniPartition.put(key, value);
   }
-
 
   public VeniceStoreCache getCache() {
     return omniPartition.getVeniceCache();

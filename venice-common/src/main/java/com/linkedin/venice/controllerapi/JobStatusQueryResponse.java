@@ -9,8 +9,8 @@ import java.util.Optional;
 /**
  * Response for querying job status.
  */
-public class JobStatusQueryResponse extends ControllerResponse{ /* Uses Json Reflective Serializer, get without set may break things */
-
+public class JobStatusQueryResponse
+    extends ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */
   private int version;
   private String status;
   private String statusDetails;
@@ -142,12 +142,8 @@ public class JobStatusQueryResponse extends ControllerResponse{ /* Uses Json Ref
   }
 
   public String toString() {
-    return JobStatusQueryResponse.class.getSimpleName() + "(\n"
-        + "version: " + version + ",\n"
-        + "status: " + status + ",\n"
-        + "statusDetails: " + statusDetails + ",\n"
-        + "extraInfo: " + extraInfo + ",\n"
-        + "extraDetails: " + extraDetails + ",\n"
-        + super.toString() + ")";
+    return JobStatusQueryResponse.class.getSimpleName() + "(\n" + "version: " + version + ",\n" + "status: " + status
+        + ",\n" + "statusDetails: " + statusDetails + ",\n" + "extraInfo: " + extraInfo + ",\n" + "extraDetails: "
+        + extraDetails + ",\n" + super.toString() + ")";
   }
 }

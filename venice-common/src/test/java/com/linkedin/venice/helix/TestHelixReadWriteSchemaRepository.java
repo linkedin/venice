@@ -1,7 +1,9 @@
 package com.linkedin.venice.helix;
 
-import com.linkedin.venice.exceptions.StoreKeySchemaExistException;
+import static com.linkedin.venice.schema.SchemaData.*;
+
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
+import com.linkedin.venice.exceptions.StoreKeySchemaExistException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -22,8 +24,6 @@ import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
-
-import static com.linkedin.venice.schema.SchemaData.*;
 
 
 public class TestHelixReadWriteSchemaRepository {
@@ -49,7 +49,11 @@ public class TestHelixReadWriteSchemaRepository {
     zkClient.create(clusterPath + storesPath, null, CreateMode.PERSISTENT);
 
     accessor = new HelixSchemaAccessor(zkClient, adapter, cluster);
-    storeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, Optional.empty(),
+    storeRepo = new HelixReadWriteStoreRepository(
+        zkClient,
+        adapter,
+        cluster,
+        Optional.empty(),
         new ClusterLockManager(cluster));
     storeRepo.refresh();
     schemaRepo = new HelixReadWriteSchemaRepository(storeRepo, zkClient, adapter, cluster, Optional.empty());
@@ -63,7 +67,15 @@ public class TestHelixReadWriteSchemaRepository {
   }
 
   private void createStore(String storeName) {
-    Store store = new ZKStore(storeName, "abc@linkedin.com", 10, PersistenceType.ROCKS_DB, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS, 1);
+    Store store = new ZKStore(
+        storeName,
+        "abc@linkedin.com",
+        10,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        1);
     storeRepo.addStore(store);
   }
 
@@ -150,36 +162,23 @@ public class TestHelixReadWriteSchemaRepository {
   @Test
   public void testAddValueSchema() {
     String storeName = "test_store1";
-    String valueSchemaStr1 = "{\n" +
-        "           \"type\": \"record\",\n" +
-        "           \"name\": \"KeyRecord\",\n" +
-        "           \"fields\" : [\n" +
-        "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n" +
-        "               {\"name\": \"company\", \"type\": \"string\"},\n" +
-        "               {\n" +
-        "                 \"name\": \"Suit\", \n" +
-        "                 \"type\": {\n" +
-        "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n" +
-        "                }\n" +
-        "              },\n" +
-        "               {\"name\": \"salary\", \"type\": \"long\"}\n" +
-        "           ]\n" +
-        "        }";
-    String valueSchemaStr2 = "{\n" +
-        "           \"type\": \"record\",\n" +
-        "           \"name\": \"KeyRecord\",\n" +
-        "           \"fields\" : [\n" +
-        "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n" +
-        "               {\"name\": \"company\", \"type\": \"string\"},\n" +
-        "               {\n" +
-        "                 \"name\": \"Suit\", \n" +
-        "                 \"type\": {\n" +
-        "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"CLUBS\", \"HEART\"]\n" +
-        "                } \n" +
-        "              },\n" +
-        "               {\"name\": \"salary\", \"type\": \"long\", \"default\": 123 }" +
-        "           ]\n" +
-        "        }";
+    String valueSchemaStr1 = "{\n" + "           \"type\": \"record\",\n" + "           \"name\": \"KeyRecord\",\n"
+        + "           \"fields\" : [\n"
+        + "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n"
+        + "               {\"name\": \"company\", \"type\": \"string\"},\n" + "               {\n"
+        + "                 \"name\": \"Suit\", \n" + "                 \"type\": {\n"
+        + "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n"
+        + "                }\n" + "              },\n" + "               {\"name\": \"salary\", \"type\": \"long\"}\n"
+        + "           ]\n" + "        }";
+    String valueSchemaStr2 = "{\n" + "           \"type\": \"record\",\n" + "           \"name\": \"KeyRecord\",\n"
+        + "           \"fields\" : [\n"
+        + "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n"
+        + "               {\"name\": \"company\", \"type\": \"string\"},\n" + "               {\n"
+        + "                 \"name\": \"Suit\", \n" + "                 \"type\": {\n"
+        + "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"CLUBS\", \"HEART\"]\n"
+        + "                } \n" + "              },\n"
+        + "               {\"name\": \"salary\", \"type\": \"long\", \"default\": 123 }" + "           ]\n"
+        + "        }";
     createStore(storeName);
     SchemaEntry valueSchema1 = schemaRepo.addValueSchema(storeName, valueSchemaStr1);
     Assert.assertEquals(valueSchema1.getId(), 1);
@@ -195,21 +194,14 @@ public class TestHelixReadWriteSchemaRepository {
   @Test
   public void testAddDuplicateValueSchema() {
     String storeName = "test_store1";
-    String valueSchemaStr1 = "{\n" +
-        "           \"type\": \"record\",\n" +
-        "           \"name\": \"KeyRecord\",\n" +
-        "           \"fields\" : [\n" +
-        "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n" +
-        "               {\"name\": \"company\", \"type\": \"string\"},\n" +
-        "               {\n" +
-        "                 \"name\": \"Suit\", \n" +
-        "                 \"type\": {\n" +
-        "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n" +
-        "                }\n" +
-        "              },\n" +
-        "               {\"name\": \"salary\", \"type\": \"long\"}\n" +
-        "           ]\n" +
-        "        }";
+    String valueSchemaStr1 = "{\n" + "           \"type\": \"record\",\n" + "           \"name\": \"KeyRecord\",\n"
+        + "           \"fields\" : [\n"
+        + "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n"
+        + "               {\"name\": \"company\", \"type\": \"string\"},\n" + "               {\n"
+        + "                 \"name\": \"Suit\", \n" + "                 \"type\": {\n"
+        + "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n"
+        + "                }\n" + "              },\n" + "               {\"name\": \"salary\", \"type\": \"long\"}\n"
+        + "           ]\n" + "        }";
     createStore(storeName);
     SchemaEntry entry1 = schemaRepo.addValueSchema(storeName, valueSchemaStr1);
     // Add the same value schema
@@ -220,35 +212,21 @@ public class TestHelixReadWriteSchemaRepository {
   @Test(expectedExceptions = SchemaIncompatibilityException.class)
   public void testAddInCompatibleValueSchema() {
     String storeName = "test_store1";
-    String valueSchemaStr1 = "{\n" +
-        "           \"type\": \"record\",\n" +
-        "           \"name\": \"KeyRecord\",\n" +
-        "           \"fields\" : [\n" +
-        "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n" +
-        "               {\"name\": \"company\", \"type\": \"string\"},\n" +
-        "               {\n" +
-        "                 \"name\": \"Suit\", \n" +
-        "                 \"type\": {\n" +
-        "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n" +
-        "                }\n" +
-        "              },\n" +
-        "               {\"name\": \"salary\", \"type\": \"long\"}\n" +
-        "           ]\n" +
-        "        }";
-    String valueSchemaStr2 = "{\n" +
-        "           \"type\": \"record\",\n" +
-        "           \"name\": \"KeyRecord\",\n" +
-        "           \"fields\" : [\n" +
-        "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n" +
-        "               {\"name\": \"company\", \"type\": \"string\"},\n" +
-        "               {\n" +
-        "                 \"name\": \"Suit\", \n" +
-        "                 \"type\": {\n" +
-        "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"CLUBS\", \"HEART\"]\n" +
-        "                } \n" +
-        "              }\n" +
-        "           ]\n" +
-        "        }";
+    String valueSchemaStr1 = "{\n" + "           \"type\": \"record\",\n" + "           \"name\": \"KeyRecord\",\n"
+        + "           \"fields\" : [\n"
+        + "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n"
+        + "               {\"name\": \"company\", \"type\": \"string\"},\n" + "               {\n"
+        + "                 \"name\": \"Suit\", \n" + "                 \"type\": {\n"
+        + "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n"
+        + "                }\n" + "              },\n" + "               {\"name\": \"salary\", \"type\": \"long\"}\n"
+        + "           ]\n" + "        }";
+    String valueSchemaStr2 = "{\n" + "           \"type\": \"record\",\n" + "           \"name\": \"KeyRecord\",\n"
+        + "           \"fields\" : [\n"
+        + "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n"
+        + "               {\"name\": \"company\", \"type\": \"string\"},\n" + "               {\n"
+        + "                 \"name\": \"Suit\", \n" + "                 \"type\": {\n"
+        + "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"CLUBS\", \"HEART\"]\n"
+        + "                } \n" + "              }\n" + "           ]\n" + "        }";
     createStore(storeName);
     SchemaEntry valueSchema1 = schemaRepo.addValueSchema(storeName, valueSchemaStr1);
     Assert.assertEquals(valueSchema1.getId(), 1);
@@ -258,36 +236,24 @@ public class TestHelixReadWriteSchemaRepository {
   @Test
   public void testAddDuplicateValueSchemaDocUpdate() {
     String storeName = "test_store1";
-    String valueSchemaStr1 = "{\n" +
-        "           \"type\": \"record\",\n" +
-        "           \"name\": \"KeyRecord\",\n" +
-        "           \"fields\" : [\n" +
-        "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n" +
-        "               {\"name\": \"company\", \"type\": \"string\"},\n" +
-        "               {\n" +
-        "                 \"name\": \"Suit\", \n" +
-        "                 \"type\": {\n" +
-        "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n" +
-        "                }\n" +
-        "              },\n" +
-        "               {\"name\": \"salary\", \"type\": \"long\", \"default\" : 123}\n" +
-        "           ]\n" +
-        "        }";
-    String valueSchemaStr2 = "{\n" +
-        "           \"type\": \"record\",\n" +
-        "           \"name\": \"KeyRecord\",\n" +
-        "           \"fields\" : [\n" +
-        "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field updated\"},\n" +
-        "               {\"name\": \"company\", \"type\": \"string\"},\n" +
-        "               {\n" +
-        "                 \"name\": \"Suit\", \n" +
-        "                 \"type\": {\n" +
-        "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n" +
-        "                }\n" +
-        "              },\n" +
-        "               {\"name\": \"salary\", \"type\": \"long\", \"default\" : 123}\n" +
-        "           ]\n" +
-        "        }";
+    String valueSchemaStr1 = "{\n" + "           \"type\": \"record\",\n" + "           \"name\": \"KeyRecord\",\n"
+        + "           \"fields\" : [\n"
+        + "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n"
+        + "               {\"name\": \"company\", \"type\": \"string\"},\n" + "               {\n"
+        + "                 \"name\": \"Suit\", \n" + "                 \"type\": {\n"
+        + "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n"
+        + "                }\n" + "              },\n"
+        + "               {\"name\": \"salary\", \"type\": \"long\", \"default\" : 123}\n" + "           ]\n"
+        + "        }";
+    String valueSchemaStr2 = "{\n" + "           \"type\": \"record\",\n" + "           \"name\": \"KeyRecord\",\n"
+        + "           \"fields\" : [\n"
+        + "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field updated\"},\n"
+        + "               {\"name\": \"company\", \"type\": \"string\"},\n" + "               {\n"
+        + "                 \"name\": \"Suit\", \n" + "                 \"type\": {\n"
+        + "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n"
+        + "                }\n" + "              },\n"
+        + "               {\"name\": \"salary\", \"type\": \"long\", \"default\" : 123}\n" + "           ]\n"
+        + "        }";
     createStore(storeName);
     SchemaEntry entry1 = schemaRepo.addValueSchema(storeName, valueSchemaStr1);
     // Add the same value schema
@@ -305,36 +271,24 @@ public class TestHelixReadWriteSchemaRepository {
   @Test
   public void testAddDuplicateValueSchemaDefaultValue() {
     String storeName = "test_store1";
-    String valueSchemaStr1 = "{\n" +
-        "           \"type\": \"record\",\n" +
-        "           \"name\": \"KeyRecord\",\n" +
-        "           \"fields\" : [\n" +
-        "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n" +
-        "               {\"name\": \"company\", \"type\": \"string\"},\n" +
-        "               {\n" +
-        "                 \"name\": \"Suit\", \n" +
-        "                 \"type\": {\n" +
-        "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n" +
-        "                }\n" +
-        "              },\n" +
-        "               {\"name\": \"salary\", \"type\": \"long\", \"default\" : 123}\n" +
-        "           ]\n" +
-        "        }";
-    String valueSchemaStr2 = "{\n" +
-        "           \"type\": \"record\",\n" +
-        "           \"name\": \"KeyRecord\",\n" +
-        "           \"fields\" : [\n" +
-        "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n" +
-        "               {\"name\": \"company\", \"type\": \"string\"},\n" +
-        "               {\n" +
-        "                 \"name\": \"Suit\", \n" +
-        "                 \"type\": {\n" +
-        "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n" +
-        "                }\n" +
-        "              },\n" +
-        "               {\"name\": \"salary\", \"type\": \"long\", \"default\" : 1234}\n" +
-        "           ]\n" +
-        "        }";
+    String valueSchemaStr1 = "{\n" + "           \"type\": \"record\",\n" + "           \"name\": \"KeyRecord\",\n"
+        + "           \"fields\" : [\n"
+        + "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n"
+        + "               {\"name\": \"company\", \"type\": \"string\"},\n" + "               {\n"
+        + "                 \"name\": \"Suit\", \n" + "                 \"type\": {\n"
+        + "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n"
+        + "                }\n" + "              },\n"
+        + "               {\"name\": \"salary\", \"type\": \"long\", \"default\" : 123}\n" + "           ]\n"
+        + "        }";
+    String valueSchemaStr2 = "{\n" + "           \"type\": \"record\",\n" + "           \"name\": \"KeyRecord\",\n"
+        + "           \"fields\" : [\n"
+        + "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n"
+        + "               {\"name\": \"company\", \"type\": \"string\"},\n" + "               {\n"
+        + "                 \"name\": \"Suit\", \n" + "                 \"type\": {\n"
+        + "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n"
+        + "                }\n" + "              },\n"
+        + "               {\"name\": \"salary\", \"type\": \"long\", \"default\" : 1234}\n" + "           ]\n"
+        + "        }";
     createStore(storeName);
     SchemaEntry entry1 = schemaRepo.addValueSchema(storeName, valueSchemaStr1);
     // Add the same value schema
@@ -351,43 +305,29 @@ public class TestHelixReadWriteSchemaRepository {
   @Test(expectedExceptions = SchemaParseException.class)
   public void testAddInvalidValueSchema() {
     String storeName = "test_store1";
-    String valueSchemaStr1 = "{\n" +
-        "           \"type\": \"record\",\n" +
-        "           \"name\": \"KeyRecord\",\n" +
-        "           \"fields\" : [\n" +
-        "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n" +
-        "               {\"name\": \"company\", \"type\": \"string\"},\n" +
-        "               {\n" +
-        "                 \"name\": \"Suit\", \n" +
-        "                 \"type\": {\n" +
-        "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n" +
-        "                }\n" +
-        "              },\n" +
-        "               {\"name\": \"salary\", \"type\": \"long1\"}\n" +
-        "           ]\n" +
-        "        }";
+    String valueSchemaStr1 = "{\n" + "           \"type\": \"record\",\n" + "           \"name\": \"KeyRecord\",\n"
+        + "           \"fields\" : [\n"
+        + "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n"
+        + "               {\"name\": \"company\", \"type\": \"string\"},\n" + "               {\n"
+        + "                 \"name\": \"Suit\", \n" + "                 \"type\": {\n"
+        + "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n"
+        + "                }\n" + "              },\n" + "               {\"name\": \"salary\", \"type\": \"long1\"}\n"
+        + "           ]\n" + "        }";
     createStore(storeName);
     schemaRepo.addValueSchema(storeName, valueSchemaStr1);
   }
 
-  @Test (expectedExceptions = VeniceNoStoreException.class)
+  @Test(expectedExceptions = VeniceNoStoreException.class)
   public void testAddValueSchemaToInvalidStore() {
     String storeName = "test_store1";
-    String valueSchemaStr1 = "{\n" +
-        "           \"type\": \"record\",\n" +
-        "           \"name\": \"KeyRecord\",\n" +
-        "           \"fields\" : [\n" +
-        "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n" +
-        "               {\"name\": \"company\", \"type\": \"string\"},\n" +
-        "               {\n" +
-        "                 \"name\": \"Suit\", \n" +
-        "                 \"type\": {\n" +
-        "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n" +
-        "                }\n" +
-        "              },\n" +
-        "               {\"name\": \"salary\", \"type\": \"long\"}\n" +
-        "           ]\n" +
-        "        }";
+    String valueSchemaStr1 = "{\n" + "           \"type\": \"record\",\n" + "           \"name\": \"KeyRecord\",\n"
+        + "           \"fields\" : [\n"
+        + "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n"
+        + "               {\"name\": \"company\", \"type\": \"string\"},\n" + "               {\n"
+        + "                 \"name\": \"Suit\", \n" + "                 \"type\": {\n"
+        + "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n"
+        + "                }\n" + "              },\n" + "               {\"name\": \"salary\", \"type\": \"long\"}\n"
+        + "           ]\n" + "        }";
     schemaRepo.addValueSchema(storeName, valueSchemaStr1);
   }
 
@@ -410,25 +350,19 @@ public class TestHelixReadWriteSchemaRepository {
   @Test
   public void testGetValueSchemaIdWithSimilarSchema() {
     String storeName = "test_store1";
-    String valueSchemaStr1 = "{"
-        + "\"fields\": ["
+    String valueSchemaStr1 = "{" + "\"fields\": ["
         + "   {\"default\": \"\", \"doc\": \"test field\", \"name\": \"testField1\", \"type\": \"string\"},"
-        + "   {\"default\": 0, \"doc\": \"test field two\", \"name\": \"testField2\", \"type\": \"float\"}"
-        + "   ],"
-        + " \"name\": \"testObject\", \"type\": \"record\""
-        +"}";
+        + "   {\"default\": 0, \"doc\": \"test field two\", \"name\": \"testField2\", \"type\": \"float\"}" + "   ],"
+        + " \"name\": \"testObject\", \"type\": \"record\"" + "}";
 
-    String valueSchemaStr2 = "{"
-        + "\"fields\": ["
+    String valueSchemaStr2 = "{" + "\"fields\": ["
         + "   {\"default\": \"\", \"doc\": \"test field\", \"name\": \"testField1\", \"type\": \"string\"},"
-        + "   {\"default\": -1, \"doc\": \"test field two\", \"name\": \"testField2\", \"type\": \"float\"}"
-        + "   ],"
-        + " \"name\": \"testObject\", \"type\": \"record\""
-        +"}";
+        + "   {\"default\": -1, \"doc\": \"test field two\", \"name\": \"testField2\", \"type\": \"float\"}" + "   ],"
+        + " \"name\": \"testObject\", \"type\": \"record\"" + "}";
     createStore(storeName);
     schemaRepo.addValueSchema(storeName, valueSchemaStr1);
-    schemaRepo.addValueSchema(storeName,valueSchemaStr2);
+    schemaRepo.addValueSchema(storeName, valueSchemaStr2);
     int schemaId = schemaRepo.getValueSchemaId(storeName, valueSchemaStr2);
-    Assert.assertEquals(schemaId, 2,"getValueSchemaId did not get the correct schema which is an exact match");
+    Assert.assertEquals(schemaId, 2, "getValueSchemaId did not get the correct schema which is an exact match");
   }
 }

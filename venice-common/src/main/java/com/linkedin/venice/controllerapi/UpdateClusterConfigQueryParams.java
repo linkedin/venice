@@ -1,10 +1,10 @@
 package com.linkedin.venice.controllerapi;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 
 
 public class UpdateClusterConfigQueryParams extends QueryParams {
@@ -16,19 +16,21 @@ public class UpdateClusterConfigQueryParams extends QueryParams {
     super();
   }
 
-  public UpdateClusterConfigQueryParams setServerKafkaFetchQuotaRecordsPerSecondForRegion(String region,
+  public UpdateClusterConfigQueryParams setServerKafkaFetchQuotaRecordsPerSecondForRegion(
+      String region,
       long kafkaFetchQuotaRecordsPerSecond) {
     Map<String, String> serverKafkaFetchQuotaRecordsPerSecond =
         getStringMap(SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND).orElse(new HashMap<>());
     serverKafkaFetchQuotaRecordsPerSecond.put(region, String.valueOf(kafkaFetchQuotaRecordsPerSecond));
-    return (UpdateClusterConfigQueryParams) putStringMap(SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND,
+    return (UpdateClusterConfigQueryParams) putStringMap(
+        SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND,
         serverKafkaFetchQuotaRecordsPerSecond);
   }
 
   public Optional<Map<String, Integer>> getServerKafkaFetchQuotaRecordsPerSecond() {
     return getStringMap(SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND).map(serverKafkaFetchQuotaRecordsPerSecondStr -> {
       Map<String, Integer> serverKafkaFetchQuotaRecordsPerSecond = new HashMap<>();
-      for (Map.Entry<String, String> regionToQuota : serverKafkaFetchQuotaRecordsPerSecondStr.entrySet()) {
+      for (Map.Entry<String, String> regionToQuota: serverKafkaFetchQuotaRecordsPerSecondStr.entrySet()) {
         serverKafkaFetchQuotaRecordsPerSecond.put(regionToQuota.getKey(), Integer.parseInt(regionToQuota.getValue()));
       }
 
@@ -52,7 +54,7 @@ public class UpdateClusterConfigQueryParams extends QueryParams {
     return getBoolean(CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED);
   }
 
-  //***************** above this line are getters and setters *****************
+  // ***************** above this line are getters and setters *****************
 
   private UpdateClusterConfigQueryParams putBoolean(String name, boolean value) {
     return (UpdateClusterConfigQueryParams) add(name, value);

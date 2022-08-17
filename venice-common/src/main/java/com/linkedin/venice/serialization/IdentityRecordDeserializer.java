@@ -18,7 +18,8 @@ import org.apache.commons.io.IOUtils;
 public class IdentityRecordDeserializer implements RecordDeserializer<ByteBuffer> {
   private static final IdentityRecordDeserializer INSTANCE = new IdentityRecordDeserializer();
 
-  private IdentityRecordDeserializer() {}
+  private IdentityRecordDeserializer() {
+  }
 
   public static IdentityRecordDeserializer getInstance() {
     return INSTANCE;
@@ -48,7 +49,8 @@ public class IdentityRecordDeserializer implements RecordDeserializer<ByteBuffer
   @Override
   public ByteBuffer deserialize(BinaryDecoder binaryDecoder) throws VeniceSerializationException {
     if (!(binaryDecoder instanceof OptimizedBinaryDecoder)) {
-      throw new UnsupportedOperationException("Cannot extract raw value when using a BinaryDecoder unless it is an OptimizedBinaryDecoder.");
+      throw new UnsupportedOperationException(
+          "Cannot extract raw value when using a BinaryDecoder unless it is an OptimizedBinaryDecoder.");
     }
 
     return deserialize(((OptimizedBinaryDecoder) binaryDecoder).getRawBytes());
@@ -60,7 +62,8 @@ public class IdentityRecordDeserializer implements RecordDeserializer<ByteBuffer
   }
 
   @Override
-  public ByteBuffer deserialize(ByteBuffer reuse, InputStream in, BinaryDecoder reusedDecoder) throws VeniceSerializationException {
+  public ByteBuffer deserialize(ByteBuffer reuse, InputStream in, BinaryDecoder reusedDecoder)
+      throws VeniceSerializationException {
     final byte[] bytes;
     try {
       bytes = IOUtils.toByteArray(in);

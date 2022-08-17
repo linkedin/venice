@@ -14,13 +14,12 @@ import org.apache.avro.generic.GenericRecord;
 
 
 public interface ComputeRequestBuilder<K> {
-
   /**
    * Setup project fields, and right now only top-level fields are supported.
    * @param fieldNames
    * @return
    */
-  ComputeRequestBuilder<K> project(String ... fieldNames);
+  ComputeRequestBuilder<K> project(String... fieldNames);
 
   /**
    * Setup project fields, and right now only top-level fields are supported.
@@ -45,7 +44,10 @@ public interface ComputeRequestBuilder<K> {
    * @param resultFieldName : result field name in the response record
    * @return
    */
-  ComputeRequestBuilder<K> cosineSimilarity(String inputFieldName, List<Float> cosSimilarityParam, String resultFieldName);
+  ComputeRequestBuilder<K> cosineSimilarity(
+      String inputFieldName,
+      List<Float> cosSimilarityParam,
+      String resultFieldName);
 
   /**
    * Set up compute operation. It would return the number of records for array/map field.
@@ -55,7 +57,6 @@ public interface ComputeRequestBuilder<K> {
    */
   ComputeRequestBuilder<K> count(String inputFieldName, String resultFieldName);
 
-
   /**
    * Setup hadamard-product operation; if this api is invoked, use version 2 in the compute request version header.
    * @param inputFieldName : top-level field in the value record as the input of hadamard-product operation
@@ -63,7 +64,10 @@ public interface ComputeRequestBuilder<K> {
    * @param resultFieldName : result field name in the response record
    * @return
    */
-  ComputeRequestBuilder<K> hadamardProduct(String inputFieldName, List<Float> hadamardProductParam, String resultFieldName);
+  ComputeRequestBuilder<K> hadamardProduct(
+      String inputFieldName,
+      List<Float> hadamardProductParam,
+      String resultFieldName);
 
   /**
    * Send compute request to Venice, and this should be the last step of the compute specification.
@@ -106,7 +110,9 @@ public interface ComputeRequestBuilder<K> {
    * @throws VeniceClientException
    */
   @Experimental
-  default void executeWithFilter(Predicate predicate, StreamingCallback<GenericRecord, GenericRecord> callback) throws VeniceClientException {
-    throw new VeniceClientException("Please use AvroGenericStoreClient#compute() to generate a Compute Request Builder");
+  default void executeWithFilter(Predicate predicate, StreamingCallback<GenericRecord, GenericRecord> callback)
+      throws VeniceClientException {
+    throw new VeniceClientException(
+        "Please use AvroGenericStoreClient#compute() to generate a Compute Request Builder");
   }
 }

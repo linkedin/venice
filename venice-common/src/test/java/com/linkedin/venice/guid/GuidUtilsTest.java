@@ -2,16 +2,16 @@ package com.linkedin.venice.guid;
 
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.utils.ByteArray;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.function.Function;
 
 /**
  */
@@ -23,7 +23,7 @@ public class GuidUtilsTest {
     for (int i = 0; i < GuidUtils.GUID_SIZE_IN_BYTES; i++) {
       byteBuffer.put((byte) valueGenerator.apply(i).intValue());
     }
-    return new ByteArray[]{new ByteArray(byteBuffer.array())};
+    return new ByteArray[] { new ByteArray(byteBuffer.array()) };
   }
 
   @DataProvider(name = "byteArrays")
@@ -48,7 +48,10 @@ public class GuidUtilsTest {
     CharSequence originalCharSequence = new String(arrayUnderTest.get(), GuidUtils.CHARSET);
     GUID convertedGuid = GuidUtils.getGuidFromCharSequence(originalCharSequence);
     CharSequence resultingCharSequence = GuidUtils.getCharSequenceFromGuid(convertedGuid);
-    Assert.assertEquals(resultingCharSequence, originalCharSequence, "A CharSequence converted into GUID and back should be the same as previously!");
+    Assert.assertEquals(
+        resultingCharSequence,
+        originalCharSequence,
+        "A CharSequence converted into GUID and back should be the same as previously!");
   }
 
   @Test(dataProvider = "byteArrays")
@@ -58,7 +61,10 @@ public class GuidUtilsTest {
     originalGuid.bytes(arrayUnderTest.get());
     CharSequence convertedCharSequence = GuidUtils.getCharSequenceFromGuid(originalGuid);
     GUID resultingGuid = GuidUtils.getGuidFromCharSequence(convertedCharSequence);
-    Assert.assertEquals(resultingGuid, originalGuid, "A GUID converted into a CharSequence and back should be the same as previously!");
+    Assert.assertEquals(
+        resultingGuid,
+        originalGuid,
+        "A GUID converted into a CharSequence and back should be the same as previously!");
   }
 
 }

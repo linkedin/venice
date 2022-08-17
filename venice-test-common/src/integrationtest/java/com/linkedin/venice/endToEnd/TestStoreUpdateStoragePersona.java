@@ -1,5 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.venice.utils.TestPushUtils.*;
+
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -23,11 +25,8 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.utils.TestPushUtils.*;
-
 
 public class TestStoreUpdateStoragePersona {
-
   private VeniceClusterWrapper venice;
   private ZkServerWrapper parentZk;
   private VeniceControllerWrapper parentController;
@@ -38,9 +37,12 @@ public class TestStoreUpdateStoragePersona {
     Properties extraProperties = new Properties();
     venice = ServiceFactory.getVeniceCluster(1, 1, 1, 2, 1000000, false, false, extraProperties);
     parentZk = ServiceFactory.getZkServer();
-    parentController =
-        ServiceFactory.getVeniceParentController(venice.getClusterName(), parentZk.getAddress(), venice.getKafka(),
-            new VeniceControllerWrapper[]{venice.getLeaderVeniceController()}, false);
+    parentController = ServiceFactory.getVeniceParentController(
+        venice.getClusterName(),
+        parentZk.getAddress(),
+        venice.getKafka(),
+        new VeniceControllerWrapper[] { venice.getLeaderVeniceController() },
+        false);
     controllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
   }
 
@@ -58,10 +60,14 @@ public class TestStoreUpdateStoragePersona {
       persona.getStoresToEnforce().addAll(storeNames.get());
     }
     persona.setQuotaNumber(quota);
-    ControllerResponse response = controllerClient.createStoragePersona(persona.getName(), quota, persona.getStoresToEnforce(), persona.getOwners());
-    if (response.isError()) throw new VeniceException(response.getError());
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () ->
-        Assert.assertEquals(controllerClient.getStoragePersona(persona.getName()).getStoragePersona(), persona));
+    ControllerResponse response = controllerClient
+        .createStoragePersona(persona.getName(), quota, persona.getStoresToEnforce(), persona.getOwners());
+    if (response.isError())
+      throw new VeniceException(response.getError());
+    TestUtils.waitForNonDeterministicAssertion(
+        60,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(controllerClient.getStoragePersona(persona.getName()).getStoragePersona(), persona));
     return persona;
   }
 
@@ -80,8 +86,10 @@ public class TestStoreUpdateStoragePersona {
     Store store = setUpTestStoreAndAddToRepo(quota);
     controllerClient.updateStore(store.getName(), new UpdateStoreQueryParams().setStoragePersona(persona.getName()));
     persona.getStoresToEnforce().add(store.getName());
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () ->
-      Assert.assertEquals(controllerClient.getStoragePersona(persona.getName()).getStoragePersona(), persona));
+    TestUtils.waitForNonDeterministicAssertion(
+        60,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(controllerClient.getStoragePersona(persona.getName()).getStoragePersona(), persona));
   }
 
   @Test
@@ -91,11 +99,14 @@ public class TestStoreUpdateStoragePersona {
     Set<String> storeNames = new HashSet<>();
     storeNames.add(store.getName());
     StoragePersona persona = addPersonaToRepoAndWait(quota, Optional.of(storeNames));
-    ControllerResponse response = controllerClient.updateStore(store.getName(), new UpdateStoreQueryParams().setStorageQuotaInByte(quota * 2));
+    ControllerResponse response =
+        controllerClient.updateStore(store.getName(), new UpdateStoreQueryParams().setStorageQuotaInByte(quota * 2));
     Assert.assertTrue(response.isError());
     /** Make sure the update failed, nothing was updated */
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-      Assert.assertEquals(controllerClient.getStore(store.getName()).getStore().getStorageQuotaInByte(), store.getStorageQuotaInByte());
+      Assert.assertEquals(
+          controllerClient.getStore(store.getName()).getStore().getStorageQuotaInByte(),
+          store.getStorageQuotaInByte());
       Assert.assertEquals(controllerClient.getStoragePersona(persona.getName()).getStoragePersona(), persona);
     });
   }
@@ -103,10 +114,15 @@ public class TestStoreUpdateStoragePersona {
   @Test
   void testUpdateStorePersonaDoesNotExist() {
     Store store = setUpTestStoreAndAddToRepo(100);
-    ControllerResponse response = controllerClient.updateStore(store.getName(), new UpdateStoreQueryParams().setStoragePersona("failedPersona"));
+    ControllerResponse response =
+        controllerClient.updateStore(store.getName(), new UpdateStoreQueryParams().setStoragePersona("failedPersona"));
     Assert.assertTrue(response.isError());
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () ->
-        Assert.assertEquals(controllerClient.getStore(store.getName()).getStore().getStorageQuotaInByte(), store.getStorageQuotaInByte()));
+    TestUtils.waitForNonDeterministicAssertion(
+        60,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(
+            controllerClient.getStore(store.getName()).getStore().getStorageQuotaInByte(),
+            store.getStorageQuotaInByte()));
   }
 
   @Test
@@ -118,13 +134,22 @@ public class TestStoreUpdateStoragePersona {
     Set<String> expectedStores = new HashSet<>();
     Store testStore = TestUtils.createTestStore(Utils.getUniqueString("testStore"), "testStoreOwner", 100);
     expectedStores.add(testStore.getName());
-    controllerClient.createNewStoreWithParameters(testStore.getName(), testStore.getOwner(), STRING_SCHEMA, STRING_SCHEMA,
+    controllerClient.createNewStoreWithParameters(
+        testStore.getName(),
+        testStore.getOwner(),
+        STRING_SCHEMA,
+        STRING_SCHEMA,
         new UpdateStoreQueryParams().setStoragePersona(persona.getName()).setStorageQuotaInByte(quota));
-    ControllerResponse response  = controllerClient.updateStore(testStore.getName(), new UpdateStoreQueryParams().setStoragePersona(persona2.getName()));
+    ControllerResponse response = controllerClient
+        .updateStore(testStore.getName(), new UpdateStoreQueryParams().setStoragePersona(persona2.getName()));
     Assert.assertTrue(response.isError());
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-      Assert.assertEquals(controllerClient.getStoragePersona(persona.getName()).getStoragePersona().getStoresToEnforce(), expectedStores);
-      Assert.assertEquals(controllerClient.getStoragePersona(persona2.getName()).getStoragePersona().getStoresToEnforce(), new HashSet<>());
+      Assert.assertEquals(
+          controllerClient.getStoragePersona(persona.getName()).getStoragePersona().getStoresToEnforce(),
+          expectedStores);
+      Assert.assertEquals(
+          controllerClient.getStoragePersona(persona2.getName()).getStoragePersona().getStoresToEnforce(),
+          new HashSet<>());
     });
   }
 
@@ -133,12 +158,15 @@ public class TestStoreUpdateStoragePersona {
     long quota = 100;
     StoragePersona persona = addPersonaToRepoAndWait(quota * 2, Optional.empty());
     Store store = setUpTestStoreAndAddToRepo(quota);
-    ControllerResponse response = controllerClient.updateStore(store.getName(),
+    ControllerResponse response = controllerClient.updateStore(
+        store.getName(),
         new UpdateStoreQueryParams().setStoragePersona(persona.getName()).setStorageQuotaInByte(quota * 2));
     Assert.assertFalse(response.isError());
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
       Assert.assertEquals(controllerClient.getStore(store.getName()).getStore().getStorageQuotaInByte(), quota * 2);
-      Assert.assertEquals(controllerClient.getStoragePersona(persona.getName()).getStoragePersona().getStoresToEnforce().size(), 1);
+      Assert.assertEquals(
+          controllerClient.getStoragePersona(persona.getName()).getStoragePersona().getStoresToEnforce().size(),
+          1);
     });
   }
 
@@ -147,12 +175,15 @@ public class TestStoreUpdateStoragePersona {
     long quota = 100;
     StoragePersona persona = addPersonaToRepoAndWait(quota, Optional.empty());
     Store store = setUpTestStoreAndAddToRepo(quota);
-    ControllerResponse response = controllerClient.updateStore(store.getName(),
+    ControllerResponse response = controllerClient.updateStore(
+        store.getName(),
         new UpdateStoreQueryParams().setStoragePersona(persona.getName()).setStorageQuotaInByte(quota * 2));
     Assert.assertTrue(response.isError());
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
       Assert.assertEquals(controllerClient.getStore(store.getName()).getStore().getStorageQuotaInByte(), quota);
-      Assert.assertEquals(controllerClient.getStoragePersona(persona.getName()).getStoragePersona().getStoresToEnforce().size(), 0);
+      Assert.assertEquals(
+          controllerClient.getStoragePersona(persona.getName()).getStoragePersona().getStoresToEnforce().size(),
+          0);
     });
   }
 
@@ -160,12 +191,13 @@ public class TestStoreUpdateStoragePersona {
   void testUpdatePersonaTwoStoresSuccess() {
     long quota = 200;
     Set<String> storeNames = new HashSet<>();
-    Store store1 = setUpTestStoreAndAddToRepo(quota/2);
+    Store store1 = setUpTestStoreAndAddToRepo(quota / 2);
     storeNames.add(store1.getName());
     StoragePersona persona = addPersonaToRepoAndWait(quota, Optional.of(storeNames));
-    Store store2 = setUpTestStoreAndAddToRepo(quota/2);
+    Store store2 = setUpTestStoreAndAddToRepo(quota / 2);
     persona.getStoresToEnforce().add(store2.getName());
-    ControllerResponse response = controllerClient.updateStore(store2.getName(), new UpdateStoreQueryParams().setStoragePersona(persona.getName()));
+    ControllerResponse response = controllerClient
+        .updateStore(store2.getName(), new UpdateStoreQueryParams().setStoragePersona(persona.getName()));
     Assert.assertFalse(response.isError());
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
       Assert.assertEquals(controllerClient.getStoragePersona(persona.getName()).getStoragePersona(), persona);
@@ -176,16 +208,16 @@ public class TestStoreUpdateStoragePersona {
   void testUpdatePersonaTwoStoresFail() {
     long quota = 200;
     Set<String> storeNames = new HashSet<>();
-    Store store1 = setUpTestStoreAndAddToRepo(quota/2);
+    Store store1 = setUpTestStoreAndAddToRepo(quota / 2);
     storeNames.add(store1.getName());
     StoragePersona persona = addPersonaToRepoAndWait(quota, Optional.of(storeNames));
     Store store2 = setUpTestStoreAndAddToRepo(quota);
-    ControllerResponse response = controllerClient.updateStore(store2.getName(), new UpdateStoreQueryParams().setStoragePersona(persona.getName()));
+    ControllerResponse response = controllerClient
+        .updateStore(store2.getName(), new UpdateStoreQueryParams().setStoragePersona(persona.getName()));
     Assert.assertTrue(response.isError());
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
       Assert.assertEquals(controllerClient.getStoragePersona(persona.getName()).getStoragePersona(), persona);
     });
   }
-
 
 }

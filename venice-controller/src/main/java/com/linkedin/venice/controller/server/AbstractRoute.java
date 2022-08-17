@@ -1,5 +1,9 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.HttpConstants.*;
+import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -10,10 +14,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import spark.Request;
 
-import static com.linkedin.venice.HttpConstants.*;
-import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-
 
 public class AbstractRoute {
   private static final Logger logger = LogManager.getLogger(AbstractRoute.class);
@@ -22,11 +22,14 @@ public class AbstractRoute {
   private static final String STORE_UNKNOWN = "STORE_UNKNOWN";
 
   // A singleton of acl check function against store resource
-  private static final ResourceAclCheck getAccessToStore = (cert, resourceName, aclClient) -> aclClient.hasAccess(cert, resourceName, HTTP_GET);
+  private static final ResourceAclCheck getAccessToStore =
+      (cert, resourceName, aclClient) -> aclClient.hasAccess(cert, resourceName, HTTP_GET);
   // A singleton of acl check function against topic resource
-  private static final ResourceAclCheck writeAccessToTopic = (cert, resourceName, aclClient) -> aclClient.hasAccessToTopic(cert, resourceName, "Write");
+  private static final ResourceAclCheck writeAccessToTopic =
+      (cert, resourceName, aclClient) -> aclClient.hasAccessToTopic(cert, resourceName, "Write");
 
-  private static final ResourceAclCheck readAccessToTopic = (cert, resourceName, aclClient) -> aclClient.hasAccessToTopic(cert, resourceName, "Read");
+  private static final ResourceAclCheck readAccessToTopic =
+      (cert, resourceName, aclClient) -> aclClient.hasAccessToTopic(cert, resourceName, "Read");
 
   private final boolean sslEnabled;
   private final Optional<DynamicAccessController> accessController;
@@ -65,13 +68,23 @@ public class AbstractRoute {
     try {
       if (!aclCheckFunction.apply(certificate, storeName, accessController.get())) {
         // log the abused users
-        logger.warn(String.format("Client %s [host:%s IP:%s] doesn't have access to store %s",
-            certificate.getSubjectX500Principal().toString(), request.host(), request.ip(), storeName));
+        logger.warn(
+            String.format(
+                "Client %s [host:%s IP:%s] doesn't have access to store %s",
+                certificate.getSubjectX500Principal().toString(),
+                request.host(),
+                request.ip(),
+                storeName));
         return false;
       }
     } catch (AclException e) {
-      logger.error(String.format("Error while parsing certificate from client %s [host:%s IP:%s]",
-          certificate.getSubjectX500Principal().toString(), request.host(), request.ip()), e);
+      logger.error(
+          String.format(
+              "Error while parsing certificate from client %s [host:%s IP:%s]",
+              certificate.getSubjectX500Principal().toString(),
+              request.host(),
+              request.ip()),
+          e);
       return false;
     }
     return true;
@@ -165,7 +178,7 @@ public class AbstractRoute {
     if (null == certificateObject) {
       throw new VeniceException("Client request doesn't contain certificate for store: " + request.queryParams(NAME));
     }
-    return ((X509Certificate[])certificateObject)[0];
+    return ((X509Certificate[]) certificateObject)[0];
   }
 
   /**
@@ -173,6 +186,7 @@ public class AbstractRoute {
    */
   @FunctionalInterface
   interface ResourceAclCheck {
-    boolean apply(X509Certificate clientCert, String resource, DynamicAccessController accessController) throws AclException;
+    boolean apply(X509Certificate clientCert, String resource, DynamicAccessController accessController)
+        throws AclException;
   }
 }

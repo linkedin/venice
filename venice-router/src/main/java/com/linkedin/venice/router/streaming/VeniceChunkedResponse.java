@@ -1,5 +1,8 @@
 package com.linkedin.venice.router.streaming;
 
+import static com.linkedin.venice.router.api.VeniceResponseAggregator.*;
+import static com.linkedin.venice.streaming.StreamingConstants.*;
+
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
@@ -53,9 +56,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.router.api.VeniceResponseAggregator.*;
-import static com.linkedin.venice.streaming.StreamingConstants.*;
 
 
 /**
@@ -113,7 +113,8 @@ public class VeniceChunkedResponse {
   private HttpResponse responseMetadata;
   private Optional<CompressionStrategy> responseCompression = Optional.empty();
 
-  protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = RedundantExceptionFilter.getRedundantExceptionFilter();
+  protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   /**
    * Only two kinds of response meta could be sent out based on request types:
@@ -125,14 +126,13 @@ public class VeniceChunkedResponse {
     */
   private static final Map<CompressionStrategy, HttpResponse> RESPONSE_META_MAP_FOR_MULTI_GET = new HashMap<>();
   static {
-    for (CompressionStrategy compressionStrategy : CompressionStrategy.values()) {
+    for (CompressionStrategy compressionStrategy: CompressionStrategy.values()) {
       final Map<CharSequence, String> headerMap = new HashMap<>(MULTI_GET_VALID_HEADER_MAP);
       headerMap.put(HttpConstants.VENICE_COMPRESSION_STRATEGY, Integer.toString((compressionStrategy.getValue())));
       RESPONSE_META_MAP_FOR_MULTI_GET.put(compressionStrategy, new StreamingResponseMeta(headerMap));
     }
   }
-  private static final HttpResponse RESPONSE_META_FOR_COMPUTE =
-      new StreamingResponseMeta(COMPUTE_VALID_HEADER_MAP);
+  private static final HttpResponse RESPONSE_META_FOR_COMPUTE = new StreamingResponseMeta(COMPUTE_VALID_HEADER_MAP);
 
   /**
    * This is the response header for streaming response.
@@ -140,7 +140,7 @@ public class VeniceChunkedResponse {
   private static class StreamingResponseMeta extends DefaultHttpResponse {
     public StreamingResponseMeta(Map<CharSequence, String> streamingResponseHeaders) {
       super(HttpVersion.HTTP_1_1, HttpResponseStatus.OK); // So far, we choose 200 for streaming response
-      streamingResponseHeaders.forEach( (k, v) -> {
+      streamingResponseHeaders.forEach((k, v) -> {
         headers().set(k, v);
       });
       // Add chunked transfer encoding header here
@@ -149,7 +149,10 @@ public class VeniceChunkedResponse {
     }
   }
 
-  public VeniceChunkedResponse(VenicePath path, ChannelHandlerContext ctx, VeniceChunkedWriteHandler handler,
+  public VeniceChunkedResponse(
+      VenicePath path,
+      ChannelHandlerContext ctx,
+      VeniceChunkedWriteHandler handler,
       RouterStats<AggRouterHttpRequestStats> routerStats) {
     this.path = path;
     this.routerStats = routerStats;
@@ -158,8 +161,9 @@ public class VeniceChunkedResponse {
      */
     RequestType requestType = path.getRequestType();
     if (!requestType.equals(RequestType.MULTI_GET) && !requestType.equals(RequestType.COMPUTE)) {
-      throw new VeniceException("Unexpected request type for streaming: " + requestType + ", and currently only"
-          + " the following types are supported: [" + RequestType.MULTI_GET + ", " + RequestType.COMPUTE + "]");
+      throw new VeniceException(
+          "Unexpected request type for streaming: " + requestType + ", and currently only"
+              + " the following types are supported: [" + RequestType.MULTI_GET + ", " + RequestType.COMPUTE + "]");
     }
     this.ctx = ctx;
     this.chunkedWriteHandler = handler;
@@ -171,6 +175,7 @@ public class VeniceChunkedResponse {
   private class StreamingCallbackOnlyFreeResponseOnSuccess<T> implements StreamingCallback<T> {
     private final FullHttpResponse response;
     private final ChannelPromise promise;
+
     private StreamingCallbackOnlyFreeResponseOnSuccess(final FullHttpResponse response, final ChannelPromise promise) {
       this.response = response;
       this.promise = promise;
@@ -192,7 +197,6 @@ public class VeniceChunkedResponse {
   }
 
   private class WriteMessageCallbackImpl implements VeniceChunkedWriteHandler.WriteMessageCallback {
-
     /**
      * This function is used to intercept all the write calls to {@link VeniceChunkedWriteHandler}, and
      * it will make decision about how to process the current write.
@@ -233,12 +237,13 @@ public class VeniceChunkedResponse {
         // Error response after sending out the streaming response metadata
         FullHttpResponse response = ((FullHttpResponse) msg);
         HttpResponseStatus status = response.status();
-        if (! status.equals(HttpResponseStatus.OK)) {
+        if (!status.equals(HttpResponseStatus.OK)) {
           finishWithError(response, new StreamingCallbackOnlyFreeResponseOnSuccess<>(response, promise));
           return true;
         } else {
           // Defensive code
-          throw new IllegalStateException("Unexpected response status: " + status + ", and only non 200 status is expected here");
+          throw new IllegalStateException(
+              "Unexpected response status: " + status + ", and only non 200 status is expected here");
         }
       }
       throw new VeniceException("Unexpected message type received: " + msg.getClass());
@@ -258,7 +263,6 @@ public class VeniceChunkedResponse {
     return write(buffer, compression, null);
   }
 
-
   /**
    * This function is used to send a data chunk to Venice Client, and when it is completed, 'callback' will be invoked.
    * @param byteBuf
@@ -266,14 +270,18 @@ public class VeniceChunkedResponse {
    * @param callback
    * @return
    */
-  public CompletableFuture<Long> write(ByteBuf byteBuf, CompressionStrategy compression, StreamingCallback<Long> callback) {
+  public CompletableFuture<Long> write(
+      ByteBuf byteBuf,
+      CompressionStrategy compression,
+      StreamingCallback<Long> callback) {
     if (path.getRequestType().equals(RequestType.MULTI_GET_STREAMING)) {
       synchronized (this) {
         if (responseCompression.isPresent()) {
           if (!responseCompression.get().equals(compression)) {
             // Defensive code, not expected
-            LOGGER.error("Received inconsistent compression for the new write: " + compression +
-                ", and previous compression: " + responseCompression.get());
+            LOGGER.error(
+                "Received inconsistent compression for the new write: " + compression + ", and previous compression: "
+                    + responseCompression.get());
             /**
              * Skip the write with wrong compression.
              * {@link VeniceResponseAggregator#buildStreamingResponse} will perform the same check
@@ -399,7 +407,8 @@ public class VeniceChunkedResponse {
       reportResponseSize();
       chunkedWriteHandler.resumeTransfer();
     } else {
-      LOGGER.error("Couldn't add last chunk with error status: " + errorResponse.status() + " to the internal chunk queue");
+      LOGGER.error(
+          "Couldn't add last chunk with error status: " + errorResponse.status() + " to the internal chunk queue");
     }
   }
 
@@ -433,7 +442,8 @@ public class VeniceChunkedResponse {
     if (!responseCompleteCalled) {
       responseCompleteCalled = true;
       if (LOGGER.isDebugEnabled()) {
-        LOGGER.debug("Finished responding to current request on channel: " + ctx.channel() + " with exception: ",
+        LOGGER.debug(
+            "Finished responding to current request on channel: " + ctx.channel() + " with exception: ",
             exception);
       }
     }
@@ -476,7 +486,6 @@ public class VeniceChunkedResponse {
    * Listener that will be attached to the write of a response metadata.
    */
   private class ResponseMetadataWriteListener implements GenericFutureListener<ChannelFuture> {
-
     @Override
     public void operationComplete(ChannelFuture future) throws Exception {
       if (future.isSuccess()) {
@@ -504,7 +513,6 @@ public class VeniceChunkedResponse {
    * Invokes callback on any chunks that are eligible for callback.
    */
   private class ChunkCallbackListener implements GenericProgressiveFutureListener<ChannelProgressiveFuture> {
-
     /**
      * Uses {@code progress} to determine chunks whose callbacks need to be invoked.
      * @param future the {@link ChannelProgressiveFuture} that is being listened on.

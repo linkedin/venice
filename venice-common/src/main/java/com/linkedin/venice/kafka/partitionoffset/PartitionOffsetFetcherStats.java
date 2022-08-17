@@ -14,14 +14,9 @@ import java.util.Map;
 
 
 public class PartitionOffsetFetcherStats extends AbstractVeniceStats {
-
   public enum OCCURRENCE_LATENCY_SENSOR_TYPE {
-    GET_TOPIC_LATEST_OFFSETS,
-    GET_PARTITION_LATEST_OFFSET_WITH_RETRY,
-    GET_PARTITIONS_OFFSETS_BY_TIME,
-    GET_PARTITION_OFFSET_BY_TIME,
-    GET_LATEST_PRODUCER_TIMESTAMP_ON_DATA_RECORD_WITH_RETRY,
-    PARTITIONS_FOR,
+    GET_TOPIC_LATEST_OFFSETS, GET_PARTITION_LATEST_OFFSET_WITH_RETRY, GET_PARTITIONS_OFFSETS_BY_TIME,
+    GET_PARTITION_OFFSET_BY_TIME, GET_LATEST_PRODUCER_TIMESTAMP_ON_DATA_RECORD_WITH_RETRY, PARTITIONS_FOR,
     GET_PARTITION_OFFSET_BY_TIME_IF_OUT_OF_RANGE
   }
 
@@ -29,10 +24,9 @@ public class PartitionOffsetFetcherStats extends AbstractVeniceStats {
 
   public PartitionOffsetFetcherStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
-    Map<OCCURRENCE_LATENCY_SENSOR_TYPE, Sensor> tmpRateSensorsByTypes = new HashMap<>(
-        OCCURRENCE_LATENCY_SENSOR_TYPE.values().length);
-    for (OCCURRENCE_LATENCY_SENSOR_TYPE sensorType : OCCURRENCE_LATENCY_SENSOR_TYPE
-        .values()) {
+    Map<OCCURRENCE_LATENCY_SENSOR_TYPE, Sensor> tmpRateSensorsByTypes =
+        new HashMap<>(OCCURRENCE_LATENCY_SENSOR_TYPE.values().length);
+    for (OCCURRENCE_LATENCY_SENSOR_TYPE sensorType: OCCURRENCE_LATENCY_SENSOR_TYPE.values()) {
       final String sensorName = sensorType.name().toLowerCase();
       tmpRateSensorsByTypes.put(
           sensorType,
@@ -42,9 +36,7 @@ public class PartitionOffsetFetcherStats extends AbstractVeniceStats {
               new Max(),
               new Min(),
               new Avg(),
-              TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + sensorName)
-          )
-      );
+              TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + sensorName)));
     }
 
     this.sensorsByTypes = Collections.unmodifiableMap(tmpRateSensorsByTypes);

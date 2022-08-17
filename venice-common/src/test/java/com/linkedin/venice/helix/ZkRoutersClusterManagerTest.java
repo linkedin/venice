@@ -7,7 +7,6 @@ import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.TimeUnit;
-
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.zookeeper.CreateMode;
 import org.testng.Assert;
@@ -46,13 +45,15 @@ public class ZkRoutersClusterManagerTest {
       ZkRoutersClusterManager manager = createManager(zkClient);
       managers[i] = manager;
       manager.registerRouter(instanceId);
-      Assert.assertEquals(manager.getLiveRoutersCount(), i + 1,
+      Assert.assertEquals(
+          manager.getLiveRoutersCount(),
+          i + 1,
           "Router count should be updated immediately after being registered.");
     }
 
     // Ensure each router manager eventually get the correct router count. And get the correct router cluster config.
     TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> {
-      for (ZkRoutersClusterManager manager : managers) {
+      for (ZkRoutersClusterManager manager: managers) {
         if (manager.getLiveRoutersCount() != routersCount) {
           return false;
         }
@@ -72,8 +73,7 @@ public class ZkRoutersClusterManagerTest {
     failedManager.registerRouter(Utils.getHelixNodeIdentifier(port + 1));
     // Eventually both manager wil get notification to update router count.
     TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> manager.getLiveRoutersCount() == 2);
-    TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS,
-        () -> failedManager.getLiveRoutersCount() == 2);
+    TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> failedManager.getLiveRoutersCount() == 2);
     // One router failed
     failedZkClient.close();
     // Router count should be updated eventually.
@@ -86,10 +86,14 @@ public class ZkRoutersClusterManagerTest {
     String instanceId = Utils.getHelixNodeIdentifier(port);
     ZkRoutersClusterManager manager = createManager(zkClient);
     manager.registerRouter(instanceId);
-    Assert.assertEquals(manager.getLiveRoutersCount(), 1,
+    Assert.assertEquals(
+        manager.getLiveRoutersCount(),
+        1,
         "Router count should be updated immediately after being registered.");
     manager.unregisterRouter(instanceId);
-    Assert.assertEquals(manager.getLiveRoutersCount(), 0,
+    Assert.assertEquals(
+        manager.getLiveRoutersCount(),
+        0,
         "Router count should be updated immediately after being unregistered.");
   }
 
@@ -114,8 +118,8 @@ public class ZkRoutersClusterManagerTest {
     manager.registerRouter(instanceId);
     int expectRouterNumber = 200;
     manager.enableQuotaRebalance(false, expectRouterNumber);
-    Assert.assertFalse(manager.isQuotaRebalanceEnabled(),
-        "Quota re-balance has been disabled in cluster level config.");
+    Assert
+        .assertFalse(manager.isQuotaRebalanceEnabled(), "Quota re-balance has been disabled in cluster level config.");
     Assert.assertEquals(manager.getExpectedRoutersCount(), expectRouterNumber);
     manager.enableQuotaRebalance(true, expectRouterNumber);
     Assert.assertTrue(manager.isQuotaRebalanceEnabled(), "Quota re-balance has been enabled in cluster level config.");
@@ -132,11 +136,13 @@ public class ZkRoutersClusterManagerTest {
       manager.updateExpectedRouterCount(expectRouterNumber);
       Assert.fail("Invalid expect router count.");
     } catch (VeniceException e) {
-      //expected
+      // expected
     }
     expectRouterNumber = 100;
     manager.updateExpectedRouterCount(expectRouterNumber);
-    Assert.assertEquals(manager.getExpectedRoutersCount(), expectRouterNumber,
+    Assert.assertEquals(
+        manager.getExpectedRoutersCount(),
+        expectRouterNumber,
         "Expect router count should be updated before.");
   }
 
@@ -148,10 +154,12 @@ public class ZkRoutersClusterManagerTest {
     manager.registerRouter(instanceId);
 
     manager.enableMaxCapacityProtection(false);
-    Assert.assertFalse(manager.isMaxCapacityProtectionEnabled(),
+    Assert.assertFalse(
+        manager.isMaxCapacityProtectionEnabled(),
         "Router protection has been disabled in cluster level config.");
     manager.enableMaxCapacityProtection(true);
-    Assert.assertTrue(manager.isMaxCapacityProtectionEnabled(),
+    Assert.assertTrue(
+        manager.isMaxCapacityProtectionEnabled(),
         "Router protection has been enabled in cluster level config.");
   }
 
@@ -166,16 +174,19 @@ public class ZkRoutersClusterManagerTest {
     int expectedNumber = 100;
     controller.updateExpectedRouterCount(expectedNumber);
     // The controller will know the new router is added.
-    TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS,
-        () -> controller.getLiveRoutersCount() == 1);
+    TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> controller.getLiveRoutersCount() == 1);
     // The router will know the expected number is updated.
-    TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS,
+    TestUtils.waitForNonDeterministicCompletion(
+        1,
+        TimeUnit.SECONDS,
         () -> router.getExpectedRoutersCount() == expectedNumber);
 
     controller.enableThrottling(false);
     controller.enableMaxCapacityProtection(false);
     // The router will know the throttling and router protection are disabled.
-    TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS,
+    TestUtils.waitForNonDeterministicCompletion(
+        1,
+        TimeUnit.SECONDS,
         () -> (!router.isThrottlingEnabled()) && (!router.isMaxCapacityProtectionEnabled())
             && router.isQuotaRebalanceEnabled());
   }
@@ -221,7 +232,8 @@ public class ZkRoutersClusterManagerTest {
     zkClient.create(manager.getRouterRootPath(), null, CreateMode.PERSISTENT);
 
     manager.refresh();
-    Assert.assertNotNull(zkClient.readData(manager.getRouterRootPath()), "Routers ZNode should not be null"
-        + " after refresh");
+    Assert.assertNotNull(
+        zkClient.readData(manager.getRouterRootPath()),
+        "Routers ZNode should not be null" + " after refresh");
   }
 }

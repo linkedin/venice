@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
@@ -14,7 +16,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
@@ -23,8 +24,6 @@ import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-
-import static org.mockito.Mockito.*;
 
 
 public class TestVeniceHelixResources {
@@ -46,22 +45,33 @@ public class TestVeniceHelixResources {
 
   private HelixVeniceClusterResources getVeniceHelixResources(String cluster, MetricsRepository metricsRepository) {
     ZkClient zkClient = ZkClientFactory.newZkClient(zkServer.getAddress());
-    ZKHelixManager controller = new ZKHelixManager(cluster, "localhost_1234", InstanceType.CONTROLLER, zkServer.getAddress());
+    ZKHelixManager controller =
+        new ZKHelixManager(cluster, "localhost_1234", InstanceType.CONTROLLER, zkServer.getAddress());
     ZKHelixAdmin admin = new ZKHelixAdmin(zkServer.getAddress());
     admin.addCluster(cluster);
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
     doReturn(mock(MetaStoreWriter.class)).when(veniceHelixAdmin).getMetaStoreWriter();
-    doReturn(mock(HelixReadOnlyZKSharedSystemStoreRepository.class)).when(veniceHelixAdmin).getReadOnlyZKSharedSystemStoreRepository();
-    doReturn(mock(HelixReadOnlyZKSharedSchemaRepository.class)).when(veniceHelixAdmin).getReadOnlyZKSharedSchemaRepository();
-    return new HelixVeniceClusterResources(cluster, zkClient, new HelixAdapterSerializer(), new SafeHelixManager(controller),
-        mock(VeniceControllerConfig.class), veniceHelixAdmin, metricsRepository, mock(RealTimeTopicSwitcher.class),
-        Optional.empty(), mock(HelixAdminClient.class));
+    doReturn(mock(HelixReadOnlyZKSharedSystemStoreRepository.class)).when(veniceHelixAdmin)
+        .getReadOnlyZKSharedSystemStoreRepository();
+    doReturn(mock(HelixReadOnlyZKSharedSchemaRepository.class)).when(veniceHelixAdmin)
+        .getReadOnlyZKSharedSchemaRepository();
+    return new HelixVeniceClusterResources(
+        cluster,
+        zkClient,
+        new HelixAdapterSerializer(),
+        new SafeHelixManager(controller),
+        mock(VeniceControllerConfig.class),
+        veniceHelixAdmin,
+        metricsRepository,
+        mock(RealTimeTopicSwitcher.class),
+        Optional.empty(),
+        mock(HelixAdminClient.class));
   }
 
   @Test
   public void testShutdownLock() throws Exception {
     final HelixVeniceClusterResources rs = getVeniceHelixResources("test");
-    int[] value = new int[]{0};
+    int[] value = new int[] { 0 };
 
     CountDownLatch thread2StartedLatch = new CountDownLatch(1);
     Thread thread2 = new Thread(() -> {
@@ -76,10 +86,13 @@ public class TestVeniceHelixResources {
       thread2.start();
       Assert.assertTrue(thread2StartedLatch.await(1, TimeUnit.SECONDS));
       Thread.sleep(500);
-      Assert.assertEquals(value[0], 1 , "The lock is acquired by metadata operation, could not be updated by shutdown process.");
+      Assert.assertEquals(
+          value[0],
+          1,
+          "The lock is acquired by metadata operation, could not be updated by shutdown process.");
     } finally {
       thread2.join();
     }
-    Assert.assertEquals(value[0], 2 , "Shutdown process should already acquire the lock and modify tne value.");
+    Assert.assertEquals(value[0], 2, "Shutdown process should already acquire the lock and modify tne value.");
   }
 }

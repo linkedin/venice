@@ -1,5 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Store;
@@ -15,11 +17,9 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import static org.mockito.Mockito.*;
 
 @Test
 public class StorageUtilizationManagerTest {
-
   private final long storeQuotaInBytes = 100l;
   private final long newStoreQuotaInBytes = 200l;
   private final int storePartitionCount = 10;
@@ -47,7 +47,12 @@ public class StorageUtilizationManagerTest {
     partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
 
     for (int i = 1; i <= storePartitionCount; i++) {
-      PartitionConsumptionState pcs = new PartitionConsumptionState(i, 1, mock(OffsetRecord.class),true, true,
+      PartitionConsumptionState pcs = new PartitionConsumptionState(
+          i,
+          1,
+          mock(OffsetRecord.class),
+          true,
+          true,
           IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC);
       partitionConsumptionStateMap.put(i, pcs);
     }
@@ -73,7 +78,7 @@ public class StorageUtilizationManagerTest {
   }
 
   @Test
-  public void testDataUpdatedWithStoreChangeListener() throws Exception{
+  public void testDataUpdatedWithStoreChangeListener() throws Exception {
     when(store.getStorageQuotaInByte()).thenReturn(newStoreQuotaInBytes);
     when(version.getStatus()).thenReturn(VersionStatus.ONLINE);
 
@@ -81,7 +86,7 @@ public class StorageUtilizationManagerTest {
     quotaEnforcer.handleStoreChanged(store);
     Assert.assertTrue(quotaEnforcer.isVersionOnline());
     Assert.assertEquals(quotaEnforcer.getStoreQuotaInBytes(), newStoreQuotaInBytes);
-    Assert.assertEquals(quotaEnforcer.getPartitionQuotaInBytes(), newStoreQuotaInBytes/storePartitionCount);
+    Assert.assertEquals(quotaEnforcer.getPartitionQuotaInBytes(), newStoreQuotaInBytes / storePartitionCount);
 
     // Quota is reported as not violated at the current stage.
     for (int i = 1; i <= storePartitionCount; i++) {

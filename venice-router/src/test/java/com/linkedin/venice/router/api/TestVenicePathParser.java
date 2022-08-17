@@ -1,5 +1,8 @@
 package com.linkedin.venice.router.api;
 
+import static org.mockito.Mockito.*;
+import static org.testng.FileAssert.*;
+
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
@@ -38,9 +41,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static org.mockito.Mockito.*;
-import static org.testng.FileAssert.*;
-
 
 /**
  * Created by mwise on 3/4/16.
@@ -50,8 +50,8 @@ public class TestVenicePathParser {
   private final static String CLUSTER = "cluster";
   private final static VeniceRouterConfig mockRouterConfig = mock(VeniceRouterConfig.class);
 
-  VeniceVersionFinder getVersionFinder(){
-    //Mock objects
+  VeniceVersionFinder getVersionFinder() {
+    // Mock objects
     Store mockStore = mock(Store.class);
     doReturn(1).when(mockStore).getCurrentVersion();
     doReturn(true).when(mockStore).isEnableReads();
@@ -61,8 +61,14 @@ public class TestVenicePathParser {
     StaleVersionStats stats = mock(StaleVersionStats.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
-    return new VeniceVersionFinder(mockMetadataRepository, TestVeniceVersionFinder.getDefaultInstanceFinder(),
-        stats, storeConfigRepo, clusterToD2Map, CLUSTER, compressorFactory);
+    return new VeniceVersionFinder(
+        mockMetadataRepository,
+        TestVeniceVersionFinder.getDefaultInstanceFinder(),
+        stats,
+        storeConfigRepo,
+        clusterToD2Map,
+        CLUSTER,
+        compressorFactory);
   }
 
   RouterStats getMockedStats() {
@@ -73,7 +79,8 @@ public class TestVenicePathParser {
 
   @BeforeClass
   public void setUp() {
-    RouterExceptionAndTrackingUtils.setRouterStats(new RouterStats<>( requestType -> new AggRouterHttpRequestStats(new MetricsRepository(), requestType)));
+    RouterExceptionAndTrackingUtils.setRouterStats(
+        new RouterStats<>(requestType -> new AggRouterHttpRequestStats(new MetricsRepository(), requestType)));
     doReturn(10).when(mockRouterConfig).getRouterMultiGetDecompressionThreads();
   }
 
@@ -87,9 +94,15 @@ public class TestVenicePathParser {
     String uri = "storage/store/key";
     VenicePartitionFinder partitionFinder = mock(VenicePartitionFinder.class);
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
-    doReturn(3).when(partitionFinder).findPartitionNumber(Mockito.anyObject(), Mockito.anyInt(), Mockito.anyString(), Mockito.anyInt());
-    VenicePathParser parser = new VenicePathParser(getVersionFinder(), partitionFinder, getMockedStats(),
-        mock(ReadOnlyStoreRepository.class), mockRouterConfig, compressorFactory);
+    doReturn(3).when(partitionFinder)
+        .findPartitionNumber(Mockito.anyObject(), Mockito.anyInt(), Mockito.anyString(), Mockito.anyInt());
+    VenicePathParser parser = new VenicePathParser(
+        getVersionFinder(),
+        partitionFinder,
+        getMockedStats(),
+        mock(ReadOnlyStoreRepository.class),
+        mockRouterConfig,
+        compressorFactory);
     BasicFullHttpRequest request = new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri, 0, 0);
     VenicePath path = parser.parseResourceUri(uri, request);
     String keyB64 = Base64.getEncoder().encodeToString("key".getBytes());
@@ -97,7 +110,8 @@ public class TestVenicePathParser {
 
     try {
       parser.substitutePartitionKey(path, RouterKey.fromString("key2"));
-      Assert.fail("A VeniceException should be thrown when passing different key to function: substitutePartitionKey for single-get");
+      Assert.fail(
+          "A VeniceException should be thrown when passing different key to function: substitutePartitionKey for single-get");
     } catch (Exception e) {
       Assert.assertTrue(e instanceof VeniceException);
     }
@@ -111,21 +125,32 @@ public class TestVenicePathParser {
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
 
     BasicFullHttpRequest request = new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, myUri, 0, 0);
-    VenicePath path = new VenicePathParser(getVersionFinder(), partitionFinder, getMockedStats(),
-        mock(ReadOnlyStoreRepository.class), mockRouterConfig, compressorFactory)
-        .parseResourceUri(myUri, request);
+    VenicePath path = new VenicePathParser(
+        getVersionFinder(),
+        partitionFinder,
+        getMockedStats(),
+        mock(ReadOnlyStoreRepository.class),
+        mockRouterConfig,
+        compressorFactory).parseResourceUri(myUri, request);
     ByteBuffer partitionKey = path.getPartitionKey().getKeyBuffer();
-    Assert.assertEquals(path.getPartitionKey().getKeyBuffer(), ByteBuffer.wrap(expectedKey.getBytes()),
-        new String(partitionKey.array(), partitionKey.position(), partitionKey.remaining()) + " should match " + expectedKey);
+    Assert.assertEquals(
+        path.getPartitionKey().getKeyBuffer(),
+        ByteBuffer.wrap(expectedKey.getBytes()),
+        new String(partitionKey.array(), partitionKey.position(), partitionKey.remaining()) + " should match "
+            + expectedKey);
   }
 
   @Test(expectedExceptions = RouterException.class)
   public void failsToParseOtherActions() throws RouterException {
     VenicePartitionFinder partitionFinder = mock(VenicePartitionFinder.class);
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
-    new VenicePathParser(getVersionFinder(), partitionFinder,getMockedStats(),
-         mock(ReadOnlyStoreRepository.class), mockRouterConfig, compressorFactory)
-        .parseResourceUri("/badAction/storeName/key");
+    new VenicePathParser(
+        getVersionFinder(),
+        partitionFinder,
+        getMockedStats(),
+        mock(ReadOnlyStoreRepository.class),
+        mockRouterConfig,
+        compressorFactory).parseResourceUri("/badAction/storeName/key");
   }
 
   @Test
@@ -135,18 +160,26 @@ public class TestVenicePathParser {
     VenicePartitionFinder partitionFinder = mock(VenicePartitionFinder.class);
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
     ReadAvroProtocolDefinition expectedProtocol = ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1;
-    RecordSerializer<ByteBuffer> serializer = SerializerDeserializerFactory.getAvroGenericSerializer(
-        expectedProtocol.getSchema());
+    RecordSerializer<ByteBuffer> serializer =
+        SerializerDeserializerFactory.getAvroGenericSerializer(expectedProtocol.getSchema());
     int maxKeyCount = 10;
     ArrayList<ByteBuffer> keys = new ArrayList<>();
     for (int cur = 0; cur <= maxKeyCount; ++cur) {
       keys.add(ByteBuffer.wrap(("key_prefix_" + cur).getBytes()));
     }
     ByteBuf content = Unpooled.wrappedBuffer(serializer.serializeObjects(keys));
-    HttpHeaders headers = new DefaultHttpHeaders()
-        .add(HttpConstants.VENICE_API_VERSION, expectedProtocol.getProtocolVersion());
-    BasicFullHttpRequest request = new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, myUri, content,
-        headers, EmptyHttpHeaders.INSTANCE, UUID.randomUUID(), 0, 0);
+    HttpHeaders headers =
+        new DefaultHttpHeaders().add(HttpConstants.VENICE_API_VERSION, expectedProtocol.getProtocolVersion());
+    BasicFullHttpRequest request = new BasicFullHttpRequest(
+        HttpVersion.HTTP_1_1,
+        HttpMethod.POST,
+        myUri,
+        content,
+        headers,
+        EmptyHttpHeaders.INSTANCE,
+        UUID.randomUUID(),
+        0,
+        0);
     ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
     doReturn(maxKeyCount).when(storeRepository).getBatchGetLimit(anyString());
     RouterStats mockRouterStats = mock(RouterStats.class);
@@ -155,8 +188,13 @@ public class TestVenicePathParser {
     when(mockRouterStats.getStatsByType(RequestType.MULTI_GET)).thenReturn(multiGetStats);
     when(mockRouterStats.getStatsByType(RequestType.SINGLE_GET)).thenReturn(singleGetStats);
 
-    VenicePathParser pathParser = new VenicePathParser(getVersionFinder(), partitionFinder, mockRouterStats,
-        storeRepository, mockRouterConfig, compressorFactory);
+    VenicePathParser pathParser = new VenicePathParser(
+        getVersionFinder(),
+        partitionFinder,
+        mockRouterStats,
+        storeRepository,
+        mockRouterConfig,
+        compressorFactory);
     try {
       pathParser.parseResourceUri(myUri, request);
       fail("A RouterException should be thrown here");
@@ -171,25 +209,17 @@ public class TestVenicePathParser {
 
   @Test
   public void validatesResourceNames() {
-    String[] goodNames = {
-        "goodName",
-        "good_name_with_underscores",
-        "good-name-with-dashes",
-        "goodNameWithNumbers1234545"
-    };
+    String[] goodNames =
+        { "goodName", "good_name_with_underscores", "good-name-with-dashes", "goodNameWithNumbers1234545" };
 
-    for (String name : goodNames){
+    for (String name: goodNames) {
       Assert.assertTrue(VenicePathParser.isStoreNameValid(name), "Store name: " + name + " should be valid");
     }
 
-    String[] badNames = {
-        "bad name with space",
-        "bad.name.with.dots",
-        "8startsWithNumber",
-        "bad-name-that-is-just-fine-except-that-the-name-is-really-long-like-longer-than-128-chars-bad-name-that-is-just-fine-except-that-the-name-is-really-long-like-longer-than-128-chars"
-    };
+    String[] badNames = { "bad name with space", "bad.name.with.dots", "8startsWithNumber",
+        "bad-name-that-is-just-fine-except-that-the-name-is-really-long-like-longer-than-128-chars-bad-name-that-is-just-fine-except-that-the-name-is-really-long-like-longer-than-128-chars" };
 
-    for (String name : badNames){
+    for (String name: badNames) {
       Assert.assertFalse(VenicePathParser.isStoreNameValid(name), "Store name: " + name + " should not be valid");
     }
 

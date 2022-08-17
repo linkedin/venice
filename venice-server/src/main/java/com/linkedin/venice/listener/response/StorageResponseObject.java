@@ -9,7 +9,8 @@ public class StorageResponseObject extends ReadResponse {
   // Value record storing both schema id and the real data
   private ValueRecord valueRecord;
 
-  public StorageResponseObject() {}
+  public StorageResponseObject() {
+  }
 
   public void setValueRecord(ValueRecord valueRecord) {
     this.valueRecord = valueRecord;

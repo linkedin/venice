@@ -1,5 +1,9 @@
 package com.linkedin.davinci;
 
+import static org.mockito.AdditionalAnswers.*;
+import static org.mockito.Mockito.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.DaVinciIngestionBackend;
@@ -37,10 +41,6 @@ import org.apache.commons.io.FileUtils;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import static org.mockito.AdditionalAnswers.*;
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
-
 
 public class StoreBackendTest {
   Store store;
@@ -58,8 +58,7 @@ public class StoreBackendTest {
   @BeforeMethod
   void setUp() {
     baseDataPath = Utils.getTempDataDirectory();
-    VeniceProperties backendConfig = new PropertyBuilder()
-        .put(ConfigKeys.CLUSTER_NAME, "test-cluster")
+    VeniceProperties backendConfig = new PropertyBuilder().put(ConfigKeys.CLUSTER_NAME, "test-cluster")
         .put(ConfigKeys.ZOOKEEPER_ADDRESS, "test-zookeeper")
         .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "test-kafka")
         .put(ConfigKeys.KAFKA_ZK_ADDRESS, "test-kafka-zookeeper")
@@ -89,8 +88,15 @@ public class StoreBackendTest {
     when(backend.getCompressorFactory()).thenReturn(compressorFactory);
     doCallRealMethod().when(backend).handleStoreChanged(any());
 
-    store = new ZKStore("test-store", null, 0, PersistenceType.ROCKS_DB,
-        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS, 1);
+    store = new ZKStore(
+        "test-store",
+        null,
+        0,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        1);
     version1 = new VersionImpl(store.getName(), store.peekNextVersion().getNumber(), null, 5);
     store.addVersion(version1);
     version2 = new VersionImpl(store.getName(), store.peekNextVersion().getNumber(), null, 3);
@@ -158,7 +164,8 @@ public class StoreBackendTest {
 
     assertEquals(getMetric("current_version.Gauge"), (double) version2.getNumber());
     assertTrue(Math.abs(getMetric("data_age_ms.Gauge") - version2.getAge().toMillis()) < 1000);
-    assertTrue(Math.abs(getMetric("subscribe_duration_ms.Avg") - (v1SubscribeDurationMs + v2SubscribeDurationMs) / 2.) < 50);
+    assertTrue(
+        Math.abs(getMetric("subscribe_duration_ms.Avg") - (v1SubscribeDurationMs + v2SubscribeDurationMs) / 2.) < 50);
     assertTrue(Math.abs(getMetric("subscribe_duration_ms.Max") - v2SubscribeDurationMs) < 50);
   }
 

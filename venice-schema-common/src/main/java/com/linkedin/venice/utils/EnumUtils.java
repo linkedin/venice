@@ -19,7 +19,7 @@ public class EnumUtils {
   public static <V extends VeniceEnumValue> V[] getEnumValuesArray(Class<V> enumToProvideArrayOf) {
     int maxValue = -1;
     String name = enumToProvideArrayOf.getSimpleName();
-    for (V type : enumToProvideArrayOf.getEnumConstants()) {
+    for (V type: enumToProvideArrayOf.getEnumConstants()) {
       if (type.getValue() < 0) {
         throw new IllegalStateException("value cannot be < 0");
       }
@@ -32,7 +32,7 @@ public class EnumUtils {
     }
     int neededArrayLength = maxValue + 1;
     V[] array = (V[]) Array.newInstance(enumToProvideArrayOf, neededArrayLength);
-    for (V type : enumToProvideArrayOf.getEnumConstants()) {
+    for (V type: enumToProvideArrayOf.getEnumConstants()) {
       if (array[type.getValue()] != null) {
         throw new IllegalStateException(name + " values must be unique!");
       }

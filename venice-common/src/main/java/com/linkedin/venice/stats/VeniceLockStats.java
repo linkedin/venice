@@ -17,7 +17,7 @@ public class VeniceLockStats extends AbstractVeniceStats {
 
   public VeniceLockStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
-    Supplier<MeasurableStat[]> countStats = () -> new MeasurableStat[]{new Count()};
+    Supplier<MeasurableStat[]> countStats = () -> new MeasurableStat[] { new Count() };
     lockAcquisitionTimeMs = registerSensorIfAbsent("lock_acquisition_time_ms", new Avg(), new Max());
     lockRetentionTimeMs = registerSensorIfAbsent("lock_retention_time_ms", new Avg(), new Max());
     successfulLockAcquisition = registerSensorWithAggregate("successful_lock_acquisition", countStats);

@@ -50,6 +50,7 @@ public class RocksDBUtils {
   public static String composeTempSSTFileDir(String dbDir, String storeName, int partitionId) {
     return composePartitionDbDir(dbDir, storeName, partitionId) + File.separator + TEMP_SST_FILE_DIR;
   }
+
   public static String composeTempRMDSSTFileDir(String dbDir, String storeName, int partitionId) {
     return composePartitionDbDir(dbDir, storeName, partitionId) + File.separator + TEMP_RMD_SST_FILE_DIR;
   }

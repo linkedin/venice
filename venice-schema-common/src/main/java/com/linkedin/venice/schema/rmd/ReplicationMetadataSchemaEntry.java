@@ -10,7 +10,6 @@ import org.apache.avro.Schema;
  * More information can be found here {@link ReplicationMetadataSchemaGenerator} about the structure of the schema.
  */
 public class ReplicationMetadataSchemaEntry extends GeneratedSchemaEntry {
-
   public ReplicationMetadataSchemaEntry(int valueSchemaId, int protocolVersion, String schemaStr) {
     super(valueSchemaId, protocolVersion, schemaStr);
   }

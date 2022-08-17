@@ -1,16 +1,15 @@
 package com.linkedin.venice.unit.kafka.consumer.poll;
 
-import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.Pair;
 import java.util.Map;
 import java.util.Set;
 import org.apache.kafka.common.TopicPartition;
 
+
 /**
  * A {@link PollStrategy} implementation which can pluck out records from the stream.
  */
 public class FilteringPollStrategy extends AbstractPollStrategy {
-
   private final AbstractPollStrategy basePollStrategy;
   private final Set<Pair<TopicPartition, Long>> topicPartitionOffsetsToFilterOut;
 

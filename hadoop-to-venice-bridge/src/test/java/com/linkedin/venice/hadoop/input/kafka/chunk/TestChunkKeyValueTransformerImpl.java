@@ -1,5 +1,7 @@
 package com.linkedin.venice.hadoop.input.kafka.chunk;
 
+import static com.linkedin.venice.hadoop.input.kafka.chunk.TestChunkingUtils.*;
+
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.ChunkedKeySuffixSerializer;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
@@ -9,7 +11,6 @@ import java.util.Arrays;
 import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;
-import static com.linkedin.venice.hadoop.input.kafka.chunk.TestChunkingUtils.*;
 
 
 public class TestChunkKeyValueTransformerImpl {
@@ -22,11 +23,14 @@ public class TestChunkKeyValueTransformerImpl {
     byte[] compositeKey = combineParts(firstPartBytes, secondPartBytes);
     ChunkKeyValueTransformer chunkKeyValueTransformer = new ChunkKeyValueTransformerImpl(ChunkedKeySuffix.SCHEMA$);
 
-    for (ChunkKeyValueTransformer.KeyType keyType : Arrays.asList(ChunkKeyValueTransformer.KeyType.WITH_FULL_VALUE, ChunkKeyValueTransformer.KeyType.WITH_CHUNK_MANIFEST)) {
-      RawKeyBytesAndChunkedKeySuffix
-          bytesAndChunkedKeySuffix = chunkKeyValueTransformer.splitChunkedKey(compositeKey, keyType);
+    for (ChunkKeyValueTransformer.KeyType keyType: Arrays.asList(
+        ChunkKeyValueTransformer.KeyType.WITH_FULL_VALUE,
+        ChunkKeyValueTransformer.KeyType.WITH_CHUNK_MANIFEST)) {
+      RawKeyBytesAndChunkedKeySuffix bytesAndChunkedKeySuffix =
+          chunkKeyValueTransformer.splitChunkedKey(compositeKey, keyType);
 
-      byte[] resultsBytes = combineParts(bytesAndChunkedKeySuffix.getRawKeyBytes(), bytesAndChunkedKeySuffix.getChunkedKeySuffixBytes());
+      byte[] resultsBytes =
+          combineParts(bytesAndChunkedKeySuffix.getRawKeyBytes(), bytesAndChunkedKeySuffix.getChunkedKeySuffixBytes());
       Assert.assertEquals(resultsBytes, compositeKey); // Same as the original composite key bytes
     }
   }
@@ -49,9 +53,11 @@ public class TestChunkKeyValueTransformerImpl {
     for (int i = 0; i < firstParts.size(); i++) {
       for (int j = 0; j < secondParts.size(); j++) {
         byte[] compositeKey = combineParts(serialize(firstParts.get(i)), serialize(secondParts.get(j)));
-        RawKeyBytesAndChunkedKeySuffix bytesAndChunkedKeySuffix
-            = chunkKeyValueTransformer.splitChunkedKey(compositeKey, ChunkKeyValueTransformer.KeyType.WITH_VALUE_CHUNK);
-        byte[] resultsBytes = combineParts(bytesAndChunkedKeySuffix.getRawKeyBytes(), bytesAndChunkedKeySuffix.getChunkedKeySuffixBytes());
+        RawKeyBytesAndChunkedKeySuffix bytesAndChunkedKeySuffix =
+            chunkKeyValueTransformer.splitChunkedKey(compositeKey, ChunkKeyValueTransformer.KeyType.WITH_VALUE_CHUNK);
+        byte[] resultsBytes = combineParts(
+            bytesAndChunkedKeySuffix.getRawKeyBytes(),
+            bytesAndChunkedKeySuffix.getChunkedKeySuffixBytes());
         Assert.assertEquals(resultsBytes, compositeKey); // Same as the original composite key bytes
       }
     }
@@ -68,7 +74,12 @@ public class TestChunkKeyValueTransformerImpl {
   private byte[] combineParts(ByteBuffer firstPartBytes, ByteBuffer secondPartBytes) {
     byte[] combinedBytes = new byte[firstPartBytes.remaining() + secondPartBytes.remaining()];
     System.arraycopy(firstPartBytes.array(), firstPartBytes.position(), combinedBytes, 0, firstPartBytes.remaining());
-    System.arraycopy(secondPartBytes.array(), secondPartBytes.position(), combinedBytes, firstPartBytes.remaining(), secondPartBytes.remaining());
+    System.arraycopy(
+        secondPartBytes.array(),
+        secondPartBytes.position(),
+        combinedBytes,
+        firstPartBytes.remaining(),
+        secondPartBytes.remaining());
     return combinedBytes;
   }
 }

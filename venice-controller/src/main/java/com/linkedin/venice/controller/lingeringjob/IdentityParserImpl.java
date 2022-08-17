@@ -22,8 +22,9 @@ public class IdentityParserImpl implements IdentityParser {
     try {
       return PrincipalBuilder.builderForCertificate(certificate).build().toString();
     } catch (CertificateParsingException e) {
-      logger.error("Failed to parse principal from cert. "
-          + "Ignore this error. Use certificate.toString as identity", e);
+      logger.error(
+          "Failed to parse principal from cert. " + "Ignore this error. Use certificate.toString as identity",
+          e);
       return certificate.toString();
     }
   }

@@ -1,5 +1,8 @@
 package com.linkedin.venice.hadoop.heartbeat;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.*;
+
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -19,15 +22,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.stream.Collectors;
+import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
 import org.apache.commons.lang.Validate;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import javax.annotation.Nonnull;
-
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.*;
 
 
 public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSenderFactory {
@@ -56,37 +55,44 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
             Optional.empty(),
             Optional.empty(),
             false,
-            -1
-        ));
+            -1));
 
     if (versionCreationResponse.isError()) {
-      logger.warn("Got error in [heartbeat store: " + heartbeatStoreName + "] VersionCreationResponse: " + versionCreationResponse);
+      logger.warn(
+          "Got error in [heartbeat store: " + heartbeatStoreName + "] VersionCreationResponse: "
+              + versionCreationResponse);
       throw new VeniceException(versionCreationResponse.getError());
     }
-    logger.info("Got [heartbeat store: " + heartbeatStoreName + "] VersionCreationResponse: " + versionCreationResponse);
+    logger
+        .info("Got [heartbeat store: " + heartbeatStoreName + "] VersionCreationResponse: " + versionCreationResponse);
     String heartbeatKafkaTopicName = versionCreationResponse.getKafkaTopic();
     VeniceWriter<byte[], byte[], byte[]> veniceWriter = getVeniceWriter(
         versionCreationResponse,
-        getVeniceWriterProperties(sslProperties, versionCreationResponse.getKafkaBootstrapServers())
-    );
+        getVeniceWriterProperties(sslProperties, versionCreationResponse.getKafkaBootstrapServers()));
     Schema heartbeatKeySchema = getHeartbeatKeySchema(controllerClient, retryAttempts, heartbeatStoreName);
-    Map<Integer, Schema> valueSchemasById = getHeartbeatValueSchemas(controllerClient, retryAttempts, heartbeatStoreName);
+    Map<Integer, Schema> valueSchemasById =
+        getHeartbeatValueSchemas(controllerClient, retryAttempts, heartbeatStoreName);
 
     final DefaultPushJobHeartbeatSender defaultPushJobHeartbeatSender = new DefaultPushJobHeartbeatSender(
-        Duration.ofMillis(properties.getLong(HEARTBEAT_INITIAL_DELAY_CONFIG.getConfigName(),
-            HEARTBEAT_INITIAL_DELAY_CONFIG.getDefaultValue() == null ? 0 : HEARTBEAT_INITIAL_DELAY_CONFIG.getDefaultValue())),
-        Duration.ofMillis(properties.getLong(HEARTBEAT_INTERVAL_CONFIG.getConfigName(),
-            HEARTBEAT_INTERVAL_CONFIG.getDefaultValue() == null ? 0 : HEARTBEAT_INTERVAL_CONFIG.getDefaultValue())),
+        Duration.ofMillis(
+            properties.getLong(
+                HEARTBEAT_INITIAL_DELAY_CONFIG.getConfigName(),
+                HEARTBEAT_INITIAL_DELAY_CONFIG.getDefaultValue() == null
+                    ? 0
+                    : HEARTBEAT_INITIAL_DELAY_CONFIG.getDefaultValue())),
+        Duration.ofMillis(
+            properties.getLong(
+                HEARTBEAT_INTERVAL_CONFIG.getConfigName(),
+                HEARTBEAT_INTERVAL_CONFIG.getDefaultValue() == null ? 0 : HEARTBEAT_INTERVAL_CONFIG.getDefaultValue())),
         veniceWriter,
         heartbeatKeySchema,
         valueSchemasById,
         heartbeatKafkaTopicName,
         properties.getBoolean(
             HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG.getConfigName(),
-            HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG.getDefaultValue()
-        )
-    );
-    logger.info("Successfully created a default push job heartbeat sender with heartbeat store name " + heartbeatStoreName);
+            HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG.getDefaultValue()));
+    logger.info(
+        "Successfully created a default push job heartbeat sender with heartbeat store name " + heartbeatStoreName);
     return defaultPushJobHeartbeatSender;
   }
 
@@ -100,23 +106,24 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
     return veniceWriterProperties;
   }
 
-  private Map<Integer, Schema> getHeartbeatValueSchemas(ControllerClient controllerClient, int retryAttempts, String heartbeatStoreName) {
-    MultiSchemaResponse valueSchemaResponse = ControllerClient.retryableRequest(
-            controllerClient,
-            retryAttempts,
-            c -> c.getAllValueSchema(heartbeatStoreName)
-    );
-    return Arrays.stream(valueSchemaResponse.getSchemas()).collect(
-            Collectors.toMap(MultiSchemaResponse.Schema::getId, schema -> Schema.parse(schema.getSchemaStr())));
+  private Map<Integer, Schema> getHeartbeatValueSchemas(
+      ControllerClient controllerClient,
+      int retryAttempts,
+      String heartbeatStoreName) {
+    MultiSchemaResponse valueSchemaResponse = ControllerClient
+        .retryableRequest(controllerClient, retryAttempts, c -> c.getAllValueSchema(heartbeatStoreName));
+    return Arrays.stream(valueSchemaResponse.getSchemas())
+        .collect(Collectors.toMap(MultiSchemaResponse.Schema::getId, schema -> Schema.parse(schema.getSchemaStr())));
   }
 
-  private Schema getHeartbeatKeySchema(ControllerClient controllerClient, int retryAttempts, String heartbeatStoreName) {
-    SchemaResponse keySchemaResponse = ControllerClient.retryableRequest(
-            controllerClient,
-            retryAttempts,
-            c -> c.getKeySchema(heartbeatStoreName)
-    );
-    logger.info("Got [heartbeat store: " + heartbeatStoreName + "] SchemaResponse for key schema: " + keySchemaResponse);
+  private Schema getHeartbeatKeySchema(
+      ControllerClient controllerClient,
+      int retryAttempts,
+      String heartbeatStoreName) {
+    SchemaResponse keySchemaResponse =
+        ControllerClient.retryableRequest(controllerClient, retryAttempts, c -> c.getKeySchema(heartbeatStoreName));
+    logger
+        .info("Got [heartbeat store: " + heartbeatStoreName + "] SchemaResponse for key schema: " + keySchemaResponse);
     return Schema.parse(keySchemaResponse.getSchemaStr());
   }
 
@@ -124,17 +131,15 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
     return properties.getString(HEARTBEAT_STORE_NAME_CONFIG.getConfigName());
   }
 
-  protected VeniceWriter<byte[], byte[],byte[]> getVeniceWriter(
-          VersionCreationResponse versionCreationResponse,
-          Properties veniceWriterProperties
-  ) {
+  protected VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(
+      VersionCreationResponse versionCreationResponse,
+      Properties veniceWriterProperties) {
     Properties partitionerProperties = new Properties();
     partitionerProperties.putAll(versionCreationResponse.getPartitionerParams());
     VenicePartitioner venicePartitioner = PartitionUtils.getVenicePartitioner(
         versionCreationResponse.getPartitionerClass(),
         versionCreationResponse.getAmplificationFactor(),
-        new VeniceProperties(partitionerProperties)
-    );
+        new VeniceProperties(partitionerProperties));
     return new VeniceWriterFactory(veniceWriterProperties).createBasicVeniceWriter(
         versionCreationResponse.getKafkaTopic(),
         new SystemTime(),

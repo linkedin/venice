@@ -7,7 +7,7 @@ import org.testng.annotations.Test;
 
 public class TestHelixUtils {
   @Test
-  public void parsesHostnameFromInstanceName(){
+  public void parsesHostnameFromInstanceName() {
     Instance instance1 = HelixUtils.getInstanceFromHelixInstanceName("host_1234");
     Assert.assertEquals(instance1.getHost(), "host");
     Assert.assertEquals(instance1.getPort(), 1234);

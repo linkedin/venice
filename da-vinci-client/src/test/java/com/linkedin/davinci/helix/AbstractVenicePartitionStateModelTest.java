@@ -12,7 +12,6 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
-
 import org.apache.helix.HelixManager;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.customizedstate.CustomizedStateProvider;
@@ -21,8 +20,7 @@ import org.mockito.Mockito;
 import org.testng.annotations.BeforeMethod;
 
 
-public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends AbstractPartitionStateModel,
-    NOTIFIER_TYPE extends StateModelIngestionProgressNotifier> {
+public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends AbstractPartitionStateModel, NOTIFIER_TYPE extends StateModelIngestionProgressNotifier> {
   protected KafkaStoreIngestionService mockStoreIngestionService;
   protected StorageService mockStorageService;
   protected VeniceIngestionBackend mockIngestionBackend;
@@ -51,7 +49,7 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
 
   @BeforeMethod
   public void setUp() {
-    this.storeName =  Utils.getUniqueString("stateModelTestStore");
+    this.storeName = Utils.getUniqueString("stateModelTestStore");
     this.resourceName = Version.composeKafkaTopic(storeName, version);
     this.instanceName = "testInstance";
 
@@ -78,7 +76,8 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
     Mockito.when(mockStore.getBootstrapToOnlineTimeoutInHours()).thenReturn(Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
 
     Mockito.when(mockStoreIngestionService.getAggStoreIngestionStats()).thenReturn(mockAggStoreIngestionStats);
-    Mockito.when(mockStoreIngestionService.getAggVersionedStorageIngestionStats()).thenReturn(mockAggVersionedStorageIngestionStats);
+    Mockito.when(mockStoreIngestionService.getAggVersionedStorageIngestionStats())
+        .thenReturn(mockAggVersionedStorageIngestionStats);
 
     Mockito.when(mockManager.getOriginalManager()).thenReturn(mockHelixManager);
     Mockito.when(mockManager.getInstanceName()).thenReturn(instanceName);

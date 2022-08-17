@@ -19,7 +19,7 @@ import org.apache.avro.io.parsing.Symbol;
 public class ByteBufferToHexFormatJsonEncoder extends JsonEncoder {
   private CharsetEncoder USASCIIEncoder = StandardCharsets.US_ASCII.newEncoder();
 
-  public ByteBufferToHexFormatJsonEncoder(Schema sc, OutputStream out) throws IOException  {
+  public ByteBufferToHexFormatJsonEncoder(Schema sc, OutputStream out) throws IOException {
     super(sc, out);
   }
 

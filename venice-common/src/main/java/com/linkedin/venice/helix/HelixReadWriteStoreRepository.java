@@ -1,5 +1,7 @@
 package com.linkedin.venice.helix;
 
+import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
+
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -14,8 +16,6 @@ import java.util.stream.Collectors;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
 
 
 /**

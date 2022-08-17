@@ -1,5 +1,12 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.common.PushStatusStoreUtils.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
+import static com.linkedin.venice.utils.TestPushUtils.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
@@ -44,13 +51,6 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.common.PushStatusStoreUtils.*;
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
-import static com.linkedin.venice.utils.TestPushUtils.*;
-import static org.testng.Assert.*;
-
 
 public class PushStatusStoreTest {
   private static final int TEST_TIMEOUT_MS = 60_000;
@@ -76,23 +76,20 @@ public class PushStatusStoreTest {
     // Need to set this up as test testParentControllerAutoMaterializeDaVinciPushStatusSystemStore will get stuck.
     extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(false));
     Utils.thisIsLocalhost();
-    cluster = ServiceFactory.getVeniceCluster(
-        1,
-        NUMBER_OF_SERVERS,
-        1,
-        REPLICATION_FACTOR,
-        10000,
-        false,
-        false,
-        extraProperties);
+    cluster = ServiceFactory
+        .getVeniceCluster(1, NUMBER_OF_SERVERS, 1, REPLICATION_FACTOR, 10000, false, false, extraProperties);
     controllerClient = cluster.getControllerClient();
     d2Client = D2TestUtils.getAndStartD2Client(cluster.getZk().getAddress());
     reader = new PushStatusStoreReader(d2Client, TimeUnit.MINUTES.toSeconds(10));
     extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(true));
     parentZkServer = ServiceFactory.getZkServer();
-    parentController = ServiceFactory.getVeniceParentController(cluster.getClusterName(), parentZkServer.getAddress(),
-        cluster.getKafka(), cluster.getVeniceControllers().toArray(new VeniceControllerWrapper[0]),
-        new VeniceProperties(extraProperties), false);
+    parentController = ServiceFactory.getVeniceParentController(
+        cluster.getClusterName(),
+        parentZkServer.getAddress(),
+        cluster.getKafka(),
+        cluster.getVeniceControllers().toArray(new VeniceControllerWrapper[0]),
+        new VeniceProperties(extraProperties),
+        false);
   }
 
   @AfterClass
@@ -112,20 +109,27 @@ public class PushStatusStoreTest {
     // set up push status store
     TestUtils.assertCommand(controllerClient.createNewStore(storeName, owner, DEFAULT_KEY_SCHEMA, "\"string\""));
     TestUtils.createMetaSystemStore(controllerClient, storeName, Optional.of(logger));
-    TestUtils.assertCommand(controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
-        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-        .setLeaderFollowerModel(true)
-        .setPartitionCount(PARTITION_COUNT)
-        .setAmplificationFactor(1)
-        .setIncrementalPushEnabled(true)));
-    String daVinciPushStatusSystemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
-    VersionCreationResponse versionCreationResponseForDaVinciPushStatusSystemStore =
-        controllerClient.emptyPush(daVinciPushStatusSystemStoreName, "test_da_vinci_push_status_system_store_push_1", 10000);
-    assertFalse(versionCreationResponseForDaVinciPushStatusSystemStore.isError(),
-        "New version creation for Da Vinci push status system store: " + daVinciPushStatusSystemStoreName + " should success, but got error: "
-            + versionCreationResponseForDaVinciPushStatusSystemStore.getError());
-    TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponseForDaVinciPushStatusSystemStore.getKafkaTopic(),
-        controllerClient, 30, TimeUnit.SECONDS);
+    TestUtils.assertCommand(
+        controllerClient.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+                .setLeaderFollowerModel(true)
+                .setPartitionCount(PARTITION_COUNT)
+                .setAmplificationFactor(1)
+                .setIncrementalPushEnabled(true)));
+    String daVinciPushStatusSystemStoreName =
+        VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
+    VersionCreationResponse versionCreationResponseForDaVinciPushStatusSystemStore = controllerClient
+        .emptyPush(daVinciPushStatusSystemStoreName, "test_da_vinci_push_status_system_store_push_1", 10000);
+    assertFalse(
+        versionCreationResponseForDaVinciPushStatusSystemStore.isError(),
+        "New version creation for Da Vinci push status system store: " + daVinciPushStatusSystemStoreName
+            + " should success, but got error: " + versionCreationResponseForDaVinciPushStatusSystemStore.getError());
+    TestUtils.waitForNonDeterministicPushCompletion(
+        versionCreationResponseForDaVinciPushStatusSystemStore.getKafkaTopic(),
+        controllerClient,
+        30,
+        TimeUnit.SECONDS);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT_MS * 2)
@@ -134,13 +138,17 @@ public class PushStatusStoreTest {
     // setup initial version
     runH2V(h2vProperties, 1, cluster);
 
-    Map<String, Object> extraBackendConfigMap = isIsolated ? TestUtils.getIngestionIsolationPropertyMap() : new HashMap<>();
+    Map<String, Object> extraBackendConfigMap =
+        isIsolated ? TestUtils.getIngestionIsolationPropertyMap() : new HashMap<>();
     extraBackendConfigMap.put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true);
     extraBackendConfigMap.put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 10);
     extraBackendConfigMap.put(PUSH_STATUS_STORE_ENABLED, true);
 
     try (DaVinciClient<Integer, Integer> daVinciClient = ServiceFactory.getGenericAvroDaVinciClientWithRetries(
-        storeName, cluster.getZk().getAddress(), new DaVinciConfig(), extraBackendConfigMap)) {
+        storeName,
+        cluster.getZk().getAddress(),
+        new DaVinciConfig(),
+        extraBackendConfigMap)) {
       daVinciClient.subscribeAll().get();
       runH2V(h2vProperties, 2, cluster);
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
@@ -156,8 +164,8 @@ public class PushStatusStoreTest {
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       assertFalse(admin.isResourceStillAlive(pushStatusStoreTopic));
-      assertTrue(!admin.getTopicManager().containsTopic(pushStatusStoreTopic)
-          || admin.isTopicTruncated(pushStatusStoreTopic));
+      assertTrue(
+          !admin.getTopicManager().containsTopic(pushStatusStoreTopic) || admin.isTopicTruncated(pushStatusStoreTopic));
     });
   }
 
@@ -166,7 +174,8 @@ public class PushStatusStoreTest {
     VeniceProperties backendConfig = getBackendConfigBuilder().build();
     Properties h2vProperties = getH2VProperties();
     runH2V(h2vProperties, 1, cluster);
-    try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig)) {
+    try (DaVinciClient daVinciClient =
+        ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig)) {
       daVinciClient.subscribeAll().get();
       h2vProperties = getH2VProperties();
       h2vProperties.setProperty(INCREMENTAL_PUSH, "true");
@@ -196,10 +205,14 @@ public class PushStatusStoreTest {
         Optional<String> incPushVersion = job.getIncrementalPushVersion();
         for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
           Map<CharSequence, Integer> statuses = reader.getPartitionStatus(
-              storeName, 1, partitionId, incPushVersion, Optional.of(SERVER_INCREMENTAL_PUSH_PREFIX));
+              storeName,
+              1,
+              partitionId,
+              incPushVersion,
+              Optional.of(SERVER_INCREMENTAL_PUSH_PREFIX));
           assertNotNull(statuses);
           assertEquals(statuses.size(), REPLICATION_FACTOR);
-          for (Integer status : statuses.values()) {
+          for (Integer status: statuses.values()) {
             assertTrue(ExecutionStatus.isIncrementalPushStatus(status));
           }
         }
@@ -213,7 +226,8 @@ public class PushStatusStoreTest {
     Properties h2vProperties = getH2VProperties();
     runH2V(h2vProperties, 1, cluster);
     try (AvroGenericStoreClient storeClient = ClientFactory.getAndStartGenericAvroClient(
-        ClientConfig.defaultGenericClientConfig(storeName).setD2Client(d2Client)
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setD2Client(d2Client)
             .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME))) {
       h2vProperties.setProperty(INCREMENTAL_PUSH, "true");
       int expectedVersionNumber = 1;
@@ -226,19 +240,21 @@ public class PushStatusStoreTest {
         assertEquals(storeClient.get(1).get().toString(), "name 1");
         Optional<String> incPushVersion = job.getIncrementalPushVersion();
         // verify partition replicas have reported their status to the push status store
-        Map<Integer, Map<CharSequence, Integer>> pushStatusMap = reader.getPartitionStatuses(storeName, 1, incPushVersion.get(), 2);
+        Map<Integer, Map<CharSequence, Integer>> pushStatusMap =
+            reader.getPartitionStatuses(storeName, 1, incPushVersion.get(), 2);
         assertNotNull(pushStatusMap, "Server incremental push status cannot be null");
         assertEquals(pushStatusMap.size(), PARTITION_COUNT, "Incremental push status of some partitions is missing");
         for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
           Map<CharSequence, Integer> pushStatus = pushStatusMap.get(partitionId);
           assertNotNull(pushStatus, "Push status of a partition is missing");
-          for (Integer status : pushStatus.values()) {
+          for (Integer status: pushStatus.values()) {
             assertEquals(status.intValue(), ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.getValue());
           }
         }
 
         // expect NOT_CREATED when all non-existing incremental push version is used to query the status
-        JobStatusQueryResponse response = controllerClient.queryJobStatus(job.getTopicToMonitor(), Optional.of("randomIPVersion"));
+        JobStatusQueryResponse response =
+            controllerClient.queryJobStatus(job.getTopicToMonitor(), Optional.of("randomIPVersion"));
         assertEquals(response.getStatus(), ExecutionStatus.NOT_CREATED.name());
 
         // verify that controller responds with EOIP when all partitions have sufficient replicas with EOIP
@@ -250,8 +266,7 @@ public class PushStatusStoreTest {
 
         // after deleting the the inc push status belonging to just one partition we should expect
         // SOIP from the controller since other partition has replicas with EOIP status
-        statusStoreDeleter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion.get(), 1)
-            .get();
+        statusStoreDeleter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion.get(), 1).get();
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
           // N.B.: Even though we block on the deleter's future, that only means the delete message is persisted into
           // Kafka, but querying the system store may still yield a stale result, hence the need for retrying.
@@ -261,8 +276,7 @@ public class PushStatusStoreTest {
         });
 
         // expect NOT_CREATED when statuses of all partitions are not available in the push status store
-        statusStoreDeleter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion.get(), 0)
-            .get();
+        statusStoreDeleter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion.get(), 0).get();
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
           JobStatusQueryResponse jobStatusQueryResponse =
               controllerClient.queryJobStatus(job.getTopicToMonitor(), job.getIncrementalPushVersion());
@@ -278,7 +292,8 @@ public class PushStatusStoreTest {
     Properties h2vProperties = getH2VProperties();
     // setup initial version
     runH2V(h2vProperties, 1, cluster);
-    try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig)) {
+    try (DaVinciClient daVinciClient =
+        ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig)) {
       daVinciClient.subscribeAll().get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
         assertEquals(reader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 1);
@@ -293,49 +308,66 @@ public class PushStatusStoreTest {
 
   @Test(timeOut = TEST_TIMEOUT_MS)
   public void testParentControllerAutoMaterializeDaVinciPushStatusSystemStore() {
-    try (ControllerClient parentControllerClient = new ControllerClient(cluster.getClusterName(),
-        parentController.getControllerUrl())) {
+    try (ControllerClient parentControllerClient =
+        new ControllerClient(cluster.getClusterName(), parentController.getControllerUrl())) {
       String zkSharedDaVinciPushStatusSchemaStoreName =
           AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getSystemStoreName();
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         Store readOnlyStore = parentController.getVeniceAdmin()
             .getReadOnlyZKSharedSystemStoreRepository()
             .getStore(zkSharedDaVinciPushStatusSchemaStoreName);
-        assertNotNull(readOnlyStore, "Store: " + zkSharedDaVinciPushStatusSchemaStoreName + " should be initialized by "
-            + ClusterLeaderInitializationRoutine.class.getSimpleName());
-        assertTrue(readOnlyStore.isHybrid(),
+        assertNotNull(
+            readOnlyStore,
+            "Store: " + zkSharedDaVinciPushStatusSchemaStoreName + " should be initialized by "
+                + ClusterLeaderInitializationRoutine.class.getSimpleName());
+        assertTrue(
+            readOnlyStore.isHybrid(),
             "Store: " + zkSharedDaVinciPushStatusSchemaStoreName + " should be configured to hybrid");
       });
       String userStoreName = Utils.getUniqueString("new-user-store");
-      NewStoreResponse
-          newStoreResponse = parentControllerClient.createNewStore(userStoreName, "venice-test", DEFAULT_KEY_SCHEMA, "\"string\"");
+      NewStoreResponse newStoreResponse =
+          parentControllerClient.createNewStore(userStoreName, "venice-test", DEFAULT_KEY_SCHEMA, "\"string\"");
       assertFalse(newStoreResponse.isError(), "Unexpected new store creation failure");
       String daVinciPushStatusSystemStoreName =
           VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(userStoreName);
-      TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(daVinciPushStatusSystemStoreName, 1),
-          parentControllerClient, 30, TimeUnit.SECONDS);
-      Store daVinciPushStatusSystemStore = parentController.getVeniceAdmin().getStore(cluster.getClusterName(), daVinciPushStatusSystemStoreName);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(daVinciPushStatusSystemStoreName, 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+      Store daVinciPushStatusSystemStore =
+          parentController.getVeniceAdmin().getStore(cluster.getClusterName(), daVinciPushStatusSystemStoreName);
       assertEquals(daVinciPushStatusSystemStore.getLargestUsedVersionNumber(), 1);
 
       // Do empty pushes to increase the system store's version
       final int emptyPushAttempt = 2;
       for (int i = 0; i < emptyPushAttempt; i++) {
         final int newVersion = parentController.getVeniceAdmin()
-            .incrementVersionIdempotent(cluster.getClusterName(), daVinciPushStatusSystemStoreName,
-                "push job ID placeholder " + i, 1, 1)
+            .incrementVersionIdempotent(
+                cluster.getClusterName(),
+                daVinciPushStatusSystemStoreName,
+                "push job ID placeholder " + i,
+                1,
+                1)
             .getNumber();
-        parentController.getVeniceAdmin().writeEndOfPush(cluster.getClusterName(), daVinciPushStatusSystemStoreName, newVersion, true);
-        TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(daVinciPushStatusSystemStoreName, newVersion),
-            parentControllerClient, 30, TimeUnit.SECONDS);
+        parentController.getVeniceAdmin()
+            .writeEndOfPush(cluster.getClusterName(), daVinciPushStatusSystemStoreName, newVersion, true);
+        TestUtils.waitForNonDeterministicPushCompletion(
+            Version.composeKafkaTopic(daVinciPushStatusSystemStoreName, newVersion),
+            parentControllerClient,
+            30,
+            TimeUnit.SECONDS);
       }
-      daVinciPushStatusSystemStore = parentController.getVeniceAdmin().getStore(cluster.getClusterName(), daVinciPushStatusSystemStoreName);
+      daVinciPushStatusSystemStore =
+          parentController.getVeniceAdmin().getStore(cluster.getClusterName(), daVinciPushStatusSystemStoreName);
       final int systemStoreCurrVersionBeforeBeingDeleted = daVinciPushStatusSystemStore.getLargestUsedVersionNumber();
       assertEquals(systemStoreCurrVersionBeforeBeingDeleted, 1 + emptyPushAttempt);
 
       TestUtils.assertCommand(parentControllerClient.disableAndDeleteStore(userStoreName));
       // Both the system store and user store should be gone at this point
       assertNull(parentController.getVeniceAdmin().getStore(cluster.getClusterName(), userStoreName));
-      assertNull(parentController.getVeniceAdmin().getStore(cluster.getClusterName(), daVinciPushStatusSystemStoreName));
+      assertNull(
+          parentController.getVeniceAdmin().getStore(cluster.getClusterName(), daVinciPushStatusSystemStoreName));
 
       // Create the same regular store again
       TestUtils.assertCommand(
@@ -343,12 +375,18 @@ public class PushStatusStoreTest {
           "Unexpected new store creation failure");
 
       // The re-created/materialized per-user store system store should contain a continued version from its last life
-      daVinciPushStatusSystemStore = parentController.getVeniceAdmin().getStore(cluster.getClusterName(), daVinciPushStatusSystemStoreName);
+      daVinciPushStatusSystemStore =
+          parentController.getVeniceAdmin().getStore(cluster.getClusterName(), daVinciPushStatusSystemStoreName);
       // TODO: Fix non-deterministic bug where (very rarely) the below assertion fails with "expected [4] but found [1]"
-      assertEquals(daVinciPushStatusSystemStore.getLargestUsedVersionNumber(), systemStoreCurrVersionBeforeBeingDeleted + 1);
+      assertEquals(
+          daVinciPushStatusSystemStore.getLargestUsedVersionNumber(),
+          systemStoreCurrVersionBeforeBeingDeleted + 1);
 
-      TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(daVinciPushStatusSystemStoreName, systemStoreCurrVersionBeforeBeingDeleted + 1),
-          parentControllerClient, 30, TimeUnit.SECONDS);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(daVinciPushStatusSystemStoreName, systemStoreCurrVersionBeforeBeingDeleted + 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
     }
   }
 

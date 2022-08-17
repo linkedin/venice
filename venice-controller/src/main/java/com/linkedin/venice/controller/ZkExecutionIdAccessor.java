@@ -31,11 +31,14 @@ public class ZkExecutionIdAccessor implements ExecutionIdAccessor {
     this.zkclient = zkClient;
     this.zkMapAccessor = new ZkBaseDataAccessor<>(zkClient);
     this.executionIdAccessor = new ZkBaseDataAccessor<>(zkClient);
-    adapterSerializer.registerSerializer(getLastSucceededExecutionIdPath(PathResourceRegistry.WILDCARD_MATCH_ANY),
+    adapterSerializer.registerSerializer(
+        getLastSucceededExecutionIdPath(PathResourceRegistry.WILDCARD_MATCH_ANY),
         new SimpleStringSerializer());
-    adapterSerializer.registerSerializer(getLastSucceededExecutionIdMapPath(PathResourceRegistry.WILDCARD_MATCH_ANY),
+    adapterSerializer.registerSerializer(
+        getLastSucceededExecutionIdMapPath(PathResourceRegistry.WILDCARD_MATCH_ANY),
         new StringToLongMapJSONSerializer());
-    adapterSerializer.registerSerializer(getLastGeneratedExecutionIdPath(PathResourceRegistry.WILDCARD_MATCH_ANY),
+    adapterSerializer.registerSerializer(
+        getLastGeneratedExecutionIdPath(PathResourceRegistry.WILDCARD_MATCH_ANY),
         new SimpleStringSerializer());
     zkClient.setZkSerializer(adapterSerializer);
   }
@@ -71,7 +74,9 @@ public class ZkExecutionIdAccessor implements ExecutionIdAccessor {
    * @see ExecutionIdAccessor#updateLastSucceededExecutionIdMap(String, String, Long)
    */
   @Override
-  public synchronized void updateLastSucceededExecutionIdMap(String clusterName, String storeName,
+  public synchronized void updateLastSucceededExecutionIdMap(
+      String clusterName,
+      String storeName,
       Long lastSucceededExecutionId) {
     String path = getLastSucceededExecutionIdMapPath(clusterName);
     updateExecutionIdMapToZk(path, storeName, lastSucceededExecutionId);
@@ -104,11 +109,14 @@ public class ZkExecutionIdAccessor implements ExecutionIdAccessor {
   @Override
   public Long incrementAndGetExecutionId(String clusterName) {
     AtomicLong executionId = new AtomicLong();
-    HelixUtils.compareAndUpdate(executionIdAccessor, getLastGeneratedExecutionIdPath(clusterName),
-        ZK_RETRY_COUNT, currentData -> {
+    HelixUtils.compareAndUpdate(
+        executionIdAccessor,
+        getLastGeneratedExecutionIdPath(clusterName),
+        ZK_RETRY_COUNT,
+        currentData -> {
           long nextId;
           if (currentData == null) {
-            //the id hasn't been initialized yet
+            // the id hasn't been initialized yet
             nextId = 0;
           } else {
             nextId = Long.parseLong(currentData) + 1;

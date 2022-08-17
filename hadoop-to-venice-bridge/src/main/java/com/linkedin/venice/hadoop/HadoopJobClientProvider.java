@@ -4,7 +4,7 @@ import java.io.IOException;
 import org.apache.hadoop.mapred.JobClient;
 import org.apache.hadoop.mapred.JobConf;
 
-interface HadoopJobClientProvider {
 
+interface HadoopJobClientProvider {
   JobClient getJobClientFromConfig(JobConf job) throws IOException;
 }

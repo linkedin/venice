@@ -1,5 +1,8 @@
 package com.linkedin.venice.schema.writecompute;
 
+import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.*;
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.*;
+
 import com.linkedin.venice.schema.SchemaUtils;
 import java.util.HashMap;
 import java.util.List;
@@ -10,9 +13,6 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
 
-import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.*;
-import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.*;
-
 
 /**
  * Write compute V1 handles value records that do not have replication metadata.
@@ -22,25 +22,30 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
   protected static final GenericData genericData = GenericData.get();
 
   @Override
-  public GenericRecord updateValueRecord(Schema valueSchema, Optional<GenericRecord> currValue, GenericRecord writeComputeRecord) {
+  public GenericRecord updateValueRecord(
+      Schema valueSchema,
+      Optional<GenericRecord> currValue,
+      GenericRecord writeComputeRecord) {
     if (valueSchema.getType() != Schema.Type.RECORD) {
       throw new IllegalStateException("Expect a Record value schema. Got: " + valueSchema);
     }
     if (!WriteComputeOperation.isPartialUpdateOp(writeComputeRecord)) {
       // This Write Compute record could be a Write Compute Delete request which is not supported and there should be no
       // one using it.
-      throw new IllegalStateException("Write Compute only support partial update. Got unexpected Write Compute record: " + writeComputeRecord);
+      throw new IllegalStateException(
+          "Write Compute only support partial update. Got unexpected Write Compute record: " + writeComputeRecord);
     }
 
     final GenericRecord updatedValue = currValue.orElseGet(() -> SchemaUtils.createGenericRecord(valueSchema));
-    for (Schema.Field valueField : valueSchema.getFields()) {
+    for (Schema.Field valueField: valueSchema.getFields()) {
       final String valueFieldName = valueField.name();
       Object writeComputeFieldValue = writeComputeRecord.get(valueFieldName);
       if (isNoOpField(writeComputeFieldValue)) {
         // Skip updating this field if its Write Compute operation is NoOp
 
       } else {
-        Object updatedFieldObject = updateFieldValue(valueField.schema(), updatedValue.get(valueFieldName), writeComputeFieldValue);
+        Object updatedFieldObject =
+            updateFieldValue(valueField.schema(), updatedValue.get(valueFieldName), writeComputeFieldValue);
         updatedValue.put(valueFieldName, updatedFieldObject);
       }
     }
@@ -48,8 +53,8 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
   }
 
   private boolean isNoOpField(Object writeComputeFieldValue) {
-    return (writeComputeFieldValue instanceof IndexedRecord) &&
-        ((IndexedRecord) writeComputeFieldValue).getSchema().getName().equals(NO_OP_ON_FIELD.name);
+    return (writeComputeFieldValue instanceof IndexedRecord)
+        && ((IndexedRecord) writeComputeFieldValue).getSchema().getName().equals(NO_OP_ON_FIELD.name);
   }
 
   /**
@@ -81,19 +86,19 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
       return writeComputeArray; // Partial update on a list field
     }
 
-    //if originalArray is null, use the elements in the "setUnion" as the base list to conduct collection merging.
+    // if originalArray is null, use the elements in the "setUnion" as the base list to conduct collection merging.
     List newElements = (List) ((GenericRecord) writeComputeArray).get(SET_UNION);
     if (originalArray == null) {
       originalArray = new GenericData.Array(arraySchema, newElements);
     } else {
-      for (Object element : newElements) {
-        if (!(originalArray).contains(element)) { //TODO: profile the performance since this is pretty expensive
+      for (Object element: newElements) {
+        if (!(originalArray).contains(element)) { // TODO: profile the performance since this is pretty expensive
           originalArray.add(element);
         }
       }
     }
 
-    for (Object elementToRemove : (List) ((GenericRecord) writeComputeArray).get(SET_DIFF)) {
+    for (Object elementToRemove: (List) ((GenericRecord) writeComputeArray).get(SET_DIFF)) {
       // We need to iterate the list by our own because #remove(T object) is not supported by GenericRecord.Array
       for (int i = 0; i < originalArray.size(); i++) {
         if (originalArray.get(i).equals(elementToRemove)) {
@@ -117,12 +122,12 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
     if (originalMap == null) {
       originalMap = new HashMap(newEntries);
     } else {
-      for (Object entry : newEntries.entrySet()) {
+      for (Object entry: newEntries.entrySet()) {
         originalMap.put(((Map.Entry) entry).getKey(), ((Map.Entry) entry).getValue());
       }
     }
 
-    for (Object key : (List) ((GenericRecord) writeComputeMap).get(MAP_DIFF)) {
+    for (Object key: (List) ((GenericRecord) writeComputeMap).get(MAP_DIFF)) {
       originalMap.remove(key);
     }
 
@@ -131,23 +136,23 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
 
   // Visible for testing
   Object updateUnion(Schema originalSchema, Object originalObject, Object writeComputeObject) {
-    for (Schema subSchema : originalSchema.getTypes()) {
-      if (subSchema.getType() == Schema.Type.ARRAY && writeComputeObject instanceof IndexedRecord &&
-          ((IndexedRecord) writeComputeObject).getSchema().getName().endsWith(LIST_OPS.name)) {
+    for (Schema subSchema: originalSchema.getTypes()) {
+      if (subSchema.getType() == Schema.Type.ARRAY && writeComputeObject instanceof IndexedRecord
+          && ((IndexedRecord) writeComputeObject).getSchema().getName().endsWith(LIST_OPS.name)) {
         return updateArray(subSchema, (List) originalObject, writeComputeObject);
       }
 
-      if (subSchema.getType() == Schema.Type.MAP && writeComputeObject instanceof IndexedRecord &&
-          ((IndexedRecord) writeComputeObject).getSchema().getName().endsWith(MAP_OPS.name)) {
+      if (subSchema.getType() == Schema.Type.MAP && writeComputeObject instanceof IndexedRecord
+          && ((IndexedRecord) writeComputeObject).getSchema().getName().endsWith(MAP_OPS.name)) {
         return updateMap((Map) originalObject, writeComputeObject);
       }
     }
 
     // TODO: There is an edge case that is not handled and that is when writeComputeObject wants to do collection
-    //       modification. But the original union schema does not contain List nor Map schema. That is an illegal state
-    //       and should be caught and thrown.
-    //       If the above situation happens, the field value becomes writeComputeObject which represents collection merging
-    //       operation instead of a real field value.
+    // modification. But the original union schema does not contain List nor Map schema. That is an illegal state
+    // and should be caught and thrown.
+    // If the above situation happens, the field value becomes writeComputeObject which represents collection merging
+    // operation instead of a real field value.
     return writeComputeObject;
   }
 }

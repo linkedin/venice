@@ -1,5 +1,7 @@
 package com.linkedin.venice.utils;
 
+import static com.linkedin.venice.compression.CompressionStrategy.*;
+
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
 import com.linkedin.venice.meta.IngestionMode;
@@ -11,17 +13,14 @@ import org.apache.commons.lang.ArrayUtils;
 import org.testng.annotations.DataProvider;
 import org.testng.collections.Lists;
 
-import static com.linkedin.venice.compression.CompressionStrategy.*;
-
 
 /**
  * This class gathers all common data provider patterns in test cases. In order to leverage this util class,
  * make sure your test case has "test" dependency on "venice-test-common" module.
  */
 public class DataProviderUtils {
-
-  public static final Object[] BOOLEAN = {false, true};
-  public static final Object[] COMPRESSION_STRATEGIES = {NO_OP, GZIP, ZSTD_WITH_DICT};
+  public static final Object[] BOOLEAN = { false, true };
+  public static final Object[] COMPRESSION_STRATEGIES = { NO_OP, GZIP, ZSTD_WITH_DICT };
 
   /**
    * To use these data providers, add (dataProvider = "<provider_name>", dataProviderClass = DataProviderUtils.class)
@@ -29,9 +28,7 @@ public class DataProviderUtils {
    */
   @DataProvider(name = "True-and-False")
   public static Object[][] trueAndFalseProvider() {
-    return new Object[][] {
-        {false}, {true}
-    };
+    return new Object[][] { { false }, { true } };
   }
 
   @DataProvider(name = "Two-True-and-False")
@@ -49,14 +46,14 @@ public class DataProviderUtils {
     return allPermutationGenerator(BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN);
   }
 
-  @DataProvider (name = "dv-client-config-provider")
+  @DataProvider(name = "dv-client-config-provider")
   public static Object[][] daVinciConfigProvider() {
     DaVinciConfig defaultDaVinciConfig = new DaVinciConfig();
 
     DaVinciConfig cachingDaVinciConfig = new DaVinciConfig();
     cachingDaVinciConfig.setCacheConfig(new ObjectCacheConfig());
 
-    return new Object[][] {{defaultDaVinciConfig}, {cachingDaVinciConfig}};
+    return new Object[][] { { defaultDaVinciConfig }, { cachingDaVinciConfig } };
   }
 
   @DataProvider(name = "AmplificationFactor-and-ObjectCache", parallel = false)
@@ -67,8 +64,8 @@ public class DataProviderUtils {
     configCases.addAll(Arrays.asList(daVinciConfigProvider()));
     List<Object[]> resultingArray = Lists.newArrayList();
 
-    for(Object[] ampFactorCase : ampFactorCases) {
-      for(Object[] configCase : configCases) {
+    for (Object[] ampFactorCase: ampFactorCases) {
+      for (Object[] configCase: configCases) {
         resultingArray.add(ArrayUtils.addAll(ampFactorCase, configCase));
       }
     }
@@ -78,14 +75,12 @@ public class DataProviderUtils {
 
   @DataProvider(name = "Isolated-Ingestion")
   public static Object[][] isolatedIngestion() {
-    return new Object[][] {
-        {IngestionMode.BUILT_IN}, {IngestionMode.ISOLATED}
-    };
+    return new Object[][] { { IngestionMode.BUILT_IN }, { IngestionMode.ISOLATED } };
   }
 
   @DataProvider(name = "Amplification-Factor")
   public static Object[][] amplificationFactor() {
-    return new Object[][]{{1}, {3}};
+    return new Object[][] { { 1 }, { 3 } };
   }
 
   @DataProvider(name = "Boolean-Compression")
@@ -115,7 +110,9 @@ public class DataProviderUtils {
    * @param permutationValidator A function that takes the permutation as an input and decides if it is valid
    * @return the permutations that can be returned from a {@link DataProvider}
    */
-  public static Object[][] allPermutationGenerator(Function<Object[], Boolean> permutationValidator, Object[]... parameterSets) {
+  public static Object[][] allPermutationGenerator(
+      Function<Object[], Boolean> permutationValidator,
+      Object[]... parameterSets) {
     PermutationIterator permutationIterator = new PermutationIterator(parameterSets);
     int totalPermutations = permutationIterator.size();
     Object[][] permutations = new Object[totalPermutations][];

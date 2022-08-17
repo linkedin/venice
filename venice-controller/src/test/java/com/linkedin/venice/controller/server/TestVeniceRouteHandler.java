@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller.server;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.ExceptionType;
@@ -11,11 +13,8 @@ import spark.Request;
 import spark.Response;
 import spark.Route;
 
-import static org.mockito.Mockito.*;
-
 
 public class TestVeniceRouteHandler {
-
   @Test
   public void testIsAllowListUser() throws Exception {
     Route userAllowedRoute = new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
@@ -39,7 +38,8 @@ public class TestVeniceRouteHandler {
     verify(response, never()).status(HttpStatus.SC_FORBIDDEN);
 
     String veniceResponseStr = userNotAllowedRoute.handle(request, response).toString();
-    ControllerResponse veniceResponse = ObjectMapperFactory.getInstance().readValue(veniceResponseStr, ControllerResponse.class);
+    ControllerResponse veniceResponse =
+        ObjectMapperFactory.getInstance().readValue(veniceResponseStr, ControllerResponse.class);
     verify(response).status(HttpStatus.SC_FORBIDDEN);
     Assert.assertEquals(veniceResponse.getErrorType(), ErrorType.BAD_REQUEST);
     Assert.assertEquals(veniceResponse.getExceptionType(), ExceptionType.BAD_REQUEST);

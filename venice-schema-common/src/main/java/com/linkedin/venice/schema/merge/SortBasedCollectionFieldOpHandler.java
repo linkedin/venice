@@ -2,6 +2,7 @@ package com.linkedin.venice.schema.merge;
 
 import com.linkedin.avro.api.PrimitiveLongList;
 import com.linkedin.avro.fastserde.primitive.PrimitiveLongArrayList;
+import com.linkedin.venice.schema.rmd.v1.CollectionReplicationMetadata;
 import com.linkedin.venice.utils.IndexedHashMap;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -9,7 +10,6 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
-import com.linkedin.venice.schema.rmd.v1.CollectionReplicationMetadata;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
@@ -22,7 +22,6 @@ import org.apache.avro.generic.GenericRecord;
 
 @ThreadSafe
 public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationHandler {
-
   public SortBasedCollectionFieldOpHandler(AvroCollectionElementComparator elementComparator) {
     super(elementComparator);
   }
@@ -34,12 +33,12 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       List<Object> toPutList,
       CollectionReplicationMetadata<Object> collectionFieldRmd,
       GenericRecord currValueRecord,
-      String fieldName
-  ) {
+      String fieldName) {
     if (ignoreIncomingRequest(putTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, false); // Validate before modifying any state.
+    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, false); // Validate before modifying any
+                                                                                   // state.
 
     // Current list will be updated.
     final long currTopLevelTimestamp = collectionFieldRmd.getTopLevelFieldTimestamp();
@@ -67,16 +66,12 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
         currActiveTimestamps,
         currTopLevelTimestamp,
         putTimestamp,
-        putOnlyPartLength
-    );
+        putOnlyPartLength);
 
     final List<Object> deletedElements = collectionFieldRmd.getDeletedElements();
     final List<Long> deletedTimestamps = collectionFieldRmd.getDeletedElementTimestamps();
-    final IndexedHashMap<Object, Long> deletedElementToTsMap = Utils.createDeletedElementToTsMap(
-        deletedElements,
-        deletedTimestamps,
-        putTimestamp
-    );
+    final IndexedHashMap<Object, Long> deletedElementToTsMap =
+        Utils.createDeletedElementToTsMap(deletedElements, deletedTimestamps, putTimestamp);
 
     // Step 1: Check to-be-put list elements against the deleted and existing elements in the list.
     // An iterator is used to iterate the to-be-put list because it is O(1) to remove an element from the to-be-put list
@@ -100,7 +95,8 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
           if (activeElementTs <= putTimestamp) {
             activeElementToTsMap.remove(newElement);
           } else {
-            toPutListIterator.remove(); // This element already exists as a current element with a higher or equal timestamp.
+            toPutListIterator.remove(); // This element already exists as a current element with a higher or equal
+                                        // timestamp.
           }
         }
       }
@@ -134,7 +130,9 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     });
     collectionFieldRmd.setDeletedElementsAndTimestamps(newDeletedElements, newDeletedTimestamps);
 
-    return collectionFieldRmd.isInPutOnlyState() ? UpdateResultStatus.COMPLETELY_UPDATED : UpdateResultStatus.PARTIALLY_UPDATED;
+    return collectionFieldRmd.isInPutOnlyState()
+        ? UpdateResultStatus.COMPLETELY_UPDATED
+        : UpdateResultStatus.PARTIALLY_UPDATED;
   }
 
   private void deDupListFromEnd(List<Object> list) {
@@ -159,8 +157,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       GenericRecord currValueRecord,
       String fieldName,
       Schema.Type expectType,
-      boolean nullableAllowed
-  ) {
+      boolean nullableAllowed) {
     final Schema fieldSchema = currValueRecord.getSchema().getField(fieldName).schema();
     final Schema.Type fieldSchemaType = fieldSchema.getType();
     if (nullableAllowed && fieldSchemaType == Schema.Type.UNION) {
@@ -182,10 +179,12 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       throw new IllegalStateException("Expect a union of size 2. Got field schema: " + fieldSchema);
     }
     if (fieldSchema.getTypes().get(0).getType() != Schema.Type.NULL) {
-      throw new IllegalStateException("Expect the first element in the union to be null. Got field schema: " + fieldSchema);
+      throw new IllegalStateException(
+          "Expect the first element in the union to be null. Got field schema: " + fieldSchema);
     }
     if (fieldSchema.getTypes().get(1).getType() != expectType) {
-      throw new IllegalStateException("Expect the second element in the union to be the expected type. Got field schema: " + fieldSchema);
+      throw new IllegalStateException(
+          "Expect the second element in the union to be the expected type. Got field schema: " + fieldSchema);
     }
   }
 
@@ -196,8 +195,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       IndexedHashMap<String, Object> toPutMap,
       CollectionReplicationMetadata<String> collectionFieldRmd,
       GenericRecord currValueRecord,
-      String fieldName
-  ) {
+      String fieldName) {
     if (ignoreIncomingRequest(putTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
@@ -227,16 +225,12 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
         activeTimestamps,
         collectionFieldRmd.getTopLevelFieldTimestamp(),
         putTimestamp,
-        collectionFieldRmd.getPutOnlyPartLength()
-    );
+        collectionFieldRmd.getPutOnlyPartLength());
 
     final List<String> deletedKeys = collectionFieldRmd.getDeletedElements();
     final List<Long> deletedTimestamps = collectionFieldRmd.getDeletedElementTimestamps();
-    final IndexedHashMap<String, Long> deletedKeyToTsMap = Utils.createDeletedElementToTsMap(
-        deletedKeys,
-        deletedTimestamps,
-        putTimestamp
-    );
+    final IndexedHashMap<String, Long> deletedKeyToTsMap =
+        Utils.createDeletedElementToTsMap(deletedKeys, deletedTimestamps, putTimestamp);
 
     // Step 1: Check to-be-put map entries against the deleted and existing entries in the map.
     Iterator<Map.Entry<String, Object>> toPutMapIterator = toPutMap.entrySet().iterator();
@@ -282,7 +276,9 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     });
     collectionFieldRmd.setDeletedElementsAndTimestamps(newDeletedKeys, newDeletedTimestamps);
 
-    return collectionFieldRmd.isInPutOnlyState() ? UpdateResultStatus.COMPLETELY_UPDATED : UpdateResultStatus.PARTIALLY_UPDATED;
+    return collectionFieldRmd.isInPutOnlyState()
+        ? UpdateResultStatus.COMPLETELY_UPDATED
+        : UpdateResultStatus.PARTIALLY_UPDATED;
   }
 
   @Override
@@ -291,12 +287,12 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       final int coloID,
       CollectionReplicationMetadata collectionFieldRmd,
       GenericRecord currValueRecord,
-      String fieldName
-  ) {
+      String fieldName) {
     if (ignoreIncomingRequest(deleteTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, false); // Validate before modifying any state.
+    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, false); // Validate before modifying any
+                                                                                   // state.
     // Current list will be deleted (partially or completely).
     final int currPutOnlyPartLength = collectionFieldRmd.getPutOnlyPartLength();
     collectionFieldRmd.setTopLevelFieldTimestamp(deleteTimestamp);
@@ -315,7 +311,8 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     // Step 2: Remove all active elements with smaller or equal timestamps.
     final int removedActiveTimestampsCount = collectionFieldRmd.removeActiveTimestampsLowerOrEqualTo(deleteTimestamp);
     List<Object> currList = (List<Object>) currValueRecord.get(fieldName);
-    List<Object> remainingList = new ArrayList<>(currList.size() - currPutOnlyPartLength - removedActiveTimestampsCount);
+    List<Object> remainingList =
+        new ArrayList<>(currList.size() - currPutOnlyPartLength - removedActiveTimestampsCount);
 
     // All elements in the current put-only part should be removed.
     final int remainingElementsStartIdx = currPutOnlyPartLength + removedActiveTimestampsCount;
@@ -325,7 +322,9 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     }
 
     currValueRecord.put(fieldName, remainingList);
-    return collectionFieldRmd.isInPutOnlyState() ? UpdateResultStatus.COMPLETELY_UPDATED : UpdateResultStatus.PARTIALLY_UPDATED;
+    return collectionFieldRmd.isInPutOnlyState()
+        ? UpdateResultStatus.COMPLETELY_UPDATED
+        : UpdateResultStatus.PARTIALLY_UPDATED;
   }
 
   @Override
@@ -334,8 +333,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       final int coloID,
       CollectionReplicationMetadata<String> collectionFieldRmd,
       GenericRecord currValueRecord,
-      String fieldName
-  ) {
+      String fieldName) {
     if (ignoreIncomingRequest(deleteTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
@@ -367,7 +365,9 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       remainingMap.put(remainingEntry.getKey(), remainingEntry.getValue());
     }
     currValueRecord.put(fieldName, remainingMap);
-    return collectionFieldRmd.isInPutOnlyState() ? UpdateResultStatus.COMPLETELY_UPDATED : UpdateResultStatus.PARTIALLY_UPDATED;
+    return collectionFieldRmd.isInPutOnlyState()
+        ? UpdateResultStatus.COMPLETELY_UPDATED
+        : UpdateResultStatus.PARTIALLY_UPDATED;
   }
 
   @Override
@@ -377,9 +377,9 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       GenericRecord currValueRecord,
       String fieldName,
       List<Object> toAddElements,
-      List<Object> toRemoveElements
-  ) {
-    // When timestamps are the same, full put/delete on a collection field always takes precedence over collection merge.
+      List<Object> toRemoveElements) {
+    // When timestamps are the same, full put/delete on a collection field always takes precedence over collection
+    // merge.
     if (ignoreIncomingRequest(modifyTimestamp, Integer.MIN_VALUE, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
@@ -392,9 +392,21 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     }
 
     if (collectionFieldRmd.isInPutOnlyState()) {
-      return handleModifyPutOnlyList(modifyTimestamp, collectionFieldRmd, currValueRecord, fieldName, toAddElementSet, toRemoveElementSet);
+      return handleModifyPutOnlyList(
+          modifyTimestamp,
+          collectionFieldRmd,
+          currValueRecord,
+          fieldName,
+          toAddElementSet,
+          toRemoveElementSet);
     } else {
-      return handleModifyCollectionMergeList(modifyTimestamp, collectionFieldRmd, currValueRecord, fieldName, toAddElementSet, toRemoveElementSet);
+      return handleModifyCollectionMergeList(
+          modifyTimestamp,
+          collectionFieldRmd,
+          currValueRecord,
+          fieldName,
+          toAddElementSet,
+          toRemoveElementSet);
     }
   }
 
@@ -404,8 +416,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       GenericRecord currValueRecord,
       String fieldName,
       Set<Object> toAddElementSet,
-      Set<Object> toRemoveElementSet
-  ) {
+      Set<Object> toRemoveElementSet) {
     if (!collectionFieldRmd.isInPutOnlyState()) {
       throw new IllegalStateException("Expect list to be in the put-only state.");
     }
@@ -425,19 +436,19 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
         Collections.emptyList(),
         collectionFieldRmd.getTopLevelFieldTimestamp(),
         Long.MIN_VALUE,
-        currElements.size()
-    );
+        currElements.size());
 
     int newPutOnlyPartLength = currElements.size();
     // Step 1: Add elements (SET_UNION).
-    for (Object toAddElement : toAddElementSet) {
+    for (Object toAddElement: toAddElementSet) {
       final Long activeTimestamp = activeElementToTsMap.get(toAddElement);
       if (activeTimestamp == null) {
         activeElementToTsMap.put(toAddElement, modifyTimestamp);
 
       } else if (activeTimestamp >= modifyTimestamp) {
-        throw new IllegalStateException("If active timestamp exists for this element, it must be strictly smaller than "
-            + "the modify timestamp because this field is currently in the put-only state.");
+        throw new IllegalStateException(
+            "If active timestamp exists for this element, it must be strictly smaller than "
+                + "the modify timestamp because this field is currently in the put-only state.");
       } else {
         // Re-position this element to the end of the map.
         activeElementToTsMap.remove(toAddElement);
@@ -468,15 +479,19 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
     // Step 3: Set new active elements and their active timestamps.
     List<ElementAndTimestamp> activeElementAndTsList = new ArrayList<>(activeElementToTsMap.size());
-    for (Map.Entry<Object, Long> entry : activeElementToTsMap.entrySet()) {
+    for (Map.Entry<Object, Long> entry: activeElementToTsMap.entrySet()) {
       activeElementAndTsList.add(new ElementAndTimestamp(entry.getKey(), entry.getValue()));
     }
     sortElementAndTimestampList(
         // Only sort the collection-merge part of the list and leave the put-only part as is.
         activeElementAndTsList.subList(newPutOnlyPartLength, activeElementAndTsList.size()),
-        listElementComparator
-    );
-    setNewListActiveElementAndTs(activeElementAndTsList, newPutOnlyPartLength, currValueRecord, fieldName, collectionFieldRmd);
+        listElementComparator);
+    setNewListActiveElementAndTs(
+        activeElementAndTsList,
+        newPutOnlyPartLength,
+        currValueRecord,
+        fieldName,
+        collectionFieldRmd);
 
     // Step 4: Set new deleted elements and their deleted timestamps.
     setDeletedDeletedElementAndTsList(deletedElementAndTsList, collectionFieldRmd);
@@ -486,7 +501,8 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
   }
 
   private Comparator<Object> getListElementComparator(GenericRecord currValueRecord, String fieldName) {
-    Supplier<Schema> elementSchemaSupplier = () -> currValueRecord.getSchema().getField(fieldName).schema().getElementType();
+    Supplier<Schema> elementSchemaSupplier =
+        () -> currValueRecord.getSchema().getField(fieldName).schema().getElementType();
     // TODO: handle the situation where two elements have different schemas (e.g. element schema evolution). Assume
     // element schemas are always the same for now.
     return (o1, o2) -> this.avroElementComparator.compare(o1, o2, elementSchemaSupplier.get());
@@ -500,8 +516,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       GenericRecord currValueRecord,
       String fieldName,
       Set<Object> toAddElementSet,
-      Set<Object> toRemoveElementSet
-  ) {
+      Set<Object> toRemoveElementSet) {
     if (collectionFieldRmd.isInPutOnlyState()) {
       throw new IllegalStateException("Expect list to be in the collection-merge state.");
     }
@@ -519,22 +534,18 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
         activeTimestamps,
         collectionFieldRmd.getTopLevelFieldTimestamp(),
         Long.MIN_VALUE,
-        collectionFieldRmd.getPutOnlyPartLength()
-    );
+        collectionFieldRmd.getPutOnlyPartLength());
 
     final List<Object> deletedElements = collectionFieldRmd.getDeletedElements();
     final List<Long> deletedTimestamps = collectionFieldRmd.getDeletedElementTimestamps();
-    final IndexedHashMap<Object, Long> deletedElementToTsMap = Utils.createDeletedElementToTsMap(
-        deletedElements,
-        deletedTimestamps,
-        Long.MIN_VALUE
-    );
+    final IndexedHashMap<Object, Long> deletedElementToTsMap =
+        Utils.createDeletedElementToTsMap(deletedElements, deletedTimestamps, Long.MIN_VALUE);
 
     boolean updated = false;
     int newPutOnlyPartLength = collectionFieldRmd.getPutOnlyPartLength();
     final long topLevelTimestamp = collectionFieldRmd.getTopLevelFieldTimestamp();
     // Step 1: Add elements (SET_UNION).
-    for (Object toAddElement : toAddElementSet) {
+    for (Object toAddElement: toAddElementSet) {
       final Long deletedTimestamp = deletedElementToTsMap.get(toAddElement);
       if (deletedTimestamp != null) {
         if (deletedTimestamp < modifyTimestamp) {
@@ -597,9 +608,13 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     sortElementAndTimestampList(
         // Only sort the collection-merge part of the list and leave the put-only part as is.
         activeElementAndTsList.subList(newPutOnlyPartLength, activeElementAndTsList.size()),
-        listElementComparator
-    );
-    setNewListActiveElementAndTs(activeElementAndTsList, newPutOnlyPartLength, currValueRecord, fieldName, collectionFieldRmd);
+        listElementComparator);
+    setNewListActiveElementAndTs(
+        activeElementAndTsList,
+        newPutOnlyPartLength,
+        currValueRecord,
+        fieldName,
+        collectionFieldRmd);
 
     // Step 4: Set new deleted elements and their deleted timestamps.
     final List<ElementAndTimestamp> deletedElementAndTsList = new ArrayList<>(deletedElementToTsMap.size());
@@ -618,12 +633,12 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       int newPutOnlyPartLength,
       GenericRecord currValueRecord,
       String fieldName,
-      CollectionReplicationMetadata<Object> collectionFieldRmd
-  ) {
+      CollectionReplicationMetadata<Object> collectionFieldRmd) {
     List<Object> newActiveElements = new ArrayList<>(activeElementAndTsList.size());
-    PrimitiveLongList newActiveTimestamps = new PrimitiveLongArrayList(activeElementAndTsList.size() - newPutOnlyPartLength);
+    PrimitiveLongList newActiveTimestamps =
+        new PrimitiveLongArrayList(activeElementAndTsList.size() - newPutOnlyPartLength);
     int idx = 0;
-    for (ElementAndTimestamp activeElementAndTs : activeElementAndTsList) {
+    for (ElementAndTimestamp activeElementAndTs: activeElementAndTsList) {
       newActiveElements.add(activeElementAndTs.getElement());
       if (idx >= newPutOnlyPartLength) {
         newActiveTimestamps.add(activeElementAndTs.getTimestamp());
@@ -637,18 +652,19 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
   private void setDeletedDeletedElementAndTsList(
       List<ElementAndTimestamp> deletedElementAndTsList,
-      CollectionReplicationMetadata<Object> collectionFieldRmd
-  ) {
+      CollectionReplicationMetadata<Object> collectionFieldRmd) {
     List<Object> deletedElements = new ArrayList<>(deletedElementAndTsList.size());
     PrimitiveLongList deletedTimestamps = new PrimitiveLongArrayList(deletedElementAndTsList.size());
-    for (ElementAndTimestamp deletedElementAndTs : deletedElementAndTsList) {
+    for (ElementAndTimestamp deletedElementAndTs: deletedElementAndTsList) {
       deletedElements.add(deletedElementAndTs.getElement());
       deletedTimestamps.add(deletedElementAndTs.getTimestamp());
     }
     collectionFieldRmd.setDeletedElementsAndTimestamps(deletedElements, deletedTimestamps);
   }
 
-  private void sortElementAndTimestampList(List<ElementAndTimestamp> elementAndTsList, Comparator<Object> elementComparator) {
+  private void sortElementAndTimestampList(
+      List<ElementAndTimestamp> elementAndTsList,
+      Comparator<Object> elementComparator) {
     elementAndTsList.sort((o1, o2) -> {
       final int timestampCompareResult = Long.compare(o1.getTimestamp(), o2.getTimestamp());
       if (timestampCompareResult == 0) {
@@ -660,7 +676,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
   private void removeIntersectionElements(Set<Object> set1, Set<Object> set2) {
     List<Object> intersectionElements = new ArrayList<>();
-    for (Object element : set1) {
+    for (Object element: set1) {
       if (set2.remove(element)) {
         intersectionElements.add(element);
       }
@@ -677,9 +693,9 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       GenericRecord currValueRecord,
       String fieldName,
       Map<String, Object> newEntries,
-      List<String> toRemoveKeys
-  ) {
-    // When timestamps are the same, full put/delete on a collection field always takes precedence over collection merge.
+      List<String> toRemoveKeys) {
+    // When timestamps are the same, full put/delete on a collection field always takes precedence over collection
+    // merge.
     if (ignoreIncomingRequest(modifyTimestamp, Integer.MIN_VALUE, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
@@ -687,14 +703,26 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     if (toRemoveKeys.isEmpty() && newEntries.isEmpty()) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    for (String toRemoveKey : toRemoveKeys) {
+    for (String toRemoveKey: toRemoveKeys) {
       newEntries.remove(toRemoveKey);
     }
 
     if (collectionFieldRmd.isInPutOnlyState()) {
-      return handleModifyPutOnlyMap(modifyTimestamp, collectionFieldRmd, currValueRecord, fieldName, newEntries, toRemoveKeys);
+      return handleModifyPutOnlyMap(
+          modifyTimestamp,
+          collectionFieldRmd,
+          currValueRecord,
+          fieldName,
+          newEntries,
+          toRemoveKeys);
     } else {
-      return handleModifyCollectionMergeMap(modifyTimestamp, collectionFieldRmd, currValueRecord, fieldName, newEntries, toRemoveKeys);
+      return handleModifyCollectionMergeMap(
+          modifyTimestamp,
+          collectionFieldRmd,
+          currValueRecord,
+          fieldName,
+          newEntries,
+          toRemoveKeys);
     }
   }
 
@@ -704,8 +732,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       GenericRecord currValueRecord,
       String fieldName,
       Map<String, Object> newEntries,
-      List<String> toRemoveKeys
-  ) {
+      List<String> toRemoveKeys) {
     if (!collectionFieldRmd.isInPutOnlyState()) {
       throw new IllegalStateException("Expect map to be in the put-only state.");
     }
@@ -713,19 +740,20 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
     IndexedHashMap<String, Object> currMap = (IndexedHashMap<String, Object>) currValueRecord.get(fieldName);
-    final IndexedHashMap<String, Object> putOnlyPartMap = currMap == null ? new IndexedHashMap<>() : new IndexedHashMap<>(currMap);
+    final IndexedHashMap<String, Object> putOnlyPartMap =
+        currMap == null ? new IndexedHashMap<>() : new IndexedHashMap<>(currMap);
     final List<String> collectionMergePartKeys = new ArrayList<>();
     final List<String> deletedKeys = new ArrayList<>();
 
     // Step 1: Add elements (MAP_UNION).
-    for (String newKey : newEntries.keySet()) {
+    for (String newKey: newEntries.keySet()) {
       putOnlyPartMap.remove(newKey);
       collectionMergePartKeys.add(newKey);
     }
     collectionMergePartKeys.sort(String::compareTo);
 
     // Step 2: Remove elements (MAP_DIFF).
-    for (String toRemoveKey : toRemoveKeys) {
+    for (String toRemoveKey: toRemoveKeys) {
       putOnlyPartMap.remove(toRemoveKey);
       deletedKeys.add(toRemoveKey);
     }
@@ -739,8 +767,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
         currValueRecord,
         fieldName,
         collectionFieldRmd,
-        modifyTimestamp
-    );
+        modifyTimestamp);
 
     // Step 4: Set new deleted elements and their deleted timestamps.
     setDeletedMapKeyAndTs(deletedKeys, collectionFieldRmd, modifyTimestamp);
@@ -756,11 +783,11 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       GenericRecord currValueRecord,
       String fieldName,
       CollectionReplicationMetadata<String> collectionFieldRmd,
-      final long modifyTimestamp
-  ) {
+      final long modifyTimestamp) {
     final int newPutOnlyPartLength = putOnlyPartMap.size();
-    final IndexedHashMap<String, Object> resMap = putOnlyPartMap; // Rename. It means that resMap starts with the put-only part.
-    for (String newKey : collectionMergePartKeys) {
+    final IndexedHashMap<String, Object> resMap = putOnlyPartMap; // Rename. It means that resMap starts with the
+                                                                  // put-only part.
+    for (String newKey: collectionMergePartKeys) {
       resMap.put(newKey, newEntries.get(newKey));
     }
     PrimitiveLongList newActiveTimestamps = new PrimitiveLongArrayList(collectionMergePartKeys.size());
@@ -775,8 +802,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
   private void setDeletedMapKeyAndTs(
       List<String> deletedKeys,
       CollectionReplicationMetadata<String> collectionFieldRmd,
-      final long deleteTimestamp
-  ) {
+      final long deleteTimestamp) {
     PrimitiveLongList newDeletedTimestamps = new PrimitiveLongArrayList(deletedKeys.size());
     for (int i = 0; i < deletedKeys.size(); i++) {
       newDeletedTimestamps.add(deleteTimestamp);
@@ -790,8 +816,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       GenericRecord currValueRecord,
       String fieldName,
       Map<String, Object> newEntries,
-      List<String> toRemoveKeys
-  ) {
+      List<String> toRemoveKeys) {
     if (collectionFieldRmd.isInPutOnlyState()) {
       throw new IllegalStateException("Expect map to be in the collection-merge state. Field name: " + fieldName);
     }
@@ -808,23 +833,19 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
         activeTimestamps,
         collectionFieldRmd.getTopLevelFieldTimestamp(),
         Long.MIN_VALUE,
-        collectionFieldRmd.getPutOnlyPartLength()
-    );
+        collectionFieldRmd.getPutOnlyPartLength());
 
     final List<String> deletedKeys = collectionFieldRmd.getDeletedElements();
     final List<Long> deletedTimestamps = collectionFieldRmd.getDeletedElementTimestamps();
-    final IndexedHashMap<String, Long> deletedKeyToTsMap = Utils.createDeletedElementToTsMap(
-        deletedKeys,
-        deletedTimestamps,
-        Long.MIN_VALUE
-    );
+    final IndexedHashMap<String, Long> deletedKeyToTsMap =
+        Utils.createDeletedElementToTsMap(deletedKeys, deletedTimestamps, Long.MIN_VALUE);
 
     boolean updated = false;
     int newPutOnlyPartLength = collectionFieldRmd.getPutOnlyPartLength();
     final long topLevelTimestamp = collectionFieldRmd.getTopLevelFieldTimestamp();
 
     // Step 1: Add elements (MAP_UNION).
-    for (Map.Entry<String, Object> newEntry : newEntries.entrySet()) {
+    for (Map.Entry<String, Object> newEntry: newEntries.entrySet()) {
       final String newKey = newEntry.getKey();
       final Long deletedTimestamp = deletedKeyToTsMap.get(newKey);
       if (deletedTimestamp != null) {
@@ -854,7 +875,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     }
 
     // Step 2: Remove elements (MAP_DIFF).
-    for (String toRemoveKey : toRemoveKeys) {
+    for (String toRemoveKey: toRemoveKeys) {
       final Long deletedTimestamp = deletedKeyToTsMap.get(toRemoveKey);
       if (deletedTimestamp != null) {
         // This key was deleted before.
@@ -899,18 +920,23 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     sortElementAndTimestampList(
         // Only sort the collection-merge part of the list and leave the put-only part as is.
         newActiveEntriesAndTsList.subList(newPutOnlyPartLength, newActiveEntriesAndTsList.size()),
-        mapValueComparator
-    );
-    setNewMapActiveElementAndTs(newActiveEntriesAndTsList, newPutOnlyPartLength, currValueRecord, fieldName, collectionFieldRmd);
+        mapValueComparator);
+    setNewMapActiveElementAndTs(
+        newActiveEntriesAndTsList,
+        newPutOnlyPartLength,
+        currValueRecord,
+        fieldName,
+        collectionFieldRmd);
 
     // Step 4: Set new deleted keys and their deleted timestamps.
     final List<ElementAndTimestamp> newDeletedKeyAndTsList = new ArrayList<>(deletedKeyToTsMap.size());
     deletedKeyToTsMap.forEach((key, timestamp) -> {
       newDeletedKeyAndTsList.add(new ElementAndTimestamp(key, timestamp));
     });
-    sortElementAndTimestampList(
-        newDeletedKeyAndTsList,
-        Comparator.comparing(o -> ((String) o)) // The element here is String (as deleted key). So, we can use a String comparator.
+    sortElementAndTimestampList(newDeletedKeyAndTsList, Comparator.comparing(o -> ((String) o)) // The element here is
+                                                                                                // String (as deleted
+                                                                                                // key). So, we can use
+                                                                                                // a String comparator.
     );
     setDeletedDeletedKeyAndTsList(newDeletedKeyAndTsList, collectionFieldRmd);
     return UpdateResultStatus.PARTIALLY_UPDATED;
@@ -919,11 +945,8 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
   private Comparator<Object> getMapValueComparator(GenericRecord currValueRecord, String mapFieldName) {
     // TODO: handle the situation where two values have different schemas (e.g. element schema evolution). Assume
     // map value schemas are always the same for now.
-    return (o1, o2) -> this.avroElementComparator.compare(
-        o1,
-        o2,
-        getMapSchema(currValueRecord, mapFieldName).getValueType()
-    );
+    return (o1, o2) -> this.avroElementComparator
+        .compare(o1, o2, getMapSchema(currValueRecord, mapFieldName).getValueType());
   }
 
   private Schema getMapSchema(GenericRecord currValueRecord, String mapFieldName) {
@@ -941,15 +964,18 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
   private Schema getSchemaFromNullableSchema(Schema nullableSchema, Schema.Type expectedNullableType) {
     if (nullableSchema.getType() != Schema.Type.UNION) {
-      throw new IllegalStateException("Expect nullable " + expectedNullableType + " schema. But got: " + nullableSchema);
+      throw new IllegalStateException(
+          "Expect nullable " + expectedNullableType + " schema. But got: " + nullableSchema);
     }
     List<Schema> unionedSchemas = nullableSchema.getTypes();
     if (unionedSchemas.size() != 2) {
-      throw new IllegalStateException("Expect nullable " + expectedNullableType + " schema. But got: " + nullableSchema);
+      throw new IllegalStateException(
+          "Expect nullable " + expectedNullableType + " schema. But got: " + nullableSchema);
     }
     Schema schema = unionedSchemas.get(1);
     if (unionedSchemas.get(0).getType() != Schema.Type.NULL && schema.getType() != expectedNullableType) {
-      throw new IllegalStateException("Expect nullable " + expectedNullableType + " schema. But got: " + nullableSchema);
+      throw new IllegalStateException(
+          "Expect nullable " + expectedNullableType + " schema. But got: " + nullableSchema);
     }
     return schema;
   }
@@ -959,12 +985,12 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       final int newPutOnlyPartLength,
       GenericRecord currValueRecord,
       String fieldName,
-      CollectionReplicationMetadata<String> collectionFieldRmd
-  ) {
+      CollectionReplicationMetadata<String> collectionFieldRmd) {
     Map<String, Object> newMap = new IndexedHashMap<>();
-    PrimitiveLongList newActiveTimestamps = new PrimitiveLongArrayList(activeElementAndTsList.size() - newPutOnlyPartLength);
+    PrimitiveLongList newActiveTimestamps =
+        new PrimitiveLongArrayList(activeElementAndTsList.size() - newPutOnlyPartLength);
     int idx = 0;
-    for (ElementAndTimestamp activeEntryAndTs : activeElementAndTsList) {
+    for (ElementAndTimestamp activeEntryAndTs: activeElementAndTsList) {
       KeyValPair activeEntry = (KeyValPair) activeEntryAndTs.getElement();
       newMap.put(activeEntry.getKey(), activeEntry.getVal());
       if (idx >= newPutOnlyPartLength) {
@@ -979,11 +1005,10 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
   private void setDeletedDeletedKeyAndTsList(
       List<ElementAndTimestamp> deletedElementAndTsList,
-      CollectionReplicationMetadata<String> collectionFieldRmd
-  ) {
+      CollectionReplicationMetadata<String> collectionFieldRmd) {
     List<String> deletedKeys = new ArrayList<>(deletedElementAndTsList.size());
     PrimitiveLongList deletedTimestamps = new PrimitiveLongArrayList(deletedElementAndTsList.size());
-    for (ElementAndTimestamp deletedKeyAndTs : deletedElementAndTsList) {
+    for (ElementAndTimestamp deletedKeyAndTs: deletedElementAndTsList) {
       deletedKeys.add((String) deletedKeyAndTs.getElement());
       deletedTimestamps.add(deletedKeyAndTs.getTimestamp());
     }
@@ -993,8 +1018,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
   private boolean ignoreIncomingRequest(
       final long incomingRequestTimestamp,
       final int incomingRequestColoID,
-      CollectionReplicationMetadata<?> currCollectionFieldRmd
-  ) {
+      CollectionReplicationMetadata<?> currCollectionFieldRmd) {
     if (currCollectionFieldRmd.getTopLevelFieldTimestamp() > incomingRequestTimestamp) {
       return true;
 

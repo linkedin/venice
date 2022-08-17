@@ -1,5 +1,7 @@
 package com.linkedin.davinci.ingestion.isolated;
 
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
+
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
@@ -28,8 +30,6 @@ import java.net.URI;
 import java.util.HashMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
 
 
 /**
@@ -79,7 +79,8 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
       }
       switch (action) {
         case COMMAND:
-          IngestionTaskCommand ingestionTaskCommand = deserializeIngestionActionRequest(action, readHttpRequestContent(msg));
+          IngestionTaskCommand ingestionTaskCommand =
+              deserializeIngestionActionRequest(action, readHttpRequestContent(msg));
           IngestionTaskReport report = handleIngestionTaskCommand(ingestionTaskCommand);
           result = serializeIngestionActionResponse(action, report);
           break;
@@ -91,12 +92,14 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           isolatedIngestionServer.updateHeartbeatTime();
           break;
         case UPDATE_METADATA:
-          IngestionStorageMetadata ingestionStorageMetadata = deserializeIngestionActionRequest(action, readHttpRequestContent(msg));
+          IngestionStorageMetadata ingestionStorageMetadata =
+              deserializeIngestionActionRequest(action, readHttpRequestContent(msg));
           IngestionTaskReport metadataUpdateReport = handleIngestionStorageMetadataUpdate(ingestionStorageMetadata);
           result = serializeIngestionActionResponse(action, metadataUpdateReport);
           break;
         case SHUTDOWN_COMPONENT:
-          ProcessShutdownCommand processShutdownCommand = deserializeIngestionActionRequest(action, readHttpRequestContent(msg));
+          ProcessShutdownCommand processShutdownCommand =
+              deserializeIngestionActionRequest(action, readHttpRequestContent(msg));
           IngestionTaskReport shutdownTaskReport = handleProcessShutdownCommand(processShutdownCommand);
           result = serializeIngestionActionResponse(action, shutdownTaskReport);
           break;
@@ -125,14 +128,15 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
 
     IngestionTaskReport report = createIngestionTaskReport(topicName, partitionId);
-    IngestionCommandType ingestionCommandType =  IngestionCommandType.valueOf(ingestionTaskCommand.commandType);
+    IngestionCommandType ingestionCommandType = IngestionCommandType.valueOf(ingestionTaskCommand.commandType);
     try {
       if (!isolatedIngestionServer.isInitiated()) {
         throw new VeniceException("IsolatedIngestionServer has not been initiated.");
       }
       KafkaStoreIngestionService storeIngestionService = isolatedIngestionServer.getStoreIngestionService();
       VeniceStoreVersionConfig storeConfig = isolatedIngestionServer.getConfigLoader().getStoreConfig(topicName);
-      // Explicitly disable the behavior to restore local data partitions as it might already been opened by main process.
+      // Explicitly disable the behavior to restore local data partitions as it might already been opened by main
+      // process.
       storeConfig.setRestoreDataPartitions(false);
       switch (ingestionCommandType) {
         case START_CONSUMPTION:
@@ -140,7 +144,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           // For subscription based store repository, we will need to subscribe to the store explicitly.
           if (storeRepository instanceof SubscriptionBasedReadOnlyStoreRepository) {
             logger.info("Ingestion Service subscribing to store: " + storeName);
-            ((SubscriptionBasedReadOnlyStoreRepository)storeRepository).subscribe(storeName);
+            ((SubscriptionBasedReadOnlyStoreRepository) storeRepository).subscribe(storeName);
           }
           logger.info("Start ingesting partition: " + partitionId + " of topic: " + topicName);
           isolatedIngestionServer.setPartitionToBeSubscribed(topicName, partitionId);
@@ -172,8 +176,12 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
            * engine from the map. When a new ingestion request comes in, it will create another metadata partition, but all
            * the metadata stored previously is gone forever...
            */
-          isolatedIngestionServer.getIngestionBackend().dropStoragePartitionGracefully(storeConfig, partitionId,
-              isolatedIngestionServer.getStopConsumptionWaitRetriesNum(), false);
+          isolatedIngestionServer.getIngestionBackend()
+              .dropStoragePartitionGracefully(
+                  storeConfig,
+                  partitionId,
+                  isolatedIngestionServer.getStopConsumptionWaitRetriesNum(),
+                  false);
           isolatedIngestionServer.cleanupTopicPartitionState(topicName, partitionId);
           break;
         case OPEN_STORAGE_ENGINE:
@@ -184,20 +192,33 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           logger.info("Metadata partition of topic: " + ingestionTaskCommand.topicName.toString() + " restored.");
           break;
         case PROMOTE_TO_LEADER:
-          // This is to avoid the race condition. When partition is being unsubscribed, we should not add it to the action queue, but instead fail the command fast.
+          // This is to avoid the race condition. When partition is being unsubscribed, we should not add it to the
+          // action queue, but instead fail the command fast.
           if (isolatedIngestionServer.isPartitionSubscribed(topicName, partitionId)) {
-            isolatedIngestionServer.getIngestionBackend().promoteToLeader(storeConfig, partitionId, isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId));
+            isolatedIngestionServer.getIngestionBackend()
+                .promoteToLeader(
+                    storeConfig,
+                    partitionId,
+                    isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId));
           } else {
             report.isPositive = false;
-            logger.info("Partition " + partitionId + " of topic: " + topicName + " is being unsubscribed, reject leader promotion request");
+            logger.info(
+                "Partition " + partitionId + " of topic: " + topicName
+                    + " is being unsubscribed, reject leader promotion request");
           }
           break;
         case DEMOTE_TO_STANDBY:
           if (isolatedIngestionServer.isPartitionSubscribed(topicName, partitionId)) {
-            isolatedIngestionServer.getIngestionBackend().demoteToStandby(storeConfig, partitionId, isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId));
+            isolatedIngestionServer.getIngestionBackend()
+                .demoteToStandby(
+                    storeConfig,
+                    partitionId,
+                    isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId));
           } else {
             report.isPositive = false;
-            logger.info("Partition " + partitionId + " of topic: " + topicName + " is being unsubscribed, reject leader demotion request");
+            logger.info(
+                "Partition " + partitionId + " of topic: " + topicName
+                    + " is being unsubscribed, reject leader demotion request");
           }
           break;
         default:
@@ -209,7 +230,9 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
       report.message = e.getClass().getSimpleName() + "_" + e.getMessage();
     }
     long executionTimeInMs = System.currentTimeMillis() - startTimeInMs;
-    logger.info("Completed ingestion command " + ingestionCommandType +  " for topic: " + topicName + ", partition: " + partitionId + " in millis: " + executionTimeInMs);
+    logger.info(
+        "Completed ingestion command " + ingestionCommandType + " for topic: " + topicName + ", partition: "
+            + partitionId + " in millis: " + executionTimeInMs);
     return report;
   }
 
@@ -254,14 +277,23 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
       }
       switch (IngestionMetadataUpdateType.valueOf(ingestionStorageMetadata.metadataUpdateType)) {
         case PUT_OFFSET_RECORD:
-          isolatedIngestionServer.getStorageMetadataService().put(topicName, partitionId,
-              new OffsetRecord(ingestionStorageMetadata.payload.array(), isolatedIngestionServer.getPartitionStateSerializer()));
+          isolatedIngestionServer.getStorageMetadataService()
+              .put(
+                  topicName,
+                  partitionId,
+                  new OffsetRecord(
+                      ingestionStorageMetadata.payload.array(),
+                      isolatedIngestionServer.getPartitionStateSerializer()));
           break;
         case CLEAR_OFFSET_RECORD:
           isolatedIngestionServer.getStorageMetadataService().clearOffset(topicName, partitionId);
           break;
         case PUT_STORE_VERSION_STATE:
-          isolatedIngestionServer.getStorageMetadataService().put(topicName, IsolatedIngestionUtils.deserializeStoreVersionState(topicName, ingestionStorageMetadata.payload.array()));
+          isolatedIngestionServer.getStorageMetadataService()
+              .put(
+                  topicName,
+                  IsolatedIngestionUtils
+                      .deserializeStoreVersionState(topicName, ingestionStorageMetadata.payload.array()));
           break;
         case CLEAR_STORE_VERSION_STATE:
           isolatedIngestionServer.getStorageMetadataService().clearStoreVersionState(topicName);
@@ -302,19 +334,24 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
     return report;
   }
 
-  private IngestionAction getIngestionActionFromRequest(HttpRequest req){
+  private IngestionAction getIngestionActionFromRequest(HttpRequest req) {
     // Sometimes req.uri() gives a full uri (eg https://host:port/path) and sometimes it only gives a path
     // Generating a URI lets us always take just the path.
     String[] requestParts = URI.create(req.uri()).getPath().split("/");
     HttpMethod reqMethod = req.method();
     if (!reqMethod.equals(HttpMethod.POST) || requestParts.length < 2) {
-      throw new VeniceException("Only able to parse POST requests for actions: init, command, report.  Cannot parse request for: " + req.uri());
+      throw new VeniceException(
+          "Only able to parse POST requests for actions: init, command, report.  Cannot parse request for: "
+              + req.uri());
     }
 
     try {
       return IngestionAction.valueOf(requestParts[1].toUpperCase());
     } catch (IllegalArgumentException e) {
-      throw new VeniceException("Only able to parse POST requests for actions: init, command, report.  Cannot support action: " + requestParts[1], e);
+      throw new VeniceException(
+          "Only able to parse POST requests for actions: init, command, report.  Cannot support action: "
+              + requestParts[1],
+          e);
     }
   }
 }

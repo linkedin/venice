@@ -7,7 +7,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.eclipse.jetty.server.Connector;
@@ -18,12 +17,12 @@ import org.eclipse.jetty.server.handler.HandlerList;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.eclipse.jetty.util.thread.ThreadPool;
-
 import spark.embeddedserver.EmbeddedServer;
 import spark.embeddedserver.jetty.SocketConnectorFactory;
 import spark.embeddedserver.jetty.websocket.WebSocketHandlerWrapper;
 import spark.embeddedserver.jetty.websocket.WebSocketServletContextHandlerFactory;
 import spark.ssl.SslStores;
+
 
 /**
  * Spark server implementation
@@ -31,7 +30,6 @@ import spark.ssl.SslStores;
  * @author Per Wendel
  */
 public class VeniceSparkEmbeddedJettyServer implements EmbeddedServer {
-
   private static final int SPARK_DEFAULT_PORT = 4567;
   private static final String NAME = "Spark";
 
@@ -52,7 +50,8 @@ public class VeniceSparkEmbeddedJettyServer implements EmbeddedServer {
   }
 
   @Override
-  public void configureWebSockets(Map<String, WebSocketHandlerWrapper> webSocketHandlers,
+  public void configureWebSockets(
+      Map<String, WebSocketHandlerWrapper> webSocketHandlers,
       Optional<Integer> webSocketIdleTimeoutMillis) {
 
     this.webSocketHandlers = webSocketHandlers;
@@ -64,7 +63,8 @@ public class VeniceSparkEmbeddedJettyServer implements EmbeddedServer {
    */
   @Override
 
-  public int ignite(String host,
+  public int ignite(
+      String host,
       int port,
       SslStores sslStores,
       int maxThreads,
@@ -96,7 +96,7 @@ public class VeniceSparkEmbeddedJettyServer implements EmbeddedServer {
     }
 
     if (this.jettyConfigOverrides != null) {
-      for (final String key : this.jettyConfigOverrides.keySet()) {
+      for (final String key: this.jettyConfigOverrides.keySet()) {
         String value = this.jettyConfigOverrides.getString(key, (String) null);
         if (value != null) {
           this.server.setAttribute(key, value);
@@ -118,7 +118,7 @@ public class VeniceSparkEmbeddedJettyServer implements EmbeddedServer {
       server.setConnectors(previousConnectors);
       hasCustomizedConnectors = true;
     } else {
-      server.setConnectors(new Connector[] {connector});
+      server.setConnectors(new Connector[] { connector });
     }
 
     ServletContextHandler webSocketServletContextHandler =

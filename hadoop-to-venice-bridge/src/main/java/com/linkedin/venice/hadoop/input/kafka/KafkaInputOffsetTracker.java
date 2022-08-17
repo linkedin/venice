@@ -1,14 +1,14 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.hadoop.input.kafka.KafkaInputUtils.*;
+
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import java.util.Map;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.hadoop.input.kafka.KafkaInputUtils.*;
 
 
 /**

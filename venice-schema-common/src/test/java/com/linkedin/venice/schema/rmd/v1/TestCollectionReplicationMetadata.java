@@ -8,7 +8,6 @@ import org.testng.annotations.Test;
 
 
 public class TestCollectionReplicationMetadata {
-
   @Test
   public void testFindIndexOfNextLargerNumber() {
     List<Long> list = Arrays.asList(1L, 2L, 3L, 3L, 4L, 7L, 7L, 100L);

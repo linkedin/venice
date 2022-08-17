@@ -42,11 +42,16 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
 
   private final Time time;
 
-  public StoreBackupVersionCleanupService(VeniceHelixAdmin admin, VeniceControllerMultiClusterConfig multiClusterConfig) {
+  public StoreBackupVersionCleanupService(
+      VeniceHelixAdmin admin,
+      VeniceControllerMultiClusterConfig multiClusterConfig) {
     this(admin, multiClusterConfig, new SystemTime());
   }
 
-  protected StoreBackupVersionCleanupService(VeniceHelixAdmin admin, VeniceControllerMultiClusterConfig multiClusterConfig, Time time) {
+  protected StoreBackupVersionCleanupService(
+      VeniceHelixAdmin admin,
+      VeniceControllerMultiClusterConfig multiClusterConfig,
+      Time time) {
     this.admin = admin;
     this.multiClusterConfig = multiClusterConfig;
     this.allClusters = multiClusterConfig.getClusters();
@@ -95,7 +100,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     List<Version> versions = store.getVersions();
     List<Version> readyToBeRemovedVersions = new ArrayList<>();
     int currentVersion = store.getCurrentVersion();
-    versions.forEach (v -> {
+    versions.forEach(v -> {
       if (v.getNumber() < currentVersion) {
         readyToBeRemovedVersions.add(v);
       }
@@ -104,24 +109,30 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       return false;
     }
     String storeName = store.getName();
-    LOGGER.info("Started removing backup versions according to retention policy for store: " + storeName +  " in cluster: " + clusterName);
+    LOGGER.info(
+        "Started removing backup versions according to retention policy for store: " + storeName + " in cluster: "
+            + clusterName);
     readyToBeRemovedVersions.forEach(v -> {
       int versionNum = v.getNumber();
-      LOGGER.info("Version: " + versionNum + " of store: " + storeName + " in cluster: " + clusterName +
-          " will be removed according to backup version retention policy");
+      LOGGER.info(
+          "Version: " + versionNum + " of store: " + storeName + " in cluster: " + clusterName
+              + " will be removed according to backup version retention policy");
       try {
         admin.deleteOneStoreVersion(clusterName, storeName, versionNum);
       } catch (Exception e) {
-        LOGGER.error("Encountered exception while trying to delete version: " + versionNum + " store: " + storeName +
-            " in cluster: " + clusterName, e);
+        LOGGER.error(
+            "Encountered exception while trying to delete version: " + versionNum + " store: " + storeName
+                + " in cluster: " + clusterName,
+            e);
       }
     });
-    LOGGER.info("Finished removing backup versions according to retention policy for store: " + storeName +  " in cluster: " + clusterName);
+    LOGGER.info(
+        "Finished removing backup versions according to retention policy for store: " + storeName + " in cluster: "
+            + clusterName);
     return true;
   }
 
   private class StoreBackupVersionCleanupTask implements Runnable {
-
     @Override
     public void run() {
       boolean interruptReceived = false;
@@ -133,10 +144,12 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
           break;
         }
         // loop all the clusters
-        for (String clusterName : allClusters) {
-          boolean cleanupEnabled = multiClusterConfig.getControllerConfig(clusterName).isBackupVersionRetentionBasedCleanupEnabled();
+        for (String clusterName: allClusters) {
+          boolean cleanupEnabled =
+              multiClusterConfig.getControllerConfig(clusterName).isBackupVersionRetentionBasedCleanupEnabled();
           if (!cleanupEnabled || !admin.isLeaderControllerFor(clusterName)) {
-            // Only do backup version retention with cluster level config enabled in leader controller for current cluster
+            // Only do backup version retention with cluster level config enabled in leader controller for current
+            // cluster
             continue;
           }
           // Get all stores for current cluster
@@ -146,7 +159,10 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
             try {
               didCleanup = cleanupBackupVersion(store, clusterName);
             } catch (Exception e) {
-              LOGGER.error("Encountered exception while handling backup version cleanup for store: " + store.getName() + " in cluster: " + clusterName, e);
+              LOGGER.error(
+                  "Encountered exception while handling backup version cleanup for store: " + store.getName()
+                      + " in cluster: " + clusterName,
+                  e);
             }
             if (didCleanup) {
               try {

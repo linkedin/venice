@@ -1,5 +1,7 @@
 package com.linkedin.venice.router;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
@@ -8,11 +10,8 @@ import org.testng.Assert;
 import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
 
-import static org.mockito.Mockito.*;
-
 
 public class RouteHttpRequestStatsTest {
-
   private MockTehutiReporter reporter;
   private RouteHttpRequestStats stats;
 

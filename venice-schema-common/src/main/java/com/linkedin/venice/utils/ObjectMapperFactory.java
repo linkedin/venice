@@ -5,11 +5,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 
 public class ObjectMapperFactory {
-  private static ObjectMapper INSTANCE = new ObjectMapper()
-        .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
-        .enable(DeserializationFeature.READ_UNKNOWN_ENUM_VALUES_USING_DEFAULT_VALUE);
+  private static ObjectMapper INSTANCE = new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+      .enable(DeserializationFeature.READ_UNKNOWN_ENUM_VALUES_USING_DEFAULT_VALUE);
 
-  private ObjectMapperFactory() { }
+  private ObjectMapperFactory() {
+  }
 
   public static ObjectMapper getInstance() {
     return INSTANCE;

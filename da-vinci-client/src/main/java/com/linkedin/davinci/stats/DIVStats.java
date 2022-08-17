@@ -34,7 +34,6 @@ public class DIVStats {
   private final Sensor dataValidationLatencySensor;
   private final Sensor leaderProducerCompletionLatencySensor;
 
-
   private Avg producerBrokerLatencyAvgMs = new Avg();
   private Min producerBrokerLatencyMinMs = new Min();
   private Max producerBrokerLatencyMaxMs = new Max();
@@ -76,95 +75,114 @@ public class DIVStats {
   public DIVStats() {
     String sensorName = "producer_to_broker_latency";
     producerBrokerLatencySensor = localRepository.sensor(sensorName);
-    producerBrokerLatencySensor.add(sensorName + producerBrokerLatencyAvgMs.getClass().getSimpleName(),
-        producerBrokerLatencyAvgMs);
-    producerBrokerLatencySensor.add(sensorName + producerBrokerLatencyMaxMs.getClass().getSimpleName(),
-        producerBrokerLatencyMaxMs);
-    producerBrokerLatencySensor.add(sensorName + producerBrokerLatencyMinMs.getClass().getSimpleName(),
-        producerBrokerLatencyMinMs);
+    producerBrokerLatencySensor
+        .add(sensorName + producerBrokerLatencyAvgMs.getClass().getSimpleName(), producerBrokerLatencyAvgMs);
+    producerBrokerLatencySensor
+        .add(sensorName + producerBrokerLatencyMaxMs.getClass().getSimpleName(), producerBrokerLatencyMaxMs);
+    producerBrokerLatencySensor
+        .add(sensorName + producerBrokerLatencyMinMs.getClass().getSimpleName(), producerBrokerLatencyMinMs);
 
     sensorName = "broker_to_consumer_latency";
     brokerConsumerLatencySensor = localRepository.sensor(sensorName);
-    brokerConsumerLatencySensor.add(sensorName + brokerConsumerLatencyAvgMs.getClass().getSimpleName(),
-        brokerConsumerLatencyAvgMs);
-    brokerConsumerLatencySensor.add(sensorName + brokerConsumerLatencyMaxMs.getClass().getSimpleName(),
-        brokerConsumerLatencyMaxMs);
-    brokerConsumerLatencySensor.add(sensorName + brokerConsumerLatencyMinMs.getClass().getSimpleName(),
-        brokerConsumerLatencyMinMs);
+    brokerConsumerLatencySensor
+        .add(sensorName + brokerConsumerLatencyAvgMs.getClass().getSimpleName(), brokerConsumerLatencyAvgMs);
+    brokerConsumerLatencySensor
+        .add(sensorName + brokerConsumerLatencyMaxMs.getClass().getSimpleName(), brokerConsumerLatencyMaxMs);
+    brokerConsumerLatencySensor
+        .add(sensorName + brokerConsumerLatencyMinMs.getClass().getSimpleName(), brokerConsumerLatencyMinMs);
 
     sensorName = "producer_to_consumer_latency";
     producerConsumerLatencySensor = localRepository.sensor(sensorName);
-    producerConsumerLatencySensor.add(sensorName + producerConsumerLatencyAvgMs.getClass().getSimpleName(),
-        producerConsumerLatencyAvgMs);
-    producerConsumerLatencySensor.add(sensorName + producerConsumerLatencyMaxMs.getClass().getSimpleName(),
-        producerConsumerLatencyMaxMs);
-    producerConsumerLatencySensor.add(sensorName + producerConsumerLatencyMinMs.getClass().getSimpleName(),
-        producerConsumerLatencyMinMs);
+    producerConsumerLatencySensor
+        .add(sensorName + producerConsumerLatencyAvgMs.getClass().getSimpleName(), producerConsumerLatencyAvgMs);
+    producerConsumerLatencySensor
+        .add(sensorName + producerConsumerLatencyMaxMs.getClass().getSimpleName(), producerConsumerLatencyMaxMs);
+    producerConsumerLatencySensor
+        .add(sensorName + producerConsumerLatencyMinMs.getClass().getSimpleName(), producerConsumerLatencyMinMs);
 
     sensorName = "producer_to_source_broker_latency";
     producerSourceBrokerLatencySensor = localRepository.sensor(sensorName);
-    producerSourceBrokerLatencySensor.add(sensorName + producerSourceBrokerLatencyAvgMs.getClass().getSimpleName(),
+    producerSourceBrokerLatencySensor.add(
+        sensorName + producerSourceBrokerLatencyAvgMs.getClass().getSimpleName(),
         producerSourceBrokerLatencyAvgMs);
-    producerSourceBrokerLatencySensor.add(sensorName + producerSourceBrokerLatencyMaxMs.getClass().getSimpleName(),
+    producerSourceBrokerLatencySensor.add(
+        sensorName + producerSourceBrokerLatencyMaxMs.getClass().getSimpleName(),
         producerSourceBrokerLatencyMaxMs);
-    producerSourceBrokerLatencySensor.add(sensorName + producerSourceBrokerLatencyMinMs.getClass().getSimpleName(),
+    producerSourceBrokerLatencySensor.add(
+        sensorName + producerSourceBrokerLatencyMinMs.getClass().getSimpleName(),
         producerSourceBrokerLatencyMinMs);
 
     sensorName = "source_broker_to_leader_consumer_latency";
     sourceBrokerLeaderConsumerLatencySensor = localRepository.sensor(sensorName);
-    sourceBrokerLeaderConsumerLatencySensor.add(sensorName + sourceBrokerLeaderConsumerLatencyAvgMs.getClass().getSimpleName(),
+    sourceBrokerLeaderConsumerLatencySensor.add(
+        sensorName + sourceBrokerLeaderConsumerLatencyAvgMs.getClass().getSimpleName(),
         sourceBrokerLeaderConsumerLatencyAvgMs);
-    sourceBrokerLeaderConsumerLatencySensor.add(sensorName + sourceBrokerLeaderConsumerLatencyMaxMs.getClass().getSimpleName(),
+    sourceBrokerLeaderConsumerLatencySensor.add(
+        sensorName + sourceBrokerLeaderConsumerLatencyMaxMs.getClass().getSimpleName(),
         sourceBrokerLeaderConsumerLatencyMaxMs);
-    sourceBrokerLeaderConsumerLatencySensor.add(sensorName + sourceBrokerLeaderConsumerLatencyMinMs.getClass().getSimpleName(),
+    sourceBrokerLeaderConsumerLatencySensor.add(
+        sensorName + sourceBrokerLeaderConsumerLatencyMinMs.getClass().getSimpleName(),
         sourceBrokerLeaderConsumerLatencyMinMs);
 
     sensorName = "producer_to_leader_consumer_latency";
     producerLeaderConsumerLatencySensor = localRepository.sensor(sensorName);
-    producerLeaderConsumerLatencySensor.add(sensorName + producerLeaderConsumerLatencyAvgMs.getClass().getSimpleName(),
+    producerLeaderConsumerLatencySensor.add(
+        sensorName + producerLeaderConsumerLatencyAvgMs.getClass().getSimpleName(),
         producerLeaderConsumerLatencyAvgMs);
-    producerLeaderConsumerLatencySensor.add(sensorName + producerLeaderConsumerLatencyMaxMs.getClass().getSimpleName(),
+    producerLeaderConsumerLatencySensor.add(
+        sensorName + producerLeaderConsumerLatencyMaxMs.getClass().getSimpleName(),
         producerLeaderConsumerLatencyMaxMs);
-    producerLeaderConsumerLatencySensor.add(sensorName + producerLeaderConsumerLatencyMinMs.getClass().getSimpleName(),
+    producerLeaderConsumerLatencySensor.add(
+        sensorName + producerLeaderConsumerLatencyMinMs.getClass().getSimpleName(),
         producerLeaderConsumerLatencyMinMs);
 
     sensorName = "producer_to_local_broker_latency";
     producerLocalBrokerLatencySensor = localRepository.sensor(sensorName);
-    producerLocalBrokerLatencySensor.add(sensorName + producerLocalBrokerLatencyAvgMs.getClass().getSimpleName(),
-        producerLocalBrokerLatencyAvgMs);
-    producerLocalBrokerLatencySensor.add(sensorName + producerLocalBrokerLatencyMaxMs.getClass().getSimpleName(),
-        producerLocalBrokerLatencyMaxMs);
-    producerLocalBrokerLatencySensor.add(sensorName + producerLocalBrokerLatencyMinMs.getClass().getSimpleName(),
-        producerLocalBrokerLatencyMinMs);
+    producerLocalBrokerLatencySensor
+        .add(sensorName + producerLocalBrokerLatencyAvgMs.getClass().getSimpleName(), producerLocalBrokerLatencyAvgMs);
+    producerLocalBrokerLatencySensor
+        .add(sensorName + producerLocalBrokerLatencyMaxMs.getClass().getSimpleName(), producerLocalBrokerLatencyMaxMs);
+    producerLocalBrokerLatencySensor
+        .add(sensorName + producerLocalBrokerLatencyMinMs.getClass().getSimpleName(), producerLocalBrokerLatencyMinMs);
 
     sensorName = "local_broker_to_follower_consumer_latency";
     localBrokerFollowerConsumerLatencySensor = localRepository.sensor(sensorName);
-    localBrokerFollowerConsumerLatencySensor.add(sensorName + localBrokerFollowerConsumerLatencyAvgMs.getClass().getSimpleName(),
+    localBrokerFollowerConsumerLatencySensor.add(
+        sensorName + localBrokerFollowerConsumerLatencyAvgMs.getClass().getSimpleName(),
         localBrokerFollowerConsumerLatencyAvgMs);
-    localBrokerFollowerConsumerLatencySensor.add(sensorName + localBrokerFollowerConsumerLatencyMaxMs.getClass().getSimpleName(),
+    localBrokerFollowerConsumerLatencySensor.add(
+        sensorName + localBrokerFollowerConsumerLatencyMaxMs.getClass().getSimpleName(),
         localBrokerFollowerConsumerLatencyMaxMs);
-    localBrokerFollowerConsumerLatencySensor.add(sensorName + localBrokerFollowerConsumerLatencyMinMs.getClass().getSimpleName(),
+    localBrokerFollowerConsumerLatencySensor.add(
+        sensorName + localBrokerFollowerConsumerLatencyMinMs.getClass().getSimpleName(),
         localBrokerFollowerConsumerLatencyMinMs);
 
     sensorName = "producer_to_follower_consumer_latency";
     producerFollowerConsumerLatencySensor = localRepository.sensor(sensorName);
-    producerFollowerConsumerLatencySensor.add(sensorName + producerFollowerConsumerLatencyAvgMs.getClass().getSimpleName(),
+    producerFollowerConsumerLatencySensor.add(
+        sensorName + producerFollowerConsumerLatencyAvgMs.getClass().getSimpleName(),
         producerFollowerConsumerLatencyAvgMs);
-    producerFollowerConsumerLatencySensor.add(sensorName + producerFollowerConsumerLatencyMaxMs.getClass().getSimpleName(),
+    producerFollowerConsumerLatencySensor.add(
+        sensorName + producerFollowerConsumerLatencyMaxMs.getClass().getSimpleName(),
         producerFollowerConsumerLatencyMaxMs);
-    producerFollowerConsumerLatencySensor.add(sensorName + producerFollowerConsumerLatencyMinMs.getClass().getSimpleName(),
+    producerFollowerConsumerLatencySensor.add(
+        sensorName + producerFollowerConsumerLatencyMinMs.getClass().getSimpleName(),
         producerFollowerConsumerLatencyMinMs);
 
     sensorName = "data_validation_latency";
     dataValidationLatencySensor = localRepository.sensor(sensorName);
-    dataValidationLatencySensor.add(sensorName + dataValidationLatencyAvgMs.getClass().getSimpleName(), dataValidationLatencyAvgMs);
-    dataValidationLatencySensor.add(sensorName + dataValidationLatencyMaxMs.getClass().getSimpleName(), dataValidationLatencyMaxMs);
+    dataValidationLatencySensor
+        .add(sensorName + dataValidationLatencyAvgMs.getClass().getSimpleName(), dataValidationLatencyAvgMs);
+    dataValidationLatencySensor
+        .add(sensorName + dataValidationLatencyMaxMs.getClass().getSimpleName(), dataValidationLatencyMaxMs);
 
     sensorName = "leader_producer_completion_latency";
     leaderProducerCompletionLatencySensor = localRepository.sensor(sensorName);
-    leaderProducerCompletionLatencySensor.add(sensorName + leaderProducerCompletionLatencyAvgMs.getClass().getSimpleName(),
+    leaderProducerCompletionLatencySensor.add(
+        sensorName + leaderProducerCompletionLatencyAvgMs.getClass().getSimpleName(),
         leaderProducerCompletionLatencyAvgMs);
-    leaderProducerCompletionLatencySensor.add(sensorName + leaderProducerCompletionLatencyMaxMs.getClass().getSimpleName(),
+    leaderProducerCompletionLatencySensor.add(
+        sensorName + leaderProducerCompletionLatencyMaxMs.getClass().getSimpleName(),
         producerSourceBrokerLatencyMaxMs);
   }
 

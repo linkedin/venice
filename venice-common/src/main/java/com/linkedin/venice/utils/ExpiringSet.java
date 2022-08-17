@@ -14,16 +14,16 @@ public class ExpiringSet<T> {
   private Map<T, Long> internalMap;
   private long millisTTL;
 
-  public ExpiringSet(long ttl, TimeUnit unit){
+  public ExpiringSet(long ttl, TimeUnit unit) {
     internalMap = new VeniceConcurrentHashMap<>();
     this.millisTTL = unit.toMillis(ttl);
   }
 
-  public void add(T element){
+  public void add(T element) {
     internalMap.put(element, System.currentTimeMillis() + millisTTL);
   }
 
-  public void add(T element, long ttl, TimeUnit unit){
+  public void add(T element, long ttl, TimeUnit unit) {
     internalMap.put(element, System.currentTimeMillis() + unit.toMillis(ttl));
   }
 
@@ -31,11 +31,11 @@ public class ExpiringSet<T> {
     internalMap.remove(element);
   }
 
-  public boolean contains(T element){
+  public boolean contains(T element) {
     Long expireTime = internalMap.computeIfPresent(element, new BiFunction<T, Long, Long>() {
       @Override
       public Long apply(T elem, Long expiration) { /* occurs atomically, no need to synchronize */
-        if (expiration > System.currentTimeMillis()){
+        if (expiration > System.currentTimeMillis()) {
           return expiration;
         } else {
           return null;
@@ -43,7 +43,7 @@ public class ExpiringSet<T> {
       }
     });
 
-    if (null == expireTime){
+    if (null == expireTime) {
       return false;
     } else {
       return true;

@@ -17,7 +17,8 @@ public interface VeniceNotifier extends Closeable {
     started(kafkaTopic, partitionId, "");
   }
 
-  default void started(String kafkaTopic, int partitionId, String message) {}
+  default void started(String kafkaTopic, int partitionId, String message) {
+  }
 
   /**
    * Consumption is restarted from given offset for a store and partition
@@ -26,7 +27,8 @@ public interface VeniceNotifier extends Closeable {
     restarted(kafkaTopic, partitionId, offset, "");
   }
 
-  default void restarted(String kafkaTopic, int partitionId, long offset, String message) {}
+  default void restarted(String kafkaTopic, int partitionId, long offset, String message) {
+  }
 
   /**
    * Periodic progress report of consumption for a store and partition.
@@ -35,7 +37,8 @@ public interface VeniceNotifier extends Closeable {
     progress(kafkaTopic, partitionId, offset, "");
   }
 
-  default void progress(String kafkaTopic, int partitionId, long offset, String message) {}
+  default void progress(String kafkaTopic, int partitionId, long offset, String message) {
+  }
 
   /**
    * The {@link ControlMessageType#END_OF_PUSH} control message was consumed.
@@ -47,7 +50,8 @@ public interface VeniceNotifier extends Closeable {
     endOfPushReceived(kafkaTopic, partitionId, offset, "");
   }
 
-  default void endOfPushReceived(String kafkaTopic, int partitionId, long offset, String message) {}
+  default void endOfPushReceived(String kafkaTopic, int partitionId, long offset, String message) {
+  }
 
   /**
    * The {@link ControlMessageType#TOPIC_SWITCH} control message was consumed.
@@ -59,9 +63,11 @@ public interface VeniceNotifier extends Closeable {
     topicSwitchReceived(kafkaTopic, partitionId, offset, "");
   }
 
-  default void topicSwitchReceived(String kafkaTopic, int partitionId, long offset, String message) {}
+  default void topicSwitchReceived(String kafkaTopic, int partitionId, long offset, String message) {
+  }
 
-  default void dataRecoveryCompleted(String kafkaTopic, int partitionId, long offset, String message) {}
+  default void dataRecoveryCompleted(String kafkaTopic, int partitionId, long offset, String message) {
+  }
 
   /**
    * Consumption is started for an incremental push
@@ -70,7 +76,8 @@ public interface VeniceNotifier extends Closeable {
     startOfIncrementalPushReceived(kafkaTopic, partitionId, offset, "");
   }
 
-  default void startOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String message) {}
+  default void startOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String message) {
+  }
 
   /**
    * Consumption is completed for an incremental push
@@ -79,9 +86,11 @@ public interface VeniceNotifier extends Closeable {
     endOfIncrementalPushReceived(kafkaTopic, partitionId, offset, "");
   }
 
-  default void endOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String message) {}
+  default void endOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String message) {
+  }
 
-  default void catchUpVersionTopicOffsetLag(String kafkaTopic, int partitionId) {}
+  default void catchUpVersionTopicOffsetLag(String kafkaTopic, int partitionId) {
+  }
 
   /**
    * Consumption is completed for a store and partition.
@@ -94,7 +103,13 @@ public interface VeniceNotifier extends Closeable {
     completed(kafkaTopic, partitionId, offset, message, Optional.empty());
   }
 
-  default void completed(String kafkaTopic, int partitionId, long offset, String message, Optional<LeaderFollowerStateType> leaderState) {}
+  default void completed(
+      String kafkaTopic,
+      int partitionId,
+      long offset,
+      String message,
+      Optional<LeaderFollowerStateType> leaderState) {
+  }
 
   /**
    * Quota is violated for a store.
@@ -103,7 +118,8 @@ public interface VeniceNotifier extends Closeable {
     quotaViolated(kafkaTopic, partitionId, offset, "");
   }
 
-  default void quotaViolated(String kafkaTopic, int partitionId, long offset, String message) {}
+  default void quotaViolated(String kafkaTopic, int partitionId, long offset, String message) {
+  }
 
   /**
    * Quota is not violated for a store.
@@ -112,18 +128,21 @@ public interface VeniceNotifier extends Closeable {
     quotaNotViolated(kafkaTopic, partitionId, offset, "");
   }
 
-  default void quotaNotViolated(String kafkaTopic, int partitionId, long offset, String message) {}
+  default void quotaNotViolated(String kafkaTopic, int partitionId, long offset, String message) {
+  }
 
   /**
    * The Process is shutting down and clean up the resources associated with the Notifier.
    * N.B. When implementing the method, make it idempotent.
    */
-  default void close() {}
+  default void close() {
+  }
 
   /**
    * Report an error, during the consumption for a Partitions and store. The error may or may not be fatal.
    */
-  default void error(String kafkaTopic, int partitionId, String message, Exception e) {}
+  default void error(String kafkaTopic, int partitionId, String message, Exception e) {
+  }
 
   default void stopped(String kafkaTopic, int partitionId, long offset) {
     // no-op

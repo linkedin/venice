@@ -13,14 +13,19 @@ public class VsonGenericStoreClientImpl<K, V> extends AvroGenericStoreClientImpl
     this(transportClient, true, clientConfig);
   }
 
-  private VsonGenericStoreClientImpl(TransportClient transportClient, boolean needSchemaReader, ClientConfig clientConfig) {
+  private VsonGenericStoreClientImpl(
+      TransportClient transportClient,
+      boolean needSchemaReader,
+      ClientConfig clientConfig) {
     super(transportClient, needSchemaReader, clientConfig);
   }
 
   @Override
   protected AbstractAvroStoreClient<K, V> getStoreClientForSchemaReader() {
-    return new VsonGenericStoreClientImpl<K, V> (getTransportClient().getCopyIfNotUsableInCallback(),
-        false, ClientConfig.defaultVsonGenericClientConfig(getStoreName()));
+    return new VsonGenericStoreClientImpl<K, V>(
+        getTransportClient().getCopyIfNotUsableInCallback(),
+        false,
+        ClientConfig.defaultVsonGenericClientConfig(getStoreName()));
   }
 
   @Override
@@ -33,7 +38,8 @@ public class VsonGenericStoreClientImpl<K, V> extends AvroGenericStoreClientImpl
     if (needSchemaReader) {
       if (getSchemaReader() != null) {
         this.keySerializer = SerializerDeserializerFactory.getVsonSerializer(getKeySchema());
-        this.multiGetRequestSerializer = SerializerDeserializerFactory.getVsonSerializer(ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getSchema());
+        this.multiGetRequestSerializer = SerializerDeserializerFactory
+            .getVsonSerializer(ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getSchema());
       } else {
         throw new VeniceClientException("SchemaReader is null when initializing serializer");
       }

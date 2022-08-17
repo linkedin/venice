@@ -1,5 +1,7 @@
 package com.linkedin.venice.security;
 
+import static com.linkedin.venice.CommonConfigKeys.*;
+
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
@@ -18,8 +20,6 @@ import javax.net.ssl.TrustManagerFactory;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.StringUtils;
 
-import static com.linkedin.venice.CommonConfigKeys.*;
-
 
 /**
  * Cloned from {@link com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl};
@@ -31,17 +31,13 @@ import static com.linkedin.venice.CommonConfigKeys.*;
  * 2. Added a helper function that builds a {@link Config} from {@link Properties}
  */
 public class DefaultSSLFactory implements SSLFactory {
-
   public static final String[] CIPHER_SUITE_ALLOWLIST = {
       // Preferred ciphersuites:
-      "TLS_RSA_WITH_AES_128_CBC_SHA256",
-      "TLS_RSA_WITH_AES_128_GCM_SHA256",
+      "TLS_RSA_WITH_AES_128_CBC_SHA256", "TLS_RSA_WITH_AES_128_GCM_SHA256",
       // For java 1.6 support:
       "TLS_RSA_WITH_AES_128_CBC_SHA",
       // the remaining are for backwards compatibility and shouldn't be used by newer clients
-      "SSL_RSA_WITH_NULL_MD5",
-      "SSL_RSA_WITH_NULL_SHA"
-  };
+      "SSL_RSA_WITH_NULL_MD5", "SSL_RSA_WITH_NULL_SHA" };
   private SSLContext _context;
   private boolean _sslEnabled;
   private boolean _sslRequireClientCerts;
@@ -57,46 +53,43 @@ public class DefaultSSLFactory implements SSLFactory {
 
   public DefaultSSLFactory(Config config) throws Exception {
     _sslEnabled = config.getSslEnabled();
-    if (_sslEnabled)
-    {
+    if (_sslEnabled) {
       _keyStoreFilePath = config.getKeyStoreFilePath();
       _trustStoreFilePath = config.getTrustStoreFilePath();
       _keyStoreData = config.getKeyStoreData();
 
       // Either keyStoreFilePath + trustStoreFilePath or keyStoreData must be provided.
-      if (StringUtils.isNotBlank(_keyStoreData))
-      {
+      if (StringUtils.isNotBlank(_keyStoreData)) {
         _context = new SSLContextFactory(_keyStoreData, config.getKeyStorePassword()).getContext();
+      } else if (StringUtils.isNotBlank(_keyStoreFilePath) && StringUtils.isNotBlank(_trustStoreFilePath)) {
+        _context = new SSLContextFactory(
+            new File(_keyStoreFilePath),
+            config.getKeyStorePassword(),
+            config.getKeyStoreType(),
+            new File(_trustStoreFilePath),
+            config.getTrustStoreFilePassword()).getContext();
+      } else {
+        throw new ConfigHelper.MissingConfigParameterException(
+            "Either keyStoreData or (keyStoreFilePath and trustStoreFilePath) must be provided to operate in sslEnabled mode.");
       }
-      else if (StringUtils.isNotBlank(_keyStoreFilePath) && StringUtils.isNotBlank(_trustStoreFilePath))
-      {
-        _context = new SSLContextFactory(new File(_keyStoreFilePath), config.getKeyStorePassword(), config.getKeyStoreType(),
-            new File(_trustStoreFilePath), config.getTrustStoreFilePassword()).getContext();
-      }
-      else
-      {
-        throw new ConfigHelper.MissingConfigParameterException("Either keyStoreData or (keyStoreFilePath and trustStoreFilePath) must be provided to operate in sslEnabled mode.");
-      }
-      String[] allowedCiphersuites = filterDisallowedCiphersuites(_context.getSocketFactory().getSupportedCipherSuites());
+      String[] allowedCiphersuites =
+          filterDisallowedCiphersuites(_context.getSocketFactory().getSupportedCipherSuites());
 
       _parameters = _context.getDefaultSSLParameters();
       _parameters.setCipherSuites(allowedCiphersuites);
 
-      if(config.doesSslRequireClientCerts()) {
+      if (config.doesSslRequireClientCerts()) {
         _parameters.setNeedClientAuth(true);
       } else {
         _parameters.setWantClientAuth(true);
       }
-    }
-    else
-    {
+    } else {
       _context = null;
       _parameters = null;
     }
   }
 
-  public static String[] filterDisallowedCiphersuites(String[] ciphersuites)
-      throws SSLProtocolException {
+  public static String[] filterDisallowedCiphersuites(String[] ciphersuites) throws SSLProtocolException {
     Set<String> allowedCiphers = new HashSet<String>();
     Collections.addAll(allowedCiphers, CIPHER_SUITE_ALLOWLIST);
 
@@ -114,35 +107,29 @@ public class DefaultSSLFactory implements SSLFactory {
   }
 
   @Override
-  public SSLContext getSSLContext()
-  {
+  public SSLContext getSSLContext() {
     return _context;
   }
 
   @Override
-  public SSLParameters getSSLParameters()
-  {
+  public SSLParameters getSSLParameters() {
     return _parameters;
   }
 
   @Override
-  public boolean isSslEnabled()
-  {
+  public boolean isSslEnabled() {
     return _sslEnabled;
   }
 
-  public boolean isSslRequireClientCerts()
-  {
+  public boolean isSslRequireClientCerts() {
     return _sslRequireClientCerts;
   }
 
-  public void setSslRequireClientCerts(boolean sslRequireClientCerts)
-  {
+  public void setSslRequireClientCerts(boolean sslRequireClientCerts) {
     _sslRequireClientCerts = sslRequireClientCerts;
   }
 
-  public static class Config
-  {
+  public static class Config {
     private String _keyStoreData = "";
     private String _keyStorePassword = "";
     private String _keyStoreType = "jks";
@@ -153,73 +140,59 @@ public class DefaultSSLFactory implements SSLFactory {
     private boolean _sslRequireClientCerts = true;
     private boolean _requireClientCertOnLocalHost = false;
 
-    public void setKeyStoreData(String keyStoreData)
-    {
+    public void setKeyStoreData(String keyStoreData) {
       _keyStoreData = keyStoreData;
     }
 
-    public String getKeyStoreData()
-    {
+    public String getKeyStoreData() {
       return _keyStoreData;
     }
 
-    public void setKeyStoreFilePath(String keyStoreFilePath)
-    {
+    public void setKeyStoreFilePath(String keyStoreFilePath) {
       _keyStoreFilePath = keyStoreFilePath;
     }
 
-    public String getKeyStoreFilePath()
-    {
+    public String getKeyStoreFilePath() {
       return _keyStoreFilePath;
     }
 
-    public void setKeyStorePassword(String keyStorePassword)
-    {
+    public void setKeyStorePassword(String keyStorePassword) {
       _keyStorePassword = keyStorePassword;
     }
 
-    public String getKeyStorePassword()
-    {
+    public String getKeyStorePassword() {
       return ConfigHelper.getRequired(_keyStorePassword);
     }
 
-    public void setTrustStoreFilePath(String trustStoreFilePath)
-    {
+    public void setTrustStoreFilePath(String trustStoreFilePath) {
       _trustStoreFilePath = trustStoreFilePath;
     }
 
-    public String getTrustStoreFilePath()
-    {
+    public String getTrustStoreFilePath() {
       return _trustStoreFilePath;
     }
 
-    public void setTrustStoreFilePassword(String trustStoreFilePassword)
-    {
+    public void setTrustStoreFilePassword(String trustStoreFilePassword) {
       _trustStoreFilePassword = trustStoreFilePassword;
     }
 
-    public String getTrustStoreFilePassword()
-    {
+    public String getTrustStoreFilePassword() {
       return _trustStoreFilePassword;
     }
 
-    public void setKeyStoreType(String keyStoreType)
-    {
+    public void setKeyStoreType(String keyStoreType) {
       _keyStoreType = keyStoreType;
     }
 
-    public String getKeyStoreType()
-    {
+    public String getKeyStoreType() {
       return _keyStoreType;
     }
 
-    public void setSslEnabled(boolean sslEnabled)
-    {
+    public void setSslEnabled(boolean sslEnabled) {
       _sslEnabled = sslEnabled;
     }
 
-    public boolean getSslEnabled()
-    {
+    public boolean getSslEnabled() {
       return ConfigHelper.getRequired(_sslEnabled);
     }
 
@@ -227,18 +200,15 @@ public class DefaultSSLFactory implements SSLFactory {
       return _sslRequireClientCerts;
     }
 
-    public void setSslRequireClientCerts(boolean sslRequireClientCerts)
-    {
+    public void setSslRequireClientCerts(boolean sslRequireClientCerts) {
       _sslRequireClientCerts = sslRequireClientCerts;
     }
 
-    public boolean isRequireClientCertOnLocalHost()
-    {
+    public boolean isRequireClientCertOnLocalHost() {
       return _requireClientCertOnLocalHost;
     }
 
-    public void setRequireClientCertOnLocalHost(boolean requireClientCertOnLocalHost)
-    {
+    public void setRequireClientCertOnLocalHost(boolean requireClientCertOnLocalHost) {
       _requireClientCertOnLocalHost = requireClientCertOnLocalHost;
     }
   }
@@ -273,22 +243,20 @@ public class DefaultSSLFactory implements SSLFactory {
      * This constructor uses keyStoreData for both keyStore and trustStore.
      * It only supports base64 encoded jks format keyStore.
      */
-    SSLContextFactory(String keyStoreData, String keyStorePassword)
-        throws Exception
-    {
-      //load they keystore
+    SSLContextFactory(String keyStoreData, String keyStorePassword) throws Exception {
+      // load they keystore
       KeyStore certKeyStore = KeyStore.getInstance(KeyStore.getDefaultType());
       certKeyStore.load(toInputStream(keyStoreData), keyStorePassword.toCharArray());
 
-      //set Keymanger toInputStream() use X509
+      // set Keymanger toInputStream() use X509
       KeyManagerFactory kmf = KeyManagerFactory.getInstance(DEFAULT_ALGORITHM);
       kmf.init(certKeyStore, keyStorePassword.toCharArray());
 
-      //use a standard trust manager
+      // use a standard trust manager
       TrustManagerFactory trustFact = TrustManagerFactory.getInstance(DEFAULT_ALGORITHM);
       trustFact.init(certKeyStore);
 
-      //set context to TLS and initialize it
+      // set context to TLS and initialize it
       _secureContext = SSLContext.getInstance(DEFAULT_PROTOCOL);
       _secureContext.init(kmf.getKeyManagers(), trustFact.getTrustManagers(), null);
     }
@@ -297,11 +265,13 @@ public class DefaultSSLFactory implements SSLFactory {
      * The keyStoreFile takes a File object of p12 or jks file depends on keyStoreType
      * The trustStoreFile always takes a File object of JKS file.
      */
-    SSLContextFactory(File keyStoreFile, String keyStorePassword, String keyStoreType,
-        File trustStoreFile, String trustStorePassword) throws Exception
-    {
-      if (!keyStoreType.equalsIgnoreCase(P12_STORE_TYPE_NAME) && !keyStoreType.equalsIgnoreCase(JKS_STORE_TYPE_NAME))
-      {
+    SSLContextFactory(
+        File keyStoreFile,
+        String keyStorePassword,
+        String keyStoreType,
+        File trustStoreFile,
+        String trustStorePassword) throws Exception {
+      if (!keyStoreType.equalsIgnoreCase(P12_STORE_TYPE_NAME) && !keyStoreType.equalsIgnoreCase(JKS_STORE_TYPE_NAME)) {
         throw new Exception("Unsupported keyStoreType: " + keyStoreType);
       }
 
@@ -326,27 +296,24 @@ public class DefaultSSLFactory implements SSLFactory {
       _secureContext.init(kmf.getKeyManagers(), trustFact.getTrustManagers(), null);
     }
 
-    private InputStream toInputStream(String storeData)
-    {
+    private InputStream toInputStream(String storeData) {
       byte[] data = Base64.getDecoder().decode(storeData);
       return new ByteArrayInputStream(data);
     }
 
-    private InputStream toInputStream(File storeFile) throws IOException
-    {
+    private InputStream toInputStream(File storeFile) throws IOException {
       byte[] data = FileUtils.readFileToByteArray(storeFile);
       return new ByteArrayInputStream(data);
     }
 
-    SSLContext getContext()
-    {
+    SSLContext getContext() {
       return _secureContext;
     }
   }
 
   private static class ConfigHelper {
-
-    private ConfigHelper() {}
+    private ConfigHelper() {
+    }
 
     public static Object getRequiredObject(Object o) throws MissingConfigParameterException {
       if (o == null) {

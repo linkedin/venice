@@ -1,5 +1,7 @@
 package com.linkedin.venice.controllerapi;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.utils.ObjectMapperFactory;
@@ -9,11 +11,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-
 
 public class UpdateStoragePersonaQueryParams extends QueryParams {
-
   private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
 
   public UpdateStoragePersonaQueryParams(Map<String, String> initialParams) {
@@ -29,7 +28,7 @@ public class UpdateStoragePersonaQueryParams extends QueryParams {
   }
 
   public UpdateStoragePersonaQueryParams setName(String name) {
-    return (UpdateStoragePersonaQueryParams) add(PERSONA_NAME , name);
+    return (UpdateStoragePersonaQueryParams) add(PERSONA_NAME, name);
   }
 
   public Optional<Set<String>> getOwners() {

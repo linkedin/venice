@@ -6,14 +6,13 @@ import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.security.SSLFactory;
-
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 
-public class D2ControllerClient extends ControllerClient{
+public class D2ControllerClient extends ControllerClient {
   private final static String D2_SCHEME = "d2://";
   /**
    * {@link #DUMMY_URL_WHEN_USING_D2_CLIENT} is not used since {@link D2ControllerClient}
@@ -26,15 +25,18 @@ public class D2ControllerClient extends ControllerClient{
   private final boolean externalD2Client;
   private final Optional<SSLFactory> sslFactory;
 
-  public D2ControllerClient(String d2ServiceName, String clusterName, String d2ZKHost, Optional<SSLFactory> sslFactory) {
+  public D2ControllerClient(
+      String d2ServiceName,
+      String clusterName,
+      String d2ZKHost,
+      Optional<SSLFactory> sslFactory) {
     super(clusterName, DUMMY_URL_WHEN_USING_D2_CLIENT, sslFactory);
     this.d2ServiceName = d2ServiceName;
-    this.d2Client = new D2ClientBuilder()
-                   .setZkHosts(d2ZKHost)
-                   .setSSLContext(sslFactory.isPresent() ? sslFactory.get().getSSLContext() : null)
-                   .setIsSSLEnabled(sslFactory.isPresent())
-                   .setSSLParameters(sslFactory.isPresent() ? sslFactory.get().getSSLParameters() : null)
-                   .build();
+    this.d2Client = new D2ClientBuilder().setZkHosts(d2ZKHost)
+        .setSSLContext(sslFactory.isPresent() ? sslFactory.get().getSSLContext() : null)
+        .setIsSSLEnabled(sslFactory.isPresent())
+        .setSSLParameters(sslFactory.isPresent() ? sslFactory.get().getSSLParameters() : null)
+        .build();
     D2ClientUtils.startClient(d2Client);
     this.externalD2Client = false;
     this.sslFactory = sslFactory;
@@ -44,7 +46,11 @@ public class D2ControllerClient extends ControllerClient{
     this(d2ServiceName, clusterName, d2Client, Optional.empty());
   }
 
-  public D2ControllerClient(String d2ServiceName, String clusterName, D2Client d2Client, Optional<SSLFactory> sslFactory) {
+  public D2ControllerClient(
+      String d2ServiceName,
+      String clusterName,
+      D2Client d2Client,
+      Optional<SSLFactory> sslFactory) {
     super(clusterName, DUMMY_URL_WHEN_USING_D2_CLIENT, sslFactory);
     this.d2ServiceName = d2ServiceName;
     this.d2Client = d2Client;
@@ -57,7 +63,8 @@ public class D2ControllerClient extends ControllerClient{
     LeaderControllerResponse controllerResponse = d2ClientGet(
         this.d2Client,
         this.d2ServiceName,
-        // TODO: Change this to LEADER_CONTROLLER after backend components with inclusive endpoints are deployed completely
+        // TODO: Change this to LEADER_CONTROLLER after backend components with inclusive endpoints are deployed
+        // completely
         ControllerRoute.MASTER_CONTROLLER.getPath(),
         newParams(),
         LeaderControllerResponse.class);
@@ -87,8 +94,12 @@ public class D2ControllerClient extends ControllerClient{
     return controllerResponse.getUrl();
   }
 
-  private static <RESPONSE> RESPONSE d2ClientGet(D2Client d2Client, String d2ServiceName, String path,
-      QueryParams params, Class<RESPONSE> responseClass) {
+  private static <RESPONSE> RESPONSE d2ClientGet(
+      D2Client d2Client,
+      String d2ServiceName,
+      String path,
+      QueryParams params,
+      Class<RESPONSE> responseClass) {
     String requestPath = D2_SCHEME + d2ServiceName + path + "?" + encodeQueryParams(params);
     try {
       RestResponse response = D2ClientUtils.sendD2GetRequest(requestPath, d2Client);
@@ -100,8 +111,12 @@ public class D2ControllerClient extends ControllerClient{
   }
 
   public static D2ServiceDiscoveryResponse discoverCluster(D2Client d2Client, String d2ServiceName, String storeName) {
-    return d2ClientGet(d2Client, d2ServiceName, ControllerRoute.CLUSTER_DISCOVERY.getPath(),
-        getQueryParamsToDiscoverCluster(storeName), D2ServiceDiscoveryResponse.class);
+    return d2ClientGet(
+        d2Client,
+        d2ServiceName,
+        ControllerRoute.CLUSTER_DISCOVERY.getPath(),
+        getQueryParamsToDiscoverCluster(storeName),
+        D2ServiceDiscoveryResponse.class);
   }
 
   @Override

@@ -4,6 +4,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import java.util.concurrent.Executor;
 import java.util.function.BiFunction;
 
+
 /**
  * This enum controls the behavior of the user payload deserialization phase of the batch get response handling.
  */

@@ -24,8 +24,10 @@ import java.util.function.Supplier;
  * If you need to pass a deep copy parameter to other functions, you can modify this class accordingly.
  */
 public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStoragePartition> {
-  private final static InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-  private final static InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
+  private final static InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+      AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+  private final static InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
+      AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
   private final AbstractStorageEngine delegate;
 
   public DeepCopyStorageEngine(AbstractStorageEngine delegate) {
@@ -91,7 +93,9 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStorage
   }
 
   @Override
-  public void beginBatchWrite(StoragePartitionConfig storagePartitionConfig, Map<String, String> checkpointedInfo,
+  public void beginBatchWrite(
+      StoragePartitionConfig storagePartitionConfig,
+      Map<String, String> checkpointedInfo,
       Optional<Supplier<byte[]>> checksumSupplier) {
     this.delegate.beginBatchWrite(storagePartitionConfig, checkpointedInfo, checksumSupplier);
   }
@@ -132,7 +136,11 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStorage
   }
 
   @Override
-  public void putWithReplicationMetadata(int logicalPartitionId, byte[] key, ByteBuffer value, byte[] replicationMetadata) {
+  public void putWithReplicationMetadata(
+      int logicalPartitionId,
+      byte[] key,
+      ByteBuffer value,
+      byte[] replicationMetadata) {
     ByteBuffer deepCopyByteBuffer = ByteBuffer.allocate(value.remaining());
     // Record the original position for recovery
     deepCopyByteBuffer.mark();
@@ -150,7 +158,7 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStorage
   }
 
   public void preparePartitionForReading(int partition) {
-     delegate.preparePartitionForReading(partition);
+    delegate.preparePartitionForReading(partition);
   }
 
   @Override

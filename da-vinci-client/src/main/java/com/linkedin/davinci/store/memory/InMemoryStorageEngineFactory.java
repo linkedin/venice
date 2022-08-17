@@ -2,18 +2,16 @@ package com.linkedin.davinci.store.memory;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.venice.exceptions.StorageInitializationException;
-import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.StorageEngineFactory;
-
+import com.linkedin.venice.exceptions.StorageInitializationException;
+import com.linkedin.venice.meta.PersistenceType;
 import java.util.Collections;
 import java.util.Set;
 
 
 public class InMemoryStorageEngineFactory extends StorageEngineFactory {
   private final Object lock = new Object();
-
 
   public InMemoryStorageEngineFactory(VeniceServerConfig serverConfig) {
 
@@ -40,7 +38,7 @@ public class InMemoryStorageEngineFactory extends StorageEngineFactory {
 
   @Override
   public void close() {
-    //Nothing to do here since we are not tracking specific created environments.
+    // Nothing to do here since we are not tracking specific created environments.
   }
 
   @Override

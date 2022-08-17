@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import org.apache.kafka.common.TopicPartition;
 
+
 /**
  * A simple {@link PollStrategy} which delivers messages from any partition, while respecting the
  * ordering guarantee of individual partitions.
@@ -29,12 +30,13 @@ public class RandomPollStrategy extends AbstractPollStrategy {
   @Override
   protected Pair<TopicPartition, Long> getNextPoll(Map<TopicPartition, Long> offsets) {
     if (offsets.isEmpty()) {
-      Utils.sleep(50); //So that keepPollingWhenEmpty doesn't lead to 10 null polls per ms
+      Utils.sleep(50); // So that keepPollingWhenEmpty doesn't lead to 10 null polls per ms
       return null;
     }
-    List<TopicPartition> topicPartitionList = Arrays.asList(offsets.keySet().toArray(new TopicPartition[]{}));
+    List<TopicPartition> topicPartitionList = Arrays.asList(offsets.keySet().toArray(new TopicPartition[] {}));
     int numberOfTopicPartitions = offsets.size();
-    TopicPartition topicPartition = topicPartitionList.get((int) Math.round(Math.random() * (numberOfTopicPartitions - 1)));
+    TopicPartition topicPartition =
+        topicPartitionList.get((int) Math.round(Math.random() * (numberOfTopicPartitions - 1)));
     Long offset = offsets.get(topicPartition);
 
     return new Pair<>(topicPartition, offset);

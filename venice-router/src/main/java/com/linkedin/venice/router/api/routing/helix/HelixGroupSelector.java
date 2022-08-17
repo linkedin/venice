@@ -25,8 +25,11 @@ public class HelixGroupSelector implements HelixGroupSelectionStrategy {
   private final HelixGroupSelectionStrategy selectionStrategy;
   private final HelixGroupStats helixGroupStats;
 
-  public HelixGroupSelector(MetricsRepository metricsRepository, HelixInstanceConfigRepository instanceConfigRepository,
-      HelixGroupSelectionStrategyEnum strategyEnum, TimeoutProcessor timeoutProcessor) {
+  public HelixGroupSelector(
+      MetricsRepository metricsRepository,
+      HelixInstanceConfigRepository instanceConfigRepository,
+      HelixGroupSelectionStrategyEnum strategyEnum,
+      TimeoutProcessor timeoutProcessor) {
     this.helixGroupStats = new HelixGroupStats(metricsRepository, this);
     this.instanceConfigRepository = instanceConfigRepository;
     Class<? extends HelixGroupSelectionStrategy> strategyClass = strategyEnum.getStrategyClass();

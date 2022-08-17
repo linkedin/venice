@@ -1,5 +1,7 @@
 package com.linkedin.venice.router.api.path;
 
+import static org.testng.Assert.*;
+
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
@@ -14,8 +16,6 @@ import javax.annotation.Nonnull;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.testng.annotations.Test;
 
-import static org.testng.Assert.*;
-
 
 public class TestVenicePath {
   private static final int SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS = 20;
@@ -23,8 +23,8 @@ public class TestVenicePath {
   private static final String STORAGE_NODE2 = "s2";
 
   private static class SmartRetryVenicePath extends VenicePath {
-    private final String ROUTER_REQUEST_VERSION = Integer.toString(
-        ReadAvroProtocolDefinition.SINGLE_GET_ROUTER_REQUEST_V1.getProtocolVersion());
+    private final String ROUTER_REQUEST_VERSION =
+        Integer.toString(ReadAvroProtocolDefinition.SINGLE_GET_ROUTER_REQUEST_V1.getProtocolVersion());
 
     public SmartRetryVenicePath(Time time) {
       super("fake_resource_v1", true, SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS, time);
@@ -103,7 +103,9 @@ public class TestVenicePath {
     orgPath.setLongTailRetryThresholdMs(20);
     assertTrue(orgPath.canRequestStorageNode(STORAGE_NODE1));
     orgPath.requestStorageNode(STORAGE_NODE1);
-    assertTrue(orgPath.canRequestStorageNode(STORAGE_NODE1), STORAGE_NODE1 + " should be a good node for the original request even it hasn't been marked as fast.");
+    assertTrue(
+        orgPath.canRequestStorageNode(STORAGE_NODE1),
+        STORAGE_NODE1 + " should be a good node for the original request even it hasn't been marked as fast.");
     assertTrue(orgPath.canRequestStorageNode(STORAGE_NODE2));
     orgPath.recordOriginalRequestStartTimestamp();
 

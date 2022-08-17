@@ -1,20 +1,18 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
+import static com.linkedin.venice.ConfigKeys.*;
+
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Properties;
 import org.testng.annotations.Test;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
-import static com.linkedin.venice.ConfigKeys.*;
-
 
 @Test(singleThreaded = true)
 public class TestBatchForIngestionIsolation extends TestBatch {
-
   @Override
   public VeniceClusterWrapper initializeVeniceCluster() {
     VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(1, 0, 0);

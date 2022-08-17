@@ -1,12 +1,11 @@
 package com.linkedin.venice.store.cache;
 
-import org.testng.annotations.Test;
-
 import static org.testng.Assert.*;
+
+import org.testng.annotations.Test;
 
 
 public class VeniceStoreCacheStorageEngineTest {
-
   @Test
   public void testGetType() {
   }

@@ -42,7 +42,6 @@ public class HelixSchemaAccessor {
   private final ZkBaseDataAccessor<DerivedSchemaEntry> derivedSchemaAccessor;
   private final ZkBaseDataAccessor<ReplicationMetadataSchemaEntry> replicationMetadataSchemaAccessor;
 
-
   // Venice cluster name
   private final String clusterName;
 
@@ -53,8 +52,12 @@ public class HelixSchemaAccessor {
     this(zkClient, helixAdapterSerializer, clusterName, DEFAULT_ZK_REFRESH_ATTEMPTS, DEFAULT_ZK_REFRESH_INTERVAL);
   }
 
-  public HelixSchemaAccessor(ZkClient zkClient, HelixAdapterSerializer helixAdapterSerializer, String clusterName,
-      int refreshAttemptsForZkReconnect, long refreshIntervalForZkReconnectInMs) {
+  public HelixSchemaAccessor(
+      ZkClient zkClient,
+      HelixAdapterSerializer helixAdapterSerializer,
+      String clusterName,
+      int refreshAttemptsForZkReconnect,
+      long refreshIntervalForZkReconnectInMs) {
     this.clusterName = clusterName;
 
     this.refreshAttemptsForZkReconnect = refreshAttemptsForZkReconnect;
@@ -69,12 +72,13 @@ public class HelixSchemaAccessor {
   private void registerSerializerForSchema(ZkClient zkClient, HelixAdapterSerializer adapter) {
     // Register schema serializer
     String keySchemaPath = getKeySchemaPath(PathResourceRegistry.WILDCARD_MATCH_ANY);
-    String valueSchemaPath = getValueSchemaPath(PathResourceRegistry.WILDCARD_MATCH_ANY,
-        PathResourceRegistry.WILDCARD_MATCH_ANY);
-    String derivedSchemaPath = getDerivedSchemaParentPath(PathResourceRegistry.WILDCARD_MATCH_ANY) + "/" +
-        PathResourceRegistry.WILDCARD_MATCH_ANY;
-    String replicationMetadataSchemaPath = getReplicationMetadataSchemaParentPath(PathResourceRegistry.WILDCARD_MATCH_ANY) + "/" +
-        PathResourceRegistry.WILDCARD_MATCH_ANY;
+    String valueSchemaPath =
+        getValueSchemaPath(PathResourceRegistry.WILDCARD_MATCH_ANY, PathResourceRegistry.WILDCARD_MATCH_ANY);
+    String derivedSchemaPath = getDerivedSchemaParentPath(PathResourceRegistry.WILDCARD_MATCH_ANY) + "/"
+        + PathResourceRegistry.WILDCARD_MATCH_ANY;
+    String replicationMetadataSchemaPath =
+        getReplicationMetadataSchemaParentPath(PathResourceRegistry.WILDCARD_MATCH_ANY) + "/"
+            + PathResourceRegistry.WILDCARD_MATCH_ANY;
     VeniceSerializer<SchemaEntry> serializer = new SchemaEntrySerializer();
     adapter.registerSerializer(keySchemaPath, serializer);
     adapter.registerSerializer(valueSchemaPath, serializer);
@@ -92,18 +96,24 @@ public class HelixSchemaAccessor {
   }
 
   public List<SchemaEntry> getAllValueSchemas(String storeName) {
-    return HelixUtils.getChildren(schemaAccessor, getValueSchemaParentPath(storeName),
-        refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
+    return HelixUtils.getChildren(
+        schemaAccessor,
+        getValueSchemaParentPath(storeName),
+        refreshAttemptsForZkReconnect,
+        refreshIntervalForZkReconnectInMs);
   }
 
   public DerivedSchemaEntry getDerivedSchema(String storeName, String derivedSchemaIdPair) {
-    return derivedSchemaAccessor.get(getDerivedSchemaPath(storeName, derivedSchemaIdPair), null,
-        AccessOption.PERSISTENT);
+    return derivedSchemaAccessor
+        .get(getDerivedSchemaPath(storeName, derivedSchemaIdPair), null, AccessOption.PERSISTENT);
   }
 
   public List<DerivedSchemaEntry> getAllDerivedSchemas(String storeName) {
-    return HelixUtils.getChildren(derivedSchemaAccessor, getDerivedSchemaParentPath(storeName),
-        refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
+    return HelixUtils.getChildren(
+        derivedSchemaAccessor,
+        getDerivedSchemaParentPath(storeName),
+        refreshAttemptsForZkReconnect,
+        refreshIntervalForZkReconnectInMs);
   }
 
   public void createKeySchema(String storeName, SchemaEntry schemaEntry) {
@@ -117,8 +127,13 @@ public class HelixSchemaAccessor {
   }
 
   public void addDerivedSchema(String storeName, DerivedSchemaEntry derivedSchemaEntry) {
-    HelixUtils.create(schemaAccessor, getDerivedSchemaPath(storeName,
-        String.valueOf(derivedSchemaEntry.getValueSchemaID()), String.valueOf(derivedSchemaEntry.getId())), derivedSchemaEntry);
+    HelixUtils.create(
+        schemaAccessor,
+        getDerivedSchemaPath(
+            storeName,
+            String.valueOf(derivedSchemaEntry.getValueSchemaID()),
+            String.valueOf(derivedSchemaEntry.getId())),
+        derivedSchemaEntry);
     logger.info("Added derived schema: " + derivedSchemaEntry + "for store: " + storeName);
   }
 
@@ -199,38 +214,53 @@ public class HelixSchemaAccessor {
   }
 
   String getDerivedSchemaPath(String storeName, String valueSchemaId, String derivedSchemaId) {
-    return getDerivedSchemaParentPath(storeName) + "/" + valueSchemaId + MULTIPART_SCHEMA_VERSION_DELIMITER + derivedSchemaId;
+    return getDerivedSchemaParentPath(storeName) + "/" + valueSchemaId + MULTIPART_SCHEMA_VERSION_DELIMITER
+        + derivedSchemaId;
   }
 
   String getDerivedSchemaPath(String storeName, String derivedSchemaIdPair) {
     return getDerivedSchemaParentPath(storeName) + "/" + derivedSchemaIdPair;
   }
 
-  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(String storeName, String replicationMetadataVersionIdPair) {
+  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(
+      String storeName,
+      String replicationMetadataVersionIdPair) {
     return replicationMetadataSchemaAccessor.get(
-        getReplicationMetadataSchemaPath(storeName, replicationMetadataVersionIdPair), null,
+        getReplicationMetadataSchemaPath(storeName, replicationMetadataVersionIdPair),
+        null,
         AccessOption.PERSISTENT);
   }
 
   public List<ReplicationMetadataSchemaEntry> getAllReplicationMetadataSchemas(String storeName) {
-    return HelixUtils.getChildren(replicationMetadataSchemaAccessor, getReplicationMetadataSchemaParentPath(storeName),
-        refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
+    return HelixUtils.getChildren(
+        replicationMetadataSchemaAccessor,
+        getReplicationMetadataSchemaParentPath(storeName),
+        refreshAttemptsForZkReconnect,
+        refreshIntervalForZkReconnectInMs);
   }
 
-  public void addReplicationMetadataSchema(String storeName, ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry) {
-    HelixUtils.create(replicationMetadataSchemaAccessor, getReplicationMetadataSchemaPath(storeName,
-        String.valueOf(replicationMetadataSchemaEntry.getValueSchemaID()), String.valueOf(
-            replicationMetadataSchemaEntry.getId())), replicationMetadataSchemaEntry);
+  public void addReplicationMetadataSchema(
+      String storeName,
+      ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry) {
+    HelixUtils.create(
+        replicationMetadataSchemaAccessor,
+        getReplicationMetadataSchemaPath(
+            storeName,
+            String.valueOf(replicationMetadataSchemaEntry.getValueSchemaID()),
+            String.valueOf(replicationMetadataSchemaEntry.getId())),
+        replicationMetadataSchemaEntry);
     logger.info("Added replication metadata schema: " + replicationMetadataSchemaEntry + " for store: " + storeName);
   }
 
   public void subscribeReplicationMetadataSchemaCreationChange(String storeName, IZkChildListener childListener) {
-    replicationMetadataSchemaAccessor.subscribeChildChanges(getReplicationMetadataSchemaParentPath(storeName), childListener);
+    replicationMetadataSchemaAccessor
+        .subscribeChildChanges(getReplicationMetadataSchemaParentPath(storeName), childListener);
     logger.info("Subscribe replication metadata schema child changes for store: " + storeName);
   }
 
   public void unsubscribeReplicationMetadataSchemaCreationChanges(String storeName, IZkChildListener childListener) {
-    replicationMetadataSchemaAccessor.unsubscribeChildChanges(getReplicationMetadataSchemaParentPath(storeName), childListener);
+    replicationMetadataSchemaAccessor
+        .unsubscribeChildChanges(getReplicationMetadataSchemaParentPath(storeName), childListener);
     logger.info("Unsubscribe replication metadata schema child changes for store: " + storeName);
   }
 
@@ -239,7 +269,8 @@ public class HelixSchemaAccessor {
   }
 
   String getReplicationMetadataSchemaPath(String storeName, String valueSchemaId, String replicationMetadataVersionId) {
-    return getReplicationMetadataSchemaParentPath(storeName) + "/" + valueSchemaId + MULTIPART_SCHEMA_VERSION_DELIMITER + replicationMetadataVersionId;
+    return getReplicationMetadataSchemaParentPath(storeName) + "/" + valueSchemaId + MULTIPART_SCHEMA_VERSION_DELIMITER
+        + replicationMetadataVersionId;
   }
 
   String getReplicationMetadataSchemaPath(String storeName, String replicationMetadataVersionIdPair) {

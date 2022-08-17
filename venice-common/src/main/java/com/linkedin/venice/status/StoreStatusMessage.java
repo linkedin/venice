@@ -20,10 +20,10 @@ public class StoreStatusMessage extends StatusMessage {
   Serialization on the storage node and sent to the controller.
   Controller uses JSON De-Serializer and uses reflection to
   initialize the members of this object.
-
+  
   Changing the fieldName will not generate compile time error,
   but will cause it to fail on the controller side.
-
+  
   Removing/Adding the field will have the same effect. But can be
   controlled to a certain extent by making the controller deployed
   first to be backward compatible and then deploying the storage
@@ -104,9 +104,9 @@ public class StoreStatusMessage extends StatusMessage {
     map.put(KAFKA_TOPIC, kafkaTopic);
     map.put(INSTANCE_ID, instanceId);
     map.put(STATUS, status.toString());
-    map.put(OFFSET , String.valueOf(offset));
+    map.put(OFFSET, String.valueOf(offset));
 
-    if(description != null) {
+    if (description != null) {
       map.put(DESCRIPTION, description);
     }
 
@@ -152,14 +152,8 @@ public class StoreStatusMessage extends StatusMessage {
 
   @Override
   public String toString() {
-    return "StoreStatusMessage{" +
-            ", messageId='" + messageId + '\'' +
-            ", partitionId=" + partitionId +
-            ", kafkaTopic='" + kafkaTopic + '\'' +
-            ", instanceId='" + instanceId + '\'' +
-            ", offset=" + offset +
-            ", description='" + description + '\'' +
-            ", status=" + status +
-            '}';
+    return "StoreStatusMessage{" + ", messageId='" + messageId + '\'' + ", partitionId=" + partitionId
+        + ", kafkaTopic='" + kafkaTopic + '\'' + ", instanceId='" + instanceId + '\'' + ", offset=" + offset
+        + ", description='" + description + '\'' + ", status=" + status + '}';
   }
 }

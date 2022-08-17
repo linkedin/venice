@@ -2,7 +2,9 @@ package com.linkedin.venice.controllerapi;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
-public class VersionResponse extends ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */
+
+public class VersionResponse
+    extends ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */
   private int version;
 
   public int getVersion() {
@@ -15,7 +17,6 @@ public class VersionResponse extends ControllerResponse { /* Uses Json Reflectiv
 
   @JsonIgnore
   public String toString() {
-    return VersionResponse.class.getSimpleName() + "(version: " + version +
-        ", super: " + super.toString() + ")";
+    return VersionResponse.class.getSimpleName() + "(version: " + version + ", super: " + super.toString() + ")";
   }
 }

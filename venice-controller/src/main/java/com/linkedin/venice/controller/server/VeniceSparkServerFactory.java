@@ -10,6 +10,7 @@ import spark.http.matching.MatcherFilter;
 import spark.route.Routes;
 import spark.staticfiles.StaticFilesConfiguration;
 
+
 /**
  * Creates instances of embedded jetty containers.
  */
@@ -23,11 +24,13 @@ public class VeniceSparkServerFactory implements EmbeddedServerFactory {
     this.jettyConfig = jettyConfig;
   }
 
-  public EmbeddedServer create(Routes routeMatcher,
+  public EmbeddedServer create(
+      Routes routeMatcher,
       StaticFilesConfiguration staticFilesConfiguration,
       ExceptionMapper exceptionMapper,
       boolean hasMultipleHandler) {
-    MatcherFilter matcherFilter = new MatcherFilter(routeMatcher, staticFilesConfiguration, exceptionMapper, false, hasMultipleHandler);
+    MatcherFilter matcherFilter =
+        new MatcherFilter(routeMatcher, staticFilesConfiguration, exceptionMapper, false, hasMultipleHandler);
     matcherFilter.init(null);
 
     JettyHandler handler = new JettyHandler(matcherFilter);

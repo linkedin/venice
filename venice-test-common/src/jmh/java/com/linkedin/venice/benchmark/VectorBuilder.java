@@ -4,7 +4,7 @@ import com.google.flatbuffers.FlatBufferBuilder;
 import java.nio.ByteBuffer;
 
 
-class VectorBuilder extends VectorBase  {
+class VectorBuilder extends VectorBase {
   VectorBuilder(int size, int typeWidth) {
     super(size, typeWidth);
   }

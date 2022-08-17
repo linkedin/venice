@@ -1,12 +1,12 @@
 package com.linkedin.venice.meta;
 
+import static com.linkedin.venice.meta.Store.*;
+
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.linkedin.venice.compression.CompressionStrategy;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-
-import static com.linkedin.venice.meta.Store.*;
 
 
 /**
@@ -14,7 +14,7 @@ import static com.linkedin.venice.meta.Store.*;
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class StoreInfo {
-  public static StoreInfo fromStore(Store store){
+  public static StoreInfo fromStore(Store store) {
     StoreInfo storeInfo = new StoreInfo();
     // Sort the properties alphabetically
     storeInfo.setAccessControlled(store.isAccessControlled());
@@ -64,6 +64,7 @@ public class StoreInfo {
     storeInfo.setReplicationMetadataVersionId(store.getRmdVersionID().orElse(-1));
     return storeInfo;
   }
+
   /**
    * Store name.
    */
@@ -228,7 +229,6 @@ public class StoreInfo {
    * Strategies to store backup versions of a store.
    */
   private BackupStrategy backupStrategy = BackupStrategy.KEEP_MIN_VERSIONS;
-
 
   /**
    * Whether or not value schema auto registration from Push job enabled for this store.
@@ -419,7 +419,7 @@ public class StoreInfo {
   }
 
   public Optional<Version> getVersion(int versionNum) {
-    for (Version v : getVersions()) {
+    for (Version v: getVersions()) {
       if (v.getNumber() == versionNum) {
         return Optional.of(v);
       }
@@ -443,7 +443,9 @@ public class StoreInfo {
     return hybridStoreOverheadBypass;
   }
 
-  public void setHybridStoreOverheadBypass(boolean overheadBypass) { this.hybridStoreOverheadBypass = overheadBypass; }
+  public void setHybridStoreOverheadBypass(boolean overheadBypass) {
+    this.hybridStoreOverheadBypass = overheadBypass;
+  }
 
   public long getReadQuotaInCU() {
     return readQuotaInCU;
@@ -637,9 +639,13 @@ public class StoreInfo {
     return latestSuperSetValueSchemaId;
   }
 
-  public boolean isHybridStoreDiskQuotaEnabled() { return hybridStoreDiskQuotaEnabled; }
+  public boolean isHybridStoreDiskQuotaEnabled() {
+    return hybridStoreDiskQuotaEnabled;
+  }
 
-  public void setHybridStoreDiskQuotaEnabled(boolean enabled) {hybridStoreDiskQuotaEnabled = enabled; }
+  public void setHybridStoreDiskQuotaEnabled(boolean enabled) {
+    hybridStoreDiskQuotaEnabled = enabled;
+  }
 
   public ETLStoreConfig getEtlStoreConfig() {
     return etlStoreConfig;
@@ -672,7 +678,6 @@ public class StoreInfo {
   public void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
     this.incrementalPushPolicy = incrementalPushPolicy;
   }
-
 
   public int getReplicationFactor() {
     return replicationFactor;

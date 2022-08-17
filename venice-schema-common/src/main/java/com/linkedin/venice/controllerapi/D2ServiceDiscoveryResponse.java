@@ -2,6 +2,7 @@ package com.linkedin.venice.controllerapi;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
+
 public class D2ServiceDiscoveryResponse extends ControllerResponse {
   String d2Service;
 
@@ -15,7 +16,7 @@ public class D2ServiceDiscoveryResponse extends ControllerResponse {
 
   @JsonIgnore
   public String toString() {
-    return D2ServiceDiscoveryResponse.class.getSimpleName() + "(d2service: " + d2Service +
-        ", super: " + super.toString() + ")";
+    return D2ServiceDiscoveryResponse.class.getSimpleName() + "(d2service: " + d2Service + ", super: "
+        + super.toString() + ")";
   }
 }

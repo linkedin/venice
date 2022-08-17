@@ -18,7 +18,6 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
-
 import java.net.URI;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -38,7 +37,10 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
   private final boolean useFastAvro;
   private final Map<String, Integer> storeToEarlyTerminationThresholdMSMap;
 
-  public RouterRequestHttpHandler(StatsHandler handler, boolean useFastAvro, Map<String, Integer> storeToEarlyTerminationThresholdMSMap) {
+  public RouterRequestHttpHandler(
+      StatsHandler handler,
+      boolean useFastAvro,
+      Map<String, Integer> storeToEarlyTerminationThresholdMSMap) {
     super();
     this.statsHandler = handler;
     this.useFastAvro = useFastAvro;
@@ -60,15 +62,17 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
     String storeName = routerRequest.getStoreName();
     Integer timeoutThresholdInMS = storeToEarlyTerminationThresholdMSMap.get(storeName);
     if (timeoutThresholdInMS != null) {
-      routerRequest.setRequestTimeoutInNS(statsHandler.getRequestStartTimeInNS() + TimeUnit.MILLISECONDS.toNanos(timeoutThresholdInMS));
+      routerRequest.setRequestTimeoutInNS(
+          statsHandler.getRequestStartTimeInNS() + TimeUnit.MILLISECONDS.toNanos(timeoutThresholdInMS));
     }
   }
+
   @Override
   protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest req) throws Exception {
     try {
       QueryAction action = getQueryActionFromRequest(req);
       statsHandler.setRequestSize(req.content().readableBytes());
-      switch (action){
+      switch (action) {
         case STORAGE: // GET /storage/store/partition/key
           HttpMethod requestMethod = req.method();
           if (requestMethod.equals(HttpMethod.GET)) {
@@ -89,7 +93,8 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           break;
         case COMPUTE: // compute request
           if (req.method().equals(HttpMethod.POST)) {
-            ComputeRouterRequestWrapper computeRouterReq = ComputeRouterRequestWrapper.parseComputeRequest(req, useFastAvro);
+            ComputeRouterRequestWrapper computeRouterReq =
+                ComputeRouterRequestWrapper.parseComputeRequest(req, useFastAvro);
             setupRequestTimeout(computeRouterReq);
             statsHandler.setRequestInfo(computeRouterReq);
             ctx.fireChannelRead(computeRouterReq);
@@ -132,7 +137,7 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
   @Override
   public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
     if (evt instanceof IdleStateEvent) {
-      IdleStateEvent e = (IdleStateEvent)evt;
+      IdleStateEvent e = (IdleStateEvent) evt;
       if (e.state() == IdleState.ALL_IDLE) {
         // Close the connection after idling for a certain period
         ctx.close();
@@ -142,22 +147,24 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
     super.userEventTriggered(ctx, evt);
   }
 
-  static QueryAction getQueryActionFromRequest(HttpRequest req){
+  static QueryAction getQueryActionFromRequest(HttpRequest req) {
     // Sometimes req.uri() gives a full uri (eg https://host:port/path) and sometimes it only gives a path
     // Generating a URI lets us always take just the path.
     String[] requestParts = URI.create(req.uri()).getPath().split("/");
     HttpMethod reqMethod = req.method();
-    if ((!reqMethod.equals(HttpMethod.GET) && !reqMethod.equals(HttpMethod.POST)) ||
-        requestParts.length < 2) {
-      throw new VeniceException("Only able to parse GET or POST requests for actions: storage, health, compute, dictionary, admin. "
-          + "Cannot parse request for: " + req.uri());
+    if ((!reqMethod.equals(HttpMethod.GET) && !reqMethod.equals(HttpMethod.POST)) || requestParts.length < 2) {
+      throw new VeniceException(
+          "Only able to parse GET or POST requests for actions: storage, health, compute, dictionary, admin. "
+              + "Cannot parse request for: " + req.uri());
     }
 
     try {
       return QueryAction.valueOf(requestParts[1].toUpperCase());
     } catch (IllegalArgumentException e) {
-      throw new VeniceException("Only able to parse GET or POST requests for actions: storage, health, compute, dictionary, admin. "
-          + "Cannot support action: " + requestParts[1], e);
+      throw new VeniceException(
+          "Only able to parse GET or POST requests for actions: storage, health, compute, dictionary, admin. "
+              + "Cannot support action: " + requestParts[1],
+          e);
     }
   }
 }

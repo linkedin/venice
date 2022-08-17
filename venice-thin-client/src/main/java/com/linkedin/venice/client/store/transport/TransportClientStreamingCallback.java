@@ -10,7 +10,6 @@ import java.util.Optional;
  * Callback to support streaming in {@link TransportClient}
  */
 public interface TransportClientStreamingCallback {
-
   /**
    * This will be invoked when headers are available.
    * @param headers

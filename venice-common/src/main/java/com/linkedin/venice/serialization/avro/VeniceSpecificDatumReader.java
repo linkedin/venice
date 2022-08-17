@@ -18,6 +18,7 @@ public class VeniceSpecificDatumReader<T> extends SpecificDatumReader<T> {
     if (old instanceof VeniceConcurrentHashMap) {
       ((VeniceConcurrentHashMap<?, ?>) old).clear();
       return old;
-    } else return new VeniceConcurrentHashMap<Object, Object>(size);
+    } else
+      return new VeniceConcurrentHashMap<Object, Object>(size);
   }
 }

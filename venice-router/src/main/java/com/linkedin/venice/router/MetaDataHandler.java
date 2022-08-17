@@ -1,5 +1,12 @@
 package com.linkedin.venice.router;
 
+import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.*;
+import static com.linkedin.venice.router.api.VenicePathParser.*;
+import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
+import static com.linkedin.venice.utils.NettyUtils.*;
+import static io.netty.handler.codec.http.HttpResponseStatus.*;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
@@ -54,13 +61,6 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.*;
-import static com.linkedin.venice.router.api.VenicePathParser.*;
-import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
-import static com.linkedin.venice.utils.NettyUtils.*;
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
-
 
 /**
  * This MetaDataHandle is used to handle the following meta data requests:
@@ -94,12 +94,18 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private final String kafkaZkAddress;
   private final String kafkaBootstrapServers;
 
-
-  public MetaDataHandler(RoutingDataRepository routing, ReadOnlySchemaRepository schemaRepo,
-      ReadOnlyStoreConfigRepository storeConfigRepo, Map<String, String> clusterToD2Map,
-      OnlineInstanceFinderDelegator onlineInstanceFinder, ReadOnlyStoreRepository storeRepository,
-      Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository, String clusterName, String zkAddress,
-      String kafkaZkAddress, String kafkaBootstrapServers) {
+  public MetaDataHandler(
+      RoutingDataRepository routing,
+      ReadOnlySchemaRepository schemaRepo,
+      ReadOnlyStoreConfigRepository storeConfigRepo,
+      Map<String, String> clusterToD2Map,
+      OnlineInstanceFinderDelegator onlineInstanceFinder,
+      ReadOnlyStoreRepository storeRepository,
+      Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository,
+      String clusterName,
+      String zkAddress,
+      String kafkaZkAddress,
+      String kafkaBootstrapServers) {
     super();
     this.routing = routing;
     this.schemaRepo = schemaRepo;
@@ -118,7 +124,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   public void channelRead0(ChannelHandlerContext ctx, HttpRequest req) throws IOException {
     VenicePathParserHelper helper = parseRequest(req);
 
-    String resourceType = helper.getResourceType(); //may be null
+    String resourceType = helper.getResourceType(); // may be null
     if (TYPE_LEADER_CONTROLLER.equals(resourceType) || TYPE_LEADER_CONTROLLER_LEGACY.equals(resourceType)) {
       // go/inclusivecode deprecated(alias="leader_controller")
       // URI: /leader_controller or /master_controller. Remove reference when the non inclusive term is removed.
@@ -188,7 +194,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
   private void handleValueSchemaLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
     String storeName = helper.getResourceName();
-    checkResourceName(storeName,
+    checkResourceName(
+        storeName,
         "/" + TYPE_VALUE_SCHEMA + "/${storeName} or /" + TYPE_VALUE_SCHEMA + "/${storeName}/${valueSchemaId}");
     String id = helper.getKey();
     if (null == id || id.isEmpty()) {
@@ -205,7 +212,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       int schemaNum = valueSchemaEntries.size();
       MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[schemaNum];
       int cur = 0;
-      for (SchemaEntry entry : valueSchemaEntries) {
+      for (SchemaEntry entry: valueSchemaEntries) {
         schemas[cur] = new MultiSchemaResponse.Schema();
         schemas[cur].setId(entry.getId());
         schemas[cur].setSchemaStr(entry.getSchema().toString());
@@ -242,9 +249,12 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       // URI: /update_schema/{$storeName}/{$valueSchemaId}
       // Get latest update schema by value schema id
       int valueSchemaId = Integer.parseInt(valueSchemaIdStr);
-      Optional<DerivedSchemaEntry> updateSchemaOptional = getLatestUpdateSchemaWithValueSchemaId(storeName, valueSchemaId);
+      Optional<DerivedSchemaEntry> updateSchemaOptional =
+          getLatestUpdateSchemaWithValueSchemaId(storeName, valueSchemaId);
       if (!updateSchemaOptional.isPresent()) {
-        byte[] errBody = ("Update schema doesn't exist for value schema id: " + valueSchemaIdStr + " of store: " + storeName).getBytes();
+        byte[] errBody =
+            ("Update schema doesn't exist for value schema id: " + valueSchemaIdStr + " of store: " + storeName)
+                .getBytes();
         setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
         return;
       }
@@ -257,7 +267,6 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
     }
   }
-
 
   private void hanldeD2ServiceLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper, HttpHeaders headers)
       throws IOException {
@@ -294,7 +303,10 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     }
   }
 
-  private void setupErrorD2DiscoveryResponseAndFlush(HttpResponseStatus status, String errorMsg, HttpHeaders headers,
+  private void setupErrorD2DiscoveryResponseAndFlush(
+      HttpResponseStatus status,
+      String errorMsg,
+      HttpHeaders headers,
       ChannelHandlerContext ctx) throws IOException {
     D2ServiceDiscoveryResponse responseObject;
     if (headers.contains(D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED)) {
@@ -341,8 +353,9 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
         return;
       }
       if (isResourceReadyToServe) {
-        isResourceReadyToServe = partitionReplicaStates.stream().filter(ReplicaState::isReadyToServe).count() > (
-            partitionReplicaStates.size() / 2);
+        isResourceReadyToServe = partitionReplicaStates.stream()
+            .filter(ReplicaState::isReadyToServe)
+            .count() > (partitionReplicaStates.size() / 2);
       }
       replicaStates.addAll(partitionReplicaStates);
     }
@@ -396,9 +409,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     String storeName = helper.getResourceName();
     checkResourceName(storeName, "/" + TYPE_STREAM_HYBRID_STORE_QUOTA + "/${storeName}");
     if (!storeConfigRepo.getStoreConfig(storeName).isPresent()) {
-      byte[] errBody =
-          ("Cannot fetch the hybrid store quota status for store: " + storeName + " because the store: " + storeName
-              + " cannot be found").getBytes();
+      byte[] errBody = ("Cannot fetch the hybrid store quota status for store: " + storeName + " because the store: "
+          + storeName + " cannot be found").getBytes();
       setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
       return;
     }
@@ -409,14 +421,15 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   /**
    * Get hybrid store quota status from {@link HelixHybridStoreQuotaRepository} for stores.
    */
-  private void handleStreamReprocessingHybridStoreQuotaStatusLookup(ChannelHandlerContext ctx,
+  private void handleStreamReprocessingHybridStoreQuotaStatusLookup(
+      ChannelHandlerContext ctx,
       VenicePathParserHelper helper) throws IOException {
     String resourceName = helper.getResourceName();
     checkResourceName(resourceName, "/" + TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA + "/${resourceName}");
     if (!storeConfigRepo.getStoreConfig(Version.parseStoreFromKafkaTopicName(resourceName)).isPresent()) {
       byte[] errBody =
-          ("Cannot fetch the hybrid store quota status for resource: " + resourceName + " because the store: " + Version
-              .parseStoreFromKafkaTopicName(resourceName) + " cannot be found").getBytes();
+          ("Cannot fetch the hybrid store quota status for resource: " + resourceName + " because the store: "
+              + Version.parseStoreFromKafkaTopicName(resourceName) + " cannot be found").getBytes();
       setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
       return;
     }
@@ -431,9 +444,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     checkResourceName(storeName, "/" + TYPE_STORE_STATE + "/${storeName}");
     Store store = storeRepository.getStore(storeName);
     if (store == null) {
-      byte[] errBody =
-          ("Cannot fetch the store state for store: " + storeName + " because the store cannot be found in cluster: "
-              + clusterName).getBytes();
+      byte[] errBody = ("Cannot fetch the store state for store: " + storeName
+          + " because the store cannot be found in cluster: " + clusterName).getBytes();
       setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
       return;
     }
@@ -452,8 +464,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     HybridStoreQuotaStatusResponse hybridStoreQuotaStatusResponse = new HybridStoreQuotaStatusResponse();
     hybridStoreQuotaStatusResponse.setName(resourceName);
     if (hybridStoreQuotaRepository.isPresent()) {
-      hybridStoreQuotaStatusResponse.setQuotaStatus(
-          hybridStoreQuotaRepository.get().getHybridStoreQuotaStatus(resourceName));
+      hybridStoreQuotaStatusResponse
+          .setQuotaStatus(hybridStoreQuotaRepository.get().getHybridStoreQuotaStatus(resourceName));
     } else {
       hybridStoreQuotaStatusResponse.setQuotaStatus(HybridStoreQuotaStatus.UNKNOWN);
     }
@@ -472,7 +484,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
   private Optional<DerivedSchemaEntry> getLatestUpdateSchemaWithValueSchemaId(String storeName, int valueSchemaId) {
     DerivedSchemaEntry latestUpdateSchemaEntry = null;
-    for (DerivedSchemaEntry entry : schemaRepo.getDerivedSchemas(storeName)) {
+    for (DerivedSchemaEntry entry: schemaRepo.getDerivedSchemas(storeName)) {
       if (entry.getValueSchemaID() == valueSchemaId) {
         if (latestUpdateSchemaEntry == null || entry.getId() > latestUpdateSchemaEntry.getId()) {
           latestUpdateSchemaEntry = entry;

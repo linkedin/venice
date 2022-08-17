@@ -27,7 +27,6 @@ import scala.collection.Seq;
  */
 public class KafkaBrokerWrapper extends ProcessWrapper {
   // Class-level state and APIs
-
   public static final String SERVICE_NAME = "Kafka";
   private static final int OFFSET_TOPIC_PARTITIONS = 1;
   private static final short OFFSET_TOPIC_REPLICATION_FACTOR = 1;
@@ -42,12 +41,17 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
    *
    * @return a function which yields a {@link KafkaBrokerWrapper} instance
    */
-  static StatefulServiceProvider<KafkaBrokerWrapper> generateService(ZkServerWrapper zkServerWrapper, Optional<MockTime> mockTime) {
+  static StatefulServiceProvider<KafkaBrokerWrapper> generateService(
+      ZkServerWrapper zkServerWrapper,
+      Optional<MockTime> mockTime) {
     int port = Utils.getFreePort();
     return generateService(zkServerWrapper, mockTime, port);
   }
 
-  static StatefulServiceProvider<KafkaBrokerWrapper> generateService(ZkServerWrapper zkServerWrapper, Optional<MockTime> mockTime, int port) {
+  static StatefulServiceProvider<KafkaBrokerWrapper> generateService(
+      ZkServerWrapper zkServerWrapper,
+      Optional<MockTime> mockTime,
+      int port) {
     return (String serviceName, File dir) -> {
       int sslPort = Utils.getFreePort();
       Map<String, Object> configMap = new HashMap<>();
@@ -69,7 +73,7 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
 
       // Setup ssl related configs for kafka.
       Properties sslConfig = KafkaSSLUtils.getLocalKafkaBrokerSSlConfig(DEFAULT_HOST_NAME, port, sslPort);
-      sslConfig.entrySet().stream().forEach(entry->configMap.put((String)entry.getKey(), entry.getValue()));
+      sslConfig.entrySet().stream().forEach(entry -> configMap.put((String) entry.getKey(), entry.getValue()));
       KafkaConfig kafkaConfig = new KafkaConfig(configMap, true);
       KafkaServer kafkaServer = instantiateNewKafkaServer(kafkaConfig, mockTime);
       logger.info("KafkaBroker URL: " + kafkaServer.config().hostName() + ":" + kafkaServer.config().port());
@@ -82,9 +86,11 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
    */
   private static KafkaServer instantiateNewKafkaServer(KafkaConfig kafkaConfig, Optional<MockTime> mockTime) {
     // We cannot get a kafka.utils.Time out of an Optional<MockTime>, even though MockTime implements it.
-    org.apache.kafka.common.utils.Time time = Optional.<org.apache.kafka.common.utils.Time >ofNullable(mockTime.orElse(null)).orElse(SystemTime.SYSTEM);
+    org.apache.kafka.common.utils.Time time =
+        Optional.<org.apache.kafka.common.utils.Time>ofNullable(mockTime.orElse(null)).orElse(SystemTime.SYSTEM);
     int port = kafkaConfig.getInt(KafkaConfig.PortProp());
-    // Scala's Some (i.e.: the non-empty Optional) needs to be instantiated via Some's object (i.e.: static companion class)
+    // Scala's Some (i.e.: the non-empty Optional) needs to be instantiated via Some's object (i.e.: static companion
+    // class)
     Option<String> threadNamePrefix = scala.Some$.MODULE$.apply("kafka-broker-port-" + port);
     // This needs to be a Scala List
     Seq<KafkaMetricsReporter> metricsReporterSeq = JavaConversions.asScalaBuffer(new ArrayList<>());
@@ -106,7 +112,13 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
    * @param dataDirectory where Kafka keeps its log
    * @param zkServerWrapper the ZK which Kafka uses for its coordination
    */
-  private KafkaBrokerWrapper(KafkaConfig kafkaConfig, KafkaServer kafkaServer, File dataDirectory, ZkServerWrapper zkServerWrapper, Optional<MockTime> mockTime, int sslPort) {
+  private KafkaBrokerWrapper(
+      KafkaConfig kafkaConfig,
+      KafkaServer kafkaServer,
+      File dataDirectory,
+      ZkServerWrapper zkServerWrapper,
+      Optional<MockTime> mockTime,
+      int sslPort) {
     super(SERVICE_NAME, dataDirectory);
     this.kafkaConfig = kafkaConfig;
     this.kafkaServer = kafkaServer;
@@ -137,9 +149,10 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
     return getHost() + ":" + getPort();
   }
 
-  public String getSSLAddress(){
+  public String getSSLAddress() {
     return getHost() + ":" + getSslPort();
   }
+
   /**
    * @return the address of the ZK used by this Kafka instance
    */
@@ -150,8 +163,9 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
   @Override
   protected void internalStart() throws Exception {
     Properties properties = System.getProperties();
-    if (properties.contains("kafka_mx4jenable") ) {
-      throw new VeniceException("kafka_mx4jenable should not be set! kafka_mx4jenable = " + properties.getProperty("kafka_mx4jenable"));
+    if (properties.contains("kafka_mx4jenable")) {
+      throw new VeniceException(
+          "kafka_mx4jenable should not be set! kafka_mx4jenable = " + properties.getProperty("kafka_mx4jenable"));
     }
     kafkaServer.startup();
     logger.info("Start kafka broker listen on port: " + getPort() + " and ssl port: " + getSslPort());

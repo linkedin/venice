@@ -1,5 +1,7 @@
 package com.linkedin.venice;
 
+import static com.linkedin.venice.VeniceClusterInitializer.*;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.davinci.client.DaVinciClient;
@@ -32,8 +34,6 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.VeniceClusterInitializer.*;
-
 
 /**
  * This test class is used to validate whether thin client could work with different Avro versions.
@@ -53,7 +53,9 @@ public class VeniceClientCompatibilityTest {
   @BeforeClass
   private void setUp() throws Exception {
     LOGGER.info("Avro version in unit test: " + AvroCompatibilityHelper.getRuntimeAvroVersion());
-    Assert.assertEquals(AvroCompatibilityHelper.getRuntimeAvroVersion(), AvroVersion.valueOf(System.getProperty("clientAvroVersion")));
+    Assert.assertEquals(
+        AvroCompatibilityHelper.getRuntimeAvroVersion(),
+        AvroVersion.valueOf(System.getProperty("clientAvroVersion")));
     /**
      * The following port selection is not super safe since this port could be occupied when it is being used
      * by the {@link VeniceClusterInitializer}.
@@ -73,8 +75,8 @@ public class VeniceClientCompatibilityTest {
         true,
         Optional.empty());
 
-    veniceClient = ClientFactory.getGenericAvroClient(
-        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddress));
+    veniceClient = ClientFactory
+        .getGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddress));
 
     // Block until the store is ready.
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
@@ -100,7 +102,7 @@ public class VeniceClientCompatibilityTest {
         zkAddress[0] = value.get(ZK_ADDRESS_FIELD).toString();
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
-      } catch (VeniceException | ExecutionException  e) {
+      } catch (VeniceException | ExecutionException e) {
         Assert.fail("Failed to query test key.", e);
       }
     });
@@ -108,7 +110,9 @@ public class VeniceClientCompatibilityTest {
     LOGGER.info("Zookeeper address in unit test: " + zkAddress[0]);
 
     daVinciClient = ServiceFactory.getGenericAvroDaVinciClientWithoutMetaSystemStoreRepo(
-        storeName, zkAddress[0], Utils.getTempDataDirectory().getAbsolutePath());
+        storeName,
+        zkAddress[0],
+        Utils.getTempDataDirectory().getAbsolutePath());
     daVinciClient.subscribeAll().get(30, TimeUnit.SECONDS);
   }
 
@@ -123,7 +127,7 @@ public class VeniceClientCompatibilityTest {
 
   @DataProvider(name = "clientProvider")
   public Object[][] clientProvider() {
-    return new Object[][]{{veniceClient}, {daVinciClient}};
+    return new Object[][] { { veniceClient }, { daVinciClient } };
   }
 
   @Test(dataProvider = "clientProvider")
@@ -180,29 +184,35 @@ public class VeniceClientCompatibilityTest {
         .get(2, TimeUnit.SECONDS);
     Assert.assertEquals(computeResult.size(), keyCount);
 
-    for (Map.Entry<String, GenericRecord> entry : computeResult.entrySet()) {
+    for (Map.Entry<String, GenericRecord> entry: computeResult.entrySet()) {
       int keyIdx = getKeyIndex(entry.getKey(), KEY_PREFIX);
       // check projection result
       Assert.assertEquals(entry.getValue().get("id"), new Utf8(ID_FIELD_PREFIX + keyIdx));
       // check dotProduct result; should be double for V1 request
-      Assert.assertEquals(entry.getValue().get("member_score"), (float)(p.get(0) * (keyIdx + 1) + p.get(1) * ((keyIdx + 1) * 10)));
+      Assert.assertEquals(
+          entry.getValue().get("member_score"),
+          (float) (p.get(0) * (keyIdx + 1) + p.get(1) * ((keyIdx + 1) * 10)));
 
       // check cosine similarity result; should be double for V1 request
-      float dotProductResult = (float) cosP.get(0) * (float)(keyIdx + 1) + cosP.get(1) * (float)((keyIdx + 1) * 10);
-      float valueVectorMagnitude = (float) Math.sqrt(((float)(keyIdx + 1) * (float)(keyIdx + 1) + ((float)(keyIdx + 1) * 10.0f) * ((float)(keyIdx + 1) * 10.0f)));
-      float parameterVectorMagnitude = (float) Math.sqrt((float)(cosP.get(0) * cosP.get(0) + cosP.get(1) * cosP.get(1)));
+      float dotProductResult = (float) cosP.get(0) * (float) (keyIdx + 1) + cosP.get(1) * (float) ((keyIdx + 1) * 10);
+      float valueVectorMagnitude = (float) Math.sqrt(
+          ((float) (keyIdx + 1) * (float) (keyIdx + 1)
+              + ((float) (keyIdx + 1) * 10.0f) * ((float) (keyIdx + 1) * 10.0f)));
+      float parameterVectorMagnitude =
+          (float) Math.sqrt((float) (cosP.get(0) * cosP.get(0) + cosP.get(1) * cosP.get(1)));
       float expectedCosineSimilarity = dotProductResult / (parameterVectorMagnitude * valueVectorMagnitude);
-      Assert.assertEquals((float) entry.getValue().get("cosine_similarity_result"), expectedCosineSimilarity, 0.000001f);
-      Assert.assertEquals((int) entry.getValue().get("member_feature_count"),  2);
-      Assert.assertEquals((int) entry.getValue().get("namemap_count"),  0);
+      Assert
+          .assertEquals((float) entry.getValue().get("cosine_similarity_result"), expectedCosineSimilarity, 0.000001f);
+      Assert.assertEquals((int) entry.getValue().get("member_feature_count"), 2);
+      Assert.assertEquals((int) entry.getValue().get("namemap_count"), 0);
 
       // check hadamard product
       List<Float> hadamardProductResult = new ArrayList<>(2);
-      hadamardProductResult.add(hadamardP.get(0) * (float)(keyIdx + 1));
-      hadamardProductResult.add(hadamardP.get(1) * (float)((keyIdx + 1) * 10));
+      hadamardProductResult.add(hadamardP.get(0) * (float) (keyIdx + 1));
+      hadamardProductResult.add(hadamardP.get(1) * (float) ((keyIdx + 1) * 10));
       Object hadamardProductResultReturned = entry.getValue().get("hadamard_product_result");
       Assert.assertTrue(hadamardProductResultReturned instanceof List);
-      List hadamardProductResultReturnedList = (List)hadamardProductResultReturned;
+      List hadamardProductResultReturnedList = (List) hadamardProductResultReturned;
       for (int i = 0; i < hadamardProductResultReturnedList.size(); ++i) {
         Assert.assertEquals(hadamardProductResultReturnedList.get(i), hadamardProductResult.get(i));
       }

@@ -18,7 +18,6 @@ import org.apache.avro.Schema;
  * {@link com.linkedin.venice.partitioner.DefaultVenicePartitioner}.
  */
 public class SimplePartitioner extends VenicePartitioner {
-
   public SimplePartitioner() {
     super();
   }

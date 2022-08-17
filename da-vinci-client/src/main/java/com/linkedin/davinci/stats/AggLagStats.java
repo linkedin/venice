@@ -14,7 +14,6 @@ import java.util.concurrent.atomic.AtomicLong;
 
 
 public class AggLagStats extends AbstractVeniceStats {
-
   private final StoreIngestionService storeIngestionService;
   private final Map<Integer, String> kafkaClusterIdToAliasMap;
   private final Int2LongMap aggRegionHybridOffsetLagTotalMap;
@@ -29,10 +28,13 @@ public class AggLagStats extends AbstractVeniceStats {
   public AggLagStats(StoreIngestionService storeIngestionService, MetricsRepository metricsRepository) {
     super(metricsRepository, "AggLagStats");
     this.storeIngestionService = storeIngestionService;
-    this.kafkaClusterIdToAliasMap = storeIngestionService.getVeniceConfigLoader().getVeniceServerConfig().getKafkaClusterIdToAliasMap();
+    this.kafkaClusterIdToAliasMap =
+        storeIngestionService.getVeniceConfigLoader().getVeniceServerConfig().getKafkaClusterIdToAliasMap();
     this.aggRegionHybridOffsetLagTotalMap = new Int2LongOpenHashMap(kafkaClusterIdToAliasMap.size());
-    for (Map.Entry<Integer, String> entry : kafkaClusterIdToAliasMap.entrySet()) {
-      String regionNamePrefix = RegionUtils.getRegionSpecificMetricPrefix(storeIngestionService.getVeniceConfigLoader().getVeniceServerConfig().getRegionName(), entry.getValue());
+    for (Map.Entry<Integer, String> entry: kafkaClusterIdToAliasMap.entrySet()) {
+      String regionNamePrefix = RegionUtils.getRegionSpecificMetricPrefix(
+          storeIngestionService.getVeniceConfigLoader().getVeniceServerConfig().getRegionName(),
+          entry.getValue());
       registerSensor(regionNamePrefix + "_rt_lag", new Gauge(() -> getAggRegionHybridOffsetLagTotal(entry.getKey())));
     }
     registerSensor("agg_batch_replication_lag_future", new Gauge(this::getAggBatchReplicationLagFuture));
@@ -67,7 +69,7 @@ public class AggLagStats extends AbstractVeniceStats {
       aggHybridFollowerOffsetLagTotal += ingestionTask.getHybridFollowerOffsetLag();
     });
 
-    for (int regionId : kafkaClusterIdToAliasMap.keySet()) {
+    for (int regionId: kafkaClusterIdToAliasMap.keySet()) {
       AtomicLong totalValue = new AtomicLong();
       storeIngestionService.traverseAllIngestionTasksAndApply((ingestionTask) -> {
         totalValue.addAndGet(ingestionTask.getRegionHybridOffsetLag(regionId));

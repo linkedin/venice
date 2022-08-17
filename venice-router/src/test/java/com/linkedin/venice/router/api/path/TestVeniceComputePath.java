@@ -1,5 +1,8 @@
 package com.linkedin.venice.router.api.path;
 
+import static com.linkedin.venice.compute.ComputeRequestWrapper.*;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
@@ -16,7 +19,6 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.Utils;
-
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
@@ -29,28 +31,20 @@ import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.compute.ComputeRequestWrapper.*;
-import static org.mockito.Mockito.*;
 
 public class TestVeniceComputePath {
-  private static String resultSchemaStr = "{" +
-      "  \"namespace\": \"example.compute\",    " +
-      "  \"type\": \"record\",        " +
-      "  \"name\": \"MemberFeature\",       " +
-      "  \"fields\": [        " +
-      "         { \"name\": \"id\", \"type\": \"string\" },       " +
-      "         { \"name\": \"member_score\", \"type\": \"double\" }        " +
-      "  ]       " +
-      " }       ";
-
+  private static String resultSchemaStr = "{" + "  \"namespace\": \"example.compute\",    "
+      + "  \"type\": \"record\",        " + "  \"name\": \"MemberFeature\",       " + "  \"fields\": [        "
+      + "         { \"name\": \"id\", \"type\": \"string\" },       "
+      + "         { \"name\": \"member_score\", \"type\": \"double\" }        " + "  ]       " + " }       ";
 
   private ComputeRequestV1 getComputeRequest() {
     DotProduct dotProduct = new DotProduct();
     dotProduct.field = "member_feature";
     List<Float> featureVector = new ArrayList<>(3);
-    featureVector.add(Float.valueOf((float)0.4));
-    featureVector.add(Float.valueOf((float)66.6));
-    featureVector.add(Float.valueOf((float)5.20));
+    featureVector.add(Float.valueOf((float) 0.4));
+    featureVector.add(Float.valueOf((float) 66.6));
+    featureVector.add(Float.valueOf((float) 5.20));
     dotProduct.dotProductParam = featureVector;
     dotProduct.resultFieldName = "member_score";
 
@@ -70,8 +64,8 @@ public class TestVeniceComputePath {
   private BasicFullHttpRequest getComputeHttpRequest(String resourceName, byte[] content, int version) {
     String uri = "/compute/" + resourceName;
 
-    BasicFullHttpRequest request = new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, uri,
-        Unpooled.wrappedBuffer(content),0, 0);
+    BasicFullHttpRequest request =
+        new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, uri, Unpooled.wrappedBuffer(content), 0, 0);
     request.headers().add(HttpConstants.VENICE_API_VERSION, version);
 
     return request;
@@ -99,8 +93,8 @@ public class TestVeniceComputePath {
     byte[] computeRequestInBytes = computeRequestSerializer.serialize(computeRequest);
     int expectedLength = computeRequestInBytes.length;
 
-    RecordSerializer<ByteBuffer> keySerializer =
-        SerializerDeserializerFactory.getAvroGenericSerializer(ReadAvroProtocolDefinition.COMPUTE_REQUEST_CLIENT_KEY_V1.getSchema());
+    RecordSerializer<ByteBuffer> keySerializer = SerializerDeserializerFactory
+        .getAvroGenericSerializer(ReadAvroProtocolDefinition.COMPUTE_REQUEST_CLIENT_KEY_V1.getSchema());
     byte[] keysInBytes = keySerializer.serializeObjects(keys);
 
     ByteArrayOutputStream output = new ByteArrayOutputStream();
@@ -168,13 +162,13 @@ public class TestVeniceComputePath {
     computeRequestV1.operations.add(cosineSimilarityOperation);
 
     // serialize compute request V1
-    RecordSerializer<ComputeRequestV1> computeRequestV1Serializer = SerializerDeserializerFactory.getAvroGenericSerializer(
-        ReadAvroProtocolDefinition.COMPUTE_REQUEST_V1.getSchema());
+    RecordSerializer<ComputeRequestV1> computeRequestV1Serializer = SerializerDeserializerFactory
+        .getAvroGenericSerializer(ReadAvroProtocolDefinition.COMPUTE_REQUEST_V1.getSchema());
     byte[] serializedComputeRequestV1 = computeRequestV1Serializer.serialize(computeRequestV1);
 
     // use V2 schema to deserialize
-    RecordDeserializer<ComputeRequestV2> computeRequestV2Deserializer =
-        SerializerDeserializerFactory.getAvroSpecificDeserializer(ReadAvroProtocolDefinition.COMPUTE_REQUEST_V1.getSchema(), ComputeRequestV2.class);
+    RecordDeserializer<ComputeRequestV2> computeRequestV2Deserializer = SerializerDeserializerFactory
+        .getAvroSpecificDeserializer(ReadAvroProtocolDefinition.COMPUTE_REQUEST_V1.getSchema(), ComputeRequestV2.class);
     ComputeRequestV2 computeRequestV2 = computeRequestV2Deserializer.deserialize(serializedComputeRequestV1);
 
     // check contents in the deserialized v2 record are the same as the contents in v1 record

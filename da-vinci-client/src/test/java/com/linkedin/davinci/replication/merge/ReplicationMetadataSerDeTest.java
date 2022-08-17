@@ -1,5 +1,7 @@
 package com.linkedin.davinci.replication.merge;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.replication.ReplicationMetadataWithValueSchemaId;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -16,26 +18,18 @@ import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static org.mockito.Mockito.*;
-
 
 public class ReplicationMetadataSerDeTest {
-
-
   /**
    * A schema that contains primitive fields and collection fields, specifically, a list field and a map field.
    */
-  private static final String VALUE_SCHEMA_STR = "{"
-      + "   \"type\" : \"record\","
-      + "   \"namespace\" : \"com.linkedin.avro\","
-      + "   \"name\" : \"Person\","
-      + "   \"fields\" : ["
+  private static final String VALUE_SCHEMA_STR = "{" + "   \"type\" : \"record\","
+      + "   \"namespace\" : \"com.linkedin.avro\"," + "   \"name\" : \"Person\"," + "   \"fields\" : ["
       + "      { \"name\" : \"Name\" , \"type\" : \"string\", \"default\" : \"unknown\" },"
       + "      { \"name\" : \"Age\" , \"type\" : \"int\", \"default\" : -1 },"
       + "      { \"name\" : \"Items\" , \"type\" : {\"type\" : \"array\", \"items\" : \"string\"}, \"default\" : [] },"
       + "      { \"name\" : \"PetNameToAge\" , \"type\" : [\"null\" , {\"type\" : \"map\", \"values\" : \"int\"}], \"default\" : null }"
-      + "   ]"
-      + "}";
+      + "   ]" + "}";
 
   @Test
   public void testSerDeRmd() {
@@ -51,7 +45,9 @@ public class ReplicationMetadataSerDeTest {
     ReadOnlySchemaRepository schemaRepository = mock(ReadOnlySchemaRepository.class);
     ReplicationMetadataSchemaEntry rmdSchemaEntry = mock(ReplicationMetadataSchemaEntry.class);
     Mockito.doReturn(rmdSchema).when(rmdSchemaEntry).getSchema();
-    Mockito.doReturn(rmdSchemaEntry).when(schemaRepository).getReplicationMetadataSchema(storeName, valueSchemaID, rmdVersionID);
+    Mockito.doReturn(rmdSchemaEntry)
+        .when(schemaRepository)
+        .getReplicationMetadataSchema(storeName, valueSchemaID, rmdVersionID);
     ReplicationMetadataSerDe rmdSerDe = new ReplicationMetadataSerDe(schemaRepository, storeName, rmdVersionID);
 
     // Serialize this RMD record to bytes.
@@ -65,7 +61,8 @@ public class ReplicationMetadataSerDeTest {
     rmdAndValueSchemaIDBytes.put(rmdBytes.array());
 
     // Deserialize all bytes and expect to get value schema ID and RMD record back.
-    ReplicationMetadataWithValueSchemaId rmdAndValueID = rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(rmdAndValueSchemaIDBytes.array());
+    ReplicationMetadataWithValueSchemaId rmdAndValueID =
+        rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(rmdAndValueSchemaIDBytes.array());
     Assert.assertEquals(rmdAndValueID.getValueSchemaId(), valueSchemaID);
     Assert.assertEquals(rmdAndValueID.getReplicationMetadataRecord(), rmd);
   }
@@ -75,24 +72,26 @@ public class ReplicationMetadataSerDeTest {
     GenericRecord rmdTimestamp = new GenericData.Record(rmdTimestampSchema);
     rmdTimestamp.put("Name", 1L);
     rmdTimestamp.put("Age", 1L);
-    rmdTimestamp.put("Items", createCollectionFieldMetadataRecord(
-        rmdTimestampSchema.getField("Items").schema(),
-        23L,
-        1,
-        3,
-        Arrays.asList(1L, 2L, 3L),
-        Arrays.asList("foo", "bar"),
-        Arrays.asList(1L, 100L)
-    ));
-    rmdTimestamp.put("PetNameToAge", createCollectionFieldMetadataRecord(
-        rmdTimestampSchema.getField("PetNameToAge").schema(),
-        24L,
-        2,
-        5,
-        Arrays.asList(1L, 2L, 3L, 4L, 5L),
-        Arrays.asList("foo", "bar", "qaz"),
-        Arrays.asList(1L, 2L, 3L)
-    ));
+    rmdTimestamp.put(
+        "Items",
+        createCollectionFieldMetadataRecord(
+            rmdTimestampSchema.getField("Items").schema(),
+            23L,
+            1,
+            3,
+            Arrays.asList(1L, 2L, 3L),
+            Arrays.asList("foo", "bar"),
+            Arrays.asList(1L, 100L)));
+    rmdTimestamp.put(
+        "PetNameToAge",
+        createCollectionFieldMetadataRecord(
+            rmdTimestampSchema.getField("PetNameToAge").schema(),
+            24L,
+            2,
+            5,
+            Arrays.asList(1L, 2L, 3L, 4L, 5L),
+            Arrays.asList("foo", "bar", "qaz"),
+            Arrays.asList(1L, 2L, 3L)));
     GenericRecord rmd = new GenericData.Record(rmdSchema);
     rmd.put("timestamp", rmdTimestamp);
     rmd.put("replication_checkpoint_vector", Arrays.asList(1L, 2L, 3L));
@@ -106,37 +105,22 @@ public class ReplicationMetadataSerDeTest {
       int putOnlyPartLen,
       List<Long> activeElementsTimestamps,
       List<Object> deletedElements,
-      List<Long> deletedElementsTimestamps
-  ) {
+      List<Long> deletedElementsTimestamps) {
     GenericRecord collectionFieldMetadataRecord = new GenericData.Record(collectionFieldMetadataSchema);
-    collectionFieldMetadataRecord.put(
-        CollectionReplicationMetadata.COLLECTION_TOP_LEVEL_TS_FIELD_NAME,
-        topLevelTimestamp
-    );
-    collectionFieldMetadataRecord.put(
-        CollectionReplicationMetadata.COLLECTION_TOP_LEVEL_TS_FIELD_NAME,
-        topLevelTimestamp
-    );
-    collectionFieldMetadataRecord.put(
-        CollectionReplicationMetadata.COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME,
-        topLevelColoID
-    );
-    collectionFieldMetadataRecord.put(
-        CollectionReplicationMetadata.COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME,
-        putOnlyPartLen
-    );
-    collectionFieldMetadataRecord.put(
-        CollectionReplicationMetadata.COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME,
-        activeElementsTimestamps
-    );
-    collectionFieldMetadataRecord.put(
-        CollectionReplicationMetadata.COLLECTION_DELETED_ELEM_FIELD_NAME,
-        deletedElements
-    );
-    collectionFieldMetadataRecord.put(
-        CollectionReplicationMetadata.COLLECTION_DELETED_ELEM_TS_FIELD_NAME,
-        deletedElementsTimestamps
-    );
+    collectionFieldMetadataRecord
+        .put(CollectionReplicationMetadata.COLLECTION_TOP_LEVEL_TS_FIELD_NAME, topLevelTimestamp);
+    collectionFieldMetadataRecord
+        .put(CollectionReplicationMetadata.COLLECTION_TOP_LEVEL_TS_FIELD_NAME, topLevelTimestamp);
+    collectionFieldMetadataRecord
+        .put(CollectionReplicationMetadata.COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME, topLevelColoID);
+    collectionFieldMetadataRecord
+        .put(CollectionReplicationMetadata.COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME, putOnlyPartLen);
+    collectionFieldMetadataRecord
+        .put(CollectionReplicationMetadata.COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME, activeElementsTimestamps);
+    collectionFieldMetadataRecord
+        .put(CollectionReplicationMetadata.COLLECTION_DELETED_ELEM_FIELD_NAME, deletedElements);
+    collectionFieldMetadataRecord
+        .put(CollectionReplicationMetadata.COLLECTION_DELETED_ELEM_TS_FIELD_NAME, deletedElementsTimestamps);
     return collectionFieldMetadataRecord;
   }
 }

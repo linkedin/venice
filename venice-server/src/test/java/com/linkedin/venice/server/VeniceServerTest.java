@@ -1,5 +1,7 @@
 package com.linkedin.venice.server;
 
+import static com.linkedin.venice.integration.utils.VeniceServerWrapper.*;
+
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -15,8 +17,6 @@ import java.util.Properties;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.integration.utils.VeniceServerWrapper.*;
-
 
 public class VeniceServerTest {
   @Test
@@ -25,8 +25,7 @@ public class VeniceServerTest {
       TestVeniceServer server = cluster.getVeniceServers().get(0).getVeniceServer();
       Assert.assertTrue(server.isStarted());
 
-      Field liveClusterConfigRepoField =
-          server.getClass().getSuperclass().getDeclaredField("liveClusterConfigRepo");
+      Field liveClusterConfigRepoField = server.getClass().getSuperclass().getDeclaredField("liveClusterConfigRepo");
       liveClusterConfigRepoField.setAccessible(true);
       Assert.assertNotNull(liveClusterConfigRepoField.get(server));
     }
@@ -61,14 +60,21 @@ public class VeniceServerTest {
     try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 0)) {
       VeniceServerWrapper server = cluster.getVeniceServers().get(0);
       StorageEngineRepository repository = server.getVeniceServer().getStorageService().getStorageEngineRepository();
-      Assert.assertTrue(repository.getAllLocalStorageEngines().isEmpty(), "New node should not have any storage engine.");
+      Assert
+          .assertTrue(repository.getAllLocalStorageEngines().isEmpty(), "New node should not have any storage engine.");
 
       // Create a storage engine.
       String storeName = Utils.getUniqueString("testCheckBeforeJoinCluster");
-      server.getVeniceServer().getStorageService().openStoreForNewPartition(server.getVeniceServer().getConfigLoader().getStoreConfig(storeName), 1);
-      Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 1, "We have created one storage engine for store: " + storeName);
+      server.getVeniceServer()
+          .getStorageService()
+          .openStoreForNewPartition(server.getVeniceServer().getConfigLoader().getStoreConfig(storeName), 1);
+      Assert.assertEquals(
+          repository.getAllLocalStorageEngines().size(),
+          1,
+          "We have created one storage engine for store: " + storeName);
 
-      // Restart server, as server's info leave in Helix cluster, so we expect that all local storage would NOT be deleted
+      // Restart server, as server's info leave in Helix cluster, so we expect that all local storage would NOT be
+      // deleted
       // once the server join again.
       cluster.stopVeniceServer(server.getPort());
       cluster.restartVeniceServer(server.getPort());
@@ -78,12 +84,18 @@ public class VeniceServerTest {
       // Stop server, remove it from the cluster then restart. We expect that all local storage would be deleted. Once
       // the server join again.
       cluster.stopVeniceServer(server.getPort());
-      try (ControllerClient client = ControllerClient.constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs())) {
+      try (ControllerClient client = ControllerClient
+          .constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs())) {
         client.removeNodeFromCluster(Utils.getHelixNodeIdentifier(server.getPort()));
       }
 
       cluster.restartVeniceServer(server.getPort());
-      Assert.assertTrue(server.getVeniceServer().getStorageService().getStorageEngineRepository().getAllLocalStorageEngines().isEmpty(),
+      Assert.assertTrue(
+          server.getVeniceServer()
+              .getStorageService()
+              .getStorageEngineRepository()
+              .getAllLocalStorageEngines()
+              .isEmpty(),
           "After removing the node from cluster, local storage should be cleaned up once the server join the cluster again.");
     }
   }
@@ -101,7 +113,8 @@ public class VeniceServerTest {
       serverAddingThread.start();
 
       Utils.sleep(Time.MS_PER_SECOND);
-      Assert.assertTrue(cluster.getVeniceServers().isEmpty() || !cluster.getVeniceServers().get(0).getVeniceServer().isStarted());
+      Assert.assertTrue(
+          cluster.getVeniceServers().isEmpty() || !cluster.getVeniceServers().get(0).getVeniceServer().isStarted());
       cluster.addVeniceController(new Properties());
 
       serverAddingThread.join(30 * Time.MS_PER_SECOND);

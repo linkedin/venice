@@ -9,7 +9,6 @@ import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
  * Notifier used to update replica status by Helix partition push status accessor.
  */
 public class PartitionPushStatusNotifier implements VeniceNotifier {
-
   private HelixPartitionStatusAccessor accessor;
 
   public PartitionPushStatusNotifier(HelixPartitionStatusAccessor accessor) {
@@ -45,6 +44,7 @@ public class PartitionPushStatusNotifier implements VeniceNotifier {
   public void quotaNotViolated(String topic, int partitionId, long offset, String message) {
     accessor.updateHybridQuotaReplicaStatus(topic, partitionId, HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
   }
+
   @Override
   public void close() {
     // Do not need to close here. accessor should be closed by the outer class.

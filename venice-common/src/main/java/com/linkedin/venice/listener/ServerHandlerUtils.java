@@ -6,7 +6,6 @@ import java.util.Optional;
 
 
 public class ServerHandlerUtils {
-
   public static Optional<SslHandler> extractSslHandler(ChannelHandlerContext ctx) {
     /**
      * Try to extract ssl handler in current channel, which is mostly for http/1.1 request.

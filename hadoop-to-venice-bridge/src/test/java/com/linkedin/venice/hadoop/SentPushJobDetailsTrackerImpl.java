@@ -13,7 +13,6 @@ import java.util.List;
  * a copy of it needs to be made to simulate the real situation in which KPJ sends messages to the Venice controller.
  */
 public class SentPushJobDetailsTrackerImpl implements SentPushJobDetailsTracker {
-
   private final List<String> storeNames;
   private final List<Integer> versions;
   private final List<PushJobDetails> recordedPushJobDetails;
@@ -47,7 +46,8 @@ public class SentPushJobDetailsTrackerImpl implements SentPushJobDetailsTracker 
     PushJobDetails copy = new PushJobDetails();
     copy.reportTimestamp = pushJobDetails.reportTimestamp;
     copy.overallStatus = new ArrayList<>(pushJobDetails.overallStatus);
-    copy.coloStatus = pushJobDetails.coloStatus == null ? pushJobDetails.coloStatus : new HashMap<>(pushJobDetails.coloStatus);
+    copy.coloStatus =
+        pushJobDetails.coloStatus == null ? pushJobDetails.coloStatus : new HashMap<>(pushJobDetails.coloStatus);
     copy.pushId = pushJobDetails.pushId;
     copy.partitionCount = pushJobDetails.partitionCount;
     copy.valueCompressionStrategy = pushJobDetails.valueCompressionStrategy;
@@ -56,8 +56,12 @@ public class SentPushJobDetailsTrackerImpl implements SentPushJobDetailsTracker 
     copy.totalNumberOfRecords = pushJobDetails.totalNumberOfRecords;
     copy.totalKeyBytes = pushJobDetails.totalKeyBytes;
     copy.totalRawValueBytes = pushJobDetails.totalRawValueBytes;
-    copy.pushJobConfigs = pushJobDetails.pushJobConfigs == null ? pushJobDetails.pushJobConfigs : new HashMap<>(pushJobDetails.pushJobConfigs);
-    copy.producerConfigs = pushJobDetails.producerConfigs == null ? pushJobDetails.producerConfigs : new HashMap<>(pushJobDetails.producerConfigs);
+    copy.pushJobConfigs = pushJobDetails.pushJobConfigs == null
+        ? pushJobDetails.pushJobConfigs
+        : new HashMap<>(pushJobDetails.pushJobConfigs);
+    copy.producerConfigs = pushJobDetails.producerConfigs == null
+        ? pushJobDetails.producerConfigs
+        : new HashMap<>(pushJobDetails.producerConfigs);
     copy.pushJobLatestCheckpoint = pushJobDetails.pushJobLatestCheckpoint;
     copy.failureDetails = pushJobDetails.failureDetails;
     return copy;

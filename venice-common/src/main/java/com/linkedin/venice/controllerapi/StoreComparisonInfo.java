@@ -14,7 +14,11 @@ public class StoreComparisonInfo {
     return propertyDiff;
   }
 
-  public void addPropertyDiff(String fabricA, String fabricB, String propertyName, String propertyValueA,
+  public void addPropertyDiff(
+      String fabricA,
+      String fabricB,
+      String propertyName,
+      String propertyValueA,
       String propertyValueB) {
     propertyDiff.computeIfAbsent(fabricA, k -> new HashMap<>());
     propertyDiff.computeIfAbsent(fabricB, k -> new HashMap<>());
@@ -37,7 +41,11 @@ public class StoreComparisonInfo {
     return versionStateDiff;
   }
 
-  public void addVersionStateDiff(String fabricA, String fabricB, int versionNum, VersionStatus versionStatusA,
+  public void addVersionStateDiff(
+      String fabricA,
+      String fabricB,
+      int versionNum,
+      VersionStatus versionStatusA,
       VersionStatus versionStatusB) {
     versionStateDiff.computeIfAbsent(fabricA, k -> new HashMap<>());
     versionStateDiff.computeIfAbsent(fabricB, k -> new HashMap<>());

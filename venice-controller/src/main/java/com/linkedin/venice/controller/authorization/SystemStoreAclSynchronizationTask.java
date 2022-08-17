@@ -29,8 +29,10 @@ public class SystemStoreAclSynchronizationTask implements Runnable, Closeable {
   private final long synchronizationCycleDelayInMs;
   private final AtomicBoolean isRunning = new AtomicBoolean();
 
-  public SystemStoreAclSynchronizationTask(AuthorizerService authorizationService,
-      VeniceParentHelixAdmin veniceParentHelixAdmin, long synchronizationCycleDelayInMs) {
+  public SystemStoreAclSynchronizationTask(
+      AuthorizerService authorizationService,
+      VeniceParentHelixAdmin veniceParentHelixAdmin,
+      long synchronizationCycleDelayInMs) {
     this.authorizationService = authorizationService;
     this.veniceParentHelixAdmin = veniceParentHelixAdmin;
     this.synchronizationCycleDelayInMs = synchronizationCycleDelayInMs;
@@ -52,10 +54,9 @@ public class SystemStoreAclSynchronizationTask implements Runnable, Closeable {
     while (isRunning.get()) {
       try {
         Thread.sleep(synchronizationCycleDelayInMs);
-        clusterLoop:
-        for (String cluster : veniceParentHelixAdmin.getClustersLeaderOf()) {
+        clusterLoop: for (String cluster: veniceParentHelixAdmin.getClustersLeaderOf()) {
           List<Store> storeList = veniceParentHelixAdmin.getAllStores(cluster);
-          for (Store storeInList : storeList) {
+          for (Store storeInList: storeList) {
             if (!isRunning.get()) {
               break clusterLoop;
             }
@@ -71,8 +72,8 @@ public class SystemStoreAclSynchronizationTask implements Runnable, Closeable {
               }
               String storeName = store.getName();
               AclBinding storeAclBinding = null;
-              for (VeniceSystemStoreType veniceSystemStoreType : VeniceSystemStoreType.getEnabledSystemStoreTypes(
-                  store)) {
+              for (VeniceSystemStoreType veniceSystemStoreType: VeniceSystemStoreType
+                  .getEnabledSystemStoreTypes(store)) {
                 if (storeAclBinding == null) {
                   storeAclBinding = authorizationService.describeAcls(new Resource(storeName));
                   if (storeAclBinding == null) {
@@ -98,14 +99,17 @@ public class SystemStoreAclSynchronizationTask implements Runnable, Closeable {
     logger.info("Stopped " + SystemStoreAclSynchronizationTask.class.getSimpleName());
   }
 
-  private void synchronizeAclForSystemStore(String clusterName, VeniceSystemStoreType veniceSystemStoreType,
-      String storeName, AclBinding storeAclBinding) {
+  private void synchronizeAclForSystemStore(
+      String clusterName,
+      VeniceSystemStoreType veniceSystemStoreType,
+      String storeName,
+      AclBinding storeAclBinding) {
     AclBinding targetSystemStoreAclBinding = veniceSystemStoreType.generateSystemStoreAclBinding(storeAclBinding);
     Resource systemStoreResource = new Resource(veniceSystemStoreType.getSystemStoreName(storeName));
     AclBinding currentSystemStoreAclBinding = authorizationService.describeAcls(systemStoreResource);
 
-    if (currentSystemStoreAclBinding == null || !targetSystemStoreAclBinding.equals(
-        VeniceSystemStoreType.getSystemStoreAclFromTopicAcl(currentSystemStoreAclBinding))) {
+    if (currentSystemStoreAclBinding == null || !targetSystemStoreAclBinding
+        .equals(VeniceSystemStoreType.getSystemStoreAclFromTopicAcl(currentSystemStoreAclBinding))) {
       // TODO calling through the VeniceParentHelixAdmin for now in order to use the cluster level store repository lock
       // to prevent leaking acls when synchronizing system store acls for a store that's being deleted. This can be
       // optimized once global store level locks is implemented.

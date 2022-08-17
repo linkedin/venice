@@ -4,17 +4,17 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.DatumReader;
 
-import java.util.ArrayList;
-import java.util.List;
-
 
 public class AvroGenericDeserializer<V> implements RecordDeserializer<V> {
   private static boolean BUFFERED_AVRO_DECODER = true;
+
   /**
    * Legacy config to tune the implementation for deserializing a sequence of records. Kept for now just in case
    * it is still wired in by any application. TODO: Delete completely after auditing usage.
@@ -54,11 +54,8 @@ public class AvroGenericDeserializer<V> implements RecordDeserializer<V> {
   @Override
   public V deserialize(V reuse, ByteBuffer byteBuffer, BinaryDecoder reusedDecoder)
       throws VeniceSerializationException {
-    BinaryDecoder decoder = AvroCompatibilityHelper.newBinaryDecoder(
-        byteBuffer.array(),
-        byteBuffer.position(),
-        byteBuffer.remaining(),
-        reusedDecoder);
+    BinaryDecoder decoder = AvroCompatibilityHelper
+        .newBinaryDecoder(byteBuffer.array(), byteBuffer.position(), byteBuffer.remaining(), reusedDecoder);
     return deserialize(reuse, decoder);
   }
 

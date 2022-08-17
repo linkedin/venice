@@ -26,8 +26,8 @@ public class ControllerResponse { /* Uses Json Reflective Serializer, get withou
    * @return
    */
   @JsonIgnore
-  public boolean isError(){
-    return null!=error;
+  public boolean isError() {
+    return null != error;
   }
 
   public String getCluster() {
@@ -91,13 +91,18 @@ public class ControllerResponse { /* Uses Json Reflective Serializer, get withou
 
   @JsonIgnore
   public String toString() {
-    return new StringBuilder()
-        .append(ControllerResponse.class.getSimpleName())
-        .append("(cluster: ").append(cluster)
-        .append(", name: ").append(name)
-        .append(", error: ").append(error)
-        .append(", errorType: ").append(errorType)
-        .append(", exceptionType: ").append(inferExceptionTypeFromErrorType())
-        .append(")").toString();
+    return new StringBuilder().append(ControllerResponse.class.getSimpleName())
+        .append("(cluster: ")
+        .append(cluster)
+        .append(", name: ")
+        .append(name)
+        .append(", error: ")
+        .append(error)
+        .append(", errorType: ")
+        .append(errorType)
+        .append(", exceptionType: ")
+        .append(inferExceptionTypeFromErrorType())
+        .append(")")
+        .toString();
   }
 }

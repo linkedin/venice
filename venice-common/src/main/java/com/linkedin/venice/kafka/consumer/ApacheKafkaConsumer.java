@@ -53,12 +53,16 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
     this(new KafkaConsumer<>(props), new VeniceProperties(props), isKafkaConsumerOffsetCollectionEnabled);
   }
 
-  public ApacheKafkaConsumer(Consumer<KafkaKey, KafkaMessageEnvelope> consumer, VeniceProperties props, boolean isKafkaConsumerOffsetCollectionEnabled) {
+  public ApacheKafkaConsumer(
+      Consumer<KafkaKey, KafkaMessageEnvelope> consumer,
+      VeniceProperties props,
+      boolean isKafkaConsumerOffsetCollectionEnabled) {
     this.kafkaConsumer = consumer;
     this.consumerPollRetryTimes = props.getInt(CONSUMER_POLL_RETRY_TIMES_CONFIG, CONSUMER_POLL_RETRY_TIMES_DEFAULT);
-    this.consumerPollRetryBackoffMs = props.getInt(CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG, CONSUMER_POLL_RETRY_BACKOFF_MS_DEFAULT);
-    this.topicPartitionsOffsetsTracker = isKafkaConsumerOffsetCollectionEnabled ?
-            Optional.of(new TopicPartitionsOffsetsTracker()) : Optional.empty();
+    this.consumerPollRetryBackoffMs =
+        props.getInt(CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG, CONSUMER_POLL_RETRY_BACKOFF_MS_DEFAULT);
+    this.topicPartitionsOffsetsTracker =
+        isKafkaConsumerOffsetCollectionEnabled ? Optional.of(new TopicPartitionsOffsetsTracker()) : Optional.empty();
     logger.info("Consumer poll retry times: " + this.consumerPollRetryTimes);
     logger.info("Consumer poll retry back off in ms: " + this.consumerPollRetryBackoffMs);
     logger.info("Consumer offset collection enabled: " + isKafkaConsumerOffsetCollectionEnabled);
@@ -94,8 +98,9 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
       seekNextOffset(topicPartition, lastReadOffset);
       logger.info("Subscribed to Topic: " + topic + " Partition: " + partition + " Offset: " + lastReadOffset);
     } else {
-      logger.warn("Already subscribed on Topic: " + topic + " Partition: " + partition
-          + ", ignore the request of subscription.");
+      logger.warn(
+          "Already subscribed on Topic: " + topic + " Partition: " + partition
+              + ", ignore the request of subscription.");
     }
   }
 
@@ -110,7 +115,8 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
         kafkaConsumer.assign(topicPartitionList);
       }
     }
-    topicPartitionsOffsetsTracker.ifPresent(partitionsOffsetsTracker -> partitionsOffsetsTracker.removeTrackedOffsets(topicPartition));
+    topicPartitionsOffsetsTracker
+        .ifPresent(partitionsOffsetsTracker -> partitionsOffsetsTracker.removeTrackedOffsets(topicPartition));
   }
 
   @Override
@@ -144,7 +150,8 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
       } catch (RetriableException e) {
         logger.warn(
             "Retriable exception thrown when attempting to consume records from kafka, attempt " + attemptCount + "/"
-                + consumerPollRetryTimes, e);
+                + consumerPollRetryTimes,
+            e);
         if (attemptCount == consumerPollRetryTimes) {
           throw e;
         }
@@ -153,7 +160,8 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
             Thread.sleep(consumerPollRetryBackoffMs);
           }
         } catch (InterruptedException ie) {
-          // Here will still throw the actual exception thrown by internal consumer to make sure the stacktrace is meaningful.
+          // Here will still throw the actual exception thrown by internal consumer to make sure the stacktrace is
+          // meaningful.
           throw new VeniceException("Consumer poll retry back off sleep got interrupted", e);
         }
       } finally {
@@ -174,7 +182,7 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
 
   @Override
   public boolean hasSubscribedAnyTopic(Set<String> topics) {
-    for (TopicPartition subscribedTopicPartition : kafkaConsumer.assignment()) {
+    for (TopicPartition subscribedTopicPartition: kafkaConsumer.assignment()) {
       if (topics.contains(subscribedTopicPartition.topic())) {
         return true;
       }
@@ -214,7 +222,6 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   public Set<TopicPartition> getAssignment() {
     return kafkaConsumer.assignment();
   }
-
 
   @Override
   public Set<TopicPartition> paused() {

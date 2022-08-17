@@ -1,5 +1,7 @@
 package com.linkedin.venice.benchmark;
 
+import static com.linkedin.venice.ConfigKeys.*;
+
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.rocksdb.ReplicationMetadataRocksDBStoragePartition;
@@ -36,7 +38,6 @@ import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.Warmup;
-import org.openjdk.jmh.infra.Blackhole;
 import org.openjdk.jmh.profile.GCProfiler;
 import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.options.Options;
@@ -45,10 +46,8 @@ import org.rocksdb.ComparatorOptions;
 import org.rocksdb.util.BytewiseComparator;
 import org.testng.Assert;
 
-import static com.linkedin.venice.ConfigKeys.*;
 
-
-@Fork(value = 2, jvmArgs = {"-Xms4G", "-Xmx4G"})
+@Fork(value = 2, jvmArgs = { "-Xms4G", "-Xmx4G" })
 @Warmup(iterations = 2)
 @Measurement(iterations = 3)
 @State(Scope.Benchmark)
@@ -85,10 +84,16 @@ public class ReplicationConsumptionBenchmark {
     options.setCreateIfMissing(true);
     inputRecords = generateInputWithMetadata(0, KEY_COUNT);
     VeniceProperties veniceServerProperties = getServerProperties(PersistenceType.ROCKS_DB, new Properties());
-    rocksDBServerConfig  = new RocksDBServerConfig(veniceServerProperties);
+    rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
     serverConfig = new VeniceServerConfig(veniceServerProperties);
     factory = new RocksDBStorageEngineFactory(serverConfig);
-    storagePartition = new ReplicationMetadataRocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+    storagePartition = new ReplicationMetadataRocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        rocksDbThrottler,
+        rocksDBServerConfig);
     syncPerRecords = 10000;
 
     // JMH benchmark relies on System.exit to finish one round of benchmark run, otherwise it will hang there.
@@ -103,8 +108,7 @@ public class ReplicationConsumptionBenchmark {
   }
 
   public static void main(String[] args) throws Exception {
-    Options opt = new OptionsBuilder()
-        .include(ReplicationConsumptionBenchmark.class.getSimpleName())
+    Options opt = new OptionsBuilder().include(ReplicationConsumptionBenchmark.class.getSimpleName())
         .addProfiler(GCProfiler.class)
         .build();
     new Runner(opt).run();
@@ -113,7 +117,7 @@ public class ReplicationConsumptionBenchmark {
   @Benchmark
   @OperationsPerInvocation(KEY_COUNT)
   public void benchmarkReplicationMetadataIngestion() {
-    boolean sorted = true,  verifyChecksum = false;
+    boolean sorted = true, verifyChecksum = false;
 
     Optional<Supplier<byte[]>> checksumSupplier = Optional.empty();
     if (verifyChecksum) {
@@ -128,11 +132,14 @@ public class ReplicationConsumptionBenchmark {
     }
     Map<String, String> checkpointingInfo = new HashMap<>();
 
-    for (Map.Entry<String, Pair<String, String>> entry : inputRecords.entrySet()) {
+    for (Map.Entry<String, Pair<String, String>> entry: inputRecords.entrySet()) {
       if (entry.getValue().getFirst() == null) {
-        storagePartition.deleteWithReplicationMetadata(entry.getKey().getBytes(), entry.getValue().getSecond().getBytes());
+        storagePartition
+            .deleteWithReplicationMetadata(entry.getKey().getBytes(), entry.getValue().getSecond().getBytes());
       } else {
-        storagePartition.putWithReplicationMetadata(entry.getKey().getBytes(), entry.getValue().getFirst().getBytes(),
+        storagePartition.putWithReplicationMetadata(
+            entry.getKey().getBytes(),
+            entry.getValue().getFirst().getBytes(),
             entry.getValue().getSecond().getBytes());
       }
     }
@@ -143,10 +150,16 @@ public class ReplicationConsumptionBenchmark {
     storagePartition.close();
     partitionConfig.setDeferredWrite(false);
     partitionConfig.setWriteOnlyConfig(false);
-    storagePartition = new ReplicationMetadataRocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+    storagePartition = new ReplicationMetadataRocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        rocksDbThrottler,
+        rocksDBServerConfig);
     // Test deletion
     String toBeDeletedKey = keyPrefix + 10;
-   // Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
+    // Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
     storagePartition.delete(toBeDeletedKey.getBytes());
     Assert.assertNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
   }
@@ -161,7 +174,7 @@ public class ReplicationConsumptionBenchmark {
     });
 
     for (int i = startIndex; i < endIndex; ++i) {
-      String value = i%100 == 0 ? null : valuePrefix + i;
+      String value = i % 100 == 0 ? null : valuePrefix + i;
       String metadata = metadataPrefix + i;
       records.put(keyPrefix + i, Pair.create(value, metadata));
     }
@@ -170,8 +183,7 @@ public class ReplicationConsumptionBenchmark {
 
   private VeniceProperties getServerProperties(PersistenceType persistenceType, Properties properties) {
     File dataDirectory = Utils.getTempDataDirectory();
-    return new PropertyBuilder()
-        .put(CLUSTER_NAME, "test_offset_manager")
+    return new PropertyBuilder().put(CLUSTER_NAME, "test_offset_manager")
         .put(ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, "true")
         .put(OFFSET_MANAGER_FLUSH_INTERVAL_MS, 1000)
         .put(OFFSET_DATA_BASE_PATH, dataDirectory.getAbsolutePath())
@@ -181,8 +193,8 @@ public class ReplicationConsumptionBenchmark {
         .put(KAFKA_BROKER_PORT, "9092")
         .put(KAFKA_BOOTSTRAP_SERVERS, "127.0.0.1:9092")
         .put(KAFKA_ZK_ADDRESS, "localhost:2181")
-        .put(LISTENER_PORT , 7072)
-        .put(ADMIN_PORT , 7073)
+        .put(LISTENER_PORT, 7072)
+        .put(ADMIN_PORT, 7073)
         .put(DATA_BASE_PATH, dataDirectory.getAbsolutePath())
         .put(properties)
         .build();
@@ -204,4 +216,3 @@ public class ReplicationConsumptionBenchmark {
     }
   }
 }
-

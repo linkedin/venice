@@ -1,5 +1,7 @@
 package com.linkedin.venice.hadoop;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
@@ -22,8 +24,6 @@ import org.apache.hadoop.io.SequenceFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-
 
 public class VeniceVsonRecordReader extends AbstractVeniceRecordReader<BytesWritable, BytesWritable> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceVsonRecordReader.class);
@@ -39,14 +39,20 @@ public class VeniceVsonRecordReader extends AbstractVeniceRecordReader<BytesWrit
   private SequenceFile.Reader fileReader;
 
   public VeniceVsonRecordReader(VeniceProperties props) {
-    this(props.getString(TOPIC_PROP),
+    this(
+        props.getString(TOPIC_PROP),
         props.getString(FILE_KEY_SCHEMA),
         props.getString(FILE_VALUE_SCHEMA),
         props.getString(KEY_FIELD_PROP, ""),
         props.getString(VALUE_FIELD_PROP, ""));
   }
 
-  public VeniceVsonRecordReader(String topicName, String keySchemaString, String valueSchemaString, String keyField, String valueField) {
+  public VeniceVsonRecordReader(
+      String topicName,
+      String keySchemaString,
+      String valueSchemaString,
+      String keyField,
+      String valueField) {
     super(topicName);
     this.keyField = keyField == null ? "" : keyField;
     this.valueField = valueField == null ? "" : valueField;
@@ -62,7 +68,9 @@ public class VeniceVsonRecordReader extends AbstractVeniceRecordReader<BytesWrit
     if (fs != null && hdfsPath != null) {
       try {
         fileReader = new SequenceFile.Reader(fs, hdfsPath, new Configuration());
-        fileReader.getMetadata().getMetadata().forEach((key, value) -> metadataMap.put(key.toString(), value.toString()));
+        fileReader.getMetadata()
+            .getMetadata()
+            .forEach((key, value) -> metadataMap.put(key.toString(), value.toString()));
         setupSchema(metadataMap.get(FILE_KEY_SCHEMA), metadataMap.get(FILE_VALUE_SCHEMA));
       } catch (IOException e) {
         LOGGER.info("Path: " + hdfsPath.getName() + " is not a sequence file.");
@@ -84,8 +92,8 @@ public class VeniceVsonRecordReader extends AbstractVeniceRecordReader<BytesWrit
     if (field.isEmpty()) {
       return VsonAvroSchemaAdapter.parse(schemaString).toString();
     } else {
-      Schema.Field keySchemaField = VsonAvroSchemaAdapter.stripFromUnion(VsonAvroSchemaAdapter.parse(schemaString))
-          .getField(field);
+      Schema.Field keySchemaField =
+          VsonAvroSchemaAdapter.stripFromUnion(VsonAvroSchemaAdapter.parse(schemaString)).getField(field);
       if (keySchemaField == null) {
         throw new VeniceSchemaFieldNotFoundException(field, "Could not find field: " + field + " from " + schemaString);
       }
@@ -179,8 +187,9 @@ public class VeniceVsonRecordReader extends AbstractVeniceRecordReader<BytesWrit
         currentValueRead = false;
         return hasNext;
       } catch (IOException e) {
-        throw new VeniceException("Encountered exception reading Vson data. Check if "
-            + "the file exists and the data is in Vson format.", e);
+        throw new VeniceException(
+            "Encountered exception reading Vson data. Check if " + "the file exists and the data is in Vson format.",
+            e);
       }
     }
 
@@ -188,7 +197,8 @@ public class VeniceVsonRecordReader extends AbstractVeniceRecordReader<BytesWrit
     public Pair<byte[], byte[]> next() {
       currentValueRead = true;
       Object avroKey = recordReader.getKeyDeserializer().bytesToAvro(currentKey.getBytes(), 0, currentKey.getLength());
-      Object avroValue = recordReader.getValueDeserializer().bytesToAvro(currentValue.getBytes(), 0, currentValue.getLength());
+      Object avroValue =
+          recordReader.getValueDeserializer().bytesToAvro(currentValue.getBytes(), 0, currentValue.getLength());
       if (!recordReader.getKeyField().isEmpty()) {
         avroKey = ((GenericData.Record) avroKey).get(recordReader.getKeyField());
       }

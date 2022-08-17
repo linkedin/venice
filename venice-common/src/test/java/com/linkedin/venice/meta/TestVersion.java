@@ -15,19 +15,23 @@ import org.testng.annotations.Test;
 public class TestVersion {
   static ObjectMapper objectMapper = ObjectMapperFactory.getInstance();
 
-  static final String oldSerialized = "{\"storeName\":\"store-1492637190910-78714331\",\"number\":17,\"createdTime\":1492637190912,\"status\":\"STARTED\"}";
-  static final String extraFieldSerialized = "{\"storeName\":\"store-1492637190910-12345678\",\"number\":17,\"createdTime\":1492637190912,\"status\":\"STARTED\",\"extraField\":\"12345\"}";
-  static final String missingFieldSerialized = "{\"storeName\":\"store-missing\",\"number\":17,\"createdTime\":1492637190912}";  //no status
-
+  static final String oldSerialized =
+      "{\"storeName\":\"store-1492637190910-78714331\",\"number\":17,\"createdTime\":1492637190912,\"status\":\"STARTED\"}";
+  static final String extraFieldSerialized =
+      "{\"storeName\":\"store-1492637190910-12345678\",\"number\":17,\"createdTime\":1492637190912,\"status\":\"STARTED\",\"extraField\":\"12345\"}";
+  static final String missingFieldSerialized =
+      "{\"storeName\":\"store-missing\",\"number\":17,\"createdTime\":1492637190912}"; // no status
 
   @Test
-  public void identifiesValidTopicNames(){
+  public void identifiesValidTopicNames() {
     String goodTopic = "my_very_good_store_v4";
-    Assert.assertTrue(Version.isVersionTopicOrStreamReprocessingTopic(goodTopic),
+    Assert.assertTrue(
+        Version.isVersionTopicOrStreamReprocessingTopic(goodTopic),
         goodTopic + " should parse as a valid store-version topic");
 
     String badTopic = "__consumer_offsets";
-    Assert.assertFalse(Version.isVersionTopicOrStreamReprocessingTopic(badTopic),
+    Assert.assertFalse(
+        Version.isVersionTopicOrStreamReprocessingTopic(badTopic),
         badTopic + " must not parse as a valid store-version topic");
   }
 
@@ -55,7 +59,8 @@ public class TestVersion {
 
     Version legacyParsedVersion = objectMapper.readValue(missingFieldSerialized, Version.class);
     Assert.assertEquals(legacyParsedVersion.getStoreName(), "store-missing");
-    Assert.assertNotNull(legacyParsedVersion.getPushJobId()); // missing final field can still deserialize, just gets arbitrary value from constructor
+    Assert.assertNotNull(legacyParsedVersion.getPushJobId()); // missing final field can still deserialize, just gets
+                                                              // arbitrary value from constructor
   }
 
   @Test

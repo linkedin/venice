@@ -1,5 +1,10 @@
 package com.linkedin.venice.router;
 
+import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.router.httpclient.StorageNodeClientType.*;
+import static org.testng.Assert.*;
+
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.transport.http.common.HttpProtocolVersion;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
@@ -35,22 +40,8 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
-import com.linkedin.d2.balancer.D2Client;
-
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
-
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.DataProvider;
-import org.testng.annotations.Test;
-
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -64,10 +55,15 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.router.httpclient.StorageNodeClientType.*;
-import static org.testng.Assert.*;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.Test;
 
 
 public class TestStreaming {
@@ -96,7 +92,6 @@ public class TestStreaming {
       + "   {\"name\": \"nullable_string_field\", \"type\": [\"null\", \"string\"], \"default\": null}\n" + "  ]\n"
       + "}";
   private static final Schema VALUE_SCHEMA_OBJECT = Schema.parse(VALUE_SCHEMA);
-
 
   @BeforeClass
   public void setUp() throws InterruptedException, ExecutionException, VeniceClientException, IOException {
@@ -128,10 +123,11 @@ public class TestStreaming {
 
     storeVersionName = creationResponse.getKafkaTopic();
     // enable compute
-    veniceCluster.useControllerClient(c -> c.updateStore(storeName, new UpdateStoreQueryParams()
-        .setReadComputationEnabled(true)
-        .setReadQuotaInCU(DEFAULT_PER_ROUTER_READ_QUOTA)
-    ));
+    veniceCluster.useControllerClient(
+        c -> c.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setReadComputationEnabled(true)
+                .setReadQuotaInCU(DEFAULT_PER_ROUTER_READ_QUOTA)));
 
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
@@ -141,7 +137,8 @@ public class TestStreaming {
     compressorFactory = new CompressorFactory();
     VeniceCompressor compressor = compressorFactory.getCompressor(compressionStrategy);
 
-    veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress()).createVeniceWriter(storeVersionName, keySerializer, new DefaultSerializer());
+    veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress())
+        .createVeniceWriter(storeVersionName, keySerializer, new DefaultSerializer());
 
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
 
@@ -178,13 +175,19 @@ public class TestStreaming {
     Utils.closeQuietlyWithErrorLogged(compressorFactory);
   }
 
-  private Properties getRouterProperties(boolean enableNettyClient, boolean enableClientCompression, boolean routerH2Enabled) {
+  private Properties getRouterProperties(
+      boolean enableNettyClient,
+      boolean enableClientCompression,
+      boolean routerH2Enabled) {
     // To trigger long-tail retry
     Properties routerProperties = new Properties();
     routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 1);
-    routerProperties.put(ConfigKeys.ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, MAX_KEY_LIMIT); // 10 keys at most in a batch-get request
+    routerProperties.put(ConfigKeys.ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, MAX_KEY_LIMIT); // 10 keys at most in a
+                                                                                          // batch-get request
     routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-:100");
-    routerProperties.put(ConfigKeys.ROUTER_STORAGE_NODE_CLIENT_TYPE, enableNettyClient ? NETTY_4_CLIENT.name() : APACHE_HTTP_ASYNC_CLIENT.name());
+    routerProperties.put(
+        ConfigKeys.ROUTER_STORAGE_NODE_CLIENT_TYPE,
+        enableNettyClient ? NETTY_4_CLIENT.name() : APACHE_HTTP_ASYNC_CLIENT.name());
     routerProperties.put(ConfigKeys.ROUTER_CLIENT_DECOMPRESSION_ENABLED, Boolean.toString(enableClientCompression));
     routerProperties.put(ConfigKeys.ROUTER_HTTP2_INBOUND_ENABLED, Boolean.toString(routerH2Enabled));
 
@@ -195,25 +198,33 @@ public class TestStreaming {
   public void testReadStreaming(boolean enableRouterHttp2) throws Exception {
     // Start a new router every time with the right config
     // With Apache HAC on Router with client compression enabled
-    VeniceRouterWrapper veniceRouterWrapperWithHttpAsyncClient = veniceCluster.addVeniceRouter(getRouterProperties(false, true, enableRouterHttp2));
-    MetricsRepository routerMetricsRepositoryWithHttpAsyncClient = veniceRouterWrapperWithHttpAsyncClient.getMetricsRepository();
+    VeniceRouterWrapper veniceRouterWrapperWithHttpAsyncClient =
+        veniceCluster.addVeniceRouter(getRouterProperties(false, true, enableRouterHttp2));
+    MetricsRepository routerMetricsRepositoryWithHttpAsyncClient =
+        veniceRouterWrapperWithHttpAsyncClient.getMetricsRepository();
     // With Netty Client on Router with client compression disabled
-    VeniceRouterWrapper veniceRouterWrapperWithNettyClient = veniceCluster.addVeniceRouter(getRouterProperties(true, false, enableRouterHttp2));
+    VeniceRouterWrapper veniceRouterWrapperWithNettyClient =
+        veniceCluster.addVeniceRouter(getRouterProperties(true, false, enableRouterHttp2));
     D2Client d2Client = null;
     AvroGenericStoreClient d2StoreClient = null;
     try {
       // test with D2 store client, since streaming support is only available with D2 client so far.
-      d2Client = D2TestUtils.getD2Client(veniceCluster.getZk().getAddress(), true, enableRouterHttp2 ? HttpProtocolVersion.HTTP_2 : HttpProtocolVersion.HTTP_1_1);
+      d2Client = D2TestUtils.getD2Client(
+          veniceCluster.getZk().getAddress(),
+          true,
+          enableRouterHttp2 ? HttpProtocolVersion.HTTP_2 : HttpProtocolVersion.HTTP_1_1);
       D2TestUtils.startD2Client(d2Client);
       MetricsRepository d2ClientMetricsRepository = new MetricsRepository();
-      d2StoreClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
-          .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
-          .setD2Client(d2Client)
-          .setMetricsRepository(d2ClientMetricsRepository)
-          .setUseFastAvro(false));
+      d2StoreClient = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+              .setD2Client(d2Client)
+              .setMetricsRepository(d2ClientMetricsRepository)
+              .setUseFastAvro(false));
 
-      // Right now, all the streaming interfaces are still internal, and we will expose them once they are fully verified.
-      StatTrackingStoreClient trackingStoreClient = (StatTrackingStoreClient)d2StoreClient;
+      // Right now, all the streaming interfaces are still internal, and we will expose them once they are fully
+      // verified.
+      StatTrackingStoreClient trackingStoreClient = (StatTrackingStoreClient) d2StoreClient;
 
       // Run multiple rounds
       int rounds = 10;
@@ -235,7 +246,6 @@ public class TestStreaming {
         // Streaming batch-get
         CountDownLatch latch = new CountDownLatch(1);
         trackingStoreClient.streamingBatchGet(keySet, new StreamingCallback<String, Object>() {
-
           @Override
           public void onRecordReceived(String key, Object value) {
             if (null != value) {
@@ -251,7 +261,7 @@ public class TestStreaming {
           public void onCompletion(Optional<Exception> exception) {
             latch.countDown();
             if (exception.isPresent()) {
-              LOGGER.info("MultiGet onCompletion invoked with Venice Exception",  exception.get());
+              LOGGER.info("MultiGet onCompletion invoked with Venice Exception", exception.get());
               fail("Exception: " + exception.get() + " is not expected");
             }
           }
@@ -272,8 +282,8 @@ public class TestStreaming {
         AtomicInteger computeResultCnt = new AtomicInteger(0);
         Map<String, GenericRecord> finalComputeResultMap = new VeniceConcurrentHashMap<>();
         CountDownLatch computeLatch = new CountDownLatch(1);
-        ComputeRequestBuilder<String>
-            computeRequestBuilder = trackingStoreClient.compute().project("int_field", "nullable_string_field");
+        ComputeRequestBuilder<String> computeRequestBuilder =
+            trackingStoreClient.compute().project("int_field", "nullable_string_field");
         computeRequestBuilder.streamingExecute(keySet, new StreamingCallback<String, GenericRecord>() {
           @Override
           public void onRecordReceived(String key, GenericRecord value) {
@@ -287,17 +297,19 @@ public class TestStreaming {
           public void onCompletion(Optional<Exception> exception) {
             computeLatch.countDown();
             if (exception.isPresent()) {
-              LOGGER.info("Compute onCompletion invoked with Venice Exception",  exception.get());
+              LOGGER.info("Compute onCompletion invoked with Venice Exception", exception.get());
               fail("Exception: " + exception.get() + " is not expected");
             }
           }
         });
         computeLatch.await();
         Assert.assertEquals(computeResultCnt.get(), MAX_KEY_LIMIT);
-        Assert.assertEquals(finalComputeResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM); // Without non-existing key
+        Assert.assertEquals(finalComputeResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM); // Without non-existing
+                                                                                                 // key
         verifyComputeResult(finalComputeResultMap);
         // Test compute with streaming implementation
-        CompletableFuture<VeniceResponseMap<String, GenericRecord>> computeFuture = computeRequestBuilder.streamingExecute(keySet);
+        CompletableFuture<VeniceResponseMap<String, GenericRecord>> computeFuture =
+            computeRequestBuilder.streamingExecute(keySet);
         Map<String, GenericRecord> computeResultMap = computeFuture.get();
         Assert.assertEquals(computeResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM);
         verifyComputeResult(computeResultMap);
@@ -322,13 +334,16 @@ public class TestStreaming {
       Assert.assertTrue(metrics.get(metricPrefix + "--compute_streaming_response_tt99pr.50thPercentile").value() > 0);
 
       LOGGER.info("The following metrics are Router metrics:");
-      //Verify some router metrics
-      for (MetricsRepository routerMetricsRepository : Arrays.asList(routerMetricsRepositoryWithHttpAsyncClient)) { //, routerMetricsRepositoryWithNettyClient)) {
+      // Verify some router metrics
+      for (MetricsRepository routerMetricsRepository: Arrays.asList(routerMetricsRepositoryWithHttpAsyncClient)) { // ,
+                                                                                                                   // routerMetricsRepositoryWithNettyClient))
+                                                                                                                   // {
         Map<String, ? extends Metric> routerMetrics = routerMetricsRepository.metrics();
         // The following metrics are only available when Router is running in Streaming mode.
         Assert.assertTrue(routerMetrics.get(metricPrefix + "--multiget_streaming_request.OccurrenceRate").value() > 0);
         Assert.assertTrue(routerMetrics.get(metricPrefix + "--multiget_streaming_latency.99thPercentile").value() > 0);
-        Assert.assertTrue(routerMetrics.get(metricPrefix + "--multiget_streaming_fanout_request_count.Avg").value() > 0);
+        Assert
+            .assertTrue(routerMetrics.get(metricPrefix + "--multiget_streaming_fanout_request_count.Avg").value() > 0);
         Assert.assertTrue(routerMetrics.get(metricPrefix + "--compute_streaming_request.OccurrenceRate").value() > 0);
         Assert.assertTrue(routerMetrics.get(metricPrefix + "--compute_streaming_latency.99thPercentile").value() > 0);
         Assert.assertTrue(routerMetrics.get(metricPrefix + "--compute_streaming_fanout_request_count.Avg").value() > 0);
@@ -363,12 +378,14 @@ public class TestStreaming {
       if (i <= LAST_KEY_INDEX_WITH_NON_NULL_VALUE) {
         Assert.assertTrue((record.get("nullable_string_field").toString().equals("nullable_string_field" + i)));
       } else {
-        Assert.assertNull(record.get("nullable_string_field"), "Field: 'nullable_string_field' should be 'null' for key: " + key);
+        Assert.assertNull(
+            record.get("nullable_string_field"),
+            "Field: 'nullable_string_field' should be 'null' for key: " + key);
       }
     }
   }
 
-  @Test (timeOut = 5000)
+  @Test(timeOut = 5000)
   public void testWithNonExistingStore() throws ExecutionException, InterruptedException {
     String nonExistingStoreName = Utils.getUniqueString("non_existing_store");
     D2Client d2Client = null;
@@ -378,17 +395,17 @@ public class TestStreaming {
       veniceRouterWrapperWithHttpAsyncClient = veniceCluster.addVeniceRouter(new Properties());
       d2Client = D2TestUtils.getD2Client(veniceCluster.getZk().getAddress(), false);
       D2TestUtils.startD2Client(d2Client);
-      d2StoreClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(nonExistingStoreName)
-          .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
-          .setD2Client(d2Client));
+      d2StoreClient = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(nonExistingStoreName)
+              .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+              .setD2Client(d2Client));
       d2StoreClient.get("test").get();
       fail("An exception is expected here");
     } catch (ServiceDiscoveryException e) {
       assertTrue(e.getCause() instanceof VeniceNoStoreException);
     } catch (Throwable t) {
       fail("Unexpected exception received: " + t.getClass());
-    }
-    finally {
+    } finally {
       Utils.closeQuietlyWithErrorLogged(d2StoreClient);
       Utils.closeQuietlyWithErrorLogged(veniceRouterWrapperWithHttpAsyncClient);
       if (d2Client != null) {
@@ -397,7 +414,7 @@ public class TestStreaming {
     }
   }
 
-  @Test (timeOut = 30000)
+  @Test(timeOut = 30000)
   public void testWithForceClusterDiscovery() {
     D2Client d2Client = null;
     AvroGenericStoreClient d2StoreClient = null;
@@ -406,18 +423,17 @@ public class TestStreaming {
       veniceRouterWrapperWithHttpAsyncClient = veniceCluster.addVeniceRouter(new Properties());
       d2Client = D2TestUtils.getD2Client(veniceCluster.getZk().getAddress(), false);
       // Don't start d2 client
-      d2StoreClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
-          .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
-          .setD2Client(d2Client)
-          .setForceClusterDiscoveryAtStartTime(true)
-      );
+      d2StoreClient = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+              .setD2Client(d2Client)
+              .setForceClusterDiscoveryAtStartTime(true));
       fail("An exception is expected here");
     } catch (Throwable t) {
       if (!(t instanceof VeniceException) || !t.getMessage().contains("Failed to initializing Venice Client")) {
         fail("Unexpected exception received: " + t.getClass());
       }
-    }
-    finally {
+    } finally {
       Utils.closeQuietlyWithErrorLogged(d2StoreClient);
       Utils.closeQuietlyWithErrorLogged(veniceRouterWrapperWithHttpAsyncClient);
     }

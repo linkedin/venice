@@ -1,5 +1,8 @@
 package com.linkedin.venice.storagenode;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.router.api.VenicePathParser.*;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.admin.protocol.response.AdminResponseRecord;
@@ -66,9 +69,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.router.api.VenicePathParser.*;
-
 
 @Test(singleThreaded = true)
 public class StorageNodeReadTest {
@@ -104,7 +104,6 @@ public class StorageNodeReadTest {
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
     partitionCount = creationResponse.getPartitions();
 
-
     // TODO: Make serializers parameterized so we test them all.
     String stringSchema = "\"string\"";
     keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
@@ -113,8 +112,7 @@ public class StorageNodeReadTest {
     veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress())
         .createVeniceWriter(storeVersionName, keySerializer, valueSerializer);
     client = ClientFactory.getAndStartGenericAvroClient(
-        ClientConfig.defaultGenericClientConfig(storeName)
-            .setVeniceURL(veniceCluster.getRandomRouterURL()));
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()));
 
   }
 
@@ -159,7 +157,9 @@ public class StorageNodeReadTest {
       HttpResponse response = future.get();
       try (InputStream bodyStream = response.getEntity().getContent()) {
         byte[] body = IOUtils.toByteArray(bodyStream);
-        Assert.assertEquals(response.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
+        Assert.assertEquals(
+            response.getStatusLine().getStatusCode(),
+            HttpStatus.SC_OK,
             "Response did not return 200: " + new String(body));
         Object value = valueSerializer.deserialize(null, body);
         Assert.assertEquals(value.toString(), valuePrefix + "0");
@@ -176,7 +176,8 @@ public class StorageNodeReadTest {
         requestKey.partitionId = getPartitionId(keyBytes);
         keys.add(requestKey);
       }
-      RecordSerializer<MultiGetRouterRequestKeyV1> serializer = SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.SCHEMA$);
+      RecordSerializer<MultiGetRouterRequestKeyV1> serializer =
+          SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.SCHEMA$);
       byte[] postBody = serializer.serializeObjects(keys);
       StringBuilder multiGetUri = new StringBuilder().append("http://")
           .append(serverAddr)
@@ -188,7 +189,8 @@ public class StorageNodeReadTest {
       BasicHttpEntity entity = new BasicHttpEntity();
       entity.setContent(new ByteArrayInputStream(postBody));
       httpPost.setEntity(entity);
-      httpPost.setHeader(HttpConstants.VENICE_API_VERSION,
+      httpPost.setHeader(
+          HttpConstants.VENICE_API_VERSION,
           Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_ROUTER_REQUEST_V1.getProtocolVersion()));
 
       RecordDeserializer<MultiGetResponseRecordV1> deserializer =
@@ -198,10 +200,14 @@ public class StorageNodeReadTest {
       HttpResponse multiGetResponse = multiGetFuture.get();
 
       // TODO: Potentially a brittle test if we change the heuristic for RCU computation?
-      Assert.assertEquals(multiGetResponse.getLastHeader(HttpConstants.VENICE_REQUEST_RCU).getValue(), String.valueOf(keys.size()));
+      Assert.assertEquals(
+          multiGetResponse.getLastHeader(HttpConstants.VENICE_REQUEST_RCU).getValue(),
+          String.valueOf(keys.size()));
       try (InputStream bodyStream = multiGetResponse.getEntity().getContent()) {
         byte[] body = IOUtils.toByteArray(bodyStream);
-        Assert.assertEquals(multiGetResponse.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
+        Assert.assertEquals(
+            multiGetResponse.getStatusLine().getStatusCode(),
+            HttpStatus.SC_OK,
             "Response did not return 200: " + new String(body));
         Iterable<MultiGetResponseRecordV1> values = deserializer.deserializeObjects(body);
         Map<Integer, String> results = new HashMap<>();
@@ -231,7 +237,9 @@ public class StorageNodeReadTest {
       response = future.get();
       try (InputStream bodyStream = response.getEntity().getContent()) {
         byte[] body = IOUtils.toByteArray(bodyStream);
-        Assert.assertEquals(response.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
+        Assert.assertEquals(
+            response.getStatusLine().getStatusCode(),
+            HttpStatus.SC_OK,
             "Response did not return 200: " + new String(body));
         RecordDeserializer<AdminResponseRecord> adminResponseDeserializer =
             SerializerDeserializerFactory.getAvroGenericDeserializer(AdminResponseRecord.SCHEMA$);
@@ -249,14 +257,14 @@ public class StorageNodeReadTest {
         }
         GenericRecord adminResponse = (GenericRecord) value;
         Assert.assertNotNull(adminResponse.get("partitionConsumptionStates"));
-        Assert.assertTrue(((List)adminResponse.get("partitionConsumptionStates")).size() > 0);
+        Assert.assertTrue(((List) adminResponse.get("partitionConsumptionStates")).size() > 0);
       }
     }
 
     /**
      * Test with {@link AvroGenericStoreClient}.
      */
-    for (boolean reuseObjectsForSerialization: new boolean[]{false, true}) {
+    for (boolean reuseObjectsForSerialization: new boolean[] { false, true }) {
       String assertionDetails = "{reuseObjectsForSerialization = " + reuseObjectsForSerialization + "}";
       try (AvroGenericStoreClient<String, CharSequence> storeClient = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName)
@@ -270,10 +278,14 @@ public class StorageNodeReadTest {
         keySet.add("unknown_key");
         try {
           Map<String, CharSequence> result = storeClient.batchGet(keySet).get();
-          Assert.assertEquals(result.size(), EXISTING_KEY_COUNT_IN_BATCH_GET_REQUEST,
+          Assert.assertEquals(
+              result.size(),
+              EXISTING_KEY_COUNT_IN_BATCH_GET_REQUEST,
               "Unexpected result size " + assertionDetails);
           for (int i = 0; i < EXISTING_KEY_COUNT_IN_BATCH_GET_REQUEST; ++i) {
-            Assert.assertEquals(result.get(keyPrefix + i).toString(), valuePrefix + i,
+            Assert.assertEquals(
+                result.get(keyPrefix + i).toString(),
+                valuePrefix + i,
                 "Key " + i + " does not have expected value " + assertionDetails);
           }
         } catch (Exception e) {
@@ -284,7 +296,7 @@ public class StorageNodeReadTest {
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
-  public void testDiskHealthCheckService() throws Exception  {
+  public void testDiskHealthCheckService() throws Exception {
     VeniceServerWrapper serverWrapper = null;
     try {
       Properties serverProperties = new Properties();
@@ -333,9 +345,13 @@ public class StorageNodeReadTest {
     return future.get();
   }
 
-  private void pushSyntheticData(String keyPrefix, String valuePrefix, int numOfRecords,
-      VeniceClusterWrapper veniceCluster, VeniceWriter<Object, Object, Object> veniceWriter, int pushVersion)
-      throws Exception {
+  private void pushSyntheticData(
+      String keyPrefix,
+      String valuePrefix,
+      int numOfRecords,
+      VeniceClusterWrapper veniceCluster,
+      VeniceWriter<Object, Object, Object> veniceWriter,
+      int pushVersion) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     // Insert test record and wait synchronously for it to succeed
     Future[] writerFutures = new Future[numOfRecords];
@@ -351,7 +367,9 @@ public class StorageNodeReadTest {
     // Wait for storage node to finish consuming, and new version to be activated
     String controllerUrl = veniceCluster.getAllControllersURLs();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName).getStore().getCurrentVersion();
+      int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName)
+          .getStore()
+          .getCurrentVersion();
       Assert.assertEquals(currentVersion, pushVersion, "The new version is not activated yet!");
       for (int i = 0; i < numOfRecords; ++i) {
         String key = keyPrefix + i;

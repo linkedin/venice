@@ -1,5 +1,7 @@
 package com.linkedin.davinci.stats;
 
+import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
+
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.stats.StatsSupplier;
@@ -7,7 +9,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.DoubleSupplier;
 
-import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends AbstractVeniceStatsReporter<STATS>>
     extends AbstractVeniceStats {
@@ -22,7 +23,10 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
   private final STATS_REPORTER backupStatsReporter;
   private final STATS_REPORTER totalStatsReporter;
 
-  public VeniceVersionedStatsReporter(MetricsRepository metricsRepository, String storeName, StatsSupplier<STATS_REPORTER> statsSupplier) {
+  public VeniceVersionedStatsReporter(
+      MetricsRepository metricsRepository,
+      String storeName,
+      StatsSupplier<STATS_REPORTER> statsSupplier) {
     super(metricsRepository, storeName);
 
     /**
@@ -123,7 +127,7 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
    * Only for tests, to reset the global state
    * TODO: Fix, VOLDENG-4211
    */
-  public static void resetStats(){
+  public static void resetStats() {
     isVersionStatsSetup.set(false);
   }
 }

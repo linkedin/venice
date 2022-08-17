@@ -14,7 +14,7 @@ public class TokenBucket {
   private final long capacity;
   private final long refillAmount;
   private final long refillIntervalMs;
-  private final float refillPerSecond;//only used for logging
+  private final float refillPerSecond;// only used for logging
   private final Clock clock;
   private final AtomicLong tokens;
   private volatile long nextUpdateTime;
@@ -27,7 +27,7 @@ public class TokenBucket {
    * @param refillUnit
    * @param clock
    */
-  public TokenBucket(long capacity, long refillAmount, long refillInterval, TimeUnit refillUnit, Clock clock){
+  public TokenBucket(long capacity, long refillAmount, long refillInterval, TimeUnit refillUnit, Clock clock) {
 
     if (capacity <= 0) {
       throw new IllegalArgumentException("TokenBucket capacity " + capacity + " is not valid.  Must be greater than 0");
@@ -35,12 +35,14 @@ public class TokenBucket {
     this.capacity = capacity;
 
     if (refillAmount <= 0) {
-      throw new IllegalArgumentException("TokenBucket refillAmount " + refillAmount + " is not valid.  Must be greater than 0");
+      throw new IllegalArgumentException(
+          "TokenBucket refillAmount " + refillAmount + " is not valid.  Must be greater than 0");
     }
     this.refillAmount = refillAmount;
 
     if (refillInterval <= 0) {
-      throw new IllegalArgumentException("TokenBucket refillInterval " + refillInterval + " is not valid.  Must be greater than 0");
+      throw new IllegalArgumentException(
+          "TokenBucket refillInterval " + refillInterval + " is not valid.  Must be greater than 0");
     }
     this.refillIntervalMs = refillUnit.toMillis(refillInterval);
     this.clock = clock;
@@ -48,8 +50,8 @@ public class TokenBucket {
     tokens = new AtomicLong(capacity);
     nextUpdateTime = clock.millis() + refillIntervalMs;
 
-    float refillIntervalSeconds = refillIntervalMs/(float)1000;
-    refillPerSecond = refillAmount/refillIntervalSeconds;
+    float refillIntervalSeconds = refillIntervalMs / (float) 1000;
+    refillPerSecond = refillAmount / refillIntervalSeconds;
   }
 
   /**
@@ -60,7 +62,7 @@ public class TokenBucket {
    * @param refillInterval The interval of time between refills of the bucket
    * @param refillUnit The TimeUnit for the refillInterval
    */
-  public TokenBucket(long capacity, long refillAmount, long refillInterval, TimeUnit refillUnit){
+  public TokenBucket(long capacity, long refillAmount, long refillInterval, TimeUnit refillUnit) {
     this(capacity, refillAmount, refillInterval, refillUnit, Clock.systemUTC());
   }
 
@@ -68,15 +70,15 @@ public class TokenBucket {
    *
    * @return true if tokens may have been added, false if short circuited and no tokens were added
    */
-  private boolean update(){
-    if (clock.millis() > nextUpdateTime){
-      synchronized (this){
+  private boolean update() {
+    if (clock.millis() > nextUpdateTime) {
+      synchronized (this) {
         if (clock.millis() > nextUpdateTime) {
           long refillCount = (clock.millis() - nextUpdateTime) / refillIntervalMs + 1;
           long totalRefillAmount = refillCount * refillAmount;
           tokens.getAndAccumulate(totalRefillAmount, (existing, toAdd) -> {
             long newTokens = existing + toAdd;
-            if (newTokens > capacity){
+            if (newTokens > capacity) {
               return capacity;
             } else {
               return newTokens;
@@ -95,19 +97,18 @@ public class TokenBucket {
    * This method does not call #update(), so it is only accurate as of the last time #tryConsume() was called
    * @return number of tokens remaining in the bucket
    */
-  public long getStaleTokenCount(){
+  public long getStaleTokenCount() {
     // TODO: maybe update the token after getting the stale token count
     return tokens.get();
   }
 
-  public boolean tryConsume(long tokensToConsume){
-    return noRetryTryConsume(tokensToConsume) ||
-        (update() && noRetryTryConsume(tokensToConsume));
+  public boolean tryConsume(long tokensToConsume) {
+    return noRetryTryConsume(tokensToConsume) || (update() && noRetryTryConsume(tokensToConsume));
   }
 
-  private boolean noRetryTryConsume(long tokensToConsume){
+  private boolean noRetryTryConsume(long tokensToConsume) {
     long tokensThatWereAvailable = tokens.getAndAccumulate(tokensToConsume, (existing, toConsume) -> {
-      if (toConsume <= existing){ // there are sufficient tokens
+      if (toConsume <= existing) { // there are sufficient tokens
         return existing - toConsume;
       } else {
         return existing; // insufficient tokens, do not consume any
@@ -116,11 +117,11 @@ public class TokenBucket {
     return tokensToConsume <= tokensThatWereAvailable;
   }
 
-  public boolean tryConsume(){
+  public boolean tryConsume() {
     return tryConsume(1);
   }
 
-  public float getAmortizedRefillPerSecond(){
+  public float getAmortizedRefillPerSecond() {
     return refillPerSecond;
   }
 }

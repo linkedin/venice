@@ -30,8 +30,14 @@ public class AclCreationDeletionListener implements StoreDataChangedListener {
       logger.error("Cannot add store to resource list: " + store.getName());
     }
     if (logger.isDebugEnabled()) {
-      logger.debug("*EXPECTED* current ACL list: " + accessController.getAccessControlledResources() +
-          " + " + store.getName()); // Actual ACL list cannot be determined yet
+      logger.debug(
+          "*EXPECTED* current ACL list: " + accessController.getAccessControlledResources() + " + " + store.getName()); // Actual
+                                                                                                                        // ACL
+                                                                                                                        // list
+                                                                                                                        // cannot
+                                                                                                                        // be
+                                                                                                                        // determined
+                                                                                                                        // yet
     }
   }
 

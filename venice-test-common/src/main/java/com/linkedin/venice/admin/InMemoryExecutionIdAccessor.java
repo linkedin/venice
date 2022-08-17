@@ -30,7 +30,9 @@ public class InMemoryExecutionIdAccessor implements ExecutionIdAccessor {
   }
 
   @Override
-  public synchronized void updateLastSucceededExecutionIdMap(String clusterName, String storeName,
+  public synchronized void updateLastSucceededExecutionIdMap(
+      String clusterName,
+      String storeName,
       Long lastSucceededExecutionId) {
     if (executionIdMapInMem.get(clusterName) == null) {
       executionIdMapInMem.put(clusterName, new HashMap<>());

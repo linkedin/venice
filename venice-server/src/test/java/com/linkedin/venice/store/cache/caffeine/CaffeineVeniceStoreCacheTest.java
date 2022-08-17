@@ -7,8 +7,8 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-public class CaffeineVeniceStoreCacheTest {
 
+public class CaffeineVeniceStoreCacheTest {
   private static String NON_PRESENT_KEY = "Skyrgamur";
   private static String PRESENT_KEY = "Stekkjarstaur";
   private static String PRESENT_VALUE = "Giljagaur";
@@ -21,7 +21,9 @@ public class CaffeineVeniceStoreCacheTest {
     ObjectCacheConfig config = new ObjectCacheConfig();
     config.setMaxPerPartitionCacheSize(1000l);
     config.setTtlInMilliseconds(1000l);
-    cache = new CaffeineVeniceStoreCache(config, (key, executor) -> {return null;});
+    cache = new CaffeineVeniceStoreCache(config, (key, executor) -> {
+      return null;
+    });
   }
 
   @AfterMethod

@@ -11,12 +11,14 @@ import java.util.Optional;
 
 
 public interface IngestionBackendBase extends Closeable {
-
   default void startConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
     startConsumption(storeConfig, partition, Optional.empty());
   }
 
-  void startConsumption(VeniceStoreVersionConfig storeConfig, int partition, Optional<LeaderFollowerStateType> leaderState);
+  void startConsumption(
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
+      Optional<LeaderFollowerStateType> leaderState);
 
   void stopConsumption(VeniceStoreVersionConfig storeConfig, int partition);
 
@@ -26,12 +28,18 @@ public interface IngestionBackendBase extends Closeable {
   void addIngestionNotifier(VeniceNotifier ingestionListener);
 
   // dropStoragePartitionGracefully will stop subscribe topic's partition and delete partition data from storage.
-  default void dropStoragePartitionGracefully(VeniceStoreVersionConfig storeConfig, int partition, int timeoutInSeconds) {
+  default void dropStoragePartitionGracefully(
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
+      int timeoutInSeconds) {
     dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, true);
   }
 
   // dropStoragePartitionGracefully will stop subscribe topic's partition and delete partition data from storage.
-  void dropStoragePartitionGracefully(VeniceStoreVersionConfig storeConfig, int partition, int timeoutInSeconds,
+  void dropStoragePartitionGracefully(
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
+      int timeoutInSeconds,
       boolean removeEmptyStorageEngine);
 
   StorageMetadataService getStorageMetadataService();

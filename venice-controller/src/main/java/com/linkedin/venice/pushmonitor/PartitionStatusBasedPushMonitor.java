@@ -11,18 +11,34 @@ import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.List;
 import java.util.Optional;
 
+
 /**
  * An implementation of {@link AbstractPushMonitor} that listens to ZK {@link PartitionStatus}
  * to determine the push status.
  */
 
 public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
-  public PartitionStatusBasedPushMonitor(String clusterName, OfflinePushAccessor offlinePushAccessor,
-      StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository, RoutingDataRepository routingDataRepository,
-      AggPushHealthStats aggPushHealthStats, RealTimeTopicSwitcher realTimeTopicSwitcher, ClusterLockManager clusterLockManager,
-      String aggregateRealTimeSourceKafkaUrl, List<String> childDataCenterKafkaUrls) {
-    super(clusterName, offlinePushAccessor, storeCleaner, metadataRepository, routingDataRepository, aggPushHealthStats,
-        realTimeTopicSwitcher, clusterLockManager, aggregateRealTimeSourceKafkaUrl,
+  public PartitionStatusBasedPushMonitor(
+      String clusterName,
+      OfflinePushAccessor offlinePushAccessor,
+      StoreCleaner storeCleaner,
+      ReadWriteStoreRepository metadataRepository,
+      RoutingDataRepository routingDataRepository,
+      AggPushHealthStats aggPushHealthStats,
+      RealTimeTopicSwitcher realTimeTopicSwitcher,
+      ClusterLockManager clusterLockManager,
+      String aggregateRealTimeSourceKafkaUrl,
+      List<String> childDataCenterKafkaUrls) {
+    super(
+        clusterName,
+        offlinePushAccessor,
+        storeCleaner,
+        metadataRepository,
+        routingDataRepository,
+        aggPushHealthStats,
+        realTimeTopicSwitcher,
+        clusterLockManager,
+        aggregateRealTimeSourceKafkaUrl,
         childDataCenterKafkaUrls);
   }
 
@@ -36,17 +52,23 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
     if (getRoutingDataRepository().containsKafkaTopic(kafkaTopic)) {
       boolean isTerminalStatus = offlinePushStatus.getCurrentStatus().isTerminal();
       if (!isTerminalStatus) {
-        updatePushStatusByPartitionStatus(offlinePushStatus, getRoutingDataRepository().getPartitionAssignments(kafkaTopic));
+        updatePushStatusByPartitionStatus(
+            offlinePushStatus,
+            getRoutingDataRepository().getPartitionAssignments(kafkaTopic));
       }
 
       super.onPartitionStatusChange(offlinePushStatus);
     }
   }
 
-  private void updatePushStatusByPartitionStatus(OfflinePushStatus offlinePushStatus, PartitionAssignment partitionAssignment) {
+  private void updatePushStatusByPartitionStatus(
+      OfflinePushStatus offlinePushStatus,
+      PartitionAssignment partitionAssignment) {
     Pair<ExecutionStatus, Optional<String>> status = checkPushStatus(offlinePushStatus, partitionAssignment);
     if (status.getFirst().isTerminal()) {
-      logger.info("Found a offline pushes could be terminated: " + offlinePushStatus.getKafkaTopic() + " status: " + status.getFirst());
+      logger.info(
+          "Found a offline pushes could be terminated: " + offlinePushStatus.getKafkaTopic() + " status: "
+              + status.getFirst());
       handleOfflinePushUpdate(offlinePushStatus, status.getFirst(), status.getSecond());
     }
   }
@@ -55,14 +77,18 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
    * Checking push status based on Venice offlinePush status
    */
   @Override
-  protected Pair<ExecutionStatus, Optional<String>> checkPushStatus(OfflinePushStatus pushStatus, PartitionAssignment partitionAssignment) {
+  protected Pair<ExecutionStatus, Optional<String>> checkPushStatus(
+      OfflinePushStatus pushStatus,
+      PartitionAssignment partitionAssignment) {
     return PushStatusDecider.getDecider(pushStatus.getStrategy())
-           .checkPushStatusAndDetailsByPartitionsStatus(pushStatus, partitionAssignment);
+        .checkPushStatusAndDetailsByPartitionsStatus(pushStatus, partitionAssignment);
   }
 
   @Override
   public List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId) {
     return PushStatusDecider.getReadyToServeInstances(
-        getOfflinePushOrThrow(partitionAssignment.getTopic()).getPartitionStatus(partitionId), partitionAssignment, partitionId);
+        getOfflinePushOrThrow(partitionAssignment.getTopic()).getPartitionStatus(partitionId),
+        partitionAssignment,
+        partitionId);
   }
 }

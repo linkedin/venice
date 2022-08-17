@@ -2,7 +2,6 @@ package com.linkedin.venice.utils;
 
 import io.github.classgraph.ClassGraph;
 import io.github.classgraph.ScanResult;
-
 import java.io.File;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -77,7 +76,7 @@ public class ReflectUtils {
    */
   public static void printClasspath() {
     try (ScanResult scanResult = new ClassGraph().scan()) {
-      for (File file : scanResult.getClasspathFiles()) {
+      for (File file: scanResult.getClasspathFiles()) {
         LOGGER.info(file.getAbsolutePath());
       }
     }
@@ -88,14 +87,15 @@ public class ReflectUtils {
    * print to the logs which jar is that class coming from.
    */
   public static void printJarContainingBadClass(NoSuchMethodError e) {
-    String rawMessage =  e.getMessage();
+    String rawMessage = e.getMessage();
     int methodBoundary = rawMessage.lastIndexOf('.');
     if (methodBoundary == -1) {
       throw new IllegalArgumentException("Unexpected exception message format. Could not find any dot.", e);
     }
     String className = rawMessage.substring(0, methodBoundary);
     Class klass = loadClass(className);
-    LOGGER.info("Class '" + klass.getSimpleName() + "' is loaded from: " +
-        klass.getProtectionDomain().getCodeSource().getLocation().toString());
+    LOGGER.info(
+        "Class '" + klass.getSimpleName() + "' is loaded from: "
+            + klass.getProtectionDomain().getCodeSource().getLocation().toString());
   }
 }

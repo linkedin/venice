@@ -1,5 +1,7 @@
 package com.linkedin.davinci.stats;
 
+import static com.linkedin.venice.meta.Store.*;
+
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
@@ -13,8 +15,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.IntConsumer;
-
-import static com.linkedin.venice.meta.Store.*;
 
 
 public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVStats, DIVStatsReporter> {
@@ -49,7 +49,7 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
   }
 
   public void recordCurrentIdleTime(String storeName, int version) {
-    //we don't record current idle time for total stats
+    // we don't record current idle time for total stats
     Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordCurrentIdleTime());
   }
 
@@ -58,7 +58,7 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
   }
 
   public void resetCurrentIdleTime(String storeName, int version) {
-    //we don't record current idle time for total stats
+    // we don't record current idle time for total stats
     Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.resetCurrentIdleTime());
   }
 
@@ -134,32 +134,57 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
     existingVersions.remove(NON_EXISTING_VERSION);
 
     // Update total producer failure count
-    resetTotalStats(storeName, existingVersions, stat -> stat.getLeaderProducerFailure(),
+    resetTotalStats(
+        storeName,
+        existingVersions,
+        stat -> stat.getLeaderProducerFailure(),
         (stat, count) -> stat.setLeaderProducerFailure(count));
     // Update total benign leader producer failure count
-    resetTotalStats(storeName, existingVersions, stat -> stat.getBenignLeaderProducerFailure(),
+    resetTotalStats(
+        storeName,
+        existingVersions,
+        stat -> stat.getBenignLeaderProducerFailure(),
         (stat, count) -> stat.setBenignLeaderProducerFailure(count));
     // Update total benign leader offset rewind count
-    resetTotalStats(storeName, existingVersions, stat -> stat.getBenignLeaderOffsetRewindCount(),
+    resetTotalStats(
+        storeName,
+        existingVersions,
+        stat -> stat.getBenignLeaderOffsetRewindCount(),
         (stat, count) -> stat.setBenignLeaderOffsetRewindCount(count));
     // Update total potentially lossy leader offset rewind count
-    resetTotalStats(storeName, existingVersions, stat -> stat.getPotentiallyLossyLeaderOffsetRewindCount(),
+    resetTotalStats(
+        storeName,
+        existingVersions,
+        stat -> stat.getPotentiallyLossyLeaderOffsetRewindCount(),
         (stat, count) -> stat.setPotentiallyLossyLeaderOffsetRewindCount(count));
     // Update total duplicated msg count
-    resetTotalStats(storeName, existingVersions, stat -> stat.getDuplicateMsg(),
+    resetTotalStats(
+        storeName,
+        existingVersions,
+        stat -> stat.getDuplicateMsg(),
         (stat, count) -> stat.setDuplicateMsg(count));
     // Update total missing msg count
-    resetTotalStats(storeName, existingVersions, stat -> stat.getMissingMsg(),
+    resetTotalStats(
+        storeName,
+        existingVersions,
+        stat -> stat.getMissingMsg(),
         (stat, count) -> stat.setMissingMsg(count));
     // Update total corrupt msg count
-    resetTotalStats(storeName, existingVersions, stat -> stat.getCorruptedMsg(),
+    resetTotalStats(
+        storeName,
+        existingVersions,
+        stat -> stat.getCorruptedMsg(),
         (stat, count) -> stat.setCorruptedMsg(count));
   }
 
-  private void resetTotalStats(String storeName, IntSet existingVersions, Function<DIVStats, Long> statValueSupplier, BiConsumer<DIVStats, Long> statsUpdater) {
+  private void resetTotalStats(
+      String storeName,
+      IntSet existingVersions,
+      Function<DIVStats, Long> statValueSupplier,
+      BiConsumer<DIVStats, Long> statsUpdater) {
     AtomicLong totalStatCount = new AtomicLong(0L);
-    IntConsumer versionConsumer = v -> Utils.computeIfNotNull(
-        getStats(storeName, v), stat -> totalStatCount.addAndGet(statValueSupplier.apply(stat)));
+    IntConsumer versionConsumer = v -> Utils
+        .computeIfNotNull(getStats(storeName, v), stat -> totalStatCount.addAndGet(statValueSupplier.apply(stat)));
     existingVersions.forEach(versionConsumer);
     Utils.computeIfNotNull(getTotalStats(storeName), stat -> statsUpdater.accept(stat, totalStatCount.get()));
   }

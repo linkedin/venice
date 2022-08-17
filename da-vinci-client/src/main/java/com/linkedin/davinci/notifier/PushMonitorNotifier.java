@@ -1,5 +1,7 @@
 package com.linkedin.davinci.notifier;
 
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
+
 import com.linkedin.venice.common.PushStatusStoreUtils;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
@@ -10,13 +12,11 @@ import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 
 /**
  * Notifier used to update replica status by offline push monitor accessor.
  */
 public class PushMonitorNotifier implements VeniceNotifier {
-
   private static final Logger log = LogManager.getLogger(PushMonitorNotifier.class);
 
   private final OfflinePushAccessor accessor;
@@ -82,7 +82,11 @@ public class PushMonitorNotifier implements VeniceNotifier {
     updateIncrementalPushStatus(topic, message, partitionId, END_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
-  private void updateIncrementalPushStatus(String kafkaTopic, String incPushVersion, int partitionId, ExecutionStatus status) {
+  private void updateIncrementalPushStatus(
+      String kafkaTopic,
+      String incPushVersion,
+      int partitionId,
+      ExecutionStatus status) {
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     try {
       // if push status store doesn't exist do not report inc-push status
@@ -90,8 +94,12 @@ public class PushMonitorNotifier implements VeniceNotifier {
         return;
       }
     } catch (Exception e) {
-      log.error("Failed to report status of incremental push version:{}."
-          + " Got an exception while checking whether push status store exist for store:{}", incPushVersion, storeName, e);
+      log.error(
+          "Failed to report status of incremental push version:{}."
+              + " Got an exception while checking whether push status store exist for store:{}",
+          incPushVersion,
+          storeName,
+          e);
     }
     pushStatuStoreWriter.writePushStatus(
         storeName,
@@ -99,8 +107,7 @@ public class PushMonitorNotifier implements VeniceNotifier {
         partitionId,
         status,
         Optional.of(incPushVersion),
-        Optional.of(PushStatusStoreUtils.SERVER_INCREMENTAL_PUSH_PREFIX)
-    );
+        Optional.of(PushStatusStoreUtils.SERVER_INCREMENTAL_PUSH_PREFIX));
   }
 
   @Override

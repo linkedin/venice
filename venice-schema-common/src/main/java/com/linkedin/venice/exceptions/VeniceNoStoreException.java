@@ -41,7 +41,7 @@ public class VeniceNoStoreException extends VeniceException {
     this.clusterName = "unspecified";
   }
 
-  public String getStoreName(){
+  public String getStoreName() {
     return storeName;
   }
 

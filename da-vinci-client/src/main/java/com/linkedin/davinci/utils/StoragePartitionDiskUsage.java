@@ -9,7 +9,6 @@ import java.util.concurrent.TimeUnit;
  * Triggered by size and/or time by #getUsage(), it will sync up with real disk usage.
  */
 public class StoragePartitionDiskUsage {
-
   private static final long diskUsageThreshold = 32 * 1024 * 1024; // 32MB
   private static final long timeLagToSyncThreshold = 5; // 5min
 

@@ -1,5 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.ResourceAssignment;
@@ -17,8 +19,6 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 
 
 /**
@@ -44,7 +44,9 @@ public abstract class PushStatusDecider {
     return checkPushStatusAndDetails(pushStatus, partitionAssignment).getFirst();
   }
 
-  public Pair<ExecutionStatus, Optional<String>> checkPushStatusAndDetails(OfflinePushStatus pushStatus, PartitionAssignment partitionAssignment) {
+  public Pair<ExecutionStatus, Optional<String>> checkPushStatusAndDetails(
+      OfflinePushStatus pushStatus,
+      PartitionAssignment partitionAssignment) {
     boolean isAllPartitionCompleted = true;
     // If there are not enough partitions assigned, push could not be completed.
     // Continue to decide whether push is failed or not.
@@ -52,15 +54,16 @@ public abstract class PushStatusDecider {
       logger.warn("There no not enough partitions assigned to resource: " + pushStatus.getKafkaTopic());
       isAllPartitionCompleted = false;
     }
-    for (Partition partition : partitionAssignment.getAllPartitions()) {
+    for (Partition partition: partitionAssignment.getAllPartitions()) {
       int replicationFactor = pushStatus.getReplicationFactor();
       int errorReplicasCount = partition.getErrorInstances().size();
       int completedReplicasCount = partition.getReadyToServeInstances().size();
       int assignedReplicasCount = partition.getAllInstances().size();
       if (logger.isDebugEnabled()) {
-        logger.debug("Checking Push status for offline push for topic:" + pushStatus.getKafkaTopic() + "Partition:"
-            + partition.getId() + " has " + assignedReplicasCount + " assigned replicas including " + errorReplicasCount
-            + " error replicas, " + completedReplicasCount + " completed replicas.");
+        logger.debug(
+            "Checking Push status for offline push for topic:" + pushStatus.getKafkaTopic() + "Partition:"
+                + partition.getId() + " has " + assignedReplicasCount + " assigned replicas including "
+                + errorReplicasCount + " error replicas, " + completedReplicasCount + " completed replicas.");
       }
 
       // Is push failed due to there is enough number of error replicas.
@@ -74,10 +77,11 @@ public abstract class PushStatusDecider {
       // Is the partition has enough number of completed replicas.
       if (!hasEnoughReplicasForOnePartition(completedReplicasCount, replicationFactor)) {
         if (logger.isDebugEnabled()) {
-          logger.debug("Push for topic:" + pushStatus.getKafkaTopic() + " can not terminated because the partition:"
-              + partition.getId() + " does not have enough COMPLETED replicas. Completed replicas:"
-              + completedReplicasCount + " replicationFactor:" + replicationFactor + " under strategy:"
-              + getStrategy());
+          logger.debug(
+              "Push for topic:" + pushStatus.getKafkaTopic() + " can not terminated because the partition:"
+                  + partition.getId() + " does not have enough COMPLETED replicas. Completed replicas:"
+                  + completedReplicasCount + " replicationFactor:" + replicationFactor + " under strategy:"
+                  + getStrategy());
         }
         isAllPartitionCompleted = false;
       }
@@ -92,7 +96,8 @@ public abstract class PushStatusDecider {
   /**
    * Check the current status based on {@link PartitionStatus}
    */
-  public Pair<ExecutionStatus, Optional<String>> checkPushStatusAndDetailsByPartitionsStatus(OfflinePushStatus pushStatus,
+  public Pair<ExecutionStatus, Optional<String>> checkPushStatusAndDetailsByPartitionsStatus(
+      OfflinePushStatus pushStatus,
       PartitionAssignment partitionAssignment) {
     // Sanity check
     if (partitionAssignment == null || partitionAssignment.isMissingAssignedPartitions()) {
@@ -107,7 +112,7 @@ public abstract class PushStatusDecider {
       isAllPartitionCompleted = false;
       isAllPartitionEndOfPushReceived = false;
     } else {
-      for (PartitionStatus partitionStatus : pushStatus.getPartitionStatuses()) {
+      for (PartitionStatus partitionStatus: pushStatus.getPartitionStatuses()) {
         int partitionId = partitionStatus.getPartitionId();
         Partition partition = partitionAssignment.getPartition(partitionId);
         if (null == partition) {
@@ -118,9 +123,11 @@ public abstract class PushStatusDecider {
             getPartitionStatus(partitionStatus, pushStatus.getReplicationFactor(), partition.getInstanceToStateMap());
 
         if (executionStatus == ERROR) {
-          return new Pair<>(executionStatus, Optional.of(
-              "too many ERROR replicas in partition: " + partitionStatus.getPartitionId() + " for offlinePushStrategy: "
-                  + getStrategy().name()));
+          return new Pair<>(
+              executionStatus,
+              Optional.of(
+                  "too many ERROR replicas in partition: " + partitionStatus.getPartitionId()
+                      + " for offlinePushStrategy: " + getStrategy().name()));
         }
 
         if (!executionStatus.equals(COMPLETED)) {
@@ -135,20 +142,26 @@ public abstract class PushStatusDecider {
 
     if (isAllPartitionCompleted) {
       return new Pair<>(COMPLETED, Optional.empty());
-    } if (isAllPartitionEndOfPushReceived) {
+    }
+    if (isAllPartitionEndOfPushReceived) {
       return new Pair<>(END_OF_PUSH_RECEIVED, Optional.empty());
     } else {
       return new Pair<>(STARTED, Optional.empty());
     }
   }
 
-  public static List<Instance> getReadyToServeInstances(PartitionStatus partitionStatus, PartitionAssignment partitionAssignment,
+  public static List<Instance> getReadyToServeInstances(
+      PartitionStatus partitionStatus,
+      PartitionAssignment partitionAssignment,
       int partitionId) {
-    return partitionAssignment.getPartition(partitionId).getAllInstances().values().stream()
+    return partitionAssignment.getPartition(partitionId)
+        .getAllInstances()
+        .values()
+        .stream()
         .flatMap(List::stream)
-        .filter(instance ->
-            PushStatusDecider.getReplicaCurrentStatus(
-                partitionStatus.getReplicaHistoricStatusList(instance.getNodeId()))
+        .filter(
+            instance -> PushStatusDecider
+                .getReplicaCurrentStatus(partitionStatus.getReplicaHistoricStatusList(instance.getNodeId()))
                 .equals(ExecutionStatus.COMPLETED))
         .collect(Collectors.toList());
   }
@@ -160,33 +173,40 @@ public abstract class PushStatusDecider {
    * @return List of ready to serve instance ids
    */
   public static List<String> getReadyToServeInstances(Map<CharSequence, StoreReplicaStatus> replicaStatusMap) {
-    return replicaStatusMap.entrySet().stream().filter(e -> e.getValue().status == COMPLETED.value)
-        .map(e -> e.getKey().toString()).collect(Collectors.toList());
+    return replicaStatusMap.entrySet()
+        .stream()
+        .filter(e -> e.getValue().status == COMPLETED.value)
+        .map(e -> e.getKey().toString())
+        .collect(Collectors.toList());
   }
 
   /**
    * @return status details: if empty, push has enough replicas in every partition, otherwise, message contains details
    */
-  public Optional<String> hasEnoughNodesToStartPush(String kafkaTopic, int replicationFactor,
-      ResourceAssignment resourceAssignment, Optional<String> previousReason) {
+  public Optional<String> hasEnoughNodesToStartPush(
+      String kafkaTopic,
+      int replicationFactor,
+      ResourceAssignment resourceAssignment,
+      Optional<String> previousReason) {
     if (!resourceAssignment.containsResource(kafkaTopic)) {
       String reason = REASON_NOT_IN_EV;
-      String message = "Routing data repository has not created assignment for resource: " + kafkaTopic + "(" + reason + ")";
+      String message =
+          "Routing data repository has not created assignment for resource: " + kafkaTopic + "(" + reason + ")";
       logConditionally(reason, previousReason, message);
       return Optional.of(reason);
     }
 
     PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(kafkaTopic);
     if (partitionAssignment.isMissingAssignedPartitions()) {
-      String reason = REASON_NOT_ENOUGH_PARTITIONS_IN_EV +
-          partitionAssignment.getAssignedNumberOfPartitions() + "/" + partitionAssignment.getExpectedNumberOfPartitions();
+      String reason = REASON_NOT_ENOUGH_PARTITIONS_IN_EV + partitionAssignment.getAssignedNumberOfPartitions() + "/"
+          + partitionAssignment.getExpectedNumberOfPartitions();
       String message = "There are " + reason + " assigned to resource: " + kafkaTopic;
       logConditionally(reason, previousReason, message);
       return Optional.of(reason);
     }
 
     StringBuilder underReplicatedPartitionString = new StringBuilder();
-    for (Partition partition : partitionAssignment.getAllPartitions()) {
+    for (Partition partition: partitionAssignment.getAllPartitions()) {
       if (!this.hasEnoughReplicasForOnePartition(partition.getWorkingInstances().size(), replicationFactor)) {
         underReplicatedPartitionString.append(" ").append(partition.getId());
       }
@@ -218,22 +238,28 @@ public abstract class PushStatusDecider {
 
   protected abstract int getNumberOfToleratedErrors();
 
-  protected ExecutionStatus getPartitionStatus(PartitionStatus partitionStatus, int replicationFactor, Map<Instance, String> instanceToStateMap) {
+  protected ExecutionStatus getPartitionStatus(
+      PartitionStatus partitionStatus,
+      int replicationFactor,
+      Map<Instance, String> instanceToStateMap) {
     return getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap, getNumberOfToleratedErrors());
   }
 
-  protected ExecutionStatus getPartitionStatus(PartitionStatus partitionStatus, int replicationFactor,
-      Map<Instance, String> instanceToStateMap, int numberOfToleratedErrors) {
+  protected ExecutionStatus getPartitionStatus(
+      PartitionStatus partitionStatus,
+      int replicationFactor,
+      Map<Instance, String> instanceToStateMap,
+      int numberOfToleratedErrors) {
     Map<ExecutionStatus, Integer> executionStatusMap = new HashMap<>();
 
-    //when resources are running under L/F model, leader is usually taking more critical work and
-    //are more important than followers. Therefore, we strictly require leaders to be completed before
-    //partitions can be completed. Vice versa, partitions will be in error state if leader is in error
-    //state.
+    // when resources are running under L/F model, leader is usually taking more critical work and
+    // are more important than followers. Therefore, we strictly require leaders to be completed before
+    // partitions can be completed. Vice versa, partitions will be in error state if leader is in error
+    // state.
     boolean isLeaderCompleted = true;
     boolean isLeaderInError = false;
 
-    for (Map.Entry<Instance, String> entry : instanceToStateMap.entrySet()) {
+    for (Map.Entry<Instance, String> entry: instanceToStateMap.entrySet()) {
       ExecutionStatus currentStatus =
           getReplicaCurrentStatus(partitionStatus.getReplicaHistoricStatusList(entry.getKey().getNodeId()));
       if (entry.getValue().equals(HelixState.LEADER_STATE)) {
@@ -250,9 +276,8 @@ public abstract class PushStatusDecider {
       executionStatusMap.merge(currentStatus, 1, Integer::sum);
     }
 
-    if (executionStatusMap.containsKey(COMPLETED) &&
-        executionStatusMap.get(COMPLETED) >= replicationFactor - numberOfToleratedErrors &&
-        isLeaderCompleted) {
+    if (executionStatusMap.containsKey(COMPLETED)
+        && executionStatusMap.get(COMPLETED) >= replicationFactor - numberOfToleratedErrors && isLeaderCompleted) {
       return COMPLETED;
     }
 
@@ -260,16 +285,15 @@ public abstract class PushStatusDecider {
       return ERROR;
     }
 
-    if (executionStatusMap.containsKey(ERROR) &&
-        executionStatusMap.get(ERROR) > instanceToStateMap.size() - replicationFactor + numberOfToleratedErrors) {
+    if (executionStatusMap.containsKey(ERROR)
+        && executionStatusMap.get(ERROR) > instanceToStateMap.size() - replicationFactor + numberOfToleratedErrors) {
       return ERROR;
     }
 
     /**
      * Report EOP if at least one replica has consumed an EOP control message
      */
-    if (executionStatusMap.containsKey(END_OF_PUSH_RECEIVED) &&
-        executionStatusMap.get(END_OF_PUSH_RECEIVED) > 0) {
+    if (executionStatusMap.containsKey(END_OF_PUSH_RECEIVED) && executionStatusMap.get(END_OF_PUSH_RECEIVED) > 0) {
       return END_OF_PUSH_RECEIVED;
     }
 
@@ -281,13 +305,12 @@ public abstract class PushStatusDecider {
    * it because it would affect both components.
    */
   public static ExecutionStatus getReplicaCurrentStatus(List<StatusSnapshot> historicStatusList) {
-    List<ExecutionStatus> statusList = historicStatusList.stream()
-        .map(statusSnapshot -> statusSnapshot.getStatus())
-        .collect(Collectors.toList());
+    List<ExecutionStatus> statusList =
+        historicStatusList.stream().map(statusSnapshot -> statusSnapshot.getStatus()).collect(Collectors.toList());
     // prep to traverse the list from latest status.
     Collections.reverse(statusList);
     ExecutionStatus status = STARTED;
-    for (ExecutionStatus executionStatus : statusList) {
+    for (ExecutionStatus executionStatus: statusList) {
       if (isDeterminedStatus(executionStatus)) {
         status = executionStatus;
         break;
@@ -305,7 +328,7 @@ public abstract class PushStatusDecider {
     }
   }
 
-  protected static void updateDecider(OfflinePushStrategy strategy, PushStatusDecider decider){
+  protected static void updateDecider(OfflinePushStrategy strategy, PushStatusDecider decider) {
     decidersMap.put(strategy, decider);
   }
 }

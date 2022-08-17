@@ -1,5 +1,7 @@
 package com.linkedin.venice.utils;
 
+import static com.linkedin.venice.utils.AvroSchemaUtils.*;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.FieldBuilder;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -11,11 +13,8 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.commons.lang.StringUtils;
 
-import static com.linkedin.venice.utils.AvroSchemaUtils.*;
-
 
 public class AvroSupersetSchemaUtils {
-
   private AvroSupersetSchemaUtils() {
     // Utility class.
   }
@@ -48,21 +47,32 @@ public class AvroSupersetSchemaUtils {
     // Special handling for String vs Avro string comparison,
     // return the schema with avro.java.string property for string type
     if (existingSchema.getType() == Schema.Type.STRING) {
-      return AvroCompatibilityHelper.getSchemaPropAsJsonString(existingSchema, "avro.java.string") == null ? newSchema : existingSchema;
+      return AvroCompatibilityHelper.getSchemaPropAsJsonString(existingSchema, "avro.java.string") == null
+          ? newSchema
+          : existingSchema;
     }
 
     switch (existingSchema.getType()) {
       case RECORD:
         if (!StringUtils.equals(existingSchema.getNamespace(), newSchema.getNamespace())) {
-          throw new VeniceException(String.format("Trying to merge record schemas with different namespace. "
-              + "Got existing schema namespace: %s and new schema namespace: %s", existingSchema.getNamespace(), newSchema.getNamespace()));
+          throw new VeniceException(
+              String.format(
+                  "Trying to merge record schemas with different namespace. "
+                      + "Got existing schema namespace: %s and new schema namespace: %s",
+                  existingSchema.getNamespace(),
+                  newSchema.getNamespace()));
         }
         if (!StringUtils.equals(existingSchema.getName(), newSchema.getName())) {
-          throw new VeniceException(String.format("Trying to merge record schemas with different name. "
-              + "Got existing schema name: %s and new schema name: %s", existingSchema.getName(), newSchema.getName()));
+          throw new VeniceException(
+              String.format(
+                  "Trying to merge record schemas with different name. "
+                      + "Got existing schema name: %s and new schema name: %s",
+                  existingSchema.getName(),
+                  newSchema.getName()));
         }
 
-        Schema superSetSchema = Schema.createRecord(existingSchema.getName(), existingSchema.getDoc(), existingSchema.getNamespace(), false);
+        Schema superSetSchema = Schema
+            .createRecord(existingSchema.getName(), existingSchema.getDoc(), existingSchema.getNamespace(), false);
         superSetSchema.setFields(mergeFieldSchemas(existingSchema, newSchema));
         return superSetSchema;
       case ARRAY:
@@ -79,7 +89,7 @@ public class AvroSupersetSchemaUtils {
   private static Schema unionSchema(Schema s1, Schema s2) {
     List<Schema> combinedSchema = new ArrayList<>();
     Map<String, Schema> s2Schema = s2.getTypes().stream().collect(Collectors.toMap(s -> s.getName(), s -> s));
-    for (Schema subSchemaInS1 : s1.getTypes()) {
+    for (Schema subSchemaInS1: s1.getTypes()) {
       final String fieldName = subSchemaInS1.getName();
       final Schema subSchemaWithSameNameInS2 = s2Schema.get(fieldName);
       if (subSchemaWithSameNameInS2 == null) {
@@ -97,7 +107,7 @@ public class AvroSupersetSchemaUtils {
   private static List<Schema.Field> mergeFieldSchemas(Schema s1, Schema s2) {
     List<Schema.Field> fields = new ArrayList<>();
 
-    for (Schema.Field f1 : s1.getFields()) {
+    for (Schema.Field f1: s1.getFields()) {
       Schema.Field f2 = s2.getField(f1.name());
       FieldBuilder fieldBuilder = AvroCompatibilityHelper.newField(f1);
 
@@ -106,14 +116,15 @@ public class AvroSupersetSchemaUtils {
         fieldBuilder.setDefault(getFieldDefault(f1));
       }
       if (f2 != null) {
-        fieldBuilder.setSchema(generateSuperSetSchema(f1.schema(), f2.schema())).setDoc(f1.doc() != null ? f1.doc() : f2.doc());
+        fieldBuilder.setSchema(generateSuperSetSchema(f1.schema(), f2.schema()))
+            .setDoc(f1.doc() != null ? f1.doc() : f2.doc());
       }
       fields.add(fieldBuilder.build());
     }
 
-    for (Schema.Field f2 : s2.getFields()) {
+    for (Schema.Field f2: s2.getFields()) {
       if (s1.getField(f2.name()) == null) {
-        FieldBuilder fieldBuilder =  AvroCompatibilityHelper.newField(f2);
+        FieldBuilder fieldBuilder = AvroCompatibilityHelper.newField(f2);
         if (f2.hasDefaultValue()) {
           // set default as AvroCompatibilityHelper builder might drop defaults if there is type mismatch
           fieldBuilder.setDefault(getFieldDefault(f2));

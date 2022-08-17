@@ -1,10 +1,10 @@
 package com.linkedin.davinci.store.record;
 
 import com.linkedin.venice.utils.ByteUtils;
+import java.nio.ByteBuffer;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import java.nio.ByteBuffer;
 
 public class ValueRecordTest {
   @Test

@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
+
 /**
  * Interface for a cache on a venice store.  This interface is meant to decouple venice code from different cache implementations
  * (for which, there are many).
@@ -21,7 +22,6 @@ public interface VeniceStoreCache {
    */
   <K, V> V getIfPresent(K key);
 
-
   /**
    * Returns a map of the values associated with the {@code keys} in this cache. The returned map
    * will only contain entries which are already present in the cache.  Duplicate keys may be ignored (depends on
@@ -32,7 +32,7 @@ public interface VeniceStoreCache {
    * @return the unmodifiable mapping of keys to values for the specified keys found in this cache
    * @throws NullPointerException if the specified collection is null or contains a null element
    */
-  public <K, V> Map<K,V> getAllPresent(Iterable<K> keys);
+  public <K, V> Map<K, V> getAllPresent(Iterable<K> keys);
 
   /**
    * Returns the value associated with the {@code key} in this cache, obtaining that value from the
@@ -46,8 +46,7 @@ public interface VeniceStoreCache {
    * @throws IllegalStateException if the computation is recursive (and might never finish)
    * @throws RuntimeException if the mapping function completes exceptionally
    */
-  public <K, V> CompletableFuture<V> get(K key, Function<K,V> mappingFunction);
-
+  public <K, V> CompletableFuture<V> get(K key, Function<K, V> mappingFunction);
 
   public <K, V> CompletableFuture<V> get(K key);
 
@@ -63,7 +62,7 @@ public interface VeniceStoreCache {
    *         if the map returned by the mappingFunction is null
    * @throws RuntimeException or Error if the mappingFunction does so
    */
-  public <K, V> CompletableFuture<Map<K,V>> getAll(Iterable<K> keys, Function<Iterable<K>, Map<K, V>> mappingFunction);
+  public <K, V> CompletableFuture<Map<K, V>> getAll(Iterable<K> keys, Function<Iterable<K>, Map<K, V>> mappingFunction);
 
   /**
    * Associates the {@code value} with the {@code key} in this cache. If the cache previously

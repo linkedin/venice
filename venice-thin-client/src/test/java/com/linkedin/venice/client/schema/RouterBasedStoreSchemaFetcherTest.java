@@ -15,32 +15,22 @@ import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+
 public class RouterBasedStoreSchemaFetcherTest {
   private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
   private static final WriteComputeSchemaConverter updateSchemaConverter = WriteComputeSchemaConverter.getInstance();
 
   private final String storeName = "test_store";
   private final String keySchemaStr = "\"string\"";
-  private final String valueSchemaStr1 = "{" +
-      "  \"namespace\" : \"example.avro\",  " +
-      "  \"type\": \"record\",   " +
-      "  \"name\": \"User\",     " +
-      "  \"fields\": [           " +
-      "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"id\"},  " +
-      "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"id\"}  " +
-      "  ] " +
-      " } ";
-  private final String valueSchemaStr2 = "{" +
-      "  \"namespace\" : \"example.avro\",  " +
-      "  \"type\": \"record\",   " +
-      "  \"name\": \"User\",     " +
-      "  \"fields\": [           " +
-      "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"id\"},  " +
-      "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"id\"},  " +
-      "       { \"name\": \"age\", \"type\": \"int\", \"default\": -1 }" +
-      "  ] " +
-      " } ";
-
+  private final String valueSchemaStr1 =
+      "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   " + "  \"name\": \"User\",     "
+          + "  \"fields\": [           " + "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"id\"},  "
+          + "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"id\"}  " + "  ] " + " } ";
+  private final String valueSchemaStr2 =
+      "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   " + "  \"name\": \"User\",     "
+          + "  \"fields\": [           " + "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"id\"},  "
+          + "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"id\"},  "
+          + "       { \"name\": \"age\", \"type\": \"int\", \"default\": -1 }" + "  ] " + " } ";
 
   private final int TIMEOUT = 3;
 
@@ -66,7 +56,8 @@ public class RouterBasedStoreSchemaFetcherTest {
   }
 
   @Test
-  public void testGetLatestValueSchema() throws IOException, ExecutionException, InterruptedException, VeniceClientException {
+  public void testGetLatestValueSchema()
+      throws IOException, ExecutionException, InterruptedException, VeniceClientException {
     AbstractAvroStoreClient mockClient = Mockito.mock(AbstractAvroStoreClient.class);
     Mockito.doReturn(storeName).when(mockClient).getStoreName();
     // Set up mocks for value schemas
@@ -79,7 +70,8 @@ public class RouterBasedStoreSchemaFetcherTest {
     Schema valueSchema1 = storeSchemaFetcher.getLatestValueSchema();
     Schema valueSchema2 = storeSchemaFetcher.getLatestValueSchema();
 
-    // Each invocation should fetch the latest schema, but it is expected the object to not be the same as we don't implement cache.
+    // Each invocation should fetch the latest schema, but it is expected the object to not be the same as we don't
+    // implement cache.
     Schema expectedValueSchema = Schema.parse(valueSchemaStr2);
     Assert.assertEquals(valueSchema1, expectedValueSchema);
     Assert.assertEquals(valueSchema2, valueSchema1);
@@ -88,19 +80,26 @@ public class RouterBasedStoreSchemaFetcherTest {
   }
 
   @Test
-  public void testGetUpdateSchema() throws IOException, ExecutionException, InterruptedException, VeniceClientException {
+  public void testGetUpdateSchema()
+      throws IOException, ExecutionException, InterruptedException, VeniceClientException {
     AbstractAvroStoreClient mockClient = Mockito.mock(AbstractAvroStoreClient.class);
     Mockito.doReturn(storeName).when(mockClient).getStoreName();
     // Set up mocks for value schemas
     CompletableFuture<byte[]> mockGetAllValueSchemaFuture = Mockito.mock(CompletableFuture.class);
-    Mockito.doReturn(mapper.writeValueAsBytes(createValueSchemaMultiSchemaResponse())).when(mockGetAllValueSchemaFuture).get();
+    Mockito.doReturn(mapper.writeValueAsBytes(createValueSchemaMultiSchemaResponse()))
+        .when(mockGetAllValueSchemaFuture)
+        .get();
     Mockito.doReturn(mockGetAllValueSchemaFuture).when(mockClient).getRaw("value_schema/" + storeName);
     // Set up mocks for update schemas
     CompletableFuture<byte[]> mockGetUpdateValueSchemaFuture1 = Mockito.mock(CompletableFuture.class);
-    Mockito.doReturn(mapper.writeValueAsBytes(createUpdateSchemaResponse(1, 1, valueSchemaStr1))).when(mockGetUpdateValueSchemaFuture1).get();
+    Mockito.doReturn(mapper.writeValueAsBytes(createUpdateSchemaResponse(1, 1, valueSchemaStr1)))
+        .when(mockGetUpdateValueSchemaFuture1)
+        .get();
     Mockito.doReturn(mockGetUpdateValueSchemaFuture1).when(mockClient).getRaw("update_schema/" + storeName + "/1");
     CompletableFuture<byte[]> mockGetUpdateValueSchemaFuture2 = Mockito.mock(CompletableFuture.class);
-    Mockito.doReturn(mapper.writeValueAsBytes(createUpdateSchemaResponse(2, 1, valueSchemaStr2))).when(mockGetUpdateValueSchemaFuture2).get();
+    Mockito.doReturn(mapper.writeValueAsBytes(createUpdateSchemaResponse(2, 1, valueSchemaStr2)))
+        .when(mockGetUpdateValueSchemaFuture2)
+        .get();
     Mockito.doReturn(mockGetUpdateValueSchemaFuture2).when(mockClient).getRaw("update_schema/" + storeName + "/2");
 
     // Fetch both update schemas.

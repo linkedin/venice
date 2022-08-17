@@ -23,6 +23,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+
 @Test(singleThreaded = true)
 public class TestRebalanceByDefaultStrategy {
   private static final Logger logger = LogManager.getLogger(TestRebalanceByDefaultStrategy.class);
@@ -31,7 +32,7 @@ public class TestRebalanceByDefaultStrategy {
   private static final long RETRY_TIME_MS = 500l;
   private static final long RETRY_REMOVE_TIMEOUT_MS = 5000l;
 
-  private static final int TEST_TIMES = 1; //Could set up to 100 to run this test multiple times.
+  private static final int TEST_TIMES = 1; // Could set up to 100 to run this test multiple times.
 
   private VeniceClusterWrapper cluster;
   private int numberOfController = 1;
@@ -45,8 +46,14 @@ public class TestRebalanceByDefaultStrategy {
 
   @BeforeClass
   public void setUp() {
-    cluster = ServiceFactory.getVeniceCluster(numberOfController, numberOfServer, numberOfRouter, replicationFactor,
-        partitionSize, false, false);
+    cluster = ServiceFactory.getVeniceCluster(
+        numberOfController,
+        numberOfServer,
+        numberOfRouter,
+        replicationFactor,
+        partitionSize,
+        false,
+        false);
     String storeName = Utils.getUniqueString("testRollingUpgrade");
     cluster.getNewStore(storeName);
     VersionCreationResponse response = cluster.getNewVersion(storeName, partitionSize * partitionNumber);
@@ -58,7 +65,9 @@ public class TestRebalanceByDefaultStrategy {
     veniceWriter.put("test", "test", 1);
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
-    TestUtils.waitForNonDeterministicCompletion(TIMEOUT_MS, TimeUnit.MILLISECONDS,
+    TestUtils.waitForNonDeterministicCompletion(
+        TIMEOUT_MS,
+        TimeUnit.MILLISECONDS,
         () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()
             .getOffLinePushStatus(cluster.getClusterName(), topicName)
@@ -72,17 +81,18 @@ public class TestRebalanceByDefaultStrategy {
   }
 
   @Test(invocationCount = TEST_TIMES, skipFailedInvocations = false, timeOut = 60 * Time.MS_PER_SECOND)
-  public void testRollingUpgrade()
-      throws InterruptedException {
+  public void testRollingUpgrade() throws InterruptedException {
     String clusterName = cluster.getClusterName();
     Set<Integer> ports = new HashSet<>();
     cluster.getVeniceServers().forEach(wrapper -> ports.add(wrapper.getPort()));
-    for (Integer port : ports) {
+    for (Integer port: ports) {
       String instanceId = Utils.getHelixNodeIdentifier(port);
       TestUtils.waitForNonDeterministicCompletion(RETRY_REMOVE_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
         try {
-          if (cluster.getLeaderVeniceController().getVeniceAdmin().isInstanceRemovable(clusterName, instanceId,
-              Collections.emptyList(), false).isRemovable()) {
+          if (cluster.getLeaderVeniceController()
+              .getVeniceAdmin()
+              .isInstanceRemovable(clusterName, instanceId, Collections.emptyList(), false)
+              .isRemovable()) {
             cluster.stopVeniceServer(port);
             Thread.sleep(UPGRADE_TIME_MS);
             cluster.restartVeniceServer(port);
@@ -97,13 +107,14 @@ public class TestRebalanceByDefaultStrategy {
       });
     }
 
-    //Ensure each partition has 3 online replica
+    // Ensure each partition has 3 online replica
     TestUtils.waitForNonDeterministicCompletion(TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
       List<Replica> replicas = cluster.getLeaderVeniceController().getVeniceAdmin().getReplicas(clusterName, topicName);
       String log = "";
       boolean isAllOnline = true;
-      for (Replica replica : replicas) {
-        if (replica.getStatus().equals(HelixState.ERROR_STATE) || replica.getStatus().equals(HelixState.OFFLINE_STATE)) {
+      for (Replica replica: replicas) {
+        if (replica.getStatus().equals(HelixState.ERROR_STATE)
+            || replica.getStatus().equals(HelixState.OFFLINE_STATE)) {
           log += replica.getInstance().getNodeId() + ":" + replica.getPartitionId() + ":" + replica.getStatus() + "###";
           isAllOnline = false;
         }

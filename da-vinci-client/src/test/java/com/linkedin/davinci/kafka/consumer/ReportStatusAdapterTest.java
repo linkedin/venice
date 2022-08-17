@@ -1,5 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
@@ -15,12 +17,11 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import static org.mockito.Mockito.*;
 
 
 public class ReportStatusAdapterTest {
@@ -37,9 +38,14 @@ public class ReportStatusAdapterTest {
     Queue<VeniceNotifier> notifiers = new ArrayDeque<>();
     notifiers.add(notifier);
     IngestionNotificationDispatcher dispatcher = new IngestionNotificationDispatcher(notifiers, topic, () -> true);
-    ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap = generateMockedPcsMap(amplificationFactor);
-    ReportStatusAdapter reportStatusAdapter = new ReportStatusAdapter(dispatcher, topic, amplificationFactor,
-        IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME, partitionConsumptionStateMap);
+    ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap =
+        generateMockedPcsMap(amplificationFactor);
+    ReportStatusAdapter reportStatusAdapter = new ReportStatusAdapter(
+        dispatcher,
+        topic,
+        amplificationFactor,
+        IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME,
+        partitionConsumptionStateMap);
     reportStatusAdapter.preparePartitionStatusCleanup(0);
     reportStatusAdapter.initializePartitionStatus(0);
 
@@ -50,7 +56,8 @@ public class ReportStatusAdapterTest {
     executionStatusList.add(ExecutionStatus.END_OF_PUSH_RECEIVED);
     executionStatusList.add(ExecutionStatus.COMPLETED);
     for (int i = 0; i < amplificationFactor; i++) {
-      callableList.add(getReportCallable(reportStatusAdapter, partitionConsumptionStateMap.get(i), executionStatusList));
+      callableList
+          .add(getReportCallable(reportStatusAdapter, partitionConsumptionStateMap.get(i), executionStatusList));
     }
     try {
       executorService.invokeAll(callableList, 10, TimeUnit.SECONDS);
@@ -73,11 +80,13 @@ public class ReportStatusAdapterTest {
     return pcsMap;
   }
 
-
-  private Callable<Void> getReportCallable(ReportStatusAdapter adapter, PartitionConsumptionState pcs, List<ExecutionStatus> executionStatusList) {
+  private Callable<Void> getReportCallable(
+      ReportStatusAdapter adapter,
+      PartitionConsumptionState pcs,
+      List<ExecutionStatus> executionStatusList) {
     return () -> {
       try {
-        for (ExecutionStatus executionStatus : executionStatusList) {
+        for (ExecutionStatus executionStatus: executionStatusList) {
           Thread.sleep(random.nextInt(100));
           switch (executionStatus) {
             case STARTED:

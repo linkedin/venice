@@ -1,7 +1,7 @@
 package com.linkedin.venice.utils;
 
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerFactoryImpl;
+import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.StartOfPush;
@@ -56,27 +56,30 @@ public class DictionaryUtils {
     ByteBuffer compressionDictionary = null;
     while (!startOfPushReceived) {
       ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records = kafkaConsumerWrapper.poll(10 * Time.MS_PER_SECOND);
-      for (final ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
+      for (final ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record: records) {
         KafkaKey kafkaKey = record.key();
         KafkaMessageEnvelope kafkaValue = record.value();
         if (kafkaKey.isControlMessage()) {
           ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
           ControlMessageType type = ControlMessageType.valueOf(controlMessage);
           LOGGER.info(
-              "Consumed ControlMessage: " + type.name() + " from topic = " + record.topic() + " and partition = " + record.partition());
+              "Consumed ControlMessage: " + type.name() + " from topic = " + record.topic() + " and partition = "
+                  + record.partition());
           if (type == ControlMessageType.START_OF_PUSH) {
             startOfPushReceived = true;
             compressionDictionary = ((StartOfPush) controlMessage.controlMessageUnion).compressionDictionary;
             if (compressionDictionary == null || !compressionDictionary.hasRemaining()) {
               LOGGER.warn(
-                  "No dictionary present in Start of Push message from topic = " + record.topic() + " and partition = " + record.partition());
+                  "No dictionary present in Start of Push message from topic = " + record.topic() + " and partition = "
+                      + record.partition());
               return null;
             }
             break;
           }
         } else {
           LOGGER.error(
-              "Consumed non Control Message before Start of Push from topic = " + record.topic() + " and partition = " + record.partition());
+              "Consumed non Control Message before Start of Push from topic = " + record.topic() + " and partition = "
+                  + record.partition());
           return null;
         }
       }

@@ -1,5 +1,10 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.utils.TestPushUtils.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -24,11 +29,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.utils.TestPushUtils.*;
-import static org.testng.Assert.*;
-
 
 public class TestBackupVersionDatabaseOptimization {
   private static final Logger LOGGER = LogManager.getLogger(TestBackupVersionDatabaseOptimization.class);
@@ -46,7 +46,7 @@ public class TestBackupVersionDatabaseOptimization {
     venice = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 1000000, false, false, extraProperties);
   }
 
-  @AfterClass (alwaysRun = true)
+  @AfterClass(alwaysRun = true)
   public void tearDown() {
     if (venice != null) {
       venice.close();
@@ -58,9 +58,12 @@ public class TestBackupVersionDatabaseOptimization {
     String jobName = Utils.getUniqueString("push-job-" + expectedVersionNumber);
     try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
       job.run();
-      TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS,
+      TestUtils.waitForNonDeterministicCompletion(
+          5,
+          TimeUnit.SECONDS,
           () -> controllerClient.getStore((String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
-              .getStore().getCurrentVersion() == expectedVersionNumber);
+              .getStore()
+              .getCurrentVersion() == expectedVersionNumber);
       LOGGER.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
     }
   }
@@ -76,11 +79,12 @@ public class TestBackupVersionDatabaseOptimization {
     try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, h2vProperties);
         AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
-      //Do an H2V push
+      // Do an H2V push
       runH2V(h2vProperties, 1, controllerClient);
 
       class ResultValidator implements TestUtils.NonDeterministicAssertion {
         private final int recordCount;
+
         public ResultValidator(int recordCount) {
           this.recordCount = recordCount;
         }
@@ -101,7 +105,10 @@ public class TestBackupVersionDatabaseOptimization {
       }
 
       TestUtils.waitForNonDeterministicAssertion(
-          10, TimeUnit.SECONDS, true, new ResultValidator(DEFAULT_USER_DATA_RECORD_COUNT));
+          10,
+          TimeUnit.SECONDS,
+          true,
+          new ResultValidator(DEFAULT_USER_DATA_RECORD_COUNT));
 
       // Do another H2V push, with more records, otherwise the two datasets are indistinguishable
       int recordCountOf2ndRun = DEFAULT_USER_DATA_RECORD_COUNT * 2;
@@ -111,26 +118,25 @@ public class TestBackupVersionDatabaseOptimization {
       Properties h2vProperties2 = defaultH2VProps(venice, inputDirPath2, storeName);
       runH2V(h2vProperties2, 2, controllerClient);
 
-      TestUtils.waitForNonDeterministicAssertion(
-          10, TimeUnit.SECONDS, true, new ResultValidator(recordCountOf2ndRun));
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, new ResultValidator(recordCountOf2ndRun));
 
       // Verify whether the backup version database optimization happens or not.
       VeniceServerWrapper serverWrapper = venice.getVeniceServers().get(0);
       MetricsRepository metricsRepository = serverWrapper.getMetricsRepository();
-      Metric optimizationMetric = metricsRepository.getMetric(".BackupVersionOptimizationService--backup_version_database_optimization.OccurrenceRate");
+      Metric optimizationMetric = metricsRepository
+          .getMetric(".BackupVersionOptimizationService--backup_version_database_optimization.OccurrenceRate");
       Metric rocksdbMetric = metricsRepository.getMetric(".RocksDBMemoryStats--rocksdb.num-immutable-mem-table.Gauge");
 
       // N.B.: The optimization is performed by a periodic background task, so it cannot be expected to have already
       // completed as soon as we get here.
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-            assertTrue(optimizationMetric.value() > 0, "Backup version database optimization should happen");
+        assertTrue(optimizationMetric.value() > 0, "Backup version database optimization should happen");
         /**
          * This assertion is used to make sure {@link com.linkedin.davinci.stats.RocksDBMemoryStats} won't crash after
          * reopening the backup version.
          */
         rocksdbMetric.value();
-          }
-      );
+      });
     }
   }
 

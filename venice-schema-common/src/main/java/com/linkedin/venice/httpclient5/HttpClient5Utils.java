@@ -29,7 +29,6 @@ import org.apache.hc.core5.util.Timeout;
  * TODO: follow up with the httpclient team to get a proper fix.
  */
 public class HttpClient5Utils {
-
   public static class HttpClient5Builder {
     private SSLContext sslContext;
     private long requestTimeOutInMilliseconds = TimeUnit.SECONDS.toMillis(1); // 1s by default
@@ -37,7 +36,9 @@ public class HttpClient5Utils {
      * We need to use a high connect timeout to avoid reconnect issue, which might result in confusing logging and unhealthy requests.
      * For now, we remove the functions updating the connect timeout to avoid mistakes.
      */
-    private final Timeout CONNECT_TIMEOUT_IN_MILLISECONDS = Timeout.ofMilliseconds(TimeUnit.MINUTES.toMillis(1)); // 1m by default
+    private final Timeout CONNECT_TIMEOUT_IN_MILLISECONDS = Timeout.ofMilliseconds(TimeUnit.MINUTES.toMillis(1)); // 1m
+                                                                                                                  // by
+                                                                                                                  // default
     private int ioThreadCount = 48;
     private boolean skipCipherCheck = false;
 
@@ -72,23 +73,22 @@ public class HttpClient5Utils {
           .setIoThreadCount(ioThreadCount)
           .build();
 
-      final TlsStrategy tlsStrategy = skipCipherCheck ?
-          VeniceClientTlsStrategyBuilder.create()
+      final TlsStrategy tlsStrategy = skipCipherCheck
+          ? VeniceClientTlsStrategyBuilder.create()
               .setSslContext(sslContext)
               .setTlsVersions(TLS.V_1_3, TLS.V_1_2)
               .build()
-          : ClientTlsStrategyBuilder.create()
-              .setSslContext(sslContext)
-              .setTlsVersions(TLS.V_1_3, TLS.V_1_2)
-              .build();
+          : ClientTlsStrategyBuilder.create().setSslContext(sslContext).setTlsVersions(TLS.V_1_3, TLS.V_1_2).build();
 
-      final CloseableHttpAsyncClient client = HttpAsyncClients.customHttp2().setTlsStrategy(tlsStrategy)
+      final CloseableHttpAsyncClient client = HttpAsyncClients.customHttp2()
+          .setTlsStrategy(tlsStrategy)
           .setIOReactorConfig(ioReactorConfig)
-          .setDefaultRequestConfig(RequestConfig.custom()
-              .setResponseTimeout(Timeout.ofMilliseconds(requestTimeOutInMilliseconds))
-              .setConnectionRequestTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
-              .setConnectTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
-              .build())
+          .setDefaultRequestConfig(
+              RequestConfig.custom()
+                  .setResponseTimeout(Timeout.ofMilliseconds(requestTimeOutInMilliseconds))
+                  .setConnectionRequestTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
+                  .setConnectTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
+                  .build())
           .build();
 
       client.start();

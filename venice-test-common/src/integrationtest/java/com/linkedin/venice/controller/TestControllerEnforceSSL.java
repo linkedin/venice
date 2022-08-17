@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigKeys.*;
+
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
@@ -19,8 +21,6 @@ import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.ConfigKeys.*;
-
 
 public class TestControllerEnforceSSL {
   private static final String CLUSTER_NAME = Utils.getUniqueString("test-cluster");
@@ -39,13 +39,26 @@ public class TestControllerEnforceSSL {
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
         VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceChildController(
-          new String[]{CLUSTER_NAME}, kafkaBrokerWrapper, 1, 10, 0, 1,
-          null, true, false, extraProperties);
-        ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(CLUSTER_NAME,
-            controllerWrapper.getControllerUrl());
-        ControllerClient secureControllerClient = ControllerClient.constructClusterControllerClient(CLUSTER_NAME,
-            controllerWrapper.getSecureControllerUrl(), Optional.of(SslUtils.getVeniceLocalSslFactory()))) {
-      TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> controllerWrapper.isLeaderController(CLUSTER_NAME));
+            new String[] { CLUSTER_NAME },
+            kafkaBrokerWrapper,
+            1,
+            10,
+            0,
+            1,
+            null,
+            true,
+            false,
+            extraProperties);
+        ControllerClient controllerClient =
+            ControllerClient.constructClusterControllerClient(CLUSTER_NAME, controllerWrapper.getControllerUrl());
+        ControllerClient secureControllerClient = ControllerClient.constructClusterControllerClient(
+            CLUSTER_NAME,
+            controllerWrapper.getSecureControllerUrl(),
+            Optional.of(SslUtils.getVeniceLocalSslFactory()))) {
+      TestUtils.waitForNonDeterministicCompletion(
+          5,
+          TimeUnit.SECONDS,
+          () -> controllerWrapper.isLeaderController(CLUSTER_NAME));
 
       /**
        * Add a test store through backend API directly without going though Controller listener service ({@link com.linkedin.venice.controller.server.AdminSparkServer}).
@@ -73,9 +86,11 @@ public class TestControllerEnforceSSL {
       StoreResponse storeResponse = controllerClient.getStore(storeName);
       Assert.assertTrue(storeResponse.isError(), storeResponse.getError());
 
-      ControllerResponse updateResponseSecure = secureControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionCount(2));
+      ControllerResponse updateResponseSecure =
+          secureControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionCount(2));
       Assert.assertFalse(updateResponseSecure.isError(), updateResponseSecure.getError());
-      ControllerResponse updateResponse = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionCount(2));
+      ControllerResponse updateResponse =
+          controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionCount(2));
       Assert.assertTrue(updateResponse.isError(), updateResponse.getError());
 
       /**

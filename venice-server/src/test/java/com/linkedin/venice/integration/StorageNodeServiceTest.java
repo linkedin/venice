@@ -1,9 +1,9 @@
 package com.linkedin.venice.integration;
 
+import com.linkedin.venice.httpclient.HttpClientUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
-import com.linkedin.venice.httpclient.HttpClientUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
@@ -16,12 +16,14 @@ import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+
 public class StorageNodeServiceTest {
   @Test
   public void storageServerRespondsToRequests() throws ExecutionException, InterruptedException, IOException {
     Utils.thisIsLocalhost();
     try (
-        CloseableHttpAsyncClient client = HttpClientUtils.getMinimalHttpClient(1, 1, Optional.of(SslUtils.getLocalSslFactory()));
+        CloseableHttpAsyncClient client =
+            HttpClientUtils.getMinimalHttpClient(1, 1, Optional.of(SslUtils.getLocalSslFactory()));
         VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1, 1, 0, 1, 100, true, false)) {
 
       client.start();

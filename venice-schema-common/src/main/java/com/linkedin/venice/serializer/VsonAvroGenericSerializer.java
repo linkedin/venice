@@ -6,6 +6,6 @@ import org.apache.avro.Schema;
 
 public class VsonAvroGenericSerializer<K> extends AvroSerializer<K> {
   public VsonAvroGenericSerializer(Schema schema) {
-    super(new VsonAvroDatumWriter<> (schema), null);
+    super(new VsonAvroDatumWriter<>(schema), null);
   }
 }

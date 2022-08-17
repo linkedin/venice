@@ -22,23 +22,26 @@ import java.util.stream.Collectors;
  * will throw {@link UnsupportedOperationException}.
  */
 public class ReadOnlyStore implements Store {
-
   /**
    * A read-only wrapper of {@link PartitionerConfig}.
    */
   private static class ReadOnlyPartitionerConfig implements PartitionerConfig {
     private PartitionerConfig delegate;
+
     private ReadOnlyPartitionerConfig(PartitionerConfig delegate) {
       this.delegate = delegate;
     }
+
     @Override
     public String getPartitionerClass() {
       return this.delegate.getPartitionerClass();
     }
+
     @Override
     public Map<String, String> getPartitionerParams() {
       return Collections.unmodifiableMap(this.delegate.getPartitionerParams());
     }
+
     @Override
     public int getAmplificationFactor() {
       return this.delegate.getAmplificationFactor();
@@ -48,26 +51,32 @@ public class ReadOnlyStore implements Store {
     public void setAmplificationFactor(int amplificationFactor) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public void setPartitionerClass(String partitionerClass) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public void setPartitionerParams(Map<String, String> partitionerParams) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public PartitionerConfig clone() {
       return this.delegate.clone();
     }
+
     @Override
     public StorePartitionerConfig dataModel() {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public int hashCode() {
       return this.delegate.hashCode();
     }
+
     @Override
     public boolean equals(Object o) {
       if (this == o) {
@@ -86,29 +95,36 @@ public class ReadOnlyStore implements Store {
    */
   private static class ReadOnlyHybridStoreConfig implements HybridStoreConfig {
     private final HybridStoreConfig delegate;
+
     private ReadOnlyHybridStoreConfig(HybridStoreConfig delegate) {
       this.delegate = delegate;
     }
+
     @Override
     public long getRewindTimeInSeconds() {
       return this.delegate.getRewindTimeInSeconds();
     }
+
     @Override
     public long getOffsetLagThresholdToGoOnline() {
       return this.delegate.getOffsetLagThresholdToGoOnline();
     }
+
     @Override
     public void setRewindTimeInSeconds(long rewindTimeInSeconds) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public void setOffsetLagThresholdToGoOnline(long offsetLagThresholdToGoOnline) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public long getProducerTimestampLagThresholdToGoOnlineInSeconds() {
       return this.delegate.getProducerTimestampLagThresholdToGoOnlineInSeconds();
     }
+
     @Override
     public DataReplicationPolicy getDataReplicationPolicy() {
       return this.delegate.getDataReplicationPolicy();
@@ -123,14 +139,17 @@ public class ReadOnlyStore implements Store {
     public HybridStoreConfig clone() {
       return this.delegate.clone();
     }
+
     @Override
     public StoreHybridConfig dataModel() {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public int hashCode() {
       return this.delegate.hashCode();
     }
+
     @Override
     public boolean equals(Object o) {
       if (this == o) {
@@ -143,50 +162,62 @@ public class ReadOnlyStore implements Store {
       return this.delegate.equals(config.delegate);
     }
   }
+
   /**
    * A read-only wrapper of {@link ETLStoreConfig}
    */
   private static class ReadOnlyETLStoreConfig implements ETLStoreConfig {
     private final ETLStoreConfig delegate;
+
     private ReadOnlyETLStoreConfig(ETLStoreConfig delegate) {
       this.delegate = delegate;
     }
+
     @Override
     public String getEtledUserProxyAccount() {
       return this.delegate.getEtledUserProxyAccount();
     }
+
     @Override
     public void setEtledUserProxyAccount(String etledUserProxyAccount) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public boolean isRegularVersionETLEnabled() {
       return this.delegate.isRegularVersionETLEnabled();
     }
+
     @Override
     public void setRegularVersionETLEnabled(boolean regularVersionETLEnabled) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public boolean isFutureVersionETLEnabled() {
       return this.delegate.isFutureVersionETLEnabled();
     }
+
     @Override
     public void setFutureVersionETLEnabled(boolean futureVersionETLEnabled) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public ETLStoreConfig clone() {
       return this.delegate.clone();
     }
+
     @Override
     public StoreETLConfig dataModel() {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public int hashCode() {
       return this.delegate.hashCode();
     }
+
     @Override
     public boolean equals(Object o) {
       if (this == o) {
@@ -199,11 +230,13 @@ public class ReadOnlyStore implements Store {
       return this.delegate.equals(config.delegate);
     }
   }
+
   /**
    * A read-only wrapper of {@link DataRecoveryVersionConfig}
    */
   private static class ReadOnlyDataRecoveryVersionConfig implements DataRecoveryVersionConfig {
     private final DataRecoveryVersionConfig delegate;
+
     private ReadOnlyDataRecoveryVersionConfig(DataRecoveryVersionConfig delegate) {
       this.delegate = delegate;
     }
@@ -238,106 +271,132 @@ public class ReadOnlyStore implements Store {
       return this.delegate.clone();
     }
   }
+
   /**
    * A read-only wrapper of {@link Version}
    */
   public static class ReadOnlyVersion implements Version {
     private final Version delegate;
+
     public ReadOnlyVersion(Version delegate) {
       this.delegate = delegate;
     }
+
     @Override
     public int getNumber() {
       return this.delegate.getNumber();
     }
+
     @Override
     public long getCreatedTime() {
       return this.delegate.getCreatedTime();
     }
+
     @Override
     public Duration getAge() {
       return this.delegate.getAge();
     }
+
     @Override
     public void setAge(Duration age) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public VersionStatus getStatus() {
       return this.delegate.getStatus();
     }
+
     @Override
     public void setStatus(VersionStatus status) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public CompressionStrategy getCompressionStrategy() {
       return this.delegate.getCompressionStrategy();
     }
+
     @Override
     public void setCompressionStrategy(CompressionStrategy compressionStrategy) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public boolean isLeaderFollowerModelEnabled() {
       return this.delegate.isLeaderFollowerModelEnabled();
     }
+
     @Override
     public boolean isNativeReplicationEnabled() {
       return this.delegate.isNativeReplicationEnabled();
     }
+
     @Override
     public void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public void setNativeReplicationEnabled(boolean nativeReplicationEnabled) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public String getPushStreamSourceAddress() {
       return this.delegate.getPushStreamSourceAddress();
     }
+
     @Override
     public void setPushStreamSourceAddress(String address) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public void setBufferReplayEnabledForHybrid(boolean bufferReplayEnabledForHybrid) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public boolean isChunkingEnabled() {
       return this.delegate.isChunkingEnabled();
     }
+
     @Override
     public void setChunkingEnabled(boolean chunkingEnabled) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public String getStoreName() {
       return this.delegate.getStoreName();
     }
+
     @Override
     public String getPushJobId() {
       return this.delegate.getPushJobId();
     }
+
     @Override
     public PushType getPushType() {
       return this.delegate.getPushType();
     }
+
     @Override
     public void setPushType(PushType pushType) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public void setPartitionCount(int partitionCount) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public int getPartitionCount() {
       return this.delegate.getPartitionCount();
     }
+
     @Override
     public PartitionerConfig getPartitionerConfig() {
       PartitionerConfig config = this.delegate.getPartitionerConfig();
@@ -346,6 +405,7 @@ public class ReadOnlyStore implements Store {
       }
       return new ReadOnlyPartitionerConfig(config);
     }
+
     @Override
     public void setPartitionerConfig(PartitionerConfig partitionerConfig) {
       throw new UnsupportedOperationException();
@@ -365,46 +425,57 @@ public class ReadOnlyStore implements Store {
     public IncrementalPushPolicy getIncrementalPushPolicy() {
       return this.delegate.getIncrementalPushPolicy();
     }
+
     @Override
     public void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public int getReplicationFactor() {
       return this.delegate.getReplicationFactor();
     }
+
     @Override
     public void setReplicationFactor(int replicationFactor) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public int getMinActiveReplicas() {
       return this.delegate.getMinActiveReplicas();
     }
+
     @Override
     public String getNativeReplicationSourceFabric() {
       return this.delegate.getNativeReplicationSourceFabric();
     }
+
     @Override
     public void setNativeReplicationSourceFabric(String nativeReplicationSourceFabric) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public boolean isIncrementalPushEnabled() {
       return this.delegate.isIncrementalPushEnabled();
     }
+
     @Override
     public void setIncrementalPushEnabled(boolean incrementalPushEnabled) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public boolean isUseVersionLevelIncrementalPushEnabled() {
       return this.delegate.isUseVersionLevelIncrementalPushEnabled();
     }
+
     @Override
     public void setUseVersionLevelIncrementalPushEnabled(boolean versionLevelIncrementalPushEnabled) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public HybridStoreConfig getHybridStoreConfig() {
       HybridStoreConfig config = this.delegate.getHybridStoreConfig();
@@ -413,22 +484,27 @@ public class ReadOnlyStore implements Store {
       }
       return new ReadOnlyHybridStoreConfig(config);
     }
+
     @Override
     public void setHybridStoreConfig(HybridStoreConfig hybridConfig) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public boolean isUseVersionLevelHybridConfig() {
       return this.delegate.isUseVersionLevelHybridConfig();
     }
+
     @Override
     public void setUseVersionLevelHybridConfig(boolean versionLevelHybridConfig) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public boolean isActiveActiveReplicationEnabled() {
       return this.delegate.isActiveActiveReplicationEnabled();
     }
+
     @Override
     public void setActiveActiveReplicationEnabled(boolean activeActiveReplicationEnabled) {
       throw new UnsupportedOperationException();
@@ -462,26 +538,32 @@ public class ReadOnlyStore implements Store {
     public Version cloneVersion() {
       return this.delegate.cloneVersion();
     }
+
     @Override
     public String kafkaTopicName() {
       return this.delegate.kafkaTopicName();
     }
+
     @Override
     public StoreVersion dataModel() {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public int compareTo(Version o) {
       return this.delegate.compareTo(o);
     }
+
     @Override
     public String toString() {
       return this.delegate.toString();
     }
+
     @Override
     public int hashCode() {
       return this.delegate.hashCode();
     }
+
     @Override
     public boolean equals(Object o) {
       if (this == o) {
@@ -498,56 +580,69 @@ public class ReadOnlyStore implements Store {
   /**
    * A read-only wrapper of {@link SystemStoreAttributes}.
    */
-   static class ReadOnlySystemStoreAttributes implements SystemStoreAttributes {
+  static class ReadOnlySystemStoreAttributes implements SystemStoreAttributes {
     private final SystemStoreAttributes delegate;
+
     public ReadOnlySystemStoreAttributes(SystemStoreAttributes delegate) {
       this.delegate = delegate;
     }
+
     @Override
     public SystemStoreProperties dataModel() {
       throw new UnsupportedOperationException();
     }
-     @Override
-     public int getLargestUsedVersionNumber() {
-       return this.delegate.getLargestUsedVersionNumber();
-     }
-     @Override
+
+    @Override
+    public int getLargestUsedVersionNumber() {
+      return this.delegate.getLargestUsedVersionNumber();
+    }
+
+    @Override
     public void setLargestUsedVersionNumber(int largestUsedVersionNumber) {
       throw new UnsupportedOperationException();
     }
-     @Override
-     public int getCurrentVersion() {
-       return this.delegate.getCurrentVersion();
-     }
-     @Override
+
+    @Override
+    public int getCurrentVersion() {
+      return this.delegate.getCurrentVersion();
+    }
+
+    @Override
     public void setCurrentVersion(int currentVersion) {
       throw new UnsupportedOperationException();
     }
-     @Override
-     public long getLatestVersionPromoteToCurrentTimestamp() {
-       return this.delegate.getLatestVersionPromoteToCurrentTimestamp();
-     }
-     @Override
+
+    @Override
+    public long getLatestVersionPromoteToCurrentTimestamp() {
+      return this.delegate.getLatestVersionPromoteToCurrentTimestamp();
+    }
+
+    @Override
     public void setLatestVersionPromoteToCurrentTimestamp(long timestamp) {
       throw new UnsupportedOperationException();
     }
+
     @Override
     public List<Version> getVersions() {
       List<Version> versions = this.delegate.getVersions();
       return versions.stream().map(v -> new ReadOnlyVersion(v)).collect(Collectors.toList());
     }
+
     @Override
     public void setVersions(List<Version> versions) {
       throw new UnsupportedOperationException();
     }
-     @Override
-     public SystemStoreAttributes clone() {
-       return this.delegate.clone();
-     }
+
+    @Override
+    public SystemStoreAttributes clone() {
+      return this.delegate.clone();
+    }
+
     @Override
     public int hashCode() {
       return this.delegate.hashCode();
     }
+
     @Override
     public boolean equals(Object o) {
       if (this == o) {
@@ -559,7 +654,7 @@ public class ReadOnlyStore implements Store {
       ReadOnlySystemStoreAttributes attributes = (ReadOnlySystemStoreAttributes) o;
       return this.delegate.equals(attributes.delegate);
     }
-   }
+  }
 
   private Store delegate;
 
@@ -1042,7 +1137,8 @@ public class ReadOnlyStore implements Store {
   @Override
   public Map<String, SystemStoreAttributes> getSystemStores() {
     Map<String, SystemStoreAttributes> systemStores = new HashMap<>();
-    this.delegate.getSystemStores().forEach( (name, systemStore) -> systemStores.put(name, new ReadOnlySystemStoreAttributes(systemStore)));
+    this.delegate.getSystemStores()
+        .forEach((name, systemStore) -> systemStores.put(name, new ReadOnlySystemStoreAttributes(systemStore)));
 
     return systemStores;
   }
@@ -1103,7 +1199,7 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
-  public void forceAddVersion(Version version, boolean isClonedVersion){
+  public void forceAddVersion(Version version, boolean isClonedVersion) {
     throw new UnsupportedOperationException();
   }
 
@@ -1158,8 +1254,10 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public List<Version> retrieveVersionsToDelete(int clusterNumVersionsToPreserve) {
-    return this.delegate.retrieveVersionsToDelete(clusterNumVersionsToPreserve).stream().map(v -> new ReadOnlyVersion(v)).collect(
-        Collectors.toList());
+    return this.delegate.retrieveVersionsToDelete(clusterNumVersionsToPreserve)
+        .stream()
+        .map(v -> new ReadOnlyVersion(v))
+        .collect(Collectors.toList());
   }
 
   @Override

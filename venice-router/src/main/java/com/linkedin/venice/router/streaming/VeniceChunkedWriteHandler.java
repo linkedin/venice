@@ -29,10 +29,10 @@ public class VeniceChunkedWriteHandler extends NettyChunkedWriteHandler {
 
   @Override
   public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-    if (! (msg instanceof BasicFullHttpRequest)) {
+    if (!(msg instanceof BasicFullHttpRequest)) {
       throw new VeniceException("The incoming request must be an instance of BasicFullHttpRequest");
     }
-    BasicFullHttpRequest fullHttpRequest = (BasicFullHttpRequest)msg;
+    BasicFullHttpRequest fullHttpRequest = (BasicFullHttpRequest) msg;
     /**
      * Register those objects in request, so that they could be retrieved in {@link com.linkedin.venice.router.api.VenicePathParser}.
      */

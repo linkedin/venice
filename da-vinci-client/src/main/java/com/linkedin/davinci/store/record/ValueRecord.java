@@ -44,7 +44,8 @@ public class ValueRecord {
   private ValueRecord(byte[] combinedData) {
     int dataLen = combinedData.length;
     if (dataLen < SCHEMA_HEADER_LENGTH) {
-      throw new VeniceException("Invalid combined data array, the length should be bigger than " + SCHEMA_HEADER_LENGTH);
+      throw new VeniceException(
+          "Invalid combined data array, the length should be bigger than " + SCHEMA_HEADER_LENGTH);
     }
     this.dataSize = combinedData.length - SCHEMA_HEADER_LENGTH;
     this.schemaId = parseSchemaId(combinedData);

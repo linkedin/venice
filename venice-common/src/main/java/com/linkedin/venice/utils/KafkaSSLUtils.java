@@ -1,17 +1,15 @@
 package com.linkedin.venice.utils;
 
+import static com.linkedin.venice.ConfigConstants.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Properties;
 import kafka.server.KafkaConfig;
-
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.common.config.SslConfigs;
 import org.apache.kafka.common.protocol.SecurityProtocol;
-
-import java.util.Properties;
-
-import static com.linkedin.venice.ConfigConstants.*;
 
 
 public class KafkaSSLUtils {
@@ -29,8 +27,7 @@ public class KafkaSSLUtils {
       SslConfigs.SSL_TRUSTSTORE_TYPE_CONFIG,
       SslConfigs.SSL_KEYMANAGER_ALGORITHM_CONFIG,
       SslConfigs.SSL_TRUSTMANAGER_ALGORITHM_CONFIG,
-      SslConfigs.SSL_SECURE_RANDOM_IMPLEMENTATION_CONFIG
-  );
+      SslConfigs.SSL_SECURE_RANDOM_IMPLEMENTATION_CONFIG);
 
   /**
    * Self-signed cert, expires 2027, use keystore as truststore since self-signed.
@@ -45,7 +42,7 @@ public class KafkaSSLUtils {
   public static Properties getLocalKafkaBrokerSSlConfig(String host, int port, int sslPort) {
     Properties properties = new Properties();
     properties.put(KafkaConfig.SslProtocolProp(), "TLS");
-    //Listen on two ports, one for ssl one for non-ssl
+    // Listen on two ports, one for ssl one for non-ssl
     properties.put(KafkaConfig.ListenersProp(), "PLAINTEXT://" + host + ":" + port + ",SSL://" + host + ":" + sslPort);
     properties.putAll(getLocalCommonKafkaSSLConfig());
     properties.put(SslConfigs.SSL_CONTEXT_PROVIDER_CLASS_CONFIG, DEFAULT_KAFKA_SSL_CONTEXT_PROVIDER_CLASS_NAME);
@@ -112,7 +109,7 @@ public class KafkaSSLUtils {
       return false;
     }
     // Since SSL is enabled, the following configs are mandatory
-    KAFKA_SSL_MANDATORY_CONFIGS.forEach( config -> {
+    KAFKA_SSL_MANDATORY_CONFIGS.forEach(config -> {
       if (!veniceProperties.containsKey(config)) {
         throw new VeniceException(config + " is required when Kafka SSL is enabled");
       }

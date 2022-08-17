@@ -29,7 +29,8 @@ public class ClientFactory {
   }
 
   // Use daVinci based store metadata default
-  public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartSpecificStoreClient(ClientConfig clientConfig) {
+  public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartSpecificStoreClient(
+      ClientConfig clientConfig) {
     /**
      * TODO:
      * Need to construct {@link DaVinciClientBasedMetadata} inside store client, so that the store client could control
@@ -43,11 +44,16 @@ public class ClientFactory {
    * in these factory methods.
    * So far, it is for the testing purpose.
    */
-  public static <K, V> AvroGenericStoreClient<K, V> getAndStartGenericStoreClient(StoreMetadata storeMetadata, ClientConfig clientConfig) {
-    final DispatchingAvroGenericStoreClient<K, V> dispatchingStoreClient = new DispatchingAvroGenericStoreClient<>(storeMetadata, clientConfig);
+  public static <K, V> AvroGenericStoreClient<K, V> getAndStartGenericStoreClient(
+      StoreMetadata storeMetadata,
+      ClientConfig clientConfig) {
+    final DispatchingAvroGenericStoreClient<K, V> dispatchingStoreClient =
+        new DispatchingAvroGenericStoreClient<>(storeMetadata, clientConfig);
     StatsAvroGenericStoreClient<K, V> statsStoreClient;
     if (clientConfig.isLongTailRetryEnabledForSingleGet() || clientConfig.isLongTailRetryEnabledForBatchGet()) {
-      statsStoreClient = new StatsAvroGenericStoreClient<>(new RetriableAvroGenericStoreClient<>(dispatchingStoreClient, clientConfig), clientConfig);
+      statsStoreClient = new StatsAvroGenericStoreClient<>(
+          new RetriableAvroGenericStoreClient<>(dispatchingStoreClient, clientConfig),
+          clientConfig);
     } else {
       statsStoreClient = new StatsAvroGenericStoreClient<>(dispatchingStoreClient, clientConfig);
     }
@@ -60,12 +66,17 @@ public class ClientFactory {
     return returningClient;
   }
 
-  public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartSpecificStoreClient(StoreMetadata storeMetadata,  ClientConfig clientConfig) {
-    final DispatchingAvroSpecificStoreClient<K, V> dispatchingStoreClient = new DispatchingAvroSpecificStoreClient<>(storeMetadata, clientConfig);
+  public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartSpecificStoreClient(
+      StoreMetadata storeMetadata,
+      ClientConfig clientConfig) {
+    final DispatchingAvroSpecificStoreClient<K, V> dispatchingStoreClient =
+        new DispatchingAvroSpecificStoreClient<>(storeMetadata, clientConfig);
     StatsAvroSpecificStoreClient<K, V> statsStoreClient;
 
     if (clientConfig.isLongTailRetryEnabledForSingleGet()) {
-      statsStoreClient = new StatsAvroSpecificStoreClient<>(new RetriableAvroSpecificStoreClient<>(dispatchingStoreClient, clientConfig), clientConfig);
+      statsStoreClient = new StatsAvroSpecificStoreClient<>(
+          new RetriableAvroSpecificStoreClient<>(dispatchingStoreClient, clientConfig),
+          clientConfig);
     } else {
       statsStoreClient = new StatsAvroSpecificStoreClient<>(dispatchingStoreClient, clientConfig);
     }

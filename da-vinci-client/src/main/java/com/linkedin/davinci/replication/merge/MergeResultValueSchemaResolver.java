@@ -10,7 +10,6 @@ import com.linkedin.venice.schema.SchemaEntry;
  */
 @Threadsafe
 interface MergeResultValueSchemaResolver {
-
   /**
    * It decides/resolves which schema to use given two schema IDs of two values that are going to be merged. Calling this
    * method with different order of these 2 schema IDs as input should return the same result. Specifically:

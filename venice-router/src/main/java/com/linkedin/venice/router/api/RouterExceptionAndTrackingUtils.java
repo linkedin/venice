@@ -1,5 +1,7 @@
 package com.linkedin.venice.router.api;
 
+import static io.netty.handler.codec.http.HttpResponseStatus.*;
+
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.RequestType;
@@ -10,8 +12,6 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
 
 /**
@@ -24,12 +24,8 @@ import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
 public class RouterExceptionAndTrackingUtils {
   public enum FailureType {
-    REGULAR,
-    SMART_RETRY_ABORTED_BY_SLOW_ROUTE,
-    SMART_RETRY_ABORTED_BY_DELAY_CONSTRAINT,
-    SMART_RETRY_ABORTED_BY_MAX_RETRY_ROUTE_LIMIT,
-    RESOURCE_NOT_FOUND,
-    RETRY_ABORTED_BY_NO_AVAILABLE_REPLICA
+    REGULAR, SMART_RETRY_ABORTED_BY_SLOW_ROUTE, SMART_RETRY_ABORTED_BY_DELAY_CONSTRAINT,
+    SMART_RETRY_ABORTED_BY_MAX_RETRY_ROUTE_LIMIT, RESOURCE_NOT_FOUND, RETRY_ABORTED_BY_NO_AVAILABLE_REPLICA
   }
 
   private static final StackTraceElement[] emptyStackTrace = new StackTraceElement[0];
@@ -44,12 +40,18 @@ public class RouterExceptionAndTrackingUtils {
     ROUTER_STATS = routerStats;
   }
 
-  public static RouterException newRouterExceptionAndTracking(Optional<String> storeName,
-      Optional<RequestType> requestType, HttpResponseStatus responseStatus, String msg, FailureType failureType) {
+  public static RouterException newRouterExceptionAndTracking(
+      Optional<String> storeName,
+      Optional<RequestType> requestType,
+      HttpResponseStatus responseStatus,
+      String msg,
+      FailureType failureType) {
     metricTracking(storeName, requestType, responseStatus, failureType);
-    RouterException e = new RouterException(HttpResponseStatus.class, responseStatus, responseStatus.code(), msg, false);
+    RouterException e =
+        new RouterException(HttpResponseStatus.class, responseStatus, responseStatus.code(), msg, false);
     // Do not dump stack-trace for Quota exceed exception as it might blow up memory on high load
-    if (responseStatus.equals(TOO_MANY_REQUESTS) || responseStatus.equals(SERVICE_UNAVAILABLE) || failureType == FailureType.RESOURCE_NOT_FOUND) {
+    if (responseStatus.equals(TOO_MANY_REQUESTS) || responseStatus.equals(SERVICE_UNAVAILABLE)
+        || failureType == FailureType.RESOURCE_NOT_FOUND) {
       e.setStackTrace(emptyStackTrace);
     }
     String name = storeName.isPresent() ? storeName.get() : "";
@@ -65,19 +67,29 @@ public class RouterExceptionAndTrackingUtils {
     return e;
   }
 
-  public static RouterException newRouterExceptionAndTracking(Optional<String> storeName,
-      Optional<RequestType> requestType, HttpResponseStatus responseStatus, String msg) {
+  public static RouterException newRouterExceptionAndTracking(
+      Optional<String> storeName,
+      Optional<RequestType> requestType,
+      HttpResponseStatus responseStatus,
+      String msg) {
     return newRouterExceptionAndTracking(storeName, requestType, responseStatus, msg, FailureType.REGULAR);
   }
 
-  public static RouterException newRouterExceptionAndTrackingResourceNotFound(Optional<String> storeName,
-      Optional<RequestType> requestType, HttpResponseStatus responseStatus, String msg) {
+  public static RouterException newRouterExceptionAndTrackingResourceNotFound(
+      Optional<String> storeName,
+      Optional<RequestType> requestType,
+      HttpResponseStatus responseStatus,
+      String msg) {
     return newRouterExceptionAndTracking(storeName, requestType, responseStatus, msg, FailureType.RESOURCE_NOT_FOUND);
   }
 
   @Deprecated
-  public static VeniceException newVeniceExceptionAndTracking(Optional<String> storeName,
-      Optional<RequestType> requestType, HttpResponseStatus responseStatus, String msg, FailureType failureType) {
+  public static VeniceException newVeniceExceptionAndTracking(
+      Optional<String> storeName,
+      Optional<RequestType> requestType,
+      HttpResponseStatus responseStatus,
+      String msg,
+      FailureType failureType) {
     metricTracking(storeName, requestType, responseStatus, failureType);
     String name = storeName.isPresent() ? storeName.get() : "";
     VeniceException e = new VeniceException(msg);
@@ -93,8 +105,11 @@ public class RouterExceptionAndTrackingUtils {
   }
 
   @Deprecated
-  public static VeniceException newVeniceExceptionAndTracking(Optional<String> storeName,
-      Optional<RequestType> requestType, HttpResponseStatus responseStatus, String msg) {
+  public static VeniceException newVeniceExceptionAndTracking(
+      Optional<String> storeName,
+      Optional<RequestType> requestType,
+      HttpResponseStatus responseStatus,
+      String msg) {
     return newVeniceExceptionAndTracking(storeName, requestType, responseStatus, msg, FailureType.REGULAR);
   }
 
@@ -103,13 +118,17 @@ public class RouterExceptionAndTrackingUtils {
     stats.recordUnavailableReplicaStreamingRequest(storeName);
   }
 
-  private static void metricTracking(Optional<String> storeName, Optional<RequestType> requestType,
-      HttpResponseStatus responseStatus, FailureType failureType) {
+  private static void metricTracking(
+      Optional<String> storeName,
+      Optional<RequestType> requestType,
+      HttpResponseStatus responseStatus,
+      FailureType failureType) {
     if (ROUTER_STATS == null) {
       // defensive code
       throw new VeniceException("'ROUTER_STATS' hasn't been setup yet, so there must be some bug causing this.");
     }
-    AggRouterHttpRequestStats stats = ROUTER_STATS.getStatsByType(requestType.isPresent() ? requestType.get() : RequestType.SINGLE_GET);
+    AggRouterHttpRequestStats stats =
+        ROUTER_STATS.getStatsByType(requestType.isPresent() ? requestType.get() : RequestType.SINGLE_GET);
     // If we don't know the actual store name, this error will only be aggregated in server level, but not
     // in store level
     if (responseStatus.equals(BAD_REQUEST)) {

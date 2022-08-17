@@ -1,25 +1,17 @@
 package com.linkedin.venice.benchmark;
 
+import static com.linkedin.venice.serializer.FastSerializerDeserializerFactory.*;
+import static java.lang.Float.*;
+
+import com.google.flatbuffers.FlatBufferBuilder;
+import com.linkedin.avro.api.PrimitiveFloatList;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
-
-import com.linkedin.avro.api.PrimitiveFloatList;
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-
-import com.google.flatbuffers.FlatBufferBuilder;
-
 import com.linkedin.venice.utils.Utils;
-import java.util.Collections;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.io.BinaryDecoder;
-import org.apache.avro.io.BinaryEncoder;
-import org.openjdk.jmh.infra.Blackhole;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.lang.management.GarbageCollectorMXBean;
@@ -35,9 +27,12 @@ import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-
-import static com.linkedin.venice.serializer.FastSerializerDeserializerFactory.*;
-import static java.lang.Float.*;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.BinaryDecoder;
+import org.apache.avro.io.BinaryEncoder;
+import org.openjdk.jmh.infra.Blackhole;
 
 
 public class BenchmarkUtils {
@@ -45,6 +40,7 @@ public class BenchmarkUtils {
       Utils.setOf("MarkSweepCompact", "PS MarkSweep", "ConcurrentMarkSweep", "G1 Mixed Generation");
   private static final Set<String> NEWGEN_GC_NAMES =
       Utils.setOf("Copy", "PS Scavenge", "ParNew", "ParNew", "G1 Young Generation");
+
   private BenchmarkUtils() {
   }
 
@@ -83,7 +79,7 @@ public class BenchmarkUtils {
   public static Map<String, Float> getJvmMetrics() {
     Map<String, Float> metrics = new HashMap<>();
     List<GarbageCollectorMXBean> gcBeans = ManagementFactory.getGarbageCollectorMXBeans();
-    for (GarbageCollectorMXBean gcBean : gcBeans) {
+    for (GarbageCollectorMXBean gcBean: gcBeans) {
       String name = gcBean.getName();
       if (OLDGEN_GC_NAMES.contains(name)) {
         metrics.put("gc_old_count", (float) gcBean.getCollectionCount());
@@ -109,23 +105,35 @@ public class BenchmarkUtils {
       }
     });
     DecimalFormat decimalFormat = new DecimalFormat("###,###.###");
-    System.out.format(testCaseName + ".query_Volume: %s, time lapse: %f ms\n", decimalFormat.format(queryVolume),
+    System.out.format(
+        testCaseName + ".query_Volume: %s, time lapse: %f ms\n",
+        decimalFormat.format(queryVolume),
         metricsDelta.get("uptime"));
-    System.out.format(testCaseName + ".average_QPS: %s\n",
+    System.out.format(
+        testCaseName + ".average_QPS: %s\n",
         decimalFormat.format(1000d * (double) queryVolume / metricsDelta.get("uptime")));
-    System.out.format(testCaseName + ".average_latency: %s us\n", decimalFormat.format(
-        (double) TimeUnit.MICROSECONDS.convert((long) metricsDelta.get("uptime").floatValue(), TimeUnit.MILLISECONDS)
-            / (double) queryVolume));
+    System.out.format(
+        testCaseName + ".average_latency: %s us\n",
+        decimalFormat.format(
+            (double) TimeUnit.MICROSECONDS
+                .convert((long) metricsDelta.get("uptime").floatValue(), TimeUnit.MILLISECONDS)
+                / (double) queryVolume));
   }
 
-  public static void avroBenchmark(boolean fastAvro, int array_size, long iteration, boolean serializeOnce, boolean accessData, Blackhole blackhole) {
+  public static void avroBenchmark(
+      boolean fastAvro,
+      int array_size,
+      long iteration,
+      boolean serializeOnce,
+      boolean accessData,
+      Blackhole blackhole) {
     float w = 0f;
-    String schemaString = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"inventory\", \"type\" : {  \"type\" : \"array\", \"items\" : \"float\" }}] }";
+    String schemaString =
+        "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"inventory\", \"type\" : {  \"type\" : \"array\", \"items\" : \"float\" }}] }";
 
     Schema schema = Schema.parse(schemaString);
-    RecordSerializer<GenericRecord> serializer = fastAvro
-        ? getFastAvroGenericSerializer(schema)
-        : getAvroGenericSerializer(schema);
+    RecordSerializer<GenericRecord> serializer =
+        fastAvro ? getFastAvroGenericSerializer(schema) : getAvroGenericSerializer(schema);
     RecordDeserializer<GenericRecord> deserializer = fastAvro
         ? FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(schema, schema)
         : SerializerDeserializerFactory.getAvroGenericDeserializer(schema, schema);
@@ -148,7 +156,8 @@ public class BenchmarkUtils {
 
     // Initial serialization...
     recordToSerialize.put(fieldName, floats);
-    bytes = serializer.serialize(recordToSerialize, encoder, output);;
+    bytes = serializer.serialize(recordToSerialize, encoder, output);
+    ;
 
     for (i = 0; i < iteration; i++) {
       if (!serializeOnce) {
@@ -181,7 +190,12 @@ public class BenchmarkUtils {
     blackhole.consume(w);
   }
 
-  public static void flatBuffersBenchmark(int array_size, int iteration, boolean serializeOnce, boolean accessData, Blackhole blackhole) {
+  public static void flatBuffersBenchmark(
+      int array_size,
+      int iteration,
+      boolean serializeOnce,
+      boolean accessData,
+      Blackhole blackhole) {
     FlatBufferBuilder builder = new FlatBufferBuilder(0);
     float w = 0f;
     Monster monster = new Monster();
@@ -221,9 +235,9 @@ public class BenchmarkUtils {
 
       if (accessData) {
         // Get and test the `inventory` FlatBuffer `vector`.
-        int len =  monster.inventoryLength();
+        int len = monster.inventoryLength();
         for (int i = 0; i < len; i++) {
-          //assert monster.inventory(i) == (float)i;
+          // assert monster.inventory(i) == (float)i;
           w += monster.inventory(i);
         }
       }
@@ -239,7 +253,12 @@ public class BenchmarkUtils {
     }
   }
 
-  public static void floatVectorBenchmark(int array_size, int iteration, boolean serializeOnce, boolean accessData, Blackhole blackhole) {
+  public static void floatVectorBenchmark(
+      int array_size,
+      int iteration,
+      boolean serializeOnce,
+      boolean accessData,
+      Blackhole blackhole) {
     float w = 0f;
     FloatVectorImpl.Builder vectorBuilder = new FloatVectorImpl.Builder(array_size);
     produceFloatVectorData(vectorBuilder, 0, array_size);
@@ -262,6 +281,5 @@ public class BenchmarkUtils {
     }
     blackhole.consume(w);
   }
-
 
 }

@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -16,8 +19,6 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static org.mockito.Mockito.*;
 
 public class TestAdminConsumerService {
   @Test
@@ -27,8 +28,7 @@ public class TestAdminConsumerService {
     String someClusterName = "clusterName";
     String adminTopicSourceRegion = "parent";
 
-    VeniceProperties props = new PropertyBuilder()
-        .put(TestUtils.getPropertiesForControllerConfig())
+    VeniceProperties props = new PropertyBuilder().put(TestUtils.getPropertiesForControllerConfig())
         .put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(someClusterName))
         .put(ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED, true)
         .put(ADMIN_TOPIC_SOURCE_REGION, adminTopicSourceRegion)
@@ -40,11 +40,9 @@ public class TestAdminConsumerService {
         .build();
     VeniceControllerConfig controllerConfig = new VeniceControllerConfig(props);
 
-
     ControllerKafkaClientFactory consumerFactory = new ControllerKafkaClientFactory(
         controllerConfig,
-        Optional.of(new KafkaClientFactory.MetricsParameters("test", metricsRepository))
-    );
+        Optional.of(new KafkaClientFactory.MetricsParameters("test", metricsRepository)));
 
     VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
     doReturn(mock(ZkClient.class)).when(admin).getZkClient();
@@ -54,26 +52,16 @@ public class TestAdminConsumerService {
     AdminConsumerService adminConsumerService1 = null;
     AdminConsumerService adminConsumerService2 = null;
     try {
-      adminConsumerService1 = new AdminConsumerService(
-          "cluster1",
-          admin,
-          controllerConfig,
-          metricsRepository,
-          Optional.empty()
-      );
+      adminConsumerService1 =
+          new AdminConsumerService("cluster1", admin, controllerConfig, metricsRepository, Optional.empty());
 
       /**
        * The creation of a second {@link AdminConsumerService} crashed after introducing a regression
        * which caused duplicate metrics getting registered.
        */
       try {
-        adminConsumerService2 = new AdminConsumerService(
-            "cluster2",
-            admin,
-            controllerConfig,
-            metricsRepository,
-            Optional.empty()
-        );
+        adminConsumerService2 =
+            new AdminConsumerService("cluster2", admin, controllerConfig, metricsRepository, Optional.empty());
       } catch (Exception e) {
         Assert.fail("Creating a second " + AdminConsumerService.class.getSimpleName() + " should not fail", e);
       }

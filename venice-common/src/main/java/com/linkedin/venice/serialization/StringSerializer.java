@@ -4,7 +4,6 @@ import java.util.Map;
 
 
 public class StringSerializer implements VeniceKafkaSerializer<String> {
-
   public StringSerializer() {
     /* This constructor is not used, but is required for compilation */
   }
@@ -31,7 +30,7 @@ public class StringSerializer implements VeniceKafkaSerializer<String> {
 
   /**
    * Configure this class.
-
+  
    * @param configMap configs in key/value pairs
    * @param isKey whether is for key or value
    */

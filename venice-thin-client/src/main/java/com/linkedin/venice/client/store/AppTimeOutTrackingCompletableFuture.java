@@ -41,9 +41,9 @@ public class AppTimeOutTrackingCompletableFuture<T> extends CompletableFuture<T>
     }
   }
 
-  public static<T> CompletableFuture<T> track(CompletableFuture<T> future, ClientStats stats) {
+  public static <T> CompletableFuture<T> track(CompletableFuture<T> future, ClientStats stats) {
     AppTimeOutTrackingCompletableFuture<T> trackingFuture = new AppTimeOutTrackingCompletableFuture<>(stats);
-    future.whenComplete( (T v, Throwable t) -> {
+    future.whenComplete((T v, Throwable t) -> {
       if (t != null) {
         trackingFuture.completeExceptionally(t);
       } else {

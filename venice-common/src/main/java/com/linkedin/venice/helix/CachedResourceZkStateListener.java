@@ -43,8 +43,7 @@ public class CachedResourceZkStateListener implements IZkStateListener {
    * same state change.
    */
   @Override
-  public void handleStateChanged(Watcher.Event.KeeperState state)
-      throws Exception {
+  public void handleStateChanged(Watcher.Event.KeeperState state) throws Exception {
     if (state.equals(Watcher.Event.KeeperState.Disconnected)) {
       disconnected = true;
       logger.info("ZK connection is disconnected.");
@@ -66,8 +65,9 @@ public class CachedResourceZkStateListener implements IZkStateListener {
           Utils.sleep((long) (Math.random() * retryLoadIntervalInMs));
           int attempt = 1;
           while (attempt <= retryLoadAttempts) {
-            logger.info("Attempt #" + attempt + " of " + retryLoadAttempts
-                + ": Refresh resource after connection is reconnected.");
+            logger.info(
+                "Attempt #" + attempt + " of " + retryLoadAttempts
+                    + ": Refresh resource after connection is reconnected.");
             try {
               resource.refresh();
               logger.info("Attempt #" + attempt + " of " + retryLoadAttempts + ": Refresh completed.");
@@ -80,7 +80,7 @@ public class CachedResourceZkStateListener implements IZkStateListener {
               }
               attempt++;
             }
-            logger.fatal("Could not refresh resource correctly after "+attempt+" attempts.");
+            logger.fatal("Could not refresh resource correctly after " + attempt + " attempts.");
           }
         }
       } else {
@@ -97,8 +97,7 @@ public class CachedResourceZkStateListener implements IZkStateListener {
   }
 
   @Override
-  public void handleSessionEstablishmentError(Throwable error)
-      throws Exception {
+  public void handleSessionEstablishmentError(Throwable error) throws Exception {
     logger.info("handleSessionEstablishmentError() called.", error);
   }
 

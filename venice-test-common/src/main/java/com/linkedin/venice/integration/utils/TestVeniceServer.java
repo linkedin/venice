@@ -76,7 +76,6 @@ public class TestVeniceServer extends VeniceServer {
         diskHealthService,
         compressorFactory,
         resourceReadUsageTracker) {
-
       @Override
       protected StorageReadRequestsHandler createRequestHandler(
           ThreadPoolExecutor executor,

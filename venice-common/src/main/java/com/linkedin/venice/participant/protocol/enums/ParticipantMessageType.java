@@ -1,6 +1,6 @@
 package com.linkedin.venice.participant.protocol.enums;
 
-public enum  ParticipantMessageType {
+public enum ParticipantMessageType {
   KILL_PUSH_JOB(0);
 
   /**
@@ -8,7 +8,11 @@ public enum  ParticipantMessageType {
    */
   private final int value;
 
-  ParticipantMessageType(int value) { this.value = value; }
+  ParticipantMessageType(int value) {
+    this.value = value;
+  }
 
-  public int getValue() { return value; }
+  public int getValue() {
+    return value;
+  }
 }

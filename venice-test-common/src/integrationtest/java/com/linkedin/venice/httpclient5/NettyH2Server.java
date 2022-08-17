@@ -63,10 +63,11 @@ public class NettyH2Server {
         .childOption(ChannelOption.TCP_NODELAY, true);
   }
 
-  public void start() throws Exception  {
+  public void start() throws Exception {
     serverFuture = bootstrap.bind(port).sync();
     // Notify
-    try (FileWriter fileWriter = new FileWriter(tempFilePathToNotifyServerFullyStarted); BufferedWriter writer = new BufferedWriter(fileWriter)) {
+    try (FileWriter fileWriter = new FileWriter(tempFilePathToNotifyServerFullyStarted);
+        BufferedWriter writer = new BufferedWriter(fileWriter)) {
       writer.write("Started");
     }
 
@@ -91,14 +92,12 @@ public class NettyH2Server {
 
     @Override
     protected void initChannel(SocketChannel ch) {
-      ch.pipeline()
-          .addLast(new SSLInitializer(sslFactory), getServerAPNHandler());
+      ch.pipeline().addLast(new SSLInitializer(sslFactory), getServerAPNHandler());
     }
 
     public static ApplicationProtocolNegotiationHandler getServerAPNHandler() {
       ApplicationProtocolNegotiationHandler serverAPNHandler =
           new ApplicationProtocolNegotiationHandler(ApplicationProtocolNames.HTTP_1_1) {
-
             @Override
             protected void configurePipeline(ChannelHandlerContext ctx, String protocol) throws Exception {
               if (ApplicationProtocolNames.HTTP_2.equals(protocol)) {
@@ -108,8 +107,10 @@ public class NettyH2Server {
                     .initialWindowSize(8 * 1024 * 1024)
                     .headerTableSize(4096)
                     .maxHeaderListSize(8192);
-                ctx.pipeline().addLast(
-                    Http2FrameCodecBuilder.forServer().initialSettings(settings).build(), new Http2ServerResponseHandler());
+                ctx.pipeline()
+                    .addLast(
+                        Http2FrameCodecBuilder.forServer().initialSettings(settings).build(),
+                        new Http2ServerResponseHandler());
                 return;
               }
               throw new IllegalStateException("Protocol: " + protocol + " not supported");
@@ -120,8 +121,8 @@ public class NettyH2Server {
   }
 
   private static class Http2ServerResponseHandler extends ChannelInboundHandlerAdapter {
-    private static final ByteBuf RESPONSE_BYTES = Unpooled.unreleasableBuffer(
-        Unpooled.copiedBuffer("Hello World", CharsetUtil.UTF_8));
+    private static final ByteBuf RESPONSE_BYTES =
+        Unpooled.unreleasableBuffer(Unpooled.copiedBuffer("Hello World", CharsetUtil.UTF_8));
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {

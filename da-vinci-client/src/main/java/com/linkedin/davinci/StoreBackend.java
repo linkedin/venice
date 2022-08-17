@@ -33,7 +33,8 @@ public class StoreBackend {
     logger.info("Opening local store " + storeName);
     this.backend = backend;
     this.storeName = storeName;
-    this.config = new StoreBackendConfig(backend.getConfigLoader().getVeniceServerConfig().getDataBasePath(), storeName);
+    this.config =
+        new StoreBackendConfig(backend.getConfigLoader().getVeniceServerConfig().getDataBasePath(), storeName);
     this.stats = new StoreBackendStats(backend.getMetricsRepository(), storeName);
     try {
       backend.getStoreRepository().subscribe(storeName);
@@ -127,20 +128,26 @@ public class StoreBackend {
     return subscribe(partitions, Optional.empty());
   }
 
-  synchronized CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions, Optional<Version> bootstrapVersion) {
+  synchronized CompletableFuture<Void> subscribe(
+      ComplementSet<Integer> partitions,
+      Optional<Version> bootstrapVersion) {
     if (daVinciCurrentVersion == null) {
-      setDaVinciCurrentVersion(new VersionBackend(
-          backend,
-          bootstrapVersion.orElseGet(
-              () -> backend.getVeniceCurrentVersion(storeName).orElseGet(
-                  () -> backend.getVeniceLatestNonFaultyVersion(storeName, faultyVersionSet).orElseThrow(
-                      () -> new VeniceException("Cannot subscribe to an empty store, storeName=" + storeName)))),
-          stats));
+      setDaVinciCurrentVersion(
+          new VersionBackend(
+              backend,
+              bootstrapVersion.orElseGet(
+                  () -> backend.getVeniceCurrentVersion(storeName)
+                      .orElseGet(
+                          () -> backend.getVeniceLatestNonFaultyVersion(storeName, faultyVersionSet)
+                              .orElseThrow(
+                                  () -> new VeniceException(
+                                      "Cannot subscribe to an empty store, storeName=" + storeName)))),
+              stats));
 
     } else if (bootstrapVersion.isPresent()) {
-      throw new VeniceException("Bootstrap version is already selected, storeName=" + storeName +
-                                    ", currentVersion=" + daVinciCurrentVersion +
-                                    ", desiredVersion=" + bootstrapVersion.get().kafkaTopicName());
+      throw new VeniceException(
+          "Bootstrap version is already selected, storeName=" + storeName + ", currentVersion=" + daVinciCurrentVersion
+              + ", desiredVersion=" + bootstrapVersion.get().kafkaTopicName());
     }
 
     logger.info("Subscribing to partitions " + partitions + " of " + storeName);
@@ -215,9 +222,11 @@ public class StoreBackend {
     Version veniceLatestVersion = backend.getVeniceLatestNonFaultyVersion(storeName, faultyVersionSet).orElse(null);
     Version targetVersion;
     // Make sure current version in the store config has highest priority.
-    if (veniceCurrentVersion != null && veniceCurrentVersion.getNumber() != daVinciCurrentVersion.getVersion().getNumber()) {
+    if (veniceCurrentVersion != null
+        && veniceCurrentVersion.getNumber() != daVinciCurrentVersion.getVersion().getNumber()) {
       targetVersion = veniceCurrentVersion;
-    } else if (veniceLatestVersion != null && veniceLatestVersion.getNumber() > daVinciCurrentVersion.getVersion().getNumber()) {
+    } else if (veniceLatestVersion != null
+        && veniceLatestVersion.getNumber() > daVinciCurrentVersion.getVersion().getNumber()) {
       targetVersion = veniceLatestVersion;
     } else {
       return;
@@ -238,14 +247,18 @@ public class StoreBackend {
   synchronized void validateDaVinciAndVeniceCurrentVersion() {
     Version veniceCurrentVersion = backend.getVeniceCurrentVersion(storeName).orElse(null);
     if (veniceCurrentVersion != null && daVinciCurrentVersion != null) {
-      if (veniceCurrentVersion.getNumber() > daVinciCurrentVersion.getVersion().getNumber() && faultyVersionSet.contains(veniceCurrentVersion.getNumber())) {
-        logger.info("Venice is rolling forward to version: " + veniceCurrentVersion.getNumber() + ", removing it from faulty version set.");
+      if (veniceCurrentVersion.getNumber() > daVinciCurrentVersion.getVersion().getNumber()
+          && faultyVersionSet.contains(veniceCurrentVersion.getNumber())) {
+        logger.info(
+            "Venice is rolling forward to version: " + veniceCurrentVersion.getNumber()
+                + ", removing it from faulty version set.");
         removeFaultyVersion(veniceCurrentVersion);
         return;
       }
       if (veniceCurrentVersion.getNumber() < daVinciCurrentVersion.getVersion().getNumber()) {
-        logger.info("Detected a version rollback from Da Vinci current version: " + daVinciCurrentVersion.getVersion()
-            + " to Venice current version: " +  veniceCurrentVersion);
+        logger.info(
+            "Detected a version rollback from Da Vinci current version: " + daVinciCurrentVersion.getVersion()
+                + " to Venice current version: " + veniceCurrentVersion);
         removeFaultyVersion(veniceCurrentVersion);
         addFaultyVersion(daVinciCurrentVersion, null);
       }
@@ -260,11 +273,13 @@ public class StoreBackend {
       Store store = backend.getStoreRepository().getStoreOrThrow(storeName);
       int versionNumber = daVinciFutureVersion.getVersion().getNumber();
       if (!store.getVersion(versionNumber).isPresent()) {
-        logger.info("Deleting obsolete future version " + daVinciFutureVersion + ", currentVersion=" + daVinciCurrentVersion);
+        logger.info(
+            "Deleting obsolete future version " + daVinciFutureVersion + ", currentVersion=" + daVinciCurrentVersion);
         deleteFutureVersion();
       }
       if (faultyVersionSet.contains(versionNumber)) {
-        logger.info("Deleting faulty future version " + daVinciFutureVersion + ", currentVersion=" + daVinciCurrentVersion);
+        logger.info(
+            "Deleting faulty future version " + daVinciFutureVersion + ", currentVersion=" + daVinciCurrentVersion);
         deleteFutureVersion();
       }
     }
@@ -285,23 +300,32 @@ public class StoreBackend {
       }
       int veniceCurrentVersionNumber = veniceCurrentVersion.getNumber();
       int daVinciFutureVersionNumber = daVinciFutureVersion.getVersion().getNumber();
-      boolean isDaVinciFutureVersionInvalid = faultyVersionSet.contains(daVinciFutureVersionNumber) ||
-          backend.getStoreRepository().getStoreOrThrow(storeName).getVersions().stream().noneMatch(v -> (v.getNumber() == daVinciFutureVersionNumber));
+      boolean isDaVinciFutureVersionInvalid =
+          faultyVersionSet.contains(daVinciFutureVersionNumber) || backend.getStoreRepository()
+              .getStoreOrThrow(storeName)
+              .getVersions()
+              .stream()
+              .noneMatch(v -> (v.getNumber() == daVinciFutureVersionNumber));
       /**
        * We will only swap it to current version slot when it is fully pushed and the version number is (or was) the
        * current version in store config.
        */
-      if (daVinciFutureVersion.isReadyToServe(subscription) && !isDaVinciFutureVersionInvalid && daVinciFutureVersionNumber <= veniceCurrentVersionNumber) {
+      if (daVinciFutureVersion.isReadyToServe(subscription) && !isDaVinciFutureVersionInvalid
+          && daVinciFutureVersionNumber <= veniceCurrentVersionNumber) {
         logger.info("Ready to serve partitions " + subscription + " of " + daVinciFutureVersion);
         swapCurrentVersion();
         trySubscribeDaVinciFutureVersion();
       } else if (failure != null) {
         addFaultyVersion(daVinciFutureVersion, failure);
-        logger.info("Deleting faulty Da Vinci future version " + daVinciFutureVersion + ", Da Vinci current version=" + daVinciCurrentVersion);
+        logger.info(
+            "Deleting faulty Da Vinci future version " + daVinciFutureVersion + ", Da Vinci current version="
+                + daVinciCurrentVersion);
         deleteFutureVersion();
         trySubscribeDaVinciFutureVersion();
       } else {
-        logger.info("Da Vinci future version " + daVinciFutureVersion + " is not ready to serve traffic, will try again later.");
+        logger.info(
+            "Da Vinci future version " + daVinciFutureVersion
+                + " is not ready to serve traffic, will try again later.");
       }
     }
   }

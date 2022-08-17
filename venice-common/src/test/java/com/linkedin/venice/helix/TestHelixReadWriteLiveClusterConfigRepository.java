@@ -66,14 +66,16 @@ public class TestHelixReadWriteLiveClusterConfigRepository {
 
       LiveClusterConfig clusterConfig = (LiveClusterConfig) zkData;
       return clusterConfig.getServerKafkaFetchQuotaRecordsPerSecondForRegion(CONFIGURED_REGION) == 100
-          && clusterConfig.getServerKafkaFetchQuotaRecordsPerSecondForRegion(NON_CONFIGURED_REGION) == LiveClusterConfig.DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
+          && clusterConfig.getServerKafkaFetchQuotaRecordsPerSecondForRegion(
+              NON_CONFIGURED_REGION) == LiveClusterConfig.DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
     });
   }
 
   @Test
   public void testReadWriteLiveClusterConfigRepoCanReadAndWrite() {
     // Create a HelixReadWriteLiveClusterConfigRepository for reading from Zk
-    HelixReadWriteLiveClusterConfigRepository liveClusterConfigRWRepo2 = new HelixReadWriteLiveClusterConfigRepository(zkClient, adapter, cluster);
+    HelixReadWriteLiveClusterConfigRepository liveClusterConfigRWRepo2 =
+        new HelixReadWriteLiveClusterConfigRepository(zkClient, adapter, cluster);
     liveClusterConfigRWRepo2.refresh();
 
     LiveClusterConfig liveClusterConfig = new LiveClusterConfig();
@@ -83,9 +85,15 @@ public class TestHelixReadWriteLiveClusterConfigRepository {
     liveClusterConfigRWRepo.updateConfigs(liveClusterConfig);
 
     // Verify ReadWriteLiveClusterConfigRepository can read the updated configs
-    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> liveClusterConfigRWRepo2.getConfigs() != null
-        && liveClusterConfigRWRepo2.getConfigs().getServerKafkaFetchQuotaRecordsPerSecondForRegion(CONFIGURED_REGION) == 100
-        && liveClusterConfigRWRepo2.getConfigs().getServerKafkaFetchQuotaRecordsPerSecondForRegion(NON_CONFIGURED_REGION) == LiveClusterConfig.DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND);
+    TestUtils.waitForNonDeterministicCompletion(
+        3,
+        TimeUnit.SECONDS,
+        () -> liveClusterConfigRWRepo2.getConfigs() != null
+            && liveClusterConfigRWRepo2.getConfigs()
+                .getServerKafkaFetchQuotaRecordsPerSecondForRegion(CONFIGURED_REGION) == 100
+            && liveClusterConfigRWRepo2.getConfigs()
+                .getServerKafkaFetchQuotaRecordsPerSecondForRegion(
+                    NON_CONFIGURED_REGION) == LiveClusterConfig.DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND);
   }
 
   @Test
@@ -105,13 +113,17 @@ public class TestHelixReadWriteLiveClusterConfigRepository {
 
       LiveClusterConfig clusterConfig = (LiveClusterConfig) zkData;
       return clusterConfig.getServerKafkaFetchQuotaRecordsPerSecondForRegion(CONFIGURED_REGION) == 100
-          && clusterConfig.getServerKafkaFetchQuotaRecordsPerSecondForRegion(NON_CONFIGURED_REGION) == LiveClusterConfig.DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
+          && clusterConfig.getServerKafkaFetchQuotaRecordsPerSecondForRegion(
+              NON_CONFIGURED_REGION) == LiveClusterConfig.DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
     });
 
     // Trigger a deletion of all configs
     liveClusterConfigRWRepo.deleteConfigs();
 
     // Verify that the ZNode gets deleted
-    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> !zkClient.exists(clusterPath + clusterConfigPath));
+    TestUtils.waitForNonDeterministicCompletion(
+        3,
+        TimeUnit.SECONDS,
+        () -> !zkClient.exists(clusterPath + clusterConfigPath));
   }
 }

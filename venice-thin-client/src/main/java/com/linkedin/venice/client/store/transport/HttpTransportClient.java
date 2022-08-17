@@ -55,7 +55,9 @@ public class HttpTransportClient extends TransportClient {
   }
 
   @Override
-  public CompletableFuture<TransportClientResponse> post(String requestPath, Map<String, String> headers,
+  public CompletableFuture<TransportClientResponse> post(
+      String requestPath,
+      Map<String, String> headers,
       byte[] requestBody) {
     HttpPost request = getHttpPostRequest(requestPath, headers, requestBody);
     CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
@@ -67,8 +69,12 @@ public class HttpTransportClient extends TransportClient {
    * Leverage non-streaming post to achieve feature parity.
    */
   @Override
-  public void streamPost(String requestPath, Map<String, String> headers, byte[] requestBody,
-      TransportClientStreamingCallback callback, int keyCount) {
+  public void streamPost(
+      String requestPath,
+      Map<String, String> headers,
+      byte[] requestBody,
+      TransportClientStreamingCallback callback,
+      int keyCount) {
     try {
       CompletableFuture<TransportClientResponse> responseFuture = post(requestPath, headers, requestBody);
       responseFuture.whenComplete((response, throwable) -> {
@@ -80,7 +86,9 @@ public class HttpTransportClient extends TransportClient {
           if (response.isSchemaIdValid()) {
             responseHeaderMap.put(HttpConstants.VENICE_SCHEMA_ID, Integer.toString(response.getSchemaId()));
           }
-          responseHeaderMap.put(HttpConstants.VENICE_COMPRESSION_STRATEGY, Integer.toString(response.getCompressionStrategy().getValue()));
+          responseHeaderMap.put(
+              HttpConstants.VENICE_COMPRESSION_STRATEGY,
+              Integer.toString(response.getCompressionStrategy().getValue()));
           callback.onHeaderReceived(responseHeaderMap);
 
           callback.onDataReceived(ByteBuffer.wrap(response.getBody()));
@@ -135,7 +143,8 @@ public class HttpTransportClient extends TransportClient {
     return new HttpTransportClient(routerUrl);
   }
 
-  private static class HttpTransportClientCallback extends TransportClientCallback implements FutureCallback<HttpResponse> {
+  private static class HttpTransportClientCallback extends TransportClientCallback
+      implements FutureCallback<HttpResponse> {
     public HttpTransportClientCallback(CompletableFuture<TransportClientResponse> valueFuture) {
       super(valueFuture);
     }

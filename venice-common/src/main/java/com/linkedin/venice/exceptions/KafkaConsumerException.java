@@ -5,7 +5,6 @@ package com.linkedin.venice.exceptions;
  * Currently everything is inherited from the superclass.
  */
 public class KafkaConsumerException extends VeniceException {
-
   private static final long serialVersionUID = 1L;
 
   public KafkaConsumerException(String message) {
@@ -20,6 +19,3 @@ public class KafkaConsumerException extends VeniceException {
     return super.getMessage();
   }
 }
-
-
-

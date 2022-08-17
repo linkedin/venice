@@ -13,7 +13,6 @@ import org.apache.avro.specific.SpecificRecord;
 
 
 public class ClientFactory {
-
   public static <K, V> AvroGenericStoreClient<K, V> getAndStartGenericAvroClient(ClientConfig clientConfig) {
     AvroGenericStoreClient<K, V> client = getGenericAvroClient(clientConfig);
     client.start();
@@ -34,7 +33,8 @@ public class ClientFactory {
       }
     }
 
-    StatTrackingStoreClient<K, V> client = new StatTrackingStoreClient<>(internalClient, clientConfig);;
+    StatTrackingStoreClient<K, V> client = new StatTrackingStoreClient<>(internalClient, clientConfig);
+    ;
 
     if (clientConfig.isRetryOnRouterErrorEnabled() || clientConfig.isRetryOnAllErrorsEnabled()) {
       return new RetriableStoreClient<>(client, clientConfig);
@@ -42,13 +42,15 @@ public class ClientFactory {
     return client;
   }
 
-  public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartSpecificAvroClient(ClientConfig<V> clientConfig) {
+  public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartSpecificAvroClient(
+      ClientConfig<V> clientConfig) {
     AvroSpecificStoreClient<K, V> client = getSpecificAvroClient(clientConfig);
     client.start();
     return client;
   }
 
-  public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getSpecificAvroClient(ClientConfig<V> clientConfig) {
+  public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getSpecificAvroClient(
+      ClientConfig<V> clientConfig) {
     TransportClient transportClient = getTransportClient(clientConfig);
     InternalAvroStoreClient<K, V> avroClient = new AvroSpecificStoreClientImpl<>(transportClient, clientConfig);
 
@@ -56,7 +58,7 @@ public class ClientFactory {
 
     if (clientConfig.isRetryOnRouterErrorEnabled() || clientConfig.isRetryOnAllErrorsEnabled()) {
       return new SpecificRetriableStoreClient<>(client, clientConfig);
-   }
+    }
 
     return client;
   }
@@ -80,14 +82,16 @@ public class ClientFactory {
      *
      * Closing this {@link SchemaReader} instance will also close the underlying client.
      */
-    return new RouterBackedSchemaReader(() -> new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig));
+    return new RouterBackedSchemaReader(
+        () -> new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig));
   }
 
   public static StoreSchemaFetcher createStoreSchemaFetcher(ClientConfig clientConfig) {
-    return new RouterBasedStoreSchemaFetcher(new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig));
+    return new RouterBasedStoreSchemaFetcher(
+        new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig));
   }
 
-  private static D2TransportClient generateTransportClient(ClientConfig clientConfig){
+  private static D2TransportClient generateTransportClient(ClientConfig clientConfig) {
     String d2ServiceName = clientConfig.getD2ServiceName();
 
     if (clientConfig.getD2Client() != null) {
@@ -101,11 +105,11 @@ public class ClientFactory {
     String bootstrapUrl = clientConfig.getVeniceURL();
 
     if (clientConfig.isD2Routing()) {
-      if (clientConfig.getD2ServiceName() == null ) {
+      if (clientConfig.getD2ServiceName() == null) {
         throw new VeniceClientException("D2 Server name can't be null");
       }
       return generateTransportClient(clientConfig);
-    } else if (clientConfig.isHttps()){
+    } else if (clientConfig.isHttps()) {
       if (clientConfig.getSslEngineComponentFactory() == null) {
         throw new VeniceClientException("Must use SSL factory method for client to communicate with https");
       }

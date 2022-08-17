@@ -1,5 +1,8 @@
 package com.linkedin.venice.router.api;
 
+import static com.linkedin.venice.HttpConstants.*;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.ddsstorage.base.concurrency.AsyncPromise;
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.ddsstorage.router.api.RouterException;
@@ -60,8 +63,6 @@ import org.apache.http.client.methods.HttpGet;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.HttpConstants.*;
-import static org.mockito.Mockito.*;
 
 //TODO: refactor Dispatcher to take a HttpClient Factory, so we don't need to spin up an HTTP server for these tests
 public class TestVeniceDispatcher {
@@ -77,10 +78,18 @@ public class TestVeniceDispatcher {
         return null;
       })).when(mockRetryFuture).setSuccess(any());
 
-      triggerResponse(dispatcher, RequestType.SINGLE_GET, HttpResponseStatus.INTERNAL_SERVER_ERROR, mockRetryFuture, mockResponseFuture, () -> {
-        Assert.assertEquals(successRetries.size(), 1);
-        Assert.assertEquals(successRetries.get(0), HttpResponseStatus.INTERNAL_SERVER_ERROR);
-      }, false, CompressionStrategy.NO_OP);
+      triggerResponse(
+          dispatcher,
+          RequestType.SINGLE_GET,
+          HttpResponseStatus.INTERNAL_SERVER_ERROR,
+          mockRetryFuture,
+          mockResponseFuture,
+          () -> {
+            Assert.assertEquals(successRetries.size(), 1);
+            Assert.assertEquals(successRetries.get(0), HttpResponseStatus.INTERNAL_SERVER_ERROR);
+          },
+          false,
+          CompressionStrategy.NO_OP);
     } finally {
       dispatcher.stop();
     }
@@ -98,11 +107,19 @@ public class TestVeniceDispatcher {
         return null;
       })).when(mockRetryFuture).setSuccess(any());
 
-      triggerResponse(dispatcher, RequestType.SINGLE_GET, HttpResponseStatus.OK, mockRetryFuture, mockResponseFuture, () -> {
-        Assert.assertEquals(successRetries.size(), 2);
-        Assert.assertEquals(successRetries.get(0), HttpResponseStatus.INTERNAL_SERVER_ERROR);
-        Assert.assertEquals(dispatcher.getPendingRequestThrottler().getCurrentPendingRequestCount(), 0);
-      }, false, CompressionStrategy.NO_OP);
+      triggerResponse(
+          dispatcher,
+          RequestType.SINGLE_GET,
+          HttpResponseStatus.OK,
+          mockRetryFuture,
+          mockResponseFuture,
+          () -> {
+            Assert.assertEquals(successRetries.size(), 2);
+            Assert.assertEquals(successRetries.get(0), HttpResponseStatus.INTERNAL_SERVER_ERROR);
+            Assert.assertEquals(dispatcher.getPendingRequestThrottler().getCurrentPendingRequestCount(), 0);
+          },
+          false,
+          CompressionStrategy.NO_OP);
     } finally {
       dispatcher.stop();
     }
@@ -120,11 +137,19 @@ public class TestVeniceDispatcher {
         return null;
       })).when(mockRetryFuture).setSuccess(any());
 
-      triggerResponse(dispatcher, RequestType.SINGLE_GET, HttpResponseStatus.OK, mockRetryFuture, mockResponseFuture, () -> {
-        Assert.assertEquals(successRetries.size(), 0);
-        verify(dispatcher.getRouteHttpRequestStats(), times(1)).recordFinishedRequest(any());
-        verify(dispatcher.getRouteHttpRequestStats(), times(1)).getPendingRequestCount(any());
-      }, true, CompressionStrategy.NO_OP);
+      triggerResponse(
+          dispatcher,
+          RequestType.SINGLE_GET,
+          HttpResponseStatus.OK,
+          mockRetryFuture,
+          mockResponseFuture,
+          () -> {
+            Assert.assertEquals(successRetries.size(), 0);
+            verify(dispatcher.getRouteHttpRequestStats(), times(1)).recordFinishedRequest(any());
+            verify(dispatcher.getRouteHttpRequestStats(), times(1)).getPendingRequestCount(any());
+          },
+          true,
+          CompressionStrategy.NO_OP);
     } finally {
       dispatcher.stop();
     }
@@ -142,10 +167,18 @@ public class TestVeniceDispatcher {
         return null;
       })).when(mockResponseFuture).setSuccess(any());
 
-      triggerResponse(dispatcher, RequestType.SINGLE_GET, HttpResponseStatus.TOO_MANY_REQUESTS, mockRetryFuture, mockResponseFuture, () -> {
-        Assert.assertEquals(responses.size(), 1);
-        Assert.assertEquals(responses.get(0).status(), HttpResponseStatus.TOO_MANY_REQUESTS);
-      }, false, CompressionStrategy.NO_OP);
+      triggerResponse(
+          dispatcher,
+          RequestType.SINGLE_GET,
+          HttpResponseStatus.TOO_MANY_REQUESTS,
+          mockRetryFuture,
+          mockResponseFuture,
+          () -> {
+            Assert.assertEquals(responses.size(), 1);
+            Assert.assertEquals(responses.get(0).status(), HttpResponseStatus.TOO_MANY_REQUESTS);
+          },
+          false,
+          CompressionStrategy.NO_OP);
     } finally {
       dispatcher.stop();
     }
@@ -163,12 +196,22 @@ public class TestVeniceDispatcher {
         return null;
       })).when(mockResponseFuture).setSuccess(any());
 
-      triggerResponse(dispatcher, RequestType.SINGLE_GET, HttpResponseStatus.OK, mockRetryFuture, mockResponseFuture, () -> {
-        Assert.assertEquals(responses.size(), 1);
-        Assert.assertEquals(responses.get(0).status(), HttpResponseStatus.OK);
-        Assert.assertEquals(responses.get(0).headers().get(VENICE_COMPRESSION_STRATEGY), String.valueOf(CompressionStrategy.GZIP.getValue()));
-        Assert.assertTrue(responses.get(0).headers().contains(VENICE_REQUEST_RCU));
-      }, false, CompressionStrategy.GZIP);
+      triggerResponse(
+          dispatcher,
+          RequestType.SINGLE_GET,
+          HttpResponseStatus.OK,
+          mockRetryFuture,
+          mockResponseFuture,
+          () -> {
+            Assert.assertEquals(responses.size(), 1);
+            Assert.assertEquals(responses.get(0).status(), HttpResponseStatus.OK);
+            Assert.assertEquals(
+                responses.get(0).headers().get(VENICE_COMPRESSION_STRATEGY),
+                String.valueOf(CompressionStrategy.GZIP.getValue()));
+            Assert.assertTrue(responses.get(0).headers().contains(VENICE_REQUEST_RCU));
+          },
+          false,
+          CompressionStrategy.GZIP);
     } finally {
       dispatcher.stop();
     }
@@ -186,11 +229,21 @@ public class TestVeniceDispatcher {
         return null;
       })).when(mockResponseFuture).setSuccess(any());
 
-      triggerResponse(dispatcher, RequestType.SINGLE_GET, HttpResponseStatus.OK, mockRetryFuture, mockResponseFuture, () -> {
-        Assert.assertEquals(responses.size(), 1);
-        Assert.assertEquals(responses.get(0).status(), HttpResponseStatus.OK);
-        Assert.assertEquals(responses.get(0).headers().get(VENICE_COMPRESSION_STRATEGY), String.valueOf(CompressionStrategy.NO_OP.getValue()));
-      }, false, CompressionStrategy.ZSTD_WITH_DICT);
+      triggerResponse(
+          dispatcher,
+          RequestType.SINGLE_GET,
+          HttpResponseStatus.OK,
+          mockRetryFuture,
+          mockResponseFuture,
+          () -> {
+            Assert.assertEquals(responses.size(), 1);
+            Assert.assertEquals(responses.get(0).status(), HttpResponseStatus.OK);
+            Assert.assertEquals(
+                responses.get(0).headers().get(VENICE_COMPRESSION_STRATEGY),
+                String.valueOf(CompressionStrategy.NO_OP.getValue()));
+          },
+          false,
+          CompressionStrategy.ZSTD_WITH_DICT);
     } finally {
       dispatcher.stop();
     }
@@ -208,11 +261,21 @@ public class TestVeniceDispatcher {
         return null;
       })).when(mockResponseFuture).setSuccess(any());
 
-      triggerResponse(dispatcher, RequestType.MULTI_GET, HttpResponseStatus.OK, mockRetryFuture, mockResponseFuture, () -> {
-        Assert.assertEquals(responses.size(), 1);
-        Assert.assertEquals(responses.get(0).status(), HttpResponseStatus.OK);
-        Assert.assertEquals(responses.get(0).headers().get(VENICE_COMPRESSION_STRATEGY), String.valueOf(CompressionStrategy.GZIP.getValue()));
-      }, false, CompressionStrategy.GZIP);
+      triggerResponse(
+          dispatcher,
+          RequestType.MULTI_GET,
+          HttpResponseStatus.OK,
+          mockRetryFuture,
+          mockResponseFuture,
+          () -> {
+            Assert.assertEquals(responses.size(), 1);
+            Assert.assertEquals(responses.get(0).status(), HttpResponseStatus.OK);
+            Assert.assertEquals(
+                responses.get(0).headers().get(VENICE_COMPRESSION_STRATEGY),
+                String.valueOf(CompressionStrategy.GZIP.getValue()));
+          },
+          false,
+          CompressionStrategy.GZIP);
     } finally {
       dispatcher.stop();
     }
@@ -230,17 +293,30 @@ public class TestVeniceDispatcher {
         return null;
       })).when(mockResponseFuture).setSuccess(any());
 
-      triggerResponse(dispatcher, RequestType.MULTI_GET, HttpResponseStatus.OK, mockRetryFuture, mockResponseFuture, () -> {
-        Assert.assertEquals(responses.size(), 1);
-        Assert.assertEquals(responses.get(0).status(), HttpResponseStatus.OK);
-        Assert.assertEquals(responses.get(0).headers().get(VENICE_COMPRESSION_STRATEGY), String.valueOf(CompressionStrategy.NO_OP.getValue()));
-      }, false, CompressionStrategy.ZSTD_WITH_DICT);
+      triggerResponse(
+          dispatcher,
+          RequestType.MULTI_GET,
+          HttpResponseStatus.OK,
+          mockRetryFuture,
+          mockResponseFuture,
+          () -> {
+            Assert.assertEquals(responses.size(), 1);
+            Assert.assertEquals(responses.get(0).status(), HttpResponseStatus.OK);
+            Assert.assertEquals(
+                responses.get(0).headers().get(VENICE_COMPRESSION_STRATEGY),
+                String.valueOf(CompressionStrategy.NO_OP.getValue()));
+          },
+          false,
+          CompressionStrategy.ZSTD_WITH_DICT);
     } finally {
       dispatcher.stop();
     }
   }
 
-  private VeniceDispatcher getMockDispatcher(boolean useNettyClient, boolean forcePendingCheck, boolean forceLeakPending){
+  private VeniceDispatcher getMockDispatcher(
+      boolean useNettyClient,
+      boolean forcePendingCheck,
+      boolean forceLeakPending) {
     VeniceRouterConfig routerConfig = mock(VeniceRouterConfig.class);
     doReturn(2).when(routerConfig).getHttpClientPoolSize();
     doReturn(10).when(routerConfig).getMaxOutgoingConn();
@@ -283,18 +359,40 @@ public class TestVeniceDispatcher {
         workerEventLoopGroup = new NioEventLoopGroup(1);
         channelClass = NioSocketChannel.class;
       }
-      storageNodeClient = new NettyStorageNodeClient(routerConfig, Optional.empty(),
-          mockRouterStats, workerEventLoopGroup, channelClass);
+      storageNodeClient = new NettyStorageNodeClient(
+          routerConfig,
+          Optional.empty(),
+          mockRouterStats,
+          workerEventLoopGroup,
+          channelClass);
     } else {
-      storageNodeClient = new ApacheHttpAsyncStorageNodeClient(routerConfig, Optional.empty(), mockMetricsRepo, mockLiveInstanceMonitor);
+      storageNodeClient = new ApacheHttpAsyncStorageNodeClient(
+          routerConfig,
+          Optional.empty(),
+          mockMetricsRepo,
+          mockLiveInstanceMonitor);
     }
-    VeniceDispatcher dispatcher = new VeniceDispatcher(routerConfig, mockStoreRepo,
-        mockRouterStats, mockMetricsRepo, storageNodeClient, routeHttpRequestStats, mock(AggHostHealthStats.class), mock(RouterStats.class));
+    VeniceDispatcher dispatcher = new VeniceDispatcher(
+        routerConfig,
+        mockStoreRepo,
+        mockRouterStats,
+        mockMetricsRepo,
+        storageNodeClient,
+        routeHttpRequestStats,
+        mock(AggHostHealthStats.class),
+        mock(RouterStats.class));
     return dispatcher;
   }
 
-  private void triggerResponse(VeniceDispatcher dispatcher, RequestType requestType, HttpResponseStatus responseStatus,
-      AsyncPromise mockRetryFuture, AsyncPromise mockResponseFuture, Runnable assertions, boolean forceLeakPending, CompressionStrategy compressionStrategy) {
+  private void triggerResponse(
+      VeniceDispatcher dispatcher,
+      RequestType requestType,
+      HttpResponseStatus responseStatus,
+      AsyncPromise mockRetryFuture,
+      AsyncPromise mockResponseFuture,
+      Runnable assertions,
+      boolean forceLeakPending,
+      CompressionStrategy compressionStrategy) {
 
     Scatter mockScatter = mock(Scatter.class);
     ScatterGatherRequest mockScatterGatherRequest = mock(ScatterGatherRequest.class);
@@ -315,11 +413,13 @@ public class TestVeniceDispatcher {
     doReturn(HttpMethod.GET).when(mockPath).getHttpMethod();
 
     if (requestType.equals(RequestType.SINGLE_GET)) {
-      doReturn(Integer.toString(ReadAvroProtocolDefinition.SINGLE_GET_ROUTER_REQUEST_V1.getProtocolVersion())).when(
-          mockPath).getVeniceApiVersionHeader();
+      doReturn(Integer.toString(ReadAvroProtocolDefinition.SINGLE_GET_ROUTER_REQUEST_V1.getProtocolVersion()))
+          .when(mockPath)
+          .getVeniceApiVersionHeader();
     } else if (requestType.equals(RequestType.MULTI_GET)) {
-      doReturn(Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_ROUTER_REQUEST_V1.getProtocolVersion())).when(
-          mockPath).getVeniceApiVersionHeader();
+      doReturn(Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_ROUTER_REQUEST_V1.getProtocolVersion()))
+          .when(mockPath)
+          .getVeniceApiVersionHeader();
     }
 
     BasicFullHttpRequest mockRequest = mock(BasicFullHttpRequest.class);
@@ -329,7 +429,7 @@ public class TestVeniceDispatcher {
 
     HttpHeaders requestHeaders = new DefaultHttpHeaders();
 
-    for (Map.Entry<String, String> header : requestHeadersMap.entrySet()) {
+    for (Map.Entry<String, String> header: requestHeadersMap.entrySet()) {
       requestHeaders.add(header.getKey(), header.getValue());
     }
 
@@ -357,7 +457,16 @@ public class TestVeniceDispatcher {
     })).when(compressorFactory).getCompressor(any());
 
     ExecutorService decompressionExecutor = mock(ExecutorService.class);
-    doReturn(new VeniceResponseDecompressor(true, routerStats, mockRequest, "test_store", 1, compressorFactory, decompressionExecutor, 10)).when(mockPath).getResponseDecompressor();
+    doReturn(
+        new VeniceResponseDecompressor(
+            true,
+            routerStats,
+            mockRequest,
+            "test_store",
+            1,
+            compressorFactory,
+            decompressionExecutor,
+            10)).when(mockPath).getResponseDecompressor();
 
     AsyncPromise mockHostSelected = mock(AsyncPromise.class);
     AsyncPromise mockTimeoutFuture = mock(AsyncPromise.class);
@@ -367,7 +476,8 @@ public class TestVeniceDispatcher {
       FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, responseStatus);
       mockHttpServerWrapper.addResponseForUriPattern(".*", response);
 
-      response.headers().set(HttpHeaderNames.CONTENT_TYPE, "avro/binary")
+      response.headers()
+          .set(HttpHeaderNames.CONTENT_TYPE, "avro/binary")
           .set(HttpConstants.VENICE_STORE_VERSION, "1")
           .set(HttpHeaderNames.CONTENT_LENGTH, "0")
           .set(HttpConstants.VENICE_SCHEMA_ID, "1")
@@ -383,10 +493,18 @@ public class TestVeniceDispatcher {
       doReturn(new HttpGet("http://" + serverAddr + "/" + "mock_get")).when(mockPath).composeRouterRequest(any());
 
       try {
-        dispatcher.dispatch(mockScatter, mockScatterGatherRequest, mockPath, mockRequest, mockHostSelected,
-            mockResponseFuture, mockRetryFuture, mockTimeoutFuture, contextExecutor);
+        dispatcher.dispatch(
+            mockScatter,
+            mockScatterGatherRequest,
+            mockPath,
+            mockRequest,
+            mockHostSelected,
+            mockResponseFuture,
+            mockRetryFuture,
+            mockTimeoutFuture,
+            contextExecutor);
       } catch (RouterException e) {
-        if (!forceLeakPending)  {
+        if (!forceLeakPending) {
           throw new VeniceException(e);
         }
       }

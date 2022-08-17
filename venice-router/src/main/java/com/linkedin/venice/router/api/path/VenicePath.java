@@ -66,7 +66,11 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
     this(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs, new SystemTime());
   }
 
-  public VenicePath(String resourceName, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs, Time time) {
+  public VenicePath(
+      String resourceName,
+      boolean smartLongTailRetryEnabled,
+      int smartLongTailRetryAbortThresholdMs,
+      Time time) {
     this.resourceName = resourceName;
     this.storeName = Version.parseStoreFromKafkaTopicName(resourceName);
     this.versionNumber = Version.parseVersionFromKafkaTopicName(resourceName);
@@ -110,7 +114,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
 
   public int getRequestSize() {
     // The final single-element array is being used in closure since closure can only operate final variables.
-    final int[] size = {0};
+    final int[] size = { 0 };
     getPartitionKeys().stream().forEach(key -> size[0] += key.getKeyBuffer().remaining());
 
     return size[0];
@@ -205,7 +209,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
       return true;
     }
     return !isRetryRequest() || // original request
-              !slowStorageNodeSet.contains(storageNode); // retry request
+        !slowStorageNodeSet.contains(storageNode); // retry request
   }
 
   public void recordOriginalRequestStartTimestamp() {
@@ -265,13 +269,16 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
       throw new VeniceException("Failed to create URI for path " + uri, e);
     }
 
-    RestRequestBuilder builder = new RestRequestBuilder(requestUri).setMethod(getHttpMethod().toString()).setHeaders(headerMap);
+    RestRequestBuilder builder =
+        new RestRequestBuilder(requestUri).setMethod(getHttpMethod().toString()).setHeaders(headerMap);
     setRestRequestEntity(builder);
 
     return builder.build();
   }
 
-  public void setChunkedWriteHandler(ChannelHandlerContext ctx, VeniceChunkedWriteHandler chunkedWriteHandler,
+  public void setChunkedWriteHandler(
+      ChannelHandlerContext ctx,
+      VeniceChunkedWriteHandler chunkedWriteHandler,
       RouterStats<AggRouterHttpRequestStats> routerStats) {
     if (chunkedResponse.isPresent()) {
       // Defensive code
@@ -291,7 +298,8 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
     if (!responseDecompressor.isPresent()) {
       // Defensive code
       throw new IllegalStateException(
-          "VeniceResponseDecompressor is not available for current request, and there must be a bug" + " when this exception happens.");
+          "VeniceResponseDecompressor is not available for current request, and there must be a bug"
+              + " when this exception happens.");
     }
     return responseDecompressor.get();
   }

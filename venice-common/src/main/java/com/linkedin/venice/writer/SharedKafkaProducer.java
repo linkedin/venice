@@ -26,7 +26,7 @@ import org.apache.logging.log4j.Logger;
 /**
  * Implementation of the shared Kafka Producer for sending messages to Kafka.
  */
-public class SharedKafkaProducer implements KafkaProducerWrapper  {
+public class SharedKafkaProducer implements KafkaProducerWrapper {
   private static final Logger LOGGER = LogManager.getLogger(SharedKafkaProducer.class);
 
   private final SharedKafkaProducerService sharedKafkaProducerService;
@@ -38,15 +38,19 @@ public class SharedKafkaProducer implements KafkaProducerWrapper  {
   private final Map<String, Double> kafkaProducerMetrics;
   private SharedKafkaProducerStats sharedKafkaProducerStats;
 
-  public SharedKafkaProducer(SharedKafkaProducerService sharedKafkaProducerService, int id,
-      KafkaProducerWrapper kafkaProducerWrapper, MetricsRepository metricsRepository,
+  public SharedKafkaProducer(
+      SharedKafkaProducerService sharedKafkaProducerService,
+      int id,
+      KafkaProducerWrapper kafkaProducerWrapper,
+      MetricsRepository metricsRepository,
       Set<String> metricsToBeReported) {
     this.sharedKafkaProducerService = sharedKafkaProducerService;
     this.id = id;
     producerTasks = new HashSet<>();
     this.kafkaProducerWrapper = kafkaProducerWrapper;
     kafkaProducerMetrics = new HashMap<>();
-    metricsToBeReported.forEach(metric -> kafkaProducerMetrics.put(metric, (double)StatsErrorCode.KAFKA_CLIENT_METRICS_DEFAULT.code));
+    metricsToBeReported
+        .forEach(metric -> kafkaProducerMetrics.put(metric, (double) StatsErrorCode.KAFKA_CLIENT_METRICS_DEFAULT.code));
     if (kafkaProducerMetrics.size() > 0) {
       sharedKafkaProducerStats = new SharedKafkaProducerStats(metricsRepository);
     }
@@ -65,7 +69,11 @@ public class SharedKafkaProducer implements KafkaProducerWrapper  {
    * @param callback - The callback function, which will be triggered when Kafka client sends out the message.
    * */
   @Override
-  public Future<RecordMetadata> sendMessage(String topic, KafkaKey key, KafkaMessageEnvelope value, int partition,
+  public Future<RecordMetadata> sendMessage(
+      String topic,
+      KafkaKey key,
+      KafkaMessageEnvelope value,
+      int partition,
       Callback callback) {
     long startNs = System.nanoTime();
     Future<RecordMetadata> result = kafkaProducerWrapper.sendMessage(topic, key, value, partition, callback);
@@ -137,7 +145,6 @@ public class SharedKafkaProducer implements KafkaProducerWrapper  {
   public String toString() {
     return "{Id: " + id + ", Task Count: " + getProducerTaskCount() + "}";
   }
-
 
   /**
    * Stats related api's.
@@ -229,10 +236,11 @@ public class SharedKafkaProducer implements KafkaProducerWrapper  {
       return;
     }
 
-    //measure
+    // measure
     Map<String, Double> metrics = kafkaProducerWrapper.getMeasurableProducerMetrics();
-    for (String metricName : kafkaProducerMetrics.keySet()) {
-      kafkaProducerMetrics.put(metricName, metrics.getOrDefault(metricName, (double)StatsErrorCode.KAFKA_CLIENT_METRICS_DEFAULT.code));
+    for (String metricName: kafkaProducerMetrics.keySet()) {
+      kafkaProducerMetrics
+          .put(metricName, metrics.getOrDefault(metricName, (double) StatsErrorCode.KAFKA_CLIENT_METRICS_DEFAULT.code));
     }
 
     lastStatUpdateTsMs = System.currentTimeMillis();
@@ -240,6 +248,7 @@ public class SharedKafkaProducer implements KafkaProducerWrapper  {
 
   private class SharedKafkaProducerStats extends AbstractVeniceStats {
     private final Sensor producerSendLatencySensor;
+
     public SharedKafkaProducerStats(MetricsRepository metricsRepository) {
       super(metricsRepository, "SharedKafkaProducer");
       kafkaProducerMetrics.keySet().forEach(metric -> {

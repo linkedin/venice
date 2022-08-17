@@ -1,5 +1,8 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -22,9 +25,6 @@ import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.testng.annotations.Test;
 
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
-
 
 public class PartitionWiseSharedKafkaConsumerTest
     extends AbstractSharedKafkaConsumerTest<PartitionWiseSharedKafkaConsumer, TopicPartition> {
@@ -44,7 +44,8 @@ public class PartitionWiseSharedKafkaConsumerTest
 
     Set<TopicPartition> assignmentReturnedConsumer = new HashSet<>();
     TopicPartition existingTopicPartition1 = new TopicPartition(existingTopic1, 1);
-    TopicPartition existingTopicPartitionWithoutIngestionTask1 = new TopicPartition(existingTopicWithoutIngestionTask1, 1);
+    TopicPartition existingTopicPartitionWithoutIngestionTask1 =
+        new TopicPartition(existingTopicWithoutIngestionTask1, 1);
     TopicPartition nonExistingTopicPartition1 = new TopicPartition(nonExistingTopic1, 1);
     TopicPartition nonExistingTopicPartition0 = new TopicPartition(nonExistingTopic1, 0);
     assignmentReturnedConsumer.add(existingTopicPartition1);
@@ -52,14 +53,17 @@ public class PartitionWiseSharedKafkaConsumerTest
     assignmentReturnedConsumer.add(nonExistingTopicPartition1);
     assignmentReturnedConsumer.add(nonExistingTopicPartition0);
     doReturn(assignmentReturnedConsumer).when(consumer).getAssignment();
-    Set<TopicPartition> assignmentReturnedConsumerWithoutExistingTopicWithoutIngestionTask = new HashSet<>(assignmentReturnedConsumer);
-    assignmentReturnedConsumerWithoutExistingTopicWithoutIngestionTask.remove(new TopicPartition(existingTopicWithoutIngestionTask1, 1));
+    Set<TopicPartition> assignmentReturnedConsumerWithoutExistingTopicWithoutIngestionTask =
+        new HashSet<>(assignmentReturnedConsumer);
+    assignmentReturnedConsumerWithoutExistingTopicWithoutIngestionTask
+        .remove(new TopicPartition(existingTopicWithoutIngestionTask1, 1));
     when(consumer.getAssignment()).thenReturn(
         assignmentReturnedConsumer, // after subscribing existingTopicPartition1
         assignmentReturnedConsumer, // after subscribing existingTopicPartitionWithoutIngestionTask1
         assignmentReturnedConsumer, // after subscribing nonExistingTopicPartition0
         assignmentReturnedConsumer, // after subscribing nonExistingTopicPartition1
-        assignmentReturnedConsumerWithoutExistingTopicWithoutIngestionTask); // after unsubscription to existingTopicWithoutIngestionTask1
+        assignmentReturnedConsumerWithoutExistingTopicWithoutIngestionTask); // after unsubscription to
+                                                                             // existingTopicWithoutIngestionTask1
     sharedConsumer.subscribe(existingTopic1, 1, -1);
     sharedConsumer.subscribe(existingTopicWithoutIngestionTask1, 1, -1);
     sharedConsumer.subscribe(nonExistingTopic1, 0, -1);
@@ -68,13 +72,17 @@ public class PartitionWiseSharedKafkaConsumerTest
     StoreIngestionTask ingestionTaskForNonExistingTopicPartition0 = mock(StoreIngestionTask.class);
     // Build the mapping from topic partition to ingestion task.
     sharedConsumer.addIngestionTaskForTopicPartition(existingTopicPartition1, mock(StoreIngestionTask.class));
-    sharedConsumer.addIngestionTaskForTopicPartition(nonExistingTopicPartition1, ingestionTaskForNonExistingTopicPartition1);
-    sharedConsumer.addIngestionTaskForTopicPartition(nonExistingTopicPartition0, ingestionTaskForNonExistingTopicPartition0);
-    Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>>
-        consumerRecordsReturnedByConsumer = new HashMap<>();
-    consumerRecordsReturnedByConsumer.put(new TopicPartition(existingTopic1, 1),
+    sharedConsumer
+        .addIngestionTaskForTopicPartition(nonExistingTopicPartition1, ingestionTaskForNonExistingTopicPartition1);
+    sharedConsumer
+        .addIngestionTaskForTopicPartition(nonExistingTopicPartition0, ingestionTaskForNonExistingTopicPartition0);
+    Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> consumerRecordsReturnedByConsumer =
+        new HashMap<>();
+    consumerRecordsReturnedByConsumer.put(
+        new TopicPartition(existingTopic1, 1),
         Collections.singletonList(new ConsumerRecord<>(existingTopic1, 1, 0, null, null)));
-    consumerRecordsReturnedByConsumer.put(new TopicPartition(existingTopicWithoutIngestionTask1, 1),
+    consumerRecordsReturnedByConsumer.put(
+        new TopicPartition(existingTopicWithoutIngestionTask1, 1),
         Collections.singletonList(new ConsumerRecord<>(existingTopicWithoutIngestionTask1, 1, 0, null, null)));
 
     doReturn(new ConsumerRecords(consumerRecordsReturnedByConsumer)).when(consumer).poll(anyLong());
@@ -82,7 +90,8 @@ public class PartitionWiseSharedKafkaConsumerTest
     sharedConsumer.poll(1000);
     Set<TopicPartition> newAssignment = new HashSet<>(assignmentReturnedConsumer);
     newAssignment.remove(new TopicPartition(nonExistingTopic1, 1));
-    // Shared Consumer should NOT cleanup the subscriptions to the non-existing topics since the delay hasn't exhausted yet
+    // Shared Consumer should NOT cleanup the subscriptions to the non-existing topics since the delay hasn't exhausted
+    // yet
     verify(consumer, never()).assign(new ArrayList<>(newAssignment));
     verify(consumerServiceStats).recordDetectedDeletedTopicNum(1);
     verify(ingestionTaskForNonExistingTopicPartition1, never()).setLastConsumerException(any());
@@ -115,12 +124,15 @@ public class PartitionWiseSharedKafkaConsumerTest
     Set<TopicPartition> assignmentReturnedConsumer = new HashSet<>();
     assignmentReturnedConsumer.add(new TopicPartition(nonExistingTopic1, 1));
     doReturn(assignmentReturnedConsumer).when(consumer).getAssignment();
-    when(consumer.getAssignment()).thenReturn(assignmentReturnedConsumer); // after unsubscription to existingTopicWithoutIngestionTask1
+    when(consumer.getAssignment()).thenReturn(assignmentReturnedConsumer); // after unsubscription to
+                                                                           // existingTopicWithoutIngestionTask1
     sharedConsumer.subscribe(nonExistingTopic1, 1, -1);
     StoreIngestionTask ingestionTaskForNonExistingTopic1 = mock(StoreIngestionTask.class);
-    sharedConsumer.addIngestionTaskForTopicPartition(new TopicPartition(nonExistingTopic1, 1), ingestionTaskForNonExistingTopic1);
+    sharedConsumer
+        .addIngestionTaskForTopicPartition(new TopicPartition(nonExistingTopic1, 1), ingestionTaskForNonExistingTopic1);
 
-    Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> consumerRecordsReturnedByConsumer = new HashMap<>();
+    Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> consumerRecordsReturnedByConsumer =
+        new HashMap<>();
     doReturn(new ConsumerRecords(consumerRecordsReturnedByConsumer)).when(consumer).poll(anyLong());
 
     sharedConsumer.poll(1000);
@@ -157,12 +169,17 @@ public class PartitionWiseSharedKafkaConsumerTest
     when(consumer.getAssignment()).thenReturn(assignmentReturnedConsumer);
     sharedConsumer.subscribe(nonExistingTopic1, 1, -1);
     StoreIngestionTask ingestionTaskForNonExistingTopic1 = mock(StoreIngestionTask.class);
-    sharedConsumer.addIngestionTaskForTopicPartition(new TopicPartition(existingTopic1, 1), mock(StoreIngestionTask.class));
+    sharedConsumer
+        .addIngestionTaskForTopicPartition(new TopicPartition(existingTopic1, 1), mock(StoreIngestionTask.class));
     // Build the mapping from topic partition to ingestion task.
-    sharedConsumer.addIngestionTaskForTopicPartition(new TopicPartition(nonExistingTopic1, 1), ingestionTaskForNonExistingTopic1);
+    sharedConsumer
+        .addIngestionTaskForTopicPartition(new TopicPartition(nonExistingTopic1, 1), ingestionTaskForNonExistingTopic1);
 
-    Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> consumerRecordsReturnedByConsumer = new HashMap<>();
-    consumerRecordsReturnedByConsumer.put(new TopicPartition(existingTopic1, 1), Arrays.asList(new ConsumerRecord<>(existingTopic1, 1, 0, null, null)));
+    Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> consumerRecordsReturnedByConsumer =
+        new HashMap<>();
+    consumerRecordsReturnedByConsumer.put(
+        new TopicPartition(existingTopic1, 1),
+        Arrays.asList(new ConsumerRecord<>(existingTopic1, 1, 0, null, null)));
     doReturn(new ConsumerRecords(consumerRecordsReturnedByConsumer)).when(consumer).poll(anyLong());
 
     sharedConsumer.poll(1000);
@@ -195,7 +212,13 @@ public class PartitionWiseSharedKafkaConsumerTest
       long cleanupDelayMS,
       Time time,
       TopicExistenceChecker topicChecker) {
-    return new PartitionWiseSharedKafkaConsumer(delegate, service, sanitizeInterval, cleanupDelayMS, time, topicChecker);
+    return new PartitionWiseSharedKafkaConsumer(
+        delegate,
+        service,
+        sanitizeInterval,
+        cleanupDelayMS,
+        time,
+        topicChecker);
   }
 
   @Override
@@ -209,7 +232,9 @@ public class PartitionWiseSharedKafkaConsumerTest
   }
 
   @Override
-  protected void subscribe(PartitionWiseSharedKafkaConsumer consumer, TopicPartition topicPartition,
+  protected void subscribe(
+      PartitionWiseSharedKafkaConsumer consumer,
+      TopicPartition topicPartition,
       StoreIngestionTask storeIngestionTask) {
     /** This is called by {@link PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer#subscribe(String, int, long)} */
     consumer.addIngestionTaskForTopicPartition(topicPartition, storeIngestionTask);

@@ -2,9 +2,9 @@ package com.linkedin.venice.hadoop.utils;
 
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
+import java.util.Properties;
 import org.apache.hadoop.mapred.JobConf;
 
-import java.util.Properties;
 
 /**
  * Hadoop-specific utils.
@@ -20,13 +20,14 @@ public class HadoopUtils {
     return props;
   }
 
-/**
- * Check if the path should be ignored. Currently only paths with "_log" are
- * ignored.
- */
- public static boolean shouldPathBeIgnored(org.apache.hadoop.fs.Path path) throws IOException {
+  /**
+   * Check if the path should be ignored. Currently only paths with "_log" are
+   * ignored.
+   */
+  public static boolean shouldPathBeIgnored(org.apache.hadoop.fs.Path path) throws IOException {
     return path.getName().startsWith("_");
   }
 
-  private HadoopUtils() {}
+  private HadoopUtils() {
+  }
 }

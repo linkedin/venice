@@ -51,7 +51,12 @@ public class VeniceMetadataRepositoryBuilder {
   private ZkClient zkClient;
   private ClusterInfoProvider clusterInfoProvider;
 
-  public VeniceMetadataRepositoryBuilder(VeniceConfigLoader configLoader, ClientConfig clientConfig, MetricsRepository metricsRepository, ICProvider icProvider, boolean isIngestionIsolation) {
+  public VeniceMetadataRepositoryBuilder(
+      VeniceConfigLoader configLoader,
+      ClientConfig clientConfig,
+      MetricsRepository metricsRepository,
+      ICProvider icProvider,
+      boolean isIngestionIsolation) {
     this.configLoader = configLoader;
     this.clientConfig = clientConfig;
     this.metricsRepository = metricsRepository;
@@ -96,7 +101,9 @@ public class VeniceMetadataRepositoryBuilder {
     VeniceProperties veniceProperties = configLoader.getCombinedProperties();
     boolean useSystemStore = veniceProperties.getBoolean(ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY, false);
     if (useSystemStore) {
-      logger.info("Initializing meta system store based store repository with " + NativeMetadataRepository.class.getSimpleName());
+      logger.info(
+          "Initializing meta system store based store repository with "
+              + NativeMetadataRepository.class.getSimpleName());
       NativeMetadataRepository systemStoreBasedRepository =
           NativeMetadataRepository.getInstance(clientConfig, veniceProperties, icProvider);
       systemStoreBasedRepository.refresh();
@@ -105,13 +112,15 @@ public class VeniceMetadataRepositoryBuilder {
       schemaRepo = systemStoreBasedRepository;
       liveClusterConfigRepo = null;
     } else {
-      logger.info("Initializing ZK based store repository with " + SubscriptionBasedStoreRepository.class.getSimpleName());
+      logger.info(
+          "Initializing ZK based store repository with " + SubscriptionBasedStoreRepository.class.getSimpleName());
 
       // Create ZkClient
       HelixAdapterSerializer adapter = new HelixAdapterSerializer();
       zkClient = ZkClientFactory.newZkClient(configLoader.getVeniceClusterConfig().getZookeeperAddress());
       String zkClientNamePrefix = isIngestionIsolation ? "ingestion-isolation-" : "";
-      zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, zkClientNamePrefix + "da-vinci-zk-client"));
+      zkClient
+          .subscribeStateChanges(new ZkClientStatusStats(metricsRepository, zkClientNamePrefix + "da-vinci-zk-client"));
 
       String clusterName = configLoader.getVeniceClusterConfig().getClusterName();
       clusterInfoProvider = new StaticClusterInfoProvider(Collections.singleton(clusterName));
@@ -136,25 +145,36 @@ public class VeniceMetadataRepositoryBuilder {
     HelixReadOnlyZKSharedSystemStoreRepository readOnlyZKSharedSystemStoreRepository =
         new HelixReadOnlyZKSharedSystemStoreRepository(zkClient, adapter, systemSchemaClusterName);
 
-    HelixReadOnlyStoreRepository
-        readOnlyStoreRepository = new HelixReadOnlyStoreRepository(zkClient, adapter, clusterName,
-        clusterConfig.getRefreshAttemptsForZkReconnect(), clusterConfig.getRefreshIntervalForZkReconnectInMs());
+    HelixReadOnlyStoreRepository readOnlyStoreRepository = new HelixReadOnlyStoreRepository(
+        zkClient,
+        adapter,
+        clusterName,
+        clusterConfig.getRefreshAttemptsForZkReconnect(),
+        clusterConfig.getRefreshIntervalForZkReconnectInMs());
 
     storeRepo = new HelixReadOnlyStoreRepositoryAdapter(
         readOnlyZKSharedSystemStoreRepository,
         readOnlyStoreRepository,
-        clusterName
-    );
+        clusterName);
     // Load existing store config and setup watches
     storeRepo.refresh();
 
-    readOnlyZKSharedSchemaRepository = new HelixReadOnlyZKSharedSchemaRepository(readOnlyZKSharedSystemStoreRepository, zkClient, adapter, systemSchemaClusterName,
-        clusterConfig.getRefreshAttemptsForZkReconnect(), clusterConfig.getRefreshIntervalForZkReconnectInMs());
+    readOnlyZKSharedSchemaRepository = new HelixReadOnlyZKSharedSchemaRepository(
+        readOnlyZKSharedSystemStoreRepository,
+        zkClient,
+        adapter,
+        systemSchemaClusterName,
+        clusterConfig.getRefreshAttemptsForZkReconnect(),
+        clusterConfig.getRefreshIntervalForZkReconnectInMs());
     schemaRepo = new HelixReadOnlySchemaRepositoryAdapter(
         readOnlyZKSharedSchemaRepository,
-        new HelixReadOnlySchemaRepository(readOnlyStoreRepository, zkClient, adapter, clusterName,
-            clusterConfig.getRefreshAttemptsForZkReconnect(), clusterConfig.getRefreshIntervalForZkReconnectInMs())
-    );
+        new HelixReadOnlySchemaRepository(
+            readOnlyStoreRepository,
+            zkClient,
+            adapter,
+            clusterName,
+            clusterConfig.getRefreshAttemptsForZkReconnect(),
+            clusterConfig.getRefreshIntervalForZkReconnectInMs()));
     schemaRepo.refresh();
 
     liveClusterConfigRepo = new HelixReadOnlyLiveClusterConfigRepository(zkClient, adapter, clusterName);

@@ -1,9 +1,8 @@
 package com.linkedin.venice.utils;
 
-import com.linkedin.venice.utils.PathResourceRegistry;
-import com.linkedin.venice.utils.TrieBasedPathResourceRegistry;
 import org.testng.Assert;
 import org.testng.annotations.Test;
+
 
 public class TestTrieBasedPathResourceRegistry {
   @Test

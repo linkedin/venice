@@ -14,13 +14,7 @@ import com.fasterxml.jackson.annotation.JsonEnumDefaultValue;
  */
 @Deprecated
 public enum ExceptionType {
-    INCORRECT_CONTROLLER,
-    INVALID_SCHEMA,
-    INVALID_CONFIG,
-    STORE_NOT_FOUND,
-    SCHEMA_NOT_FOUND,
-    CONNECTION_ERROR,
-    @JsonEnumDefaultValue
-    GENERAL_ERROR,
-    BAD_REQUEST
+  INCORRECT_CONTROLLER, INVALID_SCHEMA, INVALID_CONFIG, STORE_NOT_FOUND, SCHEMA_NOT_FOUND, CONNECTION_ERROR,
+  @JsonEnumDefaultValue
+  GENERAL_ERROR, BAD_REQUEST
 }

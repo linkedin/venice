@@ -1,5 +1,7 @@
 package com.linkedin.venice.router.api;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
@@ -28,7 +30,6 @@ import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
 import com.linkedin.venice.router.stats.StaleVersionStats;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 import java.nio.ByteBuffer;
@@ -41,8 +42,6 @@ import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-
-import static org.mockito.Mockito.*;
 
 
 public class TestVeniceVersionFinder {
@@ -60,18 +59,24 @@ public class TestVeniceVersionFinder {
   }
 
   @Test
-  public void throws404onMissingStore(){
+  public void throws404onMissingStore() {
     ReadOnlyStoreRepository mockRepo = Mockito.mock(ReadOnlyStoreRepository.class);
     doReturn(null).when(mockRepo).getStore(anyString());
     StaleVersionStats stats = mock(StaleVersionStats.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
-    VeniceVersionFinder versionFinder = new VeniceVersionFinder(mockRepo, getDefaultInstanceFinder(),
-        stats, storeConfigRepo, clusterToD2Map, CLUSTER, compressorFactory);
-    try{
+    VeniceVersionFinder versionFinder = new VeniceVersionFinder(
+        mockRepo,
+        getDefaultInstanceFinder(),
+        stats,
+        storeConfigRepo,
+        clusterToD2Map,
+        CLUSTER,
+        compressorFactory);
+    try {
       versionFinder.getVersion("", request);
-      Assert.fail("versionFinder.getVersion() on previous line should throw a "
-          + VeniceNoStoreException.class.getSimpleName());
+      Assert.fail(
+          "versionFinder.getVersion() on previous line should throw a " + VeniceNoStoreException.class.getSimpleName());
     } catch (VeniceNoStoreException e) {
       // Expected
     }
@@ -80,8 +85,14 @@ public class TestVeniceVersionFinder {
   @Test
   public void throws301onMigratedStore() {
     ReadOnlyStoreRepository mockRepo = Mockito.mock(ReadOnlyStoreRepository.class);
-    Store store = new ZKStore("store", "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY,
-        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+    Store store = new ZKStore(
+        "store",
+        "owner",
+        System.currentTimeMillis(),
+        PersistenceType.IN_MEMORY,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
         1);
     store.setMigrating(true);
     int currentVersion = 10;
@@ -93,14 +104,20 @@ public class TestVeniceVersionFinder {
     storeConfig.setCluster(DEST_CLUSTER);
     doReturn(Optional.of(storeConfig)).when(storeConfigRepo).getStoreConfig("store");
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
-    VeniceVersionFinder versionFinder =
-        new VeniceVersionFinder(mockRepo, getDefaultInstanceFinder(), stats, storeConfigRepo, clusterToD2Map, CLUSTER,
-            compressorFactory);
+    VeniceVersionFinder versionFinder = new VeniceVersionFinder(
+        mockRepo,
+        getDefaultInstanceFinder(),
+        stats,
+        storeConfigRepo,
+        clusterToD2Map,
+        CLUSTER,
+        compressorFactory);
     try {
       request.headers().add(HttpConstants.VENICE_ALLOW_REDIRECT, "1");
       versionFinder.getVersion("store", request);
-      Assert.fail("versionFinder.getVersion() on previous line should throw a " + VeniceStoreIsMigratedException.class
-          .getSimpleName());
+      Assert.fail(
+          "versionFinder.getVersion() on previous line should throw a "
+              + VeniceStoreIsMigratedException.class.getSimpleName());
     } catch (VeniceStoreIsMigratedException e) {
       Assert.assertEquals(e.getMessage(), "Store: store is migrated to cluster destCluster, d2Service d2Service");
     }
@@ -109,8 +126,7 @@ public class TestVeniceVersionFinder {
   }
 
   @Test
-  public void returnNonExistingVersionOnceStoreIsDisabled()
-      throws RouterException {
+  public void returnNonExistingVersionOnceStoreIsDisabled() throws RouterException {
     ReadOnlyStoreRepository mockRepo = Mockito.mock(ReadOnlyStoreRepository.class);
     String storeName = "TestVeniceVersionFinder";
     int currentVersion = 10;
@@ -122,8 +138,14 @@ public class TestVeniceVersionFinder {
     StaleVersionStats stats = mock(StaleVersionStats.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
-    VeniceVersionFinder versionFinder = new VeniceVersionFinder(mockRepo, getDefaultInstanceFinder(),
-        stats, storeConfigRepo, clusterToD2Map, CLUSTER, compressorFactory);
+    VeniceVersionFinder versionFinder = new VeniceVersionFinder(
+        mockRepo,
+        getDefaultInstanceFinder(),
+        stats,
+        storeConfigRepo,
+        clusterToD2Map,
+        CLUSTER,
+        compressorFactory);
     try {
       versionFinder.getVersion(storeName, request);
       Assert.fail("Store should be disabled and forbidden to read.");
@@ -159,7 +181,8 @@ public class TestVeniceVersionFinder {
     doReturn(instances).when(routingData).getReadyToServeInstances(anyString(), anyInt());
     doReturn(3).when(routingData).getNumberOfPartitions(anyString());
 
-    PartitionStatusOnlineInstanceFinder partitionStatusOnlineInstanceFinder = mock(PartitionStatusOnlineInstanceFinder.class);
+    PartitionStatusOnlineInstanceFinder partitionStatusOnlineInstanceFinder =
+        mock(PartitionStatusOnlineInstanceFinder.class);
     doReturn(instances).when(partitionStatusOnlineInstanceFinder).getReadyToServeInstances(anyString(), anyInt());
     doReturn(3).when(partitionStatusOnlineInstanceFinder).getNumberOfPartitions(anyString());
 
@@ -168,10 +191,15 @@ public class TestVeniceVersionFinder {
 
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
 
-    //Object under test
-    VeniceVersionFinder versionFinder = new VeniceVersionFinder(storeRepository,
+    // Object under test
+    VeniceVersionFinder versionFinder = new VeniceVersionFinder(
+        storeRepository,
         new OnlineInstanceFinderDelegator(storeRepository, routingData, partitionStatusOnlineInstanceFinder),
-        stats, storeConfigRepo, clusterToD2Map, CLUSTER, compressorFactory);
+        stats,
+        storeConfigRepo,
+        clusterToD2Map,
+        CLUSTER,
+        compressorFactory);
 
     // for a new store, the versionFinder returns the current version, no matter the online replicas
     Assert.assertEquals(versionFinder.getVersion(storeName, request), firstVersion);
@@ -233,10 +261,19 @@ public class TestVeniceVersionFinder {
     doReturn(instances).when(onlineInstanceFinder).getReadyToServeInstances(anyString(), anyInt());
 
     try (CompressorFactory compressorFactory = new CompressorFactory()) {
-      compressorFactory.createVersionSpecificCompressorIfNotExist(CompressionStrategy.ZSTD_WITH_DICT, Version.composeKafkaTopic(storeName, firstVersion), firstVersionDictionary.array());
-      //Object under test
-      VeniceVersionFinder versionFinder =
-          new VeniceVersionFinder(storeRepository, onlineInstanceFinder, stats, storeConfigRepo, clusterToD2Map, CLUSTER, compressorFactory);
+      compressorFactory.createVersionSpecificCompressorIfNotExist(
+          CompressionStrategy.ZSTD_WITH_DICT,
+          Version.composeKafkaTopic(storeName, firstVersion),
+          firstVersionDictionary.array());
+      // Object under test
+      VeniceVersionFinder versionFinder = new VeniceVersionFinder(
+          storeRepository,
+          onlineInstanceFinder,
+          stats,
+          storeConfigRepo,
+          clusterToD2Map,
+          CLUSTER,
+          compressorFactory);
 
       String firstVersionKafkaTopic = Version.composeKafkaTopic(storeName, firstVersion);
 
@@ -247,7 +284,8 @@ public class TestVeniceVersionFinder {
 
   @Test
   public void returnsCurrentVersionWhenItIsTheOnlyOption() {
-    // When the router doesn't know of any other versions, it will return that version even if dictionary is not downloaded.
+    // When the router doesn't know of any other versions, it will return that version even if dictionary is not
+    // downloaded.
     // If the dictionary is not downloaded by the time the records needs to be decompressed, then the router will return
     // an error response.
     ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
@@ -275,9 +313,15 @@ public class TestVeniceVersionFinder {
 
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
 
-    //Object under test
-    VeniceVersionFinder versionFinder = new VeniceVersionFinder(storeRepository,
-        onlineInstanceFinder, stats, storeConfigRepo, clusterToD2Map, CLUSTER, compressorFactory);
+    // Object under test
+    VeniceVersionFinder versionFinder = new VeniceVersionFinder(
+        storeRepository,
+        onlineInstanceFinder,
+        stats,
+        storeConfigRepo,
+        clusterToD2Map,
+        CLUSTER,
+        compressorFactory);
 
     String firstVersionKafkaTopic = Version.composeKafkaTopic(storeName, firstVersion);
 
@@ -312,9 +356,15 @@ public class TestVeniceVersionFinder {
 
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
 
-    //Object under test
-    VeniceVersionFinder versionFinder = new VeniceVersionFinder(storeRepository,
-        onlineInstanceFinder, stats, storeConfigRepo, clusterToD2Map, CLUSTER, compressorFactory);
+    // Object under test
+    VeniceVersionFinder versionFinder = new VeniceVersionFinder(
+        storeRepository,
+        onlineInstanceFinder,
+        stats,
+        storeConfigRepo,
+        clusterToD2Map,
+        CLUSTER,
+        compressorFactory);
 
     String firstVersionKafkaTopic = Version.composeKafkaTopic(storeName, firstVersion);
     String secondVersionKafkaTopic = Version.composeKafkaTopic(storeName, secondVersion);
@@ -360,9 +410,15 @@ public class TestVeniceVersionFinder {
     doReturn(instances).when(onlineInstanceFinder).getReadyToServeInstances(anyString(), anyInt());
 
     try (CompressorFactory compressorFactory = new CompressorFactory()) {
-      //Object under test
-      VeniceVersionFinder versionFinder =
-          new VeniceVersionFinder(storeRepository, onlineInstanceFinder, stats, storeConfigRepo, clusterToD2Map, CLUSTER, compressorFactory);
+      // Object under test
+      VeniceVersionFinder versionFinder = new VeniceVersionFinder(
+          storeRepository,
+          onlineInstanceFinder,
+          stats,
+          storeConfigRepo,
+          clusterToD2Map,
+          CLUSTER,
+          compressorFactory);
 
       String firstVersionKafkaTopic = Version.composeKafkaTopic(storeName, firstVersion);
       String secondVersionKafkaTopic = Version.composeKafkaTopic(storeName, secondVersion);
@@ -374,8 +430,10 @@ public class TestVeniceVersionFinder {
       store.setCurrentVersion(secondVersion);
       store.updateVersionStatus(secondVersion, VersionStatus.ONLINE);
 
-      compressorFactory.createVersionSpecificCompressorIfNotExist(CompressionStrategy.ZSTD_WITH_DICT,
-          secondVersionKafkaTopic, secondVersionDictionary.array());
+      compressorFactory.createVersionSpecificCompressorIfNotExist(
+          CompressionStrategy.ZSTD_WITH_DICT,
+          secondVersionKafkaTopic,
+          secondVersionDictionary.array());
 
       Assert.assertEquals(versionFinder.getVersion(storeName, request), secondVersion);
 

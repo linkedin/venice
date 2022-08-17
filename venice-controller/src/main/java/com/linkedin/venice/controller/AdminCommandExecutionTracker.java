@@ -31,8 +31,11 @@ public class AdminCommandExecutionTracker {
   private final Map<String, ControllerClient> fabricToControllerClientsMap;
   private final ExecutionIdAccessor executionIdAccessor;
 
-  public AdminCommandExecutionTracker(String cluster, ExecutionIdAccessor executionIdAccessor,
-      Map<String, ControllerClient> fabricToControllerClientsMap, int executionTTLHour) {
+  public AdminCommandExecutionTracker(
+      String cluster,
+      ExecutionIdAccessor executionIdAccessor,
+      Map<String, ControllerClient> fabricToControllerClientsMap,
+      int executionTTLHour) {
     this.executionTTLHour = executionTTLHour;
     this.cluster = cluster;
     this.idToExecutionMap = new LinkedHashMap<>();
@@ -40,7 +43,9 @@ public class AdminCommandExecutionTracker {
     this.executionIdAccessor = executionIdAccessor;
   }
 
-  public AdminCommandExecutionTracker(String cluster, ExecutionIdAccessor executionIdAccessor,
+  public AdminCommandExecutionTracker(
+      String cluster,
+      ExecutionIdAccessor executionIdAccessor,
       Map<String, ControllerClient> fabricToControllerClientsMap) {
     this(cluster, executionIdAccessor, fabricToControllerClientsMap, DEFAULT_TTL_HOUR);
   }
@@ -49,7 +54,11 @@ public class AdminCommandExecutionTracker {
    * Create an execution context of a command.
    */
   public synchronized AdminCommandExecution createExecution(String operation) {
-    return new AdminCommandExecution(getNextAvailableExecutionId(), operation, cluster, fabricToControllerClientsMap.keySet());
+    return new AdminCommandExecution(
+        getNextAvailableExecutionId(),
+        operation,
+        cluster,
+        fabricToControllerClientsMap.keySet());
   }
 
   /**
@@ -57,8 +66,9 @@ public class AdminCommandExecutionTracker {
    */
   public synchronized void startTrackingExecution(AdminCommandExecution execution) {
     idToExecutionMap.put(execution.getExecutionId(), execution);
-    logger.info("Add Execution: " + execution.getExecutionId() + " for operation: " + execution.getOperation()
-        + " into tracker.");
+    logger.info(
+        "Add Execution: " + execution.getExecutionId() + " for operation: " + execution.getOperation()
+            + " into tracker.");
     // Try to Collect executions which live longer than TTL.
     int collectedCount = 0;
     Iterator<AdminCommandExecution> iterator = idToExecutionMap.values().iterator();
@@ -91,7 +101,7 @@ public class AdminCommandExecutionTracker {
       return null;
     }
     logger.info("Sending query to remote fabrics to check status of execution: " + id);
-    for (Map.Entry<String, ControllerClient> entry : fabricToControllerClientsMap.entrySet()) {
+    for (Map.Entry<String, ControllerClient> entry: fabricToControllerClientsMap.entrySet()) {
       execution.checkAndUpdateStatusForRemoteFabric(entry.getKey(), entry.getValue());
     }
     logger.info("Updated statuses in remote fabrics for execution: " + id);
@@ -114,7 +124,7 @@ public class AdminCommandExecutionTracker {
     return fabricToControllerClientsMap;
   }
 
-  public String executionsAsString(){
+  public String executionsAsString() {
     return idToExecutionMap.toString();
   }
 }

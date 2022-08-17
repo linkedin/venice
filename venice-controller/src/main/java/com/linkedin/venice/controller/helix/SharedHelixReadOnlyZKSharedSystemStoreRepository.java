@@ -6,6 +6,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 
+
 /**
  * This class is intended to only be used in Controller, which is sharing one instance across
  * all the clusters.
@@ -13,10 +14,11 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
  * will do nothing in {@link #clear()} since it will be shared across all the clusters, whose leader are
  * in the same Controller node.
  */
-public class SharedHelixReadOnlyZKSharedSystemStoreRepository
-    extends HelixReadOnlyZKSharedSystemStoreRepository
+public class SharedHelixReadOnlyZKSharedSystemStoreRepository extends HelixReadOnlyZKSharedSystemStoreRepository
     implements Closeable {
-  public SharedHelixReadOnlyZKSharedSystemStoreRepository(ZkClient zkClient, HelixAdapterSerializer compositeSerializer,
+  public SharedHelixReadOnlyZKSharedSystemStoreRepository(
+      ZkClient zkClient,
+      HelixAdapterSerializer compositeSerializer,
       String systemStoreClusterName) {
     super(zkClient, compositeSerializer, systemStoreClusterName);
   }

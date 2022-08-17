@@ -1,5 +1,8 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
+import static com.linkedin.venice.ConfigKeys.*;
+
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.davinci.store.StoragePartitionConfig;
@@ -26,9 +29,6 @@ import org.rocksdb.util.BytewiseComparator;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
-import static com.linkedin.venice.ConfigKeys.*;
 
 
 public class RocksDBStoragePartitionTest {
@@ -76,23 +76,26 @@ public class RocksDBStoragePartitionTest {
     }
   }
 
-  @DataProvider (name="testIngestionDataProvider")
+  @DataProvider(name = "testIngestionDataProvider")
   private Object[][] testIngestionDataProvider() {
-    return new Object[][] {
-        {true, false, false, true}, // Sorted input without interruption, with verifyChecksum
-        {true, false, false, false}, // Sorted input without interruption, without verifyChecksum
-        {true, true, true, false},   // Sorted input with interruption, without verifyChecksum
-        {true, true, false, false},  // Sorted input with storage node re-boot, without verifyChecksum
-        {true, true, true, true},   // Sorted input with interruption, with verifyChecksum
-        {true, true, false, true},  // Sorted input with storage node re-boot, with verifyChecksum
-        {false, false, false, false},// Unsorted input without interruption, without verifyChecksum
-        {false, true, false, false}, // Unsorted input with interruption, without verifyChecksum
-        {false, true, true, false}   // Unsorted input with storage node re-boot, without verifyChecksum
+    return new Object[][] { { true, false, false, true }, // Sorted input without interruption, with verifyChecksum
+        { true, false, false, false }, // Sorted input without interruption, without verifyChecksum
+        { true, true, true, false }, // Sorted input with interruption, without verifyChecksum
+        { true, true, false, false }, // Sorted input with storage node re-boot, without verifyChecksum
+        { true, true, true, true }, // Sorted input with interruption, with verifyChecksum
+        { true, true, false, true }, // Sorted input with storage node re-boot, with verifyChecksum
+        { false, false, false, false }, // Unsorted input without interruption, without verifyChecksum
+        { false, true, false, false }, // Unsorted input with interruption, without verifyChecksum
+        { false, true, true, false } // Unsorted input with storage node re-boot, without verifyChecksum
     };
   }
 
-  @Test (dataProvider = "testIngestionDataProvider")
-  public void testIngestion(boolean sorted, boolean interrupted, boolean reopenDatabaseDuringInterruption, boolean verifyChecksum) {
+  @Test(dataProvider = "testIngestionDataProvider")
+  public void testIngestion(
+      boolean sorted,
+      boolean interrupted,
+      boolean reopenDatabaseDuringInterruption,
+      boolean verifyChecksum) {
     Optional<CheckSum> runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
     String storeName = Utils.getUniqueString("test_store");
     String storeDir = getTempDatabaseDir(storeName);
@@ -103,12 +106,17 @@ public class RocksDBStoragePartitionTest {
     options.setCreateIfMissing(true);
     Map<String, String> inputRecords = generateInput(1010, sorted, 0);
     VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
-    RocksDBServerConfig rocksDBServerConfig  = new RocksDBServerConfig(veniceServerProperties);
+    RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
-    RocksDBStoragePartition
-        storagePartition = new RocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+    RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        rocksDbThrottler,
+        rocksDBServerConfig);
     final int syncPerRecords = 100;
     final int interruptedRecord = 345;
 
@@ -127,7 +135,7 @@ public class RocksDBStoragePartitionTest {
     int currentFileNo = 0;
     Map<String, String> checkpointingInfo = new HashMap<>();
 
-    for (Map.Entry<String, String> entry : inputRecords.entrySet()) {
+    for (Map.Entry<String, String> entry: inputRecords.entrySet()) {
       storagePartition.put(entry.getKey().getBytes(), entry.getValue().getBytes());
       if (verifyChecksum) {
         runningChecksum.get().update(entry.getKey().getBytes());
@@ -136,17 +144,26 @@ public class RocksDBStoragePartitionTest {
       if (++currentRecordNum % syncPerRecords == 0) {
         checkpointingInfo = storagePartition.sync();
         if (sorted) {
-          Assert.assertEquals(checkpointingInfo.get(RocksDBSstFileWriter.ROCKSDB_LAST_FINISHED_SST_FILE_NO),
+          Assert.assertEquals(
+              checkpointingInfo.get(RocksDBSstFileWriter.ROCKSDB_LAST_FINISHED_SST_FILE_NO),
               String.valueOf(currentFileNo++));
         } else {
-          Assert.assertTrue(checkpointingInfo.isEmpty(), "For non-deferred-write database, sync() should return empty map");
+          Assert.assertTrue(
+              checkpointingInfo.isEmpty(),
+              "For non-deferred-write database, sync() should return empty map");
         }
       }
       if (interrupted) {
         if (currentRecordNum == interruptedRecord) {
           if (reopenDatabaseDuringInterruption) {
             storagePartition.close();
-            storagePartition = new RocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+            storagePartition = new RocksDBStoragePartition(
+                partitionConfig,
+                factory,
+                DATA_BASE_DIR,
+                null,
+                rocksDbThrottler,
+                rocksDBServerConfig);
             Options storeOptions = storagePartition.getOptions();
             Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
           }
@@ -161,7 +178,7 @@ public class RocksDBStoragePartitionTest {
           int replayEnd = interruptedRecord;
           int replayCnt = 0;
           runningChecksum.get().reset();
-          for (Map.Entry<String, String> innerEntry : inputRecords.entrySet()) {
+          for (Map.Entry<String, String> innerEntry: inputRecords.entrySet()) {
             ++replayCnt;
             if (replayCnt >= replayStart && replayCnt <= replayEnd) {
               storagePartition.put(innerEntry.getKey().getBytes(), innerEntry.getValue().getBytes());
@@ -185,7 +202,7 @@ public class RocksDBStoragePartitionTest {
     }
 
     // Verify all the key/value pairs
-    for (Map.Entry<String, String> entry : inputRecords.entrySet()) {
+    for (Map.Entry<String, String> entry: inputRecords.entrySet()) {
       Assert.assertEquals(storagePartition.get(entry.getKey().getBytes(), false), entry.getValue().getBytes());
     }
 
@@ -196,7 +213,13 @@ public class RocksDBStoragePartitionTest {
     storagePartition.close();
     partitionConfig.setDeferredWrite(false);
     partitionConfig.setWriteOnlyConfig(false);
-    storagePartition = new RocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+    storagePartition = new RocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        rocksDbThrottler,
+        rocksDBServerConfig);
     // Test deletion
     String toBeDeletedKey = keyPrefix + 10;
     Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
@@ -210,8 +233,12 @@ public class RocksDBStoragePartitionTest {
     removeDir(storeDir);
   }
 
-  @Test (dataProvider = "testIngestionDataProvider")
-  public void testIngestionWithClockCache(boolean sorted, boolean interrupted, boolean reopenDatabaseDuringInterruption, boolean verifyChecksum) {
+  @Test(dataProvider = "testIngestionDataProvider")
+  public void testIngestionWithClockCache(
+      boolean sorted,
+      boolean interrupted,
+      boolean reopenDatabaseDuringInterruption,
+      boolean verifyChecksum) {
     Optional<CheckSum> runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
     String storeName = Utils.getUniqueString("test_store");
     String storeDir = getTempDatabaseDir(storeName);
@@ -223,13 +250,19 @@ public class RocksDBStoragePartitionTest {
     Map<String, String> inputRecords = generateInput(1010, sorted, 0);
     Properties properties = new Properties();
     properties.put(ROCKSDB_BLOCK_CACHE_IMPLEMENTATION, RocksDBBlockCacheImplementations.CLOCK.toString());
-    VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, properties);
-    RocksDBServerConfig rocksDBServerConfig  = new RocksDBServerConfig(veniceServerProperties);
+    VeniceProperties veniceServerProperties =
+        AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, properties);
+    RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
-    RocksDBStoragePartition
-            storagePartition = new RocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+    RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        rocksDbThrottler,
+        rocksDBServerConfig);
     final int syncPerRecords = 100;
     final int interruptedRecord = 345;
 
@@ -248,7 +281,7 @@ public class RocksDBStoragePartitionTest {
     int currentFileNo = 0;
     Map<String, String> checkpointingInfo = new HashMap<>();
 
-    for (Map.Entry<String, String> entry : inputRecords.entrySet()) {
+    for (Map.Entry<String, String> entry: inputRecords.entrySet()) {
       storagePartition.put(entry.getKey().getBytes(), entry.getValue().getBytes());
       if (verifyChecksum) {
         runningChecksum.get().update(entry.getKey().getBytes());
@@ -257,17 +290,26 @@ public class RocksDBStoragePartitionTest {
       if (++currentRecordNum % syncPerRecords == 0) {
         checkpointingInfo = storagePartition.sync();
         if (sorted) {
-          Assert.assertEquals(checkpointingInfo.get(RocksDBSstFileWriter.ROCKSDB_LAST_FINISHED_SST_FILE_NO),
-                  String.valueOf(currentFileNo++));
+          Assert.assertEquals(
+              checkpointingInfo.get(RocksDBSstFileWriter.ROCKSDB_LAST_FINISHED_SST_FILE_NO),
+              String.valueOf(currentFileNo++));
         } else {
-          Assert.assertTrue(checkpointingInfo.isEmpty(), "For non-deferred-write database, sync() should return empty map");
+          Assert.assertTrue(
+              checkpointingInfo.isEmpty(),
+              "For non-deferred-write database, sync() should return empty map");
         }
       }
       if (interrupted) {
         if (currentRecordNum == interruptedRecord) {
           if (reopenDatabaseDuringInterruption) {
             storagePartition.close();
-            storagePartition = new RocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+            storagePartition = new RocksDBStoragePartition(
+                partitionConfig,
+                factory,
+                DATA_BASE_DIR,
+                null,
+                rocksDbThrottler,
+                rocksDBServerConfig);
             Options storeOptions = storagePartition.getOptions();
             Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
           }
@@ -282,7 +324,7 @@ public class RocksDBStoragePartitionTest {
           int replayEnd = interruptedRecord;
           int replayCnt = 0;
           runningChecksum.get().reset();
-          for (Map.Entry<String, String> innerEntry : inputRecords.entrySet()) {
+          for (Map.Entry<String, String> innerEntry: inputRecords.entrySet()) {
             ++replayCnt;
             if (replayCnt >= replayStart && replayCnt <= replayEnd) {
               storagePartition.put(innerEntry.getKey().getBytes(), innerEntry.getValue().getBytes());
@@ -306,7 +348,7 @@ public class RocksDBStoragePartitionTest {
     }
 
     // Verify all the key/value pairs
-    for (Map.Entry<String, String> entry : inputRecords.entrySet()) {
+    for (Map.Entry<String, String> entry: inputRecords.entrySet()) {
       Assert.assertEquals(storagePartition.get(entry.getKey().getBytes(), false), entry.getValue().getBytes());
     }
 
@@ -317,7 +359,13 @@ public class RocksDBStoragePartitionTest {
     storagePartition.close();
     partitionConfig.setDeferredWrite(false);
     partitionConfig.setWriteOnlyConfig(false);
-    storagePartition = new RocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+    storagePartition = new RocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        rocksDbThrottler,
+        rocksDBServerConfig);
     // Test deletion
     String toBeDeletedKey = keyPrefix + 10;
     Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
@@ -339,17 +387,23 @@ public class RocksDBStoragePartitionTest {
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
     partitionConfig.setDeferredWrite(true);
     VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
-    RocksDBServerConfig rocksDBServerConfig  = new RocksDBServerConfig(veniceServerProperties);
+    RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
-    RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+    RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        rocksDbThrottler,
+        rocksDBServerConfig);
 
     Optional<Supplier<byte[]>> checksumSupplier = Optional.of(() -> new byte[16]);
     storagePartition.beginBatchWrite(new HashMap<>(), checksumSupplier);
 
-    Map<String, String> inputRecords = generateInput(1024 , true, 230);
-    for (Map.Entry<String, String> entry : inputRecords.entrySet()) {
+    Map<String, String> inputRecords = generateInput(1024, true, 230);
+    for (Map.Entry<String, String> entry: inputRecords.entrySet()) {
       storagePartition.put(entry.getKey().getBytes(), entry.getValue().getBytes());
     }
     VeniceException ex = Assert.expectThrows(VeniceException.class, storagePartition::endBatchWrite);
@@ -367,11 +421,17 @@ public class RocksDBStoragePartitionTest {
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
     partitionConfig.setDeferredWrite(false);
     VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
-    RocksDBServerConfig rocksDBServerConfig  = new RocksDBServerConfig(veniceServerProperties);
+    RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
-    RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+    RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        rocksDbThrottler,
+        rocksDBServerConfig);
 
     storagePartition.close();
     try {
@@ -380,7 +440,6 @@ public class RocksDBStoragePartitionTest {
     } catch (VeniceException e) {
       Assert.assertTrue(e.getMessage().contains("RocksDB has been closed for store"));
     }
-
 
     storagePartition.drop();
     removeDir(storeDir);
@@ -399,14 +458,21 @@ public class RocksDBStoragePartitionTest {
     properties.put(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER_WRITE_ONLY_VERSION, 40);
     properties.put(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER_WRITE_ONLY_VERSION, 50);
     properties.put(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION, 60);
-    VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, properties);
+    VeniceProperties veniceServerProperties =
+        AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, properties);
     RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
     int partitionId = 0;
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
     partitionConfig.setWriteOnlyConfig(true);
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
-    RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+    RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        rocksDbThrottler,
+        rocksDBServerConfig);
 
     // By default, it is write only
     Options writeOnlyOptions = storagePartition.getOptions();
@@ -419,9 +485,15 @@ public class RocksDBStoragePartitionTest {
     Assert.assertFalse(storagePartition.verifyConfig(newStoragePartitionConfig));
 
     storagePartition.close();
-    //Reopen with write-only disabled
+    // Reopen with write-only disabled
     partitionConfig.setWriteOnlyConfig(false);
-    storagePartition = new RocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+    storagePartition = new RocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        rocksDbThrottler,
+        rocksDBServerConfig);
     Options readWriteOptions = storagePartition.getOptions();
     Assert.assertEquals(readWriteOptions.level0FileNumCompactionTrigger(), 10);
     Assert.assertEquals(readWriteOptions.level0SlowdownWritesTrigger(), 20);

@@ -1,5 +1,9 @@
 package com.linkedin.venice.pushstatushelper;
 
+import static com.linkedin.venice.common.PushStatusStoreUtils.*;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.common.PushStatusStoreUtils;
 import com.linkedin.venice.pushstatus.NoOp;
 import com.linkedin.venice.pushstatus.PushStatusKey;
@@ -12,12 +16,8 @@ import java.util.Optional;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.common.PushStatusStoreUtils.*;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
-import static org.mockito.Mockito.*;
 
 public class PushStatusStoreWriterTest {
-
   private PushStatusStoreVeniceWriterCache veniceWriterCacheMock;
   private VeniceWriter veniceWriterMock;
   private PushStatusStoreWriter pushStatusStoreWriter;
@@ -46,28 +46,37 @@ public class PushStatusStoreWriterTest {
     return writeOpRecord;
   }
 
-  @Test (description = "Expect an update call for adding current inc-push to ongoing-inc-pushes when status is SOIP")
+  @Test(description = "Expect an update call for adding current inc-push to ongoing-inc-pushes when status is SOIP")
   public void testWritePushStatusWhenStatusIsSOIP() {
-    PushStatusKey serverPushStatusKey =
-        PushStatusStoreUtils.getServerIncrementalPushKey(storeVersion, 1, incPushVersion, SERVER_INCREMENTAL_PUSH_PREFIX);
+    PushStatusKey serverPushStatusKey = PushStatusStoreUtils
+        .getServerIncrementalPushKey(storeVersion, 1, incPushVersion, SERVER_INCREMENTAL_PUSH_PREFIX);
     PushStatusKey ongoPushStatusKey = PushStatusStoreUtils.getOngoingIncrementalPushStatusesKey(storeVersion);
 
-    pushStatusStoreWriter.writePushStatus(storeName, storeVersion, 1, START_OF_INCREMENTAL_PUSH_RECEIVED,
-        Optional.of(incPushVersion), Optional.of(SERVER_INCREMENTAL_PUSH_PREFIX));
+    pushStatusStoreWriter.writePushStatus(
+        storeName,
+        storeVersion,
+        1,
+        START_OF_INCREMENTAL_PUSH_RECEIVED,
+        Optional.of(incPushVersion),
+        Optional.of(SERVER_INCREMENTAL_PUSH_PREFIX));
 
     verify(veniceWriterMock).update(eq(serverPushStatusKey), any(), eq(protoVersion), eq(derivedSchemaId), eq(null));
     verify(veniceWriterCacheMock, times(2)).prepareVeniceWriter(storeName);
-    verify(veniceWriterMock).update(
-        eq(ongoPushStatusKey), eq(getWriteComputeRecord()), eq(protoVersion), eq(derivedSchemaId), eq(null));
+    verify(veniceWriterMock)
+        .update(eq(ongoPushStatusKey), eq(getWriteComputeRecord()), eq(protoVersion), eq(derivedSchemaId), eq(null));
   }
 
   @Test
   public void testAddToSupposedlyOngoingIncrementalPushVersions() {
     PushStatusKey statusKey = PushStatusStoreUtils.getOngoingIncrementalPushStatusesKey(storeVersion);
-    pushStatusStoreWriter.addToSupposedlyOngoingIncrementalPushVersions(storeName, storeVersion, incPushVersion,
+    pushStatusStoreWriter.addToSupposedlyOngoingIncrementalPushVersions(
+        storeName,
+        storeVersion,
+        incPushVersion,
         START_OF_INCREMENTAL_PUSH_RECEIVED);
     verify(veniceWriterCacheMock).prepareVeniceWriter(storeName);
-    verify(veniceWriterMock).update(eq(statusKey), eq(getWriteComputeRecord()), eq(protoVersion), eq(derivedSchemaId), eq(null));
+    verify(veniceWriterMock)
+        .update(eq(statusKey), eq(getWriteComputeRecord()), eq(protoVersion), eq(derivedSchemaId), eq(null));
   }
 
   @Test

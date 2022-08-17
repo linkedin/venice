@@ -1,135 +1,57 @@
 package com.linkedin.venice.schema.writecompute;
 
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.*;
+import static org.apache.avro.Schema.Type.*;
+
 import java.util.Arrays;
 import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.*;
-import static org.apache.avro.Schema.Type.*;
-
 
 public class TestWriteComputeSchemaConverter {
-  static String recordSchemaStr = "{" +
-      "  \"namespace\" : \"example.avro\",  " +
-      "  \"type\": \"record\",   " +
-      "  \"name\": \"User\",     " +
-      "  \"fields\": [           " +
-      "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"id\"},  " +
-      "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"id\"},  " +
-      "       { \"name\": \"age\", \"type\": \"int\", \"default\": -1 }" +
-      "  ] " +
-      " } ";
+  static String recordSchemaStr =
+      "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   " + "  \"name\": \"User\",     "
+          + "  \"fields\": [           " + "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"id\"},  "
+          + "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"id\"},  "
+          + "       { \"name\": \"age\", \"type\": \"int\", \"default\": -1 }" + "  ] " + " } ";
 
-  static String recordOfArraySchemaStr = "{\n"
-      +"  \"type\" : \"record\",\n"
-      +"  \"name\" : \"testRecord\",\n"
-      +"  \"namespace\" : \"avro.example\",\n"
-      +"  \"fields\" : [ {\n"
-      +"    \"name\" : \"intArray\",\n"
-      +"    \"type\" : {\n"
-      +"      \"type\" : \"array\",\n"
-      +"      \"items\" : \"int\"\n"
-      +"    },\n"
-      +"    \"default\" : [ ]\n"
-      +"  }, {\n"
-      +"    \"name\" : \"floatArray\",\n"
-      +"    \"type\" : {\n"
-      +"      \"type\" : \"array\",\n"
-      +"      \"items\" : \"float\"\n"
-      +"    },\n"
-      +"    \"default\" : [ ]\n"
-      +"  } ]\n"
-      +"}";
+  static String recordOfArraySchemaStr =
+      "{\n" + "  \"type\" : \"record\",\n" + "  \"name\" : \"testRecord\",\n" + "  \"namespace\" : \"avro.example\",\n"
+          + "  \"fields\" : [ {\n" + "    \"name\" : \"intArray\",\n" + "    \"type\" : {\n"
+          + "      \"type\" : \"array\",\n" + "      \"items\" : \"int\"\n" + "    },\n" + "    \"default\" : [ ]\n"
+          + "  }, {\n" + "    \"name\" : \"floatArray\",\n" + "    \"type\" : {\n" + "      \"type\" : \"array\",\n"
+          + "      \"items\" : \"float\"\n" + "    },\n" + "    \"default\" : [ ]\n" + "  } ]\n" + "}";
 
-  static String recordOfUnionWithCollectionStr = "{\n"
-      + "  \"type\": \"record\",\n" + "  \"name\": \"testRecord\",\n"
-      + "  \"namespace\": \"avro.example\",\n"
-      + "  \"fields\": [\n" + "    {\n"
-      + "      \"name\": \"intArray\",\n"
-      + "      \"type\":[\n"
-      + "      {\n"
-      + "        \"type\": \"array\",\n"
-      + "        \"items\": \"int\"\n"
-      + "      },\n"
-      + "      \"boolean\"\n"
-      + "      ],\n"
-      + "      \"default\": [\n"
-      + "      ]\n"
-      + "    },\n"
-      + "    {\n"
-      + "      \"name\": \"floatArray\",\n"
-      + "      \"type\": {\n"
-      + "        \"type\": \"array\",\n"
-      + "        \"items\": \"float\"\n"
-      + "      },\n"
-      + "      \"default\": [\n"
-      + "        \n"
-      + "      ]\n"
-      + "    }\n"
-      + "  ]\n"
-      + "}";
+  static String recordOfUnionWithCollectionStr = "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"testRecord\",\n"
+      + "  \"namespace\": \"avro.example\",\n" + "  \"fields\": [\n" + "    {\n" + "      \"name\": \"intArray\",\n"
+      + "      \"type\":[\n" + "      {\n" + "        \"type\": \"array\",\n" + "        \"items\": \"int\"\n"
+      + "      },\n" + "      \"boolean\"\n" + "      ],\n" + "      \"default\": [\n" + "      ]\n" + "    },\n"
+      + "    {\n" + "      \"name\": \"floatArray\",\n" + "      \"type\": {\n" + "        \"type\": \"array\",\n"
+      + "        \"items\": \"float\"\n" + "      },\n" + "      \"default\": [\n" + "        \n" + "      ]\n"
+      + "    }\n" + "  ]\n" + "}";
 
-  static String recordOfUnionWithTwoCollectionsStr = "{\n"
-      + "  \"type\": \"record\",\n"
-      + "  \"name\": \"testRecord\",\n"
-      + "  \"namespace\": \"avro.example\",\n"
-      + "  \"fields\": [\n"
-      + "    {\n"
-      + "      \"name\": \"intArray\",\n"
-      + "      \"type\":[\n"
-      + "      {\n"
-      + "        \"type\": \"array\",\n"
-      + "        \"items\": \"int\"\n"
-      + "      },\n"
-      + "      {\n"
-      + "        \"type\": \"map\",\n"
-      + "        \"values\": \"long\"\n"
-      + "      },\n"
-      + "      \"boolean\"\n"
-      + "      ],\n"
-      + "      \"default\": [\n"
-      + "      ]\n"
-      + "    },\n"
-      + "    {\n"
-      + "      \"name\": \"floatArray\",\n"
-      + "      \"type\": {\n"
-      + "        \"type\": \"array\",\n"
-      + "        \"items\": \"float\"\n"
-      + "      },\n"
-      + "      \"default\": [\n"
-      + "        \n"
-      + "      ]\n"
-      + "    }\n"
-      + "  ]\n"
-      + "}";
+  static String recordOfUnionWithTwoCollectionsStr = "{\n" + "  \"type\": \"record\",\n"
+      + "  \"name\": \"testRecord\",\n" + "  \"namespace\": \"avro.example\",\n" + "  \"fields\": [\n" + "    {\n"
+      + "      \"name\": \"intArray\",\n" + "      \"type\":[\n" + "      {\n" + "        \"type\": \"array\",\n"
+      + "        \"items\": \"int\"\n" + "      },\n" + "      {\n" + "        \"type\": \"map\",\n"
+      + "        \"values\": \"long\"\n" + "      },\n" + "      \"boolean\"\n" + "      ],\n"
+      + "      \"default\": [\n" + "      ]\n" + "    },\n" + "    {\n" + "      \"name\": \"floatArray\",\n"
+      + "      \"type\": {\n" + "        \"type\": \"array\",\n" + "        \"items\": \"float\"\n" + "      },\n"
+      + "      \"default\": [\n" + "        \n" + "      ]\n" + "    }\n" + "  ]\n" + "}";
 
-  static String recordOfNullableArrayStr = "{\n"
-      + "  \"type\" : \"record\",\n"
-      + "  \"name\" : \"testRecord\",\n"
-      + "  \"fields\" : [ {\n"
-      + "    \"name\" : \"nullableArrayField\",\n"
-      + "    \"type\" : [ \"null\", {\n"
-      + "      \"type\" : \"array\",\n"
-      + "      \"items\" : {\n"
-      + "        \"type\" : \"record\",\n"
-      + "        \"name\" : \"simpleRecord\",\n"
-      + "        \"fields\" : [ {\n"
-      + "          \"name\" : \"intField\",\n"
-      + "          \"type\" : \"int\",\n"
-      + "          \"default\" : 0\n"
-      + "        } ]\n"
-      + "      }\n"
-      + "    } ],\n"
-      + "    \"default\" : null\n"
-      + "  } ]\n"
-      + "}";
+  static String recordOfNullableArrayStr = "{\n" + "  \"type\" : \"record\",\n" + "  \"name\" : \"testRecord\",\n"
+      + "  \"fields\" : [ {\n" + "    \"name\" : \"nullableArrayField\",\n" + "    \"type\" : [ \"null\", {\n"
+      + "      \"type\" : \"array\",\n" + "      \"items\" : {\n" + "        \"type\" : \"record\",\n"
+      + "        \"name\" : \"simpleRecord\",\n" + "        \"fields\" : [ {\n" + "          \"name\" : \"intField\",\n"
+      + "          \"type\" : \"int\",\n" + "          \"default\" : 0\n" + "        } ]\n" + "      }\n" + "    } ],\n"
+      + "    \"default\" : null\n" + "  } ]\n" + "}";
 
   private final WriteComputeSchemaConverter writeComputeSchemaConverter = WriteComputeSchemaConverter.getInstance();
 
   @Test
   public void testAdapterCanParseBasicSchema() {
-    //For primitive, union, fixed type, the writeComputeSchema looks the same as its original one.
+    // For primitive, union, fixed type, the writeComputeSchema looks the same as its original one.
     Assert.assertEquals(Schema.create(INT), writeComputeSchemaConverter.convert(Schema.create(INT)));
     Assert.assertEquals(Schema.create(FLOAT), writeComputeSchemaConverter.convert(Schema.create(FLOAT)));
 
@@ -169,7 +91,7 @@ public class TestWriteComputeSchemaConverter {
 
   @Test
   public void testAdapterCanParseRecordSchema() {
-    //test parsing record
+    // test parsing record
     Schema recordWriteSchema = writeComputeSchemaConverter.convert(recordSchemaStr);
     Assert.assertEquals(recordWriteSchema.getType(), RECORD);
     Assert.assertEquals(recordWriteSchema.getFields().size(), 3);
@@ -177,7 +99,7 @@ public class TestWriteComputeSchemaConverter {
     Assert.assertEquals(recordWriteSchema.getField("age").schema().getTypes().get(1), Schema.create(INT));
     Assert.assertEquals(recordWriteSchema.getField("id").schema().getTypes().get(1), Schema.create(STRING));
 
-    //test parsing record of arrays
+    // test parsing record of arrays
     Schema recordOfArraysWriteSchema = writeComputeSchemaConverter.convert(Schema.parse(recordOfArraySchemaStr));
     Schema intArrayFieldWriteSchema = recordOfArraysWriteSchema.getField("intArray").schema();
     Assert.assertEquals(intArrayFieldWriteSchema.getTypes().get(1).getNamespace(), "avro.example");
@@ -188,7 +110,7 @@ public class TestWriteComputeSchemaConverter {
 
   @Test
   public void testAdapterCanParseRecordSchemaWithUnion() {
-    //test parsing a schema with a union type that contains 1 collection
+    // test parsing a schema with a union type that contains 1 collection
     Schema recordWriteSchema = writeComputeSchemaConverter.convert(recordOfUnionWithCollectionStr);
     Assert.assertEquals(recordWriteSchema.getType(), RECORD);
     Assert.assertEquals(recordWriteSchema.getFields().size(), 2);
@@ -196,26 +118,29 @@ public class TestWriteComputeSchemaConverter {
     // Check for NoOp option
     Assert.assertEquals(recordWriteSchema.getField("intArray").schema().getTypes().get(0).getType(), RECORD);
     Assert.assertEquals(recordWriteSchema.getField("intArray").schema().getTypes().get(0).getName(), "NoOp");
-    Assert.assertTrue(recordWriteSchema.getField("intArray").schema().getTypes().get(1).getName().endsWith(LIST_OPS.name));
-    Assert.assertEquals(recordWriteSchema.getField("intArray").schema().getTypes().get(2), Schema.createArray(Schema.create(INT)));
+    Assert.assertTrue(
+        recordWriteSchema.getField("intArray").schema().getTypes().get(1).getName().endsWith(LIST_OPS.name));
+    Assert.assertEquals(
+        recordWriteSchema.getField("intArray").schema().getTypes().get(2),
+        Schema.createArray(Schema.create(INT)));
     Assert.assertEquals(recordWriteSchema.getField("intArray").schema().getTypes().get(3), Schema.create(BOOLEAN));
 
   }
 
   @Test
   public void testAdapterCanNotParseRecordWithUnionOfMultipleCollections() {
-    //test parsing a schema with a union type that contains 2 collections (should barf)
+    // test parsing a schema with a union type that contains 2 collections (should barf)
     Assert.assertThrows(() -> writeComputeSchemaConverter.convert(recordOfUnionWithTwoCollectionsStr));
   }
 
   @Test
   public void testAdapterCanParseNullableField() {
-    //test parsing nullable array field. The parser is supposed to dig into the union and
-    //parse the array
+    // test parsing nullable array field. The parser is supposed to dig into the union and
+    // parse the array
     Schema nullableRecordWriteSchema = writeComputeSchemaConverter.convert(recordOfNullableArrayStr);
     Assert.assertEquals(nullableRecordWriteSchema.getType(), RECORD);
 
-    //Check the elements inside the union
+    // Check the elements inside the union
     Schema writeComputeFieldSchema = nullableRecordWriteSchema.getField("nullableArrayField").schema();
     Assert.assertEquals(writeComputeFieldSchema.getType(), UNION);
     Assert.assertEquals(writeComputeFieldSchema.getTypes().size(), 4);

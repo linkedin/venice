@@ -5,7 +5,6 @@ import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.helix.HelixParticipationService;
-import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModelFactory;
 import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
@@ -26,14 +25,13 @@ import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.cleaner.BackupVersionOptimizationService;
 import com.linkedin.venice.cleaner.LeakedResourceCleaner;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
-import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
-import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.ZkAllowlistAccessor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
@@ -45,6 +43,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.StaticClusterInfoProvider;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
@@ -56,8 +55,8 @@ import com.linkedin.venice.stats.DiskHealthStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.VeniceJVMStats;
 import com.linkedin.venice.utils.CollectionUtils;
-import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -103,12 +102,11 @@ public class VeniceServer {
   private ICProvider icProvider;
   StorageEngineBackedCompressorFactory compressorFactory;
 
-  public VeniceServer(VeniceConfigLoader veniceConfigLoader)
-      throws VeniceException {
+  public VeniceServer(VeniceConfigLoader veniceConfigLoader) throws VeniceException {
     this(veniceConfigLoader, TehutiUtils.getMetricsRepository(SERVER_SERVICE_NAME));
   }
 
-  public VeniceServer(VeniceConfigLoader veniceConfigLoader, MetricsRepository  metricsRepository) {
+  public VeniceServer(VeniceConfigLoader veniceConfigLoader, MetricsRepository metricsRepository) {
     this(veniceConfigLoader, metricsRepository, Optional.empty(), Optional.empty(), Optional.empty());
   }
 
@@ -118,7 +116,14 @@ public class VeniceServer {
       Optional<SSLEngineComponentFactory> sslFactory, // TODO: Clean this up. We shouldn't use proprietary abstractions.
       Optional<StaticAccessController> routerAccessController,
       Optional<ClientConfig> clientConfigForConsumer) {
-    this(veniceConfigLoader, metricsRepository, sslFactory, routerAccessController, Optional.empty(), clientConfigForConsumer, null);
+    this(
+        veniceConfigLoader,
+        metricsRepository,
+        sslFactory,
+        routerAccessController,
+        Optional.empty(),
+        clientConfigForConsumer,
+        null);
   }
 
   public VeniceServer(
@@ -138,7 +143,8 @@ public class VeniceServer {
         veniceConfigLoader.getVeniceClusterConfig().getClusterName(),
         veniceConfigLoader.getVeniceServerConfig().getListenerPort(),
         veniceConfigLoader.getVeniceServerConfig().isServerAllowlistEnabled())) {
-      throw new VeniceException("Can not create a venice server because this server has not been added into allowlist.");
+      throw new VeniceException(
+          "Can not create a venice server because this server has not been added into allowlist.");
     }
 
     this.isStarted = new AtomicBoolean(false);
@@ -170,32 +176,41 @@ public class VeniceServer {
     // Create jvm metrics object
     jvmStats = new VeniceJVMStats(metricsRepository, "VeniceJVMStats");
 
-    Optional<SchemaReader> partitionStateSchemaReader = clientConfigForConsumer.map(cc -> ClientFactory.getSchemaReader(
-        cc.setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName())));
-    Optional<SchemaReader> storeVersionStateSchemaReader = clientConfigForConsumer.map(cc -> ClientFactory.getSchemaReader(
-        cc.setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName())));
-    final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    Optional<SchemaReader> partitionStateSchemaReader = clientConfigForConsumer.map(
+        cc -> ClientFactory
+            .getSchemaReader(cc.setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName())));
+    Optional<SchemaReader> storeVersionStateSchemaReader = clientConfigForConsumer.map(
+        cc -> ClientFactory
+            .getSchemaReader(cc.setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName())));
+    final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
     partitionStateSchemaReader.ifPresent(partitionStateSerializer::setSchemaReader);
-    final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
+    final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
+        AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
     storeVersionStateSchemaReader.ifPresent(storeVersionStateSerializer::setSchemaReader);
 
-    //verify the current version of the PARTITION_STATE schema is registered in ZK before moving ahead
+    // verify the current version of the PARTITION_STATE schema is registered in ZK before moving ahead
     if (serverConfig.isSchemaPresenceCheckEnabled() && partitionStateSchemaReader.isPresent()) {
-      new SchemaPresenceChecker(partitionStateSchemaReader.get(),
-          AvroProtocolDefinition.PARTITION_STATE).verifySchemaVersionPresentOrExit();
+      new SchemaPresenceChecker(partitionStateSchemaReader.get(), AvroProtocolDefinition.PARTITION_STATE)
+          .verifySchemaVersionPresentOrExit();
     }
 
-    //verify the current version of the STORE_VERSION_STATE schema is registered in ZK before moving ahead
-    if (serverConfig.isSchemaPresenceCheckEnabled() &&  storeVersionStateSchemaReader.isPresent()) {
-      new SchemaPresenceChecker(storeVersionStateSchemaReader.get(),
-          AvroProtocolDefinition.STORE_VERSION_STATE).verifySchemaVersionPresentOrExit();
+    // verify the current version of the STORE_VERSION_STATE schema is registered in ZK before moving ahead
+    if (serverConfig.isSchemaPresenceCheckEnabled() && storeVersionStateSchemaReader.isPresent()) {
+      new SchemaPresenceChecker(storeVersionStateSchemaReader.get(), AvroProtocolDefinition.STORE_VERSION_STATE)
+          .verifySchemaVersionPresentOrExit();
     }
 
     // Create and add Offset Service.
     VeniceClusterConfig clusterConfig = veniceConfigLoader.getVeniceClusterConfig();
 
     // Create ReadOnlyStore/SchemaRepository
-    VeniceMetadataRepositoryBuilder veniceMetadataRepositoryBuilder = new VeniceMetadataRepositoryBuilder(veniceConfigLoader, clientConfigForConsumer.orElse(null), metricsRepository, icProvider, false);
+    VeniceMetadataRepositoryBuilder veniceMetadataRepositoryBuilder = new VeniceMetadataRepositoryBuilder(
+        veniceConfigLoader,
+        clientConfigForConsumer.orElse(null),
+        metricsRepository,
+        icProvider,
+        false);
     zkClient = veniceMetadataRepositoryBuilder.getZkClient();
     metadataRepo = veniceMetadataRepositoryBuilder.getStoreRepo();
     schemaRepo = veniceMetadataRepositoryBuilder.getSchemaRepo();
@@ -204,45 +219,71 @@ public class VeniceServer {
 
     // TODO: It would be cleaner to come up with a storage engine metric abstraction so we're not passing around so
     // many objects in constructors
-    AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, metadataRepo);
-    boolean plainTableEnabled = veniceConfigLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled();
-    RocksDBMemoryStats rocksDBMemoryStats = veniceConfigLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled() ?
-        new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", plainTableEnabled) : null;
+    AggVersionedStorageEngineStats storageEngineStats =
+        new AggVersionedStorageEngineStats(metricsRepository, metadataRepo);
+    boolean plainTableEnabled =
+        veniceConfigLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled();
+    RocksDBMemoryStats rocksDBMemoryStats = veniceConfigLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled()
+        ? new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", plainTableEnabled)
+        : null;
 
-    // Add extra safeguards here to ensure we have released RocksDB database locks before we initialize storage services.
+    // Add extra safeguards here to ensure we have released RocksDB database locks before we initialize storage
+    // services.
     IsolatedIngestionUtils.destroyLingeringIsolatedIngestionProcess(veniceConfigLoader);
     // Create and add StorageService. storeRepository will be populated by StorageService
     if (veniceConfigLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)) {
       // Venice Server does not require bootstrap step, so there is no need to open and close all local storage engines.
-      storageService = new StorageService(veniceConfigLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer, metadataRepo, false, false);
+      storageService = new StorageService(
+          veniceConfigLoader,
+          storageEngineStats,
+          rocksDBMemoryStats,
+          storeVersionStateSerializer,
+          partitionStateSerializer,
+          metadataRepo,
+          false,
+          false);
       logger.info("Create " + MainIngestionStorageMetadataService.class.getName() + " for ingestion isolation.");
-      MainIngestionStorageMetadataService ingestionStorageMetadataService = new MainIngestionStorageMetadataService(veniceConfigLoader.getVeniceServerConfig().getIngestionServicePort(), partitionStateSerializer, new MetadataUpdateStats(metricsRepository), veniceConfigLoader);
+      MainIngestionStorageMetadataService ingestionStorageMetadataService = new MainIngestionStorageMetadataService(
+          veniceConfigLoader.getVeniceServerConfig().getIngestionServicePort(),
+          partitionStateSerializer,
+          new MetadataUpdateStats(metricsRepository),
+          veniceConfigLoader);
       services.add(ingestionStorageMetadataService);
       storageMetadataService = ingestionStorageMetadataService;
     } else {
-      storageService = new StorageService(veniceConfigLoader, storageEngineStats, rocksDBMemoryStats,
-          storeVersionStateSerializer, partitionStateSerializer, metadataRepo);
-      storageEngineMetadataService = new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
+      storageService = new StorageService(
+          veniceConfigLoader,
+          storageEngineStats,
+          rocksDBMemoryStats,
+          storeVersionStateSerializer,
+          partitionStateSerializer,
+          metadataRepo);
+      storageEngineMetadataService =
+          new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
       services.add(storageEngineMetadataService);
       storageMetadataService = storageEngineMetadataService;
     }
     services.add(storageService);
 
     // Create stats for RocksDB
-    storageService.getRocksDBAggregatedStatistics().ifPresent( stat -> new AggRocksDBStats(metricsRepository, stat));
+    storageService.getRocksDBAggregatedStatistics().ifPresent(stat -> new AggRocksDBStats(metricsRepository, stat));
 
-    Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader = clientConfigForConsumer.map(cc -> ClientFactory.getSchemaReader(
-        cc.setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())));
-    Optional<SchemaReader> metaSystemStoreSchemaReader = clientConfigForConsumer.map(cc -> ClientFactory.getSchemaReader(
-        cc.setStoreName(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName())));
+    Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader = clientConfigForConsumer.map(
+        cc -> ClientFactory
+            .getSchemaReader(cc.setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())));
+    Optional<SchemaReader> metaSystemStoreSchemaReader = clientConfigForConsumer.map(
+        cc -> ClientFactory.getSchemaReader(
+            cc.setStoreName(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName())));
 
-    //verify the current version of the system schemas are registered in ZK before moving ahead
+    // verify the current version of the system schemas are registered in ZK before moving ahead
     if (serverConfig.isSchemaPresenceCheckEnabled()) {
-      kafkaMessageEnvelopeSchemaReader.ifPresent(schemaReader -> new SchemaPresenceChecker(schemaReader,
-          AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE).verifySchemaVersionPresentOrExit());
+      kafkaMessageEnvelopeSchemaReader.ifPresent(
+          schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE)
+              .verifySchemaVersionPresentOrExit());
 
-      metaSystemStoreSchemaReader.ifPresent(schemaReader -> new SchemaPresenceChecker(schemaReader,
-          AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE).verifySchemaVersionPresentOrExit());
+      metaSystemStoreSchemaReader.ifPresent(
+          schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE)
+              .verifySchemaVersionPresentOrExit());
     }
 
     compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
@@ -250,7 +291,8 @@ public class VeniceServer {
     /**
      * Build Ingestion Repair service
      */
-    RemoteIngestionRepairService remoteIngestionRepairService = new RemoteIngestionRepairService(serverConfig.getRemoteIngestionRepairSleepInterval());
+    RemoteIngestionRepairService remoteIngestionRepairService =
+        new RemoteIngestionRepairService(serverConfig.getRemoteIngestionRepairSleepInterval());
     services.add(remoteIngestionRepairService);
 
     // create and add KafkaSimpleConsumerService
@@ -280,14 +322,16 @@ public class VeniceServer {
         serverConfig.isDiskHealthCheckServiceEnabled(),
         serverConfig.getDiskHealthCheckIntervalInMS(),
         serverConfig.getDiskHealthCheckTimeoutInMs(),
-        serverConfig.getDataBasePath(), serverConfig.getSsdHealthCheckShutdownTimeMs());
+        serverConfig.getDataBasePath(),
+        serverConfig.getSsdHealthCheckShutdownTimeMs());
     services.add(diskHealthCheckService);
     // create stats for disk health check service
     new DiskHealthStats(metricsRepository, diskHealthCheckService, "disk_health_check_service");
 
-    //HelixParticipationService below creates a Helix manager and connects asynchronously below.  The listener service
-    //needs a routing data repository that relies on a connected helix manager.  So we pass the listener service a future
-    //that will be completed with a routing data repository once the manager connects.
+    // HelixParticipationService below creates a Helix manager and connects asynchronously below. The listener service
+    // needs a routing data repository that relies on a connected helix manager. So we pass the listener service a
+    // future
+    // that will be completed with a routing data repository once the manager connects.
     CompletableFuture<SafeHelixManager> managerFuture = new CompletableFuture<>();
     CompletableFuture<RoutingDataRepository> routingRepositoryFuture = managerFuture.thenApply(manager -> {
       RoutingDataRepository routingData = new HelixExternalViewRepository(manager);
@@ -302,8 +346,7 @@ public class VeniceServer {
           storageService.getStorageEngineRepository(),
           serverConfig.getOptimizeDatabaseForBackupVersionNoReadThresholdMS(),
           serverConfig.getOptimizeDatabaseServiceScheduleIntervalSeconds(),
-          new BackupVersionOptimizationServiceStats(metricsRepository, "BackupVersionOptimizationService")
-      );
+          new BackupVersionOptimizationServiceStats(metricsRepository, "BackupVersionOptimizationService"));
       services.add(backupVersionOptimizationService);
       resourceReadUsageTracker = Optional.of(backupVersionOptimizationService);
     } else {
@@ -312,7 +355,8 @@ public class VeniceServer {
     /**
      * Fast schema lookup implementation for read compute path.
      */
-    StoreValueSchemasCacheService storeValueSchemasCacheService = new StoreValueSchemasCacheService(metadataRepo, schemaRepo);
+    StoreValueSchemasCacheService storeValueSchemasCacheService =
+        new StoreValueSchemasCacheService(metadataRepo, schemaRepo);
     services.add(storeValueSchemasCacheService);
 
     // create and add ListenerServer for handling GET requests
@@ -336,10 +380,17 @@ public class VeniceServer {
      * Helix participator service should start last since we need to make sure current Storage Node is ready to take
      * read requests if it claims to be available in Helix.
      */
-    this.helixParticipationService =
-        new HelixParticipationService(kafkaStoreIngestionService, storageService, storageMetadataService,
-            veniceConfigLoader, metadataRepo, metricsRepository, clusterConfig.getZookeeperAddress(),
-            clusterConfig.getClusterName(), veniceConfigLoader.getVeniceServerConfig().getListenerPort(), managerFuture);
+    this.helixParticipationService = new HelixParticipationService(
+        kafkaStoreIngestionService,
+        storageService,
+        storageMetadataService,
+        veniceConfigLoader,
+        metadataRepo,
+        metricsRepository,
+        clusterConfig.getZookeeperAddress(),
+        clusterConfig.getClusterName(),
+        veniceConfigLoader.getVeniceServerConfig().getListenerPort(),
+        managerFuture);
     services.add(helixParticipationService);
 
     // Add kafka consumer service last so when shutdown the server, it will be stopped first to avoid the case
@@ -350,8 +401,13 @@ public class VeniceServer {
      * Resource cleanup service
      */
     if (serverConfig.isLeakedResourceCleanupEnabled()) {
-      this.leakedResourceCleaner = new LeakedResourceCleaner(storageService.getStorageEngineRepository(), serverConfig.getLeakedResourceCleanUpIntervalInMS(),
-          metadataRepo, kafkaStoreIngestionService, storageService, metricsRepository);
+      this.leakedResourceCleaner = new LeakedResourceCleaner(
+          storageService.getStorageEngineRepository(),
+          serverConfig.getLeakedResourceCleanUpIntervalInMS(),
+          metadataRepo,
+          kafkaStoreIngestionService,
+          storageService,
+          metricsRepository);
       services.add(leakedResourceCleaner);
     }
 
@@ -407,7 +463,8 @@ public class VeniceServer {
    *         are not finished starting.
    */
   public boolean isStarted() {
-    return isStarted.get() && services.isPresent() && services.get().stream().allMatch(AbstractVeniceService::isRunning);
+    return isStarted.get() && services.isPresent()
+        && services.get().stream().allMatch(AbstractVeniceService::isRunning);
   }
 
   /**
@@ -441,7 +498,7 @@ public class VeniceServer {
       throw new VeniceException("Got interrupted exception while delaying start for Router connection warming");
     }
 
-    for (AbstractVeniceService service : veniceServiceList) {
+    for (AbstractVeniceService service: veniceServiceList) {
       service.start();
     }
 
@@ -460,13 +517,13 @@ public class VeniceServer {
 
     /* Stop in reverse order */
 
-    //TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
+    // TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
     synchronized (this) {
       if (!isStarted()) {
         logger.info("The server is already stopped, ignoring duplicate attempt.");
         return;
       }
-      for (AbstractVeniceService service : CollectionUtils.reversed(services.get())) {
+      for (AbstractVeniceService service: CollectionUtils.reversed(services.get())) {
         try {
           logger.info("Stopping service: " + service.getName());
           service.stop();
@@ -503,7 +560,11 @@ public class VeniceServer {
     }
   }
 
-  protected static boolean isServerInAllowList(String zkAddress, String clusterName, int listenPort, boolean enableServerAllowlist) {
+  protected static boolean isServerInAllowList(
+      String zkAddress,
+      String clusterName,
+      int listenPort,
+      boolean enableServerAllowlist) {
     if (!enableServerAllowlist) {
       logger.info("Check allowlist is disable, continue to start participant.");
       return true;

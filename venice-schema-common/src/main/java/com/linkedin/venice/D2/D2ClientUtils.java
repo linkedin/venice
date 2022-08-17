@@ -1,5 +1,7 @@
 package com.linkedin.venice.D2;
 
+import static com.linkedin.venice.HttpConstants.*;
+
 import com.linkedin.common.callback.Callback;
 import com.linkedin.common.util.None;
 import com.linkedin.d2.balancer.D2Client;
@@ -18,8 +20,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.HttpConstants.*;
 
 
 public class D2ClientUtils {
@@ -96,7 +96,7 @@ public class D2ClientUtils {
   }
 
   public static RestRequest createD2GetRequest(String requestPath, Map<String, String> headers) {
-    URI  requestUri;
+    URI requestUri;
     try {
       requestUri = new URI(requestPath);
     } catch (URISyntaxException e) {
@@ -107,15 +107,15 @@ public class D2ClientUtils {
   }
 
   public static RestResponse sendD2GetRequest(String requestPath, D2Client client) {
-     RestResponse response;
-     try {
-       response = client.restRequest(createD2GetRequest(requestPath)).get();
-     } catch (Exception e) {
-       throw new VeniceException("D2 client failed to sent request, " + requestPath, e);
-     }
+    RestResponse response;
+    try {
+      response = client.restRequest(createD2GetRequest(requestPath)).get();
+    } catch (Exception e) {
+      throw new VeniceException("D2 client failed to sent request, " + requestPath, e);
+    }
 
-     return response;
-   }
+    return response;
+  }
 
   public static RestRequest createD2PostRequest(String requestPath, Map<String, String> headers, byte[] body) {
     URI requestUri;
@@ -125,7 +125,8 @@ public class D2ClientUtils {
       throw new VeniceException("Failed to create URI for path " + requestPath, e);
     }
 
-    RestRequestBuilder builder = new RestRequestBuilder(requestUri).setMethod(HTTPS_POST).setHeaders(headers).setEntity(body);
+    RestRequestBuilder builder =
+        new RestRequestBuilder(requestUri).setMethod(HTTPS_POST).setHeaders(headers).setEntity(body);
     return builder.build();
   }
 }

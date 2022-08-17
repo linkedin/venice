@@ -16,6 +16,7 @@ public class MockVeniceAuthorizer implements AuthorizerService {
   private AclBinding aclBinding = null;
   public int setAclsCounter = 0;
   public int clearAclCounter = 0;
+
   public boolean canAccess(Method method, Resource resource, Principal principal) {
     return true;
   }

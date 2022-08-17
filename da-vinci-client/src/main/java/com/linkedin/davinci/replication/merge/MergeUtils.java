@@ -1,5 +1,7 @@
 package com.linkedin.davinci.replication.merge;
 
+import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -7,11 +9,8 @@ import java.util.Optional;
 import javax.annotation.Nullable;
 import org.apache.avro.generic.GenericRecord;
 
-import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
-
 
 public class MergeUtils {
-
   private MergeUtils() {
     // Utility class
   }
@@ -59,11 +58,13 @@ public class MergeUtils {
   }
 
   public static List<Long> extractTimestampFromRmd(GenericRecord replicationMetadataRecord) {
-    // TODO: This function needs a heuristic to work on field level timestamps.  At time of writing, this function
+    // TODO: This function needs a heuristic to work on field level timestamps. At time of writing, this function
     // is only for recording the previous value of a record's timestamp, so we could consider specifying the incoming
-    // operation to identify if we care about the record level timestamp, or, certain fields and then returning an ordered
-    // list of those timestamps to compare post resolution.  I hesitate to commit to an implementation here prior to putting
-    // the full write compute resolution into uncommented fleshed out glory.  So we'll effectively ignore operations
+    // operation to identify if we care about the record level timestamp, or, certain fields and then returning an
+    // ordered
+    // list of those timestamps to compare post resolution. I hesitate to commit to an implementation here prior to
+    // putting
+    // the full write compute resolution into uncommented fleshed out glory. So we'll effectively ignore operations
     // that aren't root level until then.
     if (replicationMetadataRecord == null) {
       return Collections.singletonList(0L);
@@ -83,7 +84,10 @@ public class MergeUtils {
   /**
    * @return If the input {@param oldOffsetVector} is {@link Optional#empty()}, the returned value could be null.
    */
-  static @Nullable List<Long> mergeOffsetVectors(Optional<List<Long>> oldOffsetVector, Long newOffset, int sourceBrokerID) {
+  static @Nullable List<Long> mergeOffsetVectors(
+      Optional<List<Long>> oldOffsetVector,
+      Long newOffset,
+      int sourceBrokerID) {
     if (sourceBrokerID < 0) {
       // Can happen if we could not deduce the sourceBrokerID (can happen due to a misconfiguration)
       // in such cases, we will not try to alter the existing offsetVector, instead just returning it.
@@ -93,7 +97,7 @@ public class MergeUtils {
 
     // Making sure there is room available for the insertion (fastserde LongList can't be cast to arraylist)
     // Lists in java require that gaps be filled, so first we fill any gaps by adding some initial offset values
-    for(int i = offsetVector.size(); i <= sourceBrokerID; i++) {
+    for (int i = offsetVector.size(); i <= sourceBrokerID; i++) {
       offsetVector.add(i, 0L);
     }
     offsetVector.set(sourceBrokerID, newOffset);
@@ -109,6 +113,6 @@ public class MergeUtils {
     if (offsetVector == null) {
       return 0L;
     }
-    return ((List<Long>)offsetVector).stream().reduce(0L, Long::sum);
+    return ((List<Long>) offsetVector).stream().reduce(0L, Long::sum);
   }
 }

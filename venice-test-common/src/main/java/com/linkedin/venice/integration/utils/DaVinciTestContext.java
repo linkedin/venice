@@ -1,11 +1,12 @@
 package com.linkedin.venice.integration.utils;
 
+import static com.linkedin.venice.ConfigKeys.*;
+
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.AvroGenericDaVinciClient;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
@@ -18,8 +19,6 @@ import java.util.Optional;
 import java.util.Set;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.ConfigKeys.*;
 
 
 public class DaVinciTestContext<K, V> {
@@ -41,10 +40,12 @@ public class DaVinciTestContext<K, V> {
     return daVinciClient;
   }
 
-  public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClientWithRetries(String storeName, String zkAddress,
-      DaVinciConfig daVinciConfig, Map<String, Object> extraBackendProperties) {
-    ClientConfig clientConfig = ClientConfig
-        .defaultGenericClientConfig(storeName)
+  public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClientWithRetries(
+      String storeName,
+      String zkAddress,
+      DaVinciConfig daVinciConfig,
+      Map<String, Object> extraBackendProperties) {
+    ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName)
         .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
         .setVeniceURL(zkAddress);
     DaVinciClient<K, V> daVinciClient = null;
@@ -54,13 +55,13 @@ public class DaVinciTestContext<K, V> {
         PropertyBuilder backendConfigBuilder = getDaVinciPropertyBuilder(zkAddress);
         extraBackendProperties.forEach(backendConfigBuilder::put);
         // Get and start Da Vinci client.
-        daVinciClient = new AvroGenericDaVinciClient<>(daVinciConfig, clientConfig,
-            backendConfigBuilder.build(), Optional.empty());
+        daVinciClient =
+            new AvroGenericDaVinciClient<>(daVinciConfig, clientConfig, backendConfigBuilder.build(), Optional.empty());
         daVinciClient.start();
         return daVinciClient;
       } catch (Exception e) {
-        String errorMessage = "Got " + e.getClass().getSimpleName() + " while trying to start Da Vinci client. Attempt #"
-            + attempt + "/" + maxAttempt + ".";
+        String errorMessage = "Got " + e.getClass().getSimpleName()
+            + " while trying to start Da Vinci client. Attempt #" + attempt + "/" + maxAttempt + ".";
         logger.warn(errorMessage, e);
         Utils.closeQuietlyWithErrorLogged(daVinciClient);
       }
@@ -69,8 +70,13 @@ public class DaVinciTestContext<K, V> {
   }
 
   public static <K, V> DaVinciTestContext<K, V> getGenericAvroDaVinciFactoryAndClientWithRetries(
-      D2Client d2Client, MetricsRepository metricsRepository, Optional<Set<String>> managedClients, String zkAddress,
-      String storeName, DaVinciConfig daVinciConfig, Map<String, Object> extraBackendProperties) {
+      D2Client d2Client,
+      MetricsRepository metricsRepository,
+      Optional<Set<String>> managedClients,
+      String zkAddress,
+      String storeName,
+      DaVinciConfig daVinciConfig,
+      Map<String, Object> extraBackendProperties) {
     CachingDaVinciClientFactory factory = null;
     DaVinciClient<K, V> daVinciClient = null;
     for (int attempt = 1; attempt <= maxAttempt; attempt++) {
@@ -87,8 +93,8 @@ public class DaVinciTestContext<K, V> {
         daVinciClient.start();
         return new DaVinciTestContext<>(factory, daVinciClient);
       } catch (Exception e) {
-        String errorMessage = "Got " + e.getClass().getSimpleName() + " while trying to start Da Vinci client. Attempt #"
-            + attempt + "/" + maxAttempt + ".";
+        String errorMessage = "Got " + e.getClass().getSimpleName()
+            + " while trying to start Da Vinci client. Attempt #" + attempt + "/" + maxAttempt + ".";
         logger.warn(errorMessage, e);
         Utils.closeQuietlyWithErrorLogged(daVinciClient);
         Utils.closeQuietlyWithErrorLogged(factory);
@@ -98,8 +104,7 @@ public class DaVinciTestContext<K, V> {
   }
 
   public static PropertyBuilder getDaVinciPropertyBuilder(String zkAddress) {
-    return new PropertyBuilder()
-        .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
+    return new PropertyBuilder().put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
         .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
         .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, Utils.getFreePort())
         .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, Utils.getFreePort())

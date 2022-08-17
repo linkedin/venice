@@ -1,5 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -21,8 +23,6 @@ import org.apache.kafka.clients.CommonClientConfigs;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static org.mockito.Mockito.*;
-
 
 public class PushTimeoutTest {
   @Test
@@ -34,14 +34,15 @@ public class PushTimeoutTest {
     Queue<VeniceNotifier> notifiers = new ArrayDeque<>();
     notifiers.add(exceptionCaptorNotifier);
 
-    StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName)
-        .setLeaderFollowerNotifiersQueue(notifiers);
+    StoreIngestionTaskFactory.Builder builder =
+        TestUtils.getStoreIngestionTaskBuilder(storeName).setLeaderFollowerNotifiersQueue(notifiers);
 
     Store mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
     Version version = mockStore.getVersion(versionNumber).get();
 
     Properties mockKafkaConsumerProperties = mock(Properties.class);
-    doReturn("localhost").when(mockKafkaConsumerProperties).getProperty(eq(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG));
+    doReturn("localhost").when(mockKafkaConsumerProperties)
+        .getProperty(eq(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG));
 
     VeniceStoreVersionConfig mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
     String versionTopic = version.kafkaTopicName();
@@ -65,9 +66,10 @@ public class PushTimeoutTest {
     // Verify that push timeout happens
     Exception latestException = exceptionCaptorNotifier.getLatestException();
     Assert.assertNotNull(latestException, "Latest exception should not be null.");
-    Assert.assertTrue(latestException instanceof VeniceTimeoutException,
-        "Should have caught an instance of " + VeniceTimeoutException.class.getSimpleName()
-            + "but instead got: " + latestException.getClass().getSimpleName() + ".");
+    Assert.assertTrue(
+        latestException instanceof VeniceTimeoutException,
+        "Should have caught an instance of " + VeniceTimeoutException.class.getSimpleName() + "but instead got: "
+            + latestException.getClass().getSimpleName() + ".");
   }
 
   @Test
@@ -89,7 +91,8 @@ public class PushTimeoutTest {
     Version version = mockStore.getVersion(versionNumber).get();
 
     Properties mockKafkaConsumerProperties = mock(Properties.class);
-    doReturn("localhost").when(mockKafkaConsumerProperties).getProperty(eq(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG));
+    doReturn("localhost").when(mockKafkaConsumerProperties)
+        .getProperty(eq(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG));
 
     VeniceStoreVersionConfig mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
     String versionTopic = version.kafkaTopicName();

@@ -16,8 +16,10 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
     this(metricsRepository, requestType, false);
   }
 
-  public AggRouterHttpRequestStats(MetricsRepository metricsRepository, RequestType requestType,
-    boolean isKeyValueProfilingEnabled) {
+  public AggRouterHttpRequestStats(
+      MetricsRepository metricsRepository,
+      RequestType requestType,
+      boolean isKeyValueProfilingEnabled) {
     super(metricsRepository);
     /**
      * Use a setter function to bypass the restriction that the supertype constructor could not
@@ -91,12 +93,12 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
    *
    * TODO: Remove this overload after fixing the above.
    */
-  public void recordThrottledRequest(String storeName){
+  public void recordThrottledRequest(String storeName) {
     totalStats.recordThrottledRequest();
     getStoreStats(storeName).recordThrottledRequest();
   }
 
-  public void recordThrottledRequest(String storeName, double latency){
+  public void recordThrottledRequest(String storeName, double latency) {
     totalStats.recordThrottledRequest(latency);
     getStoreStats(storeName).recordThrottledRequest(latency);
   }
@@ -176,10 +178,9 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
   }
 
   private class AggScatterGatherStats extends ScatterGatherStats {
-
     private long getAggStats(Function<ScatterGatherStats, Long> func) {
       long total = 0;
-      for (ScatterGatherStats stats : scatterGatherStatsMap.values()) {
+      for (ScatterGatherStats stats: scatterGatherStatsMap.values()) {
         total += func.apply(stats);
       }
       return total;

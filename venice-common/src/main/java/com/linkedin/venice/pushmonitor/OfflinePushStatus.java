@@ -1,5 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
+
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
@@ -24,8 +26,6 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 
 
 /**
@@ -52,7 +52,10 @@ public class OfflinePushStatus {
 
   private int successfulPushDurationInSecs = -1;
 
-  public OfflinePushStatus(String kafkaTopic, int numberOfPartition, int replicationFactor,
+  public OfflinePushStatus(
+      String kafkaTopic,
+      int numberOfPartition,
+      int replicationFactor,
       OfflinePushStrategy strategy) {
     this.kafkaTopic = kafkaTopic;
     this.numberOfPartition = numberOfPartition;
@@ -80,9 +83,11 @@ public class OfflinePushStatus {
       addHistoricStatus(newStatus, incrementalPushVersion);
     } else {
       if (this.currentStatus.equals(newStatus)) {
-        // State change is redundant.  Just log the event, no need to throw a whole trace.
+        // State change is redundant. Just log the event, no need to throw a whole trace.
         logger.warn(
-            String.format("Redundant push state status received for state %s.  New state details: %s", newStatus,
+            String.format(
+                "Redundant push state status received for state %s.  New state details: %s",
+                newStatus,
                 newStatusDetails.orElse("not specified!!")));
       } else {
         throw new VeniceException("Can not transit status from:" + currentStatus + " to " + newStatus);
@@ -149,8 +154,8 @@ public class OfflinePushStatus {
     if (partitionStatus instanceof ReadOnlyPartitionStatus) {
       partitionIdToStatus.put(partitionStatus.getPartitionId(), partitionStatus);
     } else {
-      partitionIdToStatus.put(partitionStatus.getPartitionId(),
-          ReadOnlyPartitionStatus.fromPartitionStatus(partitionStatus));
+      partitionIdToStatus
+          .put(partitionStatus.getPartitionId(), ReadOnlyPartitionStatus.fromPartitionStatus(partitionStatus));
     }
     if (updateDetails) {
       updateStatusDetails();
@@ -161,7 +166,7 @@ public class OfflinePushStatus {
     PushStatusDecider decider = PushStatusDecider.getDecider(strategy);
     Set<Integer> incompletePartitions = new HashSet<>();
     int finishedPartitions = 0;
-    for (PartitionStatus partitionStatus : getPartitionStatuses()) {
+    for (PartitionStatus partitionStatus: getPartitionStatuses()) {
       int finishedReplicaInPartition = 0;
       for (ReplicaStatus replicaStatus: partitionStatus.getReplicaStatuses()) {
         if (replicaStatus.getCurrentStatus().isTerminal()) {
@@ -186,19 +191,21 @@ public class OfflinePushStatus {
   /**
    * Returns map of partitionId -> list of status history for all working replicas of that partition
    */
-  public Map<Integer, Map<CharSequence, Integer>> getIncrementalPushStatus(PartitionAssignment partitionAssignment,
+  public Map<Integer, Map<CharSequence, Integer>> getIncrementalPushStatus(
+      PartitionAssignment partitionAssignment,
       String incrementalPushVersion) {
     Map<Integer, Map<CharSequence, Integer>> incPushStatusMap = new HashMap<>(numberOfPartition);
-    for (PartitionStatus partitionStatus : getPartitionStatuses()) {
+    for (PartitionStatus partitionStatus: getPartitionStatuses()) {
       Map<CharSequence, Integer> partitionPushStatus = new HashMap<>();
       Partition partition = partitionAssignment.getPartition(partitionStatus.getPartitionId());
-      Set<String> workingInstances = partition.getWorkingInstances().stream().map(Instance::getNodeId).collect(Collectors.toSet());
-      for (ReplicaStatus replicaStatus : partitionStatus.getReplicaStatuses()) {
+      Set<String> workingInstances =
+          partition.getWorkingInstances().stream().map(Instance::getNodeId).collect(Collectors.toSet());
+      for (ReplicaStatus replicaStatus: partitionStatus.getReplicaStatuses()) {
         // skip replicaStatus if it does not belong to any working instance
         if (!workingInstances.contains(replicaStatus.getInstanceId())) {
           continue;
         }
-        for (StatusSnapshot snapshot : replicaStatus.getStatusHistory()) {
+        for (StatusSnapshot snapshot: replicaStatus.getStatusHistory()) {
           // skip snapshot if it does not belong to the given incremental push version
           if (!incrementalPushVersion.equals(snapshot.getIncrementalPushVersion())) {
             continue;
@@ -221,7 +228,7 @@ public class OfflinePushStatus {
    */
   private Map<Integer, List<StatusSnapshot>> getReplicaHistory(PartitionAssignment partitionAssignment) {
     Map<Integer, List<StatusSnapshot>> partitionAggregatedPushStatus = new HashMap<>(numberOfPartition);
-    for (PartitionStatus partitionStatus : getPartitionStatuses()) {
+    for (PartitionStatus partitionStatus: getPartitionStatuses()) {
       List<StatusSnapshot> statusHistoryForAllReplicasOfSamePartition = new LinkedList<>();
       Partition partition = partitionAssignment.getPartition(partitionStatus.getPartitionId());
       Set<String> workingInstances =
@@ -230,11 +237,10 @@ public class OfflinePushStatus {
           .stream()
           .filter(replicaStatus -> workingInstances.contains(replicaStatus.getInstanceId()))
           .map(ReplicaStatus::getStatusHistory)
-          .reduce(statusHistoryForAllReplicasOfSamePartition, (resultList, newStatusHistory) ->
-            {
-              resultList.addAll(newStatusHistory);
-              return resultList;
-            });
+          .reduce(statusHistoryForAllReplicasOfSamePartition, (resultList, newStatusHistory) -> {
+            resultList.addAll(newStatusHistory);
+            return resultList;
+          });
       partitionAggregatedPushStatus.put(partitionStatus.getPartitionId(), statusHistoryForAllReplicasOfSamePartition);
     }
     return partitionAggregatedPushStatus;
@@ -242,15 +248,15 @@ public class OfflinePushStatus {
 
   public String getLatestIncrementalPushVersion(PartitionAssignment partitionAssignment) {
     String latestIncrementalPushVersion = null;
-    for (List<StatusSnapshot> replicaHistory : getReplicaHistory(partitionAssignment).values()) {
-      for (StatusSnapshot statusSnapshot : replicaHistory) {
+    for (List<StatusSnapshot> replicaHistory: getReplicaHistory(partitionAssignment).values()) {
+      for (StatusSnapshot statusSnapshot: replicaHistory) {
         String incPushVersion = statusSnapshot.getIncrementalPushVersion();
         if (!StringUtils.isEmpty(incPushVersion)) {
           if (latestIncrementalPushVersion == null) {
             latestIncrementalPushVersion = incPushVersion;
           } else {
-            if (StatusSnapshot.getIncrementalPushJobTimeInMs(incPushVersion)
-                > StatusSnapshot.getIncrementalPushJobTimeInMs(latestIncrementalPushVersion)) {
+            if (StatusSnapshot.getIncrementalPushJobTimeInMs(incPushVersion) > StatusSnapshot
+                .getIncrementalPushJobTimeInMs(latestIncrementalPushVersion)) {
               latestIncrementalPushVersion = incPushVersion;
             }
           }
@@ -310,12 +316,12 @@ public class OfflinePushStatus {
   // Only used by accessor while loading data from Zookeeper.
   public void setPartitionStatuses(List<PartitionStatus> partitionStatuses) {
     this.partitionIdToStatus.clear();
-    for (PartitionStatus partitionStatus : partitionStatuses) {
+    for (PartitionStatus partitionStatus: partitionStatuses) {
       if (partitionStatus instanceof ReadOnlyPartitionStatus) {
         this.partitionIdToStatus.put(partitionStatus.getPartitionId(), partitionStatus);
       } else {
-        this.partitionIdToStatus.put(partitionStatus.getPartitionId(),
-            ReadOnlyPartitionStatus.fromPartitionStatus(partitionStatus));
+        this.partitionIdToStatus
+            .put(partitionStatus.getPartitionId(), ReadOnlyPartitionStatus.fromPartitionStatus(partitionStatus));
       }
     }
     updateStatusDetails();
@@ -360,11 +366,11 @@ public class OfflinePushStatus {
   @JsonIgnore
   public Map<String, Long> getProgress() {
     Map<String, Long> progress = new HashMap<>();
-    for (PartitionStatus partitionStatus : getPartitionStatuses()) {
-      //Don't count progress of error tasks
+    for (PartitionStatus partitionStatus: getPartitionStatuses()) {
+      // Don't count progress of error tasks
       partitionStatus.getReplicaStatuses()
           .stream()
-          //Don't count progress of error tasks
+          // Don't count progress of error tasks
           .filter(replicaStatus -> !replicaStatus.getCurrentStatus().equals(ERROR))
           .forEach(replicaStatus -> {
             String replicaId =
@@ -403,16 +409,16 @@ public class OfflinePushStatus {
    */
   public boolean isReadyToStartBufferReplay(boolean isDataRecovery) {
     // Only allow the push in STARTED status to start buffer replay. It could avoid:
-    //   1. Send duplicated start buffer replay message.
-    //   2. Send start buffer replay message when a push had already been terminated.
+    // 1. Send duplicated start buffer replay message.
+    // 2. Send start buffer replay message when a push had already been terminated.
     if (!getCurrentStatus().equals(STARTED)) {
       return false;
     }
     boolean isReady = true;
     ExecutionStatus requiredStatus = isDataRecovery ? DATA_RECOVERY_COMPLETED : END_OF_PUSH_RECEIVED;
-    for (PartitionStatus partitionStatus : getPartitionStatuses()) {
+    for (PartitionStatus partitionStatus: getPartitionStatuses()) {
       boolean proceedToNextPartition = false;
-      for (ReplicaStatus replicaStatus : partitionStatus.getReplicaStatuses()) {
+      for (ReplicaStatus replicaStatus: partitionStatus.getReplicaStatuses()) {
         if (replicaStatus.getCurrentStatus() == requiredStatus) {
           proceedToNextPartition = true;
           break;
@@ -420,7 +426,7 @@ public class OfflinePushStatus {
           // If the previous status contains required status then the partition is also ready to start buffer replay.
           // We don't have to worry about duplicate start buffer replay message scenario here because it's already
           // handled by the check on the overall status equals to STARTED.
-          for (StatusSnapshot snapshot : replicaStatus.getStatusHistory()) {
+          for (StatusSnapshot snapshot: replicaStatus.getStatusHistory()) {
             if (snapshot.getStatus() == requiredStatus) {
               proceedToNextPartition = true;
               break;
@@ -507,15 +513,9 @@ public class OfflinePushStatus {
 
   @Override
   public String toString() {
-    return "OfflinePushStatus{" +
-        "kafkaTopic='" + kafkaTopic + '\'' +
-        ", numberOfPartition=" + numberOfPartition +
-        ", replicationFactor=" + replicationFactor +
-        ", strategy=" + strategy +
-        ", currentStatus=" + currentStatus +
-        ", statusDetails=" + statusDetails +
-        ", incrementalPushVersion=" + incrementalPushVersion +
-        ", lastSuccessfulPushDurationSecs=" + successfulPushDurationInSecs +
-        '}';
+    return "OfflinePushStatus{" + "kafkaTopic='" + kafkaTopic + '\'' + ", numberOfPartition=" + numberOfPartition
+        + ", replicationFactor=" + replicationFactor + ", strategy=" + strategy + ", currentStatus=" + currentStatus
+        + ", statusDetails=" + statusDetails + ", incrementalPushVersion=" + incrementalPushVersion
+        + ", lastSuccessfulPushDurationSecs=" + successfulPushDurationInSecs + '}';
   }
 }

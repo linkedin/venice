@@ -1,5 +1,7 @@
 package com.linkedin.venice.restart;
 
+import static com.linkedin.venice.utils.TestUtils.*;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -40,8 +42,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.utils.TestUtils.*;
-
 
 @Test(singleThreaded = true)
 public abstract class TestRestartServerDuringIngestion {
@@ -53,6 +53,7 @@ public abstract class TestRestartServerDuringIngestion {
   private final String valuePrefix = "value_";
 
   protected abstract PersistenceType getPersistenceType();
+
   protected abstract Properties getExtraProperties();
 
   private Properties getVeniceServerProperties() {
@@ -70,8 +71,8 @@ public abstract class TestRestartServerDuringIngestion {
     int numberOfController = 1;
     int numberOfRouter = 1;
 
-    cluster = ServiceFactory.getVeniceCluster(numberOfController, 0, numberOfRouter, replicaFactor,
-        partitionSize, false, false);
+    cluster = ServiceFactory
+        .getVeniceCluster(numberOfController, 0, numberOfRouter, replicaFactor, partitionSize, false, false);
     serverWrapper = cluster.addVeniceServer(new Properties(), getVeniceServerProperties());
   }
 
@@ -85,7 +86,8 @@ public abstract class TestRestartServerDuringIngestion {
     // Create a store
     String stringSchemaStr = "\"string\"";
     AvroSerializer serializer = new AvroSerializer(AvroCompatibilityHelper.parse(stringSchemaStr));
-    AvroGenericDeserializer deserializer = new AvroGenericDeserializer(Schema.parse(stringSchemaStr), Schema.parse(stringSchemaStr));
+    AvroGenericDeserializer deserializer =
+        new AvroGenericDeserializer(Schema.parse(stringSchemaStr), Schema.parse(stringSchemaStr));
 
     String storeName = Utils.getUniqueString("test_store");
     String veniceUrl = cluster.getLeaderVeniceController().getControllerUrl();
@@ -98,12 +100,21 @@ public abstract class TestRestartServerDuringIngestion {
 
     // Create a new version
     VersionCreationResponse versionCreationResponse = null;
-    try (ControllerClient controllerClient =
-        new ControllerClient(cluster.getClusterName(), veniceUrl)) {
+    try (ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), veniceUrl)) {
       versionCreationResponse = TestUtils.assertCommand(
-          controllerClient.requestTopicForWrites(storeName, 1024 * 1024, Version.PushType.BATCH,
-              Version.guidBasedDummyPushId(), true, true, false, Optional.empty(),
-              Optional.empty(), Optional.empty(), false, -1));
+          controllerClient.requestTopicForWrites(
+              storeName,
+              1024 * 1024,
+              Version.PushType.BATCH,
+              Version.guidBasedDummyPushId(),
+              true,
+              true,
+              false,
+              Optional.empty(),
+              Optional.empty(),
+              Optional.empty(),
+              false,
+              -1));
     }
     String topic = versionCreationResponse.getKafkaTopic();
     String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
@@ -121,7 +132,7 @@ public abstract class TestRestartServerDuringIngestion {
       restartPointSetForSortedInput.add(678);
       restartPointSetForSortedInput.add(831);
       int cur = 0;
-      for (Map.Entry<byte[], byte[]> entry : sortedInputRecords.entrySet()) {
+      for (Map.Entry<byte[], byte[]> entry: sortedInputRecords.entrySet()) {
         if (restartPointSetForSortedInput.contains(++cur)) {
           // Restart server
           cluster.stopVeniceServer(serverWrapper.getPort());
@@ -139,7 +150,9 @@ public abstract class TestRestartServerDuringIngestion {
       veniceWriter.broadcastEndOfPush(Collections.emptyMap());
 
       // Wait push completed.
-      TestUtils.waitForNonDeterministicCompletion(20, TimeUnit.SECONDS,
+      TestUtils.waitForNonDeterministicCompletion(
+          20,
+          TimeUnit.SECONDS,
           () -> cluster.getLeaderVeniceController()
               .getVeniceAdmin()
               .getOffLinePushStatus(cluster.getClusterName(), topic)
@@ -159,17 +172,17 @@ public abstract class TestRestartServerDuringIngestion {
               .setVeniceURL(cluster.getRandomRouterURL())
               .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()))) {
 
-        for (Map.Entry<byte[], byte[]> entry : sortedInputRecords.entrySet()) {
+        for (Map.Entry<byte[], byte[]> entry: sortedInputRecords.entrySet()) {
           String key = deserializer.deserialize(entry.getKey()).toString();
-          CharSequence expectedValue = (CharSequence)deserializer.deserialize(entry.getValue());
+          CharSequence expectedValue = (CharSequence) deserializer.deserialize(entry.getValue());
           CharSequence returnedValue = storeClient.get(key).get();
           Assert.assertEquals(returnedValue, expectedValue);
         }
 
-        //With L/F model the rest of the test does not succeed.  TODO: need to debug to find the reason.
-//        if (true) {
-//          return;
-//        }
+        // With L/F model the rest of the test does not succeed. TODO: need to debug to find the reason.
+        // if (true) {
+        // return;
+        // }
         /**
          * Restart storage node during streaming ingestion.
          */
@@ -181,9 +194,9 @@ public abstract class TestRestartServerDuringIngestion {
         restartPointSetForUnsortedInput.add(831);
         cur = 0;
 
-        try (VeniceWriter<byte[], byte[], byte[]> streamingWriter = veniceWriterFactory.createBasicVeniceWriter(
-            Version.composeRealTimeTopic(storeName))) {
-          for (Map.Entry<byte[], byte[]> entry : unsortedInputRecords.entrySet()) {
+        try (VeniceWriter<byte[], byte[], byte[]> streamingWriter =
+            veniceWriterFactory.createBasicVeniceWriter(Version.composeRealTimeTopic(storeName))) {
+          for (Map.Entry<byte[], byte[]> entry: unsortedInputRecords.entrySet()) {
             if (restartPointSetForUnsortedInput.contains(++cur)) {
               // Restart server
               cluster.stopVeniceServer(serverWrapper.getPort());
@@ -204,7 +217,7 @@ public abstract class TestRestartServerDuringIngestion {
           PartitionAssignment partitionAssignment =
               cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topic);
           boolean allPartitionsReady = true;
-          for (Partition partition : partitionAssignment.getAllPartitions()) {
+          for (Partition partition: partitionAssignment.getAllPartitions()) {
             if (partition.getWorkingInstances().size() == 0) {
               allPartitionsReady = false;
               break;
@@ -214,16 +227,15 @@ public abstract class TestRestartServerDuringIngestion {
         });
         restartAllRouters();
         // Verify all the key/value pairs
-        for (Map.Entry<byte[], byte[]> entry : unsortedInputRecords.entrySet()) {
+        for (Map.Entry<byte[], byte[]> entry: unsortedInputRecords.entrySet()) {
           String key = deserializer.deserialize(entry.getKey()).toString();
-          CharSequence expectedValue = (CharSequence)deserializer.deserialize(entry.getValue());
+          CharSequence expectedValue = (CharSequence) deserializer.deserialize(entry.getValue());
           CharSequence returnedValue = storeClient.get(key).get();
           Assert.assertEquals(returnedValue, expectedValue);
         }
       }
     }
   }
-
 
   @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testIngestionDrainer() throws Exception {
@@ -242,12 +254,21 @@ public abstract class TestRestartServerDuringIngestion {
 
     // Create a new version
     VersionCreationResponse versionCreationResponse = null;
-    try (ControllerClient controllerClient =
-        new ControllerClient(cluster.getClusterName(), veniceUrl)) {
+    try (ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), veniceUrl)) {
       versionCreationResponse = TestUtils.assertCommand(
-          controllerClient.requestTopicForWrites(storeName, 1024 * 1024, Version.PushType.BATCH,
-              Version.guidBasedDummyPushId(), false, true, false, Optional.empty(),
-              Optional.empty(), Optional.empty(), false, -1));
+          controllerClient.requestTopicForWrites(
+              storeName,
+              1024 * 1024,
+              Version.PushType.BATCH,
+              Version.guidBasedDummyPushId(),
+              false,
+              true,
+              false,
+              Optional.empty(),
+              Optional.empty(),
+              Optional.empty(),
+              false,
+              -1));
     }
     String topic = versionCreationResponse.getKafkaTopic();
     String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
@@ -262,7 +283,9 @@ public abstract class TestRestartServerDuringIngestion {
       veniceWriter.broadcastEndOfPush(Collections.emptyMap());
 
       // Wait push completed.
-      TestUtils.waitForNonDeterministicCompletion(20, TimeUnit.SECONDS,
+      TestUtils.waitForNonDeterministicCompletion(
+          20,
+          TimeUnit.SECONDS,
           () -> cluster.getLeaderVeniceController()
               .getVeniceAdmin()
               .getOffLinePushStatus(cluster.getClusterName(), topic)
@@ -272,7 +295,7 @@ public abstract class TestRestartServerDuringIngestion {
   }
 
   private void restartAllRouters() {
-    for (VeniceRouterWrapper router : cluster.getVeniceRouters()) {
+    for (VeniceRouterWrapper router: cluster.getVeniceRouters()) {
       cluster.stopVeniceRouter(router.getPort());
       cluster.restartVeniceRouter(router.getPort());
     }

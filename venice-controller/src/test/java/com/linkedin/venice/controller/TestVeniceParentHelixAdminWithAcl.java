@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.authorization.AceEntry;
 import com.linkedin.venice.authorization.AclBinding;
 import com.linkedin.venice.authorization.Method;
@@ -22,8 +24,6 @@ import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
-
-import static org.mockito.Mockito.*;
 
 
 /**
@@ -60,21 +60,23 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     Principal userp = new Principal("urn:li:corpuser:user1");
     Principal groupp = new Principal("urn:li:corpGroup:group1");
     Principal servicep = new Principal("urn:li:servicePrincipal:app1");
-    for (Principal p : new Principal[]{userp, groupp, servicep}) {
+    for (Principal p: new Principal[] { userp, groupp, servicep }) {
       AceEntry race = new AceEntry(p, Method.Read, Permission.ALLOW);
       AceEntry wace = new AceEntry(p, Method.Write, Permission.ALLOW);
       expectedAB.addAceEntry(race);
       expectedAB.addAceEntry(wace);
     }
 
-    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1))).when(
-        veniceWriter).put(any(), any(), anyInt());
+    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
+        .when(veniceWriter)
+        .put(any(), any(), anyInt());
 
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
     initializeParentAdmin(Optional.of(authorizerService));
     parentAdmin.initStorageCluster(clusterName);
-    parentAdmin.createStore(clusterName, storeName, "dev", keySchemaStr, valueSchemaStr, false, Optional.of(accessPerm));
+    parentAdmin
+        .createStore(clusterName, storeName, "dev", keySchemaStr, valueSchemaStr, false, Optional.of(accessPerm));
     Assert.assertEquals(1, authorizerService.setAclsCounter);
     AclBinding actualAB = authorizerService.describeAcls(new Resource(storeName));
     Assert.assertTrue(isAclBindingSame(expectedAB, actualAB));
@@ -86,20 +88,23 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
   @Test
   public void testStoreCreationWithAuthorizationException() {
     String storeName = "test-store-authorizer";
-    //send an invalid json, so that parsing this would generate an exception and thus failing the createStore api to move forward.
+    // send an invalid json, so that parsing this would generate an exception and thus failing the createStore api to
+    // move forward.
     String accessPerm =
         "{\"AccessPermissions\":{\"Read\":[\"urn:li:corpuser:user1\",\"urn:li:corpGroup:group1\",\"urn:li:servicePrincipal:app1\"],\"Write\":[\"urn:li:corpuser:user1\",\"urn:li:corpGroup:group1\",\"urn:li:servicePrincipal:app1\"],}}";
 
-    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1))).when(
-        veniceWriter).put(any(), any(), anyInt());
+    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
+        .when(veniceWriter)
+        .put(any(), any(), anyInt());
 
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
     initializeParentAdmin(Optional.of(authorizerService));
     parentAdmin.initStorageCluster(clusterName);
-    Assert.assertThrows(VeniceException.class,
-        () -> parentAdmin.createStore(clusterName, storeName, "dev", keySchemaStr, valueSchemaStr, false,
-            Optional.of(accessPerm)));
+    Assert.assertThrows(
+        VeniceException.class,
+        () -> parentAdmin
+            .createStore(clusterName, storeName, "dev", keySchemaStr, valueSchemaStr, false, Optional.of(accessPerm)));
     Assert.assertEquals(0, authorizerService.setAclsCounter);
   }
 
@@ -111,8 +116,9 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     doReturn(store).when(internalAdmin).getStore(eq(clusterName), eq(storeName));
     doReturn(store).when(internalAdmin).checkPreConditionForDeletion(eq(clusterName), eq(storeName));
 
-    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1))).when(
-        veniceWriter).put(any(), any(), anyInt());
+    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
+        .when(veniceWriter)
+        .put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
@@ -138,8 +144,9 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     String curPerm = parentAdmin.getAclForStore(clusterName, storeName);
     Assert.assertEquals(expectedPerm, curPerm);
 
-    //add a DENY ace, this will verify getAclForStore always returns ALLOW acls.
-    authorizerService.addAce(new Resource(storeName),
+    // add a DENY ace, this will verify getAclForStore always returns ALLOW acls.
+    authorizerService.addAce(
+        new Resource(storeName),
         new AceEntry(new Principal("urn:li:corpuser:denyuser1"), Method.Read, Permission.DENY));
     curPerm = parentAdmin.getAclForStore(clusterName, storeName);
     Assert.assertEquals(expectedPerm, curPerm);
@@ -166,7 +173,8 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(new OffsetRecord(partitionStateSerializer))
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
     initializeParentAdmin(Optional.of(authorizerService));
-    Assert.assertThrows(VeniceNoStoreException.class,
+    Assert.assertThrows(
+        VeniceNoStoreException.class,
         () -> parentAdmin.updateAclForStore(clusterName, storeName, expectedPerm));
     Assert.assertEquals(0, authorizerService.setAclsCounter);
   }
@@ -214,9 +222,9 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
       return false;
     }
 
-    for (AceEntry e1 : aces1) {
+    for (AceEntry e1: aces1) {
       boolean match = false;
-      for (AceEntry e2 : aces2) {
+      for (AceEntry e2: aces2) {
         if (e1.equals(e2)) {
           match = true;
           break;

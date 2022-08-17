@@ -47,10 +47,14 @@ public class InstanceHealthMonitor implements Closeable {
     this.counterResetConsumer = (instance) -> {
       pendingRequestCounterMap.compute(instance, (k, v) -> {
         if (v == null) {
-          LOGGER.error("Pending request counter for instance: " + instance + " doesn't exist when trying to reset for a completed request");
+          LOGGER.error(
+              "Pending request counter for instance: " + instance
+                  + " doesn't exist when trying to reset for a completed request");
           return 0;
         } else if (v == 0) {
-          LOGGER.error("Pending request counter for instance: " + instance + " is 0 when trying to reset for a completed request");
+          LOGGER.error(
+              "Pending request counter for instance: " + instance
+                  + " is 0 when trying to reset for a completed request");
           return 0;
         }
         return v - 1;
@@ -62,9 +66,8 @@ public class InstanceHealthMonitor implements Closeable {
     return this.timeoutProcessor;
   }
 
-
   public CompletableFuture<HttpStatus> sendRequestToInstance(String instance) {
-    CompletableFuture<HttpStatus> requestFuture =  new CompletableFuture<>();
+    CompletableFuture<HttpStatus> requestFuture = new CompletableFuture<>();
     pendingRequestCounterMap.compute(instance, (k, v) -> {
       if (v == null) {
         return 1;
@@ -74,16 +77,19 @@ public class InstanceHealthMonitor implements Closeable {
 
     TimeoutProcessor.TimeoutFuture timeoutFuture = timeoutProcessor.schedule(
         /** Using a special http status to indicate the leaked request */
-        () -> requestFuture.complete(HttpStatus.S_410_GONE), clientConfig.getRoutingLeakedRequestCleanupThresholdMS(), TimeUnit.MILLISECONDS);
+        () -> requestFuture.complete(HttpStatus.S_410_GONE),
+        clientConfig.getRoutingLeakedRequestCleanupThresholdMS(),
+        TimeUnit.MILLISECONDS);
 
-    requestFuture.whenComplete( (httpStatus, throwable) -> {
+    requestFuture.whenComplete((httpStatus, throwable) -> {
       /**
        * In theory, throwable should be null all the time since {@link DispatchingAvroGenericStoreClient}
        * will always set a http status in every code path, and the below is the defensive code.
        */
       if (throwable != null) {
-        LOGGER.error("Received unexpected throwable in replica request future since DispatchingAvroGenericStoreClient"
-            + " should always setup a http status");
+        LOGGER.error(
+            "Received unexpected throwable in replica request future since DispatchingAvroGenericStoreClient"
+                + " should always setup a http status");
         return;
       }
       if (!timeoutFuture.isDone()) {
@@ -112,7 +118,10 @@ public class InstanceHealthMonitor implements Closeable {
       if (counterResetDelayMS == 0) {
         counterResetConsumer.accept(instance);
       } else {
-        timeoutProcessor.schedule(() -> counterResetConsumer.accept(instance), counterResetDelayMS, TimeUnit.MILLISECONDS.MILLISECONDS);
+        timeoutProcessor.schedule(
+            () -> counterResetConsumer.accept(instance),
+            counterResetDelayMS,
+            TimeUnit.MILLISECONDS.MILLISECONDS);
       }
       if (unhealthyInstance) {
         if (unhealthyInstanceSet.add(instance)) {
@@ -124,7 +133,6 @@ public class InstanceHealthMonitor implements Closeable {
         }
       }
     });
-
 
     return requestFuture;
   }
@@ -140,7 +148,7 @@ public class InstanceHealthMonitor implements Closeable {
   public int getBlockedInstanceCount() {
     int blockedInstanceCount = 0;
     // TODO: need to evaluate whether it is too expensive to emit a metric per request for this.
-    for (int count : pendingRequestCounterMap.values()) {
+    for (int count: pendingRequestCounterMap.values()) {
       if (count >= clientConfig.getRoutingPendingRequestCounterInstanceBlockThreshold()) {
         ++blockedInstanceCount;
       }
@@ -148,7 +156,7 @@ public class InstanceHealthMonitor implements Closeable {
     return blockedInstanceCount;
   }
 
-  public  int getUnhealthyInstanceCount() {
+  public int getUnhealthyInstanceCount() {
     return unhealthyInstanceSet.size();
   }
 

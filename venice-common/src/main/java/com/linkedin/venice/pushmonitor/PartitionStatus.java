@@ -1,13 +1,13 @@
 package com.linkedin.venice.pushmonitor;
 
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 
 
 /**
@@ -64,7 +64,7 @@ public class PartitionStatus implements Comparable<PartitionStatus> {
   @SuppressWarnings("unused") // Used by zk serialize and deserialize
   public void setReplicaStatuses(Collection<ReplicaStatus> replicaStatuses) {
     replicaStatusMap.clear();
-    for (ReplicaStatus replicaStatus : replicaStatuses) {
+    for (ReplicaStatus replicaStatus: replicaStatuses) {
       replicaStatusMap.put(replicaStatus.getInstanceId(), replicaStatus);
     }
   }
@@ -117,7 +117,7 @@ public class PartitionStatus implements Comparable<PartitionStatus> {
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
-    for (Map.Entry<String, ReplicaStatus> entry : replicaStatusMap.entrySet()) {
+    for (Map.Entry<String, ReplicaStatus> entry: replicaStatusMap.entrySet()) {
       sb.append(entry.getKey()).append(":").append(entry.getValue().getCurrentStatus().name()).append(" ");
     }
     return sb.toString();

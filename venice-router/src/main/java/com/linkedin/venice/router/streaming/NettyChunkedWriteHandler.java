@@ -17,10 +17,10 @@ import io.netty.handler.stream.ChunkedWriteHandler;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
-
 import java.nio.channels.ClosedChannelException;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
+
 
 /**
  * This class was copied from {@link ChunkedWriteHandler}, and the only change we made here is to
@@ -60,7 +60,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  * call {@link #resumeTransfer()}.
  */
 public class NettyChunkedWriteHandler extends ChannelDuplexHandler {
-
   private static final InternalLogger logger =
       InternalLoggerFactory.getInstance(io.netty.handler.stream.ChunkedWriteHandler.class);
 
@@ -81,8 +80,7 @@ public class NettyChunkedWriteHandler extends ChannelDuplexHandler {
   @Deprecated
   public NettyChunkedWriteHandler(int maxPendingWrites) {
     if (maxPendingWrites <= 0) {
-      throw new IllegalArgumentException(
-          "maxPendingWrites: " + maxPendingWrites + " (expected: > 0)");
+      throw new IllegalArgumentException("maxPendingWrites: " + maxPendingWrites + " (expected: > 0)");
     }
   }
 
@@ -110,7 +108,6 @@ public class NettyChunkedWriteHandler extends ChannelDuplexHandler {
     } else {
       // let the transfer resume on the next event loop round
       ctx.executor().execute(new Runnable() {
-
         @Override
         public void run() {
           try {
@@ -189,7 +186,6 @@ public class NettyChunkedWriteHandler extends ChannelDuplexHandler {
       }
     }
   }
-
 
   private void doFlush(final ChannelHandlerContext ctx) throws Exception {
     final Channel channel = ctx.channel();
@@ -382,4 +378,3 @@ public class NettyChunkedWriteHandler extends ChannelDuplexHandler {
     }
   }
 }
-

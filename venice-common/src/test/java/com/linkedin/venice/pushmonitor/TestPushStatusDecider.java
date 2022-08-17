@@ -40,7 +40,7 @@ public class TestPushStatusDecider {
   protected Partition changeReplicaState(Partition partition, String instanceId, HelixState newState) {
     Map<String, List<Instance>> newStateToInstancesMap = new HashMap<>();
     Instance targetInstance = null;
-    for (String state : partition.getAllInstances().keySet()) {
+    for (String state: partition.getAllInstances().keySet()) {
       List<Instance> oldInstances = partition.getAllInstances().get(state);
       List<Instance> newInstances = new ArrayList<>(oldInstances);
       Iterator<Instance> iterator = newInstances.iterator();
@@ -67,4 +67,3 @@ public class TestPushStatusDecider {
     return new Partition(partition.getId(), newStateToInstancesMap);
   }
 }
-

@@ -43,7 +43,8 @@ public class ReportStatusAdapter {
    * A user partition to a map from status to boolean. The internal map indicates whether all subPartitions have recorded
    * this status. This map is used to make sure each subPartition has recorded the status before reporting.
    */
-  private final Map<Integer, Map<String, List<AtomicBoolean>>> subPartitionStatusRecordMap = new VeniceConcurrentHashMap<>();
+  private final Map<Integer, Map<String, List<AtomicBoolean>>> subPartitionStatusRecordMap =
+      new VeniceConcurrentHashMap<>();
   /*
    * A user partition to a map from status to boolean. The internal map indicates whether a certain ingestion status
    * has been reported or not for the given user partition. This map is used to make sure each user partition will
@@ -56,8 +57,7 @@ public class ReportStatusAdapter {
       String topicName,
       int amplificationFactor,
       IncrementalPushPolicy incrementalPushPolicy,
-      ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap
-  ) {
+      ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap) {
     this.notificationDispatcher = notificationDispatcher;
     this.topicName = topicName;
     this.amplificationFactor = amplificationFactor;
@@ -91,37 +91,51 @@ public class ReportStatusAdapter {
   }
 
   public void reportDataRecoveryCompleted(PartitionConsumptionState partitionConsumptionState) {
-    report(partitionConsumptionState, SubPartitionStatus.DATA_RECOVERY_COMPLETED,
+    report(
+        partitionConsumptionState,
+        SubPartitionStatus.DATA_RECOVERY_COMPLETED,
         () -> notificationDispatcher.reportDataRecoveryCompleted(partitionConsumptionState));
   }
 
   public void reportStarted(PartitionConsumptionState partitionConsumptionState) {
-    report(partitionConsumptionState, SubPartitionStatus.STARTED,
+    report(
+        partitionConsumptionState,
+        SubPartitionStatus.STARTED,
         () -> notificationDispatcher.reportStarted(partitionConsumptionState));
   }
 
   public void reportRestarted(PartitionConsumptionState partitionConsumptionState) {
-    report(partitionConsumptionState, SubPartitionStatus.RESTARTED,
+    report(
+        partitionConsumptionState,
+        SubPartitionStatus.RESTARTED,
         () -> notificationDispatcher.reportRestarted(partitionConsumptionState));
   }
 
   public void reportEndOfPushReceived(PartitionConsumptionState partitionConsumptionState) {
-    report(partitionConsumptionState, SubPartitionStatus.END_OF_PUSH_RECEIVED,
+    report(
+        partitionConsumptionState,
+        SubPartitionStatus.END_OF_PUSH_RECEIVED,
         () -> notificationDispatcher.reportEndOfPushReceived(partitionConsumptionState));
   }
 
   public void reportProgress(PartitionConsumptionState partitionConsumptionState) {
-    report(partitionConsumptionState, SubPartitionStatus.PROGRESS,
+    report(
+        partitionConsumptionState,
+        SubPartitionStatus.PROGRESS,
         () -> notificationDispatcher.reportProgress(partitionConsumptionState));
   }
 
   public void reportTopicSwitchReceived(PartitionConsumptionState partitionConsumptionState) {
-    report(partitionConsumptionState, SubPartitionStatus.TOPIC_SWITCH_RECEIVED,
+    report(
+        partitionConsumptionState,
+        SubPartitionStatus.TOPIC_SWITCH_RECEIVED,
         () -> notificationDispatcher.reportTopicSwitchReceived(partitionConsumptionState));
   }
 
   public void reportCatchUpVersionTopicOffsetLag(PartitionConsumptionState partitionConsumptionState) {
-    report(partitionConsumptionState, SubPartitionStatus.CATCH_UP_BASE_TOPIC_OFFSET_LAG,
+    report(
+        partitionConsumptionState,
+        SubPartitionStatus.CATCH_UP_BASE_TOPIC_OFFSET_LAG,
         () -> notificationDispatcher.reportCatchUpVersionTopicOffsetLag(partitionConsumptionState));
   }
 
@@ -130,21 +144,34 @@ public class ReportStatusAdapter {
   }
 
   public void reportCompleted(PartitionConsumptionState partitionConsumptionState, boolean forceCompletion) {
-    report(partitionConsumptionState, SubPartitionStatus.COMPLETED,
+    report(
+        partitionConsumptionState,
+        SubPartitionStatus.COMPLETED,
         () -> notificationDispatcher.reportCompleted(partitionConsumptionState, forceCompletion));
   }
 
-  public void reportStartOfIncrementalPushReceived(PartitionConsumptionState partitionConsumptionState, String version) {
-    report(partitionConsumptionState, SubPartitionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED, Optional.of(version),
+  public void reportStartOfIncrementalPushReceived(
+      PartitionConsumptionState partitionConsumptionState,
+      String version) {
+    report(
+        partitionConsumptionState,
+        SubPartitionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED,
+        Optional.of(version),
         () -> notificationDispatcher.reportStartOfIncrementalPushReceived(partitionConsumptionState, version));
   }
 
   public void reportEndOfIncrementalPushReceived(PartitionConsumptionState partitionConsumptionState, String version) {
-    report(partitionConsumptionState, SubPartitionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, Optional.of(version),
+    report(
+        partitionConsumptionState,
+        SubPartitionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED,
+        Optional.of(version),
         () -> notificationDispatcher.reportEndOfIncrementalPushReceived(partitionConsumptionState, version));
   }
 
-  private void report(PartitionConsumptionState partitionConsumptionState, SubPartitionStatus subPartitionStatus, Runnable report) {
+  private void report(
+      PartitionConsumptionState partitionConsumptionState,
+      SubPartitionStatus subPartitionStatus,
+      Runnable report) {
     report(partitionConsumptionState, subPartitionStatus, Optional.empty(), report);
   }
 
@@ -168,21 +195,24 @@ public class ReportStatusAdapter {
     AtomicInteger statusRecordCounter = statusRecordCounterMap.get(userPartition).get(versionAwareSubPartitionStatus);
     int statusRecordCount;
     if ((subPartitionStatus.equals(SubPartitionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED)
-        || (subPartitionStatus.equals(SubPartitionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED))) &&
-        incrementalPushPolicy.equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
+        || (subPartitionStatus.equals(SubPartitionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED)))
+        && incrementalPushPolicy.equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
       /*
        * For inc push to RT policy, the control msg is only consumed by leader subPartition. We need to record the
        * detailed subPartition status for every subPartition of the same user partition so that the below report logic
        * can be triggered.
        */
-      for (int subPartition : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
+      for (int subPartition: PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
         PartitionConsumptionState subPartitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
         subPartitionConsumptionState.recordSubPartitionStatus(versionAwareSubPartitionStatus);
       }
       statusRecordCount = statusRecordCounter.addAndGet(amplificationFactor);
     } else {
-      int subPartitionIndexInUserPartition = partitionConsumptionState.getPartition() - partitionConsumptionState.getUserPartition() * amplificationFactor;
-      AtomicBoolean subPartitionStatusRecordFlag = subPartitionStatusRecordMap.get(userPartition).get(versionAwareSubPartitionStatus).get(subPartitionIndexInUserPartition);
+      int subPartitionIndexInUserPartition =
+          partitionConsumptionState.getPartition() - partitionConsumptionState.getUserPartition() * amplificationFactor;
+      AtomicBoolean subPartitionStatusRecordFlag = subPartitionStatusRecordMap.get(userPartition)
+          .get(versionAwareSubPartitionStatus)
+          .get(subPartitionIndexInUserPartition);
       if (!subPartitionStatusRecordFlag.get()) {
         partitionConsumptionState.recordSubPartitionStatus(versionAwareSubPartitionStatus);
         subPartitionStatusRecordFlag.set(true);
@@ -192,18 +222,27 @@ public class ReportStatusAdapter {
       }
     }
     if (logStatus) {
-      logger.info("Received status report: {} from subPartition: {} of topic {}, current report count is {}/{}.",
-          versionAwareSubPartitionStatus, partitionConsumptionState.getPartition(), topicName ,statusRecordCount, amplificationFactor);
+      logger.info(
+          "Received status report: {} from subPartition: {} of topic {}, current report count is {}/{}.",
+          versionAwareSubPartitionStatus,
+          partitionConsumptionState.getPartition(),
+          topicName,
+          statusRecordCount,
+          amplificationFactor);
     }
     if (statusRecordCount == amplificationFactor) {
       // This is safeguard to make sure we only report once for each partition status.
       if (statusReportMap.get(userPartition).get(versionAwareSubPartitionStatus).compareAndSet(false, true)) {
         if (logStatus) {
-          logger.info("Reporting status {} for partition {} of topic {}.", versionAwareSubPartitionStatus, userPartition, topicName);
+          logger.info(
+              "Reporting status {} for partition {} of topic {}.",
+              versionAwareSubPartitionStatus,
+              userPartition,
+              topicName);
         }
         report.run();
         if (subPartitionStatus.equals(SubPartitionStatus.COMPLETED)) {
-          for (int subPartition : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
+          for (int subPartition: PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
             PartitionConsumptionState subPartitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
             subPartitionConsumptionState.completionReported();
           }
@@ -236,8 +275,9 @@ public class ReportStatusAdapter {
 
   private List<PartitionConsumptionState> getLeaderPcsList(Collection<PartitionConsumptionState> pcsList) {
     List<PartitionConsumptionState> leaderPcsList = new ArrayList<>();
-    for (PartitionConsumptionState pcs : pcsList) {
-      if (pcs.getPartition() == PartitionUtils.getLeaderSubPartition(pcs.getUserPartition(), pcs.getAmplificationFactor())) {
+    for (PartitionConsumptionState pcs: pcsList) {
+      if (pcs.getPartition() == PartitionUtils
+          .getLeaderSubPartition(pcs.getUserPartition(), pcs.getAmplificationFactor())) {
         leaderPcsList.add(pcs);
       }
     }
@@ -252,4 +292,3 @@ public class ReportStatusAdapter {
     return list;
   }
 }
-

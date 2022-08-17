@@ -1,13 +1,12 @@
 package com.linkedin.venice.utils;
 
-import java.util.Objects;
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.VeniceConstants.*;
 
+import java.util.Objects;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.VeniceConstants.*;
 
 
 public class RegionUtils {
@@ -28,10 +27,11 @@ public class RegionUtils {
           logger.info("Region name from System property: " + regionNameFromEnv);
         }
       } catch (Exception e) {
-        logger.warn("Error when trying to retrieve environment variable for region name; will use default value instead.", e);
+        logger.warn(
+            "Error when trying to retrieve environment variable for region name; will use default value instead.",
+            e);
       }
-      regionName = StringUtils.isEmpty(regionNameFromEnv)
-          ? "" : regionNameFromEnv + (isParentRegion ? ".parent" : "");
+      regionName = StringUtils.isEmpty(regionNameFromEnv) ? "" : regionNameFromEnv + (isParentRegion ? ".parent" : "");
     }
     return regionName;
   }

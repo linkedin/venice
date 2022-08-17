@@ -1,10 +1,12 @@
 package com.linkedin.davinci.replication.merge;
 
+import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.AvroVersion;
-import com.linkedin.venice.schema.merge.UpdateResultStatus;
-import com.linkedin.venice.schema.merge.MergeRecordHelper;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.schema.merge.MergeRecordHelper;
+import com.linkedin.venice.schema.merge.UpdateResultStatus;
 import com.linkedin.venice.schema.merge.ValueAndReplicationMetadata;
 import com.linkedin.venice.schema.rmd.v1.ReplicationMetadataSchemaGeneratorV1;
 import com.linkedin.venice.schema.writecompute.WriteComputeProcessor;
@@ -14,8 +16,6 @@ import java.util.List;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang.Validate;
-
-import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
 
 
 /**
@@ -57,8 +57,7 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
       long putOperationTimestamp,
       int putOperationColoID,
       long newValueSourceOffset,
-      int newValueSourceBrokerID
-  ) {
+      int newValueSourceBrokerID) {
     validatePutInputParams(oldValueAndReplicationMetadata, newValue);
     final Object tsObject = oldValueAndReplicationMetadata.getReplicationMetadata().get(TIMESTAMP_FIELD_NAME);
     RmdTimestampType rmdTimestampType = MergeUtils.getReplicationMetadataType(tsObject);
@@ -71,8 +70,7 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
             putOperationTimestamp,
             newValueSourceOffset,
             newValueSourceBrokerID,
-            newValue
-        );
+            newValue);
 
       case PER_FIELD_TIMESTAMP:
         return handlePutWithPerFieldLevelTimestamp(
@@ -82,27 +80,28 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
             newValueSourceBrokerID,
             putOperationColoID,
             oldValueAndReplicationMetadata,
-            newValue
-        );
+            newValue);
 
       default:
-        throw new VeniceException("Invalid replication metadata type"  + rmdTimestampType);
+        throw new VeniceException("Invalid replication metadata type" + rmdTimestampType);
     }
   }
 
   private void validatePutInputParams(
       ValueAndReplicationMetadata<GenericRecord> oldValueAndReplicationMetadata,
-      GenericRecord newValue
-  ) {
+      GenericRecord newValue) {
     final GenericRecord oldValue = oldValueAndReplicationMetadata.getValue();
     if (oldValue == null) {
       throw new VeniceException("Old value cannot be null.");
     }
 
     if (!AvroSupersetSchemaUtils.isSupersetSchema(oldValue.getSchema(), newValue.getSchema())) {
-      throw new VeniceException(String.format("Old value schema must be a superset schema of the new value schema. "
-              + "New value schema: %s and old value schema: %s",
-          newValue.getSchema().toString(true), oldValue.getSchema().toString(true)));
+      throw new VeniceException(
+          String.format(
+              "Old value schema must be a superset schema of the new value schema. "
+                  + "New value schema: %s and old value schema: %s",
+              newValue.getSchema().toString(true),
+              oldValue.getSchema().toString(true)));
     }
   }
 
@@ -113,8 +112,7 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
       final int newValueSourceBrokerID,
       final int putOperationColoID,
       ValueAndReplicationMetadata<GenericRecord> oldValueAndReplicationMetadata,
-      GenericRecord newValue
-  ) {
+      GenericRecord newValue) {
     final GenericRecord oldReplicationMetadata = oldValueAndReplicationMetadata.getReplicationMetadata();
     final GenericRecord oldValue = oldValueAndReplicationMetadata.getValue();
     updateReplicationCheckpointVector(oldReplicationMetadata, sourceOffsetOfNewValue, newValueSourceBrokerID);
@@ -123,7 +121,7 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
     boolean allFieldsNew = true;
     boolean noFieldUpdated = true;
     // Iterate fields in the new record because old record fields set must be a superset of the new record fields set.
-    for (Schema.Field newRecordField : fieldsInNewRecord) {
+    for (Schema.Field newRecordField: fieldsInNewRecord) {
       final String fieldName = newRecordField.name();
       UpdateResultStatus fieldUpdateResult = mergeRecordHelper.putOnField(
           oldValue,
@@ -131,8 +129,7 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
           fieldName,
           newValue.get(fieldName),
           putOperationTimestamp,
-          putOperationColoID
-      );
+          putOperationColoID);
 
       allFieldsNew &= (fieldUpdateResult == UpdateResultStatus.COMPLETELY_UPDATED);
       noFieldUpdated &= (fieldUpdateResult == UpdateResultStatus.NOT_UPDATED_AT_ALL);
@@ -152,11 +149,11 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
       long deleteOperationTimestamp,
       int deleteOperationColoID,
       long newValueSourceOffset,
-      int newValueSourceBrokerID
-  ) {
+      int newValueSourceBrokerID) {
     if (RUNTIME_AVRO_VERSION.earlierThan(AvroVersion.AVRO_1_7)) {
-      throw new VeniceException("'delete' operation won't work properly with Avro version before 1.7 and"
-          + " the runtime Avro version is: " + RUNTIME_AVRO_VERSION);
+      throw new VeniceException(
+          "'delete' operation won't work properly with Avro version before 1.7 and" + " the runtime Avro version is: "
+              + RUNTIME_AVRO_VERSION);
     }
 
     final GenericRecord oldReplicationMetadata = oldValueAndReplicationMetadata.getReplicationMetadata();
@@ -170,8 +167,7 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
             deleteOperationTimestamp,
             newValueSourceOffset,
             newValueSourceBrokerID,
-            oldValueAndReplicationMetadata
-        );
+            oldValueAndReplicationMetadata);
 
       case PER_FIELD_TIMESTAMP:
         updateReplicationCheckpointVector(oldReplicationMetadata, newValueSourceOffset, newValueSourceBrokerID);
@@ -179,8 +175,7 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
             oldValueAndReplicationMetadata.getValue(),
             (GenericRecord) tsObject,
             deleteOperationTimestamp,
-            deleteOperationColoID
-        );
+            deleteOperationColoID);
 
         if (recordDeleteResultStatus == UpdateResultStatus.COMPLETELY_UPDATED) {
           // Full delete
@@ -192,7 +187,7 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
         return oldValueAndReplicationMetadata;
 
       default:
-        throw new VeniceException("Invalid replication metadata type type"  + rmdTimestampType);
+        throw new VeniceException("Invalid replication metadata type type" + rmdTimestampType);
     }
   }
 
@@ -204,20 +199,22 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
       long updateOperationTimestamp,
       int updateOperationColoID,
       long newValueSourceOffset,
-      int newValueSourceBrokerID
-  ) {
-    updateReplicationCheckpointVector(oldValueAndReplicationMetadata.getReplicationMetadata(), newValueSourceOffset, newValueSourceBrokerID);
+      int newValueSourceBrokerID) {
+    updateReplicationCheckpointVector(
+        oldValueAndReplicationMetadata.getReplicationMetadata(),
+        newValueSourceOffset,
+        newValueSourceBrokerID);
     return writeComputeProcessor.updateRecordWithRmd(
         currValueSchema,
         oldValueAndReplicationMetadata,
         writeComputeRecord.get(),
         updateOperationTimestamp,
-        updateOperationColoID
-    );
+        updateOperationColoID);
   }
 
   @Override
   GenericRecord compareAndReturn(GenericRecord oldValue, GenericRecord newValue) {
-    return (GenericRecord) MergeUtils.compareAndReturn(oldValue, newValue); // TODO: use a object-content-based comparator.
+    return (GenericRecord) MergeUtils.compareAndReturn(oldValue, newValue); // TODO: use a object-content-based
+                                                                            // comparator.
   }
 }

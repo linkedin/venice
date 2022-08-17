@@ -16,14 +16,17 @@ public class MainIngestionReportChannelInitializer extends ChannelInitializer<So
   private final Optional<SSLEngineComponentFactory> sslFactory;
   private final VerifySslHandler verifySslHandler = new VerifySslHandler();
 
-  public MainIngestionReportChannelInitializer(MainIngestionMonitorService mainIngestionMonitorService, Optional<SSLEngineComponentFactory> sslFactory) {
+  public MainIngestionReportChannelInitializer(
+      MainIngestionMonitorService mainIngestionMonitorService,
+      Optional<SSLEngineComponentFactory> sslFactory) {
     this.sslFactory = sslFactory;
     this.mainIngestionMonitorService = mainIngestionMonitorService;
   }
 
   @Override
   protected void initChannel(SocketChannel ch) {
-    sslFactory.ifPresent(sslEngineComponentFactory -> ch.pipeline().addLast(new SSLInitializer(sslEngineComponentFactory)));
+    sslFactory
+        .ifPresent(sslEngineComponentFactory -> ch.pipeline().addLast(new SSLInitializer(sslEngineComponentFactory)));
     ch.pipeline().addLast(new HttpRequestDecoder());
     ch.pipeline().addLast(new HttpObjectAggregator(1024 * 1024));
     ch.pipeline().addLast(new HttpResponseEncoder());

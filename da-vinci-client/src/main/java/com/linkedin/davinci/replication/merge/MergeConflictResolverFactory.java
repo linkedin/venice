@@ -8,7 +8,6 @@ import org.apache.avro.generic.GenericData;
 
 
 public class MergeConflictResolverFactory {
-
   private static final MergeConflictResolverFactory INSTANCE = new MergeConflictResolverFactory();
 
   public static MergeConflictResolverFactory getInstance() {
@@ -22,8 +21,7 @@ public class MergeConflictResolverFactory {
   public MergeConflictResolver createMergeConflictResolver(
       ReadOnlySchemaRepository schemaRepository,
       ReplicationMetadataSerDe rmdSerDe,
-      String storeName
-  ) {
+      String storeName) {
     MergeRecordHelper mergeRecordHelper = new CollectionTimestampMergeRecordHelper();
     return new MergeConflictResolver(
         schemaRepository,
@@ -32,7 +30,6 @@ public class MergeConflictResolverFactory {
         new MergeGenericRecord(new WriteComputeProcessor(mergeRecordHelper), mergeRecordHelper),
         new MergeByteBuffer(),
         new MergeResultValueSchemaResolverImpl(schemaRepository, storeName),
-        rmdSerDe
-    );
+        rmdSerDe);
   }
 }

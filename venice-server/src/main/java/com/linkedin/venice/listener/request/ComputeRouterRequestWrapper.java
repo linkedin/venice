@@ -1,5 +1,7 @@
 package com.linkedin.venice.listener.request;
 
+import static com.linkedin.venice.compute.ComputeRequestWrapper.*;
+
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
@@ -13,15 +15,17 @@ import java.net.URI;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
-import static com.linkedin.venice.compute.ComputeRequestWrapper.*;
 
-
-public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<ComputeRouterRequestKeyV1>{
+public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<ComputeRouterRequestKeyV1> {
   private final ComputeRequestWrapper computeRequestWrapper;
   private int valueSchemaId = -1;
 
-  private ComputeRouterRequestWrapper(String resourceName, ComputeRequestWrapper computeRequestWrapper,
-                                      Iterable<ComputeRouterRequestKeyV1> keys, HttpRequest request, String schemaId) {
+  private ComputeRouterRequestWrapper(
+      String resourceName,
+      ComputeRequestWrapper computeRequestWrapper,
+      Iterable<ComputeRouterRequestKeyV1> keys,
+      HttpRequest request,
+      String schemaId) {
     super(resourceName, keys, request);
     this.computeRequestWrapper = computeRequestWrapper;
     if (schemaId != null) {
@@ -45,8 +49,9 @@ public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<Co
     }
     int apiVersion = Integer.parseInt(apiVersionStr);
     if (apiVersion <= 0 || apiVersion > LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST) {
-      throw new VeniceException("Compute API version " + apiVersion + " is invalid. "
-          + "Latest version is " + LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST);
+      throw new VeniceException(
+          "Compute API version " + apiVersion + " is invalid. " + "Latest version is "
+              + LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST);
     }
 
     // TODO: xplore the possibility of streaming in the request bytes, and processing it in pipelined fashion
@@ -54,8 +59,8 @@ public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<Co
     httpRequest.content().readBytes(requestContent);
 
     ComputeRequestWrapper computeRequestWrapper = new ComputeRequestWrapper(apiVersion);
-    BinaryDecoder decoder =
-        OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(requestContent, 0, requestContent.length);
+    BinaryDecoder decoder = OptimizedBinaryDecoderFactory.defaultFactory()
+        .createOptimizedBinaryDecoder(requestContent, 0, requestContent.length);
     computeRequestWrapper.deserialize(decoder, useFastAvro);
 
     Iterable<ComputeRouterRequestKeyV1> keys = parseKeys(decoder);

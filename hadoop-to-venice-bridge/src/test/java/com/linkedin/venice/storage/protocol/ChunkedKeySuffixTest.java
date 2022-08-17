@@ -17,7 +17,6 @@ import org.testng.annotations.Test;
 
 @Test
 public class ChunkedKeySuffixTest {
-
   /**
    * This test verifies that lexicographical ordering is maintained properly in our keys, which is
    * important in order to minimize the BDB overhead incurred from out-of-order ingestion.
@@ -66,13 +65,15 @@ public class ChunkedKeySuffixTest {
       ChunkedKeySuffix chunkedKeySuffixForManifest = new ChunkedKeySuffix();
       chunkedKeySuffixForManifest.isChunk = false;
       chunkedKeySuffixForManifest.chunkId = null;
-      byte[] keyWithSuffixForManifest = keyWithChunkingSuffixSerializer.serializeChunkedKey(keyArray, chunkedKeySuffixForManifest);
+      byte[] keyWithSuffixForManifest =
+          keyWithChunkingSuffixSerializer.serializeChunkedKey(keyArray, chunkedKeySuffixForManifest);
       keysWithSuffix.add(keyWithSuffixForManifest);
     }
 
     Comparator<byte[]> referenceImplementationComparator = (o1, o2) -> ByteUtils.compare(o1, o2);
     List<byte[]> sortedKeys = keys.stream().sorted(referenceImplementationComparator).collect(Collectors.toList());
-    List<byte[]> sortedKeysWithSuffix = keysWithSuffix.stream().sorted(referenceImplementationComparator).collect(Collectors.toList());
+    List<byte[]> sortedKeysWithSuffix =
+        keysWithSuffix.stream().sorted(referenceImplementationComparator).collect(Collectors.toList());
 
     Assert.assertEquals(keys, sortedKeys, "The keys should be ordered to begin with!");
     Assert.assertEquals(keysWithSuffix, sortedKeysWithSuffix, "The keys with suffix should be ordered!");
@@ -81,11 +82,20 @@ public class ChunkedKeySuffixTest {
      * The following tests are to make sure that {@link BytesWritable} keeps implementing comparison correctly
      */
 
-    Comparator<byte[]> hadoopComparator = (o1, o2) -> BytesWritable.Comparator.compareBytes(o1, 0, o1.length, o2, 0, o2.length);
-    List<byte[]> sortedKeysAccordingToHadoopBytesWritable = keys.stream().sorted(hadoopComparator).collect(Collectors.toList());
-    List<byte[]> sortedKeysWithSuffixAccordingToHadoopBytesWritable = keysWithSuffix.stream().sorted(hadoopComparator).collect(Collectors.toList());
+    Comparator<byte[]> hadoopComparator =
+        (o1, o2) -> BytesWritable.Comparator.compareBytes(o1, 0, o1.length, o2, 0, o2.length);
+    List<byte[]> sortedKeysAccordingToHadoopBytesWritable =
+        keys.stream().sorted(hadoopComparator).collect(Collectors.toList());
+    List<byte[]> sortedKeysWithSuffixAccordingToHadoopBytesWritable =
+        keysWithSuffix.stream().sorted(hadoopComparator).collect(Collectors.toList());
 
-    Assert.assertEquals(keys, sortedKeysAccordingToHadoopBytesWritable, "The keys should be ordered according to Hadoop's BytesWritabe!");
-    Assert.assertEquals(keysWithSuffix, sortedKeysWithSuffixAccordingToHadoopBytesWritable, "The keys with suffix should be ordered according to Hadoop's BytesWritabe!");
+    Assert.assertEquals(
+        keys,
+        sortedKeysAccordingToHadoopBytesWritable,
+        "The keys should be ordered according to Hadoop's BytesWritabe!");
+    Assert.assertEquals(
+        keysWithSuffix,
+        sortedKeysWithSuffixAccordingToHadoopBytesWritable,
+        "The keys with suffix should be ordered according to Hadoop's BytesWritabe!");
   }
 }

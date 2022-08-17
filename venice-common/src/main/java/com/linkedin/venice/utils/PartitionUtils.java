@@ -45,13 +45,18 @@ public class PartitionUtils {
       } else if (partitionCount < minPartitionCount) {
         partitionCount = minPartitionCount;
       }
-      logger.info("Assign partition count: {} by given size: {} for the first version of store: {}",
-          partitionCount, storeSizeBytes, storeName);
-      return (int)partitionCount;
+      logger.info(
+          "Assign partition count: {} by given size: {} for the first version of store: {}",
+          partitionCount,
+          storeSizeBytes,
+          storeName);
+      return (int) partitionCount;
     } else {
       // Active version exists, use the partition count calculated before.
-      logger.info("Assign partition count: {}, which come from previous version, for store: {}",
-          previousPartitionCount, storeName);
+      logger.info(
+          "Assign partition count: {}, which come from previous version, for store: {}",
+          previousPartitionCount,
+          storeName);
       return previousPartitionCount;
     }
   }
@@ -66,7 +71,7 @@ public class PartitionUtils {
   public static IntList getSubPartitions(Collection<Integer> userPartitions, int amplificationFactor) {
     checkAmplificationFactor(amplificationFactor);
     IntList subPartitions = new IntArrayList();
-    for (int userPartition : userPartitions) {
+    for (int userPartition: userPartitions) {
       int subPartition = userPartition * amplificationFactor;
       for (int i = 0; i < amplificationFactor; ++i, ++subPartition) {
         subPartitions.add(subPartition);
@@ -82,8 +87,7 @@ public class PartitionUtils {
    * @return leaderSubPartition if is consuming from a Real-time topic, else return partition itself
    */
   public static int getSubPartition(String topic, int partition, int amplificationFactor) {
-    return Version.isRealTimeTopic(topic) ?
-        getLeaderSubPartition(partition, amplificationFactor) : partition;
+    return Version.isRealTimeTopic(topic) ? getLeaderSubPartition(partition, amplificationFactor) : partition;
   }
 
   public static IntList getSubPartitions(int userPartition, int amplificationFactor) {
@@ -98,7 +102,7 @@ public class PartitionUtils {
 
   public static IntList getUserPartitions(Collection<Integer> subPartitions, int amplificationFactor) {
     IntList userPartitions = new IntArrayList(subPartitions.size());
-    for (Integer subPartition : subPartitions) {
+    for (Integer subPartition: subPartitions) {
       userPartitions.add(getUserPartition(subPartition, amplificationFactor));
     }
     return userPartitions;
@@ -153,8 +157,10 @@ public class PartitionUtils {
       int amplificationFactor,
       VeniceProperties params,
       Schema keySchema) {
-    VenicePartitioner partitioner = ReflectUtils.callConstructor(ReflectUtils.loadClass(partitionerClass),
-        new Class<?>[]{VeniceProperties.class, Schema.class}, new Object[]{params, keySchema});
+    VenicePartitioner partitioner = ReflectUtils.callConstructor(
+        ReflectUtils.loadClass(partitionerClass),
+        new Class<?>[] { VeniceProperties.class, Schema.class },
+        new Object[] { params, keySchema });
     if (amplificationFactor == 1) {
       return partitioner;
     }
@@ -188,7 +194,10 @@ public class PartitionUtils {
     }
   }
 
-  public static int getAmplificationFactor(ReadOnlyStoreRepository readOnlyStoreRepository, String storeName, int versionNumber) {
+  public static int getAmplificationFactor(
+      ReadOnlyStoreRepository readOnlyStoreRepository,
+      String storeName,
+      int versionNumber) {
     int amplifcationFactor = 1;
     if (readOnlyStoreRepository == null) {
       return amplifcationFactor;
@@ -199,7 +208,8 @@ public class PartitionUtils {
         amplifcationFactor = version.get().getPartitionerConfig().getAmplificationFactor();
       } else {
         logger.warn("Version " + versionNumber + " does not exist.");
-        amplifcationFactor = readOnlyStoreRepository.getStore(storeName).getPartitionerConfig().getAmplificationFactor();
+        amplifcationFactor =
+            readOnlyStoreRepository.getStore(storeName).getPartitionerConfig().getAmplificationFactor();
       }
     } catch (Exception e) {
       logger.warn("Failed to fetch amplificationFactor from for store " + storeName + ". Using default value 1.");

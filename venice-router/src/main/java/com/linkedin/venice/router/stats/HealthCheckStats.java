@@ -9,6 +9,7 @@ import io.tehuti.metrics.stats.Count;
 public class HealthCheckStats extends AbstractVeniceStats {
   private final Sensor healthCheckRequestSensor;
   private final Sensor errorHealthCheckRequestSensor;
+
   public HealthCheckStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
     healthCheckRequestSensor = registerSensor("healthcheck_request", new Count());

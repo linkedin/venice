@@ -25,9 +25,14 @@ public class ComputeUtils {
   public static final Pattern VALID_AVRO_NAME_PATTERN = Pattern.compile("\\A[A-Za-z_][A-Za-z0-9_]*\\z");
   public static final String ILLEGAL_AVRO_CHARACTER = "[^A-Za-z0-9_]";
   public static final String ILLEGAL_AVRO_CHARACTER_REPLACEMENT = "_";
-  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER = RedundantExceptionFilter.getRedundantExceptionFilter();
+  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
-  public static void checkResultSchema(Schema resultSchema, Schema valueSchema, int version, List<ComputeOperation> operations) {
+  public static void checkResultSchema(
+      Schema resultSchema,
+      Schema valueSchema,
+      int version,
+      List<ComputeOperation> operations) {
     if (resultSchema.getType() != Schema.Type.RECORD || valueSchema.getType() != Schema.Type.RECORD) {
       throw new VeniceException("Compute result schema and value schema must be RECORD type");
     }
@@ -36,33 +41,37 @@ public class ComputeUtils {
     valueSchema.getFields().forEach(f -> valueFieldSchemaMap.put(f.name(), f.schema()));
     Set<Pair<String, Schema.Type>> operationResultFields = new HashSet<>();
 
-    for (ComputeOperation operation : operations) {
+    for (ComputeOperation operation: operations) {
       switch (ComputeOperationType.valueOf(operation)) {
         case DOT_PRODUCT:
-          DotProduct dotProduct = (DotProduct)operation.operation;
+          DotProduct dotProduct = (DotProduct) operation.operation;
           if (!valueFieldSchemaMap.containsKey(dotProduct.field.toString())) {
-            throw new VeniceException("The field " + dotProduct.field.toString() + " being operated on is not in value schema");
+            throw new VeniceException(
+                "The field " + dotProduct.field.toString() + " being operated on is not in value schema");
           }
           operationResultFields.add(new Pair<>(dotProduct.resultFieldName.toString(), Schema.Type.UNION));
           break;
         case COSINE_SIMILARITY:
-          CosineSimilarity cosineSimilarity = (CosineSimilarity)operation.operation;
+          CosineSimilarity cosineSimilarity = (CosineSimilarity) operation.operation;
           if (!valueFieldSchemaMap.containsKey(cosineSimilarity.field.toString())) {
-            throw new VeniceException("The field " + cosineSimilarity.field.toString() + " being operated on is not in value schema");
+            throw new VeniceException(
+                "The field " + cosineSimilarity.field.toString() + " being operated on is not in value schema");
           }
-          operationResultFields.add(new Pair<>(cosineSimilarity.resultFieldName.toString(),  Schema.Type.UNION));
+          operationResultFields.add(new Pair<>(cosineSimilarity.resultFieldName.toString(), Schema.Type.UNION));
           break;
         case HADAMARD_PRODUCT:
-          HadamardProduct hadamardProduct = (HadamardProduct)operation.operation;
+          HadamardProduct hadamardProduct = (HadamardProduct) operation.operation;
           if (!valueFieldSchemaMap.containsKey(hadamardProduct.field.toString())) {
-            throw new VeniceException("The field " + hadamardProduct.field.toString() + " being operated on is not in value schema");
+            throw new VeniceException(
+                "The field " + hadamardProduct.field.toString() + " being operated on is not in value schema");
           }
           operationResultFields.add(new Pair<>(hadamardProduct.resultFieldName.toString(), Schema.Type.UNION));
           break;
         case COUNT:
           Count count = (Count) operation.operation;
           if (!valueFieldSchemaMap.containsKey(count.field.toString())) {
-            throw new VeniceException("The field " + count.field.toString() + " being operated on is not in value schema");
+            throw new VeniceException(
+                "The field " + count.field.toString() + " being operated on is not in value schema");
           }
           operationResultFields.add(new Pair<>(count.resultFieldName.toString(), Schema.Type.UNION));
           break;
@@ -70,7 +79,7 @@ public class ComputeUtils {
           throw new VeniceException("Compute operation type " + operation.operationType + " not supported");
       }
     }
-    for (Schema.Field resultField : resultSchema.getFields()) {
+    for (Schema.Field resultField: resultSchema.getFields()) {
       /**
        * There is no need to compare whether the 'resultField' is exactly same as the corresponding one in the value schema,
        * since there is no need to make the result schema backward compatible.
@@ -88,12 +97,15 @@ public class ComputeUtils {
       }
       Pair<String, Schema.Type> resultFieldPair = new Pair<>(resultField.name(), resultField.schema().getType());
       if (!operationResultFields.contains(resultFieldPair)) {
-        String msg = "The result field " + resultField.name() + " with schema " + resultField.schema() + " for value schema code " + valueSchema.hashCode();
+        String msg = "The result field " + resultField.name() + " with schema " + resultField.schema()
+            + " for value schema code " + valueSchema.hashCode();
         if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(msg)) {
-          LOGGER.error(msg + " is not a field in value schema or an operation result schema." + " Value schema " + valueSchema);
+          LOGGER.error(
+              msg + " is not a field in value schema or an operation result schema." + " Value schema " + valueSchema);
         }
-        throw new VeniceException("The result field " + resultField.name() +
-            " is not a field in value schema or an operation result schema.");
+        throw new VeniceException(
+            "The result field " + resultField.name()
+                + " is not a field in value schema or an operation result schema.");
       }
     }
   }

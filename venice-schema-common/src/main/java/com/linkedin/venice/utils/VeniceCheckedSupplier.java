@@ -7,5 +7,5 @@ package com.linkedin.venice.utils;
  */
 @FunctionalInterface
 public interface VeniceCheckedSupplier<T> {
-    T get() throws Throwable;
+  T get() throws Throwable;
 }

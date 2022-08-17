@@ -3,7 +3,8 @@ package com.linkedin.venice.controllerapi;
 import org.codehaus.jackson.annotate.JsonIgnore;
 
 
-public class MultiSchemaResponse extends ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */
+public class MultiSchemaResponse
+    extends ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */
   /**
    * If this is set it should be used to replace latestValueSchema to deserialize during read.
    */

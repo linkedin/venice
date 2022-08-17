@@ -1,5 +1,8 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import static com.linkedin.davinci.store.AbstractStorageEngine.*;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.storage.StorageService;
@@ -20,9 +23,6 @@ import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-
-import static com.linkedin.davinci.store.AbstractStorageEngine.*;
-import static org.mockito.Mockito.*;
 
 
 public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
@@ -51,7 +51,7 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         mockReadOnlyStoreRepository);
     storeConfig = new VeniceStoreVersionConfig(topicName, serverProps, PersistenceType.ROCKS_DB);
-    testStoreEngine = storageService.openStoreForNewPartition(storeConfig , PARTITION_ID);
+    testStoreEngine = storageService.openStoreForNewPartition(storeConfig, PARTITION_ID);
     createStoreForTest();
   }
 
@@ -62,7 +62,7 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
 
   @AfterClass
   public void cleanUp() throws Exception {
-    storageService.dropStorePartition(storeConfig , PARTITION_ID);
+    storageService.dropStorePartition(storeConfig, PARTITION_ID);
     storageService.stop();
   }
 
@@ -72,22 +72,22 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
   }
 
   @Test
-  public void testGetByKeyPrefixManyKeys(){
+  public void testGetByKeyPrefixManyKeys() {
     super.testGetByKeyPrefixManyKeys();
   }
 
   @Test
-  public void testGetByKeyPrefixMaxSignedByte(){
+  public void testGetByKeyPrefixMaxSignedByte() {
     super.testGetByKeyPrefixMaxSignedByte();
   }
 
   @Test
-  public void testGetByKeyPrefixMaxUnsignedByte(){
+  public void testGetByKeyPrefixMaxUnsignedByte() {
     super.testGetByKeyPrefixMaxUnsignedByte();
   }
 
   @Test
-  public void testGetByKeyPrefixByteOverflow(){
+  public void testGetByKeyPrefixByteOverflow() {
     super.testGetByKeyPrefixByteOverflow();
   }
 
@@ -95,7 +95,7 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
   public void testGetAndPutPartitionOffset() {
     AbstractStorageEngine testStorageEngine = getTestStoreEngine();
     Assert.assertEquals(testStorageEngine.getType(), PersistenceType.ROCKS_DB);
-    RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine)testStorageEngine;
+    RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) testStorageEngine;
     OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     offsetRecord.setCheckpointLocalVersionTopicOffset(666L);
     rocksDBStorageEngine.putPartitionOffset(PARTITION_ID, offsetRecord);
@@ -108,7 +108,7 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
   public void testGetAndPutStoreVersionState() {
     AbstractStorageEngine testStorageEngine = getTestStoreEngine();
     Assert.assertEquals(testStorageEngine.getType(), PersistenceType.ROCKS_DB);
-    RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine)testStorageEngine;
+    RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) testStorageEngine;
 
     // Create a StoreVersionState record
     StoreVersionState storeVersionStateRecord = new StoreVersionState();
@@ -126,13 +126,14 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
   public void testIllegalPartitionIdInGetAndPutPartitionOffset() {
     AbstractStorageEngine testStorageEngine = getTestStoreEngine();
     Assert.assertEquals(testStorageEngine.getType(), PersistenceType.ROCKS_DB);
-    RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine)testStorageEngine;
+    RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) testStorageEngine;
 
-    Assert.assertThrows(IllegalArgumentException.class,
-        () -> rocksDBStorageEngine.putPartitionOffset(-1, new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer())));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> rocksDBStorageEngine
+            .putPartitionOffset(-1, new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer())));
 
-    Assert.assertThrows(IllegalArgumentException.class,
-        () -> rocksDBStorageEngine.getPartitionOffset(-1));
+    Assert.assertThrows(IllegalArgumentException.class, () -> rocksDBStorageEngine.getPartitionOffset(-1));
   }
 
   @Test
@@ -174,7 +175,7 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
   public void testGetPersistedPartitionIds() {
     AbstractStorageEngine testStorageEngine = getTestStoreEngine();
     Assert.assertEquals(testStorageEngine.getType(), PersistenceType.ROCKS_DB);
-    RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine)testStorageEngine;
+    RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) testStorageEngine;
     Set<Integer> persistedPartitionIds = rocksDBStorageEngine.getPersistedPartitionIds();
     Assert.assertEquals(persistedPartitionIds.size(), 2);
     Assert.assertTrue(persistedPartitionIds.contains(PARTITION_ID));
@@ -184,7 +185,8 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
   @Test
   public void testRocksDBStoragePartitionType() {
     // Verify that data partition is created as regular RocksDB partition, not a RMD-RocksDB Partition.
-    Assert.assertFalse(testStoreEngine.getPartitionOrThrow(PARTITION_ID) instanceof ReplicationMetadataRocksDBStoragePartition);
+    Assert.assertFalse(
+        testStoreEngine.getPartitionOrThrow(PARTITION_ID) instanceof ReplicationMetadataRocksDBStoragePartition);
     Assert.assertTrue(testStoreEngine.getPartitionOrThrow(PARTITION_ID) instanceof RocksDBStoragePartition);
     // Verify that metadata partition is created as regular RocksDB partition, not a RMD-RocksDB Partition.
     Assert.assertFalse(testStoreEngine.getMetadataPartition() instanceof ReplicationMetadataRocksDBStoragePartition);

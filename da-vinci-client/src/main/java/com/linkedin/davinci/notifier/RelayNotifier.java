@@ -15,8 +15,14 @@ public class RelayNotifier implements VeniceNotifier {
   public RelayNotifier(VeniceNotifier notifier) {
     this.targetNotifier = notifier;
   }
+
   @Override
-  public void completed(String kafkaTopic, int partitionId, long offset, String message, Optional<LeaderFollowerStateType> leaderState) {
+  public void completed(
+      String kafkaTopic,
+      int partitionId,
+      long offset,
+      String message,
+      Optional<LeaderFollowerStateType> leaderState) {
     targetNotifier.completed(kafkaTopic, partitionId, offset, message, leaderState);
   }
 
@@ -46,12 +52,20 @@ public class RelayNotifier implements VeniceNotifier {
   }
 
   @Override
-  public void startOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String incrementalPushVersion) {
+  public void startOfIncrementalPushReceived(
+      String kafkaTopic,
+      int partitionId,
+      long offset,
+      String incrementalPushVersion) {
     targetNotifier.startOfIncrementalPushReceived(kafkaTopic, partitionId, offset, incrementalPushVersion);
   }
 
   @Override
-  public void endOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String incrementalPushVersion) {
+  public void endOfIncrementalPushReceived(
+      String kafkaTopic,
+      int partitionId,
+      long offset,
+      String incrementalPushVersion) {
     targetNotifier.endOfIncrementalPushReceived(kafkaTopic, partitionId, offset, incrementalPushVersion);
   }
 

@@ -23,7 +23,6 @@ import org.bouncycastle.crypto.digests.MD5Digest;
  * Running checksum implementation based on BouncyCastle's implementation of MD5.
  */
 public class MD5CheckSum extends CheckSum {
-
   private final MD5Digest checksum;
 
   public MD5CheckSum() {

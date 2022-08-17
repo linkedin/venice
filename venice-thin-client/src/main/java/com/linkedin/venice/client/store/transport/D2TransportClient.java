@@ -1,5 +1,7 @@
 package com.linkedin.venice.client.store.transport;
 
+import static com.linkedin.venice.HttpConstants.*;
+
 import com.linkedin.common.callback.Callback;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
@@ -37,8 +39,6 @@ import org.apache.http.HttpHeaders;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.HttpConstants.*;
-
 
 /**
  * {@link D2Client} based TransportClient implementation.
@@ -48,9 +48,9 @@ public class D2TransportClient extends TransportClient {
 
   private final D2Client d2Client;
 
-  //indicate whether it is a private d2 created by TransportClient or it is a public
-  //d2 shared by multiply TransportClient. The TransportClient only takes care of
-  //start/shutdown a d2 client if is is private.
+  // indicate whether it is a private d2 created by TransportClient or it is a public
+  // d2 shared by multiply TransportClient. The TransportClient only takes care of
+  // start/shutdown a d2 client if is is private.
   private final boolean privateD2Client;
   private String d2ServiceName;
 
@@ -72,8 +72,7 @@ public class D2TransportClient extends TransportClient {
    * @param clientConfig
    */
   public D2TransportClient(String d2ServiceName, ClientConfig clientConfig) {
-    D2ClientBuilder builder = new D2ClientBuilder()
-        .setZkHosts(clientConfig.getVeniceURL())
+    D2ClientBuilder builder = new D2ClientBuilder().setZkHosts(clientConfig.getVeniceURL())
         .setZkSessionTimeout(clientConfig.getD2ZkTimeout(), TimeUnit.MILLISECONDS)
         .setZkStartupTimeout(clientConfig.getD2ZkTimeout(), TimeUnit.MILLISECONDS)
         .setLbWaitTimeout(clientConfig.getD2ZkTimeout(), TimeUnit.MILLISECONDS)
@@ -102,13 +101,15 @@ public class D2TransportClient extends TransportClient {
     RestRequest request = getRestGetRequest(requestPath, headers);
     CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
     RequestContext requestContext = new RequestContext();
-    requestContext.putLocalAttr(R2Constants.R2_OPERATION, "get"); //required for d2 backup requests
+    requestContext.putLocalAttr(R2Constants.R2_OPERATION, "get"); // required for d2 backup requests
     restRequest(request, requestContext, new D2TransportClientCallback(valueFuture));
     return valueFuture;
   }
 
   @Override
-  public CompletableFuture<TransportClientResponse> post(String requestPath, Map<String, String> headers,
+  public CompletableFuture<TransportClientResponse> post(
+      String requestPath,
+      Map<String, String> headers,
       byte[] requestBody) {
     RestRequest request = getRestPostRequest(requestPath, headers, requestBody);
     CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
@@ -120,21 +121,26 @@ public class D2TransportClient extends TransportClient {
   // TODO: we may want to differentiate 'compute' from 'batchget'
   private RequestContext getRequestContextForPost() {
     RequestContext requestContext = new RequestContext();
-    requestContext.putLocalAttr(R2Constants.R2_OPERATION, "batchget"); //required for d2 backup requests
+    requestContext.putLocalAttr(R2Constants.R2_OPERATION, "batchget"); // required for d2 backup requests
 
     return requestContext;
   }
 
   @Override
-  public void streamPost(String requestPath, Map<String, String> headers, byte[] requestBody,
-      TransportClientStreamingCallback callback, int keyCount) {
+  public void streamPost(
+      String requestPath,
+      Map<String, String> headers,
+      byte[] requestBody,
+      TransportClientStreamingCallback callback,
+      int keyCount) {
     try {
       String requestUrl = getD2RequestUrl(requestPath);
       StreamRequestBuilder requestBuilder = new StreamRequestBuilder(URI.create(requestUrl));
       headers.forEach((name, value) -> requestBuilder.addHeaderValue(name, value));
       requestBuilder.addHeaderValue(VENICE_KEY_COUNT, Integer.toString(keyCount));
       requestBuilder.setMethod(RestMethod.POST);
-      StreamRequest streamRequest = requestBuilder.build(EntityStreams.newEntityStream(new ByteStringWriter(ByteString.unsafeWrap(requestBody))));
+      StreamRequest streamRequest =
+          requestBuilder.build(EntityStreams.newEntityStream(new ByteStringWriter(ByteString.unsafeWrap(requestBody))));
 
       /**
        * Right now, D2/R2 streaming lib is not supporting backup request properly since backup request will try to attach
@@ -213,16 +219,13 @@ public class D2TransportClient extends TransportClient {
            * either 'onSuccess' or 'onError' can be invoked, but not both.
            */
           if (e instanceof StreamException) {
-            StreamException streamException = (StreamException)e;
+            StreamException streamException = (StreamException) e;
             callback.onCompletion(
                 Optional.of(
                     new VeniceClientHttpException(
                         streamException.getResponse().toString(),
-                        streamException.getResponse().getStatus()
-                    )
-                )
-            );
-            ((StreamException)e).getResponse().getStatus();
+                        streamException.getResponse().getStatus())));
+            ((StreamException) e).getResponse().getStatus();
           } else {
             callback.onCompletion(Optional.of(new VeniceClientException(e)));
           }
@@ -340,8 +343,8 @@ public class D2TransportClient extends TransportClient {
       }
     };
 
-    StreamRequest redirectableRequest = request.builder()
-        .addHeaderValue(VENICE_ALLOW_REDIRECT, "1").build(request.getEntityStream());
+    StreamRequest redirectableRequest =
+        request.builder().addHeaderValue(VENICE_ALLOW_REDIRECT, "1").build(request.getEntityStream());
     d2Client.streamRequest(redirectableRequest, requestContext, redirectCallback);
   }
 
@@ -350,7 +353,8 @@ public class D2TransportClient extends TransportClient {
     if (privateD2Client) {
       D2ClientUtils.shutdownClient(d2Client);
     } else {
-      logger.info("This is a shared D2Client. TransportClient is not responsible to shut it down. Please do it manually.");
+      logger.info(
+          "This is a shared D2Client. TransportClient is not responsible to shut it down. Please do it manually.");
     }
   }
 
@@ -361,7 +365,7 @@ public class D2TransportClient extends TransportClient {
 
     @Override
     public void onError(Throwable e) {
-      if (e instanceof RestException){
+      if (e instanceof RestException) {
         // Get the RestResponse for status codes other than 200
         RestResponse result = ((RestException) e).getResponse();
         onSuccess(result);

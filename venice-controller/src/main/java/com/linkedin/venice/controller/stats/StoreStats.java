@@ -9,7 +9,6 @@ import io.tehuti.metrics.MetricsRepository;
 
 
 public class StoreStats extends AbstractVeniceStats {
-
   public StoreStats(String storeName, MetricsRepository metricsRepository, ReadOnlyStoreRepository storeRepository) {
     super(metricsRepository, storeName);
 

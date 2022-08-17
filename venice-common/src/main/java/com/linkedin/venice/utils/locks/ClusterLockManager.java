@@ -2,8 +2,6 @@ package com.linkedin.venice.utils.locks;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -52,7 +50,7 @@ public class ClusterLockManager {
   }
 
   public void clear() {
-      perStoreLockMap.clear();
+    perStoreLockMap.clear();
   }
 
   private ReentrantReadWriteLock prepareStoreLock(String storeName) {

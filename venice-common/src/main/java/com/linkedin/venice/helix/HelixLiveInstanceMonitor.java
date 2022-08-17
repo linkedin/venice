@@ -39,8 +39,6 @@ public class HelixLiveInstanceMonitor implements IZkChildListener, VeniceResourc
 
   private final Set<LiveInstanceChangedListener> listeners = new CopyOnWriteArraySet<>();
 
-
-
   public HelixLiveInstanceMonitor(ZkClient zkClient, String clusterName) {
     this.zkClient = zkClient;
     this.clusterName = clusterName;
@@ -87,17 +85,17 @@ public class HelixLiveInstanceMonitor implements IZkChildListener, VeniceResourc
     // trigger live instance change listeners
     Set<Instance> newInstances = new HashSet<>();
     Set<Instance> deletedInstances = new HashSet<>();
-    liveInstanceSet.forEach( instance  -> {
+    liveInstanceSet.forEach(instance -> {
       if (!previousLiveInstanceSet.contains(instance)) {
         newInstances.add(instance);
       }
     });
-    previousLiveInstanceSet.forEach( instance  -> {
-      if (!liveInstanceSet.contains(instance))  {
+    previousLiveInstanceSet.forEach(instance -> {
+      if (!liveInstanceSet.contains(instance)) {
         deletedInstances.add(instance);
       }
     });
-    for (LiveInstanceChangedListener listener : listeners) {
+    for (LiveInstanceChangedListener listener: listeners) {
       listener.handleNewInstances(newInstances);
       listener.handleDeletedInstances(deletedInstances);
     }

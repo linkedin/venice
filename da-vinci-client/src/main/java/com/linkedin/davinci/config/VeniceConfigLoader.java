@@ -88,12 +88,12 @@ public class VeniceConfigLoader {
     this(clusterProperties, serverProperties, Optional.empty());
   }
 
-  public VeniceConfigLoader(VeniceProperties clusterProperties, VeniceProperties serverProperties, Optional<Map<String, Map<String, String>>> kafkaClusterMap) {
+  public VeniceConfigLoader(
+      VeniceProperties clusterProperties,
+      VeniceProperties serverProperties,
+      Optional<Map<String, Map<String, String>>> kafkaClusterMap) {
     this.combinedProperties =
-        new PropertyBuilder()
-            .put(clusterProperties.toProperties())
-            .put(serverProperties.toProperties())
-            .build();
+        new PropertyBuilder().put(clusterProperties.toProperties()).put(serverProperties.toProperties()).build();
     this.veniceServerConfig = new VeniceServerConfig(combinedProperties, kafkaClusterMap);
   }
 
@@ -127,8 +127,7 @@ public class VeniceConfigLoader {
   public static VeniceConfigLoader loadFromEnvironmentVariable() {
     String veniceConfigDir = System.getenv(VENICE_CONFIG_DIR);
     if (veniceConfigDir == null) {
-      throw new ConfigurationException(
-          "The Environment variable " + VENICE_CONFIG_DIR + " is undefined, set it!");
+      throw new ConfigurationException("The Environment variable " + VENICE_CONFIG_DIR + " is undefined, set it!");
     }
 
     return loadFromConfigDirectory(veniceConfigDir);
@@ -140,7 +139,7 @@ public class VeniceConfigLoader {
     if (!Utils.isReadableDir(configDirPath)) {
       String fullFilePath = Utils.getCanonicalPath(configDirPath);
       throw new ConfigurationException(
-              "Attempt to load configuration from , " + fullFilePath + " failed. That is not a readable directory.");
+          "Attempt to load configuration from , " + fullFilePath + " failed. That is not a readable directory.");
     }
 
     VeniceProperties clusterProperties, serverProperties;
@@ -155,11 +154,13 @@ public class VeniceConfigLoader {
     return new VeniceConfigLoader(clusterProperties, serverProperties, kafkaClusterMap);
   }
 
-  public static Optional<Map<String, Map<String, String>>> parseKafkaClusterMap(String configDirectory) throws Exception {
+  public static Optional<Map<String, Map<String, String>>> parseKafkaClusterMap(String configDirectory)
+      throws Exception {
     return parseKafkaClusterMap(configDirectory, VeniceConfigLoader.KAFKA_CLUSTER_MAP_FILE);
   }
 
-  public static Optional<Map<String, Map<String, String>>> parseKafkaClusterMap(String configDirectory, String fileName) throws Exception {
+  public static Optional<Map<String, Map<String, String>>> parseKafkaClusterMap(String configDirectory, String fileName)
+      throws Exception {
     String mapFilePath = configDirectory + File.separator + fileName;
     File mapFile = new File(mapFilePath);
     if (!mapFile.exists()) {
@@ -173,25 +174,30 @@ public class VeniceConfigLoader {
       Map<String, String> flatMap = mapper.readValue(flatMapString, Map.class);
       Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
 
-      for (Map.Entry<String, String> entry : flatMap.entrySet()) {
+      for (Map.Entry<String, String> entry: flatMap.entrySet()) {
         kafkaClusterMap.put(entry.getKey(), mapper.readValue(entry.getValue(), Map.class));
       }
       return Optional.of(kafkaClusterMap);
     }
   }
 
-  public static void storeKafkaClusterMap(File configDirectory, Optional<Map<String, Map<String, String>>> kafkaClusterMap) throws Exception {
+  public static void storeKafkaClusterMap(
+      File configDirectory,
+      Optional<Map<String, Map<String, String>>> kafkaClusterMap) throws Exception {
     storeKafkaClusterMap(configDirectory, VeniceConfigLoader.KAFKA_CLUSTER_MAP_FILE, kafkaClusterMap);
   }
 
-  public static void storeKafkaClusterMap(File configDirectory, String fileName, Optional<Map<String, Map<String, String>>> kafkaClusterMap) throws Exception {
+  public static void storeKafkaClusterMap(
+      File configDirectory,
+      String fileName,
+      Optional<Map<String, Map<String, String>>> kafkaClusterMap) throws Exception {
     if (!kafkaClusterMap.isPresent()) {
       return;
     }
 
     ObjectMapper mapper = ObjectMapperFactory.getInstance();
     Map<String, String> flatMap = new HashMap<>();
-    for (Map.Entry<String, Map<String, String>> entry : kafkaClusterMap.get().entrySet()) {
+    for (Map.Entry<String, Map<String, String>> entry: kafkaClusterMap.get().entrySet()) {
       flatMap.put(entry.getKey(), mapper.writeValueAsString(entry.getValue()));
     }
 

@@ -54,8 +54,9 @@ public class CachedDnsResolver implements DnsResolver, Closeable {
     InetAddress[] socketAddresses = systemGetAllByName(host);
     if (host.matches(cachedHostPattern)) {
       cachedDnsEntries.putIfAbsent(host, socketAddresses);
-      LOGGER.info("Put [host:" + host + ", socket addresses:" + Arrays.toString(socketAddresses) +
-          "] to the cache, and cache size: " + cachedDnsEntries.size());
+      LOGGER.info(
+          "Put [host:" + host + ", socket addresses:" + Arrays.toString(socketAddresses)
+              + "] to the cache, and cache size: " + cachedDnsEntries.size());
     }
     return socketAddresses;
   }
@@ -88,7 +89,6 @@ public class CachedDnsResolver implements DnsResolver, Closeable {
   }
 
   private class DnsCacheRefreshingTask implements Runnable {
-
     @Override
     public void run() {
       while (!stopRefreshing.get()) {
@@ -97,7 +97,7 @@ public class CachedDnsResolver implements DnsResolver, Closeable {
         } catch (InterruptedException e) {
           LOGGER.error("Sleep in DnsCacheRefreshingTask gets interrupted, will exit");
         }
-        for (String host : cachedDnsEntries.keySet()) {
+        for (String host: cachedDnsEntries.keySet()) {
           if (stopRefreshing.get()) {
             break;
           }
@@ -106,12 +106,15 @@ public class CachedDnsResolver implements DnsResolver, Closeable {
             InetAddress[] socketAddresses = systemGetAllByName(host);
             InetAddress[] cachedSocketAddresses = cachedDnsEntries.get(host);
             if (cachedSocketAddresses == null) {
-              LOGGER.error("Get null entry from DNS cache for host: " + host +
-                  ", which is impossible.. But DnsCacheRefreshingTask will udpate it by address: " + Arrays.toString(socketAddresses));
+              LOGGER.error(
+                  "Get null entry from DNS cache for host: " + host
+                      + ", which is impossible.. But DnsCacheRefreshingTask will udpate it by address: "
+                      + Arrays.toString(socketAddresses));
               cachedDnsEntries.put(host, socketAddresses);
             } else if (!Arrays.equals(cachedSocketAddresses, socketAddresses)) {
-              LOGGER.info("Dns entry for host: " + host + " gets updated, previous: " + Arrays.toString(cachedSocketAddresses) +
-              ", current: " + Arrays.toString(socketAddresses));
+              LOGGER.info(
+                  "Dns entry for host: " + host + " gets updated, previous: " + Arrays.toString(cachedSocketAddresses)
+                      + ", current: " + Arrays.toString(socketAddresses));
               cachedDnsEntries.put(host, socketAddresses);
             }
           } catch (UnknownHostException e) {

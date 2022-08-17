@@ -51,8 +51,7 @@ public class ZkStoreConfigAccessorTest {
   }
 
   @Test
-  public void testUpdateConfig()
-      throws IOException {
+  public void testUpdateConfig() throws IOException {
     String store = "testContainsConfig-store";
     String cluster = "testContainsConfig-cluster";
     accessor.createConfig(store, cluster);
@@ -62,7 +61,9 @@ public class ZkStoreConfigAccessorTest {
     config.setCluster(newCluster);
     config.setDeleting(true);
     accessor.updateConfig(config, false);
-    Assert.assertEquals(accessor.getStoreConfig(store).getCluster(), newCluster,
+    Assert.assertEquals(
+        accessor.getStoreConfig(store).getCluster(),
+        newCluster,
         "Store config should be updated correctly.");
     Assert.assertTrue(accessor.getStoreConfig(store).isDeleting(), "Store config should be updated correctly.");
   }

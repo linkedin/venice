@@ -1,5 +1,8 @@
 package com.linkedin.venice.fastclient.meta;
 
+import static com.linkedin.venice.system.store.MetaStoreWriter.*;
+import static java.lang.Thread.*;
+
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.transport.TransportClient;
@@ -52,9 +55,6 @@ import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.system.store.MetaStoreWriter.*;
-import static java.lang.Thread.*;
-
 
 /**
  * A wrapper with a DaVinci client subscribed to the corresponding Meta store to serve data required by {@link StoreMetadata}.
@@ -101,17 +101,22 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
           "'DaVinciClientForMetaStore' should not be null in 'ClientConfig' when DaVinciClientBasedMetadata is being used.");
     }
     this.daVinciClient = clientConfig.getDaVinciClientForMetaStore();
-    this.refreshIntervalInSeconds =
-        clientConfig.getMetadataRefreshInvervalInSeconds() > 0 ? clientConfig.getMetadataRefreshInvervalInSeconds()
-            : DEFAULT_REFRESH_INTERVAL_IN_SECONDS;
-    this.storeMetaKeyMap.put(STORE_KEY_SCHEMAS_KEY,
-        MetaStoreDataType.STORE_KEY_SCHEMAS.getStoreMetaKey(new HashMap<String, String>() {{
-          put(KEY_STRING_STORE_NAME, storeName);
-        }}));
-    this.storeMetaKeyMap.put(STORE_VALUE_SCHEMAS_KEY,
-        MetaStoreDataType.STORE_VALUE_SCHEMAS.getStoreMetaKey(new HashMap<String, String>() {{
-          put(KEY_STRING_STORE_NAME, storeName);
-        }}));
+    this.refreshIntervalInSeconds = clientConfig.getMetadataRefreshInvervalInSeconds() > 0
+        ? clientConfig.getMetadataRefreshInvervalInSeconds()
+        : DEFAULT_REFRESH_INTERVAL_IN_SECONDS;
+    this.storeMetaKeyMap
+        .put(STORE_KEY_SCHEMAS_KEY, MetaStoreDataType.STORE_KEY_SCHEMAS.getStoreMetaKey(new HashMap<String, String>() {
+          {
+            put(KEY_STRING_STORE_NAME, storeName);
+          }
+        }));
+    this.storeMetaKeyMap.put(
+        STORE_VALUE_SCHEMAS_KEY,
+        MetaStoreDataType.STORE_VALUE_SCHEMAS.getStoreMetaKey(new HashMap<String, String>() {
+          {
+            put(KEY_STRING_STORE_NAME, storeName);
+          }
+        }));
     this.transportClient = new R2TransportClient(clientConfig.getR2Client());
     this.compressorFactory = new CompressorFactory();
     this.clusterStats = clientConfig.getClusterStats();
@@ -143,7 +148,8 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
       daVinciClient.subscribeAll().get();
     } catch (InterruptedException | ExecutionException e) {
       throw new VeniceClientException(
-          "Failed to start the " + DaVinciClientBasedMetadata.class.getSimpleName() + " for store: " + storeName, e);
+          "Failed to start the " + DaVinciClientBasedMetadata.class.getSimpleName() + " for store: " + storeName,
+          e);
     }
     long timeoutTime = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(INITIAL_UPDATE_CACHE_TIMEOUT_IN_SECONDS);
     while (true) {
@@ -215,26 +221,31 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
    */
   private synchronized void updateCache() {
     // Re-discover the venice cluster in case it's moved via store migration.
-    clusterName = getStoreMetaValue(MetaStoreDataType.STORE_CLUSTER_CONFIG.getStoreMetaKey(
-        Collections.singletonMap(KEY_STRING_STORE_NAME, storeName))).storeClusterConfig.cluster.toString();
-    storeMetaKeyMap.put(STORE_PROPERTIES_KEY,
-        MetaStoreDataType.STORE_PROPERTIES.getStoreMetaKey(new HashMap<String, String>() {{
-          put(KEY_STRING_STORE_NAME, storeName);
-          put(KEY_STRING_CLUSTER_NAME, clusterName);
-        }}));
+    clusterName = getStoreMetaValue(
+        MetaStoreDataType.STORE_CLUSTER_CONFIG
+            .getStoreMetaKey(Collections.singletonMap(KEY_STRING_STORE_NAME, storeName))).storeClusterConfig.cluster
+                .toString();
+    storeMetaKeyMap
+        .put(STORE_PROPERTIES_KEY, MetaStoreDataType.STORE_PROPERTIES.getStoreMetaKey(new HashMap<String, String>() {
+          {
+            put(KEY_STRING_STORE_NAME, storeName);
+            put(KEY_STRING_CLUSTER_NAME, clusterName);
+          }
+        }));
     StoreProperties storeProperties = getStoreMetaValue(storeMetaKeyMap.get(STORE_PROPERTIES_KEY)).storeProperties;
     Int2IntMap newVersionPartitionCountMap = new Int2IntOpenHashMap(storeProperties.versions.size());
     // Update partitioner pair map
     IntList zstdDictionaryFetchVersions = new IntArrayList();
-    for (StoreVersion v : storeProperties.versions) {
+    for (StoreVersion v: storeProperties.versions) {
       newVersionPartitionCountMap.put(v.number, v.partitionCount);
       versionPartitionerMap.computeIfAbsent(v.number, k -> {
         StorePartitionerConfig partitionerConfig = v.partitionerConfig;
         Properties params = new Properties();
         params.putAll(partitionerConfig.partitionerParams);
-        VenicePartitioner partitioner =
-            PartitionUtils.getVenicePartitioner(partitionerConfig.partitionerClass.toString(),
-                partitionerConfig.amplificationFactor, new VeniceProperties(params));
+        VenicePartitioner partitioner = PartitionUtils.getVenicePartitioner(
+            partitionerConfig.partitionerClass.toString(),
+            partitionerConfig.amplificationFactor,
+            new VeniceProperties(params));
         return new Pair<>(partitioner, v.partitionCount);
       });
 
@@ -244,7 +255,7 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
       }
     }
     // Update readyToServeInstanceMap
-    for (Int2IntMap.Entry entry : newVersionPartitionCountMap.int2IntEntrySet()) {
+    for (Int2IntMap.Entry entry: newVersionPartitionCountMap.int2IntEntrySet()) {
       // Assumes partitionId is 0 based
       for (int i = 0; i < entry.getIntValue(); i++) {
         final int partitionId = i;
@@ -257,11 +268,13 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
           // asynchronous to reads and non-blocking. Meaning current version can change in the middle of a refresh.
           logger.info(
               "No replica info available in meta system store yet for version: {} partition: {}. This is normal if this is a new version",
-              Version.composeKafkaTopic(storeName, entry.getIntKey()), partitionId);
+              Version.composeKafkaTopic(storeName, entry.getIntKey()),
+              partitionId);
         }
       }
     }
-    // Update schemas TODO consider update in place with additional checks to skip existing schemas for better performance if it's thread safe.
+    // Update schemas TODO consider update in place with additional checks to skip existing schemas for better
+    // performance if it's thread safe.
     Map.Entry<CharSequence, CharSequence> keySchemaEntry =
         getStoreMetaValue(storeMetaKeyMap.get(STORE_KEY_SCHEMAS_KEY)).storeKeySchemas.keySchemaMap.entrySet()
             .iterator()
@@ -271,19 +284,21 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
         new SchemaEntry(Integer.parseInt(keySchemaEntry.getKey().toString()), keySchemaEntry.getValue().toString()));
     Map<CharSequence, CharSequence> valueSchemaMap =
         getStoreMetaValue(storeMetaKeyMap.get(STORE_VALUE_SCHEMAS_KEY)).storeValueSchemas.valueSchemaMap;
-    for (Map.Entry<CharSequence, CharSequence> entry : valueSchemaMap.entrySet()) {
+    for (Map.Entry<CharSequence, CharSequence> entry: valueSchemaMap.entrySet()) {
       if (entry.getValue().toString().isEmpty()) {
         // The value schemas might be too large to be stored in a single K/V.
         StoreMetaKey individualValueSchemaKey =
-            MetaStoreDataType.STORE_VALUE_SCHEMA.getStoreMetaKey(new HashMap<String, String>() {{
-              put(KEY_STRING_STORE_NAME, storeName);
-              put(KEY_STRING_SCHEMA_ID, entry.getKey().toString());
-            }});
+            MetaStoreDataType.STORE_VALUE_SCHEMA.getStoreMetaKey(new HashMap<String, String>() {
+              {
+                put(KEY_STRING_STORE_NAME, storeName);
+                put(KEY_STRING_SCHEMA_ID, entry.getKey().toString());
+              }
+            });
         String valueSchema = getStoreMetaValue(individualValueSchemaKey).storeValueSchema.valueSchema.toString();
         schemaData.addValueSchema(new SchemaEntry(Integer.parseInt(entry.getKey().toString()), valueSchema));
       } else {
-        schemaData.addValueSchema(
-            new SchemaEntry(Integer.parseInt(entry.getKey().toString()), entry.getValue().toString()));
+        schemaData
+            .addValueSchema(new SchemaEntry(Integer.parseInt(entry.getKey().toString()), entry.getValue().toString()));
       }
     }
     schemas.set(schemaData);
@@ -295,7 +310,7 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
     }
 
     // Evict old entries
-    for (Int2IntMap.Entry oldEntry : versionPartitionCountMap.int2IntEntrySet()) {
+    for (Int2IntMap.Entry oldEntry: versionPartitionCountMap.int2IntEntrySet()) {
       if (!newVersionPartitionCountMap.containsKey(oldEntry.getIntKey())) {
         versionPartitionerMap.remove(oldEntry.getIntKey());
         versionZstdDictionaryMap.remove(oldEntry.getIntKey());
@@ -320,8 +335,10 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
       Thread.currentThread().interrupt();
       throw new VeniceClientException("Dictionary fetch operation was interrupted");
     } catch (ExecutionException | TimeoutException e) {
-      logger.warn("Dictionary fetch operation could not complete in time for some of the versions. "
-          + "Will be retried on next refresh", e);
+      logger.warn(
+          "Dictionary fetch operation could not complete in time for some of the versions. "
+              + "Will be retried on next refresh",
+          e);
       clusterStats.recordVersionUpdateFailure();
     }
   }
@@ -341,12 +358,14 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
 
   private List<String> getReadyToServeReplicas(int version, int partitionId) {
     StoreMetaKey replicaStatusesKey =
-        MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(new HashMap<String, String>() {{
-          put(KEY_STRING_STORE_NAME, storeName);
-          put(KEY_STRING_CLUSTER_NAME, clusterName);
-          put(KEY_STRING_VERSION_NUMBER, Integer.toString(version));
-          put(KEY_STRING_PARTITION_ID, Integer.toString(partitionId));
-        }});
+        MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(new HashMap<String, String>() {
+          {
+            put(KEY_STRING_STORE_NAME, storeName);
+            put(KEY_STRING_CLUSTER_NAME, clusterName);
+            put(KEY_STRING_VERSION_NUMBER, Integer.toString(version));
+            put(KEY_STRING_PARTITION_ID, Integer.toString(partitionId));
+          }
+        });
     return PushStatusDecider.getReadyToServeInstances(getStoreMetaValue(replicaStatusesKey).storeReplicaStatuses);
   }
 
@@ -373,13 +392,15 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
     // Assumption: Every version has partition 0 and available in the map.
     String versionPartitionMapKey = getVersionPartitionMapKey(version, 0);
     if (!readyToServeInstancesMap.containsKey(versionPartitionMapKey)) {
-      compressionDictionaryFuture.completeExceptionally(new IllegalStateException(
-          String.format("Attempt to fetch compression dictionary for unknown version %d", version)));
+      compressionDictionaryFuture.completeExceptionally(
+          new IllegalStateException(
+              String.format("Attempt to fetch compression dictionary for unknown version %d", version)));
     }
     List<String> routes = readyToServeInstancesMap.get(versionPartitionMapKey);
     if (routes.size() == 0) {
-      compressionDictionaryFuture.completeExceptionally(new IllegalStateException(
-          String.format("No route found for store:%s version:%d partition:%d", storeName, version, 0)));
+      compressionDictionaryFuture.completeExceptionally(
+          new IllegalStateException(
+              String.format("No route found for store:%s version:%d partition:%d", storeName, version, 0)));
     }
 
     // Fetch from a random route from the available routes to hedge against a route being slow
@@ -389,9 +410,11 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
     logger.info("Fetching compression dictionary for version {} from URL {} ", version, url);
     transportClient.get(url).whenComplete((response, throwable) -> {
       if (throwable != null) {
-        String message =
-            String.format("Problem fetching zstd compression dictionary from URL:%s for store:%s , version:%d", url,
-                storeName, version);
+        String message = String.format(
+            "Problem fetching zstd compression dictionary from URL:%s for store:%s , version:%d",
+            url,
+            storeName,
+            version);
         logger.warn(message, throwable);
         compressionDictionaryFuture.completeExceptionally(throwable);
       } else {
@@ -410,11 +433,13 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
         ByteBuffer dictionary = versionZstdDictionaryMap.get(version);
         if (dictionary == null) {
           throw new VeniceClientException(
-              String.format("No dictionary available for decompressing zstd payload for store %s version %d ",
-                  storeName, version));
+              String.format(
+                  "No dictionary available for decompressing zstd payload for store %s version %d ",
+                  storeName,
+                  version));
         } else {
-          compressorFactory.createVersionSpecificCompressorIfNotExist(compressionStrategy, resourceName,
-              dictionary.array(), 0);
+          compressorFactory
+              .createVersionSpecificCompressorIfNotExist(compressionStrategy, resourceName, dictionary.array(), 0);
         }
       }
       return compressorFactory.getVersionSpecificCompressor(resourceName);

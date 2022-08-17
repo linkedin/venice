@@ -1,5 +1,9 @@
 package com.linkedin.davinci;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
+import static com.linkedin.venice.meta.IngestionMode.*;
+
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.client.DaVinciClient;
@@ -15,10 +19,6 @@ import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
-import static com.linkedin.venice.meta.IngestionMode.*;
-
 
 /**
  * DaVinciUserApp is a dummy class that spins up a Da Vinci Client and ingest data from all partitions.
@@ -31,8 +31,7 @@ public class DaVinciUserApp {
     String storeName = args[2];
     int sleepSeconds = Integer.parseInt(args[3]);
     int heartbeatTimeoutSeconds = Integer.parseInt(args[4]);
-    D2Client d2Client = new D2ClientBuilder()
-        .setZkHosts(zkHosts)
+    D2Client d2Client = new D2ClientBuilder().setZkHosts(zkHosts)
         .setZkSessionTimeout(3, TimeUnit.SECONDS)
         .setZkStartupTimeout(3, TimeUnit.SECONDS)
         .build();
@@ -40,12 +39,19 @@ public class DaVinciUserApp {
 
     Map<String, Object> extraBackendConfig = new HashMap<>();
     extraBackendConfig.put(SERVER_INGESTION_MODE, ISOLATED);
-    extraBackendConfig.put(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, TimeUnit.SECONDS.toMillis(heartbeatTimeoutSeconds));
+    extraBackendConfig
+        .put(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, TimeUnit.SECONDS.toMillis(heartbeatTimeoutSeconds));
     extraBackendConfig.put(DATA_BASE_PATH, baseDataPath);
 
     DaVinciTestContext<Integer, Integer> daVinciTestContext =
-        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
-            zkHosts, storeName, new DaVinciConfig(), extraBackendConfig);
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
+            d2Client,
+            new MetricsRepository(),
+            Optional.empty(),
+            zkHosts,
+            storeName,
+            new DaVinciConfig(),
+            extraBackendConfig);
     try (CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient()) {
       client.subscribeAll().get();

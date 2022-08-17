@@ -3,8 +3,9 @@ package com.linkedin.venice.listener.response;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.AvroSerializer;
-import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+
 
 public class MultiGetResponseWrapper extends MultiKeyResponseWrapper<MultiGetResponseRecordV1> {
   public MultiGetResponseWrapper(int maxKeyCount) {

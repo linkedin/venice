@@ -1,5 +1,11 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.HttpConstants.*;
+import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+import static org.mockito.Mockito.*;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
@@ -33,12 +39,6 @@ import spark.QueryParamsMap;
 import spark.Request;
 import spark.Response;
 import spark.Route;
-
-import static com.linkedin.venice.HttpConstants.*;
-import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
-import static org.mockito.Mockito.*;
 
 
 public class CreateVersionTest {
@@ -77,8 +77,7 @@ public class CreateVersionTest {
     /**
      * Build a CreateVersion route.
      */
-    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), checkReadMethod,
-        false);
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), checkReadMethod, false);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
     // Not a allowlist user.
@@ -126,11 +125,11 @@ public class CreateVersionTest {
 
     // Setting query params
     Map<String, String[]> queryMap = new HashMap<>();
-    queryMap.put("store_name", new String[]{storeName});
-    queryMap.put("store_size", new String[]{"0"});
-    queryMap.put("push_type", new String[]{Version.PushType.INCREMENTAL.name()});
-    queryMap.put("push_job_id", new String[]{pushJobId});
-    queryMap.put("hostname", new String[]{hostname});
+    queryMap.put("store_name", new String[] { storeName });
+    queryMap.put("store_size", new String[] { "0" });
+    queryMap.put("push_type", new String[] { Version.PushType.INCREMENTAL.name() });
+    queryMap.put("push_job_id", new String[] { pushJobId });
+    queryMap.put("hostname", new String[] { hostname });
 
     // Mock an Admin
     Admin admin = mock(Admin.class);
@@ -147,7 +146,7 @@ public class CreateVersionTest {
     Request request = mock(Request.class);
     doReturn(clusterName).when(request).queryParams(CLUSTER);
     doReturn(REQUEST_TOPIC.getPath()).when(request).pathInfo();
-    for (Map.Entry<String, String[]> queryParam : queryMap.entrySet()) {
+    for (Map.Entry<String, String[]> queryParam: queryMap.entrySet()) {
       doReturn(queryParam.getValue()[0]).when(request).queryParams(queryParam.getKey());
     }
     HttpServletRequest httpServletRequest = mock(HttpServletRequest.class);
@@ -159,7 +158,8 @@ public class CreateVersionTest {
   }
 
   @Test
-  public void testCreateVersionReturnsVersionTopicIfIncrementalPushMadeWithHybridStoreWithoutMakingFullPush() throws Exception {
+  public void testCreateVersionReturnsVersionTopicIfIncrementalPushMadeWithHybridStoreWithoutMakingFullPush()
+      throws Exception {
     String storeName = "test_store";
     String user = "test_user";
     String clusterName = "test_cluster";
@@ -180,11 +180,11 @@ public class CreateVersionTest {
 
     // Setting query params
     Map<String, String[]> queryMap = new HashMap<>();
-    queryMap.put("store_name", new String[]{storeName});
-    queryMap.put("store_size", new String[]{"0"});
-    queryMap.put("push_type", new String[]{Version.PushType.INCREMENTAL.name()});
-    queryMap.put("push_job_id", new String[]{pushJobId1});
-    queryMap.put("hostname", new String[]{hostname});
+    queryMap.put("store_name", new String[] { storeName });
+    queryMap.put("store_size", new String[] { "0" });
+    queryMap.put("push_type", new String[] { Version.PushType.INCREMENTAL.name() });
+    queryMap.put("push_job_id", new String[] { pushJobId1 });
+    queryMap.put("hostname", new String[] { hostname });
 
     HttpServletRequest httpServletRequest = mock(HttpServletRequest.class);
     doReturn(queryMap).when(httpServletRequest).getParameterMap();
@@ -201,25 +201,52 @@ public class CreateVersionTest {
     doReturn(clusterName).when(request).queryParams(CLUSTER);
     doReturn(REQUEST_TOPIC.getPath()).when(request).pathInfo();
 
-    for (Map.Entry<String, String[]> queryParam : queryMap.entrySet()) {
+    for (Map.Entry<String, String[]> queryParam: queryMap.entrySet()) {
       doReturn(queryParam.getValue()[0]).when(request).queryParams(queryParam.getKey());
     }
     doCallRealMethod().when(request).queryParamOrDefault(any(), any());
-    // Setting up a store with hybrid and incremental enabled and incremental policy = INCREMENTAL_PUSH_SAME_AS_REAL_TIME
-    Store store = new ZKStore(storeName, "abc@linkedin.com", 10, PersistenceType.ROCKS_DB,
-        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS, 1);
+    // Setting up a store with hybrid and incremental enabled and incremental policy =
+    // INCREMENTAL_PUSH_SAME_AS_REAL_TIME
+    Store store = new ZKStore(
+        storeName,
+        "abc@linkedin.com",
+        10,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        1);
     store.setIncrementalPushEnabled(true);
     store.setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
-    store.setHybridStoreConfig(new HybridStoreConfigImpl(0, 1, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-        DataReplicationPolicy.NON_AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP));
+    store.setHybridStoreConfig(
+        new HybridStoreConfigImpl(
+            0,
+            1,
+            HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+            DataReplicationPolicy.NON_AGGREGATE,
+            BufferReplayPolicy.REWIND_FROM_EOP));
 
     doReturn(store).when(admin).getStore(clusterName, storeName);
 
     // Setting up a version that doesn't have the incremental policy set as INCREMENTAL_PUSH_SAME_AS_REAL_TIME
     Version version = new VersionImpl(storeName, 1, pushJobId1);
     version.setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC);
-    doReturn(version).when(admin).incrementVersionIdempotent(clusterName, storeName, pushJobId1, 0, 0,
-        Version.PushType.INCREMENTAL, false, false, null, Optional.empty(), Optional.of(certificate), -1, Optional.empty(), false);
+    doReturn(version).when(admin)
+        .incrementVersionIdempotent(
+            clusterName,
+            storeName,
+            pushJobId1,
+            0,
+            0,
+            Version.PushType.INCREMENTAL,
+            false,
+            false,
+            null,
+            Optional.empty(),
+            Optional.of(certificate),
+            -1,
+            Optional.empty(),
+            false);
 
     // Mock a spark response
     Response response = mock(Response.class);
@@ -245,7 +272,8 @@ public class CreateVersionTest {
     } catch (Exception e) {
       throw new VeniceException(e);
     }
-    VersionCreationResponse versionCreationResponse = mapper.readValue(result.toString(), VersionCreationResponse.class);
+    VersionCreationResponse versionCreationResponse =
+        mapper.readValue(result.toString(), VersionCreationResponse.class);
     Assert.assertEquals(versionCreationResponse.getKafkaTopic(), "test_store_v1");
   }
 }

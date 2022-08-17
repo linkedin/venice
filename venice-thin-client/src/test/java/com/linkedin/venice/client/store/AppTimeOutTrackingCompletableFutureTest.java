@@ -1,5 +1,8 @@
 package com.linkedin.venice.client.store;
 
+import static org.mockito.Mockito.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.venice.client.stats.ClientStats;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -8,12 +11,8 @@ import java.util.concurrent.TimeoutException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
-
 
 public class AppTimeOutTrackingCompletableFutureTest {
-
   @Test
   public void testTimeout() {
     // Never complete

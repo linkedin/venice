@@ -15,10 +15,11 @@ public class GetResponseObject {
 
   private byte[] value;
 
-  public GetResponseObject(){
+  public GetResponseObject() {
     value = null;
   }
-  public GetResponseObject(byte[] value){
+
+  public GetResponseObject(byte[] value) {
     this.value = value;
   }
 
@@ -30,7 +31,7 @@ public class GetResponseObject {
     this.value = value;
   }
 
-  public byte[] serialize(){
+  public byte[] serialize() {
     int totalSize = HEADER_SIZE + value.length;
     ByteBuffer payload = ByteBuffer.allocate(totalSize);
     // Worry about payload.order?
@@ -39,27 +40,28 @@ public class GetResponseObject {
     return payload.array();
   }
 
-  public static int parseSize(byte[] payload){
+  public static int parseSize(byte[] payload) {
     return ByteBuffer.wrap(payload).getInt(0);
   }
 
-  static boolean isHeaderComplete(byte[] payload){
+  static boolean isHeaderComplete(byte[] payload) {
     return (payload.length >= HEADER_SIZE);
   }
 
-  public static boolean isPayloadComplete(byte[] payload){
+  public static boolean isPayloadComplete(byte[] payload) {
     return (isHeaderComplete(payload) && payload.length >= parseSize(payload));
   }
 
-  public static GetResponseObject deserialize(byte[] payload){
+  public static GetResponseObject deserialize(byte[] payload) {
     GetResponseObject obj = new GetResponseObject();
-    if (!isHeaderComplete(payload)){
+    if (!isHeaderComplete(payload)) {
       throw new IllegalArgumentException("GetResponseObject must have at least a " + HEADER_SIZE + " byte header");
     }
     ByteBuffer bufferedPayload = ByteBuffer.wrap(payload);
     int totalSize = bufferedPayload.getInt();
-    if (payload.length < totalSize){
-      throw new IllegalArgumentException("GetResponseObject indicates size of " + totalSize + " but only " + payload.length + " bytes available");
+    if (payload.length < totalSize) {
+      throw new IllegalArgumentException(
+          "GetResponseObject indicates size of " + totalSize + " but only " + payload.length + " bytes available");
     }
     byte[] value = new byte[totalSize - HEADER_SIZE];
     bufferedPayload.get(value);

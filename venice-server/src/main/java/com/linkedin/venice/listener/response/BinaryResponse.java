@@ -5,6 +5,7 @@ import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.nio.ByteBuffer;
 
+
 public class BinaryResponse {
   private final ByteBuf body;
   private final HttpResponseStatus status;

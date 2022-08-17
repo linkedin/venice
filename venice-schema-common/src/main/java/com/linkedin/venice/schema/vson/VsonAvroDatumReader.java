@@ -17,6 +17,7 @@ import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.io.Decoder;
 import org.apache.avro.io.ResolvingDecoder;
 
+
 public class VsonAvroDatumReader<D> extends GenericDatumReader<D> {
   public VsonAvroDatumReader(Schema schema) {
     super(schema, schema);
@@ -29,7 +30,7 @@ public class VsonAvroDatumReader<D> extends GenericDatumReader<D> {
   @Override
   protected Object readRecord(Object old, Schema expected, ResolvingDecoder in) throws IOException {
     HashMap<String, Object> record = new DeepEqualsHashMap();
-    for (Schema.Field field : in.readFieldOrder()) {
+    for (Schema.Field field: in.readFieldOrder()) {
       record.put(field.name(), read(null, field.schema(), in));
     }
 
@@ -54,7 +55,7 @@ public class VsonAvroDatumReader<D> extends GenericDatumReader<D> {
 
   private Short readShort(byte[] bytes, Decoder in) throws IOException {
     in.readFixed(bytes, 0, 2);
-    return (short)(((bytes[0] & 0xFF) << 8) | (bytes[1] & 0xFF));
+    return (short) (((bytes[0] & 0xFF) << 8) | (bytes[1] & 0xFF));
   }
 
   @Override
@@ -89,17 +90,20 @@ public class VsonAvroDatumReader<D> extends GenericDatumReader<D> {
     if (old instanceof Collection) {
       ((Collection) old).clear();
       return old;
-    } else return new DeepEqualsArrayList(size);
+    } else
+      return new DeepEqualsArrayList(size);
   }
 
   static VsonSerializationException notSupportType(Schema.Type type) {
-    return new VsonSerializationException(String.format("Does not support casting type: %s between Vson and Avro", type.toString()));
+    return new VsonSerializationException(
+        String.format("Does not support casting type: %s between Vson and Avro", type.toString()));
   }
 
-  //this should not happen. If the program goes to here, bad thing happened
+  // this should not happen. If the program goes to here, bad thing happened
   static VsonSerializationException illegalFixedLength(int len) {
-    return new VsonSerializationException("illegal Fixed type length: " + len +
-        "Fixed type is only for single byte or short and should not have size greater than 2");
+    return new VsonSerializationException(
+        "illegal Fixed type length: " + len
+            + "Fixed type is only for single byte or short and should not have size greater than 2");
   }
 
   /**
@@ -116,7 +120,7 @@ public class VsonAvroDatumReader<D> extends GenericDatumReader<D> {
 
       if (!(o instanceof Map))
         return false;
-      Map<?,?> m = (Map<?,?>) o;
+      Map<?, ?> m = (Map<?, ?>) o;
       if (m.size() != size())
         return false;
 
@@ -127,7 +131,7 @@ public class VsonAvroDatumReader<D> extends GenericDatumReader<D> {
           String key = e.getKey();
           Object value = e.getValue();
           if (value == null) {
-            if (!(m.get(key)==null && m.containsKey(key)))
+            if (!(m.get(key) == null && m.containsKey(key)))
               return false;
           } else {
             /**
@@ -135,7 +139,7 @@ public class VsonAvroDatumReader<D> extends GenericDatumReader<D> {
              */
             Object rightValue = m.get(key);
             if (value.getClass().equals(byte[].class) && rightValue.getClass().equals(byte[].class)) {
-              return Arrays.equals((byte[])value, (byte[])rightValue);
+              return Arrays.equals((byte[]) value, (byte[]) rightValue);
             }
             /**
              * We should not use 'rightValue.equals(value)' here since the right value may not support deep equals check.
@@ -164,9 +168,11 @@ public class VsonAvroDatumReader<D> extends GenericDatumReader<D> {
     public DeepEqualsArrayList() {
       super();
     }
+
     public DeepEqualsArrayList(int size) {
       super(size);
     }
+
     @Override
     public boolean equals(Object o) {
       if (o == this)
@@ -181,14 +187,14 @@ public class VsonAvroDatumReader<D> extends GenericDatumReader<D> {
         Object o2 = e2.next();
         // Special check for byte[]
         if (o1 != null && o2 != null && o1.getClass().equals(byte[].class) && o2.getClass().equals(byte[].class)) {
-          if (!Arrays.equals((byte[])o1, (byte[])o2)) {
+          if (!Arrays.equals((byte[]) o1, (byte[]) o2)) {
             return false;
           }
         }
         /**
          * We should not use 'o2.equals(o1)' here since the right value may not support deep equals check.
          */
-        else if (!(o1==null ? o2==null : o1.equals(o2))) {
+        else if (!(o1 == null ? o2 == null : o1.equals(o2))) {
           return false;
         }
       }

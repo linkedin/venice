@@ -10,7 +10,6 @@ package com.linkedin.venice.schema.writecompute;
  *
  */
 public class WriteComputeConstants {
-
   private WriteComputeConstants() {
     // Utility class
   }

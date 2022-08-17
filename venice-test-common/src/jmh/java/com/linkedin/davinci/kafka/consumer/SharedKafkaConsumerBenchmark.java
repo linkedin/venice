@@ -1,5 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -31,25 +33,22 @@ import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.RunnerException;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
 
-import static org.mockito.Mockito.*;
-
 
 @State(Scope.Benchmark)
 public class SharedKafkaConsumerBenchmark {
   enum ConsumerType {
-    TOPIC_WISE,
-    PARTITION_WISE
+    TOPIC_WISE, PARTITION_WISE
   }
 
   protected static final long NON_EXISTING_TOPIC_CLEANUP_DELAY_MS = 1000;
 
-  @Param({"TOPIC_WISE", "PARTITION_WISE"})
+  @Param({ "TOPIC_WISE", "PARTITION_WISE" })
   String consumerTypeString;
 
-  @Param({"1", "10", "100"})
+  @Param({ "1", "10", "100" })
   int numberOfTopicPartitionsPerBatch;
 
-  @Param({"100", "1000", "10000", "100000"})
+  @Param({ "100", "1000", "10000", "100000" })
   int totalNumberOfRecords;
 
   SharedKafkaConsumer consumer;
@@ -66,11 +65,17 @@ public class SharedKafkaConsumerBenchmark {
     switch (consumerType) {
       case TOPIC_WISE:
         this.consumer = new TopicWiseSharedKafkaConsumer(
-            consumerDelegate, consumerService, NON_EXISTING_TOPIC_CLEANUP_DELAY_MS, null);
+            consumerDelegate,
+            consumerService,
+            NON_EXISTING_TOPIC_CLEANUP_DELAY_MS,
+            null);
         break;
       case PARTITION_WISE:
         this.consumer = new PartitionWiseSharedKafkaConsumer(
-            consumerDelegate, consumerService, NON_EXISTING_TOPIC_CLEANUP_DELAY_MS, null);
+            consumerDelegate,
+            consumerService,
+            NON_EXISTING_TOPIC_CLEANUP_DELAY_MS,
+            null);
         break;
     }
 
@@ -79,13 +84,16 @@ public class SharedKafkaConsumerBenchmark {
     int numberOfRecordsPerTopicPartition = totalNumberOfRecords / numberOfTopicPartitionsPerBatch;
     for (int tp = 0; tp < numberOfTopicPartitionsPerBatch; tp++) {
       TopicPartition topicPartition = new TopicPartition("topic", tp);
-      List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> recordList = new ArrayList<>(numberOfRecordsPerTopicPartition);
+      List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> recordList =
+          new ArrayList<>(numberOfRecordsPerTopicPartition);
       for (int offset = 0; offset < numberOfRecordsPerTopicPartition; offset++) {
-        recordList.add(new ConsumerRecord<>(
-            topicPartition.topic(),
-            topicPartition.partition(),
-            offset, new KafkaKey(MessageType.PUT, new byte[0]),
-            new KafkaMessageEnvelope()));
+        recordList.add(
+            new ConsumerRecord<>(
+                topicPartition.topic(),
+                topicPartition.partition(),
+                offset,
+                new KafkaKey(MessageType.PUT, new byte[0]),
+                new KafkaMessageEnvelope()));
       }
       records.put(topicPartition, recordList);
     }
@@ -99,7 +107,8 @@ public class SharedKafkaConsumerBenchmark {
           consumer.attach(topicPartition.topic(), storeIngestionTask);
           break;
         case PARTITION_WISE:
-          ((PartitionWiseSharedKafkaConsumer) consumer).addIngestionTaskForTopicPartition(topicPartition, storeIngestionTask);
+          ((PartitionWiseSharedKafkaConsumer) consumer)
+              .addIngestionTaskForTopicPartition(topicPartition, storeIngestionTask);
           break;
       }
     }
@@ -122,10 +131,10 @@ public class SharedKafkaConsumerBenchmark {
   }
 
   public static void main(String[] args) throws RunnerException {
-    org.openjdk.jmh.runner.options.Options opt = new OptionsBuilder()
-        .include(SharedKafkaConsumerBenchmark.class.getSimpleName())
-        .addProfiler(GCProfiler.class)
-        .build();
+    org.openjdk.jmh.runner.options.Options opt =
+        new OptionsBuilder().include(SharedKafkaConsumerBenchmark.class.getSimpleName())
+            .addProfiler(GCProfiler.class)
+            .build();
     new Runner(opt).run();
   }
 }

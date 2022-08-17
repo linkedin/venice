@@ -1,5 +1,7 @@
 package com.linkedin.venice.hadoop;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
@@ -12,8 +14,6 @@ import java.util.Properties;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.TaskAttemptID;
 import org.apache.hadoop.mapred.TaskID;
-
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
 
 
 /**
@@ -50,7 +50,8 @@ public abstract class AbstractMapReduceTask {
 
     SSLConfigurator configurator = SSLConfigurator.getSSLConfigurator(job.get(SSL_CONFIGURATOR_CLASS_CONFIG));
     try {
-      Properties javaProps = configurator.setupSSLConfig(HadoopUtils.getProps(job), UserCredentialsFactory.getHadoopUserCredentials());
+      Properties javaProps =
+          configurator.setupSSLConfig(HadoopUtils.getProps(job), UserCredentialsFactory.getHadoopUserCredentials());
       props = new VeniceProperties(javaProps);
     } catch (IOException e) {
       throw new VeniceException("Could not get user credential for job:" + job.getJobName(), e);
@@ -59,7 +60,8 @@ public abstract class AbstractMapReduceTask {
     this.partitionCount = job.getNumReduceTasks();
     TaskAttemptID taskAttemptID = TaskAttemptID.forName(job.get(MAPRED_TASK_ID_PROP_NAME));
     if (null == taskAttemptID) {
-      throw new UndefinedPropertyException(MAPRED_TASK_ID_PROP_NAME + " not found in the " + JobConf.class.getSimpleName());
+      throw new UndefinedPropertyException(
+          MAPRED_TASK_ID_PROP_NAME + " not found in the " + JobConf.class.getSimpleName());
     }
     TaskID taskID = taskAttemptID.getTaskID();
     if (null == taskID) {

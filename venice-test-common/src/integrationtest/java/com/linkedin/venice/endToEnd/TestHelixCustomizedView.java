@@ -1,5 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.venice.router.api.VenicePathParser.*;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -50,8 +52,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.router.api.VenicePathParser.*;
-
 
 @Test
 public class TestHelixCustomizedView {
@@ -70,8 +70,9 @@ public class TestHelixCustomizedView {
 
   private static final String KEY_SCHEMA_STR = "\"string\"";
   private static final String VALUE_FIELD_NAME = "int_field";
-  private static final String VALUE_SCHEMA_STR = "{\n" + "\"type\": \"record\",\n" + "\"name\": \"test_value_schema\",\n"
-      + "\"fields\": [\n" + "  {\"name\": \"" + VALUE_FIELD_NAME + "\", \"type\": \"int\"}]\n" + "}";
+  private static final String VALUE_SCHEMA_STR =
+      "{\n" + "\"type\": \"record\",\n" + "\"name\": \"test_value_schema\",\n" + "\"fields\": [\n" + "  {\"name\": \""
+          + VALUE_FIELD_NAME + "\", \"type\": \"int\"}]\n" + "}";
   private static final Schema VALUE_SCHEMA = new Schema.Parser().parse(VALUE_SCHEMA_STR);
 
   @BeforeClass(alwaysRun = true)
@@ -98,16 +99,20 @@ public class TestHelixCustomizedView {
     controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersURLs());
     keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STR);
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STR);
-    veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress()).createVeniceWriter(storeVersionName, keySerializer, valueSerializer);
+    veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress())
+        .createVeniceWriter(storeVersionName, keySerializer, valueSerializer);
 
     /**
      * Explicitly add an emtpy push status ZK path to make both write and read paths are robust to empty push status ZNodes
      */
     ZkClient zkClient = ZkClientFactory.newZkClient(veniceCluster.getZk().getAddress());
     HelixAdapterSerializer adapterSerializer = new HelixAdapterSerializer();
-    VeniceOfflinePushMonitorAccessor offlinePushStatusAccessor = new VeniceOfflinePushMonitorAccessor(veniceCluster.getClusterName(), zkClient,
-        adapterSerializer, 3, 1000);
-    HelixUtils.create(offlinePushStatusAccessor.getOfflinePushStatusAccessor(), offlinePushStatusAccessor.getOfflinePushStatuesParentPath() + "/invalid_topic", null);
+    VeniceOfflinePushMonitorAccessor offlinePushStatusAccessor =
+        new VeniceOfflinePushMonitorAccessor(veniceCluster.getClusterName(), zkClient, adapterSerializer, 3, 1000);
+    HelixUtils.create(
+        offlinePushStatusAccessor.getOfflinePushStatusAccessor(),
+        offlinePushStatusAccessor.getOfflinePushStatuesParentPath() + "/invalid_topic",
+        null);
   }
 
   @AfterClass(alwaysRun = true)
@@ -125,13 +130,14 @@ public class TestHelixCustomizedView {
     int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
     ResourceStateResponse resourceStateResponse = getResourceStateFromRouter();
     Assert.assertEquals(resourceStateResponse.getName(), storeVersionName);
-    // TODO: LeaderFollower model doesn't seem to respond well on version creation if start of push isn't broadcasted by default
-    // So that turns the below case into a race condition test.  So commenting this out for now.
-//    for (ReplicaState replicaState : resourceStateResponse.getReplicaStates()) {
-//      Assert.assertEquals(ExecutionStatus.NOT_STARTED.name(), replicaState.getVenicePushStatus());
-//    }
+    // TODO: LeaderFollower model doesn't seem to respond well on version creation if start of push isn't broadcasted by
+    // default
+    // So that turns the below case into a race condition test. So commenting this out for now.
+    // for (ReplicaState replicaState : resourceStateResponse.getReplicaStates()) {
+    // Assert.assertEquals(ExecutionStatus.NOT_STARTED.name(), replicaState.getVenicePushStatus());
+    // }
     String keyPrefix = "key_";
-//    veniceWriter.broadcastStartOfPush(new HashMap<>());
+    // veniceWriter.broadcastStartOfPush(new HashMap<>());
     // Insert test record and wait synchronously for it to succeed
     for (int i = 0; i < 10; ++i) {
       GenericRecord record = new GenericData.Record(VALUE_SCHEMA);
@@ -149,7 +155,7 @@ public class TestHelixCustomizedView {
     resourceStateResponse = getResourceStateFromRouter();
     Assert.assertEquals(resourceStateResponse.getName(), storeVersionName);
     List<ReplicaState> replicaStates = resourceStateResponse.getReplicaStates();
-    for (ReplicaState replicaState : replicaStates) {
+    for (ReplicaState replicaState: replicaStates) {
       Assert.assertTrue(replicaState.isReadyToServe());
       Assert.assertEquals(ExecutionStatus.COMPLETED.name(), replicaState.getVenicePushStatus());
     }
@@ -162,14 +168,15 @@ public class TestHelixCustomizedView {
         .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(1000).build())
         .build()) {
       client.start();
-      HttpGet routerRequest =
-          new HttpGet(routerURL + "/" + TYPE_RESOURCE_STATE + "/" + storeVersionName);
+      HttpGet routerRequest = new HttpGet(routerURL + "/" + TYPE_RESOURCE_STATE + "/" + storeVersionName);
       HttpResponse response = client.execute(routerRequest, null).get();
       String responseBody;
       try (InputStream bodyStream = response.getEntity().getContent()) {
         responseBody = IOUtils.toString(bodyStream);
       }
-      Assert.assertEquals(response.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
+      Assert.assertEquals(
+          response.getStatusLine().getStatusCode(),
+          HttpStatus.SC_OK,
           "Failed to get resource state for " + storeVersionName + ". Response: " + responseBody);
       ObjectMapper mapper = ObjectMapperFactory.getInstance();
       return mapper.readValue(responseBody.getBytes(), ResourceStateResponse.class);

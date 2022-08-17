@@ -2,7 +2,6 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.helix.HelixParticipationService;
 import com.linkedin.davinci.stats.ThreadPoolStats;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.MetadataRetriever;
@@ -10,7 +9,6 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
-import com.linkedin.venice.authorization.Resource;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -50,7 +48,7 @@ public class ListenerService extends AbstractVeniceService {
   private final ThreadPoolExecutor executor;
   private final ThreadPoolExecutor computeExecutor;
 
-  //TODO: move netty config to a config file
+  // TODO: move netty config to a config file
   private static int nettyBacklogSize = 1000;
 
   public ListenerService(
@@ -71,10 +69,16 @@ public class ListenerService extends AbstractVeniceService {
     this.serverConfig = serverConfig;
     this.port = serverConfig.getListenerPort();
 
-    executor = createThreadPool(serverConfig.getRestServiceStorageThreadNum(), "StorageExecutionThread", serverConfig.getDatabaseLookupQueueCapacity());
+    executor = createThreadPool(
+        serverConfig.getRestServiceStorageThreadNum(),
+        "StorageExecutionThread",
+        serverConfig.getDatabaseLookupQueueCapacity());
     new ThreadPoolStats(metricsRepository, executor, "storage_execution_thread_pool");
 
-    computeExecutor = createThreadPool(serverConfig.getServerComputeThreadNum(), "StorageComputeThread", serverConfig.getComputeQueueCapacity());
+    computeExecutor = createThreadPool(
+        serverConfig.getServerComputeThreadNum(),
+        "StorageComputeThread",
+        serverConfig.getComputeQueueCapacity());
     new ThreadPoolStats(metricsRepository, computeExecutor, "storage_compute_thread_pool");
 
     StorageReadRequestsHandler requestHandler = createRequestHandler(
@@ -92,15 +96,22 @@ public class ListenerService extends AbstractVeniceService {
         resourceReadUsageTracker);
 
     HttpChannelInitializer channelInitializer = new HttpChannelInitializer(
-        storeMetadataRepository, routingRepository, metricsRepository, sslFactory, serverConfig, routerAccessController,
-        storeAccessController, requestHandler);
+        storeMetadataRepository,
+        routingRepository,
+        metricsRepository,
+        sslFactory,
+        serverConfig,
+        routerAccessController,
+        storeAccessController,
+        requestHandler);
 
     Class<? extends ServerChannel> serverSocketChannelClass = NioServerSocketChannel.class;
     boolean epollEnabled = serverConfig.isRestServiceEpollEnabled();
     if (epollEnabled) {
       try {
         bossGroup = new EpollEventLoopGroup(1);
-        workerGroup = new EpollEventLoopGroup(serverConfig.getNettyWorkerThreadCount()); //if 0, defaults to 2*cpu count
+        workerGroup = new EpollEventLoopGroup(serverConfig.getNettyWorkerThreadCount()); // if 0, defaults to 2*cpu
+                                                                                         // count
         serverSocketChannelClass = EpollServerSocketChannel.class;
         logger.info("Epoll is enabled in Server Rest Service");
       } catch (LinkageError error) {
@@ -108,13 +119,14 @@ public class ListenerService extends AbstractVeniceService {
         epollEnabled = false;
       }
     }
-    if (! epollEnabled) {
+    if (!epollEnabled) {
       bossGroup = new NioEventLoopGroup(1);
-      workerGroup = new NioEventLoopGroup(serverConfig.getNettyWorkerThreadCount()); //if 0, defaults to 2*cpu count
+      workerGroup = new NioEventLoopGroup(serverConfig.getNettyWorkerThreadCount()); // if 0, defaults to 2*cpu count
       serverSocketChannelClass = NioServerSocketChannel.class;
     }
     bootstrap = new ServerBootstrap();
-    bootstrap.group(bossGroup, workerGroup).channel(serverSocketChannelClass)
+    bootstrap.group(bossGroup, workerGroup)
+        .channel(serverSocketChannelClass)
         .childHandler(channelInitializer)
         .option(ChannelOption.SO_BACKLOG, nettyBacklogSize)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
@@ -149,8 +161,13 @@ public class ListenerService extends AbstractVeniceService {
   }
 
   protected ThreadPoolExecutor createThreadPool(int threadCount, String threadNamePrefix, int capacity) {
-    ThreadPoolExecutor executor = new ThreadPoolExecutor(threadCount, threadCount, 0, TimeUnit.MILLISECONDS,
-        serverConfig.getExecutionQueue(capacity), new DaemonThreadFactory(threadNamePrefix));
+    ThreadPoolExecutor executor = new ThreadPoolExecutor(
+        threadCount,
+        threadCount,
+        0,
+        TimeUnit.MILLISECONDS,
+        serverConfig.getExecutionQueue(capacity),
+        new DaemonThreadFactory(threadNamePrefix));
     /**
      * When the capacity is fully saturated, the scheduled task will be executed in the caller thread.
      * We will leverage this policy to propagate the back pressure to the caller, so that no more tasks will be

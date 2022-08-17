@@ -1,11 +1,8 @@
 package com.linkedin.venice.utils.locks;
 
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
-
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
@@ -40,14 +37,19 @@ public class TestClusterLockManager {
     try (AutoCloseableLock ignore1 = clusterLockManager.createStoreWriteLock("store")) {
       value.set(VALUE_WRITTEN_BY_THREAD_1);
       thread2.start();
-      Assert.assertTrue(thread2StartedLatch.await(1, TimeUnit.SECONDS),
+      Assert.assertTrue(
+          thread2StartedLatch.await(1, TimeUnit.SECONDS),
           "thread2 must have started for the test to proceed.");
-      Assert.assertEquals(value.get(), VALUE_WRITTEN_BY_THREAD_1,
+      Assert.assertEquals(
+          value.get(),
+          VALUE_WRITTEN_BY_THREAD_1,
           "Store write lock is acquired by a thread1. Value could not be updated by thread2.");
     } finally {
       thread2.join();
     }
-    Assert.assertEquals(value.get(), VALUE_WRITTEN_BY_THREAD_2,
+    Assert.assertEquals(
+        value.get(),
+        VALUE_WRITTEN_BY_THREAD_2,
         "Thread2 should already acquire the lock and modify tne value.");
   }
 
@@ -71,14 +73,19 @@ public class TestClusterLockManager {
     try (AutoCloseableLock ignore1 = clusterLockManager.createClusterWriteLock()) {
       value.set(VALUE_WRITTEN_BY_THREAD_1);
       thread2.start();
-      Assert.assertTrue(thread2StartedLatch.await(1, TimeUnit.SECONDS),
+      Assert.assertTrue(
+          thread2StartedLatch.await(1, TimeUnit.SECONDS),
           "thread2 must have started for the test to proceed.");
-      Assert.assertEquals(value.get(), VALUE_WRITTEN_BY_THREAD_1 ,
+      Assert.assertEquals(
+          value.get(),
+          VALUE_WRITTEN_BY_THREAD_1,
           "Cluster write lock is acquired by a thread1. Value could not be updated by thread2.");
     } finally {
       thread2.join();
     }
-    Assert.assertEquals(value.get(), VALUE_WRITTEN_BY_THREAD_2 ,
+    Assert.assertEquals(
+        value.get(),
+        VALUE_WRITTEN_BY_THREAD_2,
         "Thread2 should already acquire the lock and modify tne value.");
   }
 }

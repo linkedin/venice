@@ -1,11 +1,10 @@
 package com.linkedin.venice.benchmark;
 
-
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 
-public class FloatVectorImpl extends ValueBase  {
+public class FloatVectorImpl extends ValueBase {
   public static final byte TYPE_WIDTH = Float.BYTES;
   private int _size;
 
@@ -37,16 +36,18 @@ public class FloatVectorImpl extends ValueBase  {
     } else {
       floatArray = new float[_size];
     }
-    ((ByteBuffer) _byteBuffer.duplicate().position(_start)).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(floatArray, 0, _size);
+    ((ByteBuffer) _byteBuffer.duplicate().position(_start)).order(ByteOrder.LITTLE_ENDIAN)
+        .asFloatBuffer()
+        .get(floatArray, 0, _size);
 
     return floatArray;
   }
 
-  public static class Builder extends VectorBuilder  {
-
+  public static class Builder extends VectorBuilder {
     public Builder() {
       this(0);
     }
+
     public Builder(int size) {
       super(size, TYPE_WIDTH);
     }

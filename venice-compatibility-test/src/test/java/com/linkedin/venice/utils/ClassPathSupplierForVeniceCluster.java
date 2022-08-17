@@ -29,7 +29,7 @@ public class ClassPathSupplierForVeniceCluster implements Supplier<String> {
   public String get() {
     try (ScanResult scanResult = new ClassGraph().scan()) {
       Set<File> classpathDirs = new LinkedHashSet<>();
-      for (File file : scanResult.getClasspathFiles()) {
+      for (File file: scanResult.getClasspathFiles()) {
         if (file.isDirectory() || file.getName().equals("*") || file.getAbsolutePath().contains(".gradle")) {
           classpathDirs.add(file);
         } else {
@@ -43,7 +43,7 @@ public class ClassPathSupplierForVeniceCluster implements Supplier<String> {
         /**
          * Get rid of the current Avro libraries.
          */
-        for (File file : classpathDirs) {
+        for (File file: classpathDirs) {
           if (!file.getName().contains("avro-1.")) {
             paths.add(file);
           } else {
@@ -76,8 +76,8 @@ public class ClassPathSupplierForVeniceCluster implements Supplier<String> {
      * /org.apache.avro/avro/1.9.2/.../avro-1.9.2.jar
      */
     File avroRootDir = existingAvroJarFile.getParentFile().getParentFile().getParentFile();
-    Collection<File> jarFiles = FileUtils.listFiles(avroRootDir, new String[]{"jar"}, true);
-    for (File jarFile : jarFiles) {
+    Collection<File> jarFiles = FileUtils.listFiles(avroRootDir, new String[] { "jar" }, true);
+    for (File jarFile: jarFiles) {
       if (jarFile.getName().equals(AVRO_192_JAR_FILE)) {
         LOGGER.info("Found the jar file: " + jarFile.getAbsolutePath() + " for " + AVRO_192_JAR_FILE);
         return jarFile;

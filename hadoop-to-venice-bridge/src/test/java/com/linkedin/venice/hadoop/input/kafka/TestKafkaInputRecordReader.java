@@ -1,5 +1,8 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.kafka.TopicManager.*;
+
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
@@ -23,9 +26,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.kafka.TopicManager.*;
-
 
 public class TestKafkaInputRecordReader {
   private static final String KAFKA_MESSAGE_KEY_PREFIX = "key_";
@@ -39,7 +39,11 @@ public class TestKafkaInputRecordReader {
   public void setUp() {
     zkServer = ServiceFactory.getZkServer();
     kafka = ServiceFactory.getKafkaBroker(zkServer);
-    manager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 24 * Time.MS_PER_HOUR, TestUtils.getVeniceConsumerFactory(kafka));
+    manager = new TopicManager(
+        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+        100,
+        24 * Time.MS_PER_HOUR,
+        TestUtils.getVeniceConsumerFactory(kafka));
   }
 
   @AfterClass
@@ -53,7 +57,7 @@ public class TestKafkaInputRecordReader {
     String topicName = Utils.getUniqueString("test_kafka_input_format");
     manager.createTopic(topicName, 1, 1, true);
     VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafka.getAddress());
-    try(VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topicName)) {
+    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topicName)) {
       for (int i = 0; i < numRecord; ++i) {
         byte[] keyBytes = (KAFKA_MESSAGE_KEY_PREFIX + i).getBytes();
         byte[] valueBytes = (KAFKA_MESSAGE_VALUE_PREFIX + i).getBytes();
@@ -78,8 +82,7 @@ public class TestKafkaInputRecordReader {
     String topic = getTopic(100, new Pair<>(-1, -1), new Pair<>(-1, -1));
     conf.set(KAFKA_INPUT_TOPIC, topic);
 
-    KafkaInputRecordReader reader = new KafkaInputRecordReader(new KafkaInputSplit(topic, 0, 0, 102),
-        conf, null);
+    KafkaInputRecordReader reader = new KafkaInputRecordReader(new KafkaInputSplit(topic, 0, 0, 102), conf, null);
     for (int i = 0; i < 100; ++i) {
       BytesWritable key = new BytesWritable();
       KafkaInputMapperValue value = new KafkaInputMapperValue();
@@ -99,8 +102,7 @@ public class TestKafkaInputRecordReader {
     String topic = getTopic(100, new Pair<>(-1, -1), new Pair<>(0, 10));
     conf.set(KAFKA_INPUT_TOPIC, topic);
     conf.set(VenicePushJob.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
-    KafkaInputRecordReader reader = new KafkaInputRecordReader(new KafkaInputSplit(topic, 0, 0, 102),
-        conf, null);
+    KafkaInputRecordReader reader = new KafkaInputRecordReader(new KafkaInputSplit(topic, 0, 0, 102), conf, null);
     for (int i = 0; i < 100; ++i) {
       BytesWritable key = new BytesWritable();
       KafkaInputMapperValue value = new KafkaInputMapperValue();
@@ -126,8 +128,7 @@ public class TestKafkaInputRecordReader {
     String topic = getTopic(100, new Pair<>(21, 30), new Pair<>(11, 20));
     conf.set(KAFKA_INPUT_TOPIC, topic);
     conf.set(VenicePushJob.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
-    KafkaInputRecordReader reader = new KafkaInputRecordReader(new KafkaInputSplit(topic, 0, 0, 102),
-        conf, null);
+    KafkaInputRecordReader reader = new KafkaInputRecordReader(new KafkaInputSplit(topic, 0, 0, 102), conf, null);
     for (int i = 0; i < 100; ++i) {
       BytesWritable key = new BytesWritable();
       KafkaInputMapperValue value = new KafkaInputMapperValue();

@@ -19,7 +19,7 @@ public abstract class AbstractVsonSchemaAdapter<T> {
   }
 
   private void parse(String vsonSchemaStr) {
-    if(vsonSchemaStr == null)
+    if (vsonSchemaStr == null)
       throw new IllegalArgumentException("Vson schema string cannot be null!");
     VsonReader reader = new VsonReader(new StringReader(vsonSchemaStr));
     schemaObject = reader.read();
@@ -37,14 +37,14 @@ public abstract class AbstractVsonSchemaAdapter<T> {
     if (schemaObject instanceof Map) {
       return readMap((Map<String, Object>) schemaObject);
     } else if (schemaObject instanceof List) {
-      if(((List) schemaObject).size() != 1)
+      if (((List) schemaObject).size() != 1)
         throw new VsonSerializationException("List type must have a single entry specifying entry type.");
       return readList((List<T>) schemaObject);
     } else if (schemaObject instanceof String) {
       return readPrimitive((String) schemaObject);
     } else {
-      throw new VsonSerializationException("SchemaObject is not a string, an array, or an object, "
-          + "so it is not valid in a type definition.");
+      throw new VsonSerializationException(
+          "SchemaObject is not a string, an array, or an object, " + "so it is not valid in a type definition.");
     }
   }
 

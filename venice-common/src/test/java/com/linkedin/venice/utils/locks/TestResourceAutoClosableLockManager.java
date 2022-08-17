@@ -46,21 +46,31 @@ public class TestResourceAutoClosableLockManager {
     try (AutoCloseableLock ignore1 = resourceAutoClosableLockManager.getLockForResource(store1)) {
       value1.set(VALUE_WRITTEN_BY_THREAD_1);
       thread2.start();
-      Assert.assertEquals(value1.get(), VALUE_WRITTEN_BY_THREAD_1 ,
+      Assert.assertEquals(
+          value1.get(),
+          VALUE_WRITTEN_BY_THREAD_1,
           "The write lock for store1 is acquired by a thread1. Value should not be updated by thread2.");
 
       value2.set(VALUE_WRITTEN_BY_THREAD_1);
       thread3.start();
       thread3.join();
-      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () ->
-          Assert.assertEquals(value2.get(), VALUE_WRITTEN_BY_THREAD_3 ,
+      TestUtils.waitForNonDeterministicAssertion(
+          1,
+          TimeUnit.SECONDS,
+          () -> Assert.assertEquals(
+              value2.get(),
+              VALUE_WRITTEN_BY_THREAD_3,
               "The write lock for store2 is not acquired by thread1. Value should be updated by thread3."));
     } finally {
       thread2.join();
     }
 
-    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () ->
-        Assert.assertEquals(value1.get(), VALUE_WRITTEN_BY_THREAD_2 ,
+    TestUtils.waitForNonDeterministicAssertion(
+        1,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(
+            value1.get(),
+            VALUE_WRITTEN_BY_THREAD_2,
             "Thread2 should already acquire the lock and modify the value1."));
   }
 }

@@ -64,7 +64,7 @@ public class TestAdminCommandExecutionTracker {
       executionTracker.startTrackingExecution(execution);
     }
     Assert.assertEquals(idSet.size(), executionCount, "Generated ID should be unique.");
-    for (Long id : idSet) {
+    for (Long id: idSet) {
       Assert.assertNotNull(executionTracker.getExecution(id), "Execution should not be expired.");
     }
   }
@@ -80,40 +80,41 @@ public class TestAdminCommandExecutionTracker {
       executions.add(execution);
     }
 
-    for (AdminCommandExecution execution : executions) {
-      Assert.assertNotNull(executionTracker.getExecution(execution.getExecutionId()),
-          "Execution should not be expired.");
+    for (AdminCommandExecution execution: executions) {
+      Assert
+          .assertNotNull(executionTracker.getExecution(execution.getExecutionId()), "Execution should not be expired.");
       // set start time to 2 days ago.
       execution.setStartTime(LocalDateTime.now().minusDays(2).toString());
-      for (String fabric : fabricToControllerMap.keySet()) {
+      for (String fabric: fabricToControllerMap.keySet()) {
         execution.updateCommandStatusForFabric(fabric, AdminCommandExecutionStatus.COMPLETED);
       }
     }
 
     // Execution should not be expired until a new execution is added.
-    for (AdminCommandExecution execution : executions) {
-      Assert.assertNotNull(executionTracker.getExecution(execution.getExecutionId()),
-          "Execution should not be expired.");
+    for (AdminCommandExecution execution: executions) {
+      Assert
+          .assertNotNull(executionTracker.getExecution(execution.getExecutionId()), "Execution should not be expired.");
     }
 
-    AdminCommandExecution oldButUncompletedExecution =
-        executionTracker.createExecution(operation);
+    AdminCommandExecution oldButUncompletedExecution = executionTracker.createExecution(operation);
     oldButUncompletedExecution.setStartTime(LocalDateTime.now().minusDays(2).toString());
     executionTracker.startTrackingExecution(oldButUncompletedExecution);
-    for (AdminCommandExecution execution : executions) {
+    for (AdminCommandExecution execution: executions) {
       Assert.assertNull(executionTracker.getExecution(execution.getExecutionId()), "Execution should be expired.");
     }
 
     AdminCommandExecution newExecution = executionTracker.createExecution(operation);
     executionTracker.startTrackingExecution(newExecution);
-    Assert.assertNotNull(executionTracker.getExecution(oldButUncompletedExecution.getExecutionId()),
+    Assert.assertNotNull(
+        executionTracker.getExecution(oldButUncompletedExecution.getExecutionId()),
         "Execution should not be expired.");
-    Assert.assertNotNull(executionTracker.getExecution(newExecution.getExecutionId()),
+    Assert.assertNotNull(
+        executionTracker.getExecution(newExecution.getExecutionId()),
         "Execution should not be expired.");
   }
 
   @Test
-  public void testCheckExecutionStatus(){
+  public void testCheckExecutionStatus() {
     AdminCommandExecution execution = executionTracker.createExecution("test");
     executionTracker.startTrackingExecution(execution);
 
@@ -122,7 +123,7 @@ public class TestAdminCommandExecutionTracker {
     execution = executionTracker.checkExecutionStatus(execution.getExecutionId());
     Assert.assertFalse(execution.isSucceedInAllFabric(), "Command has not been completed.");
     // Processing command in all remote fabrics.
-    for(AdminCommandExecutionStatus status:execution.getFabricToExecutionStatusMap().values()){
+    for (AdminCommandExecutionStatus status: execution.getFabricToExecutionStatusMap().values()) {
       Assert.assertEquals(status, AdminCommandExecutionStatus.PROCESSING);
     }
 
@@ -132,13 +133,14 @@ public class TestAdminCommandExecutionTracker {
   }
 
   @Test
-  public void testCheckExecutionStatusError(){
+  public void testCheckExecutionStatusError() {
     AdminCommandExecution execution = executionTracker.createExecution("test");
     executionTracker.startTrackingExecution(execution);
     mockResponse.setError("Test error");
     execution = executionTracker.checkExecutionStatus(execution.getExecutionId());
-    Assert.assertFalse(execution.isSucceedInAllFabric(), "Query failed, could not know the status of remote execution.");
-    for(AdminCommandExecutionStatus status:execution.getFabricToExecutionStatusMap().values()){
+    Assert
+        .assertFalse(execution.isSucceedInAllFabric(), "Query failed, could not know the status of remote execution.");
+    for (AdminCommandExecutionStatus status: execution.getFabricToExecutionStatusMap().values()) {
       Assert.assertEquals(status, AdminCommandExecutionStatus.UNKNOWN);
     }
   }

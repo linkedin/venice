@@ -1,5 +1,7 @@
 package com.linkedin.venice.client.store;
 
+import static com.linkedin.venice.VeniceConstants.*;
+
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.TrackingStreamingCallback;
@@ -16,8 +18,6 @@ import java.util.Optional;
 import java.util.Set;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
-
-import static com.linkedin.venice.VeniceConstants.*;
 import org.apache.avro.io.BinaryEncoder;
 
 
@@ -28,14 +28,17 @@ import org.apache.avro.io.BinaryEncoder;
  * TODO: Currently it only works for compute streaming. Need to support single-get, batch-get and regular read compute.
  */
 public class AvroBlackHoleResponseStoreClientImpl<K, V> extends AvroGenericStoreClientImpl<K, V> {
-
   public AvroBlackHoleResponseStoreClientImpl(TransportClient transportClient, ClientConfig clientConfig) {
     super(transportClient, clientConfig);
   }
 
   @Override
-  public void compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys, Schema resultSchema,
-      StreamingCallback<K, GenericRecord> callback, long preRequestTimeInNS) throws VeniceClientException {
+  public void compute(
+      ComputeRequestWrapper computeRequestWrapper,
+      Set<K> keys,
+      Schema resultSchema,
+      StreamingCallback<K, GenericRecord> callback,
+      long preRequestTimeInNS) throws VeniceClientException {
     compute(computeRequestWrapper, keys, resultSchema, callback, preRequestTimeInNS, null, null);
   }
 
@@ -45,8 +48,13 @@ public class AvroBlackHoleResponseStoreClientImpl<K, V> extends AvroGenericStore
    * for serialization.
    */
   @Override
-  public void compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys, Schema resultSchema,
-      StreamingCallback<K, GenericRecord> callback, long preRequestTimeInNS, BinaryEncoder reusedEncoder,
+  public void compute(
+      ComputeRequestWrapper computeRequestWrapper,
+      Set<K> keys,
+      Schema resultSchema,
+      StreamingCallback<K, GenericRecord> callback,
+      long preRequestTimeInNS,
+      BinaryEncoder reusedEncoder,
       ByteArrayOutputStream reusedOutputStream) throws VeniceClientException {
     if (handleCallbackForEmptyKeySet(keys, callback)) {
       // empty key set
@@ -61,23 +69,38 @@ public class AvroBlackHoleResponseStoreClientImpl<K, V> extends AvroGenericStore
         ? serializeComputeRequest(keys, serializedComputeRequest, reusedEncoder, reusedOutputStream)
         : serializeComputeRequest(keys, serializedComputeRequest);
 
-    final Map<String, String> headerMap = (computeRequestWrapper.getComputeRequestVersion() == COMPUTE_REQUEST_VERSION_V2)
-        ? COMPUTE_HEADER_MAP_FOR_STREAMING_V2
-        : COMPUTE_HEADER_MAP_FOR_STREAMING_V3;
+    final Map<String, String> headerMap =
+        (computeRequestWrapper.getComputeRequestVersion() == COMPUTE_REQUEST_VERSION_V2)
+            ? COMPUTE_HEADER_MAP_FOR_STREAMING_V2
+            : COMPUTE_HEADER_MAP_FOR_STREAMING_V3;
 
-    getTransportClient().streamPost(getComputeRequestPath(), headerMap, serializedFullComputeRequest, new BlackHoleStreamingCallback<>(keys.size(), callback), keys.size());
+    getTransportClient().streamPost(
+        getComputeRequestPath(),
+        headerMap,
+        serializedFullComputeRequest,
+        new BlackHoleStreamingCallback<>(keys.size(), callback),
+        keys.size());
   }
 
   /**
    *
    */
-  private byte[] serializeComputeRequest(Set<K> keySet, byte[] serializedComputeRequest, BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) {
+  private byte[] serializeComputeRequest(
+      Set<K> keySet,
+      byte[] serializedComputeRequest,
+      BinaryEncoder reusedEncoder,
+      ByteArrayOutputStream reusedOutputStream) {
     List<ByteBuffer> serializedKeyList = new ArrayList<>();
     Iterator<K> iter = keySet.iterator();
     while (iter.hasNext()) {
-      serializedKeyList.add(ByteBuffer.wrap(getKeySerializerWithoutRetry().serialize(iter.next(), reusedEncoder, reusedOutputStream)));
+      serializedKeyList.add(
+          ByteBuffer.wrap(getKeySerializerWithoutRetry().serialize(iter.next(), reusedEncoder, reusedOutputStream)));
     }
-    return computeRequestClientKeySerializer.serializeObjects(serializedKeyList, ByteBuffer.wrap(serializedComputeRequest), reusedEncoder, reusedOutputStream);
+    return computeRequestClientKeySerializer.serializeObjects(
+        serializedKeyList,
+        ByteBuffer.wrap(serializedComputeRequest),
+        reusedEncoder,
+        reusedOutputStream);
   }
 
   private byte[] serializeComputeRequest(Set<K> keySet, byte[] serializedComputeRequest) {
@@ -86,7 +109,8 @@ public class AvroBlackHoleResponseStoreClientImpl<K, V> extends AvroGenericStore
     while (iter.hasNext()) {
       serializedKeyList.add(ByteBuffer.wrap(getKeySerializerWithoutRetry().serialize(iter.next())));
     }
-    return computeRequestClientKeySerializer.serializeObjects(serializedKeyList, ByteBuffer.wrap(serializedComputeRequest));
+    return computeRequestClientKeySerializer
+        .serializeObjects(serializedKeyList, ByteBuffer.wrap(serializedComputeRequest));
   }
 
   /**
@@ -105,7 +129,7 @@ public class AvroBlackHoleResponseStoreClientImpl<K, V> extends AvroGenericStore
       this.keySize = keySize;
       this.callback = callback;
       if (callback instanceof TrackingStreamingCallback) {
-        trackingStreamingCallback = Optional.of((TrackingStreamingCallback)callback);
+        trackingStreamingCallback = Optional.of((TrackingStreamingCallback) callback);
       }
     }
 

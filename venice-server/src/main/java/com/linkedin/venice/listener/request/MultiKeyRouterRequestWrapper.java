@@ -12,7 +12,7 @@ public abstract class MultiKeyRouterRequestWrapper<K> extends RouterRequest {
 
     this.keys = keys;
     // TODO: looping through all keys at the beginning would prevent us from using lazy deserializer; refactor this
-    this.keys.forEach( key -> ++keyCount);
+    this.keys.forEach(key -> ++keyCount);
   }
 
   public Iterable<K> getKeys() {

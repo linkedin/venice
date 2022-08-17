@@ -91,7 +91,7 @@ public class PartitionerConfigImpl implements PartitionerConfig {
   }
 
   @JsonIgnore
-  public PartitionerConfig clone(){
+  public PartitionerConfig clone() {
     return new PartitionerConfigImpl(getPartitionerClass(), getPartitionerParams(), getAmplificationFactor());
   }
 }

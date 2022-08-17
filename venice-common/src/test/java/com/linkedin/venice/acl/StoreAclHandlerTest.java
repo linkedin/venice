@@ -1,5 +1,7 @@
 package com.linkedin.venice.acl;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.acl.handler.StoreAclHandler;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
@@ -21,8 +23,6 @@ import org.mockito.ArgumentMatcher;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import static org.mockito.Mockito.*;
-
 
 public class StoreAclHandlerTest {
   private DynamicAccessController accessController;
@@ -33,11 +33,11 @@ public class StoreAclHandlerTest {
   private StoreAclHandler aclHandler;
   private Store store;
 
-  private boolean[] hasAccess = {false};
-  private boolean[] hasAcl = {false};
-  private boolean[] hasStore = {false};
-  private boolean[] isSystemStore = {false};
-  private boolean[] isFailOpen = {false};
+  private boolean[] hasAccess = { false };
+  private boolean[] hasAcl = { false };
+  private boolean[] hasStore = { false };
+  private boolean[] isSystemStore = { false };
+  private boolean[] isFailOpen = { false };
 
   @BeforeMethod
   public void setUp() throws Exception {
@@ -58,7 +58,7 @@ public class StoreAclHandlerTest {
     SSLSession sslSession = mock(SSLSession.class);
     when(sslEngine.getSession()).thenReturn(sslSession);
     X509Certificate cert = mock(X509Certificate.class);
-    when(sslSession.getPeerCertificates()).thenReturn(new Certificate[]{cert});
+    when(sslSession.getPeerCertificates()).thenReturn(new Certificate[] { cert });
 
     // Host
     channel = mock(Channel.class);
@@ -130,6 +130,7 @@ public class StoreAclHandlerTest {
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
     verify(ctx, times(16)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
   }
+
   @Test
   public void aclDisabledForSystemStore() throws Exception {
     isSystemStore[0] = true;
@@ -197,7 +198,7 @@ public class StoreAclHandlerTest {
 
     @Override
     public boolean matches(FullHttpResponse argument) {
-      return argument.status().equals(status) ;
+      return argument.status().equals(status);
     }
   }
 }

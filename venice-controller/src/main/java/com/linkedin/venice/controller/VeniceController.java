@@ -26,10 +26,9 @@ import org.apache.logging.log4j.Logger;
  * Venice Controller to manage the cluster. Internally wraps Helix Controller.
  */
 public class VeniceController {
-
   private static final Logger logger = LogManager.getLogger(VeniceController.class);
 
-  //services
+  // services
   private VeniceControllerService controllerService;
   private AdminSparkServer adminServer;
   private AdminSparkServer secureAdminServer;
@@ -52,15 +51,38 @@ public class VeniceController {
    *
    * @see #VeniceController(List, MetricsRepository, List, Optional, Optional, D2Client, Optional, Optional)
    */
-  public VeniceController(List<VeniceProperties> propertiesList, List<D2Server> d2ServerList, Optional<AuthorizerService> authorizerService, D2Client d2Client) {
-    this(propertiesList, TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME), d2ServerList, Optional.empty(), authorizerService, d2Client, Optional.empty());
+  public VeniceController(
+      List<VeniceProperties> propertiesList,
+      List<D2Server> d2ServerList,
+      Optional<AuthorizerService> authorizerService,
+      D2Client d2Client) {
+    this(
+        propertiesList,
+        TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME),
+        d2ServerList,
+        Optional.empty(),
+        authorizerService,
+        d2Client,
+        Optional.empty());
   }
 
-  public VeniceController(List<VeniceProperties> propertiesList, MetricsRepository metricsRepository, List<D2Server> d2ServerList,
-      Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService, D2Client d2Client,
+  public VeniceController(
+      List<VeniceProperties> propertiesList,
+      MetricsRepository metricsRepository,
+      List<D2Server> d2ServerList,
+      Optional<DynamicAccessController> accessController,
+      Optional<AuthorizerService> authorizerService,
+      D2Client d2Client,
       Optional<ClientConfig> routerClientConfig) {
-    this(propertiesList, metricsRepository, d2ServerList, accessController, authorizerService, d2Client,
-        routerClientConfig, Optional.empty());
+    this(
+        propertiesList,
+        metricsRepository,
+        d2ServerList,
+        accessController,
+        authorizerService,
+        d2Client,
+        routerClientConfig,
+        Optional.empty());
   }
 
   /**
@@ -83,10 +105,15 @@ public class VeniceController {
    * @param icProvider
    *        an {@link ICProvider} used for injecting custom tracing functionality.
    */
-  public VeniceController(List<VeniceProperties> propertiesList, MetricsRepository metricsRepository, List<D2Server> d2ServerList,
-      Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService, D2Client d2Client,
-      Optional<ClientConfig> routerClientConfig, Optional<ICProvider> icProvider
-  ) {
+  public VeniceController(
+      List<VeniceProperties> propertiesList,
+      MetricsRepository metricsRepository,
+      List<D2Server> d2ServerList,
+      Optional<DynamicAccessController> accessController,
+      Optional<AuthorizerService> authorizerService,
+      D2Client d2Client,
+      Optional<ClientConfig> routerClientConfig,
+      Optional<ICProvider> icProvider) {
     this.multiClusterConfigs = new VeniceControllerMultiClusterConfig(propertiesList);
     this.metricsRepository = metricsRepository;
     this.d2ServerList = d2ServerList;
@@ -111,8 +138,7 @@ public class VeniceController {
         authorizerService,
         d2Client,
         routerClientConfig,
-        icProvider
-    );
+        icProvider);
 
     adminServer = new AdminSparkServer(
         multiClusterConfigs.getAdminPort(),
@@ -146,14 +172,17 @@ public class VeniceController {
     }
     storeBackupVersionCleanupService = Optional.empty();
     if (multiClusterConfigs.isParent()) {
-      topicCleanupService = new TopicCleanupServiceForParentController(controllerService.getVeniceHelixAdmin(), multiClusterConfigs);
+      topicCleanupService =
+          new TopicCleanupServiceForParentController(controllerService.getVeniceHelixAdmin(), multiClusterConfigs);
     } else {
       topicCleanupService = new TopicCleanupService(controllerService.getVeniceHelixAdmin(), multiClusterConfigs);
       Admin admin = controllerService.getVeniceHelixAdmin();
       if (!(admin instanceof VeniceHelixAdmin)) {
-        throw new VeniceException("'VeniceHelixAdmin' is expected of the returned 'Admin' from 'VeniceControllerService#getVeniceHelixAdmin' in child mode");
+        throw new VeniceException(
+            "'VeniceHelixAdmin' is expected of the returned 'Admin' from 'VeniceControllerService#getVeniceHelixAdmin' in child mode");
       }
-      storeBackupVersionCleanupService = Optional.of(new StoreBackupVersionCleanupService((VeniceHelixAdmin)admin, multiClusterConfigs));
+      storeBackupVersionCleanupService =
+          Optional.of(new StoreBackupVersionCleanupService((VeniceHelixAdmin) admin, multiClusterConfigs));
       logger.info("StoreBackupVersionCleanupService is enabled");
     }
   }
@@ -163,17 +192,17 @@ public class VeniceController {
    */
   public void start() {
     logger.info(
-        "Starting controller: " + multiClusterConfigs.getControllerName() + " for clusters: " + multiClusterConfigs
-            .getClusters().toString() + " with ZKAddress: " + multiClusterConfigs.getZkAddress());
+        "Starting controller: " + multiClusterConfigs.getControllerName() + " for clusters: "
+            + multiClusterConfigs.getClusters().toString() + " with ZKAddress: " + multiClusterConfigs.getZkAddress());
     controllerService.start();
     adminServer.start();
     if (sslEnabled) {
       secureAdminServer.start();
     }
     topicCleanupService.start();
-    storeBackupVersionCleanupService.ifPresent( s -> s.start());
+    storeBackupVersionCleanupService.ifPresent(s -> s.start());
     // start d2 service at the end
-    d2ServerList.forEach( d2Server -> {
+    d2ServerList.forEach(d2Server -> {
       d2Server.forceStart();
       logger.info("Started d2 announcer: " + d2Server);
     });
@@ -185,11 +214,11 @@ public class VeniceController {
    */
   public void stop() {
     // stop d2 service first
-    d2ServerList.forEach( d2Server -> {
+    d2ServerList.forEach(d2Server -> {
       d2Server.notifyShutdown();
       logger.info("Stopped d2 announcer: " + d2Server);
     });
-    //TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
+    // TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
     Utils.closeQuietlyWithErrorLogged(topicCleanupService);
     storeBackupVersionCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     Utils.closeQuietlyWithErrorLogged(adminServer);

@@ -1,5 +1,7 @@
 package com.linkedin.venice.router.api;
 
+import static com.linkedin.venice.read.RequestType.*;
+
 import com.linkedin.ddsstorage.router.api.HostFinder;
 import com.linkedin.ddsstorage.router.api.HostHealthMonitor;
 import com.linkedin.ddsstorage.router.api.RouterException;
@@ -14,12 +16,9 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.read.RequestType.*;
 
 
 public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
@@ -29,7 +28,8 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
   private final RouterStats<AggRouterHttpRequestStats> routerStats;
   private final HostHealthMonitor<Instance> instanceHealthMonitor;
 
-  public VeniceHostFinder(OnlineInstanceFinder onlineInstanceFinder,
+  public VeniceHostFinder(
+      OnlineInstanceFinder onlineInstanceFinder,
       RouterStats<AggRouterHttpRequestStats> routerStats,
       HostHealthMonitor<Instance> instanceHealthMonitor) {
     this.onlineInstanceFinder = onlineInstanceFinder;
@@ -50,9 +50,14 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
    * @return
    */
   @Override
-  public List<Instance> findHosts(String requestMethod, String resourceName, String partitionName,
-      HostHealthMonitor<Instance> hostHealthMonitor, VeniceRole roles) {
-    List<Instance> hosts = onlineInstanceFinder.getReadyToServeInstances(resourceName, HelixUtils.getPartitionId(partitionName));
+  public List<Instance> findHosts(
+      String requestMethod,
+      String resourceName,
+      String partitionName,
+      HostHealthMonitor<Instance> hostHealthMonitor,
+      VeniceRole roles) {
+    List<Instance> hosts =
+        onlineInstanceFinder.getReadyToServeInstances(resourceName, HelixUtils.getPartitionId(partitionName));
     if (hosts.isEmpty()) {
       /**
        * Zero available host issue is handled by {@link VeniceDelegateMode} by checking whether there is any 'offline request'.
@@ -75,13 +80,13 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
      * since right now, there is no good way to differentiate compute from multi-get according to the existing API
      * of {@link HostFinder}.
      */
-    AggRouterHttpRequestStats currentStats = routerStats.getStatsByType(isSingleGet? SINGLE_GET : MULTI_GET);
+    AggRouterHttpRequestStats currentStats = routerStats.getStatsByType(isSingleGet ? SINGLE_GET : MULTI_GET);
     /**
      * It seems not clean to use the following method to extract store name, but inside Venice, Kafka topic name is same
      * as Helix resource name.
      */
     String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
-    for (Instance instance : hosts) {
+    for (Instance instance: hosts) {
       // Filter out unhealthy hosts
       /**
        * Right now, partition-level health check by measuring offset lag is not enabled.
@@ -100,12 +105,15 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
     final int hostCount = newHosts.size();
     if (hostCount <= 1) {
       if (hostCount == 0) {
-        logger.warn("All host(s) for resource " + resourceName + " with partition " + partitionName + " are not healthy: " + hosts);
+        logger.warn(
+            "All host(s) for resource " + resourceName + " with partition " + partitionName + " are not healthy: "
+                + hosts);
       }
       return newHosts;
     }
 
-    //Zero available host issue is handled by {@link VeniceDelegateMode} by checking whether there is any 'offline request'.
+    // Zero available host issue is handled by {@link VeniceDelegateMode} by checking whether there is any 'offline
+    // request'.
 
     Collections.shuffle(newHosts); // Randomize order so that multiget using ScatterGatherMode.GROUP_BY_PRIMARY_HOST or
                                    // LEAST_LOADED_ROUTING results in an even distribution of partitions to hosts.
@@ -114,7 +122,11 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
 
   @Override
   public Collection<Instance> findAllHosts(VeniceRole roles) throws RouterException {
-    throw new RouterException(HttpResponseStatus.class, HttpResponseStatus.BAD_REQUEST, HttpResponseStatus.BAD_REQUEST.code(),
-        "Find All Hosts is not a supported operation", true);
+    throw new RouterException(
+        HttpResponseStatus.class,
+        HttpResponseStatus.BAD_REQUEST,
+        HttpResponseStatus.BAD_REQUEST.code(),
+        "Find All Hosts is not a supported operation",
+        true);
   }
 }

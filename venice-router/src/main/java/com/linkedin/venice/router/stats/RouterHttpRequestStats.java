@@ -9,8 +9,8 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
-import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Gauge;
+import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
@@ -65,16 +65,22 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor disallowedRetryRequestSensor;
   private final Sensor errorRetryAttemptTriggeredByPendingRequestCheckSensor;
 
-
-  //QPS metrics
-  public RouterHttpRequestStats(MetricsRepository metricsRepository, String storeName, RequestType requestType,
+  // QPS metrics
+  public RouterHttpRequestStats(
+      MetricsRepository metricsRepository,
+      String storeName,
+      RequestType requestType,
       ScatterGatherStats scatterGatherStats) {
     this(metricsRepository, storeName, requestType, scatterGatherStats, false);
   }
 
-  //QPS metrics
-  public RouterHttpRequestStats(MetricsRepository metricsRepository, String storeName, RequestType requestType,
-      ScatterGatherStats scatterGatherStats, boolean isKeyValueProfilingEnabled) {
+  // QPS metrics
+  public RouterHttpRequestStats(
+      MetricsRepository metricsRepository,
+      String storeName,
+      RequestType requestType,
+      ScatterGatherStats scatterGatherStats,
+      boolean isKeyValueProfilingEnabled) {
     super(metricsRepository, storeName, requestType);
 
     Rate requestRate = new OccurrenceRate();
@@ -85,38 +91,55 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     unhealthySensor = registerSensor("unhealthy_request", new Count());
     unavailableReplicaStreamingRequestSensor = registerSensor("unavailable_replica_streaming_request", new Count());
     tardySensor = registerSensor("tardy_request", new Count(), tardyRequestRate);
-    healthyRequestRateSensor = registerSensor("healthy_request_ratio",
-        new TehutiUtils.SimpleRatioStat(healthyRequestRate, requestRate));
-    tardyRequestRatioSensor = registerSensor("tardy_request_ratio",
-        new TehutiUtils.SimpleRatioStat(tardyRequestRate, requestRate));
+    healthyRequestRateSensor =
+        registerSensor("healthy_request_ratio", new TehutiUtils.SimpleRatioStat(healthyRequestRate, requestRate));
+    tardyRequestRatioSensor =
+        registerSensor("tardy_request_ratio", new TehutiUtils.SimpleRatioStat(tardyRequestRate, requestRate));
     throttleSensor = registerSensor("throttled_request", new Count());
     badRequestSensor = registerSensor("bad_request", new Count());
     badRequestKeyCountSensor = registerSensor("bad_request_key_count", new OccurrenceRate(), new Avg(), new Max());
     requestThrottledByRouterCapacitySensor = registerSensor("request_throttled_by_router_capacity", new Count());
     fanoutRequestCountSensor = registerSensor("fanout_request_count", new Avg(), new Max(0));
     latencySensor = registerSensorWithDetailedPercentiles("latency", new Avg(), new Max(0));
-    healthyRequestLatencySensor = registerSensorWithDetailedPercentiles("healthy_request_latency", new Avg(), new Max(0));
-    unhealthyRequestLatencySensor = registerSensorWithDetailedPercentiles("unhealthy_request_latency", new Avg(), new Max(0));
+    healthyRequestLatencySensor =
+        registerSensorWithDetailedPercentiles("healthy_request_latency", new Avg(), new Max(0));
+    unhealthyRequestLatencySensor =
+        registerSensorWithDetailedPercentiles("unhealthy_request_latency", new Avg(), new Max(0));
     tardyRequestLatencySensor = registerSensorWithDetailedPercentiles("tardy_request_latency", new Avg(), new Max(0));
-    throttledRequestLatencySensor = registerSensorWithDetailedPercentiles("throttled_request_latency", new Avg(), new Max(0));
-    routerResponseWaitingTimeSensor = registerSensor("response_waiting_time",
+    throttledRequestLatencySensor =
+        registerSensorWithDetailedPercentiles("throttled_request_latency", new Avg(), new Max(0));
+    routerResponseWaitingTimeSensor = registerSensor(
+        "response_waiting_time",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("response_waiting_time")));
-    requestSizeSensor = registerSensor("request_size", TehutiUtils.getPercentileStat(getName(), getFullMetricName("request_size")), new Avg());
-    compressedResponseSizeSensor = registerSensor("compressed_response_size",
-        TehutiUtils.getPercentileStat(getName(), getFullMetricName("compressed_response_size")), new Avg(), new Max());
+    requestSizeSensor = registerSensor(
+        "request_size",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("request_size")),
+        new Avg());
+    compressedResponseSizeSensor = registerSensor(
+        "compressed_response_size",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("compressed_response_size")),
+        new Avg(),
+        new Max());
 
-    decompressionTimeSensor = registerSensor("decompression_time",
-        TehutiUtils.getPercentileStat(getName(), getFullMetricName("decompression_time")), new Avg());
+    decompressionTimeSensor = registerSensor(
+        "decompression_time",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("decompression_time")),
+        new Avg());
     quotaSensor = registerSensor("read_quota_per_router", new Gauge());
     findUnhealthyHostRequestSensor = registerSensor("find_unhealthy_host_request", new OccurrenceRate());
 
     registerSensor("retry_count", new LambdaStat(() -> scatterGatherStats.getTotalRetries()));
     registerSensor("retry_key_count", new LambdaStat(() -> scatterGatherStats.getTotalRetriedKeys()));
-    registerSensor("retry_slower_than_original_count", new LambdaStat( () -> scatterGatherStats.getTotalRetriesDiscarded()));
-    registerSensor("retry_error_count", new LambdaStat( () -> scatterGatherStats.getTotalRetriesError()));
-    registerSensor("retry_faster_than_original_count", new LambdaStat( () -> scatterGatherStats.getTotalRetriesWinner()));
+    registerSensor(
+        "retry_slower_than_original_count",
+        new LambdaStat(() -> scatterGatherStats.getTotalRetriesDiscarded()));
+    registerSensor("retry_error_count", new LambdaStat(() -> scatterGatherStats.getTotalRetriesError()));
+    registerSensor(
+        "retry_faster_than_original_count",
+        new LambdaStat(() -> scatterGatherStats.getTotalRetriesWinner()));
 
-    responseResultsDeserializationLatencySensor = registerSensor("response_results_deserialization_latency",
+    responseResultsDeserializationLatencySensor = registerSensor(
+        "response_results_deserialization_latency",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("response_results_deserialization_latency")));
     keyNumSensor = registerSensor("key_num", new Avg(), new Max(0));
     /**
@@ -141,17 +164,20 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
      *
      * The metric below tracks the latency from receiving a request in dispatcher to receiving the `HttpResponse` message.
      */
-    nettyClientFirstResponseLatencySensor = registerSensor("netty_client_first_response_latency",
+    nettyClientFirstResponseLatencySensor = registerSensor(
+        "netty_client_first_response_latency",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("netty_client_first_response_latency")));
     /**
      * The metric below tracks the latency from receiving a request in dispacher to receiving the `LastHttpContent`
      * message. The gap between this metric and the previous metric can tell us how much time is spent on concatenating
      * all the response contents.
      */
-    nettyClientLastResponseLatencySensor = registerSensor("netty_client_last_response_latency",
+    nettyClientLastResponseLatencySensor = registerSensor(
+        "netty_client_last_response_latency",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("netty_client_last_response_latency")));
 
-    nettyClientAcquireChannelFutureLatencySensor = registerSensor("netty_client_acquire_channel_latency",
+    nettyClientAcquireChannelFutureLatencySensor = registerSensor(
+        "netty_client_acquire_channel_latency",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("netty_client_acquire_channel_latency")));
 
     readQuotaUsageSensor = registerSensor("read_quota_usage_kps", new Total());
@@ -161,13 +187,22 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     String responseSizeSensorName = "response_size";
     if (isKeyValueProfilingEnabled) {
       String keySizeSensorName = "key_size_in_byte";
-      keySizeSensor = registerSensor(keySizeSensorName, new Avg(), new Max(),
+      keySizeSensor = registerSensor(
+          keySizeSensorName,
+          new Avg(),
+          new Max(),
           TehutiUtils.getFineGrainedPercentileStat(getName(), getFullMetricName(keySizeSensorName)));
 
-      responseSizeSensor = registerSensor(responseSizeSensorName, new Avg(), new Max(),
+      responseSizeSensor = registerSensor(
+          responseSizeSensorName,
+          new Avg(),
+          new Max(),
           TehutiUtils.getFineGrainedPercentileStat(getName(), getFullMetricName(responseSizeSensorName)));
     } else {
-      responseSizeSensor = registerSensor(responseSizeSensorName, new Avg(), new Max(),
+      responseSizeSensor = registerSensor(
+          responseSizeSensorName,
+          new Avg(),
+          new Max(),
           TehutiUtils.getPercentileStat(getName(), getFullMetricName(responseSizeSensorName)));
     }
 
@@ -175,7 +210,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
     allowedRetryRequestSensor = registerSensor("allowed_retry_request_count", new OccurrenceRate());
     disallowedRetryRequestSensor = registerSensor("disallowed_retry_request_count", new OccurrenceRate());
-    errorRetryAttemptTriggeredByPendingRequestCheckSensor = registerSensor("error_retry_attempt_triggered_by_pending_request_check", new OccurrenceRate());
+    errorRetryAttemptTriggeredByPendingRequestCheckSensor =
+        registerSensor("error_retry_attempt_triggered_by_pending_request_check", new OccurrenceRate());
   }
 
   /**
@@ -278,7 +314,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     decompressionTimeSensor.record(decompressionTime);
   }
 
-  public void recordQuota(double quota){
+  public void recordQuota(double quota) {
     quotaSensor.record(quota);
   }
 

@@ -2,10 +2,9 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataVersionId;
-import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.Pair;
 import java.util.Collection;
 
@@ -17,12 +16,12 @@ public class HelixReadOnlySchemaRepositoryAdapter implements ReadOnlySchemaRepos
   private final HelixReadOnlyZKSharedSchemaRepository systemStoreSchemaRepository;
   private final ReadOnlySchemaRepository regularStoreSchemaRepository;
 
-  public HelixReadOnlySchemaRepositoryAdapter(HelixReadOnlyZKSharedSchemaRepository systemStoreSchemaRepository,
+  public HelixReadOnlySchemaRepositoryAdapter(
+      HelixReadOnlyZKSharedSchemaRepository systemStoreSchemaRepository,
       ReadOnlySchemaRepository regularStoreSchemaRepository) {
     this.systemStoreSchemaRepository = systemStoreSchemaRepository;
     this.regularStoreSchemaRepository = regularStoreSchemaRepository;
   }
-
 
   @Override
   public SchemaEntry getKeySchema(String storeName) {
@@ -93,7 +92,8 @@ public class HelixReadOnlySchemaRepositoryAdapter implements ReadOnlySchemaRepos
     if (HelixReadOnlyStoreRepositoryAdapter.forwardToRegularRepository(systemStoreType)) {
       return regularStoreSchemaRepository.getDerivedSchema(storeName, valueSchemaId, derivedSchemaId);
     }
-    return systemStoreSchemaRepository.getDerivedSchema(systemStoreType.getZkSharedStoreName(), valueSchemaId, derivedSchemaId);
+    return systemStoreSchemaRepository
+        .getDerivedSchema(systemStoreType.getZkSharedStoreName(), valueSchemaId, derivedSchemaId);
   }
 
   @Override
@@ -115,13 +115,18 @@ public class HelixReadOnlySchemaRepositoryAdapter implements ReadOnlySchemaRepos
   }
 
   @Override
-  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(String storeName, int valueSchemaId, int replicationMetadataVersionId) {
+  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(
+      String storeName,
+      int valueSchemaId,
+      int replicationMetadataVersionId) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (HelixReadOnlyStoreRepositoryAdapter.forwardToRegularRepository(systemStoreType)) {
-      return regularStoreSchemaRepository.getReplicationMetadataSchema(storeName, valueSchemaId,
-          replicationMetadataVersionId);
+      return regularStoreSchemaRepository
+          .getReplicationMetadataSchema(storeName, valueSchemaId, replicationMetadataVersionId);
     }
-    return systemStoreSchemaRepository.getReplicationMetadataSchema(systemStoreType.getZkSharedStoreName(), valueSchemaId,
+    return systemStoreSchemaRepository.getReplicationMetadataSchema(
+        systemStoreType.getZkSharedStoreName(),
+        valueSchemaId,
         replicationMetadataVersionId);
   }
 

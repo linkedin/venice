@@ -27,11 +27,18 @@ public class PushStatusStoreUtils {
     return getPushKey(version, partitionId, incrementalPushVersion, Optional.empty());
   }
 
-  public static PushStatusKey getPushKey(int version, int partitionId,
-      Optional<String> incrementalPushVersion, Optional<String> incrementalPushPrefix) {
+  public static PushStatusKey getPushKey(
+      int version,
+      int partitionId,
+      Optional<String> incrementalPushVersion,
+      Optional<String> incrementalPushPrefix) {
     if (incrementalPushVersion.isPresent()) {
       if (incrementalPushPrefix.isPresent()) {
-        return getServerIncrementalPushKey(version, partitionId, incrementalPushVersion.get(), incrementalPushPrefix.get());
+        return getServerIncrementalPushKey(
+            version,
+            partitionId,
+            incrementalPushVersion.get(),
+            incrementalPushPrefix.get());
       }
       return getIncrementalPushKey(version, partitionId, incrementalPushVersion.get());
     }
@@ -52,8 +59,11 @@ public class PushStatusStoreUtils {
     return pushStatusKey;
   }
 
-  public static PushStatusKey getServerIncrementalPushKey(int version, int partitionId,
-      String incrementalPushVersion, String incrementalPushPrefix) {
+  public static PushStatusKey getServerIncrementalPushKey(
+      int version,
+      int partitionId,
+      String incrementalPushVersion,
+      String incrementalPushPrefix) {
     PushStatusKey pushStatusKey = new PushStatusKey();
     /* upon modifying the order of keyStrings in PushStatusKey, please update getPartitionIdFromServerIncrementalPushKey()
     to reflect an updated index of partitionId in keyStrings list. */

@@ -1,5 +1,7 @@
 package com.linkedin.venice.schema.vson;
 
+import static com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter.stripFromUnion;
+
 import com.linkedin.venice.serializer.VsonSerializationException;
 import java.util.List;
 import java.util.Map;
@@ -7,7 +9,6 @@ import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter.stripFromUnion;
 
 public class TestVsonSchemaAdapter {
   @Test
@@ -23,7 +24,7 @@ public class TestVsonSchemaAdapter {
 
     Schema avroShort = readStrToAvroSchema("\"int16\"");
     Assert.assertEquals(avroShort.getType(), Schema.Type.FIXED);
-    Assert.assertEquals(avroShort.getFixedSize(),2);
+    Assert.assertEquals(avroShort.getFixedSize(), 2);
 
     Assert.assertEquals(readStrToVsonSchema("\"int32\"").getType(), VsonTypes.INT32);
     Assert.assertEquals(readStrToVsonSchema("\"float32\"").getType(), VsonTypes.FLOAT32);
@@ -35,7 +36,8 @@ public class TestVsonSchemaAdapter {
 
   @Test
   public void adapterCanReadListAndMap() {
-    String listStr = "[{\"email\":\"string\", \"metadata\":[{\"key\":\"string\", \"value\":\"string\"}], \"score\":\"float32\"}]";
+    String listStr =
+        "[{\"email\":\"string\", \"metadata\":[{\"key\":\"string\", \"value\":\"string\"}], \"score\":\"float32\"}]";
 
     Schema avroSchema = readStrToAvroSchema(listStr);
 
@@ -45,15 +47,16 @@ public class TestVsonSchemaAdapter {
     Schema strippedElementSchema = stripFromUnion(avroSchema.getElementType());
     Assert.assertEquals(strippedElementSchema.getType(), Schema.Type.RECORD);
     Assert.assertEquals(stripFromUnion(strippedElementSchema.getField("email").schema()).getType(), Schema.Type.STRING);
-    Assert.assertEquals(stripFromUnion(strippedElementSchema.getField("metadata").schema()).getType(), Schema.Type.ARRAY);
+    Assert
+        .assertEquals(stripFromUnion(strippedElementSchema.getField("metadata").schema()).getType(), Schema.Type.ARRAY);
     Assert.assertEquals(stripFromUnion(strippedElementSchema.getField("score").schema()).getType(), Schema.Type.FLOAT);
 
     VsonSchema vsonSchema = readStrToVsonSchema(listStr);
 
     Assert.assertTrue(vsonSchema.getType() instanceof List);
-    Assert.assertTrue(((List)vsonSchema.getType()).get(0) instanceof Map);
+    Assert.assertTrue(((List) vsonSchema.getType()).get(0) instanceof Map);
 
-    Map<String, Object> vsonRecord = (Map)((List)vsonSchema.getType()).get(0);
+    Map<String, Object> vsonRecord = (Map) ((List) vsonSchema.getType()).get(0);
     Assert.assertEquals(vsonRecord.get("email"), VsonTypes.STRING);
     Assert.assertTrue(vsonRecord.get("metadata") instanceof List);
     Assert.assertEquals(vsonRecord.get("score"), VsonTypes.FLOAT32);
@@ -64,12 +67,14 @@ public class TestVsonSchemaAdapter {
     try {
       readStrToAvroSchema("random string");
       Assert.fail();
-    } catch (VsonSerializationException e) {}
+    } catch (VsonSerializationException e) {
+    }
 
     try {
       readStrToVsonSchema("123456");
       Assert.fail();
-    } catch (VsonSerializationException e) {}
+    } catch (VsonSerializationException e) {
+    }
   }
 
   private Schema readStrToAvroSchema(String schemaStr) {
@@ -80,4 +85,3 @@ public class TestVsonSchemaAdapter {
     return VsonSchema.parse(schemaStr);
   }
 }
-

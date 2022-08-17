@@ -5,6 +5,7 @@ import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
+
 /**
  *  This class applies the builder pattern to build a partial update record. Note that to-be-updated value
  *  must be of type {@link Schema.Type#RECORD}.
@@ -17,8 +18,6 @@ import org.apache.avro.generic.GenericRecord;
  *      5. Remove entries by keys from a map field.
  */
 public interface UpdateBuilder {
-
-
   /**
    * Set a new value to a field. Note that setting value on the same field multiple times throws an {@link IllegalStateException}.
    * If this field is a List/Map field and other methods are used to add to or remove from this field, calling this method

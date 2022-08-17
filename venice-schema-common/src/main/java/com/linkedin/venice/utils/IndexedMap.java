@@ -11,8 +11,12 @@ import java.util.Map;
  */
 public interface IndexedMap<K, V> extends Map<K, V> {
   int indexOf(K key);
+
   V putByIndex(K key, V value, int index);
+
   Entry<K, V> getByIndex(int index);
+
   Entry<K, V> removeByIndex(int index);
+
   void moveElement(int originalIndex, int newIndex);
 }

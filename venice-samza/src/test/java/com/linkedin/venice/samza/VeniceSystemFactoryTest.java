@@ -1,10 +1,11 @@
 package com.linkedin.venice.samza;
 
-import com.linkedin.venice.VeniceConstants;
+import static com.linkedin.venice.utils.TestPushUtils.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -12,10 +13,13 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
-
 import com.linkedin.venice.utils.Utils;
+import java.nio.ByteBuffer;
 import java.util.AbstractMap;
+import java.util.Collections;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -27,14 +31,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-
-import java.nio.ByteBuffer;
-import java.util.Collections;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
-
-import static com.linkedin.venice.utils.TestPushUtils.*;
-import static org.testng.Assert.*;
 
 
 public class VeniceSystemFactoryTest {
@@ -55,28 +51,15 @@ public class VeniceSystemFactoryTest {
   /**
    * Write a record using the Samza SystemProducer for Venice, then verify we can read that record.
    */
-  @Test //(timeOut = TEST_TIMEOUT * 2)
+  @Test // (timeOut = TEST_TIMEOUT * 2)
   public void testGetProducer() throws Exception {
     String keySchema = "\"string\"";
-    String valueSchema =
-        "{\n" +
-        "  \"type\" : \"record\",\n" +
-        "  \"name\" : \"testRecord\",\n" +
-        "  \"fields\" : [ {\n" +
-        "    \"name\" : \"number\",\n" +
-        "    \"type\" : [ \"double\", \"null\" ],\n" +
-        "    \"default\" : 100.0\n" + "  }, {\n" +
-        "    \"name\" : \"string\",\n" +
-        "    \"type\" : [ \"string\", \"null\" ],\n" +
-        "    \"default\" : \"100\"\n" + "  }, {\n" +
-        "    \"name\" : \"intArray\",\n" +
-        "    \"type\" : {\n" +
-        "      \"type\" : \"array\",\n" +
-        "      \"items\" : \"int\"\n" +
-        "    },\n" +
-        "    \"default\" :  [ ]\n" +
-        "  } ]\n" +
-        "}";
+    String valueSchema = "{\n" + "  \"type\" : \"record\",\n" + "  \"name\" : \"testRecord\",\n"
+        + "  \"fields\" : [ {\n" + "    \"name\" : \"number\",\n" + "    \"type\" : [ \"double\", \"null\" ],\n"
+        + "    \"default\" : 100.0\n" + "  }, {\n" + "    \"name\" : \"string\",\n"
+        + "    \"type\" : [ \"string\", \"null\" ],\n" + "    \"default\" : \"100\"\n" + "  }, {\n"
+        + "    \"name\" : \"intArray\",\n" + "    \"type\" : {\n" + "      \"type\" : \"array\",\n"
+        + "      \"items\" : \"int\"\n" + "    },\n" + "    \"default\" :  [ ]\n" + "  } ]\n" + "}";
 
     String storeName = Utils.getUniqueString("store");
     Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchemaStr(valueSchema);
@@ -84,9 +67,10 @@ public class VeniceSystemFactoryTest {
     cluster.useControllerClient(controllerClient -> {
       TestUtils.assertCommand(controllerClient.createNewStore(storeName, "owner", keySchema, valueSchema));
       // Enable hybrid and write-compute
-      TestUtils.assertCommand(controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
-          .setHybridRewindSeconds(10)
-          .setHybridOffsetLagThreshold(10)));
+      TestUtils.assertCommand(
+          controllerClient.updateStore(
+              storeName,
+              new UpdateStoreQueryParams().setHybridRewindSeconds(10).setHybridOffsetLagThreshold(10)));
 
       // Generate write compute schema
       TestUtils.assertCommand(controllerClient.addDerivedSchema(storeName, 1, writeComputeSchema.toString()));
@@ -102,9 +86,7 @@ public class VeniceSystemFactoryTest {
 
     cluster.createVersion(storeName, keySchema, valueSchema, Stream.of(new AbstractMap.SimpleEntry(key, batchValue)));
 
-    ClientConfig config = ClientConfig
-        .defaultGenericClientConfig(storeName)
-        .setVeniceURL(cluster.getRandomRouterURL());
+    ClientConfig config = ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL());
 
     SystemProducer producer = null;
 
@@ -127,7 +109,9 @@ public class VeniceSystemFactoryTest {
         } catch (Exception e) {
           throw new RuntimeException(e);
         }
-        assertNotNull(recordFromVenice, "Value for key: '" + key + "' should not be null. This means not even the batch data made it in!");
+        assertNotNull(
+            recordFromVenice,
+            "Value for key: '" + key + "' should not be null. This means not even the batch data made it in!");
 
         Object stringField = recordFromVenice.get("string");
         assertNotNull(stringField, "'string' field should not be null. This means the RT data did not make it in.");
@@ -168,7 +152,9 @@ public class VeniceSystemFactoryTest {
     SystemProducer producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.BATCH);
     try {
       // Send a record with a wrong schema, this is byte[] of chars "1", "2", "3", expects int
-      assertThrows(SamzaException.class, () -> TestPushUtils.sendStreamingRecord(producer, storeName, new byte[] {49, 50, 51}, 0));
+      assertThrows(
+          SamzaException.class,
+          () -> TestPushUtils.sendStreamingRecord(producer, storeName, new byte[] { 49, 50, 51 }, 0));
     } finally {
       producer.stop();
     }
@@ -176,15 +162,10 @@ public class VeniceSystemFactoryTest {
 
   @DataProvider(name = "testSerializationParams")
   public static Object[][] testSerializationParams() {
-    return new Object[][] {
-        {5, 10, "\"int\""},
-        {new Utf8("one"), new Utf8("two"), "\"string\""},
-        {6L, 8L,"\"long\""},
-        {9.12D, 12.45D, "\"double\""},
-        {1.6F, 7.4F, "\"float\""},
-        {ByteBuffer.wrap(new byte[] {0x1, 0x2, 0x3}), ByteBuffer.wrap(new byte[] {0xb, 0xc, 0xd}), "\"bytes\""},
-        {true, false, "\"boolean\""},
-    };
+    return new Object[][] { { 5, 10, "\"int\"" }, { new Utf8("one"), new Utf8("two"), "\"string\"" },
+        { 6L, 8L, "\"long\"" }, { 9.12D, 12.45D, "\"double\"" }, { 1.6F, 7.4F, "\"float\"" },
+        { ByteBuffer.wrap(new byte[] { 0x1, 0x2, 0x3 }), ByteBuffer.wrap(new byte[] { 0xb, 0xc, 0xd }), "\"bytes\"" },
+        { true, false, "\"boolean\"" }, };
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "testSerializationParams")
@@ -196,29 +177,20 @@ public class VeniceSystemFactoryTest {
   public static Object[][] testSerializationCastParams() {
     String complexSchema = "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"SomeRecord\",\n" + "  \"fields\": [\n"
         + "     {\"name\": \"int_field\", \"type\": \"int\"}\n" + "   ]\n" + "}";
-    String complexSchemaWithExtraProperty = "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"SomeRecord\",\n"
-        + "  \"fields\": [\n" + "     {\"name\": \"int_field\", \"type\": \"int\", \"java\": \"abc\"}\n" + "   ]\n"
-        + "}";
+    String complexSchemaWithExtraProperty =
+        "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"SomeRecord\",\n" + "  \"fields\": [\n"
+            + "     {\"name\": \"int_field\", \"type\": \"int\", \"java\": \"abc\"}\n" + "   ]\n" + "}";
     GenericRecord complexKeyRecord = new GenericData.Record(Schema.parse(complexSchemaWithExtraProperty));
     complexKeyRecord.put("int_field", 100);
-    // Value record comparison will compare the associated schema by default, so we will use the schema without extra property here.
+    // Value record comparison will compare the associated schema by default, so we will use the schema without extra
+    // property here.
     GenericRecord complexValueRecord = new GenericData.Record(Schema.parse(complexSchema));
     complexValueRecord.put("int_field", 200);
-    return new Object[][]{
-        {
-          new byte[]{0x3, 0x4, 0x5}, ByteBuffer.wrap(new byte[]{0x3, 0x4, 0x5}),
-          new byte[]{0xd, 0xe, 0xf}, ByteBuffer.wrap(new byte[]{0xd, 0xe, 0xf}),
-          "\"bytes\""
-        },
-        {
-          "three", "three",
-          "four", new Utf8("four"),
-          "\"string\""
-        },
-        {
-            complexKeyRecord, complexKeyRecord, complexValueRecord, complexValueRecord, complexSchema
-        },
-    };
+    return new Object[][] {
+        { new byte[] { 0x3, 0x4, 0x5 }, ByteBuffer.wrap(new byte[] { 0x3, 0x4, 0x5 }), new byte[] { 0xd, 0xe, 0xf },
+            ByteBuffer.wrap(new byte[] { 0xd, 0xe, 0xf }), "\"bytes\"" },
+        { "three", "three", "four", new Utf8("four"), "\"string\"" },
+        { complexKeyRecord, complexKeyRecord, complexValueRecord, complexValueRecord, complexSchema }, };
   }
 
   /**
@@ -227,7 +199,8 @@ public class VeniceSystemFactoryTest {
    * is equivalent but of a different class.
    */
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "testSerializationCastParams")
-  public void testSerializationCast(Object writeKey, Object readKey, Object value, Object expectedValue, String schema) throws Exception {
+  public void testSerializationCast(Object writeKey, Object readKey, Object value, Object expectedValue, String schema)
+      throws Exception {
     String storeName = Utils.getUniqueString("schema-test-store");
 
     cluster.useControllerClient(client -> {
@@ -244,47 +217,49 @@ public class VeniceSystemFactoryTest {
       cluster.waitVersion(storeName, 1, client);
     });
 
-    ClientConfig config = ClientConfig
-        .defaultGenericClientConfig(storeName)
-        .setVeniceURL(cluster.getRandomRouterURL());
+    ClientConfig config = ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL());
 
     try (AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(config)) {
       Object actualValue = client.get(readKey).get();
-      assertEquals(actualValue, expectedValue,
-          "Expected [" + expectedValue + "] of type " + expectedValue.getClass() + " but found [" + actualValue + "] of type " + actualValue.getClass());
+      assertEquals(
+          actualValue,
+          expectedValue,
+          "Expected [" + expectedValue + "] of type " + expectedValue.getClass() + " but found [" + actualValue
+              + "] of type " + actualValue.getClass());
     }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testGetProducerRunningFabric() throws Exception {
     VeniceSystemFactory factory = new VeniceSystemFactory();
-    Map<String, String> samzaConfig = getSamzaProducerConfig(cluster, "test-store-sr", Version.PushType.STREAM_REPROCESSING);
+    Map<String, String> samzaConfig =
+        getSamzaProducerConfig(cluster, "test-store-sr", Version.PushType.STREAM_REPROCESSING);
 
-    //null runningFabric
+    // null runningFabric
     SystemProducer producer1 = factory.getProducer("venice", new MapConfig(samzaConfig), null);
     if (producer1 instanceof VeniceSystemProducer) {
-      assertEquals(((VeniceSystemProducer)producer1).getRunningFabric(), null);
+      assertEquals(((VeniceSystemProducer) producer1).getRunningFabric(), null);
     }
 
-    //set runningFabric through system Config
+    // set runningFabric through system Config
     System.setProperty("com.linkedin.app.env", "dc-1");
     SystemProducer producer2 = factory.getProducer("venice", new MapConfig(samzaConfig), null);
     if (producer2 instanceof VeniceSystemProducer) {
-      assertEquals(((VeniceSystemProducer)producer2).getRunningFabric(), "dc-1");
+      assertEquals(((VeniceSystemProducer) producer2).getRunningFabric(), "dc-1");
     }
 
-    //set runningFabric through samza Config.
+    // set runningFabric through samza Config.
     samzaConfig.put("com.linkedin.app.env", "dc-0");
     SystemProducer producer3 = factory.getProducer("venice", new MapConfig(samzaConfig), null);
     if (producer3 instanceof VeniceSystemProducer) {
-      assertEquals(((VeniceSystemProducer)producer3).getRunningFabric(), "dc-0");
+      assertEquals(((VeniceSystemProducer) producer3).getRunningFabric(), "dc-0");
     }
 
-    //set runningFabric to parent fabric.
+    // set runningFabric to parent fabric.
     samzaConfig.put("com.linkedin.app.env", "dc-parent");
     SystemProducer producer4 = factory.getProducer("venice", new MapConfig(samzaConfig), null);
     if (producer4 instanceof VeniceSystemProducer) {
-      assertEquals(((VeniceSystemProducer)producer4).getRunningFabric(), "dc-parent");
+      assertEquals(((VeniceSystemProducer) producer4).getRunningFabric(), "dc-parent");
     }
   }
 }

@@ -1,5 +1,9 @@
 package com.linkedin.venice.router.api;
 
+import static com.linkedin.venice.read.RequestType.*;
+import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
+import static io.netty.handler.codec.rtsp.RtspResponseStatuses.*;
+
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.ddsstorage.netty4.misc.BasicHttpRequest;
 import com.linkedin.ddsstorage.router.api.ExtendedResourcePathParser;
@@ -35,10 +39,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.commons.lang.StringUtils;
 
-import static com.linkedin.venice.read.RequestType.*;
-import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
-import static io.netty.handler.codec.rtsp.RtspResponseStatuses.*;
-
 
 /***
  *   Inbound request to the router will look like:
@@ -53,8 +53,8 @@ import static io.netty.handler.codec.rtsp.RtspResponseStatuses.*;
  */
 public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
     implements ExtendedResourcePathParser<VenicePath, RouterKey, HTTP_REQUEST> {
-
-  public static final Pattern STORE_PATTERN = Pattern.compile("\\A[a-zA-Z][a-zA-Z0-9_-]*\\z"); // \A and \z are start and end of string
+  public static final Pattern STORE_PATTERN = Pattern.compile("\\A[a-zA-Z][a-zA-Z0-9_-]*\\z"); // \A and \z are start
+                                                                                               // and end of string
   public static final int STORE_MAX_LENGTH = 128;
   public static final String SEP = "/";
 
@@ -68,13 +68,13 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
   public static final String ACTION_ENABLE = "enable";
   public static final String ACTION_DISABLE = "disable";
 
-
   // Right now, we hardcoded url path for getting leader controller to be same as the one
   // being used in Venice Controller, so that ControllerClient can use the same API to get
   // leader controller without knowing whether the host is Router or Controller.
   // Without good reason, please don't update this path.
   public static final String TYPE_LEADER_CONTROLLER = ControllerRoute.LEADER_CONTROLLER.getPath().replace("/", "");
-  public static final String TYPE_LEADER_CONTROLLER_LEGACY = ControllerRoute.MASTER_CONTROLLER.getPath().replace("/", "");
+  public static final String TYPE_LEADER_CONTROLLER_LEGACY =
+      ControllerRoute.MASTER_CONTROLLER.getPath().replace("/", "");
   public static final String TYPE_KEY_SCHEMA = "key_schema";
   public static final String TYPE_VALUE_SCHEMA = "value_schema";
   public static final String TYPE_UPDATE_SCHEMA = "update_schema";
@@ -92,37 +92,52 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
   private final ExecutorService decompressionExecutor;
   private final int multiGetDecompressionBatchSize;
 
-  public VenicePathParser(VeniceVersionFinder versionFinder, VenicePartitionFinder partitionFinder,
-      RouterStats<AggRouterHttpRequestStats> routerStats, ReadOnlyStoreRepository storeRepository,
-      VeniceRouterConfig routerConfig, CompressorFactory compressorFactory){
+  public VenicePathParser(
+      VeniceVersionFinder versionFinder,
+      VenicePartitionFinder partitionFinder,
+      RouterStats<AggRouterHttpRequestStats> routerStats,
+      ReadOnlyStoreRepository storeRepository,
+      VeniceRouterConfig routerConfig,
+      CompressorFactory compressorFactory) {
     this.versionFinder = versionFinder;
     this.partitionFinder = partitionFinder;
     this.routerStats = routerStats;
     this.storeRepository = storeRepository;
     this.routerConfig = routerConfig;
     this.compressorFactory = compressorFactory;
-    this.decompressionExecutor = Executors.newFixedThreadPool(routerConfig.getRouterMultiGetDecompressionThreads(), new NamedThreadFactory("multi-get-decompressor"));
+    this.decompressionExecutor = Executors.newFixedThreadPool(
+        routerConfig.getRouterMultiGetDecompressionThreads(),
+        new NamedThreadFactory("multi-get-decompressor"));
     this.multiGetDecompressionBatchSize = routerConfig.getRouterMultiGetDecompressionBatchSize();
   };
 
   @Override
   public VenicePath parseResourceUri(String uri, HTTP_REQUEST request) throws RouterException {
     if (!(request instanceof BasicFullHttpRequest)) {
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),
-          BAD_GATEWAY, "parseResourceUri should receive a BasicFullHttpRequest");
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+          Optional.empty(),
+          Optional.empty(),
+          BAD_GATEWAY,
+          "parseResourceUri should receive a BasicFullHttpRequest");
     }
-    BasicFullHttpRequest fullHttpRequest = (BasicFullHttpRequest)request;
+    BasicFullHttpRequest fullHttpRequest = (BasicFullHttpRequest) request;
 
     VenicePathParserHelper pathHelper = parseRequest(request);
     String resourceType = pathHelper.getResourceType();
     if (!resourceType.equals(TYPE_STORAGE) && !resourceType.equals(TYPE_COMPUTE)) {
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),
-          BAD_REQUEST, "Requested resource type: " + resourceType + " is not a valid type");
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+          Optional.empty(),
+          Optional.empty(),
+          BAD_REQUEST,
+          "Requested resource type: " + resourceType + " is not a valid type");
     }
     String storeName = pathHelper.getResourceName();
     if (StringUtils.isEmpty(storeName)) {
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),
-          BAD_REQUEST, "Request URI must have storeName.  Uri is: " + uri);
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+          Optional.empty(),
+          Optional.empty(),
+          BAD_REQUEST,
+          "Request URI must have storeName.  Uri is: " + uri);
     }
 
     VenicePath path = null;
@@ -132,8 +147,8 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       int version = versionFinder.getVersion(storeName, fullHttpRequest);
       String resourceName = Version.composeKafkaTopic(storeName, version);
 
-      Optional<RouterStats<AggRouterHttpRequestStats>> statsOptional = routerConfig.isKeyValueProfilingEnabled() ?
-          Optional.of(routerStats) : Optional.empty();
+      Optional<RouterStats<AggRouterHttpRequestStats>> statsOptional =
+          routerConfig.isKeyValueProfilingEnabled() ? Optional.of(routerStats) : Optional.empty();
 
       String method = fullHttpRequest.method().name();
       if (VeniceRouterUtils.isHttpGet(method)) {
@@ -142,23 +157,40 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       } else if (VeniceRouterUtils.isHttpPost(method)) {
         if (resourceType.equals(TYPE_STORAGE)) {
           // multi-get request
-          path = new VeniceMultiGetPath(resourceName, fullHttpRequest, partitionFinder, getBatchGetLimit(storeName),
-              routerConfig.isSmartLongTailRetryEnabled(), routerConfig.getSmartLongTailRetryAbortThresholdMs(),
-              statsOptional, routerConfig.getLongTailRetryMaxRouteForMultiKeyReq());
+          path = new VeniceMultiGetPath(
+              resourceName,
+              fullHttpRequest,
+              partitionFinder,
+              getBatchGetLimit(storeName),
+              routerConfig.isSmartLongTailRetryEnabled(),
+              routerConfig.getSmartLongTailRetryAbortThresholdMs(),
+              statsOptional,
+              routerConfig.getLongTailRetryMaxRouteForMultiKeyReq());
         } else if (resourceType.equals(TYPE_COMPUTE)) {
           // read compute request
-          path = new VeniceComputePath(resourceName, fullHttpRequest, partitionFinder, getBatchGetLimit(storeName),
-              routerConfig.isSmartLongTailRetryEnabled(), routerConfig.getSmartLongTailRetryAbortThresholdMs(),
-              routerConfig.isComputeFastAvroEnabled(), routerConfig.getLongTailRetryMaxRouteForMultiKeyReq());
+          path = new VeniceComputePath(
+              resourceName,
+              fullHttpRequest,
+              partitionFinder,
+              getBatchGetLimit(storeName),
+              routerConfig.isSmartLongTailRetryEnabled(),
+              routerConfig.getSmartLongTailRetryAbortThresholdMs(),
+              routerConfig.isComputeFastAvroEnabled(),
+              routerConfig.getLongTailRetryMaxRouteForMultiKeyReq());
         } else {
-          throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.empty(),
-              BAD_REQUEST, "The passed in request must be either a GET or "
-              + "be a POST with a resource type of " + TYPE_STORAGE + " or " + TYPE_COMPUTE
-              + ", but instead it was: " + request.toString());
+          throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+              Optional.of(storeName),
+              Optional.empty(),
+              BAD_REQUEST,
+              "The passed in request must be either a GET or " + "be a POST with a resource type of " + TYPE_STORAGE
+                  + " or " + TYPE_COMPUTE + ", but instead it was: " + request.toString());
         }
       } else {
-        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),
-            BAD_REQUEST, "Method: " + method + " is not allowed");
+        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+            Optional.empty(),
+            Optional.empty(),
+            BAD_REQUEST,
+            "Method: " + method + " is not allowed");
       }
       RequestType requestType = path.getRequestType();
       if (StreamingUtils.isStreamingEnabled(request)) {
@@ -188,7 +220,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       boolean decompressOnClient = routerConfig.isDecompressOnClient();
       if (decompressOnClient) {
         Store store = storeRepository.getStore(storeName);
-        if (store == null){
+        if (store == null) {
           throw new VeniceNoStoreException(storeName);
         }
         decompressOnClient = store.getClientDecompressionEnabled();
@@ -196,8 +228,15 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
 
       // TODO: maybe we should use the builder pattern here??
       // Setup decompressor
-      VeniceResponseDecompressor responseDecompressor =
-          new VeniceResponseDecompressor(decompressOnClient, routerStats, fullHttpRequest, storeName, version, compressorFactory, decompressionExecutor, multiGetDecompressionBatchSize);
+      VeniceResponseDecompressor responseDecompressor = new VeniceResponseDecompressor(
+          decompressOnClient,
+          routerStats,
+          fullHttpRequest,
+          storeName,
+          version,
+          compressorFactory,
+          decompressionExecutor,
+          multiGetDecompressionBatchSize);
       path.setResponseDecompressor(responseDecompressor);
 
       AggRouterHttpRequestStats stats = routerStats.getStatsByType(requestType);
@@ -212,22 +251,25 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       stats.recordRequest(storeName);
       stats.recordRequestSize(storeName, path.getRequestSize());
     } catch (VeniceException e) {
-      Optional<RequestType> requestTypeOptional = (path == null) ? Optional.empty() : Optional.of(path.getRequestType());
+      Optional<RequestType> requestTypeOptional =
+          (path == null) ? Optional.empty() : Optional.of(path.getRequestType());
       if (e instanceof VeniceStoreIsMigratedException) {
-        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.empty(),
-            MOVED_PERMANENTLY, e.getMessage());
+        throw RouterExceptionAndTrackingUtils
+            .newRouterExceptionAndTracking(Optional.of(storeName), Optional.empty(), MOVED_PERMANENTLY, e.getMessage());
       }
       if (e instanceof VeniceKeyCountLimitException) {
-        VeniceKeyCountLimitException keyCountLimitException = (VeniceKeyCountLimitException)e;
+        VeniceKeyCountLimitException keyCountLimitException = (VeniceKeyCountLimitException) e;
         requestTypeOptional = Optional.of(keyCountLimitException.getRequestType());
-        routerStats.getStatsByType(keyCountLimitException.getRequestType()).recordBadRequestKeyCount(
-            keyCountLimitException.getStoreName(), keyCountLimitException.getRequestKeyCount());
+        routerStats.getStatsByType(keyCountLimitException.getRequestType())
+            .recordBadRequestKeyCount(
+                keyCountLimitException.getStoreName(),
+                keyCountLimitException.getRequestKeyCount());
       }
       /**
        * Tracking the bad requests in {@link RouterExceptionAndTrackingUtils} by logging and metrics.
        */
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), requestTypeOptional,
-          BAD_REQUEST, e.getMessage());
+      throw RouterExceptionAndTrackingUtils
+          .newRouterExceptionAndTracking(Optional.of(storeName), requestTypeOptional, BAD_REQUEST, e.getMessage());
     } finally {
       // Always record request usage in the single get stats, so we could compare it with the quota easily.
       // Right now we use key num as request usage, in the future we might consider the Capacity unit.
@@ -239,8 +281,11 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
 
   @Override
   public VenicePath parseResourceUri(String uri) throws RouterException {
-    throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),
-        BAD_REQUEST, "parseResourceUri without param: request should not be invoked");
+    throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+        Optional.empty(),
+        Optional.empty(),
+        BAD_REQUEST,
+        "parseResourceUri without param: request should not be invoked");
   }
 
   @Override
@@ -253,8 +298,8 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
     return path.substitutePartitionKey(s);
   }
 
-  public static boolean isStoreNameValid(String storeName){
-    if (storeName.length() > STORE_MAX_LENGTH){
+  public static boolean isStoreNameValid(String storeName) {
+    if (storeName.length() > STORE_MAX_LENGTH) {
       return false;
     }
     Matcher m = STORE_PATTERN.matcher(storeName);

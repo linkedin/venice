@@ -41,7 +41,7 @@ public interface KafkaConsumerWrapper extends AutoCloseable, Closeable {
 
   boolean hasSubscription(String topic, int partition);
 
-  Map<TopicPartition,Long> beginningOffsets(List<TopicPartition> topicPartitions);
+  Map<TopicPartition, Long> beginningOffsets(List<TopicPartition> topicPartitions);
 
   Map<TopicPartition, Long> endOffsets(List<TopicPartition> topicPartitions);
 

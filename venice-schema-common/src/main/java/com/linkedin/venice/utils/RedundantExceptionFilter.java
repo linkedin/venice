@@ -10,7 +10,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class RedundantExceptionFilter {
-  public static final int DEFAULT_BITSET_SIZE = 8 * 1024 * 1024 * 16; //16MB
+  public static final int DEFAULT_BITSET_SIZE = 8 * 1024 * 1024 * 16; // 16MB
   public static final long DEFAULT_NO_REDUNDANT_EXCEPTION_DURATION_MS = TimeUnit.SECONDS.toMillis(60); // 60s
   public static final Logger logger = LogManager.getLogger(RedundantExceptionFilter.class);
   private static RedundantExceptionFilter singleton;
@@ -27,19 +27,24 @@ public class RedundantExceptionFilter {
     this.bitSetSize = bitSetSize;
     activeBitset = new BitSet(bitSetSize);
     oldBitSet = new BitSet(bitSetSize);
-    cleanerExecutor.scheduleAtFixedRate(this::clearBitSet, noRedundantExceptionDurationMs, noRedundantExceptionDurationMs, TimeUnit.MILLISECONDS);
+    cleanerExecutor.scheduleAtFixedRate(
+        this::clearBitSet,
+        noRedundantExceptionDurationMs,
+        noRedundantExceptionDurationMs,
+        TimeUnit.MILLISECONDS);
   }
 
-  public synchronized static RedundantExceptionFilter getRedundantExceptionFilter(){
+  public synchronized static RedundantExceptionFilter getRedundantExceptionFilter() {
     return getRedundantExceptionFilter(DEFAULT_BITSET_SIZE, DEFAULT_NO_REDUNDANT_EXCEPTION_DURATION_MS);
   }
 
-  public synchronized static RedundantExceptionFilter getDailyRedundantExceptionFilter(){
+  public synchronized static RedundantExceptionFilter getDailyRedundantExceptionFilter() {
     // clean up the bitset every day for the use case do not need to clean up frequently.
     return getRedundantExceptionFilter(DEFAULT_BITSET_SIZE, Time.MS_PER_DAY);
   }
 
-  public synchronized static RedundantExceptionFilter getRedundantExceptionFilter(int bitSetSize,
+  public synchronized static RedundantExceptionFilter getRedundantExceptionFilter(
+      int bitSetSize,
       long noRedundantExceptionDurationMs) {
     if (singleton == null) {
       singleton = new RedundantExceptionFilter(bitSetSize, noRedundantExceptionDurationMs);
@@ -47,13 +52,14 @@ public class RedundantExceptionFilter {
     return singleton;
   }
 
-  public boolean isRedundantException(String exceptionMessage){
+  public boolean isRedundantException(String exceptionMessage) {
     int index = getIndex(exceptionMessage);
     return isRedundant(index);
   }
 
   public boolean isRedundantException(String storeName, Throwable e) {
-    // By default use exception's class as the type. For VeniceException and RouterException use http status code instead.
+    // By default use exception's class as the type. For VeniceException and RouterException use http status code
+    // instead.
     String exceptionType = e.getClass().getName();
     if (e instanceof VeniceException) {
       exceptionType = String.valueOf(((VeniceException) e).getHttpStatusCode());
@@ -66,7 +72,6 @@ public class RedundantExceptionFilter {
     int index = getIndex(storeName + exceptionType);
     return isRedundant(index);
   }
-
 
   public void clearBitSet() {
     synchronized (this) {
@@ -86,7 +91,7 @@ public class RedundantExceptionFilter {
     return Math.abs((key).hashCode() % bitSetSize);
   }
 
-  private boolean isRedundant(int index){
+  private boolean isRedundant(int index) {
     if (!activeBitset.get(index)) {
       // It's possible that we found the bit was not set, then activeBitset is changed, and we set the bit in the new
       // set. But it doesn't matter.

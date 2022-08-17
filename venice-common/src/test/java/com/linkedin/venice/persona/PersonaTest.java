@@ -1,12 +1,13 @@
 package com.linkedin.venice.persona;
+
 import java.util.HashSet;
 import java.util.Set;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-public class PersonaTest {
 
+public class PersonaTest {
   String name = "testUser";
   long quotaNumber = 23;
   Set<String> storesToEnforce;

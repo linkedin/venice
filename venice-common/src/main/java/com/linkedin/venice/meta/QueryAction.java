@@ -1,7 +1,8 @@
 package com.linkedin.venice.meta;
 
 public enum QueryAction {
-  // STORAGE is a GET request to storage/storename/key on the router or storage/resourcename/partition/key on the storage node
+  // STORAGE is a GET request to storage/storename/key on the router or storage/resourcename/partition/key on the
+  // storage node
   STORAGE,
 
   // Health check request from routers
@@ -10,7 +11,8 @@ public enum QueryAction {
   // read-compute request from routers
   COMPUTE,
 
-  // DICTIONARY is a GET request to storage/storename/version on the storage node to fetch compression dictionary for that version
+  // DICTIONARY is a GET request to storage/storename/version on the storage node to fetch compression dictionary for
+  // that version
   DICTIONARY,
 
   // Admin request from server admin tool

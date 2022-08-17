@@ -45,7 +45,8 @@ public class VeniceHttp2PipelineInitializerBuilder {
    * @param existingHttpPipelineInitializer
    * @return
    */
-  public Http2PipelineInitializer createHttp2PipelineInitializer(Consumer<ChannelPipeline> existingHttpPipelineInitializer) {
+  public Http2PipelineInitializer createHttp2PipelineInitializer(
+      Consumer<ChannelPipeline> existingHttpPipelineInitializer) {
     return Http2PipelineInitializer.DEFAULT_BUILDER.get()
         .http2Settings(getServerHttpSettings())
         .activeStreamsCountHandler(activeStreamsCountHandler)

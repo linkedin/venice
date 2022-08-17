@@ -1,5 +1,7 @@
 package com.linkedin.venice.storagenode;
 
+import static com.linkedin.venice.meta.PersistenceType.*;
+
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -35,8 +37,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.meta.PersistenceType.*;
-
 
 public class TestEarlyTermination {
   private static final int MAX_KEY_LIMIT = 20;
@@ -62,13 +62,17 @@ public class TestEarlyTermination {
     // Create two servers, and one with early termination enabled, and one without
     Properties serverPropertiesWithoutEarlyTermination = new Properties();
     serverPropertiesWithoutEarlyTermination.put(ConfigKeys.PERSISTENCE_TYPE, ROCKS_DB);
-    serverPropertiesWithoutEarlyTermination.put(ConfigKeys.SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP, storeName + ":10000000, non_existing_store:10000000");
+    serverPropertiesWithoutEarlyTermination.put(
+        ConfigKeys.SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP,
+        storeName + ":10000000, non_existing_store:10000000");
     Properties serverFeaturePropertiesWithoutEarlyTermination = new Properties();
     serverFeaturePropertiesWithoutEarlyTermination.put(VeniceServerWrapper.SERVER_ENABLE_SSL, "true");
-    veniceCluster.addVeniceServer(serverFeaturePropertiesWithoutEarlyTermination, serverPropertiesWithoutEarlyTermination);
+    veniceCluster
+        .addVeniceServer(serverFeaturePropertiesWithoutEarlyTermination, serverPropertiesWithoutEarlyTermination);
 
     Properties serverPropertiesWithEarlyTermination = new Properties();
-    serverPropertiesWithEarlyTermination.put(ConfigKeys.SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP, storeName + ":0, non_existing_store:0");
+    serverPropertiesWithEarlyTermination
+        .put(ConfigKeys.SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP, storeName + ":0, non_existing_store:0");
     Properties serverFeaturePropertiesWithEarlyTermination = new Properties();
     serverFeaturePropertiesWithEarlyTermination.put(VeniceServerWrapper.SERVER_ENABLE_SSL, "true");
     veniceCluster.addVeniceServer(serverFeaturePropertiesWithEarlyTermination, serverPropertiesWithEarlyTermination);
@@ -89,10 +93,11 @@ public class TestEarlyTermination {
   }
 
   private void updateStore(long readQuota, int maxKeyLimit) {
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
-        .setReadQuotaInCU(readQuota)
-        .setReadComputationEnabled(true)
-        .setBatchGetLimit(maxKeyLimit));
+    controllerClient.updateStore(
+        storeName,
+        new UpdateStoreQueryParams().setReadQuotaInCU(readQuota)
+            .setReadComputationEnabled(true)
+            .setBatchGetLimit(maxKeyLimit));
   }
 
   @AfterClass(alwaysRun = true)
@@ -120,7 +125,9 @@ public class TestEarlyTermination {
     // Wait for storage node to finish consuming, and new version to be activated
     String controllerUrl = veniceCluster.getAllControllersURLs();
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
-      int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName).getStore().getCurrentVersion();
+      int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName)
+          .getStore()
+          .getCurrentVersion();
       return currentVersion == pushVersion;
     });
 
@@ -130,8 +137,7 @@ public class TestEarlyTermination {
     AvroGenericStoreClient<String, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(routerAddr)
-            .setSslEngineComponentFactory(SslUtils.getLocalSslFactory())
-    );
+            .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()));
     // Run multiple rounds, and no need to verify the result since we know the requests will fail.
     int rounds = 100;
     int cur = 0;
@@ -157,19 +163,22 @@ public class TestEarlyTermination {
     // Check early termination metrics
     boolean earlyTerminationMetricNonZero = false;
     List<VeniceServerWrapper> serverWrapperList = veniceCluster.getVeniceServers();
-    for (VeniceServerWrapper serverWrapper : serverWrapperList) {
+    for (VeniceServerWrapper serverWrapper: serverWrapperList) {
       MetricsRepository repository = serverWrapper.getMetricsRepository();
-      Metric earlyTerminationMetric = repository.getMetric(".total--multiget_early_terminated_request_count.OccurrenceRate");
+      Metric earlyTerminationMetric =
+          repository.getMetric(".total--multiget_early_terminated_request_count.OccurrenceRate");
       if (earlyTerminationMetric.value() > 0) {
         earlyTerminationMetricNonZero = true;
       }
       Map<String, ? extends Metric> metrics = repository.metrics();
-      metrics.forEach( (mName, metric) -> {
+      metrics.forEach((mName, metric) -> {
         if (mName.contains("early_terminated_request_count")) {
           System.out.println(mName + " -> " + metric.value());
         }
       });
     }
-    Assert.assertTrue(earlyTerminationMetricNonZero, "Early termination metric should be true when the tight timeout threshold is setup in storage node");
+    Assert.assertTrue(
+        earlyTerminationMetricNonZero,
+        "Early termination metric should be true when the tight timeout threshold is setup in storage node");
   }
 }

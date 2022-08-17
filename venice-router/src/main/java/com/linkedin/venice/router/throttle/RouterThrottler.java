@@ -13,7 +13,8 @@ public interface RouterThrottler {
    * @param readCapacityUnit
    * @param storageNodeId
    */
-  void mayThrottleRead(String storeName, double readCapacityUnit, Optional<String> storageNodeId) throws QuotaExceededException;
+  void mayThrottleRead(String storeName, double readCapacityUnit, Optional<String> storageNodeId)
+      throws QuotaExceededException;
 
   int getReadCapacity();
 }

@@ -12,14 +12,13 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
-
+import java.util.HashMap;
+import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import java.util.HashMap;
-import java.util.concurrent.TimeUnit;
 
 @Test(singleThreaded = true)
 public class TestRestartController {
@@ -56,7 +55,8 @@ public class TestRestartController {
     int versionNum = response.getVersion();
 
     VeniceWriter<String, String, byte[]> veniceWriter = cluster.getVeniceWriter(topicName);
-    ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
+    ControllerClient controllerClient =
+        ControllerClient.constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
     Assert.assertEquals(controllerClient.queryJobStatus(topicName).getStatus(), ExecutionStatus.STARTED.toString());
 
     // push some data
@@ -71,7 +71,11 @@ public class TestRestartController {
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
     // After stopping origin leader, the new leader could handle the push status report correctly.
-    TestUtils.waitForNonDeterministicPushCompletion(topicName, controllerClient, OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    TestUtils.waitForNonDeterministicPushCompletion(
+        topicName,
+        controllerClient,
+        OPERATION_TIMEOUT_MS,
+        TimeUnit.MILLISECONDS);
     VersionCreationResponse responseV2 = createNewVersionWithRetry(storeName, dataSize);
     Assert.assertFalse(responseV2.isError());
     Assert.assertEquals(responseV2.getVersion(), versionNum + 1);
@@ -85,19 +89,27 @@ public class TestRestartController {
 
     TestUtils.waitForNonDeterministicAssertion(OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
       VeniceHelixAdmin admin = cluster.getLeaderVeniceController().getVeniceHelixAdmin();
-      int liveRoutersCount = admin.getHelixVeniceClusterResources(cluster.getClusterName()).getRoutersClusterManager().getLiveRoutersCount();
+      int liveRoutersCount = admin.getHelixVeniceClusterResources(cluster.getClusterName())
+          .getRoutersClusterManager()
+          .getLiveRoutersCount();
       Assert.assertEquals(liveRoutersCount, 1);
     });
     // As we have not push any data, the job status should be hanged on STARTED.
-    TestUtils.waitForNonDeterministicAssertion(OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS, () ->
-      Assert.assertEquals(controllerClient.queryJobStatus(topicNameV2).getStatus(), ExecutionStatus.STARTED.toString()));
-
-
+    TestUtils.waitForNonDeterministicAssertion(
+        OPERATION_TIMEOUT_MS,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(
+            controllerClient.queryJobStatus(topicNameV2).getStatus(),
+            ExecutionStatus.STARTED.toString()));
 
     // Finish the push and verify that it completes under the newly elected controller.
     veniceWriter = cluster.getVeniceWriter(topicNameV2);
     veniceWriter.broadcastEndOfPush(new HashMap<>());
-    TestUtils.waitForNonDeterministicPushCompletion(topicNameV2, controllerClient, OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    TestUtils.waitForNonDeterministicPushCompletion(
+        topicNameV2,
+        controllerClient,
+        OPERATION_TIMEOUT_MS,
+        TimeUnit.MILLISECONDS);
 
     // Check it one more time for good measure with a third and final push
     VersionCreationResponse responseV3 = createNewVersionWithRetry(storeName, dataSize);
@@ -111,7 +123,11 @@ public class TestRestartController {
     // Broadcast end of push and verify it completes
     veniceWriter = cluster.getVeniceWriter(topicNameV3);
     veniceWriter.broadcastEndOfPush(new HashMap<>());
-    TestUtils.waitForNonDeterministicPushCompletion(topicNameV3, controllerClient, OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    TestUtils.waitForNonDeterministicPushCompletion(
+        topicNameV3,
+        controllerClient,
+        OPERATION_TIMEOUT_MS,
+        TimeUnit.MILLISECONDS);
 
   }
 
@@ -129,7 +145,8 @@ public class TestRestartController {
     String topicName = response.getKafkaTopic();
 
     VeniceWriter<String, String, byte[]> veniceWriter = cluster.getVeniceWriter(topicName);
-    ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
+    ControllerClient controllerClient =
+        ControllerClient.constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
     Assert.assertEquals(controllerClient.queryJobStatus(topicName).getStatus(), ExecutionStatus.STARTED.toString());
     // push some data
     veniceWriter.broadcastStartOfPush(new HashMap<>());
@@ -139,13 +156,19 @@ public class TestRestartController {
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
     // After stopping origin leader, the new leader could handle the push status report correctly.
-    TestUtils.waitForNonDeterministicPushCompletion(topicName, controllerClient, OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    TestUtils.waitForNonDeterministicPushCompletion(
+        topicName,
+        controllerClient,
+        OPERATION_TIMEOUT_MS,
+        TimeUnit.MILLISECONDS);
     VeniceControllerWrapper controllerWrapper = cluster.getLeaderVeniceController();
-    double duration = controllerWrapper.getMetricRepository().getMetric("." + storeName + "--successful_push_duration_sec_gauge.Gauge").value();
+    double duration = controllerWrapper.getMetricRepository()
+        .getMetric("." + storeName + "--successful_push_duration_sec_gauge.Gauge")
+        .value();
 
     int oldLeaderPort = cluster.getLeaderVeniceController().getPort();
     int newLeaderPort = 0;
-    for (VeniceControllerWrapper cw : cluster.getVeniceControllers()) {
+    for (VeniceControllerWrapper cw: cluster.getVeniceControllers()) {
       if (cw.getPort() != oldLeaderPort) {
         newLeaderPort = cw.getPort();
         break;
@@ -154,13 +177,17 @@ public class TestRestartController {
     cluster.stopLeaderVeniceControler();
     controllerWrapper = cluster.getLeaderVeniceController();
     Assert.assertEquals(controllerWrapper.getPort(), newLeaderPort);
-    double duration1 = controllerWrapper.getMetricRepository().getMetric("." + storeName + "--successful_push_duration_sec_gauge.Gauge").value();
+    double duration1 = controllerWrapper.getMetricRepository()
+        .getMetric("." + storeName + "--successful_push_duration_sec_gauge.Gauge")
+        .value();
     Assert.assertEquals(duration, duration1);
 
     cluster.restartVeniceController(oldLeaderPort);
     controllerWrapper = cluster.getLeaderVeniceController();
     Assert.assertEquals(controllerWrapper.getPort(), newLeaderPort);
-    duration1 = controllerWrapper.getMetricRepository().getMetric("." + storeName + "--successful_push_duration_sec_gauge.Gauge").value();
+    duration1 = controllerWrapper.getMetricRepository()
+        .getMetric("." + storeName + "--successful_push_duration_sec_gauge.Gauge")
+        .value();
     Assert.assertEquals(duration, duration1);
 
   }

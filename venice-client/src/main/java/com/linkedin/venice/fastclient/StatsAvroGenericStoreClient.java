@@ -67,25 +67,34 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
   }
 
   @Override
-  protected void streamingBatchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys,
+  protected void streamingBatchGet(
+      BatchGetRequestContext<K, V> requestContext,
+      Set<K> keys,
       StreamingCallback<K, V> callback) {
     long startTimeInNS = System.nanoTime();
     CompletableFuture<Void> statFuture = new CompletableFuture<>();
     recordMetrics(requestContext, keys.size(), statFuture, startTimeInNS, clientStatsForBatchGet);
-    super.streamingBatchGet(requestContext, keys, new StatTrackingStreamingCallBack<>(callback, statFuture,
-        requestContext));
+    super.streamingBatchGet(
+        requestContext,
+        keys,
+        new StatTrackingStreamingCallBack<>(callback, statFuture, requestContext));
   }
 
   @Override
-  protected CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(BatchGetRequestContext<K, V> requestContext,
+  protected CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(
+      BatchGetRequestContext<K, V> requestContext,
       Set<K> keys) {
     long startTimeInNS = System.nanoTime();
     CompletableFuture<VeniceResponseMap<K, V>> innerFuture = super.streamingBatchGet(requestContext, keys);
     return recordMetrics(requestContext, keys.size(), innerFuture, startTimeInNS, clientStatsForBatchGet);
   }
 
-  private <R> CompletableFuture<R> recordMetrics(RequestContext requestContext, int numberOfKeys,
-      CompletableFuture<R> innerFuture, long startTimeInNS, ClientStats clientStats) {
+  private <R> CompletableFuture<R> recordMetrics(
+      RequestContext requestContext,
+      int numberOfKeys,
+      CompletableFuture<R> innerFuture,
+      long startTimeInNS,
+      ClientStats clientStats) {
     CompletableFuture<R> statFuture =
         recordRequestMetrics(requestContext, numberOfKeys, innerFuture, startTimeInNS, clientStats);
     // Record per replica metric
@@ -94,8 +103,12 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     return AppTimeOutTrackingCompletableFuture.track(statFuture, clientStats);
   }
 
-  private <R> CompletableFuture<R> recordRequestMetrics(RequestContext requestContext, int numberOfKeys,
-      CompletableFuture<R> innerFuture, long startTimeInNS, ClientStats clientStats) {
+  private <R> CompletableFuture<R> recordRequestMetrics(
+      RequestContext requestContext,
+      int numberOfKeys,
+      CompletableFuture<R> innerFuture,
+      long startTimeInNS,
+      ClientStats clientStats) {
 
     return innerFuture.handle((value, throwable) -> {
       double latency = LatencyUtils.getLatencyInMS(startTimeInNS);
@@ -126,8 +139,8 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
         clientStats.recordRequestSerializationTime(requestContext.requestSerializationTime);
       }
       if (requestContext.requestSubmissionToResponseHandlingTime > 0) {
-        clientStats.recordRequestSubmissionToResponseHandlingTime(
-            requestContext.requestSubmissionToResponseHandlingTime);
+        clientStats
+            .recordRequestSubmissionToResponseHandlingTime(requestContext.requestSubmissionToResponseHandlingTime);
       }
       if (requestContext.decompressionTime > 0) {
         clientStats.recordResponseDecompressionTime(requestContext.decompressionTime);
@@ -143,7 +156,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
        * the corresponding features are ready.
         */
       if (requestContext instanceof GetRequestContext) {
-        GetRequestContext getRequestContext = (GetRequestContext)requestContext;
+        GetRequestContext getRequestContext = (GetRequestContext) requestContext;
 
         if (getRequestContext.longTailRetryRequestTriggered) {
           clientStats.recordLongTailRetryRequest();
@@ -155,11 +168,12 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
           clientStats.recordRetryRequestWin();
         }
       } else if (requestContext instanceof BatchGetRequestContext) {
-        BatchGetRequestContext<K,V> batchGetRequestContext = ( BatchGetRequestContext<K,V>) requestContext;
-        if ( batchGetRequestContext.longTailRetryTriggered) {
+        BatchGetRequestContext<K, V> batchGetRequestContext = (BatchGetRequestContext<K, V>) requestContext;
+        if (batchGetRequestContext.longTailRetryTriggered) {
           clientStats.recordLongTailRetryRequest();
           clientStats.recordRetryRequestKeyCount(batchGetRequestContext.numberOfKeysSentInRetryRequest);
-          clientStats.recordRetryRequestSuccessKeyCount(batchGetRequestContext.numberOfKeysCompletedInRetryRequest.get());
+          clientStats
+              .recordRetryRequestSuccessKeyCount(batchGetRequestContext.numberOfKeysCompletedInRetryRequest.get());
         }
       }
 
@@ -220,7 +234,9 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     private final CompletableFuture<Void> statFuture;
     private final RequestContext requestContext;
 
-    StatTrackingStreamingCallBack(StreamingCallback<K, V> callback, CompletableFuture<Void> statFuture,
+    StatTrackingStreamingCallBack(
+        StreamingCallback<K, V> callback,
+        CompletableFuture<Void> statFuture,
         RequestContext requestContext) {
       this.inner = callback;
       this.statFuture = statFuture;
@@ -229,7 +245,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
 
     @Override
     public void onRecordReceived(K key, V value) {
-      if ( value != null) {
+      if (value != null) {
         requestContext.successRequestKeyCount.incrementAndGet();
       }
       inner.onRecordReceived(key, value);

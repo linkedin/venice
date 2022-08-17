@@ -16,7 +16,6 @@ import org.testng.annotations.Test;
 
 
 public class StoragePersonaAccessorTest {
-
   private StoragePersonaAccessor accessor;
   private ZkClient zkClient;
   private ZkServerWrapper zk;
@@ -118,14 +117,14 @@ public class StoragePersonaAccessorTest {
     Assert.assertEqualsNoOrder(accessor.getAllPersonasFromZk().toArray(), expected.toArray());
 
     /** Test updates */
-    for (StoragePersona p : expected) {
+    for (StoragePersona p: expected) {
       p.setQuotaNumber(1000);
       accessor.updatePersona(p);
     }
     Assert.assertEqualsNoOrder(accessor.getAllPersonasFromZk().toArray(), expected.toArray());
 
     /** Test deletion */
-    for (StoragePersona p : expected) {
+    for (StoragePersona p: expected) {
       accessor.deletePersona(p.getName());
     }
     expected.clear();

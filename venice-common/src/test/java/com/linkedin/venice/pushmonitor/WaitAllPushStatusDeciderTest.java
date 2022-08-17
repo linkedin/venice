@@ -1,20 +1,19 @@
 package com.linkedin.venice.pushmonitor;
 
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
+
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 
-public class WaitAllPushStatusDeciderTest extends TestPushStatusDecider{
+public class WaitAllPushStatusDeciderTest extends TestPushStatusDecider {
   private WaitAllPushStatusDecider statusDecider = new WaitAllPushStatusDecider();
   private OfflinePushStatus pushStatus;
 
@@ -79,32 +78,44 @@ public class WaitAllPushStatusDeciderTest extends TestPushStatusDecider{
     instanceToStateMap.put(new Instance("instance1", "host1", 1), HelixState.STANDBY_STATE);
     instanceToStateMap.put(new Instance("instance2", "host2", 1), HelixState.LEADER_STATE);
 
-    //Not enough replicas
+    // Not enough replicas
     partitionStatus.updateReplicaStatus("instance0", COMPLETED);
     partitionStatus.updateReplicaStatus("instance1", COMPLETED);
-    Assert.assertEquals(statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap), STARTED);
+    Assert.assertEquals(
+        statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap),
+        STARTED);
 
-    //have enough replicas, but one of them hasn't finished yet
+    // have enough replicas, but one of them hasn't finished yet
     partitionStatus.updateReplicaStatus("instance2", STARTED);
-    Assert.assertEquals(statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap), STARTED);
+    Assert.assertEquals(
+        statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap),
+        STARTED);
 
-    //all the replicas have finished
+    // all the replicas have finished
     partitionStatus.updateReplicaStatus("instance2", COMPLETED);
-    Assert.assertEquals(statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap), COMPLETED);
+    Assert.assertEquals(
+        statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap),
+        COMPLETED);
 
-    //one of the replicas failed
+    // one of the replicas failed
     partitionStatus.updateReplicaStatus("instance1", ERROR);
-    Assert.assertEquals(statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap), ERROR);
+    Assert
+        .assertEquals(statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap), ERROR);
 
-    //a new replica joined but yet registered in external view
+    // a new replica joined but yet registered in external view
     partitionStatus.updateReplicaStatus("instance3", STARTED);
-    Assert.assertEquals(statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap), ERROR);
+    Assert
+        .assertEquals(statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap), ERROR);
 
     instanceToStateMap.put(new Instance("instance3", "host3", 1), HelixState.STANDBY_STATE);
-    Assert.assertEquals(statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap), STARTED);
+    Assert.assertEquals(
+        statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap),
+        STARTED);
 
-    //new replica has finished
+    // new replica has finished
     partitionStatus.updateReplicaStatus("instance3", COMPLETED);
-    Assert.assertEquals(statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap), COMPLETED);
+    Assert.assertEquals(
+        statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap),
+        COMPLETED);
   }
 }

@@ -1,8 +1,6 @@
 package com.linkedin.venice.unit.kafka.consumer.poll;
 
-import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.Pair;
-
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -16,7 +14,6 @@ import org.apache.kafka.common.TopicPartition;
  * happen in a real Kafka deployment.
  */
 public class DuplicatingPollStrategy extends AbstractPollStrategy {
-
   private final AbstractPollStrategy basePollStrategy;
   private final Set<Pair<TopicPartition, Long>> topicPartitionOffsetsToDuplicate;
   private final Map<TopicPartition, Long> amountOfIntroducedDupes = new HashMap<>();

@@ -1,5 +1,7 @@
 package com.linkedin.venice.schema.writecompute;
 
+import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.*;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import io.tehuti.utils.Utils;
 import java.util.Collections;
@@ -9,14 +11,11 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
 
-import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.*;
-
 
 /**
  * This enum describe the possible write compute operations Venice supports.
  */
 public enum WriteComputeOperation {
-
   /**
    * Mark to ignore the field. It's used for "partial put" and can be applied to any kind of schema.
    * It's also the default for all record fields in the write compute schema.
@@ -34,10 +33,14 @@ public enum WriteComputeOperation {
    * 1. setUnion: add elements into the original array, as if it was a sorted set. (e.g.: duplicates will be pruned.)
    * 2. setDiff: remove elements from the original array, as if it was a sorted set.
    */
-  LIST_OPS(LIST_OPS_NAME, new Function[] {
-      schema -> AvroCompatibilityHelper.createSchemaField(SET_UNION, (Schema) schema, null, Collections.emptyList()),
-      schema -> AvroCompatibilityHelper.createSchemaField(SET_DIFF, (Schema) schema, null, Collections.emptyList())
-  }),
+  LIST_OPS(
+      LIST_OPS_NAME,
+      new Function[] {
+          schema -> AvroCompatibilityHelper
+              .createSchemaField(SET_UNION, (Schema) schema, null, Collections.emptyList()),
+          schema -> AvroCompatibilityHelper
+              .createSchemaField(SET_DIFF, (Schema) schema, null, Collections.emptyList()) }
+  ),
 
   /**
    * Perform map operations on top of the original map. It can be only applied to Avro map.
@@ -45,12 +48,18 @@ public enum WriteComputeOperation {
    * 1. mapUnion: add new entries into the original map. It overrides the value if a key has already existed in the map.
    * 2. mapDiff: remove entries from the original array.
    */
-  MAP_OPS(MAP_OPS_NAME, new Function[] {
-      schema -> AvroCompatibilityHelper.createSchemaField(MAP_UNION, (Schema) schema, null, Collections.emptyMap()),
-      schema -> AvroCompatibilityHelper.createSchemaField(MAP_DIFF, Schema.createArray(Schema.create(Schema.Type.STRING)), null, Collections.emptyList())
-  });
+  MAP_OPS(
+      MAP_OPS_NAME,
+      new Function[] {
+          schema -> AvroCompatibilityHelper.createSchemaField(MAP_UNION, (Schema) schema, null, Collections.emptyMap()),
+          schema -> AvroCompatibilityHelper.createSchemaField(
+              MAP_DIFF,
+              Schema.createArray(Schema.create(Schema.Type.STRING)),
+              null,
+              Collections.emptyList()) }
+  );
 
-  //a name that meets class naming convention
+  // a name that meets class naming convention
   public final String name;
 
   final Optional<Function<Schema, Schema.Field>[]> params;

@@ -28,7 +28,9 @@ public class ClusterLeaderInitializationManager implements ClusterLeaderInitiali
   private final List<ClusterLeaderInitializationRoutine> initRoutines;
   private final boolean concurrentInit;
 
-  public ClusterLeaderInitializationManager(List<ClusterLeaderInitializationRoutine> initRoutines, boolean concurrentInit) {
+  public ClusterLeaderInitializationManager(
+      List<ClusterLeaderInitializationRoutine> initRoutines,
+      boolean concurrentInit) {
     this.initRoutines = initRoutines;
     this.concurrentInit = concurrentInit;
   }
@@ -39,27 +41,30 @@ public class ClusterLeaderInitializationManager implements ClusterLeaderInitiali
         initializedClusters.computeIfAbsent(clusterToInit, k -> new VeniceConcurrentHashMap());
 
     if (concurrentInit) {
-      initRoutines.forEach(routine ->
-          CompletableFuture.runAsync(() ->
-              initRoutine(clusterToInit, initializedRoutinesForCluster, routine)));
+      initRoutines.forEach(
+          routine -> CompletableFuture
+              .runAsync(() -> initRoutine(clusterToInit, initializedRoutinesForCluster, routine)));
     } else {
-      CompletableFuture.runAsync(() ->
-          initRoutines.forEach(routine ->
-              initRoutine(clusterToInit, initializedRoutinesForCluster, routine)));
+      CompletableFuture.runAsync(
+          () -> initRoutines.forEach(routine -> initRoutine(clusterToInit, initializedRoutinesForCluster, routine)));
     }
   }
 
-  private void initRoutine(String clusterToInit, Map<ClusterLeaderInitializationRoutine, Object> initializedRoutinesForCluster, ClusterLeaderInitializationRoutine routine) {
+  private void initRoutine(
+      String clusterToInit,
+      Map<ClusterLeaderInitializationRoutine, Object> initializedRoutinesForCluster,
+      ClusterLeaderInitializationRoutine routine) {
     initializedRoutinesForCluster.computeIfAbsent(routine, k -> {
       try {
         LOGGER.info(logMessage("Starting", routine, clusterToInit));
         routine.execute(clusterToInit);
         LOGGER.info(logMessage("Finished", routine, clusterToInit));
       } catch (Exception e) {
-        LOGGER.error(logMessage("Failed", routine, clusterToInit)
-            + (concurrentInit
-            ? " Other initialization routines are unaffected."
-            : " Will proceed to the next initialization routine."), e);
+        LOGGER.error(
+            logMessage("Failed", routine, clusterToInit) + (concurrentInit
+                ? " Other initialization routines are unaffected."
+                : " Will proceed to the next initialization routine."),
+            e);
         return null; // Will not populate the inner map...
       }
       return new Object(); // Success

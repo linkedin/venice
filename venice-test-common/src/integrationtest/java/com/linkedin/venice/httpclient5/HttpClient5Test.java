@@ -37,7 +37,8 @@ import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-@Test (singleThreaded = true)
+
+@Test(singleThreaded = true)
 public class HttpClient5Test {
   private static final Logger LOGGER = LogManager.getLogger(HttpClient5Test.class);
   /**
@@ -46,29 +47,28 @@ public class HttpClient5Test {
    */
   private final int port = Utils.getFreePort();
 
-
   private void sendRequest(CloseableHttpAsyncClient httpClient, int iteration, boolean failOnTimeout) {
     LOGGER.info("Iteration: {}", iteration);
     String url = "https://localhost:" + port;
-    SimpleRequestBuilder simpleRequestBuilder = SimpleRequestBuilder.create(Method.GET)
-        .setUri(url);
-    Future<SimpleHttpResponse> responseFuture = httpClient.execute(simpleRequestBuilder.build(), new FutureCallback<SimpleHttpResponse>() {
-      @Override
-      public void completed(SimpleHttpResponse result) {
-        byte[] body = result.getBodyBytes();
-        LOGGER.info("received response: " + new String(body));
-      }
+    SimpleRequestBuilder simpleRequestBuilder = SimpleRequestBuilder.create(Method.GET).setUri(url);
+    Future<SimpleHttpResponse> responseFuture =
+        httpClient.execute(simpleRequestBuilder.build(), new FutureCallback<SimpleHttpResponse>() {
+          @Override
+          public void completed(SimpleHttpResponse result) {
+            byte[] body = result.getBodyBytes();
+            LOGGER.info("received response: " + new String(body));
+          }
 
-      @Override
-      public void failed(Exception ex) {
-        LOGGER.error("Failed to send request", ex);
-      }
+          @Override
+          public void failed(Exception ex) {
+            LOGGER.error("Failed to send request", ex);
+          }
 
-      @Override
-      public void cancelled() {
-        LOGGER.error("Request got cancelled");
-      }
-    });
+          @Override
+          public void cancelled() {
+            LOGGER.error("Request got cancelled");
+          }
+        });
     try {
       responseFuture.get(3, TimeUnit.SECONDS);
     } catch (TimeoutException te) {
@@ -99,8 +99,8 @@ public class HttpClient5Test {
         Arrays.asList(Integer.toString(port), tempFilePathToNotifyServerStartedFully),
         Collections.emptyList(),
         ForkedJavaProcess.getClasspath(),
-        true, Optional.empty()
-    );
+        true,
+        Optional.empty());
     LOGGER.info("Server process id: " + serverProcess.pid());
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       if (!serverProcess.isAlive()) {
@@ -152,17 +152,17 @@ public class HttpClient5Test {
   public void testWithH2SpecificAPI() throws Exception {
     SSLEngineComponentFactory sslFactory = H2SSLUtils.getLocalHttp2SslFactory();
     CloseableHttpAsyncClient httpClient = HttpAsyncClients.customHttp2()
-        .setTlsStrategy(VeniceClientTlsStrategyBuilder.create()
-            .setSslContext(sslFactory.getSSLContext())
-            .setTlsVersions(TLS.V_1_3, TLS.V_1_2)
-            .build())
-        .setIOReactorConfig(IOReactorConfig.custom()
-            .setSoTimeout(Timeout.ofSeconds(1))
-            .build())
-        .setDefaultRequestConfig(RequestConfig.custom()
-            .setConnectTimeout(Timeout.ofSeconds(1))
-            .setResponseTimeout(Timeout.ofSeconds(1))
-            .build())
+        .setTlsStrategy(
+            VeniceClientTlsStrategyBuilder.create()
+                .setSslContext(sslFactory.getSSLContext())
+                .setTlsVersions(TLS.V_1_3, TLS.V_1_2)
+                .build())
+        .setIOReactorConfig(IOReactorConfig.custom().setSoTimeout(Timeout.ofSeconds(1)).build())
+        .setDefaultRequestConfig(
+            RequestConfig.custom()
+                .setConnectTimeout(Timeout.ofSeconds(1))
+                .setResponseTimeout(Timeout.ofSeconds(1))
+                .build())
         .build();
     try {
       httpClient.start();
@@ -173,7 +173,7 @@ public class HttpClient5Test {
   }
 
   // The following test will fail because of a bug in httpclient5 and it couldn't recover from a crashed peer
-  @Test (enabled = false)
+  @Test(enabled = false)
   public void testWithH2CompatibleAPI() throws Exception {
     SSLEngineComponentFactory sslFactory = H2SSLUtils.getLocalHttp2SslFactory();
     final IOReactorConfig ioReactorConfig = IOReactorConfig.custom()
@@ -182,18 +182,21 @@ public class HttpClient5Test {
         .setSoTimeout(Timeout.ofSeconds(1))
         .setIoThreadCount(2)
         .build();
-    final TlsStrategy tlsStrategy =
-        VeniceClientTlsStrategyBuilder.create()
-            .setSslContext(sslFactory.getSSLContext())
-            .setTlsVersions(TLS.V_1_3, TLS.V_1_2)
-            .build();
+    final TlsStrategy tlsStrategy = VeniceClientTlsStrategyBuilder.create()
+        .setSslContext(sslFactory.getSSLContext())
+        .setTlsVersions(TLS.V_1_3, TLS.V_1_2)
+        .build();
     final PoolingAsyncClientConnectionManager connectionManager = PoolingAsyncClientConnectionManagerBuilder.create()
         .setTlsStrategy(tlsStrategy)
         .setMaxConnTotal(1)
         .setMaxConnPerRoute(1)
         .build();
-    final MinimalHttpAsyncClient client = HttpAsyncClients.createMinimal(HttpVersionPolicy.FORCE_HTTP_2, H2Config.DEFAULT,
-        Http1Config.DEFAULT, ioReactorConfig, connectionManager);
+    final MinimalHttpAsyncClient client = HttpAsyncClients.createMinimal(
+        HttpVersionPolicy.FORCE_HTTP_2,
+        H2Config.DEFAULT,
+        Http1Config.DEFAULT,
+        ioReactorConfig,
+        connectionManager);
     try {
       client.start();
       testPeerCrashAndRecovery(client);

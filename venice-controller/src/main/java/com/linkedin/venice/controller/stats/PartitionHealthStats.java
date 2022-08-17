@@ -18,7 +18,7 @@ public class PartitionHealthStats extends AbstractVeniceStats {
   /**
    * Only for test usage.
    */
-  public PartitionHealthStats(String resourceName){
+  public PartitionHealthStats(String resourceName) {
     super(null, resourceName);
   }
 

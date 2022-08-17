@@ -63,7 +63,7 @@ public final class SchemaData {
   }
 
   public void addValueSchema(SchemaEntry valueSchema) {
-    //value schema should be unique in store level, same as schema id
+    // value schema should be unique in store level, same as schema id
     Integer id = valueSchema.getId();
     valueSchemaMap.put(id, valueSchema);
     valueSchemaRMap.put(valueSchema, id);
@@ -86,7 +86,8 @@ public final class SchemaData {
   }
 
   public void addDerivedSchema(DerivedSchemaEntry derivedSchemaEntry) {
-    Pair<Integer, Integer> derivedSchemaId = new Pair<>(derivedSchemaEntry.getValueSchemaID(), derivedSchemaEntry.getId());
+    Pair<Integer, Integer> derivedSchemaId =
+        new Pair<>(derivedSchemaEntry.getValueSchemaID(), derivedSchemaEntry.getId());
     derivedSchemaMap.put(derivedSchemaId, derivedSchemaEntry);
     derivedSchemaRMap.put(derivedSchemaEntry, derivedSchemaId);
   }
@@ -111,15 +112,18 @@ public final class SchemaData {
 
   public Collection<SchemaEntry> cloneValueSchemas() {
     Collection<SchemaEntry> valueSchemas = new ArrayList<>();
-    for (SchemaEntry valueSchema : valueSchemaMap.values()) {
+    for (SchemaEntry valueSchema: valueSchemaMap.values()) {
       valueSchemas.add(valueSchema.clone());
     }
 
     return valueSchemas;
   }
 
-  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(int valueSchemaId, int replicationMetadataVersionId) {
-    return replicationMetadataSchemaMap.get(new ReplicationMetadataVersionId(valueSchemaId, replicationMetadataVersionId));
+  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(
+      int valueSchemaId,
+      int replicationMetadataVersionId) {
+    return replicationMetadataSchemaMap
+        .get(new ReplicationMetadataVersionId(valueSchemaId, replicationMetadataVersionId));
   }
 
   public Collection<ReplicationMetadataSchemaEntry> getReplicationMetadataSchemas() {
@@ -135,9 +139,9 @@ public final class SchemaData {
   }
 
   public void addReplicationMetadataSchema(ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry) {
-    ReplicationMetadataVersionId
-        replicationMetadataVersionId = new ReplicationMetadataVersionId(replicationMetadataSchemaEntry.getValueSchemaID(), replicationMetadataSchemaEntry
-        .getId());
+    ReplicationMetadataVersionId replicationMetadataVersionId = new ReplicationMetadataVersionId(
+        replicationMetadataSchemaEntry.getValueSchemaID(),
+        replicationMetadataSchemaEntry.getId());
     replicationMetadataSchemaMap.put(replicationMetadataVersionId, replicationMetadataSchemaEntry);
     replicationMetadataSchemaRMap.put(replicationMetadataSchemaEntry.getSchema(), replicationMetadataVersionId);
   }

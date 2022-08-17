@@ -21,7 +21,6 @@ public class ClientConfig<T extends SpecificRecord> {
   public static final String DEFAULT_D2_SERVICE_NAME = "venice-discovery";
   public static final String DEFAULT_D2_ZK_BASE_PATH = "/d2";
 
-
   // Basic settings
   private String storeName;
   private String veniceURL;
@@ -64,10 +63,10 @@ public class ClientConfig<T extends SpecificRecord> {
     return new ClientConfig(storeName).setVsonClient(true);
   }
 
-  public static <V extends SpecificRecord> ClientConfig<V> defaultSpecificClientConfig(String storeName,
+  public static <V extends SpecificRecord> ClientConfig<V> defaultSpecificClientConfig(
+      String storeName,
       Class<V> specificValueClass) {
-    return new ClientConfig<V>(storeName)
-        .setSpecificValueClass(specificValueClass);
+    return new ClientConfig<V>(storeName).setSpecificValueClass(specificValueClass);
   }
 
   public static <V extends SpecificRecord> ClientConfig<V> cloneConfig(ClientConfig<V> config) {
@@ -108,7 +107,8 @@ public class ClientConfig<T extends SpecificRecord> {
     return newConfig;
   }
 
-  public ClientConfig() {}
+  public ClientConfig() {
+  }
 
   public ClientConfig(String storeName) {
     this.storeName = storeName;
@@ -177,7 +177,7 @@ public class ClientConfig<T extends SpecificRecord> {
     return isD2Routing;
   }
 
-  //This is identified automatically when a D2 service name is passed in
+  // This is identified automatically when a D2 service name is passed in
   private ClientConfig<T> setD2Routing(boolean isD2Routing) {
     this.isD2Routing = isD2Routing;
     return this;
@@ -229,7 +229,7 @@ public class ClientConfig<T extends SpecificRecord> {
     return isHttps;
   }
 
-  //this is identified automatically when a URL is passed in
+  // this is identified automatically when a URL is passed in
   private ClientConfig<T> setHttps(boolean isHttps) {
     this.isHttps = isHttps;
     return this;
@@ -244,10 +244,10 @@ public class ClientConfig<T extends SpecificRecord> {
     return this;
   }
 
-
   public MetricsRepository getMetricsRepository() {
     return metricsRepository;
   }
+
   public ClientConfig<T> setMetricsRepository(MetricsRepository metricsRepository) {
     this.metricsRepository = metricsRepository;
     return this;
@@ -282,36 +282,45 @@ public class ClientConfig<T extends SpecificRecord> {
   }
 
   public ClientConfig<T> setBatchDeserializerType(BatchDeserializerType batchDeserializerType) {
-    if (batchDeserializerType.equals(BatchDeserializerType.ONE_FUTURE_PER_RECORD) ||
-        batchDeserializerType.equals(BatchDeserializerType.ALWAYS_ON_MULTI_THREADED_PIPELINE)) {
-      LOGGER.info("The " + batchDeserializerType + " BatchDeserializerType is deprecated. Will instead use: "
-          + BatchDeserializerType.BLOCKING + ".");
+    if (batchDeserializerType.equals(BatchDeserializerType.ONE_FUTURE_PER_RECORD)
+        || batchDeserializerType.equals(BatchDeserializerType.ALWAYS_ON_MULTI_THREADED_PIPELINE)) {
+      LOGGER.info(
+          "The " + batchDeserializerType + " BatchDeserializerType is deprecated. Will instead use: "
+              + BatchDeserializerType.BLOCKING + ".");
     }
     this.batchDeserializerType = batchDeserializerType;
     return this;
   }
 
   @Deprecated
-  public ClientConfig<T> setMultiGetEnvelopeIterableImpl(AvroGenericDeserializer.IterableImpl multiGetEnvelopeIterableImpl) {
-    LOGGER.info(ClientConfig.class.getSimpleName() + "'s multiGetEnvelopeIterableImpl is deprecated and will be ignored.");
+  public ClientConfig<T> setMultiGetEnvelopeIterableImpl(
+      AvroGenericDeserializer.IterableImpl multiGetEnvelopeIterableImpl) {
+    LOGGER.info(
+        ClientConfig.class.getSimpleName() + "'s multiGetEnvelopeIterableImpl is deprecated and will be ignored.");
     return this;
   }
 
   @Deprecated
-  public ClientConfig<T> setOnDemandDeserializerNumberOfRecordsPerThread(int onDemandDeserializerNumberOfRecordsPerThread) {
-    LOGGER.info(ClientConfig.class.getSimpleName() + "'s onDemandDeserializerNumberOfRecordsPerThread is deprecated and will be ignored.");
+  public ClientConfig<T> setOnDemandDeserializerNumberOfRecordsPerThread(
+      int onDemandDeserializerNumberOfRecordsPerThread) {
+    LOGGER.info(
+        ClientConfig.class.getSimpleName()
+            + "'s onDemandDeserializerNumberOfRecordsPerThread is deprecated and will be ignored.");
     return this;
   }
 
   @Deprecated
   public ClientConfig<T> setAlwaysOnDeserializerNumberOfThreads(int alwaysOnDeserializerNumberOfThreads) {
-    LOGGER.info(ClientConfig.class.getSimpleName() + "'s alwaysOnDeserializerNumberOfThreads is deprecated and will be ignored.");
+    LOGGER.info(
+        ClientConfig.class.getSimpleName()
+            + "'s alwaysOnDeserializerNumberOfThreads is deprecated and will be ignored.");
     return this;
   }
 
   @Deprecated
   public ClientConfig<T> setAlwaysOnDeserializerQueueCapacity(int alwaysOnDeserializerQueueCapacity) {
-    LOGGER.info(ClientConfig.class.getSimpleName() + "'s alwaysOnDeserializerQueueCapacity is deprecated and will be ignored.");
+    LOGGER.info(
+        ClientConfig.class.getSimpleName() + "'s alwaysOnDeserializerQueueCapacity is deprecated and will be ignored.");
     return this;
   }
 

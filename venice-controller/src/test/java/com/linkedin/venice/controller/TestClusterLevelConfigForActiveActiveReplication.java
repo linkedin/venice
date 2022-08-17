@@ -1,5 +1,10 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.controller.VeniceHelixAdmin.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.kafka.TopicManager;
@@ -18,11 +23,6 @@ import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.controller.VeniceHelixAdmin.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
 
 
 public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTestVeniceHelixAdmin {
@@ -48,8 +48,23 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
     /**
      * Add a version
      */
-    veniceAdmin.addVersionAndTopicOnly(clusterName, storeNameHybrid, pushJobId1, VERSION_ID_UNSET, 1, 1,
-        false, true, Version.PushType.STREAM, null, null, Optional.empty(), -1, 1, Optional.empty(), false);
+    veniceAdmin.addVersionAndTopicOnly(
+        clusterName,
+        storeNameHybrid,
+        pushJobId1,
+        VERSION_ID_UNSET,
+        1,
+        1,
+        false,
+        true,
+        Version.PushType.STREAM,
+        null,
+        null,
+        Optional.empty(),
+        -1,
+        1,
+        Optional.empty(),
+        false);
 
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameHybrid).getVersions().size(), 1);
@@ -58,8 +73,10 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
 
     // Check store level active active is enabled or not
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameHybrid).isActiveActiveReplicationEnabled(), false);
-    veniceAdmin.updateStore(clusterName, storeNameHybrid, new UpdateStoreQueryParams().setHybridRewindSeconds(1000L)
-          .setHybridOffsetLagThreshold(1000L));
+    veniceAdmin.updateStore(
+        clusterName,
+        storeNameHybrid,
+        new UpdateStoreQueryParams().setHybridRewindSeconds(1000L).setHybridOffsetLagThreshold(1000L));
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameHybrid).isActiveActiveReplicationEnabled(), true);
 
     // Set topic original topic manager back
@@ -68,7 +85,7 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
 
   @Test
   public void testClusterLevelActiveActiveReplicationConfigForNewIncrementalPushStores() throws IOException {
-    TopicManagerRepository originalTopicManagerRepository =  prepareCluster(false, true, false);
+    TopicManagerRepository originalTopicManagerRepository = prepareCluster(false, true, false);
     String storeNameIncremental = Utils.getUniqueString("test-store-incremental");
     String pushJobId1 = "test-push-job-id-1";
     /**
@@ -78,8 +95,23 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
     /**
      * Add a version
      */
-    veniceAdmin.addVersionAndTopicOnly(clusterName, storeNameIncremental, pushJobId1, VERSION_ID_UNSET, 1, 1,
-        false, true, Version.PushType.STREAM, null, null, Optional.empty(), -1, 1, Optional.empty(), false);
+    veniceAdmin.addVersionAndTopicOnly(
+        clusterName,
+        storeNameIncremental,
+        pushJobId1,
+        VERSION_ID_UNSET,
+        1,
+        1,
+        false,
+        true,
+        Version.PushType.STREAM,
+        null,
+        null,
+        Optional.empty(),
+        -1,
+        1,
+        Optional.empty(),
+        false);
 
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameIncremental).getVersions().size(), 1);
@@ -87,10 +119,13 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameIncremental).isLeaderFollowerModelEnabled(), true);
 
     // Check store level active active is enabled or not
-    veniceAdmin.setIncrementalPushEnabled(clusterName, storeNameIncremental,false);
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameIncremental).isActiveActiveReplicationEnabled(), false);
-    veniceAdmin.setIncrementalPushEnabled(clusterName, storeNameIncremental,true);
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameIncremental).isActiveActiveReplicationEnabled(), true);
+    veniceAdmin.setIncrementalPushEnabled(clusterName, storeNameIncremental, false);
+    Assert.assertEquals(
+        veniceAdmin.getStore(clusterName, storeNameIncremental).isActiveActiveReplicationEnabled(),
+        false);
+    veniceAdmin.setIncrementalPushEnabled(clusterName, storeNameIncremental, true);
+    Assert
+        .assertEquals(veniceAdmin.getStore(clusterName, storeNameIncremental).isActiveActiveReplicationEnabled(), true);
 
     // Set topic original topic manager back
     veniceAdmin.setTopicManagerRepository(originalTopicManagerRepository);
@@ -108,8 +143,23 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
     /**
      * Add a version
      */
-    veniceAdmin.addVersionAndTopicOnly(clusterName, storeNameBatchOnly, pushJobId1, VERSION_ID_UNSET, 1, 1,
-            false, true, Version.PushType.STREAM, null, null, Optional.empty(), -1, 1, Optional.empty(), false);
+    veniceAdmin.addVersionAndTopicOnly(
+        clusterName,
+        storeNameBatchOnly,
+        pushJobId1,
+        VERSION_ID_UNSET,
+        1,
+        1,
+        false,
+        true,
+        Version.PushType.STREAM,
+        null,
+        null,
+        Optional.empty(),
+        -1,
+        1,
+        Optional.empty(),
+        false);
 
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameBatchOnly).getVersions().size(), 1);
@@ -121,39 +171,41 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
 
     // After updating the store to have incremental push enabled, its A/A is disabled
     veniceAdmin.setIncrementalPushEnabled(clusterName, storeNameBatchOnly, true);
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameBatchOnly).isActiveActiveReplicationEnabled(), false);
+    Assert
+        .assertEquals(veniceAdmin.getStore(clusterName, storeNameBatchOnly).isActiveActiveReplicationEnabled(), false);
 
-    // After updating the store back to  a batch-only store, its A/A becomes enabled again
+    // After updating the store back to a batch-only store, its A/A becomes enabled again
     veniceAdmin.setIncrementalPushEnabled(clusterName, storeNameBatchOnly, false);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameBatchOnly).isActiveActiveReplicationEnabled(), true);
 
     // After updating the store to be a hybrid store, its A/A is disabled is again
-    veniceAdmin.updateStore(clusterName, storeNameBatchOnly, new UpdateStoreQueryParams().setHybridRewindSeconds(1000L)
-            .setHybridOffsetLagThreshold(1000L));
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameBatchOnly).isActiveActiveReplicationEnabled(), false);
+    veniceAdmin.updateStore(
+        clusterName,
+        storeNameBatchOnly,
+        new UpdateStoreQueryParams().setHybridRewindSeconds(1000L).setHybridOffsetLagThreshold(1000L));
+    Assert
+        .assertEquals(veniceAdmin.getStore(clusterName, storeNameBatchOnly).isActiveActiveReplicationEnabled(), false);
 
     // Set topic original topic manager back
     veniceAdmin.setTopicManagerRepository(originalTopicManagerRepository);
   }
 
   private TopicManagerRepository prepareCluster(
-          boolean enableActiveActiveForHybrid,
-          boolean enableActiveActiveForIncrementalPush,
-          boolean enableActiveActiveForBatchOnly
-  ) throws IOException {
+      boolean enableActiveActiveForHybrid,
+      boolean enableActiveActiveForIncrementalPush,
+      boolean enableActiveActiveForBatchOnly) throws IOException {
     veniceAdmin.stop(clusterName);
     veniceAdmin.close();
     Properties controllerProperties = getActiveActiveControllerProperties(
-            clusterName,
-            enableActiveActiveForHybrid,
-            enableActiveActiveForIncrementalPush,
-            enableActiveActiveForBatchOnly
-    );
+        clusterName,
+        enableActiveActiveForHybrid,
+        enableActiveActiveForIncrementalPush,
+        enableActiveActiveForBatchOnly);
     veniceAdmin = new VeniceHelixAdmin(
-            TestUtils.getMultiClusterConfigFromOneCluster(new VeniceControllerConfig(new VeniceProperties(controllerProperties))),
-            new MetricsRepository(),
-            D2TestUtils.getAndStartD2Client(zkAddress)
-    );
+        TestUtils.getMultiClusterConfigFromOneCluster(
+            new VeniceControllerConfig(new VeniceProperties(controllerProperties))),
+        new MetricsRepository(),
+        D2TestUtils.getAndStartD2Client(zkAddress));
 
     veniceAdmin.initStorageCluster(clusterName);
     TopicManagerRepository originalTopicManagerRepository = veniceAdmin.getTopicManagerRepository();
@@ -164,26 +216,32 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any(String.class));
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any(Pair.class));
     veniceAdmin.setTopicManagerRepository(mockedTopicManageRepository);
-    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> veniceAdmin.isLeaderControllerFor(clusterName));
+    TestUtils
+        .waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> veniceAdmin.isLeaderControllerFor(clusterName));
     return originalTopicManagerRepository;
   }
 
   private Properties getActiveActiveControllerProperties(
-          String clusterName,
-          boolean enableActiveActiveForHybrid,
-          boolean enableActiveActiveForIncrementalPush,
-          boolean enableActiveActiveForBatchOnly
-  ) throws IOException {
+      String clusterName,
+      boolean enableActiveActiveForHybrid,
+      boolean enableActiveActiveForIncrementalPush,
+      boolean enableActiveActiveForBatchOnly) throws IOException {
     Properties props = super.getControllerProperties(clusterName);
     // enable L/F mode for all stores through cluster-level config
     props.setProperty(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, "true");
     props.setProperty(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY, "true");
     // enable active active replication for hybrid stores stores through cluster-level config
-    props.setProperty(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE, Boolean.toString(enableActiveActiveForHybrid));
+    props.setProperty(
+        ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE,
+        Boolean.toString(enableActiveActiveForHybrid));
     // enable active active replication for incremental stores through cluster-level config
-    props.setProperty(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORE, Boolean.toString(enableActiveActiveForIncrementalPush));
+    props.setProperty(
+        ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORE,
+        Boolean.toString(enableActiveActiveForIncrementalPush));
     // enable active active replication for batch-only stores through cluster-level config
-    props.setProperty(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY_STORE, Boolean.toString(enableActiveActiveForBatchOnly));
+    props.setProperty(
+        ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY_STORE,
+        Boolean.toString(enableActiveActiveForBatchOnly));
     return props;
   }
 }

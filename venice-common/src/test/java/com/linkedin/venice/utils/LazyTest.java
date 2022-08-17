@@ -45,12 +45,15 @@ public class LazyTest {
       for (int f = 0; f < numberOfFutures; f++) {
         futures[f] = CompletableFuture.supplyAsync(() -> testSupplier.get(), executor);
       }
-      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () ->
-          Assert.assertEquals(startedInvocationCount.get(), numberOfFutures,
+      TestUtils.waitForNonDeterministicAssertion(
+          1,
+          TimeUnit.SECONDS,
+          () -> Assert.assertEquals(
+              startedInvocationCount.get(),
+              numberOfFutures,
               "The testSuppliers should have all started running."));
 
-      Assert.assertEquals(finishedInvocationCount.get(), 0,
-          "The testSuppliers should not have finished running yet.");
+      Assert.assertEquals(finishedInvocationCount.get(), 0, "The testSuppliers should not have finished running yet.");
 
       for (int f = 0; f < numberOfFutures; f++) {
         synchronized (lock) {
@@ -61,12 +64,16 @@ public class LazyTest {
       for (int f = 0; f < numberOfFutures; f++) {
         supplierResults[f] = futures[f].get();
       }
-      Assert.assertEquals(finishedInvocationCount.get(), numberOfFutures,
+      Assert.assertEquals(
+          finishedInvocationCount.get(),
+          numberOfFutures,
           "The testSupplier did not successfully keep track of parallel executions.");
       for (int f1 = 0; f1 < numberOfFutures; f1++) {
         for (int f2 = 0; f2 < numberOfFutures; f2++) {
           if (f1 != f2) {
-            Assert.assertNotEquals(supplierResults[f1], supplierResults[f2],
+            Assert.assertNotEquals(
+                supplierResults[f1],
+                supplierResults[f2],
                 "The identity of the returned objects should all be different.");
           }
         }
@@ -82,11 +89,12 @@ public class LazyTest {
       for (int f = 0; f < numberOfFutures; f++) {
         lazyInvocations[f] = CompletableFuture.supplyAsync(() -> lazyObject.get(), executor);
       }
-      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () ->
-          Assert.assertEquals(startedInvocationCount.get(), 1,
-              "A single testSupplier should have started running."));
-      Assert.assertEquals(finishedInvocationCount.get(), 0,
-          "The testSupplier should not have finished running yet.");
+      TestUtils.waitForNonDeterministicAssertion(
+          1,
+          TimeUnit.SECONDS,
+          () -> Assert
+              .assertEquals(startedInvocationCount.get(), 1, "A single testSupplier should have started running."));
+      Assert.assertEquals(finishedInvocationCount.get(), 0, "The testSupplier should not have finished running yet.");
       Assert.assertFalse(lazyObject.isPresent(), "The lazyObject should not be present yet.");
       AtomicBoolean isPresent = new AtomicBoolean(false);
       lazyObject.ifPresent(o -> isPresent.set(true));
@@ -101,9 +109,13 @@ public class LazyTest {
       for (int f = 0; f < numberOfFutures; f++) {
         lazyInvocationResults[f] = lazyInvocations[f].get();
       }
-      Assert.assertEquals(startedInvocationCount.get(), 1,
+      Assert.assertEquals(
+          startedInvocationCount.get(),
+          1,
           "Lazy did not ensure exactly one run of the supplier. startedInvocationCount: " + startedInvocationCount);
-      Assert.assertEquals(finishedInvocationCount.get(), 1,
+      Assert.assertEquals(
+          finishedInvocationCount.get(),
+          1,
           "Lazy did not ensure exactly one run of the supplier. finishedInvocationCount: " + finishedInvocationCount);
       Assert.assertTrue(lazyObject.isPresent(), "The lazyObject should now be present.");
       lazyObject.ifPresent(o -> isPresent.set(true));
@@ -113,10 +125,14 @@ public class LazyTest {
 
       for (int f1 = 0; f1 < numberOfFutures; f1++) {
         for (int f2 = 0; f2 < numberOfFutures; f2++) {
-          Assert.assertEquals(lazyInvocationResults[f1], lazyInvocationResults[f2],
+          Assert.assertEquals(
+              lazyInvocationResults[f1],
+              lazyInvocationResults[f2],
               "The identity of the returned objects should all be the same.");
         }
-        Assert.assertEquals(someWrapperOptional.get().getStuff(), lazyInvocationResults[f1],
+        Assert.assertEquals(
+            someWrapperOptional.get().getStuff(),
+            lazyInvocationResults[f1],
             "The identity of the returned objects should all be the same.");
       }
     } finally {
@@ -147,6 +163,7 @@ public class LazyTest {
 
   private static class SomeWrapper<T> {
     private final T stuff;
+
     SomeWrapper(T stuff) {
       this.stuff = stuff;
     }

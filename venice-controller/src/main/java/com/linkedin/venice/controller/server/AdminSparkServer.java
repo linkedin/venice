@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.SSLConfig;
@@ -31,9 +34,6 @@ import spark.Response;
 import spark.Service;
 import spark.embeddedserver.EmbeddedServers;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
-
 
 /**
  * Controller admin API leveraging sparkjava: http://sparkjava.com/documentation.html
@@ -55,38 +55,47 @@ public class AdminSparkServer extends AbstractVeniceService {
   final private Map<String, SparkServerStats> statsMap;
   final private SparkServerStats nonclusterSpecificStats;
 
-  private static String REQUEST_START_TIME =  "startTime";
+  private static String REQUEST_START_TIME = "startTime";
   private static String REQUEST_SUCCEED = "succeed";
 
-  // In order to build multiple controller in a single JVM, we create a new http service instance for each of AdminSparkServer instance.
+  // In order to build multiple controller in a single JVM, we create a new http service instance for each of
+  // AdminSparkServer instance.
   private final Service httpService;
 
   private final List<ControllerRoute> disabledRoutes;
 
   private final boolean disableParentRequestTopicForStreamPushes;
 
-
-  public AdminSparkServer(int port, Admin admin, MetricsRepository metricsRepository, Set<String> clusters, boolean enforceSSL,
-      Optional<SSLConfig> sslConfig, boolean checkReadMethodForKafka, Optional<DynamicAccessController> accessController,
-      List<ControllerRoute> disabledRoutes, VeniceProperties jettyConfigOverrides, boolean disableParentRequestTopicForStreamPushes) {
+  public AdminSparkServer(
+      int port,
+      Admin admin,
+      MetricsRepository metricsRepository,
+      Set<String> clusters,
+      boolean enforceSSL,
+      Optional<SSLConfig> sslConfig,
+      boolean checkReadMethodForKafka,
+      Optional<DynamicAccessController> accessController,
+      List<ControllerRoute> disabledRoutes,
+      VeniceProperties jettyConfigOverrides,
+      boolean disableParentRequestTopicForStreamPushes) {
     this.port = port;
     this.enforceSSL = enforceSSL;
     this.sslEnabled = sslConfig.isPresent();
     this.sslConfig = sslConfig;
     this.checkReadMethodForKafka = checkReadMethodForKafka;
     this.accessController = accessController;
-    //Note: admin is passed in as a reference.  The expectation is the source of the admin will
-    //      close it so we don't close it in stopInner()
+    // Note: admin is passed in as a reference. The expectation is the source of the admin will
+    // close it so we don't close it in stopInner()
     this.admin = admin;
     statsMap = new HashMap<>(clusters.size());
     String statsPrefix = sslEnabled ? "secure_" : "";
-    for(String cluster : clusters){
-      statsMap.put(cluster, new SparkServerStats(metricsRepository, cluster + "." + statsPrefix + "controller_spark_server"));
+    for (String cluster: clusters) {
+      statsMap.put(
+          cluster,
+          new SparkServerStats(metricsRepository, cluster + "." + statsPrefix + "controller_spark_server"));
     }
     nonclusterSpecificStats = new SparkServerStats(metricsRepository, "." + statsPrefix + "controller_spark_server");
-    EmbeddedServers.add(
-        EmbeddedServers.Identifiers.JETTY,
-        new VeniceSparkServerFactory(jettyConfigOverrides));
+    EmbeddedServers.add(EmbeddedServers.Identifiers.JETTY, new VeniceSparkServerFactory(jettyConfigOverrides));
 
     httpService = Service.ignite();
     this.disabledRoutes = disabledRoutes;
@@ -102,13 +111,14 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     if (sslEnabled) {
       SSLConfig config = sslConfig.get();
-      httpService.secure(config.getSslKeyStoreLocation(),
-                         config.getSslKeyStorePassword(),
-                         null,
-                         config.getSslTrustStoreLocation(),
-                         config.getSslTrustStorePassword(),
-                         config.isSslNeedsClientCert(),
-                         null);
+      httpService.secure(
+          config.getSslKeyStoreLocation(),
+          config.getSslKeyStorePassword(),
+          null,
+          config.getSslTrustStoreLocation(),
+          config.getSslTrustStorePassword(),
+          config.isSslNeedsClientCert(),
+          null);
     }
 
     httpService.before((request, response) -> {
@@ -131,7 +141,7 @@ public class AdminSparkServer extends AbstractVeniceService {
        */
       if (enforceSSL && !sslEnabled) {
         if (!CLUSTER_DISCOVERY.pathEquals(request.uri()) && !LEADER_CONTROLLER.pathEquals(request.uri())
-          && !MASTER_CONTROLLER.pathEquals(request.uri())) {
+            && !MASTER_CONTROLLER.pathEquals(request.uri())) {
           httpService.halt(403, "Access denied, Venice Controller has enforced SSL.");
         }
       }
@@ -141,7 +151,7 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     // filter for blocked api calls
     httpService.before((request, response) -> {
-      if(disabledRoutes.contains(ControllerRoute.valueOfPath(request.uri()))) {
+      if (disabledRoutes.contains(ControllerRoute.valueOfPath(request.uri()))) {
         httpService.halt(403, String.format("Route %s has been disabled in venice controller config!!", request.uri()));
       }
     });
@@ -152,8 +162,8 @@ public class AdminSparkServer extends AbstractVeniceService {
       if (stats == null) {
         stats = nonclusterSpecificStats;
       }
-      long latency = System.currentTimeMillis() - (long)request.attribute(REQUEST_START_TIME);
-      if ((boolean)request.attribute(REQUEST_SUCCEED)) {
+      long latency = System.currentTimeMillis() - (long) request.attribute(REQUEST_START_TIME);
+      if ((boolean) request.attribute(REQUEST_SUCCEED)) {
         logger.info(audit.successString());
         stats.recordSuccessfulRequestLatency(latency);
       } else {
@@ -167,13 +177,18 @@ public class AdminSparkServer extends AbstractVeniceService {
     StoresRoutes storesRoutes = new StoresRoutes(sslEnabled, accessController);
     JobRoutes jobRoutes = new JobRoutes(sslEnabled, accessController);
     SkipAdminRoute skipAdminRoute = new SkipAdminRoute(sslEnabled, accessController);
-    CreateVersion createVersion = new CreateVersion(sslEnabled, accessController, this.checkReadMethodForKafka,
+    CreateVersion createVersion = new CreateVersion(
+        sslEnabled,
+        accessController,
+        this.checkReadMethodForKafka,
         disableParentRequestTopicForStreamPushes);
     CreateStore createStoreRoute = new CreateStore(sslEnabled, accessController);
     NodesAndReplicas nodesAndReplicas = new NodesAndReplicas(sslEnabled, accessController);
     SchemaRoutes schemaRoutes = new SchemaRoutes(sslEnabled, accessController);
-    AdminCommandExecutionRoutes adminCommandExecutionRoutes = new AdminCommandExecutionRoutes(sslEnabled, accessController);
-    RoutersClusterConfigRoutes routersClusterConfigRoutes = new RoutersClusterConfigRoutes(sslEnabled, accessController);
+    AdminCommandExecutionRoutes adminCommandExecutionRoutes =
+        new AdminCommandExecutionRoutes(sslEnabled, accessController);
+    RoutersClusterConfigRoutes routersClusterConfigRoutes =
+        new RoutersClusterConfigRoutes(sslEnabled, accessController);
     MigrationRoutes migrationRoutes = new MigrationRoutes(sslEnabled, accessController);
     VersionRoute versionRoute = new VersionRoute(sslEnabled, accessController);
     ClusterRoutes clusterRoutes = new ClusterRoutes(sslEnabled, accessController);
@@ -207,7 +222,9 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(REQUEST_TOPIC.getPath(), createVersion.requestTopicForPushing(admin));
     httpService.post(ADD_VERSION.getPath(), createVersion.addVersionAndStartIngestion(admin));
     httpService.post(NEW_STORE.getPath(), createStoreRoute.createStore(admin));
-    httpService.get(CHECK_RESOURCE_CLEANUP_FOR_STORE_CREATION.getPath(), createStoreRoute.checkResourceCleanupForStoreCreation(admin));
+    httpService.get(
+        CHECK_RESOURCE_CLEANUP_FOR_STORE_CREATION.getPath(),
+        createStoreRoute.checkResourceCleanupForStoreCreation(admin));
     httpService.post(DELETE_STORE.getPath(), storesRoutes.deleteStore(admin));
     httpService.post(UPDATE_STORE.getPath(), storesRoutes.updateStore(admin));
 
@@ -243,14 +260,16 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(GET_ALL_VALUE_SCHEMA.getPath(), schemaRoutes.getAllValueSchema(admin));
     httpService.get(GET_ALL_VALUE_AND_DERIVED_SCHEMA.getPath(), schemaRoutes.getAllValueAndDerivedSchema(admin));
     httpService.post(REMOVE_DERIVED_SCHEMA.getPath(), schemaRoutes.removeDerivedSchema(admin));
-    httpService.get(GET_ALL_REPLICATION_METADATA_SCHEMAS.getPath(), schemaRoutes.getAllReplicationMetadataSchemas(admin));
+    httpService
+        .get(GET_ALL_REPLICATION_METADATA_SCHEMAS.getPath(), schemaRoutes.getAllReplicationMetadataSchemas(admin));
 
     httpService.post(SET_OWNER.getPath(), storesRoutes.setOwner(admin));
     httpService.post(SET_PARTITION_COUNT.getPath(), storesRoutes.setPartitionCount(admin));
 
     httpService.get(MASTER_CONTROLLER.getPath(), controllerRoutes.getLeaderController(admin));
     // This API should be used by CORP controller only. H2V could talk to any of controllers in CORP to find who is the
-    // current leader CORP controller. In other colos, router will find the leader controller instead of calling this API.
+    // current leader CORP controller. In other colos, router will find the leader controller instead of calling this
+    // API.
     httpService.get(LEADER_CONTROLLER.getPath(), controllerRoutes.getLeaderController(admin));
 
     httpService.get(EXECUTION.getPath(), adminCommandExecutionRoutes.getExecution(admin));
@@ -259,7 +278,8 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(STORAGE_ENGINE_OVERHEAD_RATIO.getPath(), storesRoutes.getStorageEngineOverheadRatio(admin));
 
     httpService.post(ENABLE_THROTTLING.getPath(), routersClusterConfigRoutes.enableThrottling(admin));
-    httpService.post(ENABLE_MAX_CAPACITY_PROTECTION.getPath(), routersClusterConfigRoutes.enableMaxCapacityProtection(admin));
+    httpService
+        .post(ENABLE_MAX_CAPACITY_PROTECTION.getPath(), routersClusterConfigRoutes.enableMaxCapacityProtection(admin));
     httpService.post(ENABLE_QUOTA_REBALANCED.getPath(), routersClusterConfigRoutes.enableQuotaRebalanced(admin));
 
     httpService.get(GET_ROUTERS_CLUSTER_CONFIG.getPath(), routersClusterConfigRoutes.getRoutersClusterConfig(admin));
@@ -277,14 +297,20 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService.get(LIST_LF_STORES.getPath(), storesRoutes.getLFModelStores(admin));
     httpService.post(ENABLE_LF_MODEL.getPath(), storesRoutes.enableLFModelForStores(admin));
-    httpService.post(CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER.getPath(), storesRoutes.enableNativeReplicationForCluster(admin));
-    httpService.post(CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER.getPath(), storesRoutes.enableActiveActiveReplicationForCluster(admin));
+    httpService.post(
+        CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER.getPath(),
+        storesRoutes.enableNativeReplicationForCluster(admin));
+    httpService.post(
+        CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER.getPath(),
+        storesRoutes.enableActiveActiveReplicationForCluster(admin));
     httpService.post(UPDATE_ACL.getPath(), createStoreRoute.updateAclForStore(admin));
     httpService.get(GET_ACL.getPath(), createStoreRoute.getAclForStore(admin));
     httpService.get(DELETE_ACL.getPath(), createStoreRoute.deleteAclForStore(admin));
     httpService.get(GET_DELETABLE_STORE_TOPICS.getPath(), storesRoutes.getDeletableStoreTopics(admin));
-    httpService.post(CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER.getPath(), storesRoutes.configureIncrementalPushForCluster(admin));
-    httpService.get(GET_ONGOING_INCREMENTAL_PUSH_VERSIONS.getPath(), jobRoutes.getOngoingIncrementalPushVersions(admin));
+    httpService
+        .post(CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER.getPath(), storesRoutes.configureIncrementalPushForCluster(admin));
+    httpService
+        .get(GET_ONGOING_INCREMENTAL_PUSH_VERSIONS.getPath(), jobRoutes.getOngoingIncrementalPushVersions(admin));
     httpService.get(GET_REPUSH_INFO.getPath(), storesRoutes.getRepushInfo(admin));
     httpService.get(COMPARE_STORE.getPath(), storesRoutes.compareStore(admin));
     httpService.get(GET_STALE_STORES_IN_CLUSTER.getPath(), storesRoutes.getStaleStoresInCluster(admin));
@@ -294,7 +320,9 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(LIST_STORE_PUSH_INFO.getPath(), storesRoutes.listStorePushInfo(admin));
 
     httpService.post(PREPARE_DATA_RECOVERY.getPath(), dataRecoveryRoutes.prepareDataRecovery(admin));
-    httpService.get(IS_STORE_VERSION_READY_FOR_DATA_RECOVERY.getPath(), dataRecoveryRoutes.isStoreVersionReadyForDataRecovery(admin));
+    httpService.get(
+        IS_STORE_VERSION_READY_FOR_DATA_RECOVERY.getPath(),
+        dataRecoveryRoutes.isStoreVersionReadyForDataRecovery(admin));
     httpService.post(DATA_RECOVERY.getPath(), dataRecoveryRoutes.dataRecovery(admin));
     httpService.get(UPDATE_KAFKA_TOPIC_LOG_COMPACTION.getPath(), controllerRoutes.updateKafkaTopicLogCompaction(admin));
     httpService.get(UPDATE_KAFKA_TOPIC_RETENTION.getPath(), controllerRoutes.updateKafkaTopicRetention(admin));
@@ -308,7 +336,9 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(GET_STORAGE_PERSONA.getPath(), storagePersonaRoutes.getStoragePersona(admin));
     httpService.post(DELETE_STORAGE_PERSONA.getPath(), storagePersonaRoutes.deleteStoragePersona(admin));
     httpService.post(UPDATE_STORAGE_PERSONA.getPath(), storagePersonaRoutes.updateStoragePersona(admin));
-    httpService.get(GET_STORAGE_PERSONA_ASSOCIATED_WITH_STORE.getPath(), storagePersonaRoutes.getPersonaAssociatedWithStore(admin));
+    httpService.get(
+        GET_STORAGE_PERSONA_ASSOCIATED_WITH_STORE.getPath(),
+        storagePersonaRoutes.getPersonaAssociatedWithStore(admin));
     httpService.get(GET_CLUSTER_STORAGE_PERSONAS.getPath(), storagePersonaRoutes.getClusterStoragePersonas(admin));
 
     httpService.awaitInitialization(); // Wait for server to be initialized
@@ -327,7 +357,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.stop();
   }
 
-  public int getPort(){
+  public int getPort() {
     return port;
   }
 
@@ -343,8 +373,8 @@ public class AdminSparkServer extends AbstractVeniceService {
     sb.append("<CENTER><HR WIDTH=\"100%\" NOSHADE color=\"blue\"></CENTER>");
     sb.append("<FORM ACTION=\"" + postAction + "\" METHOD=\"POST\">");
     sb.append("<table border=\"0\">");
-    for (String param : parameters){
-      sb.append("<tr><td>"+param+": <br> <input type=text name=\""+param+"\" size=20></td></tr>");
+    for (String param: parameters) {
+      sb.append("<tr><td>" + param + ": <br> <input type=text name=\"" + param + "\" size=20></td></tr>");
     }
     sb.append("<tr><td><INPUT TYPE=\"submit\" NAME=\"Send\" VALUE=\"Send\"></INPUT></td>");
     sb.append("<td><INPUT TYPE=\"reset\" NAME=\"Clear\" VALUE=\"Clear\" ></INPUT></td></tr>");
@@ -358,17 +388,26 @@ public class AdminSparkServer extends AbstractVeniceService {
   protected static void validateParams(Request request, List<String> requiredParams, Admin admin) {
     String clusterName = request.queryParams(CLUSTER);
     if (StringUtils.isEmpty(clusterName) && !CLUSTER_DISCOVERY.pathEquals(request.pathInfo())) {
-      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, CLUSTER + " is a required parameter", ErrorType.BAD_REQUEST);
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          CLUSTER + " is a required parameter",
+          ErrorType.BAD_REQUEST);
     }
     if (!LEADER_CONTROLLER.pathEquals(request.pathInfo()) && !MASTER_CONTROLLER.pathEquals(request.pathInfo())
         && !CLUSTER_DISCOVERY.pathEquals(request.pathInfo()) && !admin.isLeaderControllerFor(clusterName)) {
       // go/inclusivecode deprecated (alias="leader_controller")
       // Skip leader controller check for '/master_controller' and '/discover_cluster' request
-      throw new VeniceHttpException(HttpConstants.SC_MISDIRECTED_REQUEST, "This controller " + Utils.getHostName() + " is not the active controller", ErrorType.INCORRECT_CONTROLLER);
+      throw new VeniceHttpException(
+          HttpConstants.SC_MISDIRECTED_REQUEST,
+          "This controller " + Utils.getHostName() + " is not the active controller",
+          ErrorType.INCORRECT_CONTROLLER);
     }
-    for (String param : requiredParams) {
+    for (String param: requiredParams) {
       if (StringUtils.isEmpty(request.queryParams(param))) {
-        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, param + " is a required parameter", ErrorType.BAD_REQUEST);
+        throw new VeniceHttpException(
+            HttpStatus.SC_BAD_REQUEST,
+            param + " is a required parameter",
+            ErrorType.BAD_REQUEST);
       }
     }
   }
@@ -387,17 +426,16 @@ public class AdminSparkServer extends AbstractVeniceService {
 
   protected static void handleError(Throwable e, Request request, Response response) {
     StringBuilder sb = new StringBuilder("Request params were: ");
-    request.queryMap().toMap().forEach((k, v) -> {  /* Map<String, String[]> */
-      sb.append(k).append("=").append(String.join(",",v)).append(" ");
+    request.queryMap().toMap().forEach((k, v) -> { /* Map<String, String[]> */
+      sb.append(k).append("=").append(String.join(",", v)).append(" ");
     });
     String errMsg = sb.toString();
     logger.error(errMsg, e);
     if (e instanceof Error) {
       throw (Error) e;
     }
-    int statusCode = e instanceof VeniceException ?
-        ((VeniceException) e).getHttpStatusCode() :
-        HttpStatus.SC_INTERNAL_SERVER_ERROR;
+    int statusCode =
+        e instanceof VeniceException ? ((VeniceException) e).getHttpStatusCode() : HttpStatus.SC_INTERNAL_SERVER_ERROR;
     response.status(statusCode);
 
     request.attribute(REQUEST_SUCCEED, false);

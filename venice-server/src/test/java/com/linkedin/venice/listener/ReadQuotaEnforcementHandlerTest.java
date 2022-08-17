@@ -1,5 +1,9 @@
 package com.linkedin.venice.listener;
 
+import static java.util.concurrent.TimeUnit.*;
+import static org.mockito.Mockito.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
@@ -11,7 +15,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import com.linkedin.venice.utils.Utils;
-
 import io.netty.channel.ChannelHandlerContext;
 import java.time.Clock;
 import java.util.Arrays;
@@ -21,16 +24,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import static java.util.concurrent.TimeUnit.*;
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
-
 
 /**
  * This test ensures that the ReadQuotaEnforcementHandler will throttle over-quota requests
  */
 public class ReadQuotaEnforcementHandlerTest {
-
   long nodeCapacity;
   String thisNodeId;
   Clock clock;
@@ -41,7 +39,7 @@ public class ReadQuotaEnforcementHandlerTest {
   AggServerQuotaUsageStats stats;
 
   @BeforeMethod
-  public void setUp(){
+  public void setUp() {
     nodeCapacity = 10; // rcu per second that a single node can support
     thisNodeId = "node1";
     clock = mock(Clock.class);
@@ -51,7 +49,12 @@ public class ReadQuotaEnforcementHandlerTest {
     routingRepository = mock(RoutingDataRepository.class);
     stats = mock(AggServerQuotaUsageStats.class);
     quotaEnforcer = new ReadQuotaEnforcementHandler(
-        nodeCapacity, storeRepository, CompletableFuture.completedFuture(routingRepository), thisNodeId, stats, clock);
+        nodeCapacity,
+        storeRepository,
+        CompletableFuture.completedFuture(routingRepository),
+        thisNodeId,
+        stats,
+        clock);
 
   }
 
@@ -61,17 +64,19 @@ public class ReadQuotaEnforcementHandlerTest {
   @Test
   public void testQuotaEnforcementHandlerAtNodeLevel() {
 
-    runTest("dummyStore_v1", nodeCapacity * 5 * 10, //default multiple is 5, times 10 second interval
-        nodeCapacity * 10, //default refill interval is 10 seconds
+    runTest(
+        "dummyStore_v1",
+        nodeCapacity * 5 * 10, // default multiple is 5, times 10 second interval
+        nodeCapacity * 10, // default refill interval is 10 seconds
         MILLISECONDS.convert(10, SECONDS)); // default 10 second interval
   }
 
   /**
    * Test the case when there is a store-level quota which is less than the node-level capacity
    */
-  //TODO: this test fails consistently due to ReadQuotaEnforcementHandler.getNodeResponsibilityForQuota() leveraging
-  // getReadyToServeInstances() which no longer works with L/F state assignment.  This needs refactoring.
-  //@Test
+  // TODO: this test fails consistently due to ReadQuotaEnforcementHandler.getNodeResponsibilityForQuota() leveraging
+  // getReadyToServeInstances() which no longer works with L/F state assignment. This needs refactoring.
+  // @Test
   public void testQuotaEnforcementAtStoreLevel() {
     String storeName = Utils.getUniqueString("store");
     String topic = Version.composeKafkaTopic(storeName, 1);
@@ -82,13 +87,11 @@ public class ReadQuotaEnforcementHandlerTest {
     Partition partition = mock(Partition.class);
     doReturn(Collections.singletonList(thisInstance)).when(partition).getWorkingInstances();
 
-
-
     PartitionAssignment pa = mock(PartitionAssignment.class);
     doReturn(topic).when(pa).getTopic();
     doReturn(Collections.singletonList(partition)).when(pa).getAllPartitions();
 
-    long storeReadQuota = 5; //rcu per second
+    long storeReadQuota = 5; // rcu per second
     Store store = mock(Store.class);
     doReturn(storeReadQuota).when(store).getReadQuotaInCU();
     doReturn(store).when(storeRepository).getStore(any());
@@ -103,7 +106,7 @@ public class ReadQuotaEnforcementHandlerTest {
    * support half of the allocated quota
    */
   @Test
-  public void testQuotaEnforcementAtStoreLevelWithMultipleNodes(){
+  public void testQuotaEnforcementAtStoreLevelWithMultipleNodes() {
     String storeName = Utils.getUniqueString("store");
     String topic = Version.composeKafkaTopic(storeName, 1);
 
@@ -116,19 +119,18 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(Arrays.asList(thisInstance, otherInstance)).when(partition).getWorkingInstances();
     doReturn(Arrays.asList(thisInstance, otherInstance)).when(partition).getReadyToServeInstances();
 
-
     PartitionAssignment pa = mock(PartitionAssignment.class);
     doReturn(topic).when(pa).getTopic();
     doReturn(Collections.singletonList(partition)).when(pa).getAllPartitions();
 
-    long storeReadQuota = 6; //rcu per second, only half will be supported on this node
+    long storeReadQuota = 6; // rcu per second, only half will be supported on this node
     Store store = mock(Store.class);
     doReturn(storeReadQuota).when(store).getReadQuotaInCU();
     doReturn(store).when(storeRepository).getStore(any());
 
     quotaEnforcer.onExternalViewChange(pa);
 
-    runTest(topic, storeReadQuota/2 * 5 * 10, storeReadQuota/2 * 10, 10000);
+    runTest(topic, storeReadQuota / 2 * 5 * 10, storeReadQuota / 2 * 10, 10000);
   }
 
   /**
@@ -157,7 +159,7 @@ public class ReadQuotaEnforcementHandlerTest {
       allowed.incrementAndGet();
       return null;
     }).when(ctx).fireChannelRead(any());
-    for (int i=0; i<capacity; i++){
+    for (int i = 0; i < capacity; i++) {
       quotaEnforcer.channelRead0(ctx, request);
     }
     assertEquals(allowed.get(), capacity, "Made " + capacity + " reads, and all should have been allowed");
@@ -168,16 +170,22 @@ public class ReadQuotaEnforcementHandlerTest {
     allowed.set(0);
     blocked.set(0);
 
-    //allow one refill
-    currentTime = currentTime + refillTimeMs + 1; //refill checks if past refill time, hence +1
+    // allow one refill
+    currentTime = currentTime + refillTimeMs + 1; // refill checks if past refill time, hence +1
     doReturn(currentTime).when(clock).millis();
 
-    for (int i=0; i<refillAmount; i++){
+    for (int i = 0; i < refillAmount; i++) {
       quotaEnforcer.channelRead0(ctx, request);
     }
-    assertEquals(allowed.get(), refillAmount, "Made " + refillAmount + " reads after refill, and all should have been allowed");
+    assertEquals(
+        allowed.get(),
+        refillAmount,
+        "Made " + refillAmount + " reads after refill, and all should have been allowed");
     assertEquals(blocked.get(), 0, "After refill, reads should not be throttled");
     quotaEnforcer.channelRead0(ctx, request);
-    assertEquals(blocked.get(), 1, "After exhausting refill of " + refillAmount + " next read should have been blocked");
+    assertEquals(
+        blocked.get(),
+        1,
+        "After exhausting refill of " + refillAmount + " next read should have been blocked");
   }
 }

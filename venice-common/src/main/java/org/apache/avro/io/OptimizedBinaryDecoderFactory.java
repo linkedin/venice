@@ -4,9 +4,8 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 
 
 public class OptimizedBinaryDecoderFactory {
-  private final ThreadLocal<OptimizedBinaryDecoder> localBinaryDecoder = ThreadLocal.withInitial(
-      () -> new OptimizedBinaryDecoder()
-  );
+  private final ThreadLocal<OptimizedBinaryDecoder> localBinaryDecoder =
+      ThreadLocal.withInitial(() -> new OptimizedBinaryDecoder());
 
   private static OptimizedBinaryDecoderFactory DEFAULT_FACTORY = new OptimizedBinaryDecoderFactory();
 
@@ -16,7 +15,6 @@ public class OptimizedBinaryDecoderFactory {
   public static OptimizedBinaryDecoderFactory defaultFactory() {
     return DEFAULT_FACTORY;
   }
-
 
   /**
    * This function will create a optimized binary decoder.

@@ -128,7 +128,8 @@ public class SafeHelixDataAccessor {
    *
    * @throws {@link HelixMetaDataAccessException} if the fetch operation failed.
    */
-  public <T extends HelixProperty> Map<String, T> getChildValuesMap(PropertyKey key) throws HelixMetaDataAccessException {
+  public <T extends HelixProperty> Map<String, T> getChildValuesMap(PropertyKey key)
+      throws HelixMetaDataAccessException {
     return helixDataAccessor.getChildValuesMap(key, true);
   }
 
@@ -140,7 +141,9 @@ public class SafeHelixDataAccessor {
     return helixDataAccessor.setChildren(keys, children);
   }
 
-  public <T extends HelixProperty> boolean[] updateChildren(List<String> paths, List<DataUpdater<ZNRecord>> updaters,
+  public <T extends HelixProperty> boolean[] updateChildren(
+      List<String> paths,
+      List<DataUpdater<ZNRecord>> updaters,
       int options) {
     return helixDataAccessor.updateChildren(paths, updaters, options);
   }

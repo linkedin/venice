@@ -52,21 +52,25 @@ public class StoreStateReader implements Closeable {
 
   public Store getStore() {
     try {
-      byte[] response = RetryUtils.executeWithMaxAttempt(() -> ((CompletableFuture<byte[]>) storeClient.getRaw(requestPath)).get(),
-          3, Duration.ofMillis(100), Arrays.asList(ExecutionException.class));
+      byte[] response = RetryUtils.executeWithMaxAttempt(
+          () -> ((CompletableFuture<byte[]>) storeClient.getRaw(requestPath)).get(),
+          3,
+          Duration.ofMillis(100),
+          Arrays.asList(ExecutionException.class));
       if (null == response) {
         throw new VeniceClientException("Unexpected null response " + exceptionMessageFooter);
       }
       if (veniceSystemStoreType != null && veniceSystemStoreType.isNewMedataRepositoryAdopted()) {
         SerializableSystemStore serializableSystemStore = systemStoreSerializer.deserialize(response, null);
-        return new SystemStore(serializableSystemStore.getZkSharedStore(), serializableSystemStore.getSystemStoreType(),
+        return new SystemStore(
+            serializableSystemStore.getZkSharedStore(),
+            serializableSystemStore.getSystemStoreType(),
             serializableSystemStore.getVeniceStore());
       } else {
         return storeSerializer.deserialize(response, null);
       }
     } catch (Exception e) {
-      throw new VeniceClientException(
-          "Unexpected exception " + exceptionMessageFooter, e);
+      throw new VeniceClientException("Unexpected exception " + exceptionMessageFooter, e);
     }
   }
 

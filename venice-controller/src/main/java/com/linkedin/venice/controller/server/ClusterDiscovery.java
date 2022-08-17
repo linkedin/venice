@@ -1,17 +1,16 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.utils.Pair;
 import spark.Route;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
-
 
 public class ClusterDiscovery {
-
   /**
    * No ACL check; any user is allowed to discover cluster
    */

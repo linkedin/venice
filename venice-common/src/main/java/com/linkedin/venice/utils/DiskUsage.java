@@ -23,7 +23,6 @@ import org.apache.logging.log4j.Logger;
  * risk of blowing past the disk full threshold and actually reaching 100% disk usage.
  */
 public class DiskUsage {
-
   private static final Logger LOGGER = LogManager.getLogger(DiskUsage.class);
   private final String diskPath;
   private final long totalSpaceBytes;
@@ -34,13 +33,14 @@ public class DiskUsage {
   // past the the diskFullThreshold and actually exhaust the disk before we check again.
   private final long reserveSpaceBytes;
 
-  private long freeSpaceBytes; //This doesn't stay up-to-date, but is refreshed periodically
+  private long freeSpaceBytes; // This doesn't stay up-to-date, but is refreshed periodically
   private final AtomicLong reserveSpaceBytesRemaining = new AtomicLong();
 
-  public DiskUsage(String path, double diskFullThreshold){
+  public DiskUsage(String path, double diskFullThreshold) {
     this.diskPath = path;
-    if (diskFullThreshold < 0 || diskFullThreshold > 1){
-      throw new IllegalArgumentException("Disk full threshold must be a double between 0 and 1. " + diskFullThreshold + " is not valid");
+    if (diskFullThreshold < 0 || diskFullThreshold > 1) {
+      throw new IllegalArgumentException(
+          "Disk full threshold must be a double between 0 and 1. " + diskFullThreshold + " is not valid");
     }
     try {
       this.disk = Files.getFileStore(Paths.get(path));
@@ -53,15 +53,16 @@ public class DiskUsage {
     queryDiskStatusAndUpdate();
   }
 
-  private synchronized void queryDiskStatusAndUpdate(){
+  private synchronized void queryDiskStatusAndUpdate() {
     try {
       freeSpaceBytes = disk.getUsableSpace();
     } catch (IOException e) {
       LOGGER.error("Failed to get usable space for disk: " + diskPath, e);
-      freeSpaceBytes = totalSpaceBytes; //If we can't query status for some reason, then let the system continue operating
+      freeSpaceBytes = totalSpaceBytes; // If we can't query status for some reason, then let the system continue
+                                        // operating
     }
     reserveSpaceBytesRemaining.set(reserveSpaceBytes);
-    if (freeSpaceBytes < freeSpaceBytesRequired){
+    if (freeSpaceBytes < freeSpaceBytesRequired) {
       reserveSpaceBytesRemaining.set(0);
     }
   }
@@ -71,20 +72,21 @@ public class DiskUsage {
    * view of the disk so this call will usually be very fast.  If the disk is beyond the threshold that was set at
    * construction then it will return true.  Otherwise it returns false.
    */
-  public boolean isDiskFull(long bytesWritten){
+  public boolean isDiskFull(long bytesWritten) {
     // Here we're using -1 to subtract the newly written data from the reserve space remaining.
-    // If the reserve space remaining is still greater than 0, report disk not full.  Otherwise
+    // If the reserve space remaining is still greater than 0, report disk not full. Otherwise
     // check the actual state of the disk.
-    if (reserveSpaceBytesRemaining.addAndGet(-1 * bytesWritten) > 0){
-      return false; //disk not full, don't need to actually check again
-    } else { //we need to check actual disk usage
+    if (reserveSpaceBytesRemaining.addAndGet(-1 * bytesWritten) > 0) {
+      return false; // disk not full, don't need to actually check again
+    } else { // we need to check actual disk usage
       queryDiskStatusAndUpdate();
-      return freeSpaceBytes < freeSpaceBytesRequired; //If there is less free space than required, the disk is full
+      return freeSpaceBytes < freeSpaceBytesRequired; // If there is less free space than required, the disk is full
     }
   }
 
-  public String getDiskStatus(){
-    return "Disk at path: " + diskPath + " has " + totalSpaceBytes + " total bytes and " + freeSpaceBytes + " bytes free.  "
-        + "Disk is marked 'full' when there are less than " + freeSpaceBytesRequired + " bytes free.";
+  public String getDiskStatus() {
+    return "Disk at path: " + diskPath + " has " + totalSpaceBytes + " total bytes and " + freeSpaceBytes
+        + " bytes free.  " + "Disk is marked 'full' when there are less than " + freeSpaceBytesRequired
+        + " bytes free.";
   }
 }

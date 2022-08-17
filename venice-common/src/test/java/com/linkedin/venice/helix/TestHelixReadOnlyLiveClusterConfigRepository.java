@@ -64,9 +64,15 @@ public class TestHelixReadOnlyLiveClusterConfigRepository {
     zkClient.writeData(clusterPath + clusterConfigPath, liveClusterConfig);
 
     // Verify the data gets read by in HelixReadOnlyLiveClusterConfigRepository
-    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> liveClusterConfigRORepo.getConfigs() != null
-        && liveClusterConfigRORepo.getConfigs().getServerKafkaFetchQuotaRecordsPerSecondForRegion(CONFIGURED_REGION) == 100
-        && liveClusterConfigRORepo.getConfigs().getServerKafkaFetchQuotaRecordsPerSecondForRegion(NON_CONFIGURED_REGION) == LiveClusterConfig.DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND);
+    TestUtils.waitForNonDeterministicCompletion(
+        3,
+        TimeUnit.SECONDS,
+        () -> liveClusterConfigRORepo.getConfigs() != null
+            && liveClusterConfigRORepo.getConfigs()
+                .getServerKafkaFetchQuotaRecordsPerSecondForRegion(CONFIGURED_REGION) == 100
+            && liveClusterConfigRORepo.getConfigs()
+                .getServerKafkaFetchQuotaRecordsPerSecondForRegion(
+                    NON_CONFIGURED_REGION) == LiveClusterConfig.DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND);
   }
 
   @Test
@@ -78,17 +84,30 @@ public class TestHelixReadOnlyLiveClusterConfigRepository {
     zkClient.writeData(clusterPath + clusterConfigPath, liveClusterConfig);
 
     // Verify the data got persisted in Zk
-    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> liveClusterConfigRORepo.getConfigs() != null
-        && liveClusterConfigRORepo.getConfigs().getServerKafkaFetchQuotaRecordsPerSecondForRegion(CONFIGURED_REGION) == 100
-        && liveClusterConfigRORepo.getConfigs().getServerKafkaFetchQuotaRecordsPerSecondForRegion(NON_CONFIGURED_REGION) == LiveClusterConfig.DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND);
+    TestUtils.waitForNonDeterministicCompletion(
+        3,
+        TimeUnit.SECONDS,
+        () -> liveClusterConfigRORepo.getConfigs() != null
+            && liveClusterConfigRORepo.getConfigs()
+                .getServerKafkaFetchQuotaRecordsPerSecondForRegion(CONFIGURED_REGION) == 100
+            && liveClusterConfigRORepo.getConfigs()
+                .getServerKafkaFetchQuotaRecordsPerSecondForRegion(
+                    NON_CONFIGURED_REGION) == LiveClusterConfig.DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND);
 
     // Trigger a deletion of the live config ZNode
     zkClient.delete(clusterPath + clusterConfigPath);
 
     // Verify that the repository returns default values for the configs
-    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> liveClusterConfigRORepo.getConfigs() != null
-        && liveClusterConfigRORepo.getConfigs().getServerKafkaFetchQuotaRecordsPerSecondForRegion(CONFIGURED_REGION) == LiveClusterConfig.DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND
-        && liveClusterConfigRORepo.getConfigs().getServerKafkaFetchQuotaRecordsPerSecondForRegion(NON_CONFIGURED_REGION) == LiveClusterConfig.DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND);
+    TestUtils.waitForNonDeterministicCompletion(
+        3,
+        TimeUnit.SECONDS,
+        () -> liveClusterConfigRORepo.getConfigs() != null
+            && liveClusterConfigRORepo.getConfigs()
+                .getServerKafkaFetchQuotaRecordsPerSecondForRegion(
+                    CONFIGURED_REGION) == LiveClusterConfig.DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND
+            && liveClusterConfigRORepo.getConfigs()
+                .getServerKafkaFetchQuotaRecordsPerSecondForRegion(
+                    NON_CONFIGURED_REGION) == LiveClusterConfig.DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND);
   }
 
   @Test
@@ -100,17 +119,30 @@ public class TestHelixReadOnlyLiveClusterConfigRepository {
     zkClient.writeData(clusterPath + clusterConfigPath, liveClusterConfig);
 
     // Verify the data gets read by in HelixReadOnlyLiveClusterConfigRepository
-    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> liveClusterConfigRORepo.getConfigs() != null
-        && liveClusterConfigRORepo.getConfigs().getServerKafkaFetchQuotaRecordsPerSecondForRegion(CONFIGURED_REGION) == 100
-        && liveClusterConfigRORepo.getConfigs().getServerKafkaFetchQuotaRecordsPerSecondForRegion(NON_CONFIGURED_REGION) == LiveClusterConfig.DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND);
+    TestUtils.waitForNonDeterministicCompletion(
+        3,
+        TimeUnit.SECONDS,
+        () -> liveClusterConfigRORepo.getConfigs() != null
+            && liveClusterConfigRORepo.getConfigs()
+                .getServerKafkaFetchQuotaRecordsPerSecondForRegion(CONFIGURED_REGION) == 100
+            && liveClusterConfigRORepo.getConfigs()
+                .getServerKafkaFetchQuotaRecordsPerSecondForRegion(
+                    NON_CONFIGURED_REGION) == LiveClusterConfig.DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND);
 
     // Create a HelixReadOnlyLiveClusterConfigRepository to simulate service start up
-    HelixReadOnlyLiveClusterConfigRepository liveClusterConfigRORepo2 = new HelixReadOnlyLiveClusterConfigRepository(zkClient, adapter, cluster);
+    HelixReadOnlyLiveClusterConfigRepository liveClusterConfigRORepo2 =
+        new HelixReadOnlyLiveClusterConfigRepository(zkClient, adapter, cluster);
     liveClusterConfigRORepo2.refresh();
 
     // Verify the data gets pulled in on service start up
-    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> liveClusterConfigRORepo2.getConfigs() != null
-        && liveClusterConfigRORepo2.getConfigs().getServerKafkaFetchQuotaRecordsPerSecondForRegion(CONFIGURED_REGION) == 100
-        && liveClusterConfigRORepo2.getConfigs().getServerKafkaFetchQuotaRecordsPerSecondForRegion(NON_CONFIGURED_REGION) == LiveClusterConfig.DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND);
+    TestUtils.waitForNonDeterministicCompletion(
+        30,
+        TimeUnit.SECONDS,
+        () -> liveClusterConfigRORepo2.getConfigs() != null
+            && liveClusterConfigRORepo2.getConfigs()
+                .getServerKafkaFetchQuotaRecordsPerSecondForRegion(CONFIGURED_REGION) == 100
+            && liveClusterConfigRORepo2.getConfigs()
+                .getServerKafkaFetchQuotaRecordsPerSecondForRegion(
+                    NON_CONFIGURED_REGION) == LiveClusterConfig.DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND);
   }
 }

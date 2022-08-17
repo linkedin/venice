@@ -7,7 +7,6 @@ import java.util.Map;
 
 
 public interface V1Route {
-
   /**
    * Path formatted with colons prefixing each path parameter for use in defining the path in SparkJava
    * ex /user/:id
@@ -35,7 +34,7 @@ public interface V1Route {
    * @param pathParams list of parameter names to use in completing the path
    * @return
    */
-  static String rawPath(String pathFormat, String[] pathParams){
+  static String rawPath(String pathFormat, String[] pathParams) {
     // Add colon prefix to each param name, "store_name" to ":store_name"
     String[] colonParams = Arrays.asList(pathParams).stream().map(p -> ":" + p).toArray(String[]::new);
     return String.format(pathFormat, (Object[]) colonParams);
@@ -49,10 +48,11 @@ public interface V1Route {
    * @param params
    * @return
    */
-  default String getPathWithParameters(String[] params){
-    if (params.length != getPathParams().length){
-      throw new VeniceException("Specified parameters: " + Arrays.toString(params)
-          + " doesn't match list of required params: " + Arrays.toString(getPathParams()));
+  default String getPathWithParameters(String[] params) {
+    if (params.length != getPathParams().length) {
+      throw new VeniceException(
+          "Specified parameters: " + Arrays.toString(params) + " doesn't match list of required params: "
+              + Arrays.toString(getPathParams()));
     }
     return String.format(getPathFormat(), (Object[]) params);
   }
@@ -71,11 +71,11 @@ public interface V1Route {
    * @param params
    * @return
    */
-  default String getPathWithParameters(Map<String, String> params){
+  default String getPathWithParameters(Map<String, String> params) {
     String[] pathParams = getPathParams();
     String[] paramsToUse = new String[pathParams.length];
-    for (int i=0; i<pathParams.length; i++){
-      if (!params.containsKey(pathParams[i])){
+    for (int i = 0; i < pathParams.length; i++) {
+      if (!params.containsKey(pathParams[i])) {
         throw new VeniceException("Parameter map must contain parameter: " + pathParams[i]);
       }
       paramsToUse[i] = params.get(pathParams[i]);
@@ -83,7 +83,7 @@ public interface V1Route {
     return getPathWithParameters(paramsToUse);
   }
 
-  default List<String> getPathParamsList(){
+  default List<String> getPathParamsList() {
     return Arrays.asList(getPathParams());
   }
 }

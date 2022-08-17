@@ -1,19 +1,20 @@
 package com.linkedin.venice.offsets;
 
+import static com.linkedin.venice.writer.VeniceWriter.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
+import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.ByteBufferToHexFormatJsonEncoder;
@@ -21,9 +22,6 @@ import org.apache.avro.io.Encoder;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.lang.Validate;
 
-import javax.annotation.Nonnull;
-
-import static com.linkedin.venice.writer.VeniceWriter.*;
 
 /**
  * If OffsetRecord is initialized with a serializer that contains SchemaReader, old version of server codes
@@ -104,7 +102,8 @@ public class OffsetRecord {
    * @return the last messageTimeStamp across all producers tracked by this OffsetRecord
    */
   public long getEventTimeEpochMs() {
-    return this.partitionState.producerStates.values().stream()
+    return this.partitionState.producerStates.values()
+        .stream()
         .map(producerPartitionState -> producerPartitionState.messageTimestamp)
         .sorted((o1, o2) -> o1.compareTo(o2) * -1)
         .findFirst()
@@ -153,7 +152,7 @@ public class OffsetRecord {
 
   public void setDatabaseInfo(Map<String, String> databaseInfo) {
     Map<CharSequence, CharSequence> databaseInfoWithRightType = new HashMap<>();
-    databaseInfo.forEach( (k, v) -> databaseInfoWithRightType.put(k, v));
+    databaseInfo.forEach((k, v) -> databaseInfoWithRightType.put(k, v));
     this.partitionState.databaseInfo = databaseInfoWithRightType;
   }
 
@@ -163,7 +162,7 @@ public class OffsetRecord {
       /**
        * It is necessary since the 'string' type deserialized by Avro is {@link Utf8}.
        */
-      this.partitionState.databaseInfo.forEach( (k, v) -> databaseInfo.put(k.toString(), v.toString()));
+      this.partitionState.databaseInfo.forEach((k, v) -> databaseInfo.put(k.toString(), v.toString()));
     }
     return databaseInfo;
   }
@@ -254,14 +253,10 @@ public class OffsetRecord {
 
   @Override
   public String toString() {
-    return "OffsetRecord{" +
-        "localVersionTopicOffset=" + getLocalVersionTopicOffset() +
-        ", offsetLag=" + getOffsetLag() +
-        ", eventTimeEpochMs=" + getEventTimeEpochMs() +
-        ", latestProducerProcessingTimeInMs=" + getLatestProducerProcessingTimeInMs() +
-        ", isEndOfPushReceived=" + isEndOfPushReceived() +
-        ", databaseInfo=" + getDatabaseInfo() +
-        '}';
+    return "OffsetRecord{" + "localVersionTopicOffset=" + getLocalVersionTopicOffset() + ", offsetLag=" + getOffsetLag()
+        + ", eventTimeEpochMs=" + getEventTimeEpochMs() + ", latestProducerProcessingTimeInMs="
+        + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived=" + isEndOfPushReceived() + ", databaseInfo="
+        + getDatabaseInfo() + '}';
   }
 
   /**
@@ -269,13 +264,10 @@ public class OffsetRecord {
    * will not be printed.
    */
   public String toSimplifiedString() {
-    return "OffsetRecord{" +
-        "localVersionTopicOffset=" + getLocalVersionTopicOffset() +
-        ", latestProducerProcessingTimeInMs=" + getLatestProducerProcessingTimeInMs() +
-        ", isEndOfPushReceived=" + isEndOfPushReceived() +
-        ", upstreamOffset=" + getPartitionUpstreamOffsetString() +
-        ", leaderTopic=" + getLeaderTopic() +
-        '}';
+    return "OffsetRecord{" + "localVersionTopicOffset=" + getLocalVersionTopicOffset()
+        + ", latestProducerProcessingTimeInMs=" + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived="
+        + isEndOfPushReceived() + ", upstreamOffset=" + getPartitionUpstreamOffsetString() + ", leaderTopic="
+        + getLeaderTopic() + '}';
   }
 
   private String getPartitionUpstreamOffsetString() {
@@ -297,16 +289,13 @@ public class OffsetRecord {
     final String producerStatesFieldName = "producerStates";
     StringBuilder sb = new StringBuilder();
     sb.append("OffsetRecord{");
-    for (Schema.Field f : partitionState.getSchema().getFields()) {
+    for (Schema.Field f: partitionState.getSchema().getFields()) {
       if (f.name().equals(producerStatesFieldName)) {
         sb.append("\n" + producerStatesFieldName + ":");
         if (partitionState.producerStates != null) {
           sb.append("{");
           partitionState.producerStates.forEach((charSeq, producerState) -> {
-            sb.append("\n{")
-                .append(GuidUtils.getGuidFromCharSequence(charSeq))
-                .append(":")
-                .append(producerState);
+            sb.append("\n{").append(GuidUtils.getGuidFromCharSequence(charSeq)).append(":").append(producerState);
           });
           sb.append("\n}");
         } else {
@@ -349,11 +338,11 @@ public class OffsetRecord {
     OffsetRecord that = (OffsetRecord) o;
 
     /** N.B.: {@link #partitionState.lastUpdate} intentionally omitted from comparison */
-    return this.partitionState.offset == that.partitionState.offset &&
-        this.partitionState.endOfPush == that.partitionState.endOfPush; // &&
+    return this.partitionState.offset == that.partitionState.offset
+        && this.partitionState.endOfPush == that.partitionState.endOfPush; // &&
     // N.B.: We cannot do a more thorough equality check at this time because it breaks tests.
     // If we actually need the more comprehensive equals, then we'll need to rethink the way we test.
-    //    this.partitionState.producerStates.entrySet().equals(that.partitionState.producerStates.entrySet());
+    // this.partitionState.producerStates.entrySet().equals(that.partitionState.producerStates.entrySet());
   }
 
   @Override

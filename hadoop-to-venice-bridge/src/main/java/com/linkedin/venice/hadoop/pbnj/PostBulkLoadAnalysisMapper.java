@@ -38,7 +38,8 @@ import org.apache.logging.log4j.Logger;
  * You'd better refactor it before using it for Vson input :D
  */
 
-public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRecord>, NullWritable, NullWritable, NullWritable> {
+public class PostBulkLoadAnalysisMapper
+    implements Mapper<AvroWrapper<IndexedRecord>, NullWritable, NullWritable, NullWritable> {
   private static final Logger logger = LogManager.getLogger(PostBulkLoadAnalysisMapper.class);
 
   private static final int NUM_THREADS = 200;
@@ -95,9 +96,9 @@ public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRec
       throw new VeniceException("Async mode not currently supported in PBNJ.");
     }
 
-    this.veniceClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(
-        props.getString(VenicePushJob.VENICE_STORE_NAME_PROP))
-        .setVeniceURL(props.getString(VenicePushJob.PBNJ_ROUTER_URL_PROP)));
+    this.veniceClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(props.getString(VenicePushJob.VENICE_STORE_NAME_PROP))
+            .setVeniceURL(props.getString(VenicePushJob.PBNJ_ROUTER_URL_PROP)));
 
     this.sampler = new Sampler(samplingRatio);
 
@@ -165,7 +166,11 @@ public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRec
   }
 
   @Override
-  public void map(AvroWrapper<IndexedRecord> record, NullWritable value, OutputCollector<NullWritable, NullWritable> output, Reporter reporter) throws IOException {
+  public void map(
+      AvroWrapper<IndexedRecord> record,
+      NullWritable value,
+      OutputCollector<NullWritable, NullWritable> output,
+      Reporter reporter) throws IOException {
     if (failFast) {
       maybePropagateCallbackException();
     }
@@ -204,8 +209,9 @@ public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRec
         } catch (VeniceClientHttpException e) {
           if (timeSlept > REQUEST_TIME_OUT_MS) {
             throw new VeniceException(
-                "Could not successfully complete query because of VeniceClientHttpException even after sleeping a total of " +
-                    REQUEST_TIME_OUT_MS + " in-between requests.", e);
+                "Could not successfully complete query because of VeniceClientHttpException even after sleeping a total of "
+                    + REQUEST_TIME_OUT_MS + " in-between requests.",
+                e);
           }
           Thread.sleep(THROTTLE_SLEEP_TIME_ON_QUOTA_EXCEPTION_MS);
           timeSlept += THROTTLE_SLEEP_TIME_ON_QUOTA_EXCEPTION_MS;
@@ -233,17 +239,18 @@ public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRec
   }
 
   private void logMessageProgress() {
-    logger.info("Good records: " + goodRecords.get() +
-        ",\t Bad records: " + badRecords.get() +
-        ",\t Queried records: " + queriedRecords.get() +
-        ",\t Skipped records: " + skippedRecords.get());
+    logger.info(
+        "Good records: " + goodRecords.get() + ",\t Bad records: " + badRecords.get() + ",\t Queried records: "
+            + queriedRecords.get() + ",\t Skipped records: " + skippedRecords.get());
   }
 
   private static class CompletionTask implements Runnable {
     private final PostBulkLoadAnalysisMapper pbnj;
+
     CompletionTask(PostBulkLoadAnalysisMapper pbnj) {
       this.pbnj = pbnj;
     }
+
     @Override
     public void run() {
       logger.info("Start of " + CompletionTask.class.getSimpleName());
@@ -267,6 +274,7 @@ public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRec
 
   private static class Data {
     private final Object keyDatum, valueDatumFromHdfs, valueFromVenice;
+
     Data(Object keyDatum, Object valueDatumFromHdfs, Object valueFromVenice) {
       this.keyDatum = keyDatum;
       this.valueDatumFromHdfs = valueDatumFromHdfs;
@@ -275,8 +283,8 @@ public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRec
   }
 
   private static void verify(Data data, PostBulkLoadAnalysisMapper pbnj) {
-    if ((null == data.valueDatumFromHdfs && null == data.valueFromVenice) ||
-        (null != data.valueDatumFromHdfs && data.valueDatumFromHdfs.equals(data.valueFromVenice))) {
+    if ((null == data.valueDatumFromHdfs && null == data.valueFromVenice)
+        || (null != data.valueDatumFromHdfs && data.valueDatumFromHdfs.equals(data.valueFromVenice))) {
       // Both null, or both equal
       pbnj.goodRecords.incrementAndGet();
     } else {

@@ -63,8 +63,9 @@ public class ZkAdminTopicMetadataAccessor extends AdminTopicMetadataAccessor {
         Utils.sleep(ZK_UPDATE_RETRY_DELAY_MS);
       }
     }
-    throw new VeniceException("After " + ZK_UPDATE_RETRY + " retries still could not get the admin topic metadata map"
-        + " from Zk with: " + path);
+    throw new VeniceException(
+        "After " + ZK_UPDATE_RETRY + " retries still could not get the admin topic metadata map" + " from Zk with: "
+            + path);
   }
 
   static String getAdminTopicMetadataNodePath(String clusterName) {

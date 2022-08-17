@@ -15,7 +15,7 @@ public class VeniceClientHttpException extends VeniceClientException {
     this.httpStatus = httpStatus;
   }
 
-  public VeniceClientHttpException(int httpStatus){
+  public VeniceClientHttpException(int httpStatus) {
     super(getMessageForHttpStatus(httpStatus));
     this.httpStatus = httpStatus;
   }

@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -11,13 +14,9 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.util.Optional;
+import org.apache.commons.lang.StringUtils;
 import spark.Request;
 import spark.Route;
-
-import org.apache.commons.lang.StringUtils;
-
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
 public class DataRecoveryRoutes extends AbstractRoute {
@@ -29,7 +28,6 @@ public class DataRecoveryRoutes extends AbstractRoute {
 
   public Route dataRecovery(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
-
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         AdminSparkServer.validateParams(request, DATA_RECOVERY.getParams(), admin);
@@ -38,12 +36,12 @@ public class DataRecoveryRoutes extends AbstractRoute {
         int version = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
         String sourceFabric = request.queryParams(SOURCE_FABRIC);
         String destinationFabric = request.queryParams(FABRIC);
-        boolean copyAllVersionConfigs =
-            Utils.parseBooleanFromString(request.queryParams(DATA_RECOVERY_COPY_ALL_VERSION_CONFIGS),
-                DATA_RECOVERY_COPY_ALL_VERSION_CONFIGS);
-        boolean sourceVersionIncluded =
-            Utils.parseBooleanFromString(request.queryParams(SOURCE_FABRIC_VERSION_INCLUDED),
-                SOURCE_FABRIC_VERSION_INCLUDED);
+        boolean copyAllVersionConfigs = Utils.parseBooleanFromString(
+            request.queryParams(DATA_RECOVERY_COPY_ALL_VERSION_CONFIGS),
+            DATA_RECOVERY_COPY_ALL_VERSION_CONFIGS);
+        boolean sourceVersionIncluded = Utils.parseBooleanFromString(
+            request.queryParams(SOURCE_FABRIC_VERSION_INCLUDED),
+            SOURCE_FABRIC_VERSION_INCLUDED);
         Optional<Version> sourceVersion;
         if (sourceVersionIncluded) {
           Version sourceVersionObject = null;
@@ -56,15 +54,20 @@ public class DataRecoveryRoutes extends AbstractRoute {
         } else {
           sourceVersion = Optional.empty();
         }
-        admin.initiateDataRecovery(clusterName, storeName, version, sourceFabric, destinationFabric,
-            copyAllVersionConfigs, sourceVersion);
+        admin.initiateDataRecovery(
+            clusterName,
+            storeName,
+            version,
+            sourceFabric,
+            destinationFabric,
+            copyAllVersionConfigs,
+            sourceVersion);
       }
     };
   }
 
   public Route prepareDataRecovery(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
-
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         AdminSparkServer.validateParams(request, PREPARE_DATA_RECOVERY.getParams(), admin);
@@ -80,7 +83,12 @@ public class DataRecoveryRoutes extends AbstractRoute {
           sourceAmplificationFactor =
               Optional.of(Utils.parseIntFromString(request.queryParams(AMPLIFICATION_FACTOR), AMPLIFICATION_FACTOR));
         }
-        admin.prepareDataRecovery(clusterName, storeName, version, sourceFabric, destinationFabric,
+        admin.prepareDataRecovery(
+            clusterName,
+            storeName,
+            version,
+            sourceFabric,
+            destinationFabric,
             sourceAmplificationFactor);
       }
     };
@@ -88,7 +96,6 @@ public class DataRecoveryRoutes extends AbstractRoute {
 
   public Route isStoreVersionReadyForDataRecovery(Admin admin) {
     return new VeniceRouteHandler<ReadyForDataRecoveryResponse>(ReadyForDataRecoveryResponse.class) {
-
       @Override
       public void internalHandle(Request request, ReadyForDataRecoveryResponse veniceResponse) {
         AdminSparkServer.validateParams(request, IS_STORE_VERSION_READY_FOR_DATA_RECOVERY.getParams(), admin);
@@ -104,9 +111,13 @@ public class DataRecoveryRoutes extends AbstractRoute {
           sourceAmplificationFactor =
               Optional.of(Utils.parseIntFromString(request.queryParams(AMPLIFICATION_FACTOR), AMPLIFICATION_FACTOR));
         }
-        Pair<Boolean, String> checkResult =
-            admin.isStoreVersionReadyForDataRecovery(clusterName, storeName, version, sourceFabric, destinationFabric,
-                sourceAmplificationFactor);
+        Pair<Boolean, String> checkResult = admin.isStoreVersionReadyForDataRecovery(
+            clusterName,
+            storeName,
+            version,
+            sourceFabric,
+            destinationFabric,
+            sourceAmplificationFactor);
         veniceResponse.setReady(checkResult.getFirst());
         veniceResponse.setReason(checkResult.getSecond());
       }

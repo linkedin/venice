@@ -11,10 +11,19 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
  * zk watches.
  */
 public class HelixReadOnlyZKSharedSchemaRepository extends HelixReadOnlySchemaRepository {
-  public HelixReadOnlyZKSharedSchemaRepository(HelixReadOnlyZKSharedSystemStoreRepository storeRepository, ZkClient zkClient,
-      HelixAdapterSerializer adapter, String systemStoreClusterName, int refreshAttemptsForZkReconnect,
+  public HelixReadOnlyZKSharedSchemaRepository(
+      HelixReadOnlyZKSharedSystemStoreRepository storeRepository,
+      ZkClient zkClient,
+      HelixAdapterSerializer adapter,
+      String systemStoreClusterName,
+      int refreshAttemptsForZkReconnect,
       long refreshIntervalForZkReconnectInMs) {
-    super(storeRepository, zkClient, adapter, systemStoreClusterName, refreshAttemptsForZkReconnect,
+    super(
+        storeRepository,
+        zkClient,
+        adapter,
+        systemStoreClusterName,
+        refreshAttemptsForZkReconnect,
         refreshIntervalForZkReconnectInMs);
   }
 }

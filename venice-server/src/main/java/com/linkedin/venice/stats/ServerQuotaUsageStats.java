@@ -10,7 +10,6 @@ import io.tehuti.metrics.stats.Total;
  * for measuring requests and quota rejections for each store
  */
 public class ServerQuotaUsageStats extends AbstractVeniceStats {
-
   private final Sensor requestedQPS; // requested query per second
   private final Sensor requestedKPS; // requested key per second
   private final Sensor rejectedQPS; // rejected query per second
@@ -27,7 +26,7 @@ public class ServerQuotaUsageStats extends AbstractVeniceStats {
   /**
    * @param rcu The number of Read Capacity Units that the allowed request cost
    */
-  public void recordAllowed(long rcu){
+  public void recordAllowed(long rcu) {
     requestedQPS.record(rcu);
     requestedKPS.record(rcu);
   }
@@ -36,7 +35,7 @@ public class ServerQuotaUsageStats extends AbstractVeniceStats {
    *
    * @param rcu The number of Read Capacity Units tha the rejected request would have cost
    */
-  public void recordRejected(long rcu){
+  public void recordRejected(long rcu) {
     requestedQPS.record(rcu);
     requestedKPS.record(rcu);
     rejectedQPS.record(rcu);

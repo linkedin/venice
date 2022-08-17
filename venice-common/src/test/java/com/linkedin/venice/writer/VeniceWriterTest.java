@@ -1,5 +1,8 @@
 package com.linkedin.venice.writer;
 
+import static org.mockito.Mockito.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -45,13 +48,9 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
-
 
 @Test
 public class VeniceWriterTest {
-
   private KafkaBrokerWrapper kafka;
   private TopicManager topicManager;
   private KafkaClientFactory kafkaClientFactory;
@@ -71,7 +70,8 @@ public class VeniceWriterTest {
   }
 
   private void testThreadSafety(
-      int numberOfThreads, java.util.function.Consumer<VeniceWriter<KafkaKey, byte[], byte[]>> veniceWriterTask)
+      int numberOfThreads,
+      java.util.function.Consumer<VeniceWriter<KafkaKey, byte[], byte[]>> veniceWriterTask)
       throws ExecutionException, InterruptedException {
     String topicName = Utils.getUniqueString("topic-for-vw-thread-safety");
     int partitionCount = 1;
@@ -105,7 +105,7 @@ public class VeniceWriterTest {
       ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records;
       do {
         records = consumer.poll(10 * Time.MS_PER_SECOND);
-        for (final ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
+        for (final ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record: records) {
           ProducerMetadata producerMetadata = record.value().producerMetadata;
           int currentSegmentNumber = producerMetadata.segmentNumber;
           int currentSequenceNumber = producerMetadata.messageSequenceNumber;
@@ -128,7 +128,8 @@ public class VeniceWriterTest {
 
   @Test(invocationCount = 3)
   public void testThreadSafetyForPutMessages() throws ExecutionException, InterruptedException {
-    testThreadSafety(100,
+    testThreadSafety(
+        100,
         veniceWriter -> veniceWriter.put(new KafkaKey(MessageType.PUT, "blah".getBytes()), "blah".getBytes(), 1, null));
   }
 
@@ -144,18 +145,26 @@ public class VeniceWriterTest {
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
     String testTopic = "test";
-    VeniceWriter<Object, Object, Object> writer =
-        new VeniceWriter(new VeniceProperties(writerProperties), testTopic, serializer, serializer, serializer,
-            new DefaultVenicePartitioner(), SystemTime.INSTANCE, Optional.empty(), Optional.empty(), () -> mockedProducer);
+    VeniceWriter<Object, Object, Object> writer = new VeniceWriter(
+        new VeniceProperties(writerProperties),
+        testTopic,
+        serializer,
+        serializer,
+        serializer,
+        new DefaultVenicePartitioner(),
+        SystemTime.INSTANCE,
+        Optional.empty(),
+        Optional.empty(),
+        () -> mockedProducer);
     for (int i = 0; i < 1000; i++) {
       writer.put(Integer.toString(i), Integer.toString(i), 1, null);
     }
     ArgumentCaptor<KafkaMessageEnvelope> kafkaMessageEnvelopeArgumentCaptor =
         ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
-    verify(mockedProducer, atLeast(1000)).sendMessage(eq(testTopic), any(),
-        kafkaMessageEnvelopeArgumentCaptor.capture(), anyInt(), any());
+    verify(mockedProducer, atLeast(1000))
+        .sendMessage(eq(testTopic), any(), kafkaMessageEnvelopeArgumentCaptor.capture(), anyInt(), any());
     int segmentNumber = -1;
-    for (KafkaMessageEnvelope envelope : kafkaMessageEnvelopeArgumentCaptor.getAllValues()) {
+    for (KafkaMessageEnvelope envelope: kafkaMessageEnvelopeArgumentCaptor.getAllValues()) {
       if (segmentNumber == -1) {
         segmentNumber = envelope.producerMetadata.segmentNumber;
       } else {
@@ -177,76 +186,96 @@ public class VeniceWriterTest {
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
     String testTopic = "test";
-    VeniceWriter<Object, Object, Object> writer =
-        new VeniceWriter(new VeniceProperties(writerProperties), testTopic, serializer, serializer, serializer,
-            new DefaultVenicePartitioner(), SystemTime.INSTANCE, Optional.empty(), Optional.empty(), () -> mockedProducer);
+    VeniceWriter<Object, Object, Object> writer = new VeniceWriter(
+        new VeniceProperties(writerProperties),
+        testTopic,
+        serializer,
+        serializer,
+        serializer,
+        new DefaultVenicePartitioner(),
+        SystemTime.INSTANCE,
+        Optional.empty(),
+        Optional.empty(),
+        () -> mockedProducer);
 
-    //verify the new veniceWriter API's are able to encode the A/A metadat info correctly.
+    // verify the new veniceWriter API's are able to encode the A/A metadat info correctly.
     long ctime = System.currentTimeMillis();
-    ByteBuffer replicationMetadata = ByteBuffer.wrap(new byte[]{0xa, 0xb});
+    ByteBuffer replicationMetadata = ByteBuffer.wrap(new byte[] { 0xa, 0xb });
     PutMetadata putMetadata = new PutMetadata(1, replicationMetadata);
     DeleteMetadata deleteMetadata = new DeleteMetadata(1, 1, replicationMetadata);
 
-    writer.put(Integer.toString(1), Integer.toString(1), 1, null, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER, ctime, Optional.empty());
-    writer.put(Integer.toString(2), Integer.toString(2), 1, null, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER, VeniceWriter.APP_DEFAULT_LOGICAL_TS, Optional.ofNullable(putMetadata));
+    writer.put(
+        Integer.toString(1),
+        Integer.toString(1),
+        1,
+        null,
+        VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
+        ctime,
+        Optional.empty());
+    writer.put(
+        Integer.toString(2),
+        Integer.toString(2),
+        1,
+        null,
+        VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
+        VeniceWriter.APP_DEFAULT_LOGICAL_TS,
+        Optional.ofNullable(putMetadata));
     writer.update(Integer.toString(3), Integer.toString(2), 1, 1, null, ctime);
     writer.delete(Integer.toString(4), null, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER, ctime);
     writer.delete(Integer.toString(5), null, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER, deleteMetadata);
     writer.put(Integer.toString(6), Integer.toString(1), 1, null, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER);
 
-
     ArgumentCaptor<KafkaMessageEnvelope> kafkaMessageEnvelopeArgumentCaptor =
         ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
-    verify(mockedProducer, atLeast(2)).sendMessage(eq(testTopic), any(),
-        kafkaMessageEnvelopeArgumentCaptor.capture(), anyInt(), any());
+    verify(mockedProducer, atLeast(2))
+        .sendMessage(eq(testTopic), any(), kafkaMessageEnvelopeArgumentCaptor.capture(), anyInt(), any());
 
-    //first one will be control message SOS, there should not be any aa metadata.
+    // first one will be control message SOS, there should not be any aa metadata.
     KafkaMessageEnvelope value0 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(0);
     Assert.assertEquals(value0.producerMetadata.logicalTimestamp, VeniceWriter.VENICE_DEFAULT_LOGICAL_TS);
 
-    //verify timestamp is encoded correctly.
+    // verify timestamp is encoded correctly.
     KafkaMessageEnvelope value1 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(1);
     KafkaMessageEnvelope value3 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(3);
     KafkaMessageEnvelope value4 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(4);
-    for (KafkaMessageEnvelope kme : Arrays.asList(value1, value3, value4)) {
+    for (KafkaMessageEnvelope kme: Arrays.asList(value1, value3, value4)) {
       Assert.assertEquals(kme.producerMetadata.logicalTimestamp, ctime);
     }
 
-    //verify default values for replicationMetadata are written correctly
-    Put put = (Put)value1.payloadUnion;
+    // verify default values for replicationMetadata are written correctly
+    Put put = (Put) value1.payloadUnion;
     Assert.assertEquals(put.schemaId, 1);
     Assert.assertEquals(put.replicationMetadataVersionId, VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID);
     Assert.assertEquals(put.replicationMetadataPayload, ByteBuffer.wrap(new byte[0]));
 
-    Delete delete = (Delete)value4.payloadUnion;
+    Delete delete = (Delete) value4.payloadUnion;
     Assert.assertEquals(delete.schemaId, VeniceWriter.VENICE_DEFAULT_VALUE_SCHEMA_ID);
     Assert.assertEquals(delete.replicationMetadataVersionId, VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID);
     Assert.assertEquals(delete.replicationMetadataPayload, ByteBuffer.wrap(new byte[0]));
 
-    //verify replicationMetadata is encoded correctly for Put.
+    // verify replicationMetadata is encoded correctly for Put.
     KafkaMessageEnvelope value2 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(2);
     Assert.assertEquals(value2.messageType, MessageType.PUT.getValue());
-    put = (Put)value2.payloadUnion;
+    put = (Put) value2.payloadUnion;
     Assert.assertEquals(put.schemaId, 1);
     Assert.assertEquals(put.replicationMetadataVersionId, 1);
-    Assert.assertEquals(put.replicationMetadataPayload, ByteBuffer.wrap(new byte[]{0xa, 0xb}));
+    Assert.assertEquals(put.replicationMetadataPayload, ByteBuffer.wrap(new byte[] { 0xa, 0xb }));
     Assert.assertEquals(value2.producerMetadata.logicalTimestamp, VeniceWriter.APP_DEFAULT_LOGICAL_TS);
 
-    //verify replicationMetadata is encoded correctly for Delete.
+    // verify replicationMetadata is encoded correctly for Delete.
     KafkaMessageEnvelope value5 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(5);
     Assert.assertEquals(value5.messageType, MessageType.DELETE.getValue());
-    delete = (Delete)value5.payloadUnion;
+    delete = (Delete) value5.payloadUnion;
     Assert.assertEquals(delete.schemaId, 1);
     Assert.assertEquals(delete.replicationMetadataVersionId, 1);
-    Assert.assertEquals(delete.replicationMetadataPayload, ByteBuffer.wrap(new byte[]{0xa, 0xb}));
+    Assert.assertEquals(delete.replicationMetadataPayload, ByteBuffer.wrap(new byte[] { 0xa, 0xb }));
     Assert.assertEquals(value5.producerMetadata.logicalTimestamp, VeniceWriter.APP_DEFAULT_LOGICAL_TS);
 
-    //verify default logical_ts is encoded correctly
+    // verify default logical_ts is encoded correctly
     KafkaMessageEnvelope value6 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(6);
     Assert.assertEquals(value6.messageType, MessageType.PUT.getValue());
     Assert.assertEquals(value6.producerMetadata.logicalTimestamp, VeniceWriter.APP_DEFAULT_LOGICAL_TS);
   }
-
 
   @Test(timeOut = 30000)
   public void testProducerClose() {
@@ -283,7 +312,9 @@ public class VeniceWriterTest {
       try {
         future.get();
       } catch (ExecutionException exception) {
-        assertEquals(exception.getCause().getMessage(), "Got an error while trying to produce message into Kafka. Topic: 'topic', partition: null");
+        assertEquals(
+            exception.getCause().getMessage(),
+            "Got an error while trying to produce message into Kafka. Topic: 'topic', partition: null");
       } catch (Exception e) {
         fail(" Should not throw other types of exception", e);
       }

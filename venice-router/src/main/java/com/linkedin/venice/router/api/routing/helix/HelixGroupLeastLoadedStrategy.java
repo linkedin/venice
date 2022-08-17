@@ -41,20 +41,22 @@ public class HelixGroupLeastLoadedStrategy implements HelixGroupSelectionStrateg
   @Override
   public int selectGroup(long requestId, int groupCount) {
     if (groupCount > MAX_ALLOWED_GROUP || groupCount <= 0) {
-      throw new VeniceException("The valid group num must fail into this range: [1, " + MAX_ALLOWED_GROUP + "], but received: " + groupCount);
+      throw new VeniceException(
+          "The valid group num must fail into this range: [1, " + MAX_ALLOWED_GROUP + "], but received: " + groupCount);
     }
     this.currentGroupCount = groupCount;
     long smallestCounter = Integer.MAX_VALUE;
     int leastLoadedGroup = 0;
-    int startGroupId = (int)(requestId % groupCount);
+    int startGroupId = (int) (requestId % groupCount);
     /**
      * The modification to the group counters should be synchronized to be accurate.
      * If there is a perf issue with this approach, sacrificing accuracy for perf is acceptable.
      */
     synchronized (this) {
       if (requestTimeoutFutureMap.containsKey(requestId)) {
-        throw new VeniceException("One request should at most select one group, but request with request id: " + requestId
-            + " has invoked this function more than once");
+        throw new VeniceException(
+            "One request should at most select one group, but request with request id: " + requestId
+                + " has invoked this function more than once");
       }
       for (int i = 0; i < groupCount; ++i) {
         int currentGroup = (i + startGroupId) % groupCount;
@@ -69,11 +71,14 @@ public class HelixGroupLeastLoadedStrategy implements HelixGroupSelectionStrateg
        * Setting up timeout future for this request since it is possible in some situation, {@link #finishRequest} may
        * not be invoked, and without timeout, the group counter will be leaking.
        */
-      requestTimeoutFutureMap.put(requestId,
-          new Pair<>(leastLoadedGroup,
-              timeoutProcessor.schedule( () -> timeoutRequest(requestId, finalLeastLoadedGroup, false), timeoutInMS, TimeUnit.MILLISECONDS)
-          )
-      );
+      requestTimeoutFutureMap.put(
+          requestId,
+          new Pair<>(
+              leastLoadedGroup,
+              timeoutProcessor.schedule(
+                  () -> timeoutRequest(requestId, finalLeastLoadedGroup, false),
+                  timeoutInMS,
+                  TimeUnit.MILLISECONDS)));
 
       ++counters[leastLoadedGroup];
     }
@@ -91,7 +96,9 @@ public class HelixGroupLeastLoadedStrategy implements HelixGroupSelectionStrateg
    */
   private void timeoutRequest(long requestId, int groupId, boolean cancelTimeoutFuture) {
     if (groupId >= MAX_ALLOWED_GROUP || groupId < 0) {
-      throw new VeniceException("The allowed group id must fail into this range: [0, " + (MAX_ALLOWED_GROUP - 1) + "], but received: " + groupId);
+      throw new VeniceException(
+          "The allowed group id must fail into this range: [0, " + (MAX_ALLOWED_GROUP - 1) + "], but received: "
+              + groupId);
     }
     synchronized (this) {
       Pair<Integer, TimeoutProcessor.TimeoutFuture> timeoutFuturePair = requestTimeoutFutureMap.get(requestId);
@@ -102,18 +109,22 @@ public class HelixGroupLeastLoadedStrategy implements HelixGroupSelectionStrateg
         return;
       }
       if (groupId != timeoutFuturePair.getFirst()) {
-        throw new VeniceException("Group id for request with id: " + requestId + " should be: " + timeoutFuturePair.getFirst() + ", but received: " + groupId);
+        throw new VeniceException(
+            "Group id for request with id: " + requestId + " should be: " + timeoutFuturePair.getFirst()
+                + ", but received: " + groupId);
       }
       if (--counters[groupId] < 0) {
         counters[groupId] = 0;
-        throw new VeniceException("The counter for group: " + groupId + " became negative, something wrong happened, will reset it to be 0.");
+        throw new VeniceException(
+            "The counter for group: " + groupId + " became negative, something wrong happened, will reset it to be 0.");
       }
       if (cancelTimeoutFuture) {
         // Cancel the timeout future
         timeoutFuturePair.getSecond().cancel();
       } else {
-        LOGGER.info("Request with id: " + requestId + " has timed out with threshold: " + timeoutInMS +
-            "ms, and the counter of group: " + groupId + " will be reset for this request");
+        LOGGER.info(
+            "Request with id: " + requestId + " has timed out with threshold: " + timeoutInMS
+                + "ms, and the counter of group: " + groupId + " will be reset for this request");
       }
       requestTimeoutFutureMap.remove(requestId);
     }

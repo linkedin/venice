@@ -37,7 +37,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class PartitionStatusOnlineInstanceFinder
     implements PartitionStatusListener, OnlineInstanceFinder, VeniceResource, IZkChildListener {
-
   private static final Logger logger = LogManager.getLogger(PartitionStatusOnlineInstanceFinder.class);
   private final OfflinePushAccessor offlinePushAccessor;
   private final RoutingDataRepository routingDataRepository;
@@ -48,8 +47,10 @@ public class PartitionStatusOnlineInstanceFinder
   private final int retryStoreRefreshIntervalInMs = 5000;
   private final int retryStoreRefreshAttempt = 10;
 
-  public PartitionStatusOnlineInstanceFinder(ReadOnlyStoreRepository metadataRepo,
-      OfflinePushAccessor offlinePushAccessor, RoutingDataRepository routingDataRepository) {
+  public PartitionStatusOnlineInstanceFinder(
+      ReadOnlyStoreRepository metadataRepo,
+      OfflinePushAccessor offlinePushAccessor,
+      RoutingDataRepository routingDataRepository) {
     this.metadataRepo = metadataRepo;
     this.offlinePushAccessor = offlinePushAccessor;
     this.routingDataRepository = routingDataRepository;
@@ -59,21 +60,28 @@ public class PartitionStatusOnlineInstanceFinder
 
   @Override
   public synchronized void onPartitionStatusChange(String kafkaTopic, ReadOnlyPartitionStatus partitionStatus) {
-    partitionStatus.getReplicaStatuses().forEach(replicaStatus ->
-        logger.info(String.format("instance: %s, status: %s. \n", replicaStatus.getInstanceId(), replicaStatus.getCurrentStatus())));
+    partitionStatus.getReplicaStatuses()
+        .forEach(
+            replicaStatus -> logger.info(
+                String.format(
+                    "instance: %s, status: %s. \n",
+                    replicaStatus.getInstanceId(),
+                    replicaStatus.getCurrentStatus())));
 
     OfflinePushStatus offlinePushStatus = topicToResourceStatus.get(kafkaTopic);
-    if (offlinePushStatus == null ) {
+    if (offlinePushStatus == null) {
       // have not yet received partition status for this topic yet. return;
-      logger.info("Instance finder received unknown partition status notification." +
-          " Topic: " + kafkaTopic + ", Partition id: " + partitionStatus.getPartitionId() + ". Will ignore.");
+      logger.info(
+          "Instance finder received unknown partition status notification." + " Topic: " + kafkaTopic
+              + ", Partition id: " + partitionStatus.getPartitionId() + ". Will ignore.");
       return;
     }
 
     if (!routingDataRepository.containsKafkaTopic(kafkaTopic)) {
-      logger.warn("Instance finder received partition status notification for topic unknown to RoutingDataRepository." +
-          " Topic: " + kafkaTopic + ", Partition id: " + partitionStatus.getPartitionId());
-      // ResourceAssignment and this class maintain their own state, and so things can get out of order.  This forces the
+      logger.warn(
+          "Instance finder received partition status notification for topic unknown to RoutingDataRepository."
+              + " Topic: " + kafkaTopic + ", Partition id: " + partitionStatus.getPartitionId());
+      // ResourceAssignment and this class maintain their own state, and so things can get out of order. This forces the
       // resourceAssignment path to reconcile
       routingDataRepository.refreshRoutingDataForResource(kafkaTopic);
     }
@@ -81,7 +89,9 @@ public class PartitionStatusOnlineInstanceFinder
     try {
       if (!offlinePushStatus.getCurrentStatus().isTerminal()) {
         Pair<ExecutionStatus, Optional<String>> status = PushStatusDecider.getDecider(offlinePushStatus.getStrategy())
-            .checkPushStatusAndDetailsByPartitionsStatus(offlinePushStatus, routingDataRepository.getPartitionAssignments(kafkaTopic));
+            .checkPushStatusAndDetailsByPartitionsStatus(
+                offlinePushStatus,
+                routingDataRepository.getPartitionAssignments(kafkaTopic));
         offlinePushStatus.updateStatus(status.getFirst());
       }
     } catch (VeniceNoHelixResourceException e) {
@@ -110,20 +120,26 @@ public class PartitionStatusOnlineInstanceFinder
   public List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId) {
     String kafkaTopic = partitionAssignment.getTopic();
     // Get the listing, but if we don't have it, try and refresh the information from zk
-    OfflinePushStatus offlinePushStatus = topicToResourceStatus.computeIfAbsent(kafkaTopic, k -> getPushStatusFromZk(kafkaTopic));
+    OfflinePushStatus offlinePushStatus =
+        topicToResourceStatus.computeIfAbsent(kafkaTopic, k -> getPushStatusFromZk(kafkaTopic));
     if (offlinePushStatus == null || partitionId >= partitionAssignment.getExpectedNumberOfPartitions()) {
       // have not received partition info related to this topic. Return empty list
-      logger.warn("Unknown partition id, partitionId=" + partitionId +
-          ", partitionStatusCount=" + (offlinePushStatus == null ? 0 : partitionAssignment.getExpectedNumberOfPartitions()) +
-          ", partitionCount=" + routingDataRepository.getNumberOfPartitions(kafkaTopic));
+      logger.warn(
+          "Unknown partition id, partitionId=" + partitionId + ", partitionStatusCount="
+              + (offlinePushStatus == null ? 0 : partitionAssignment.getExpectedNumberOfPartitions())
+              + ", partitionCount=" + routingDataRepository.getNumberOfPartitions(kafkaTopic));
       return Collections.emptyList();
     }
 
     PartitionStatus partitionStatus = offlinePushStatus.getPartitionStatus(partitionId);
 
     if (partitionStatus == null) {
-      logger.warn(String.format("offline push status is incomplete. topic: %s, "
-          + "partition: %d is null. Try recovering it by reading from the ZK.", kafkaTopic, partitionId));
+      logger.warn(
+          String.format(
+              "offline push status is incomplete. topic: %s, "
+                  + "partition: %d is null. Try recovering it by reading from the ZK.",
+              kafkaTopic,
+              partitionId));
       OfflinePushStatus refreshedStatus = getPushStatusFromZk(kafkaTopic);
       topicToResourceStatus.put(kafkaTopic, refreshedStatus);
       partitionStatus = refreshedStatus.getPartitionStatus(partitionId);
@@ -146,19 +162,26 @@ public class PartitionStatusOnlineInstanceFinder
     }
 
     if (partitionId != offlinePushStatus.getPartitionStatus(partitionId).getPartitionId()) {
-      logger.warn("Corrupted partition status list causing " + PartitionStatusOnlineInstanceFinder.class.getSimpleName()
-          + " to retrieve the wrong PartitionStatus for partition: " + partitionId + " for resource: " + kafkaTopic);
+      logger.warn(
+          "Corrupted partition status list causing " + PartitionStatusOnlineInstanceFinder.class.getSimpleName()
+              + " to retrieve the wrong PartitionStatus for partition: " + partitionId + " for resource: "
+              + kafkaTopic);
       throw new VeniceNoHelixResourceException(kafkaTopic);
     }
 
-    return getAllInstances(kafkaTopic, partitionId).entrySet().stream()
-        .flatMap(e -> e.getValue().stream()
-            .map(instance -> {
-              ExecutionStatus executionStatus = PushStatusDecider.getReplicaCurrentStatus(
-                  offlinePushStatus.getPartitionStatus(partitionId).getReplicaHistoricStatusList(instance.getNodeId()));
-              return new ReplicaState(partitionId, instance.getNodeId(), e.getKey(), executionStatus.toString(),
-                  executionStatus.equals(ExecutionStatus.COMPLETED));
-            })).collect(Collectors.toList());
+    return getAllInstances(kafkaTopic, partitionId).entrySet()
+        .stream()
+        .flatMap(e -> e.getValue().stream().map(instance -> {
+          ExecutionStatus executionStatus = PushStatusDecider.getReplicaCurrentStatus(
+              offlinePushStatus.getPartitionStatus(partitionId).getReplicaHistoricStatusList(instance.getNodeId()));
+          return new ReplicaState(
+              partitionId,
+              instance.getNodeId(),
+              e.getKey(),
+              executionStatus.toString(),
+              executionStatus.equals(ExecutionStatus.COMPLETED));
+        }))
+        .collect(Collectors.toList());
   }
 
   @Override
@@ -232,9 +255,7 @@ public class PartitionStatusOnlineInstanceFinder
       return version.get().isLeaderFollowerModelEnabled();
     }
 
-    return version
-        .map(Version::isLeaderFollowerModelEnabled)
-        .orElse(false);
+    return version.map(Version::isLeaderFollowerModelEnabled).orElse(false);
   }
 
   @Override

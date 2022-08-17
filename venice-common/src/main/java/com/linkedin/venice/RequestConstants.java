@@ -10,5 +10,6 @@ public class RequestConstants {
   public static final String DEFAULT_FORMAT = STRING_FORMAT;
   public static final String DELAY_EXECUTION = "delay_execution";
 
-  private RequestConstants(){};
+  private RequestConstants() {
+  };
 }

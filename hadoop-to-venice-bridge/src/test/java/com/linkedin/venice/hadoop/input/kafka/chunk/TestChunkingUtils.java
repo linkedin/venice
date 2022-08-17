@@ -6,7 +6,6 @@ import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 
 
 public class TestChunkingUtils {
-
   private TestChunkingUtils() {
     // Util class
   }

@@ -2,7 +2,6 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.common.VeniceSystemStoreType;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
@@ -43,14 +42,23 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
   private final int refreshAttemptsForZkReconnect;
   private final long refreshIntervalForZkReconnectInMs;
 
-  public HelixReadOnlyStoreConfigRepository(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
-      int refreshAttemptsForZkReconnect, long refreshIntervalForZkReconnectInMs) {
-    this(zkClient, new ZkStoreConfigAccessor(zkClient, adapterSerializer, Optional.empty()), refreshAttemptsForZkReconnect,
+  public HelixReadOnlyStoreConfigRepository(
+      ZkClient zkClient,
+      HelixAdapterSerializer adapterSerializer,
+      int refreshAttemptsForZkReconnect,
+      long refreshIntervalForZkReconnectInMs) {
+    this(
+        zkClient,
+        new ZkStoreConfigAccessor(zkClient, adapterSerializer, Optional.empty()),
+        refreshAttemptsForZkReconnect,
         refreshIntervalForZkReconnectInMs);
   }
 
-  public HelixReadOnlyStoreConfigRepository(ZkClient zkClient, ZkStoreConfigAccessor accessor,
-      int refreshAttemptsForZkReconnect, long refreshIntervalForZkReconnectInMs) {
+  public HelixReadOnlyStoreConfigRepository(
+      ZkClient zkClient,
+      ZkStoreConfigAccessor accessor,
+      int refreshAttemptsForZkReconnect,
+      long refreshIntervalForZkReconnectInMs) {
     this.zkClient = zkClient;
     this.accessor = accessor;
     this.storeConfigMap = new AtomicReference<>(new HashMap<>());
@@ -59,18 +67,18 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
     this.refreshAttemptsForZkReconnect = refreshAttemptsForZkReconnect;
     this.refreshIntervalForZkReconnectInMs = refreshIntervalForZkReconnectInMs;
     // This repository already retry on getChildren, so do not need extra retry in listener.
-    zkStateListener =
-        new CachedResourceZkStateListener(this);
+    zkStateListener = new CachedResourceZkStateListener(this);
   }
 
   @Override
   public void refresh() {
     logger.info("Loading all store configs from zk.");
     accessor.subscribeStoreConfigAddedOrDeletedListener(storeConfigAddedOrDeletedListener);
-    List<StoreConfig> configList = accessor.getAllStoreConfigs(refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
+    List<StoreConfig> configList =
+        accessor.getAllStoreConfigs(refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
     logger.info("Found " + configList.size() + " store configs.");
     Map<String, StoreConfig> configMap = new HashMap<>();
-    for (StoreConfig config : configList) {
+    for (StoreConfig config: configList) {
       configMap.put(config.getStoreName(), config);
       accessor.subscribeStoreConfigDataChangedListener(config.getStoreName(), storeConfigChangedListener);
     }
@@ -83,7 +91,7 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
   public void clear() {
     logger.info("Clearing all store configs in local");
     accessor.unsubscribeStoreConfigAddedOrDeletedListener(storeConfigAddedOrDeletedListener);
-    for (String storeName : storeConfigMap.get().keySet()) {
+    for (String storeName: storeConfigMap.get().keySet()) {
       accessor.unsubscribeStoreConfigDataChangedListener(storeName, storeConfigChangedListener);
     }
     this.storeConfigMap.set(Collections.emptyMap());
@@ -138,8 +146,7 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
 
   protected class StoreConfigAddedOrDeletedChangedListener implements IZkChildListener {
     @Override
-    public void handleChildChange(String parentPath, List<String> currentChildren)
-        throws Exception {
+    public void handleChildChange(String parentPath, List<String> currentChildren) throws Exception {
       synchronized (storeConfigMap) {
         Map<String, StoreConfig> map = new HashMap<>(storeConfigMap.get());
         List<String> newStores =
@@ -147,17 +154,18 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
 
         Set<String> deletedStores = new HashSet<>(map.keySet());
         currentChildren.forEach(deletedStores::remove);
-        logger.info("Store configs list is changed. " + newStores.size() + " new configs. And will delete "
-            + deletedStores.size() + " configs.");
-        //New added store configs
+        logger.info(
+            "Store configs list is changed. " + newStores.size() + " new configs. And will delete "
+                + deletedStores.size() + " configs.");
+        // New added store configs
         List<StoreConfig> newConfigs = accessor.getStoreConfigs(newStores);
-        for (StoreConfig config : newConfigs) {
+        for (StoreConfig config: newConfigs) {
           map.put(config.getStoreName(), config);
           accessor.subscribeStoreConfigDataChangedListener(config.getStoreName(), storeConfigChangedListener);
         }
 
         // Deleted store configs
-        for (String deletedStore : deletedStores) {
+        for (String deletedStore: deletedStores) {
           map.remove(deletedStore);
           accessor.unsubscribeStoreConfigDataChangedListener(deletedStore, storeConfigChangedListener);
         }
@@ -167,10 +175,8 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
   }
 
   protected class StoreConfigChangedListener implements IZkDataListener {
-
     @Override
-    public void handleDataChange(String dataPath, Object data)
-        throws Exception {
+    public void handleDataChange(String dataPath, Object data) throws Exception {
       if (!(data instanceof StoreConfig)) {
         throw new VeniceException(
             "Invalid data from zk notification. Required: StoreConfig, but get: " + data.getClass().getName());
@@ -184,9 +190,8 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
     }
 
     @Override
-    public void handleDataDeleted(String dataPath)
-        throws Exception {
-      //ignore, already been handled in handleChildChange
+    public void handleDataDeleted(String dataPath) throws Exception {
+      // ignore, already been handled in handleChildChange
     }
   }
 }

@@ -6,11 +6,16 @@ import org.apache.avro.generic.GenericRecord;
 
 
 public interface ReadComputeOperator {
-  void compute(int computeRequestVersion, ComputeOperation op, GenericRecord valueRecord, GenericRecord resultRecord,
-      Map<String, String> computationErrorMap, Map<String, Object> context);
+  void compute(
+      int computeRequestVersion,
+      ComputeOperation op,
+      GenericRecord valueRecord,
+      GenericRecord resultRecord,
+      Map<String, String> computationErrorMap,
+      Map<String, Object> context);
 
   default void putResult(GenericRecord record, String field, Object result) {
-      record.put(field, result);
+    record.put(field, result);
   }
 
   default void putDefaultResult(GenericRecord record, String field) {

@@ -12,7 +12,6 @@ import java.util.concurrent.TimeUnit;
  * desired, they can be requested and considered on a case-by-base basis.
  */
 public abstract class VeniceStoreConsumer<K, V> {
-
   protected final Properties properties;
 
   /**
@@ -30,14 +29,16 @@ public abstract class VeniceStoreConsumer<K, V> {
    * This is a synchronous commits and will block until either the commit succeeds or an unrecoverable error is
    * encountered (in which case it is thrown to the caller).
    */
-  public void commitSync() {}
+  public void commitSync() {
+  }
 
   /**
    * Close the consumer, waiting for up to the default timeout of 30 seconds for any needed cleanup.
    * If auto-commit is enabled, this will commit the current offsets if possible within the default
    * timeout. See {@link #close(long, TimeUnit)} for details.
    */
-  public void close() {}
+  public void close() {
+  }
 
   /**
    * Tries to close the consumer cleanly within the specified timeout. This method waits up to
@@ -46,5 +47,6 @@ public abstract class VeniceStoreConsumer<K, V> {
    * timeout. If the consumer is unable to complete offset commits and gracefully leave the group
    * before the timeout expires, the consumer is force closed.
    */
-  public void close(long timeout, TimeUnit unit) {}
+  public void close(long timeout, TimeUnit unit) {
+  }
 }

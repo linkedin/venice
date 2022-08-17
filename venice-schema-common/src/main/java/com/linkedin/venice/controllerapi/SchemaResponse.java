@@ -2,7 +2,9 @@ package com.linkedin.venice.controllerapi;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
-public class SchemaResponse extends ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */
+
+public class SchemaResponse
+    extends ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */
   private int id;
   /**
    * An uninitialized primitive defaults to 0, which could cause the Venice Samza System producer starts sending
@@ -37,8 +39,7 @@ public class SchemaResponse extends ControllerResponse { /* Uses Json Reflective
 
   @JsonIgnore
   public String toString() {
-    return SchemaResponse.class.getSimpleName() + "(id: " + id +
-        ", schemaStr: " + schemaStr +
-        ", super: " + super.toString() + ")";
+    return SchemaResponse.class.getSimpleName() + "(id: " + id + ", schemaStr: " + schemaStr + ", super: "
+        + super.toString() + ")";
   }
 }

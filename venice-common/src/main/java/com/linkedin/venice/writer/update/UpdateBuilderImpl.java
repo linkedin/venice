@@ -16,7 +16,6 @@ import org.apache.commons.lang3.Validate;
 
 
 public class UpdateBuilderImpl implements UpdateBuilder {
-
   private final GenericRecord updateRecord;
   private final Map<String, List<?>> toAddElementsByFieldName;
   private final Map<String, List<?>> toRemoveElementsByFieldName;
@@ -40,8 +39,8 @@ public class UpdateBuilderImpl implements UpdateBuilder {
   }
 
   private void validateUpdateSchema(Schema updateSchema) {
-    if (updateSchema.getType() != Schema.Type.RECORD ||
-        !updateSchema.getName().endsWith(WriteComputeConstants.WRITE_COMPUTE_RECORD_SCHEMA_SUFFIX)) {
+    if (updateSchema.getType() != Schema.Type.RECORD
+        || !updateSchema.getName().endsWith(WriteComputeConstants.WRITE_COMPUTE_RECORD_SCHEMA_SUFFIX)) {
       throw new IllegalArgumentException("Got invalid record-update schema: " + updateSchema);
     }
   }
@@ -101,10 +100,11 @@ public class UpdateBuilderImpl implements UpdateBuilder {
   @Override
   public GenericRecord build() {
     if (!anyUpdate) {
-      throw new IllegalStateException("No update has been specified. Please use setter methods to specify how to partially "
-          + "update a value record before calling this build method.");
+      throw new IllegalStateException(
+          "No update has been specified. Please use setter methods to specify how to partially "
+              + "update a value record before calling this build method.");
     }
-    for (Schema.Field updateField : updateRecord.getSchema().getFields()) {
+    for (Schema.Field updateField: updateRecord.getSchema().getFields()) {
       final String fieldName = updateField.name();
       if (updateRecord.get(fieldName) != null) {
         continue; // This field already has a new value.
@@ -113,8 +113,10 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     }
     Exception serializationException = validateUpdateRecordIsSerializable(updateRecord).orElse(null);
     if (serializationException != null) {
-      throw new VeniceException("The built partial-update record failed to be serialized. It could be caused by setting "
-          + "field value(s) with wrong type(s). Built record: " + updateRecord + ", and serialization exception: ", serializationException);
+      throw new VeniceException(
+          "The built partial-update record failed to be serialized. It could be caused by setting "
+              + "field value(s) with wrong type(s). Built record: " + updateRecord + ", and serialization exception: ",
+          serializationException);
     }
     return updateRecord;
   }
@@ -143,7 +145,8 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     switch (valueFieldType) {
       case ARRAY:
         List<?> toAddElements = toAddElementsByFieldName.getOrDefault(updateField.name(), Collections.emptyList());
-        List<?> toRemoveElements = toRemoveElementsByFieldName.getOrDefault(updateField.name(), Collections.emptyList());
+        List<?> toRemoveElements =
+            toRemoveElementsByFieldName.getOrDefault(updateField.name(), Collections.emptyList());
         if (toAddElements.isEmpty() && toRemoveElements.isEmpty()) {
           return createNoOpRecord(updateField); // No update on this List field.
         }
@@ -154,7 +157,7 @@ public class UpdateBuilderImpl implements UpdateBuilder {
         Map<String, ?> toAddEntries = toAddEntriesByFieldName.getOrDefault(updateField.name(), Collections.emptyMap());
         removeSameKeys(toAddEntries, toRemoveKeys);
         if (toRemoveKeys.isEmpty() && toAddEntries.isEmpty()) {
-          return createNoOpRecord(updateField);  // No update on this Map field.
+          return createNoOpRecord(updateField); // No update on this Map field.
         }
         return createMapMergeRecord(updateField, toAddEntries, toRemoveKeys);
 
@@ -168,14 +171,14 @@ public class UpdateBuilderImpl implements UpdateBuilder {
    */
   private void removeSameKeys(Map<String, ?> toAddEntries, List<String> toRemoveKeys) {
     List<String> remainingToRemoveKeys = new LinkedList<>();
-    for (String toRemoveKey : toRemoveKeys) {
+    for (String toRemoveKey: toRemoveKeys) {
       if (toAddEntries.remove(toRemoveKey) == null) {
         remainingToRemoveKeys.add(toRemoveKey);
       }
     }
     if (remainingToRemoveKeys.size() < toRemoveKeys.size()) {
       toRemoveKeys.clear();
-      toRemoveKeys.addAll( remainingToRemoveKeys);
+      toRemoveKeys.addAll(remainingToRemoveKeys);
     }
   }
 
@@ -240,7 +243,10 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     return listMergeRecord;
   }
 
-  private GenericRecord createMapMergeRecord(Schema.Field updateField, Map<String, ?> toAdd, List<String> toRemoveKeys) {
+  private GenericRecord createMapMergeRecord(
+      Schema.Field updateField,
+      Map<String, ?> toAdd,
+      List<String> toRemoveKeys) {
     Schema mapMergeRecordSchema = updateField.schema().getTypes().get(1);
     GenericRecord mapMergeRecord = new GenericData.Record(mapMergeRecordSchema);
     mapMergeRecord.put(WriteComputeConstants.MAP_UNION, toAdd);

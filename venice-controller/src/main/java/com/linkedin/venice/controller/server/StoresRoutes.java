@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
@@ -48,9 +51,6 @@ import org.apache.avro.Schema;
 import spark.Request;
 import spark.Route;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
-
 
 public class StoresRoutes extends AbstractRoute {
   public StoresRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
@@ -73,10 +73,14 @@ public class StoresRoutes extends AbstractRoute {
         String includeSystemStores = request.queryParams(INCLUDE_SYSTEM_STORES);
         // If the param is not provided, the default is to include them
         boolean excludeSystemStores = (null != includeSystemStores && !Boolean.parseBoolean(includeSystemStores));
-        Optional<String> storeConfigNameFilter = Optional.ofNullable(request.queryParamOrDefault(STORE_CONFIG_NAME_FILTER, null));
-        Optional<String> storeConfigValueFilter = Optional.ofNullable(request.queryParamOrDefault(STORE_CONFIG_VALUE_FILTER, null));
-        if (storeConfigNameFilter.isPresent()^storeConfigValueFilter.isPresent()) {
-          throw new VeniceException("Missing parameter: " + (storeConfigNameFilter.isPresent() ? "store_config_value_filter" : "store_config_name_filter"));
+        Optional<String> storeConfigNameFilter =
+            Optional.ofNullable(request.queryParamOrDefault(STORE_CONFIG_NAME_FILTER, null));
+        Optional<String> storeConfigValueFilter =
+            Optional.ofNullable(request.queryParamOrDefault(STORE_CONFIG_VALUE_FILTER, null));
+        if (storeConfigNameFilter.isPresent() ^ storeConfigValueFilter.isPresent()) {
+          throw new VeniceException(
+              "Missing parameter: "
+                  + (storeConfigNameFilter.isPresent() ? "store_config_value_filter" : "store_config_name_filter"));
         }
         boolean isDataReplicationPolicyConfigFilter = false;
         Schema.Field configFilterField = null;
@@ -85,7 +89,8 @@ public class StoresRoutes extends AbstractRoute {
           if (configFilterField == null) {
             isDataReplicationPolicyConfigFilter = storeConfigNameFilter.get().equalsIgnoreCase("dataReplicationPolicy");
             if (!isDataReplicationPolicyConfigFilter) {
-              throw new VeniceException("The config name filter " + storeConfigNameFilter.get() + " is not a valid store config.");
+              throw new VeniceException(
+                  "The config name filter " + storeConfigNameFilter.get() + " is not a valid store config.");
             }
           }
         }
@@ -94,7 +99,7 @@ public class StoresRoutes extends AbstractRoute {
         List<Store> selectedStoreList;
         if (excludeSystemStores || storeConfigNameFilter.isPresent()) {
           selectedStoreList = new ArrayList<>();
-          for (Store store : storeList) {
+          for (Store store: storeList) {
             if (excludeSystemStores && store.isSystemStore()) {
               continue;
             }
@@ -104,7 +109,10 @@ public class StoresRoutes extends AbstractRoute {
                 if (!store.isHybrid() || store.getHybridStoreConfig().getDataReplicationPolicy() == null) {
                   continue;
                 }
-                configValueMatch = store.getHybridStoreConfig().getDataReplicationPolicy().name().equalsIgnoreCase(storeConfigValueFilter.get());
+                configValueMatch = store.getHybridStoreConfig()
+                    .getDataReplicationPolicy()
+                    .name()
+                    .equalsIgnoreCase(storeConfigValueFilter.get());
               } else {
                 ZKStore cloneStore = new ZKStore(store);
                 Object configValue = cloneStore.dataModel().get(storeConfigNameFilter.get());
@@ -150,7 +158,8 @@ public class StoresRoutes extends AbstractRoute {
                   case NULL:
                   default:
                     throw new VeniceException(
-                        "Store config filtering for Schema type " + fieldSchema.getType().toString() + " is not supported");
+                        "Store config filtering for Schema type " + fieldSchema.getType().toString()
+                            + " is not supported");
                 }
               }
               if (!configValueMatch) {
@@ -207,7 +216,6 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
-
   public Route getStore(Admin admin) {
     return new VeniceRouteHandler<StoreResponse>(StoreResponse.class) {
       @Override
@@ -227,8 +235,7 @@ public class StoresRoutes extends AbstractRoute {
         if (storeInfo.getBackupVersionRetentionMs() < 0) {
           storeInfo.setBackupVersionRetentionMs(admin.getBackupVersionDefaultRetentionMs());
         }
-        storeInfo.setColoToCurrentVersions(
-            admin.getCurrentVersionsForMultiColos(clusterName, storeName));
+        storeInfo.setColoToCurrentVersions(admin.getCurrentVersionsForMultiColos(clusterName, storeName));
         boolean isSSL = admin.isSSLEnabledForPush(clusterName, storeName);
         storeInfo.setKafkaBrokerUrl(admin.getKafkaBootstrapServers(isSSL));
 
@@ -246,9 +253,10 @@ public class StoresRoutes extends AbstractRoute {
         String storeName = request.queryParams(NAME);
         veniceResponse.setCluster(clusterName);
         Map<String, String> storeStatusMap = admin.getFutureVersionsForMultiColos(clusterName, storeName);
-        if(storeStatusMap.isEmpty()) {
+        if (storeStatusMap.isEmpty()) {
           // Non parent controllers will return an empty map, so we'll just return the childs version of this api
-          storeStatusMap = Collections.singletonMap(storeName, String.valueOf(admin.getFutureVersion(clusterName, storeName)));
+          storeStatusMap =
+              Collections.singletonMap(storeName, String.valueOf(admin.getFutureVersion(clusterName, storeName)));
         }
         veniceResponse.setStoreStatusMap(storeStatusMap);
       }
@@ -275,8 +283,9 @@ public class StoresRoutes extends AbstractRoute {
         String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
         // Store should belong to src cluster already
         if (!clusterDiscovered.equals(srcClusterName)) {
-          veniceResponse.setError("Store " + storeName + " belongs to cluster " + clusterDiscovered
-              + ", which is different from the given src cluster name " + srcClusterName);
+          veniceResponse.setError(
+              "Store " + storeName + " belongs to cluster " + clusterDiscovered
+                  + ", which is different from the given src cluster name " + srcClusterName);
           return;
         }
         // Store should not belong to dest cluster already
@@ -310,8 +319,9 @@ public class StoresRoutes extends AbstractRoute {
         String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
         // Store should belong to src cluster already
         if (!clusterDiscovered.equals(srcClusterName)) {
-          veniceResponse.setError("Store " + storeName + " belongs to cluster " + clusterDiscovered
-              + ", which is different from the given src cluster name " + srcClusterName);
+          veniceResponse.setError(
+              "Store " + storeName + " belongs to cluster " + clusterDiscovered
+                  + ", which is different from the given src cluster name " + srcClusterName);
           return;
         }
         // Store should not belong to dest cluster already
@@ -370,10 +380,12 @@ public class StoresRoutes extends AbstractRoute {
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);
 
-        Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker = admin.getAdminCommandExecutionTracker(clusterName);
+        Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker =
+            admin.getAdminCommandExecutionTracker(clusterName);
         if (adminCommandExecutionTracker.isPresent()) {
           // Lock the tracker to get the execution id for the last admin command.
-          // If will not make our performance worse, because we lock the whole cluster while handling the admin operation in parent admin.
+          // If will not make our performance worse, because we lock the whole cluster while handling the admin
+          // operation in parent admin.
           synchronized (adminCommandExecutionTracker) {
             admin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION, false);
             veniceResponse.setExecutionId(adminCommandExecutionTracker.get().getLastExecutionId());
@@ -394,7 +406,7 @@ public class StoresRoutes extends AbstractRoute {
           return;
         }
         AdminSparkServer.validateParams(request, UPDATE_STORE.getParams(), admin);
-        //TODO: we may want to have a specific response for store updating
+        // TODO: we may want to have a specific response for store updating
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
 
@@ -406,7 +418,9 @@ public class StoresRoutes extends AbstractRoute {
         try {
           admin.updateStore(clusterName, storeName, new UpdateStoreQueryParams(params));
         } catch (Exception e) {
-          veniceResponse.setError("Failed when updating store " + storeName + ". Exception type: " + e.getClass().toString() + ". Detailed message = " + e.getMessage());
+          veniceResponse.setError(
+              "Failed when updating store " + storeName + ". Exception type: " + e.getClass().toString()
+                  + ". Detailed message = " + e.getMessage());
         }
       }
     };
@@ -451,7 +465,7 @@ public class StoresRoutes extends AbstractRoute {
         if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
           return;
         }
-        AdminSparkServer.validateParams(request, SET_VERSION.getParams(), admin); //throws venice exception
+        AdminSparkServer.validateParams(request, SET_VERSION.getParams(), admin); // throws venice exception
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         int version = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
@@ -511,10 +525,12 @@ public class StoresRoutes extends AbstractRoute {
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);
         List<Version> deletedVersions = Collections.emptyList();
-        Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker = admin.getAdminCommandExecutionTracker(clusterName);
+        Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker =
+            admin.getAdminCommandExecutionTracker(clusterName);
         if (adminCommandExecutionTracker.isPresent()) {
           // Lock the tracker to get the execution id for the last admin command.
-          // If will not make our performance worse, because we lock the whole cluster while handling the admin operation in parent admin.
+          // If will not make our performance worse, because we lock the whole cluster while handling the admin
+          // operation in parent admin.
           synchronized (adminCommandExecutionTracker) {
             deletedVersions = admin.deleteAllVersionsInStore(clusterName, storeName);
             veniceResponse.setExecutionId(adminCommandExecutionTracker.get().getLastExecutionId());
@@ -577,7 +593,8 @@ public class StoresRoutes extends AbstractRoute {
         veniceResponse.setCluster(request.queryParams(CLUSTER));
         veniceResponse.setName(request.queryParams(NAME));
 
-        List<String> lFEnabledStores = admin.getAllStores(veniceResponse.getCluster()).stream()
+        List<String> lFEnabledStores = admin.getAllStores(veniceResponse.getCluster())
+            .stream()
             // Skip all the system stores
             .filter(store -> (store.isLeaderFollowerModelEnabled() && !store.isSystemStore()))
             .map(Store::getName)
@@ -609,22 +626,26 @@ public class StoresRoutes extends AbstractRoute {
         VeniceUserStoreType userStoreType = VeniceUserStoreType.valueOf(storeType.toUpperCase());
         switch (userStoreType) {
           case BATCH_ONLY:
-            storeCandidates = admin.getAllStores(cluster).stream()
+            storeCandidates = admin.getAllStores(cluster)
+                .stream()
                 .filter(store -> (!store.isHybrid() && !store.isIncrementalPushEnabled()))
                 .collect(Collectors.toList());
             break;
           case HYBRID_ONLY:
-            storeCandidates = admin.getAllStores(cluster).stream()
+            storeCandidates = admin.getAllStores(cluster)
+                .stream()
                 .filter(store -> (store.isHybrid() && !store.isIncrementalPushEnabled()))
                 .collect(Collectors.toList());
             break;
           case INCREMENTAL_PUSH:
-            storeCandidates = admin.getAllStores(cluster).stream()
+            storeCandidates = admin.getAllStores(cluster)
+                .stream()
                 .filter(Store::isIncrementalPushEnabled)
                 .collect(Collectors.toList());
             break;
           case HYBRID_OR_INCREMENTAL:
-            storeCandidates = admin.getAllStores(cluster).stream()
+            storeCandidates = admin.getAllStores(cluster)
+                .stream()
                 .filter(store -> (store.isHybrid() || store.isIncrementalPushEnabled()))
                 .collect(Collectors.toList());
             break;
@@ -666,12 +687,13 @@ public class StoresRoutes extends AbstractRoute {
         String sourceRegionParams = request.queryParamOrDefault(NATIVE_REPLICATION_SOURCE_FABRIC, null);
         String regionsFilterParams = request.queryParamOrDefault(REGIONS_FILTER, null);
 
-        admin.configureNativeReplication(cluster,
-                                         storeType,
-                                         Optional.empty(),
-                                         enableNativeReplicationForCluster,
-                                         (null == sourceRegionParams) ? Optional.empty() : Optional.of(sourceRegionParams),
-                                         (null == regionsFilterParams) ? Optional.empty() : Optional.of(regionsFilterParams));
+        admin.configureNativeReplication(
+            cluster,
+            storeType,
+            Optional.empty(),
+            enableNativeReplicationForCluster,
+            (null == sourceRegionParams) ? Optional.empty() : Optional.of(sourceRegionParams),
+            (null == regionsFilterParams) ? Optional.empty() : Optional.of(regionsFilterParams));
 
         veniceResponse.setCluster(cluster);
       }
@@ -692,10 +714,12 @@ public class StoresRoutes extends AbstractRoute {
         VeniceUserStoreType storeType = VeniceUserStoreType.valueOf(request.queryParams(STORE_TYPE).toUpperCase());
 
         String cluster = request.queryParams(CLUSTER);
-        boolean enableActiveActiveReplicationForCluster = Utils.parseBooleanFromString(request.queryParams(STATUS), STATUS);
+        boolean enableActiveActiveReplicationForCluster =
+            Utils.parseBooleanFromString(request.queryParams(STATUS), STATUS);
         String regionsFilterParams = request.queryParamOrDefault(REGIONS_FILTER, null);
 
-        admin.configureActiveActiveReplication(cluster,
+        admin.configureActiveActiveReplication(
+            cluster,
             storeType,
             Optional.empty(),
             enableActiveActiveReplicationForCluster,
@@ -718,17 +742,20 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER.getParams(), admin);
 
         String cluster = request.queryParams(CLUSTER);
-        IncrementalPushPolicy incrementalPushPolicyToApply = IncrementalPushPolicy.valueOf(request.queryParams(INCREMENTAL_PUSH_POLICY));
-        Optional<IncrementalPushPolicy> incrementalPushPolicyToFilter = request.queryParamOrDefault(INCREMENTAL_PUSH_POLICY_TO_FILTER, null) != null
-                                                                        ? Optional.of(IncrementalPushPolicy.valueOf(request.queryParams(INCREMENTAL_PUSH_POLICY_TO_FILTER)))
-                                                                        : Optional.empty();
+        IncrementalPushPolicy incrementalPushPolicyToApply =
+            IncrementalPushPolicy.valueOf(request.queryParams(INCREMENTAL_PUSH_POLICY));
+        Optional<IncrementalPushPolicy> incrementalPushPolicyToFilter =
+            request.queryParamOrDefault(INCREMENTAL_PUSH_POLICY_TO_FILTER, null) != null
+                ? Optional.of(IncrementalPushPolicy.valueOf(request.queryParams(INCREMENTAL_PUSH_POLICY_TO_FILTER)))
+                : Optional.empty();
         String regionsFilterParams = request.queryParamOrDefault(REGIONS_FILTER, null);
 
-        admin.configureIncrementalPushForCluster(cluster,
-                                                 Optional.empty(),
-                                                 incrementalPushPolicyToApply,
-                                                 incrementalPushPolicyToFilter,
-                                                 (null == regionsFilterParams) ? Optional.empty() : Optional.of(regionsFilterParams));
+        admin.configureIncrementalPushForCluster(
+            cluster,
+            Optional.empty(),
+            incrementalPushPolicyToApply,
+            incrementalPushPolicyToFilter,
+            (null == regionsFilterParams) ? Optional.empty() : Optional.of(regionsFilterParams));
 
         veniceResponse.setCluster(cluster);
       }
@@ -739,15 +766,18 @@ public class StoresRoutes extends AbstractRoute {
     return new VeniceRouteHandler<StoreResponse>(StoreResponse.class) {
       @Override
       public void internalHandle(Request request, StoreResponse veniceResponse) {
-        if(!isAllowListUser(request)) {
+        if (!isAllowListUser(request)) {
           veniceResponse.setError("Access Denied!! Only admins can change topic compaction policy!");
           return;
         }
         AdminSparkServer.validateParams(request, SET_TOPIC_COMPACTION.getParams(), admin);
         try {
-          admin.getTopicManager().updateTopicCompactionPolicy(request.queryParams(TOPIC), Boolean.getBoolean(request.queryParams(TOPIC_COMPACTION_POLICY)));
+          admin.getTopicManager()
+              .updateTopicCompactionPolicy(
+                  request.queryParams(TOPIC),
+                  Boolean.getBoolean(request.queryParams(TOPIC_COMPACTION_POLICY)));
           veniceResponse.setName(request.queryParams(TOPIC));
-        } catch (TopicDoesNotExistException e){
+        } catch (TopicDoesNotExistException e) {
           veniceResponse.setError("Topic does not exist!! Message: " + e.getMessage());
         }
       }
@@ -760,7 +790,8 @@ public class StoresRoutes extends AbstractRoute {
       public void internalHandle(Request request, MultiStoreTopicsResponse veniceResponse) {
         AdminSparkServer.validateParams(request, GET_DELETABLE_STORE_TOPICS.getParams(), admin);
         try {
-          Map<String, Map<String, Long>> allStoreTopics = TopicCleanupService.getAllVeniceStoreTopicsRetentions(admin.getTopicManager());
+          Map<String, Map<String, Long>> allStoreTopics =
+              TopicCleanupService.getAllVeniceStoreTopicsRetentions(admin.getTopicManager());
           List<String> deletableTopicsList = new ArrayList<>();
           int minNumberOfUnusedKafkaTopicsToPreserve = admin.getMinNumberOfUnusedKafkaTopicsToPreserve();
           allStoreTopics.forEach((storeName, topicsWithRetention) -> {
@@ -771,14 +802,14 @@ public class StoresRoutes extends AbstractRoute {
               }
               topicsWithRetention.remove(realTimeTopic);
             }
-            List<String> deletableTopicsForThisStore = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicsWithRetention,
-                minNumberOfUnusedKafkaTopicsToPreserve, 0);
+            List<String> deletableTopicsForThisStore = TopicCleanupService
+                .extractVersionTopicsToCleanup(admin, topicsWithRetention, minNumberOfUnusedKafkaTopicsToPreserve, 0);
             if (!deletableTopicsForThisStore.isEmpty()) {
               deletableTopicsList.addAll(deletableTopicsForThisStore);
             }
           });
           veniceResponse.setTopics(deletableTopicsList);
-        } catch (Exception e){
+        } catch (Exception e) {
           veniceResponse.setError("Failed to list deletable store topics. Message: " + e.getMessage());
         }
       }
@@ -807,6 +838,7 @@ public class StoresRoutes extends AbstractRoute {
       }
     };
   }
+
   public Route getStaleStoresInCluster(Admin admin) {
     return new VeniceRouteHandler<ClusterStaleDataAuditResponse>(ClusterStaleDataAuditResponse.class) {
       @Override

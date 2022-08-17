@@ -15,7 +15,10 @@ public class Replica {
   private final String resource;
   private String status;
 
-  public Replica(@JsonProperty("instance") Instance instance, @JsonProperty("partitionId") int partitionId, @JsonProperty("resource") String resource) {
+  public Replica(
+      @JsonProperty("instance") Instance instance,
+      @JsonProperty("partitionId") int partitionId,
+      @JsonProperty("resource") String resource) {
     this.instance = instance;
     this.partitionId = partitionId;
     this.resource = resource;
@@ -29,7 +32,7 @@ public class Replica {
     return partitionId;
   }
 
-  public String getResource(){
+  public String getResource() {
     return resource;
   }
 
@@ -43,7 +46,7 @@ public class Replica {
 
   @Override
   @JsonIgnore
-  public String toString(){
+  public String toString() {
     StringJoiner joiner = new StringJoiner(" ");
     joiner.add("Host:").add(instance.getUrl());
     joiner.add("Resource:").add(resource);

@@ -11,7 +11,8 @@ import org.testng.annotations.Test;
 public class AvroCompatibilityUtilsTest {
   @Test
   public void testWithDifferentDocField() {
-    String schemaStr1 = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},   {\"name\": \"additional\", \"type\": {\"type\": \"map\", \"values\": \"string\"}}\n]}";
+    String schemaStr1 =
+        "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},   {\"name\": \"additional\", \"type\": {\"type\": \"map\", \"values\": \"string\"}}\n]}";
     Schema schema = Schema.parse(schemaStr1);
     GenericData.Record o1 = new GenericData.Record(schema);
     GenericData.Record o2 = new GenericData.Record(schema);

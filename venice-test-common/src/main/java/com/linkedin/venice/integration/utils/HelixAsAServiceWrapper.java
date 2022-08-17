@@ -55,10 +55,14 @@ public class HelixAsAServiceWrapper extends ProcessWrapper {
         new DistClusterControllerStateModelFactory(zkAddress);
     managers = new ArrayList<>();
     for (int i = 0; i < NUM_OF_SUPER_CLUSTER_CONTROLLERS; i++) {
-      SafeHelixManager manager = new SafeHelixManager(HelixManagerFactory.getZKHelixManager(HELIX_SUPER_CLUSTER_NAME,
-          HELIX_INSTANCE_NAME_PREFIX + i, InstanceType.CONTROLLER_PARTICIPANT, zkAddress));
-      manager.getStateMachineEngine().registerStateModelFactory(LeaderStandbySMD.name,
-          distClusterControllerStateModelFactory);
+      SafeHelixManager manager = new SafeHelixManager(
+          HelixManagerFactory.getZKHelixManager(
+              HELIX_SUPER_CLUSTER_NAME,
+              HELIX_INSTANCE_NAME_PREFIX + i,
+              InstanceType.CONTROLLER_PARTICIPANT,
+              zkAddress));
+      manager.getStateMachineEngine()
+          .registerStateModelFactory(LeaderStandbySMD.name, distClusterControllerStateModelFactory);
       managers.add(manager);
     }
   }
@@ -70,23 +74,26 @@ public class HelixAsAServiceWrapper extends ProcessWrapper {
     }
 
     if (!admin.addCluster(HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME, false)) {
-      throw new VeniceException("Failed to create cluster " + HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME
-          + " successfully.");
+      throw new VeniceException(
+          "Failed to create cluster " + HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME + " successfully.");
     }
     HelixConfigScope configScope = new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER)
-        .forCluster(HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME).build();
+        .forCluster(HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME)
+        .build();
     Map<String, String> helixClusterProperties = new HashMap<>();
     helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
-    helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.TOPOLOGY_AWARE_ENABLED.name(),
-        String.valueOf(false));
+    helixClusterProperties
+        .put(ClusterConfig.ClusterConfigProperty.TOPOLOGY_AWARE_ENABLED.name(), String.valueOf(false));
     admin.setConfig(configScope, helixClusterProperties);
-    admin.addStateModelDef(HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME, LeaderStandbySMD.name,
+    admin.addStateModelDef(
+        HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME,
+        LeaderStandbySMD.name,
         LeaderStandbySMD.build());
   }
 
   private void initializeController() {
     try {
-      for (SafeHelixManager manager : managers) {
+      for (SafeHelixManager manager: managers) {
         manager.connect();
       }
     } catch (Exception e) {
@@ -136,7 +143,7 @@ public class HelixAsAServiceWrapper extends ProcessWrapper {
 
   @Override
   protected void internalStop() {
-    for (SafeHelixManager manager : managers) {
+    for (SafeHelixManager manager: managers) {
       manager.disconnect();
     }
     admin.close();

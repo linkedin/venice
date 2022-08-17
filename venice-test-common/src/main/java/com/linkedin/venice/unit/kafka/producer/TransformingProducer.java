@@ -4,11 +4,11 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
 import java.util.Map;
+import java.util.concurrent.Future;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 
-import java.util.concurrent.Future;
 
 /**
  * This {@link KafkaProducerWrapper} implementation allows tests to perform
@@ -32,7 +32,12 @@ public class TransformingProducer implements KafkaProducerWrapper {
   }
 
   @Override
-  public Future<RecordMetadata> sendMessage(String topic, KafkaKey key, KafkaMessageEnvelope value, int partition, Callback callback) {
+  public Future<RecordMetadata> sendMessage(
+      String topic,
+      KafkaKey key,
+      KafkaMessageEnvelope value,
+      int partition,
+      Callback callback) {
     SendMessageParameters parameters = transformer.transform(topic, key, value, partition);
     return baseProducer.sendMessage(parameters.topic, parameters.key, parameters.value, parameters.partition, callback);
   }
@@ -62,6 +67,7 @@ public class TransformingProducer implements KafkaProducerWrapper {
     public final KafkaKey key;
     public final KafkaMessageEnvelope value;
     public final int partition;
+
     public SendMessageParameters(String topic, KafkaKey key, KafkaMessageEnvelope value, int partition) {
       this.topic = topic;
       this.key = key;

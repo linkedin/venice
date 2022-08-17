@@ -13,11 +13,20 @@ import java.util.concurrent.TimeUnit;
 public class LeaderFollowerPartitionStateModelDualPoolFactory extends LeaderFollowerPartitionStateModelFactory {
   private final ExecutorService futureVersionExecutorService;
 
-  public LeaderFollowerPartitionStateModelDualPoolFactory(VeniceIngestionBackend ingestionBackend,
-      VeniceConfigLoader configService, ExecutorService executorService, ExecutorService futureVersionExecutorService,
+  public LeaderFollowerPartitionStateModelDualPoolFactory(
+      VeniceIngestionBackend ingestionBackend,
+      VeniceConfigLoader configService,
+      ExecutorService executorService,
+      ExecutorService futureVersionExecutorService,
       ReadOnlyStoreRepository metadataRepo,
-      CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture, String instanceName) {
-    super(ingestionBackend, configService, executorService, metadataRepo, partitionPushStatusAccessorFuture,
+      CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture,
+      String instanceName) {
+    super(
+        ingestionBackend,
+        configService,
+        executorService,
+        metadataRepo,
+        partitionPushStatusAccessorFuture,
         instanceName);
     this.futureVersionExecutorService = futureVersionExecutorService;
   }
@@ -35,7 +44,6 @@ public class LeaderFollowerPartitionStateModelDualPoolFactory extends LeaderFoll
   public ExecutorService getFutureVersionExecutorService() {
     return futureVersionExecutorService;
   }
-
 
   @Override
   public void shutDownExecutor() {

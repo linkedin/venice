@@ -30,7 +30,9 @@ public class ZkStoreConfigAccessor {
   private final ZkBaseDataAccessor<StoreConfig> dataAccessor;
   private final Optional<MetaStoreWriter> metaStoreWriter;
 
-  public ZkStoreConfigAccessor(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
+  public ZkStoreConfigAccessor(
+      ZkClient zkClient,
+      HelixAdapterSerializer adapterSerializer,
       Optional<MetaStoreWriter> metaStoreWriter) {
     this.zkClient = zkClient;
     adapterSerializer
@@ -45,11 +47,12 @@ public class ZkStoreConfigAccessor {
     return dataAccessor.getChildNames(ROOT_PATH, AccessOption.PERSISTENT);
   }
 
-  public List<StoreConfig> getAllStoreConfigs(int refreshAttemptsForZkReconnect,
+  public List<StoreConfig> getAllStoreConfigs(
+      int refreshAttemptsForZkReconnect,
       long refreshIntervalForZkReconnectInMs) {
     // Only return not null configs.
-    List<StoreConfig> configs = HelixUtils.getChildren(dataAccessor, ROOT_PATH, refreshAttemptsForZkReconnect,
-        refreshIntervalForZkReconnectInMs)
+    List<StoreConfig> configs = HelixUtils
+        .getChildren(dataAccessor, ROOT_PATH, refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs)
         .stream()
         .filter(storeConfig -> storeConfig != null)
         .collect(Collectors.toList());

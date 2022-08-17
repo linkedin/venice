@@ -20,6 +20,7 @@ public class VeniceResponseMapImpl<K, V> extends HashMap<K, V> implements Venice
     this.nonExistingKeys = new HashSet<>(nonExistingKeyList);
     this.fullResponse = fullResponse;
   }
+
   @Override
   public boolean isFullResponse() {
     return fullResponse;

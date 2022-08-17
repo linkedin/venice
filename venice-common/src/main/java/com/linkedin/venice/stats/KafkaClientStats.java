@@ -34,20 +34,25 @@ public class KafkaClientStats extends AbstractVeniceStats {
    */
   private Sensor sharedProducerActiveCountSensor;
 
-
-  private KafkaClientStats(MetricsRepository metricsRepository, String name, Optional<SharedKafkaProducerService> sharedKafkaProducerService) {
+  private KafkaClientStats(
+      MetricsRepository metricsRepository,
+      String name,
+      Optional<SharedKafkaProducerService> sharedKafkaProducerService) {
     super(metricsRepository, name);
     this.sharedKafkaProducerService = sharedKafkaProducerService;
 
-    openVeniceWriterCount = registerSensor("open_venice_writer_count",
-        new Gauge(() -> VeniceWriter.OPEN_VENICE_WRITER_COUNT.get()));
-    veniceWriterFailedToCloseCount = registerSensor("venice_writer_failed_to_close_count",
+    openVeniceWriterCount =
+        registerSensor("open_venice_writer_count", new Gauge(() -> VeniceWriter.OPEN_VENICE_WRITER_COUNT.get()));
+    veniceWriterFailedToCloseCount = registerSensor(
+        "venice_writer_failed_to_close_count",
         new Gauge(() -> VeniceWriter.VENICE_WRITER_CLOSE_FAILED_COUNT.get()));
 
     if (sharedKafkaProducerService.isPresent()) {
-      sharedProducerActiveTasksCountSensor = registerSensor("shared_producer_active_task_count",
+      sharedProducerActiveTasksCountSensor = registerSensor(
+          "shared_producer_active_task_count",
           new Gauge(() -> sharedKafkaProducerService.get().getActiveSharedProducerTasksCount()));
-      sharedProducerActiveCountSensor = registerSensor("shared_producer_active_count",
+      sharedProducerActiveCountSensor = registerSensor(
+          "shared_producer_active_count",
           new Gauge(() -> sharedKafkaProducerService.get().getActiveSharedProducerCount()));
     }
   }
@@ -55,8 +60,7 @@ public class KafkaClientStats extends AbstractVeniceStats {
   public static void registerKafkaClientStats(
       MetricsRepository metricsRepository,
       String name,
-      Optional<SharedKafkaProducerService> sharedKafkaProducerService
-  ) {
+      Optional<SharedKafkaProducerService> sharedKafkaProducerService) {
     new KafkaClientStats(metricsRepository, name, sharedKafkaProducerService);
   }
 }

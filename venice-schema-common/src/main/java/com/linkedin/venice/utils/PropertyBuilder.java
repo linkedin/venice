@@ -21,7 +21,6 @@ import javax.swing.*;
  *
  */
 public class PropertyBuilder {
-
   private final Properties props = new Properties();
 
   public PropertyBuilder() {
@@ -40,8 +39,7 @@ public class PropertyBuilder {
     return this;
   }
 
-  public PropertyBuilder put(File file)
-          throws IOException {
+  public PropertyBuilder put(File file) throws IOException {
     try (InputStream input = new BufferedInputStream(new FileInputStream(file))) {
       props.load(input);
     }
@@ -49,13 +47,13 @@ public class PropertyBuilder {
   }
 
   public PropertyBuilder put(Properties properties) {
-    for (Map.Entry<Object, Object> e : properties.entrySet()) {
+    for (Map.Entry<Object, Object> e: properties.entrySet()) {
       props.put(e.getKey(), e.getValue());
     }
     return this;
   }
 
   public VeniceProperties build() {
-     return new VeniceProperties(this.props);
+    return new VeniceProperties(this.props);
   }
 }

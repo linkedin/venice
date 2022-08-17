@@ -8,7 +8,10 @@ public class SerializableSystemStore {
   private final VeniceSystemStoreType systemStoreType;
   private final ZKStore veniceStore;
 
-  public SerializableSystemStore(final ZKStore zkSharedStore, final VeniceSystemStoreType systemStoreType, final ZKStore veniceStore) {
+  public SerializableSystemStore(
+      final ZKStore zkSharedStore,
+      final VeniceSystemStoreType systemStoreType,
+      final ZKStore veniceStore) {
     this.zkSharedStore = (ZKStore) zkSharedStore;
     this.systemStoreType = systemStoreType;
     this.veniceStore = (ZKStore) veniceStore;

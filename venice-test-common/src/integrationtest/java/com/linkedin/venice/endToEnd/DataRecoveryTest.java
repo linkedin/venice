@@ -1,5 +1,12 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
+import static com.linkedin.venice.CommonConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.*;
+import static com.linkedin.venice.samza.VeniceSystemFactory.*;
+import static com.linkedin.venice.utils.TestPushUtils.*;
+
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -36,13 +43,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
-import static com.linkedin.venice.CommonConfigKeys.*;
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.*;
-import static com.linkedin.venice.samza.VeniceSystemFactory.*;
-import static com.linkedin.venice.utils.TestPushUtils.*;
-
 
 public class DataRecoveryTest {
   private static final long TEST_TIMEOUT = 120_000;
@@ -76,10 +76,19 @@ public class DataRecoveryTest {
     controllerProps.put(ALLOW_CLUSTER_WIPE, "true");
     controllerProps.put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, "1000");
     controllerProps.put(MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE, "0");
-    multiColoMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(NUMBER_OF_CHILD_DATACENTERS, NUMBER_OF_CLUSTERS, 1,
-            1, 2, 1, 2, Optional.of(new VeniceProperties(controllerProps)), Optional.of(controllerProps),
-            Optional.of(new VeniceProperties(serverProperties)), false, false);
+    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+        NUMBER_OF_CHILD_DATACENTERS,
+        NUMBER_OF_CLUSTERS,
+        1,
+        1,
+        2,
+        1,
+        2,
+        Optional.of(new VeniceProperties(controllerProps)),
+        Optional.of(controllerProps),
+        Optional.of(new VeniceProperties(serverProperties)),
+        false,
+        false);
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
     clusterName = CLUSTER_NAMES[0];
@@ -99,25 +108,32 @@ public class DataRecoveryTest {
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
 
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
-        ControllerClient dc0Client = new ControllerClient(clusterName,
-            childDatacenters.get(0).getControllerConnectString());
-        ControllerClient dc1Client = new ControllerClient(clusterName,
-            childDatacenters.get(1).getControllerConnectString())) {
+        ControllerClient dc0Client =
+            new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+        ControllerClient dc1Client =
+            new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
       List<ControllerClient> dcControllerClientList = Arrays.asList(dc0Client, dc1Client);
       TestUtils.createAndVerifyStoreInAllRegions(storeName, parentControllerClient, dcControllerClientList);
-      Assert.assertFalse(parentControllerClient.updateStore(storeName,
-          new UpdateStoreQueryParams().setLeaderFollowerModel(true)
-              .setHybridRewindSeconds(10)
-              .setHybridOffsetLagThreshold(2)
-              .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE)
-              .setNativeReplicationEnabled(true)
-              .setPartitionCount(1)).isError());
+      Assert.assertFalse(
+          parentControllerClient
+              .updateStore(
+                  storeName,
+                  new UpdateStoreQueryParams().setLeaderFollowerModel(true)
+                      .setHybridRewindSeconds(10)
+                      .setHybridOffsetLagThreshold(2)
+                      .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE)
+                      .setNativeReplicationEnabled(true)
+                      .setPartitionCount(1))
+              .isError());
       TestUtils.verifyDCConfigNativeAndActiveRepl(dc0Client, storeName, true, false);
       TestUtils.verifyDCConfigNativeAndActiveRepl(dc1Client, storeName, true, false);
       Assert.assertFalse(
           parentControllerClient.emptyPush(storeName, "empty-push-" + System.currentTimeMillis(), 1000).isError());
-      TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(storeName, 1), parentControllerClient,
-          30, TimeUnit.SECONDS);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
       ReadyForDataRecoveryResponse response =
           parentControllerClient.isStoreVersionReadyForDataRecovery("dc-0", "dc-1", storeName, 1, Optional.empty());
       Assert.assertFalse(response.isError());
@@ -147,28 +163,47 @@ public class DataRecoveryTest {
     String parentControllerURLs =
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
-        ControllerClient dc0Client = new ControllerClient(clusterName,
-            childDatacenters.get(0).getControllerConnectString());
-        ControllerClient dc1Client = new ControllerClient(clusterName,
-            childDatacenters.get(1).getControllerConnectString())) {
+        ControllerClient dc0Client =
+            new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+        ControllerClient dc1Client =
+            new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
       List<ControllerClient> dcControllerClientList = Arrays.asList(dc0Client, dc1Client);
       TestUtils.createAndVerifyStoreInAllRegions(storeName, parentControllerClient, dcControllerClientList);
-      Assert.assertFalse(parentControllerClient.updateStore(storeName,
-          new UpdateStoreQueryParams().setLeaderFollowerModel(true)
-              .setNativeReplicationEnabled(true)
-              .setPartitionCount(1)).isError());
+      Assert.assertFalse(
+          parentControllerClient
+              .updateStore(
+                  storeName,
+                  new UpdateStoreQueryParams().setLeaderFollowerModel(true)
+                      .setNativeReplicationEnabled(true)
+                      .setPartitionCount(1))
+              .isError());
       TestUtils.verifyDCConfigNativeAndActiveRepl(dc0Client, storeName, true, false);
       TestUtils.verifyDCConfigNativeAndActiveRepl(dc1Client, storeName, true, false);
-      VersionCreationResponse versionCreationResponse =
-          parentControllerClient.requestTopicForWrites(storeName, 1024, Version.PushType.BATCH,
-              Version.guidBasedDummyPushId(), true, false, false, Optional.empty(), Optional.empty(), Optional.empty(),
-              false, -1);
+      VersionCreationResponse versionCreationResponse = parentControllerClient.requestTopicForWrites(
+          storeName,
+          1024,
+          Version.PushType.BATCH,
+          Version.guidBasedDummyPushId(),
+          true,
+          false,
+          false,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          false,
+          -1);
       Assert.assertFalse(versionCreationResponse.isError());
-      TestUtils.writeBatchData(versionCreationResponse, STRING_SCHEMA, STRING_SCHEMA,
+      TestUtils.writeBatchData(
+          versionCreationResponse,
+          STRING_SCHEMA,
+          STRING_SCHEMA,
           IntStream.range(0, 10).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))),
           HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
-      TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponse.getKafkaTopic(), parentControllerClient,
-          60, TimeUnit.SECONDS);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          versionCreationResponse.getKafkaTopic(),
+          parentControllerClient,
+          60,
+          TimeUnit.SECONDS);
       // Prepare dc-1 for data recovery
       Assert.assertFalse(
           parentControllerClient.prepareDataRecovery("dc-0", "dc-1", storeName, 1, Optional.empty()).isError());
@@ -180,8 +215,11 @@ public class DataRecoveryTest {
       // Initiate data recovery
       Assert.assertFalse(
           parentControllerClient.dataRecovery("dc-0", "dc-1", storeName, 1, false, true, Optional.empty()).isError());
-      TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponse.getKafkaTopic(), parentControllerClient,
-          60, TimeUnit.SECONDS);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          versionCreationResponse.getKafkaTopic(),
+          parentControllerClient,
+          60,
+          TimeUnit.SECONDS);
       try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName)
               .setVeniceURL(childDatacenters.get(1).getClusters().get(clusterName).getRandomRouterURL()))) {
@@ -200,27 +238,30 @@ public class DataRecoveryTest {
     String parentControllerURLs =
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
-        ControllerClient dc0Client = new ControllerClient(clusterName,
-            childDatacenters.get(0).getControllerConnectString());
-        ControllerClient dc1Client = new ControllerClient(clusterName,
-            childDatacenters.get(1).getControllerConnectString())) {
+        ControllerClient dc0Client =
+            new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+        ControllerClient dc1Client =
+            new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
       List<ControllerClient> dcControllerClientList = Arrays.asList(dc0Client, dc1Client);
       TestUtils.createAndVerifyStoreInAllRegions(storeName, parentControllerClient, dcControllerClientList);
-      Assert.assertFalse(parentControllerClient.updateStore(storeName,
-          new UpdateStoreQueryParams().setLeaderFollowerModel(true)
-              .setHybridRewindSeconds(10)
-              .setHybridOffsetLagThreshold(2)
-              .setHybridDataReplicationPolicy(DataReplicationPolicy.ACTIVE_ACTIVE)
-              .setNativeReplicationEnabled(true)
-              .setActiveActiveReplicationEnabled(true)
-              .setPartitionCount(1)).isError());
+      Assert.assertFalse(
+          parentControllerClient
+              .updateStore(
+                  storeName,
+                  new UpdateStoreQueryParams().setLeaderFollowerModel(true)
+                      .setHybridRewindSeconds(10)
+                      .setHybridOffsetLagThreshold(2)
+                      .setHybridDataReplicationPolicy(DataReplicationPolicy.ACTIVE_ACTIVE)
+                      .setNativeReplicationEnabled(true)
+                      .setActiveActiveReplicationEnabled(true)
+                      .setPartitionCount(1))
+              .isError());
       TestUtils.verifyDCConfigNativeAndActiveRepl(dc0Client, storeName, true, true);
       TestUtils.verifyDCConfigNativeAndActiveRepl(dc1Client, storeName, true, true);
       Assert.assertFalse(
           parentControllerClient.emptyPush(storeName, "empty-push-" + System.currentTimeMillis(), 1000).isError());
       String versionTopic = Version.composeKafkaTopic(storeName, 1);
-      TestUtils.waitForNonDeterministicPushCompletion(versionTopic, parentControllerClient,
-          60, TimeUnit.SECONDS);
+      TestUtils.waitForNonDeterministicPushCompletion(versionTopic, parentControllerClient, 60, TimeUnit.SECONDS);
 
       Map<String, String> samzaConfig = new HashMap<>();
       String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
@@ -250,8 +291,7 @@ public class DataRecoveryTest {
       // Initiate data recovery
       Assert.assertFalse(
           parentControllerClient.dataRecovery("dc-0", "dc-1", storeName, 1, false, true, Optional.empty()).isError());
-      TestUtils.waitForNonDeterministicPushCompletion(versionTopic, parentControllerClient,
-          60, TimeUnit.SECONDS);
+      TestUtils.waitForNonDeterministicPushCompletion(versionTopic, parentControllerClient, 60, TimeUnit.SECONDS);
 
       try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName)

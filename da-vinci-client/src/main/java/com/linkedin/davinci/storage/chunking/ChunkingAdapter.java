@@ -35,18 +35,36 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
    * @param fastAvroEnabled whether to use fast-avro or not
    * @param schemaRepo handle from which to retrieve read and write schemas
    * @param storeName to deal with
-*
-* TODO: Consider whether we really need this API. We could instead always use the chunked approach,
+  *
+  * TODO: Consider whether we really need this API. We could instead always use the chunked approach,
    */
-  default VALUE constructValue(int writerSchemaId, int readerSchemaId, byte[] fullBytes, int bytesLength, VALUE reusedValue,
-      BinaryDecoder reusedDecoder, ReadResponse response, CompressionStrategy compressionStrategy,
-      boolean fastAvroEnabled, ReadOnlySchemaRepository schemaRepo, String storeName,
-      StorageEngineBackedCompressorFactory compressorFactory, String versionTopic) {
+  default VALUE constructValue(
+      int writerSchemaId,
+      int readerSchemaId,
+      byte[] fullBytes,
+      int bytesLength,
+      VALUE reusedValue,
+      BinaryDecoder reusedDecoder,
+      ReadResponse response,
+      CompressionStrategy compressionStrategy,
+      boolean fastAvroEnabled,
+      ReadOnlySchemaRepository schemaRepo,
+      String storeName,
+      StorageEngineBackedCompressorFactory compressorFactory,
+      String versionTopic) {
     return constructValue(writerSchemaId, fullBytes);
   }
 
-  default VALUE constructValue(int writerSchemaId, int readerSchemaId, byte[] valueOnlyBytes, int offset, int bytesLength, boolean fastAvroEnabled,
-      ReadOnlySchemaRepository schemaRepo, String storeName, VeniceCompressor veniceCompressor) {
+  default VALUE constructValue(
+      int writerSchemaId,
+      int readerSchemaId,
+      byte[] valueOnlyBytes,
+      int offset,
+      int bytesLength,
+      boolean fastAvroEnabled,
+      ReadOnlySchemaRepository schemaRepo,
+      String storeName,
+      VeniceCompressor veniceCompressor) {
     throw new VeniceException("Not implemented.");
   }
 
@@ -103,7 +121,7 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
       ReadOnlySchemaRepository schemaRepo,
       String storeName,
       StorageEngineBackedCompressorFactory compressorFactory,
-      String versionTopic){
+      String versionTopic) {
     return constructValue(schemaId, chunksContainer);
   }
 

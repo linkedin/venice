@@ -23,7 +23,8 @@ public enum BatchConflictResolutionPolicy {
 
   private final int value;
 
-  private static final Map<Integer, BatchConflictResolutionPolicy> BATCH_CONFLICT_RESOLUTION_POLICY_MAP = getBatchConflictResolutionPolicyMap();
+  private static final Map<Integer, BatchConflictResolutionPolicy> BATCH_CONFLICT_RESOLUTION_POLICY_MAP =
+      getBatchConflictResolutionPolicyMap();
 
   BatchConflictResolutionPolicy(int value) {
     this.value = value;
@@ -35,7 +36,7 @@ public enum BatchConflictResolutionPolicy {
 
   private static Map<Integer, BatchConflictResolutionPolicy> getBatchConflictResolutionPolicyMap() {
     Map<Integer, BatchConflictResolutionPolicy> intToTypeMap = new HashMap<>();
-    for (BatchConflictResolutionPolicy policy : BatchConflictResolutionPolicy.values()) {
+    for (BatchConflictResolutionPolicy policy: BatchConflictResolutionPolicy.values()) {
       intToTypeMap.put(policy.value, policy);
     }
 

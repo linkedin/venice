@@ -1,7 +1,7 @@
 package com.linkedin.venice.schema.writecompute;
 
-import com.linkedin.venice.schema.merge.ValueAndReplicationMetadata;
 import com.linkedin.venice.schema.merge.MergeRecordHelper;
+import com.linkedin.venice.schema.merge.ValueAndReplicationMetadata;
 import io.tehuti.utils.Utils;
 import java.util.Optional;
 import javax.annotation.concurrent.ThreadSafe;
@@ -54,13 +54,9 @@ public class WriteComputeProcessor {
   public GenericRecord updateRecord(
       Schema valueSchema,
       Optional<GenericRecord> currRecord,
-      GenericRecord writeComputeRecord
-  ) {
-    return writeComputeHandlerV2.updateValueRecord(
-        Utils.notNull(valueSchema),
-        currRecord,
-        Utils.notNull(writeComputeRecord)
-    );
+      GenericRecord writeComputeRecord) {
+    return writeComputeHandlerV2
+        .updateValueRecord(Utils.notNull(valueSchema), currRecord, Utils.notNull(writeComputeRecord));
   }
 
   public ValueAndReplicationMetadata<GenericRecord> updateRecordWithRmd(
@@ -68,14 +64,12 @@ public class WriteComputeProcessor {
       ValueAndReplicationMetadata<GenericRecord> oldRecordAndReplicationMetadata,
       GenericRecord writeComputeRecord,
       long updateOperationTimestamp,
-      int updateOperationColoID
-  ) {
+      int updateOperationColoID) {
     return writeComputeHandlerV2.updateRecordWithRmd(
         Utils.notNull(currValueSchema),
         Utils.notNull(oldRecordAndReplicationMetadata),
         Utils.notNull(writeComputeRecord),
         updateOperationTimestamp,
-        updateOperationColoID
-    );
+        updateOperationColoID);
   }
 }

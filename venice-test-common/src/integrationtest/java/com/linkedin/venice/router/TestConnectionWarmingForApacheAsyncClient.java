@@ -49,12 +49,18 @@ public class TestConnectionWarmingForApacheAsyncClient {
     List<VeniceRouterWrapper> routers = veniceCluster.getVeniceRouters();
     Assert.assertEquals(1, routers.size(), "There should be only one router in this cluster");
     MetricsRepository routerMetricsRepository = routers.get(0).getMetricsRepository();
-    // Since there are two storage nodes,  both of them should be fully warmed after start.
-    Assert.assertEquals(20.0, routerMetricsRepository.getMetric(".connection_pool--total_max_connection_count.LambdaStat").value(),
+    // Since there are two storage nodes, both of them should be fully warmed after start.
+    Assert.assertEquals(
+        20.0,
+        routerMetricsRepository.getMetric(".connection_pool--total_max_connection_count.LambdaStat").value(),
         "The connections to two storage nodes should be fully warmed up");
-    Assert.assertEquals(0.0, routerMetricsRepository.getMetric(".connection_pool--total_active_connection_count.LambdaStat").value(),
+    Assert.assertEquals(
+        0.0,
+        routerMetricsRepository.getMetric(".connection_pool--total_active_connection_count.LambdaStat").value(),
         "There shouldn't be any active connections since there is no traffic");
-    Assert.assertEquals(20.0, routerMetricsRepository.getMetric(".connection_pool--total_idle_connection_count.LambdaStat").value(),
+    Assert.assertEquals(
+        20.0,
+        routerMetricsRepository.getMetric(".connection_pool--total_idle_connection_count.LambdaStat").value(),
         "The idle connection count be equal to the max connection count");
 
     // Try to add a new server
@@ -63,12 +69,18 @@ public class TestConnectionWarmingForApacheAsyncClient {
     veniceCluster.addVeniceServer(serverFeatureProperties, new Properties());
     // There should be 3 live instances now.
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-      Assert.assertEquals(30.0, routerMetricsRepository.getMetric(".connection_pool--total_max_connection_count.LambdaStat").value(),
+      Assert.assertEquals(
+          30.0,
+          routerMetricsRepository.getMetric(".connection_pool--total_max_connection_count.LambdaStat").value(),
           "The connections to three storage nodes should be fully warmed up");
-      Assert.assertEquals(30.0, routerMetricsRepository.getMetric(".connection_pool--total_idle_connection_count.LambdaStat").value(),
+      Assert.assertEquals(
+          30.0,
+          routerMetricsRepository.getMetric(".connection_pool--total_idle_connection_count.LambdaStat").value(),
           "The idle connection count be equal to the max connection count");
     });
-    Assert.assertEquals(0.0, routerMetricsRepository.getMetric(".connection_pool--total_active_connection_count.LambdaStat").value(),
+    Assert.assertEquals(
+        0.0,
+        routerMetricsRepository.getMetric(".connection_pool--total_active_connection_count.LambdaStat").value(),
         "There shouldn't be any active connections since there is no traffic");
 
     /**

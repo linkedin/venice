@@ -1,9 +1,9 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
+
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.offsets.OffsetRecord;
-
-import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
 
 
 /**
@@ -14,8 +14,7 @@ public class RocksDBMemoryEnforcement implements StoreDataChangedListener {
   private StoreIngestionTask task;
   private boolean ingestionPaused = false;
 
-  public RocksDBMemoryEnforcement(
-      StoreIngestionTask storeIngestionTask) {
+  public RocksDBMemoryEnforcement(StoreIngestionTask storeIngestionTask) {
     this.task = storeIngestionTask;
   }
 
@@ -49,7 +48,7 @@ public class RocksDBMemoryEnforcement implements StoreDataChangedListener {
     if (ingestionPaused) {
       return;
     }
-    for (int partition : task.partitionConsumptionStateMap.keySet()) {
+    for (int partition: task.partitionConsumptionStateMap.keySet()) {
       // Making calls on the consumer like this is probably unsafe in dedicated consumer mode. TODO: Fix thread-safety
       task.pauseConsumption(getConsumingTopic(partition), partition);
     }
@@ -60,7 +59,7 @@ public class RocksDBMemoryEnforcement implements StoreDataChangedListener {
     if (!ingestionPaused) {
       return;
     }
-    for (int partition : task.partitionConsumptionStateMap.keySet()) {
+    for (int partition: task.partitionConsumptionStateMap.keySet()) {
       // Making calls on the consumer like this is probably unsafe in dedicated consumer mode. TODO: Fix thread-safety
       task.resumeConsumption(getConsumingTopic(partition), partition);
     }

@@ -20,13 +20,13 @@ import org.apache.helix.participant.statemachine.Transition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+
 public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
   private boolean isBlock = false;
   private static final Logger logger = LogManager.getLogger(MockTestStateModelFactory.class);
   private final VeniceOfflinePushMonitorAccessor offlinePushStatusAccessor;
 
-
-  //we have a list of state model as the value because this factory could be shared by different participants
+  // we have a list of state model as the value because this factory could be shared by different participants
   private Map<String, List<OnlineOfflineStateModel>> modelToModelListMap = new HashMap<>();
 
   public MockTestStateModelFactory(VeniceOfflinePushMonitorAccessor offlinePushStatusAccessor) {
@@ -34,8 +34,8 @@ public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
   }
 
   public void stopAllStateModelThreads() {
-    for (List<OnlineOfflineStateModel> onlineOfflineStateModels : modelToModelListMap.values()) {
-      for (OnlineOfflineStateModel onlineOfflineStateModel : onlineOfflineStateModels) {
+    for (List<OnlineOfflineStateModel> onlineOfflineStateModels: modelToModelListMap.values()) {
+      for (OnlineOfflineStateModel onlineOfflineStateModel: onlineOfflineStateModels) {
         onlineOfflineStateModel.killThreads();
       }
     }
@@ -46,7 +46,7 @@ public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
     OnlineOfflineStateModel stateModel = new OnlineOfflineStateModel(isBlock, offlinePushStatusAccessor);
     String key = resourceName + "_" + HelixUtils.getPartitionId(partitionName);
     synchronized (modelToModelListMap) {
-      if(!modelToModelListMap.containsKey(key)){
+      if (!modelToModelListMap.containsKey(key)) {
         modelToModelListMap.put(key, new ArrayList<>());
       }
     }
@@ -54,17 +54,17 @@ public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
     return stateModel;
   }
 
-  public void setBlockTransition(boolean isDelay){
+  public void setBlockTransition(boolean isDelay) {
     this.isBlock = isDelay;
-    for(List<OnlineOfflineStateModel> modelList : modelToModelListMap.values()) {
-      for (OnlineOfflineStateModel model : modelList) {
+    for (List<OnlineOfflineStateModel> modelList: modelToModelListMap.values()) {
+      for (OnlineOfflineStateModel model: modelList) {
         model.isDelay = isDelay;
       }
     }
   }
 
   public void makeTransitionCompleted(String resourceName, int partitionId) {
-    for(OnlineOfflineStateModel model : modelToModelListMap.get(resourceName + "_" + partitionId)){
+    for (OnlineOfflineStateModel model: modelToModelListMap.get(resourceName + "_" + partitionId)) {
       model.latch.countDown();
     }
   }
@@ -74,7 +74,7 @@ public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
   }
 
   public void makeTransitionError(String resourceName, int partitionId) {
-    for(OnlineOfflineStateModel model : modelToModelListMap.get(resourceName + "_" + partitionId)){
+    for (OnlineOfflineStateModel model: modelToModelListMap.get(resourceName + "_" + partitionId)) {
       model.isError = true;
       model.latch.countDown();
     }
@@ -94,7 +94,7 @@ public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
     }
 
     public void killThreads() {
-      for (Thread thread : runningThreads) {
+      for (Thread thread: runningThreads) {
         try {
           TestUtils.shutdownThread(thread);
         } catch (InterruptedException e) {
@@ -110,8 +110,7 @@ public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
     }
 
     @Transition(from = "BOOTSTRAP", to = "ONLINE")
-    public void onBecomeOnlineFromBootstrap(Message message, NotificationContext context)
-        throws InterruptedException {
+    public void onBecomeOnlineFromBootstrap(Message message, NotificationContext context) throws InterruptedException {
       if (isDelay) {
         // mock the delay during becoming online.
         latch.await();
@@ -126,18 +125,23 @@ public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
     public void onBecomeDroppedFromBootstrap(Message message, NotificationContext context) {
 
     }
+
     @Transition(from = "ONLINE", to = "OFFLINE")
     public void onBecomeOfflineFromOnline(Message message, NotificationContext context) {
     }
+
     @Transition(to = HelixState.STANDBY_STATE, from = HelixState.OFFLINE_STATE)
     public void onBecomeStandbyFromOffline(Message message, NotificationContext context) throws InterruptedException {
 
       String kafkaTopicName = message.getResourceName();
-      int partitionId = Integer.parseInt(message.getPartitionName().substring(message.getPartitionName().lastIndexOf("_")+1));
+      int partitionId =
+          Integer.parseInt(message.getPartitionName().substring(message.getPartitionName().lastIndexOf("_") + 1));
       String instanceId = message.getTgtName();
-      offlinePushStatusAccessor.updateReplicaStatus(kafkaTopicName, partitionId, instanceId, ExecutionStatus.STARTED, "");
+      offlinePushStatusAccessor
+          .updateReplicaStatus(kafkaTopicName, partitionId, instanceId, ExecutionStatus.STARTED, "");
 
-      // We need to do this delay in an async manner as Helix won't populate the EV until this state transition can complete.
+      // We need to do this delay in an async manner as Helix won't populate the EV until this state transition can
+      // complete.
       Thread newThread = new Thread(() -> {
         latch = new CountDownLatch(1);
 
@@ -145,7 +149,7 @@ public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
           // mock the delay during becoming online.
           try {
             boolean latchClosedBeforeTimeout = latch.await(30, TimeUnit.SECONDS);
-            if(!latchClosedBeforeTimeout) {
+            if (!latchClosedBeforeTimeout) {
               logger.warn("StateTransition lock wait timed out!!");
             }
           } catch (InterruptedException e) {
@@ -156,7 +160,8 @@ public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
           isError = true;
           throw new VeniceException("ST is failed.");
         }
-        offlinePushStatusAccessor.updateReplicaStatus(kafkaTopicName, partitionId, instanceId, ExecutionStatus.COMPLETED, "");
+        offlinePushStatusAccessor
+            .updateReplicaStatus(kafkaTopicName, partitionId, instanceId, ExecutionStatus.COMPLETED, "");
         runningThreads.remove(this);
       });
       runningThreads.add(newThread);
@@ -169,18 +174,22 @@ public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
     }
 
     @Transition(to = HelixState.STANDBY_STATE, from = HelixState.LEADER_STATE)
-    public void onBecomeStandbyFromLeader(Message message, NotificationContext context) { }
+    public void onBecomeStandbyFromLeader(Message message, NotificationContext context) {
+    }
 
     @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.STANDBY_STATE)
     public void onBecomeOfflineFromStandby(Message message, NotificationContext context) {
 
     }
+
     @Transition(to = HelixState.DROPPED_STATE, from = HelixState.OFFLINE_STATE)
     public void onBecomeDroppedFromOffline(Message message, NotificationContext context) {
     }
+
     @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.DROPPED_STATE)
     public void onBecomeOfflineFromDropped(Message message, NotificationContext context) {
     }
+
     @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.ERROR_STATE)
     public void onBecomeOfflineFromError(Message message, NotificationContext context) {
     }

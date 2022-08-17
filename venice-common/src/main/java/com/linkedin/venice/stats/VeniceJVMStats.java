@@ -16,8 +16,7 @@ import org.apache.logging.log4j.Logger;
  * stats can be got from {@code BufferPoolMXBean} and {@code MemoryMxBean}
  */
 
-public class VeniceJVMStats extends AbstractVeniceStats{
-
+public class VeniceJVMStats extends AbstractVeniceStats {
   private static final Logger logger = LogManager.getLogger(VeniceJVMStats.class);
 
   /**
@@ -51,8 +50,8 @@ public class VeniceJVMStats extends AbstractVeniceStats{
 
   private static Long getDirectMemoryBufferPoolBean(Function<BufferPoolMXBean, Long> function) {
     List<BufferPoolMXBean> bufferPoolMXBeans = ManagementFactory.getPlatformMXBeans(BufferPoolMXBean.class);
-    for(BufferPoolMXBean pool : bufferPoolMXBeans) {
-      if(pool.getName().equalsIgnoreCase("direct")) {
+    for (BufferPoolMXBean pool: bufferPoolMXBeans) {
+      if (pool.getName().equalsIgnoreCase("direct")) {
         try {
           return function.apply(pool);
         } catch (Throwable e) {
@@ -67,28 +66,27 @@ public class VeniceJVMStats extends AbstractVeniceStats{
   public VeniceJVMStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
 
-
-    directMemoryCapacity = registerSensor("DirectMemoryCapacity",
+    directMemoryCapacity = registerSensor(
+        "DirectMemoryCapacity",
         new Gauge(() -> getDirectMemoryBufferPoolBean(BufferPoolMXBean::getTotalCapacity)));
 
-    directMemoryUsage = registerSensor("DirectMemoryUsage",
+    directMemoryUsage = registerSensor(
+        "DirectMemoryUsage",
         new Gauge(() -> getDirectMemoryBufferPoolBean(BufferPoolMXBean::getMemoryUsed)));
 
-    directMemoryPoolCount = registerSensor("DirectPoolCount",
-        new Gauge(() -> getDirectMemoryBufferPoolBean(BufferPoolMXBean::getCount)));
+    directMemoryPoolCount =
+        registerSensor("DirectPoolCount", new Gauge(() -> getDirectMemoryBufferPoolBean(BufferPoolMXBean::getCount)));
 
-    heapUsage = registerSensor("HeapUsage",
-        new Gauge(() -> {
-          MemoryMXBean memoryBean = ManagementFactory.getMemoryMXBean();
+    heapUsage = registerSensor("HeapUsage", new Gauge(() -> {
+      MemoryMXBean memoryBean = ManagementFactory.getMemoryMXBean();
 
-          if(memoryBean != null) {
-            return memoryBean.getHeapMemoryUsage().getUsed();
-          }
-          return -1;
-        })
-    );
+      if (memoryBean != null) {
+        return memoryBean.getHeapMemoryUsage().getUsed();
+      }
+      return -1;
+    }));
 
-    //Removing maxDirectMemory sensor as sun.misc.VM class is removed in JDK11
-    //This makes code compatible with both JDK8 and JDK11
+    // Removing maxDirectMemory sensor as sun.misc.VM class is removed in JDK11
+    // This makes code compatible with both JDK8 and JDK11
   }
 }

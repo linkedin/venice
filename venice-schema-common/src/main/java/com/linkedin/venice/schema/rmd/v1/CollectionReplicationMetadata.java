@@ -1,5 +1,7 @@
 package com.linkedin.venice.schema.rmd.v1;
 
+import static org.apache.avro.Schema.Type.*;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import java.util.Arrays;
 import java.util.Collections;
@@ -7,14 +9,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import javax.annotation.concurrent.NotThreadSafe;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang.Validate;
-
-import static org.apache.avro.Schema.Type.*;
 
 
 /**
@@ -28,7 +27,9 @@ public class CollectionReplicationMetadata<DELETED_ELEMENT_TYPE> {
   public static final String COLLECTION_TOP_LEVEL_TS_FIELD_NAME = "topLevelFieldTimestamp";
   public static final String COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME = "topLevelColoID";
   public static final String COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME = "putOnlyPartLength";
-  public static final String COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME = "activeElementsTimestamps"; // Client readable elements that haven't been deleted yet.
+  public static final String COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME = "activeElementsTimestamps"; // Client readable
+                                                                                                // elements that haven't
+                                                                                                // been deleted yet.
   public static final String COLLECTION_DELETED_ELEM_FIELD_NAME = "deletedElementsIdentities";
   public static final String COLLECTION_DELETED_ELEM_TS_FIELD_NAME = "deletedElementsTimestamps";
   public static final Schema COLLECTION_TS_ARRAY_SCHEMA = Schema.createArray(Schema.create(LONG));
@@ -38,10 +39,7 @@ public class CollectionReplicationMetadata<DELETED_ELEMENT_TYPE> {
 
   // Copy constructor for testing purpose.
   public CollectionReplicationMetadata(CollectionReplicationMetadata other) {
-    this(GenericData.get().deepCopy(
-        other.collectionRmdRecord.getSchema(),
-        other.collectionRmdRecord
-    ));
+    this(GenericData.get().deepCopy(other.collectionRmdRecord.getSchema(), other.collectionRmdRecord));
   }
 
   public CollectionReplicationMetadata(GenericRecord collectionRmdRecord) {
@@ -66,29 +64,55 @@ public class CollectionReplicationMetadata<DELETED_ELEMENT_TYPE> {
   private static void validateCollectionReplicationMetadataRecord(GenericRecord collectionReplicationMetadata) {
     Validate.notNull(collectionReplicationMetadata);
     if (!(collectionReplicationMetadata.get(COLLECTION_TOP_LEVEL_TS_FIELD_NAME) instanceof Long)) {
-      throw new IllegalArgumentException(String.format("Expect %s field to be Long type. Got record: %s", COLLECTION_TOP_LEVEL_TS_FIELD_NAME, collectionReplicationMetadata));
+      throw new IllegalArgumentException(
+          String.format(
+              "Expect %s field to be Long type. Got record: %s",
+              COLLECTION_TOP_LEVEL_TS_FIELD_NAME,
+              collectionReplicationMetadata));
     }
     if (!(collectionReplicationMetadata.get(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME) instanceof Integer)) {
-      throw new IllegalArgumentException(String.format("Expect %s field to be Long type. Got record: %s", COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME, collectionReplicationMetadata));
+      throw new IllegalArgumentException(
+          String.format(
+              "Expect %s field to be Long type. Got record: %s",
+              COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME,
+              collectionReplicationMetadata));
     }
     if (!(collectionReplicationMetadata.get(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME) instanceof Integer)) {
-      throw new IllegalArgumentException(String.format("Expect %s field to be Long type. Got record: %s", COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME, collectionReplicationMetadata));
+      throw new IllegalArgumentException(
+          String.format(
+              "Expect %s field to be Long type. Got record: %s",
+              COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME,
+              collectionReplicationMetadata));
     }
     if (!(collectionReplicationMetadata.get(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME) instanceof List)) {
-      throw new IllegalArgumentException(String.format("Expect %s field to be List type. Got record: %s", COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME, collectionReplicationMetadata));
+      throw new IllegalArgumentException(
+          String.format(
+              "Expect %s field to be List type. Got record: %s",
+              COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME,
+              collectionReplicationMetadata));
     }
     if (!(collectionReplicationMetadata.get(COLLECTION_DELETED_ELEM_FIELD_NAME) instanceof List)) {
-      throw new IllegalArgumentException(String.format("Expect %s field to be List type. Got record: %s", COLLECTION_DELETED_ELEM_FIELD_NAME, collectionReplicationMetadata));
+      throw new IllegalArgumentException(
+          String.format(
+              "Expect %s field to be List type. Got record: %s",
+              COLLECTION_DELETED_ELEM_FIELD_NAME,
+              collectionReplicationMetadata));
     }
     if (!(collectionReplicationMetadata.get(COLLECTION_DELETED_ELEM_TS_FIELD_NAME) instanceof List)) {
-      throw new IllegalArgumentException(String.format("Expect %s field to be List type. Got record: %s", COLLECTION_DELETED_ELEM_TS_FIELD_NAME, collectionReplicationMetadata));
+      throw new IllegalArgumentException(
+          String.format(
+              "Expect %s field to be List type. Got record: %s",
+              COLLECTION_DELETED_ELEM_TS_FIELD_NAME,
+              collectionReplicationMetadata));
     }
     List<?> deletedElements = (List<?>) collectionReplicationMetadata.get(COLLECTION_DELETED_ELEM_FIELD_NAME);
-    List<Long> deletedElementTimestamps = (List<Long>) collectionReplicationMetadata.get(COLLECTION_DELETED_ELEM_TS_FIELD_NAME);
+    List<Long> deletedElementTimestamps =
+        (List<Long>) collectionReplicationMetadata.get(COLLECTION_DELETED_ELEM_TS_FIELD_NAME);
 
     if (deletedElements.size() != deletedElementTimestamps.size()) {
-      throw new IllegalArgumentException("Delete element list and the deleted element timestamp list should have the same"
-          + " size. Got collection replication metadata: " + collectionReplicationMetadata);
+      throw new IllegalArgumentException(
+          "Delete element list and the deleted element timestamp list should have the same"
+              + " size. Got collection replication metadata: " + collectionReplicationMetadata);
     }
   }
 
@@ -182,10 +206,13 @@ public class CollectionReplicationMetadata<DELETED_ELEMENT_TYPE> {
     collectionRmdRecord.put(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME, collectionActiveTimestamps);
   }
 
-  public void setDeletedElementsAndTimestamps(List<DELETED_ELEMENT_TYPE> deletedElements, List<Long> deletedTimestamps) {
+  public void setDeletedElementsAndTimestamps(
+      List<DELETED_ELEMENT_TYPE> deletedElements,
+      List<Long> deletedTimestamps) {
     if (deletedElements.size() != deletedTimestamps.size()) {
-      throw new IllegalArgumentException("There must be the same number of deleted elements as deleted timestamps. "
-          + "Got: " + deletedElements.size() + " deleted element(s) and deleted timestamps are: " + Arrays.toString(deletedElements.toArray()));
+      throw new IllegalArgumentException(
+          "There must be the same number of deleted elements as deleted timestamps. " + "Got: " + deletedElements.size()
+              + " deleted element(s) and deleted timestamps are: " + Arrays.toString(deletedElements.toArray()));
     }
     collectionRmdRecord.put(COLLECTION_DELETED_ELEM_TS_FIELD_NAME, deletedTimestamps);
     collectionRmdRecord.put(COLLECTION_DELETED_ELEM_FIELD_NAME, deletedElements);
@@ -205,14 +232,14 @@ public class CollectionReplicationMetadata<DELETED_ELEMENT_TYPE> {
     if (!thatCollectionRmdSchema.equals(collectionRmdRecord.getSchema())) {
       return false;
     }
-    return GenericData.get().compare(collectionRmdRecord, that.collectionRmdRecord, collectionRmdRecord.getSchema()) == 0;
+    return GenericData.get()
+        .compare(collectionRmdRecord, that.collectionRmdRecord, collectionRmdRecord.getSchema()) == 0;
   }
 
   @Override
   public int hashCode() {
     return Objects.hash(collectionRmdRecord);
   }
-
 
   @Override
   public String toString() {
@@ -324,7 +351,8 @@ public class CollectionReplicationMetadata<DELETED_ELEMENT_TYPE> {
     Schema.Field activeElemTSField = AvroCompatibilityHelper.newField(null)
         .setName(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME)
         .setSchema(COLLECTION_TS_ARRAY_SCHEMA)
-        .setDoc("Timestamps of each active element in the user's collection. This is a parallel array with the user's collection.")
+        .setDoc(
+            "Timestamps of each active element in the user's collection. This is a parallel array with the user's collection.")
         .setDefault(Collections.emptyList())
         .setOrder(Schema.Field.Order.ASCENDING)
         .build();
@@ -349,10 +377,15 @@ public class CollectionReplicationMetadata<DELETED_ELEMENT_TYPE> {
         metadataRecordName,
         "structure that maintains all of the necessary metadata to perform deterministic conflict resolution on collection fields.",
         namespace,
-        false
-    );
+        false);
     collectionTSSchema.setFields(
-        Arrays.asList(topLevelTSField, topLevelColoIdField, putOnlyPartLengthField, activeElemTSField, deletedElemField, deletedElemTSField));
+        Arrays.asList(
+            topLevelTSField,
+            topLevelColoIdField,
+            putOnlyPartLengthField,
+            activeElemTSField,
+            deletedElemField,
+            deletedElemTSField));
     return collectionTSSchema;
   }
 }

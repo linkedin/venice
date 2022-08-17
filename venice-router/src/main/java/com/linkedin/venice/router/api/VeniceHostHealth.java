@@ -16,7 +16,6 @@ import org.apache.logging.log4j.Logger;
 
 
 public class VeniceHostHealth implements HostHealthMonitor<Instance> {
-
   private static final Logger logger = LogManager.getLogger(VeniceHostHealth.class);
   private final int maxPendingConnectionPerHost;
   private final int routerPendingConnResumeThreshold;
@@ -25,14 +24,17 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
   protected Set<String> unhealthyHosts = new ConcurrentSkipListSet<>();
   private final Map<String, Long> pendingRequestUnhealthyTimeMap = new VeniceConcurrentHashMap<>();
 
-
   private final LiveInstanceMonitor liveInstanceMonitor;
   private final StorageNodeClient storageNodeClient;
   private final RouteHttpRequestStats routeHttpRequestStats;
   private final AggHostHealthStats aggHostHealthStats;
 
-  public VeniceHostHealth(LiveInstanceMonitor liveInstanceMonitor, StorageNodeClient storageNodeClient, VeniceRouterConfig config,
-      RouteHttpRequestStats routeHttpRequestStats, AggHostHealthStats aggHostHealthStats) {
+  public VeniceHostHealth(
+      LiveInstanceMonitor liveInstanceMonitor,
+      StorageNodeClient storageNodeClient,
+      VeniceRouterConfig config,
+      RouteHttpRequestStats routeHttpRequestStats,
+      AggHostHealthStats aggHostHealthStats) {
     this.routeHttpRequestStats = routeHttpRequestStats;
     this.statefulRouterHealthCheckEnabled = config.isStatefulRouterHealthCheckEnabled();
     this.maxPendingConnectionPerHost = config.getRouterUnhealthyPendingConnThresholdPerRoute();
@@ -48,7 +50,7 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
    *
    * @param instance
    */
-  public void setHostAsUnhealthy(Instance instance){
+  public void setHostAsUnhealthy(Instance instance) {
     String identifier = instance.getNodeId();
     unhealthyHosts.add(identifier);
     logger.info("Marking " + identifier + " as unhealthy until it passes the next health check.");

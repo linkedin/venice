@@ -16,7 +16,6 @@ import org.testng.annotations.Test;
 
 
 public class StoragePersonaStoreDataListenerTest {
-
   public HelixReadWriteStoreRepository storeRepository;
   private StoragePersonaRepository personaRepository;
   private ZkClient zkClient;
@@ -28,8 +27,12 @@ public class StoragePersonaStoreDataListenerTest {
   public void setUp() {
     zk = ServiceFactory.getZkServer();
     zkClient = ZkClientFactory.newZkClient(zk.getAddress());
-    storeRepository = new HelixReadWriteStoreRepository(zkClient, adapter, testClusterName,
-        Optional.empty(), new ClusterLockManager(testClusterName));
+    storeRepository = new HelixReadWriteStoreRepository(
+        zkClient,
+        adapter,
+        testClusterName,
+        Optional.empty(),
+        new ClusterLockManager(testClusterName));
     personaRepository = new StoragePersonaRepository(testClusterName, storeRepository, adapter, zkClient);
   }
 

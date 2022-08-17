@@ -18,7 +18,11 @@ public class MergeConflictResult {
   private boolean resultReusesInput;
   private GenericRecord replicationMetadataRecord;
 
-  public MergeConflictResult(Optional<ByteBuffer> newValue, int valueSchemaID, boolean resultReusesInput, GenericRecord replicationMetadataRecord) {
+  public MergeConflictResult(
+      Optional<ByteBuffer> newValue,
+      int valueSchemaID,
+      boolean resultReusesInput,
+      GenericRecord replicationMetadataRecord) {
     this.updateIgnored = false;
     this.newValue = newValue;
     this.valueSchemaId = valueSchemaID;

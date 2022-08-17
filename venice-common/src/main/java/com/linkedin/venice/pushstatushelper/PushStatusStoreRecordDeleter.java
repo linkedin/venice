@@ -23,7 +23,11 @@ public class PushStatusStoreRecordDeleter implements AutoCloseable {
     this.veniceWriterCache = new PushStatusStoreVeniceWriterCache(veniceWriterFactory);
   }
 
-  public void deletePushStatus(String storeName, int version, Optional<String> incrementalPushVersion, int partitionCount) {
+  public void deletePushStatus(
+      String storeName,
+      int version,
+      Optional<String> incrementalPushVersion,
+      int partitionCount) {
     VeniceWriter writer = veniceWriterCache.prepareVeniceWriter(storeName);
     logger.info("Deleting pushStatus of storeName: " + storeName + " , version: " + version);
     for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
@@ -36,10 +40,20 @@ public class PushStatusStoreRecordDeleter implements AutoCloseable {
    * N.B.: Currently used by tests only.
    * @return
    */
-  public Future<RecordMetadata> deletePartitionIncrementalPushStatus(String storeName, int version, String incrementalPushVersion, int partitionId) {
-    PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version, partitionId,
-        Optional.ofNullable(incrementalPushVersion), Optional.of(PushStatusStoreUtils.SERVER_INCREMENTAL_PUSH_PREFIX));
-    logger.info("Deleting incremental push status belonging to a partition:{}. pushStatusKey:{}", partitionId, pushStatusKey);
+  public Future<RecordMetadata> deletePartitionIncrementalPushStatus(
+      String storeName,
+      int version,
+      String incrementalPushVersion,
+      int partitionId) {
+    PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(
+        version,
+        partitionId,
+        Optional.ofNullable(incrementalPushVersion),
+        Optional.of(PushStatusStoreUtils.SERVER_INCREMENTAL_PUSH_PREFIX));
+    logger.info(
+        "Deleting incremental push status belonging to a partition:{}. pushStatusKey:{}",
+        partitionId,
+        pushStatusKey);
     return veniceWriterCache.prepareVeniceWriter(storeName).delete(pushStatusKey, null);
   }
 
@@ -47,8 +61,9 @@ public class PushStatusStoreRecordDeleter implements AutoCloseable {
     logger.info("Removing push status store writer for store " + storeName);
     long veniceWriterRemovingStartTimeInNs = System.nanoTime();
     veniceWriterCache.removeVeniceWriter(storeName);
-    logger.info("Removed push status store writer for store " + storeName + " in "
-        + LatencyUtils.getLatencyInMS(veniceWriterRemovingStartTimeInNs) + "ms.");
+    logger.info(
+        "Removed push status store writer for store " + storeName + " in "
+            + LatencyUtils.getLatencyInMS(veniceWriterRemovingStartTimeInNs) + "ms.");
   }
 
   @Override

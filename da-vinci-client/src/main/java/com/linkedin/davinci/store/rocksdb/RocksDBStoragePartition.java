@@ -1,5 +1,7 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import static com.linkedin.davinci.store.AbstractStorageEngine.*;
+
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStoragePartition;
@@ -42,8 +44,6 @@ import org.rocksdb.SstFileWriter;
 import org.rocksdb.Statistics;
 import org.rocksdb.WriteOptions;
 
-import static com.linkedin.davinci.store.AbstractStorageEngine.*;
-
 
 /**
  * In {@link RocksDBStoragePartition}, it assumes the update(insert/delete) will happen sequentially.
@@ -69,7 +69,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   private final String fullPathForTempSSTFileDir;
 
   private final EnvOptions envOptions;
-  private final byte maxUnsignedByte = (byte)255;
+  private final byte maxUnsignedByte = (byte) 255;
 
   protected final String storeName;
   protected final int partitionId;
@@ -133,8 +133,14 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   private RocksDBSstFileWriter rocksDBSstFileWritter;
 
-  protected RocksDBStoragePartition(StoragePartitionConfig storagePartitionConfig, RocksDBStorageEngineFactory factory, String dbDir,
-      RocksDBMemoryStats rocksDBMemoryStats, RocksDBThrottler rocksDbThrottler, RocksDBServerConfig rocksDBServerConfig, List<byte[]> columnFamilyNameList) {
+  protected RocksDBStoragePartition(
+      StoragePartitionConfig storagePartitionConfig,
+      RocksDBStorageEngineFactory factory,
+      String dbDir,
+      RocksDBMemoryStats rocksDBMemoryStats,
+      RocksDBThrottler rocksDbThrottler,
+      RocksDBServerConfig rocksDBServerConfig,
+      List<byte[]> columnFamilyNameList) {
     super(storagePartitionConfig.getPartitionId());
     this.factory = factory;
     this.rocksDBServerConfig = rocksDBServerConfig;
@@ -144,7 +150,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.aggStatistics = factory.getAggStatistics();
 
     Options options = getStoreOptions(storagePartitionConfig);
-    // If writing to offset metadata partition METADATA_PARTITION_ID enable WAL write to sync up offset on server restart,
+    // If writing to offset metadata partition METADATA_PARTITION_ID enable WAL write to sync up offset on server
+    // restart,
     // if WAL is disabled then all ingestion progress made would be lost in case of non-graceful shutdown of server.
     this.writeOptions = new WriteOptions().setDisableWAL(this.partitionId != METADATA_PARTITION_ID);
 
@@ -173,9 +180,15 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.rocksDBThrottler = rocksDbThrottler;
     this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempSSTFileDir(dbDir, storeName, partitionId);
     if (deferredWrite) {
-      this.rocksDBSstFileWritter =
-          new RocksDBSstFileWriter(storeName, partitionId, dbDir, envOptions, options, fullPathForTempSSTFileDir,
-              false, rocksDBServerConfig);
+      this.rocksDBSstFileWritter = new RocksDBSstFileWriter(
+          storeName,
+          partitionId,
+          dbDir,
+          envOptions,
+          options,
+          fullPathForTempSSTFileDir,
+          false,
+          rocksDBServerConfig);
     }
 
     try {
@@ -184,35 +197,53 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
        * may be applied if we are sure replicationMetadata column family is smaller in size.
        */
       ColumnFamilyOptions columnFamilyOptions = new ColumnFamilyOptions(options);
-      columnFamilyNameList.forEach(name -> columnFamilyDescriptors.add(new ColumnFamilyDescriptor(name, columnFamilyOptions)));
+      columnFamilyNameList
+          .forEach(name -> columnFamilyDescriptors.add(new ColumnFamilyDescriptor(name, columnFamilyOptions)));
       /**
        * This new open(ReadOnly)WithColumnFamily API replace original open(ReadOnly) API to reduce code duplication.
        * In the default case, we will only open DEFAULT_COLUMN_FAMILY, which is what old API does internally.
        */
       if (this.readOnly) {
-        this.rocksDB = rocksDbThrottler.openReadOnly(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
+        this.rocksDB = rocksDbThrottler
+            .openReadOnly(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
       } else {
-        this.rocksDB = rocksDbThrottler.open(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
+        this.rocksDB =
+            rocksDbThrottler.open(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
       }
-    } catch (RocksDBException|InterruptedException e) {
+    } catch (RocksDBException | InterruptedException e) {
       throw new VeniceException("Failed to open RocksDB for store: " + storeName + ", partition id: " + partitionId, e);
     }
 
     registerDBStats();
-    LOGGER.info("Opened RocksDB for store: " + storeName + ", partition id: " + partitionId + " in "
-        + (this.readOnly ? "read-only" : "read-write") + " mode and " + (this.deferredWrite ? "deferred write" : "non-deferred write") + " mode");
+    LOGGER.info(
+        "Opened RocksDB for store: " + storeName + ", partition id: " + partitionId + " in "
+            + (this.readOnly ? "read-only" : "read-write") + " mode and "
+            + (this.deferredWrite ? "deferred write" : "non-deferred write") + " mode");
   }
 
-  public RocksDBStoragePartition(StoragePartitionConfig storagePartitionConfig, RocksDBStorageEngineFactory factory, String dbDir,
-      RocksDBMemoryStats rocksDBMemoryStats, RocksDBThrottler rocksDbThrottler, RocksDBServerConfig rocksDBServerConfig) {
+  public RocksDBStoragePartition(
+      StoragePartitionConfig storagePartitionConfig,
+      RocksDBStorageEngineFactory factory,
+      String dbDir,
+      RocksDBMemoryStats rocksDBMemoryStats,
+      RocksDBThrottler rocksDbThrottler,
+      RocksDBServerConfig rocksDBServerConfig) {
     // If not specified, RocksDB inserts values into DEFAULT_COLUMN_FAMILY.
-    this(storagePartitionConfig, factory, dbDir, rocksDBMemoryStats, rocksDbThrottler,rocksDBServerConfig, Collections.singletonList(RocksDB.DEFAULT_COLUMN_FAMILY));
+    this(
+        storagePartitionConfig,
+        factory,
+        dbDir,
+        rocksDBMemoryStats,
+        rocksDbThrottler,
+        rocksDBServerConfig,
+        Collections.singletonList(RocksDB.DEFAULT_COLUMN_FAMILY));
   }
 
   protected void makeSureRocksDBIsStillOpen() {
     if (isClosed) {
-      throw new VeniceException("RocksDB has been closed for store: " + storeName + ", partition id: " + partitionId +
-          ", any further operation is disallowed");
+      throw new VeniceException(
+          "RocksDB has been closed for store: " + storeName + ", partition id: " + partitionId
+              + ", any further operation is disallowed");
     }
   }
 
@@ -268,7 +299,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       tableConfig.setBlockCache(factory.getSharedCache());
       tableConfig.setCacheIndexAndFilterBlocks(rocksDBServerConfig.isRocksDBSetCacheIndexAndFilterBlocks());
 
-      // TODO Consider Adding "cache_index_and_filter_blocks_with_high_priority" to allow for preservation of indexes in memory.
+      // TODO Consider Adding "cache_index_and_filter_blocks_with_high_priority" to allow for preservation of indexes in
+      // memory.
       // https://github.com/facebook/rocksdb/wiki/Block-Cache#caching-index-and-filter-blocks
       // https://github.com/facebook/rocksdb/wiki/Block-Cache#lru-cache
 
@@ -278,7 +310,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
 
     if (storagePartitionConfig.isWriteOnlyConfig()) {
-      options.setLevel0FileNumCompactionTrigger(rocksDBServerConfig.getLevel0FileNumCompactionTriggerWriteOnlyVersion());
+      options
+          .setLevel0FileNumCompactionTrigger(rocksDBServerConfig.getLevel0FileNumCompactionTriggerWriteOnlyVersion());
       options.setLevel0SlowdownWritesTrigger(rocksDBServerConfig.getLevel0SlowdownWritesTriggerWriteOnlyVersion());
       options.setLevel0StopWritesTrigger(rocksDBServerConfig.getLevel0StopWritesTriggerWriteOnlyVersion());
     } else {
@@ -298,7 +331,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     return options;
   }
 
-
   protected List<ColumnFamilyHandle> getColumnFamilyHandleList() {
     return columnFamilyHandleList;
   }
@@ -308,7 +340,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   @Override
-  public synchronized void beginBatchWrite(Map<String, String> checkpointedInfo, Optional<Supplier<byte[]>> expectedChecksumSupplier) {
+  public synchronized void beginBatchWrite(
+      Map<String, String> checkpointedInfo,
+      Optional<Supplier<byte[]>> expectedChecksumSupplier) {
     makeSureRocksDBIsStillOpen();
     if (!deferredWrite) {
       LOGGER.info("'beginBatchWrite' will do nothing since 'deferredWrite' is disabled");
@@ -346,17 +380,27 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   public synchronized void put(byte[] key, ByteBuffer valueBuffer) {
     makeSureRocksDBIsStillOpen();
     if (readOnly) {
-      throw new VeniceException("Cannot make writes while partition is opened in read-only mode" +
-          ", partition=" + storeName + "_" + partitionId);
+      throw new VeniceException(
+          "Cannot make writes while partition is opened in read-only mode" + ", partition=" + storeName + "_"
+              + partitionId);
     }
     try {
       if (deferredWrite) {
         rocksDBSstFileWritter.put(key, valueBuffer);
       } else {
-        rocksDB.put(writeOptions, key, 0, key.length, valueBuffer.array(), valueBuffer.position(), valueBuffer.remaining());
+        rocksDB.put(
+            writeOptions,
+            key,
+            0,
+            key.length,
+            valueBuffer.array(),
+            valueBuffer.position(),
+            valueBuffer.remaining());
       }
     } catch (RocksDBException e) {
-      throw new VeniceException("Failed to put key/value pair to store: " + storeName + ", partition id: " + partitionId, e);
+      throw new VeniceException(
+          "Failed to put key/value pair to store: " + storeName + ", partition id: " + partitionId,
+          e);
     }
   }
 
@@ -391,8 +435,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       if (size == RocksDB.NOT_FOUND) {
         return null;
       } else if (size > valueToBePopulated.capacity()) {
-        LOGGER.warn("Will allocate a new ByteBuffer because a value of " + size
-            + " bytes was retrieved, which is larger than valueToBePopulated.capacity(): " + valueToBePopulated.capacity());
+        LOGGER.warn(
+            "Will allocate a new ByteBuffer because a value of " + size
+                + " bytes was retrieved, which is larger than valueToBePopulated.capacity(): "
+                + valueToBePopulated.capacity());
         valueToBePopulated = ByteBuffer.allocate(size);
         size = rocksDB.get(getReadOptions(skipCache), key, valueToBePopulated.array());
       }
@@ -467,16 +513,16 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
   }
 
-  private Slice getPrefixIterationUpperBound(byte[] prefix){
-    byte[] upperBound = getIncrementedByteArray(Arrays.copyOf(prefix, prefix.length), prefix.length-1);
+  private Slice getPrefixIterationUpperBound(byte[] prefix) {
+    byte[] upperBound = getIncrementedByteArray(Arrays.copyOf(prefix, prefix.length), prefix.length - 1);
     return null == upperBound ? null : new Slice(upperBound);
   }
 
-  private byte[] getIncrementedByteArray(byte[] array, int indexToIncrement){
-    if (array[indexToIncrement] != maxUnsignedByte){
+  private byte[] getIncrementedByteArray(byte[] array, int indexToIncrement) {
+    if (array[indexToIncrement] != maxUnsignedByte) {
       array[indexToIncrement]++;
       return array;
-    } else if (indexToIncrement > 0){
+    } else if (indexToIncrement > 0) {
       array[indexToIncrement] = 0;
       return getIncrementedByteArray(array, --indexToIncrement);
     } else {
@@ -489,7 +535,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     makeSureRocksDBIsStillOpen();
     if (readOnly) {
       throw new VeniceException(
-          "Cannot make deletion while partition is opened in read-only mode" + ", partition=" + storeName + "_" + partitionId);
+          "Cannot make deletion while partition is opened in read-only mode" + ", partition=" + storeName + "_"
+              + partitionId);
     }
     try {
       if (deferredWrite) {
@@ -498,7 +545,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         rocksDB.delete(key);
       }
     } catch (RocksDBException e) {
-      throw new VeniceException("Failed to delete entry from store: " + storeName + ", partition id: " + partitionId, e);
+      throw new VeniceException(
+          "Failed to delete entry from store: " + storeName + ", partition id: " + partitionId,
+          e);
     }
   }
 
@@ -520,11 +569,14 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         LOGGER.debug("Unexpected sync in RocksDB read-only mode");
       } else {
         try {
-          // Since Venice RocksDB database disables WAL, flush will be triggered for every 'sync' to avoid data loss during
+          // Since Venice RocksDB database disables WAL, flush will be triggered for every 'sync' to avoid data loss
+          // during
           // crash recovery
           rocksDB.flush(WAIT_FOR_FLUSH_OPTIONS);
         } catch (RocksDBException e) {
-          throw new VeniceException("Failed to flush memtable to disk for store: " + storeName + ", partition id: " + partitionId, e);
+          throw new VeniceException(
+              "Failed to flush memtable to disk for store: " + storeName + ", partition id: " + partitionId,
+              e);
         }
       }
       return Collections.emptyMap();
@@ -598,8 +650,11 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     try {
       long startTimeInMs = System.currentTimeMillis();
       rocksDB.close();
-      LOGGER.info("RocksDB close for store: {}, partition {} took {} ms.", storeName,
-          partitionId, LatencyUtils.getElapsedTimeInMs(startTimeInMs));
+      LOGGER.info(
+          "RocksDB close for store: {}, partition {} took {} ms.",
+          storeName,
+          partitionId,
+          LatencyUtils.getElapsedTimeInMs(startTimeInMs));
     } finally {
       isClosed = true;
       readCloseRWLock.writeLock().unlock();
@@ -626,13 +681,18 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     try {
       long startTimeInMs = System.currentTimeMillis();
       rocksDB.close();
-      LOGGER.info("RocksDB close for store: {}, partition {} took {} ms.", storeName,
-          partitionId, LatencyUtils.getElapsedTimeInMs(startTimeInMs));
+      LOGGER.info(
+          "RocksDB close for store: {}, partition {} took {} ms.",
+          storeName,
+          partitionId,
+          LatencyUtils.getElapsedTimeInMs(startTimeInMs));
 
       if (this.readOnly) {
-        this.rocksDB = rocksDBThrottler.openReadOnly(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
+        this.rocksDB = rocksDBThrottler
+            .openReadOnly(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
       } else {
-        this.rocksDB = rocksDBThrottler.open(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
+        this.rocksDB =
+            rocksDBThrottler.open(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
       }
       LOGGER.info("Reopened RocksDB for store: {}, partition: {}", storeName, partitionId);
     } catch (Exception e) {
@@ -643,13 +703,13 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   private void registerDBStats() {
-    if(rocksDBMemoryStats != null) {
+    if (rocksDBMemoryStats != null) {
       rocksDBMemoryStats.registerPartition(RocksDBUtils.getPartitionDbName(storeName, partitionId), this);
     }
   }
 
   private void deRegisterDBStats() {
-    if(rocksDBMemoryStats != null) {
+    if (rocksDBMemoryStats != null) {
       rocksDBMemoryStats.deregisterPartition(RocksDBUtils.getPartitionDbName(storeName, partitionId));
     }
   }
@@ -660,8 +720,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       makeSureRocksDBIsStillOpen();
       return rocksDB.getLongProperty(statName);
     } catch (RocksDBException e) {
-      throw new VeniceException("Failed to get property value from store: " + storeName +
-          ", partition id: " + partitionId + " for property: " + statName, e);
+      throw new VeniceException(
+          "Failed to get property value from store: " + storeName + ", partition id: " + partitionId + " for property: "
+              + statName,
+          e);
     } finally {
       readCloseRWLock.readLock().unlock();
     }
@@ -688,10 +750,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     if (options.tableFormatConfig() instanceof PlainTableConfig) {
       return readOnly == partitionConfig.isReadOnly() && writeOnly == partitionConfig.isWriteOnlyConfig();
     }
-    return deferredWrite == partitionConfig.isDeferredWrite() &&
-               readOnly == partitionConfig.isReadOnly() &&
-               writeOnly == partitionConfig.isWriteOnlyConfig() &&
-              options.disableAutoCompactions() == partitionConfig.isDisableAutoCompaction();
+    return deferredWrite == partitionConfig.isDeferredWrite() && readOnly == partitionConfig.isReadOnly()
+        && writeOnly == partitionConfig.isWriteOnlyConfig()
+        && options.disableAutoCompactions() == partitionConfig.isDisableAutoCompaction();
   }
 
   /**
@@ -736,7 +797,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
           LOGGER.info("Scanned " + entryCnt + " entries from database: " + storeName + ",  partition: " + partitionId);
         }
       }
-      LOGGER.info("Scanned " + entryCnt + " entries from database: " + storeName + ",  partition: " + partitionId + " during cache warmup");
+      LOGGER.info(
+          "Scanned " + entryCnt + " entries from database: " + storeName + ",  partition: " + partitionId
+              + " during cache warmup");
     } catch (RocksDBException e) {
       throw new VeniceException("Encountered RocksDBException while warming up cache", e);
     } finally {
@@ -762,18 +825,20 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       try {
         LOGGER.info("Start the manual compaction for database: " + storeName + ", partition: " + partitionId);
         rocksDB.compactRange();
-        synchronized(this) {
+        synchronized (this) {
           /**
            * Guard the critical section for closing/re-opening database.
            */
           rocksDB.close();
           // Reopen the database with auto compaction on
           this.options.setDisableAutoCompactions(false);
-          rocksDB = rocksDBThrottler.open(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
+          rocksDB =
+              rocksDBThrottler.open(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
         }
         dbCompactFuture.complete(null);
-        LOGGER.info("Manual compaction for database: " + storeName + ", partition: " + partitionId +
-            " is done, and the database was re-opened with auto compaction enabled");
+        LOGGER.info(
+            "Manual compaction for database: " + storeName + ", partition: " + partitionId
+                + " is done, and the database was re-opened with auto compaction enabled");
       } catch (Exception e) {
         LOGGER.error("Failed to compact database: " + storeName + ", partition: " + partitionId, e);
         dbCompactFuture.completeExceptionally(e);

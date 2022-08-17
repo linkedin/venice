@@ -6,12 +6,12 @@ import org.apache.http.HttpStatus;
 
 
 public class VeniceRequestEarlyTerminationException extends VeniceException {
-  public VeniceRequestEarlyTerminationException(String storeName){
+  public VeniceRequestEarlyTerminationException(String storeName) {
     super("The request to store: " + storeName + " is terminated because of early termination setup");
   }
 
   @Override
-  public int getHttpStatusCode(){
+  public int getHttpStatusCode() {
     return HttpStatus.SC_REQUEST_TIMEOUT;
   }
 

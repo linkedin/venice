@@ -3,6 +3,7 @@ package com.linkedin.venice.etl;
 import java.util.List;
 import org.apache.avro.Schema;
 
+
 /**
  * In ETL jobs, when a "delete" record is seen, "value" is set to "null" and "DELETED_TS" is set to the offset where
  * this delete record was seen. To allow the value field to be set as "null", the schema may need to be modified if it
@@ -13,7 +14,8 @@ import org.apache.avro.Schema;
 public enum ETLValueSchemaTransformation {
   NONE, // When value schema in ETL is the same as the store value schema, e.g. ["int", "string", "null"]
   ADD_NULL_TO_UNION, // When "null" should be added to the union in ETL value schema, e.g. ["int", "string"]
-  UNIONIZE_WITH_NULL; // When the store value schema is not a union and it will be changed to a union with null, e.g. a record schema
+  UNIONIZE_WITH_NULL; // When the store value schema is not a union and it will be changed to a union with null, e.g. a
+                      // record schema
 
   public static ETLValueSchemaTransformation fromSchema(Schema schema) {
     // Since nested unions are not allowed, a null type is added to the union if it doesn't already exist

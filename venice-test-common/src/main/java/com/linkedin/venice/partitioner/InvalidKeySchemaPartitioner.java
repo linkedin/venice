@@ -5,12 +5,12 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import org.apache.avro.Schema;
 
+
 /**
  * Implementation of the {@link VenicePartitioner} class for test purpose.
  *
  */
-public class InvalidKeySchemaPartitioner extends VenicePartitioner{
-
+public class InvalidKeySchemaPartitioner extends VenicePartitioner {
   public InvalidKeySchemaPartitioner(VeniceProperties props, Schema schema) {
     super(props, schema);
   }

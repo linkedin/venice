@@ -8,6 +8,7 @@ import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+
 public class SchemaRepoBackedSchemaReaderTest {
   @Test
   public void testGetKeySchema() {
@@ -22,7 +23,7 @@ public class SchemaRepoBackedSchemaReaderTest {
     Assert.assertEquals(schema.toString(), keySchemaStr);
   }
 
-  @Test (expectedExceptions = VeniceNoStoreException.class)
+  @Test(expectedExceptions = VeniceNoStoreException.class)
   public void testGetKeySchemaWhenNotExists() throws VeniceNoStoreException {
     String storeName = "test_store";
     ReadOnlySchemaRepository mockSchemaRepository = Mockito.mock(ReadOnlySchemaRepository.class);
@@ -78,7 +79,9 @@ public class SchemaRepoBackedSchemaReaderTest {
     Mockito.doReturn(null).when(mockSchemaRepository).getValueSchema(storeName, 2);
     Mockito.doReturn(schemaEntry1).when(mockSchemaRepository).getLatestValueSchema(storeName);
 
-    Mockito.doThrow(new VeniceNoStoreException(invalidStoreName)).when(mockSchemaRepository).getValueSchema(invalidStoreName, 1);
+    Mockito.doThrow(new VeniceNoStoreException(invalidStoreName))
+        .when(mockSchemaRepository)
+        .getValueSchema(invalidStoreName, 1);
     SchemaReader schemaReader = new SchemaRepoBackedSchemaReader(mockSchemaRepository, storeName);
     SchemaReader invalidStoreSchemaReader = new SchemaRepoBackedSchemaReader(mockSchemaRepository, invalidStoreName);
 
@@ -121,7 +124,9 @@ public class SchemaRepoBackedSchemaReaderTest {
     String storeName = "test_store";
 
     ReadOnlySchemaRepository mockSchemaRepository = Mockito.mock(ReadOnlySchemaRepository.class);
-    Mockito.doThrow(new VeniceException(storeName + " doesn't have latest schema!")).when(mockSchemaRepository).getLatestValueSchema(storeName);
+    Mockito.doThrow(new VeniceException(storeName + " doesn't have latest schema!"))
+        .when(mockSchemaRepository)
+        .getLatestValueSchema(storeName);
 
     SchemaReader schemaReader = new SchemaRepoBackedSchemaReader(mockSchemaRepository, storeName);
     schemaReader.getLatestValueSchema();

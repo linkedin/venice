@@ -5,17 +5,16 @@ import java.util.List;
 import org.apache.avro.generic.GenericRecord;
 
 
-public class AndPredicate implements Predicate{
-
+public class AndPredicate implements Predicate {
   Predicate[] predicates;
 
-  AndPredicate(Predicate... predicates){
+  AndPredicate(Predicate... predicates) {
     this.predicates = predicates;
   }
 
   @Override
   public boolean evaluate(GenericRecord genericRecord) {
-    for (Predicate predicate : predicates) {
+    for (Predicate predicate: predicates) {
       if (!predicate.evaluate(genericRecord)) {
         return false;
       }

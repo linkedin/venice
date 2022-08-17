@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import static com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask.*;
+
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -59,14 +61,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask.*;
-
 
 /**
  * This class is used to create {@link Callable} that execute {@link AdminOperation}s for a given store.
  */
 public class AdminExecutionTask implements Callable<Void> {
-
   /**
    * This logger is intended to be passed from the {@link AdminConsumptionTask} in order to produce logs with the
    * tag AdminConsumptionTask#CONSUMER_TASK_ID_FORMAT.
@@ -109,15 +108,19 @@ public class AdminExecutionTask implements Callable<Void> {
   public Void call() {
     while (!internalTopic.isEmpty()) {
       if (!admin.isLeaderControllerFor(clusterName)) {
-        throw new VeniceRetriableException("This controller is no longer the leader of: " + clusterName
-            + ". The consumption task should unsubscribe soon");
+        throw new VeniceRetriableException(
+            "This controller is no longer the leader of: " + clusterName
+                + ". The consumption task should unsubscribe soon");
       }
       AdminOperationWrapper adminOperationWrapper = internalTopic.peek();
       try {
         if (adminOperationWrapper.getStartProcessingTimestamp() == null) {
           adminOperationWrapper.setStartProcessingTimestamp(System.currentTimeMillis());
-          stats.recordAdminMessageStartProcessingLatency(Math.max(0,
-              adminOperationWrapper.getStartProcessingTimestamp() - adminOperationWrapper.getLocalBrokerTimestamp()));
+          stats.recordAdminMessageStartProcessingLatency(
+              Math.max(
+                  0,
+                  adminOperationWrapper.getStartProcessingTimestamp()
+                      - adminOperationWrapper.getLocalBrokerTimestamp()));
         }
         processMessage(adminOperationWrapper.getAdminOperation());
         long completionTimestamp = System.currentTimeMillis();
@@ -127,14 +130,16 @@ public class AdminExecutionTask implements Callable<Void> {
         } else {
           stats.recordAdminMessageProcessLatency(processLatency);
         }
-        stats.recordAdminMessageTotalLatency(Math.max(0,
-            completionTimestamp - adminOperationWrapper.getProducerTimestamp()));
+        stats.recordAdminMessageTotalLatency(
+            Math.max(0, completionTimestamp - adminOperationWrapper.getProducerTimestamp()));
         internalTopic.remove();
       } catch (Exception e) {
         // Retry of the admin operation is handled automatically by keeping the failed admin operation inside the queue.
-        // The queue with the problematic operation will be delegated and retried by the worker thread in the next cycle.
-        String logMessage = "when processing admin message for store " + storeName + " with offset "
-            + adminOperationWrapper.getOffset() + " and execution id " + adminOperationWrapper.getAdminOperation().executionId;
+        // The queue with the problematic operation will be delegated and retried by the worker thread in the next
+        // cycle.
+        String logMessage =
+            "when processing admin message for store " + storeName + " with offset " + adminOperationWrapper.getOffset()
+                + " and execution id " + adminOperationWrapper.getAdminOperation().executionId;
         if (e instanceof VeniceRetriableException) {
           // These retriable exceptions are expected, therefore logging at the info level should be sufficient.
           stats.recordFailedRetriableAdminConsumption();
@@ -158,9 +163,9 @@ public class AdminExecutionTask implements Callable<Void> {
        * {@link #lastSucceededExecutionId} is monotonically increasing, and being persisted to Zookeeper after processing
        * each message, so it is safe to filter out all the processed messages.
        */
-      logger.warn("Execution id of message: " + adminOperation
-          + " for store " + storeName + " is smaller than last succeeded execution id: "
-          + lastSucceededExecutionId + ", so will skip it");
+      logger.warn(
+          "Execution id of message: " + adminOperation + " for store " + storeName
+              + " is smaller than last succeeded execution id: " + lastSucceededExecutionId + ", so will skip it");
       return;
     }
     try {
@@ -226,7 +231,8 @@ public class AdminExecutionTask implements Callable<Void> {
           handleEnableNativeReplicationForCluster((ConfigureNativeReplicationForCluster) adminOperation.payloadUnion);
           break;
         case CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER:
-          handleEnableActiveActiveReplicationForCluster((ConfigureActiveActiveReplicationForCluster) adminOperation.payloadUnion);
+          handleEnableActiveActiveReplicationForCluster(
+              (ConfigureActiveActiveReplicationForCluster) adminOperation.payloadUnion);
           break;
         case REPLICATION_METADATA_SCHEMA_CREATION:
           handleReplicationMetadataSchemaCreation((MetadataSchemaCreation) adminOperation.payloadUnion);
@@ -238,7 +244,8 @@ public class AdminExecutionTask implements Callable<Void> {
           handleMetaSystemStoreCreationValidation((MetaSystemStoreAutoCreationValidation) adminOperation.payloadUnion);
           break;
         case PUSH_STATUS_SYSTEM_STORE_AUTO_CREATION_VALIDATION:
-          handlePushStatusSystemStoreCreationValidation((PushStatusSystemStoreAutoCreationValidation) adminOperation.payloadUnion);
+          handlePushStatusSystemStoreCreationValidation(
+              (PushStatusSystemStoreAutoCreationValidation) adminOperation.payloadUnion);
           break;
         case CREATE_STORAGE_PERSONA:
           handleCreateStoragePersona((CreateStoragePersona) adminOperation.payloadUnion);
@@ -253,8 +260,9 @@ public class AdminExecutionTask implements Callable<Void> {
           throw new VeniceException("Unknown admin operation type: " + adminOperation.operationType);
       }
     } catch (VeniceUnsupportedOperationException e) {
-      logger.info("Ignoring the " + e.getClass().getSimpleName() + " caught when processing "
-          + AdminMessageType.valueOf(adminOperation).toString() + "with detailed message: " + e.getMessage());
+      logger.info(
+          "Ignoring the " + e.getClass().getSimpleName() + " caught when processing "
+              + AdminMessageType.valueOf(adminOperation).toString() + "with detailed message: " + e.getMessage());
     }
     executionIdAccessor.updateLastSucceededExecutionIdMap(clusterName, storeName, adminOperation.executionId);
     lastSucceededExecutionIdMap.put(storeName, adminOperation.executionId);
@@ -273,7 +281,12 @@ public class AdminExecutionTask implements Callable<Void> {
       logger.info("Adding store: " + storeName + ", which already exists, so just skip this message: " + message);
     } else {
       // Adding store
-      admin.createStore(clusterName, storeName, owner, keySchema, valueSchema,
+      admin.createStore(
+          clusterName,
+          storeName,
+          owner,
+          keySchema,
+          valueSchema,
           VeniceSystemStoreUtils.isSystemStore(storeName));
       logger.info("Added store: " + storeName + " to cluster: " + clusterName);
     }
@@ -286,10 +299,16 @@ public class AdminExecutionTask implements Callable<Void> {
     final int schemaId = message.schemaId;
     final boolean doUpdateSupersetSchemaID = message.doUpdateSupersetSchemaID;
 
-    SchemaEntry valueSchemaEntry = admin.addValueSchema(clusterName, storeName, schemaStr, schemaId, doUpdateSupersetSchemaID);
-    logger.info("Added value schema {} to store {} in cluster {} with schema ID {} and "
+    SchemaEntry valueSchemaEntry =
+        admin.addValueSchema(clusterName, storeName, schemaStr, schemaId, doUpdateSupersetSchemaID);
+    logger.info(
+        "Added value schema {} to store {} in cluster {} with schema ID {} and "
             + "[update_superset_schema_ID_with_value_schema_ID == {}]",
-        schemaStr, storeName, clusterName, valueSchemaEntry.getId(), doUpdateSupersetSchemaID);
+        schemaStr,
+        storeName,
+        clusterName,
+        valueSchemaEntry.getId(),
+        doUpdateSupersetSchemaID);
   }
 
   private void handleDerivedSchemaCreation(DerivedSchemaCreation message) {
@@ -300,8 +319,13 @@ public class AdminExecutionTask implements Callable<Void> {
     int derivedSchemaId = message.derivedSchemaId;
 
     admin.addDerivedSchema(clusterName, storeName, valueSchemaId, derivedSchemaId, derivedSchemaStr);
-    logger.info(String.format("Added derived schema:\n %s\n to store: %s, value schema id: %d, derived schema id: %d",
-        derivedSchemaStr, storeName, valueSchemaId, derivedSchemaId));
+    logger.info(
+        String.format(
+            "Added derived schema:\n %s\n to store: %s, value schema id: %d, derived schema id: %d",
+            derivedSchemaStr,
+            storeName,
+            valueSchemaId,
+            derivedSchemaId));
   }
 
   private void handleSupersetSchemaCreation(SupersetSchemaCreation message) {
@@ -313,8 +337,14 @@ public class AdminExecutionTask implements Callable<Void> {
     int supersetSchemaId = message.supersetSchemaId;
 
     admin.addSupersetSchema(clusterName, storeName, valueSchemaStr, valueSchemaId, supersetSchemaStr, supersetSchemaId);
-    logger.info(String.format("Added value schema:\n %s\n to store: %s, value schema id: %d, also added superset schema: %s, superset schema id: %d",
-        valueSchemaStr, storeName, valueSchemaId, supersetSchemaStr, supersetSchemaId));
+    logger.info(
+        String.format(
+            "Added value schema:\n %s\n to store: %s, value schema id: %d, also added superset schema: %s, superset schema id: %d",
+            valueSchemaStr,
+            storeName,
+            valueSchemaId,
+            supersetSchemaStr,
+            supersetSchemaId));
   }
 
   private void handleDisableStoreWrite(PauseStore message) {
@@ -382,7 +412,7 @@ public class AdminExecutionTask implements Callable<Void> {
     int version = message.currentVersion;
     admin.setStoreCurrentVersion(clusterName, storeName, version);
 
-    logger.info("Set store: " + storeName + " version to"  + version + " in cluster: " + clusterName);
+    logger.info("Set store: " + storeName + " version to" + version + " in cluster: " + clusterName);
   }
 
   private void handleSetStoreOwner(SetStoreOwner message) {
@@ -407,14 +437,14 @@ public class AdminExecutionTask implements Callable<Void> {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
 
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams()
-        .setOwner(message.owner.toString())
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setOwner(message.owner.toString())
         .setEnableReads(message.enableReads)
         .setEnableWrites(message.enableWrites)
         .setPartitionCount(message.partitionNum);
     if (message.partitionerConfig != null) {
       params.setPartitionerClass(message.partitionerConfig.partitionerClass.toString())
-          .setPartitionerParams(CollectionUtils.getStringMapFromCharSequenceMap(message.partitionerConfig.partitionerParams))
+          .setPartitionerParams(
+              CollectionUtils.getStringMapFromCharSequenceMap(message.partitionerConfig.partitionerParams))
           .setAmplificationFactor(message.partitionerConfig.amplificationFactor);
     }
     params.setStorageQuotaInByte(message.storageQuotaInByte)
@@ -429,7 +459,8 @@ public class AdminExecutionTask implements Callable<Void> {
       params.setHybridRewindSeconds(message.hybridStoreConfig.rewindTimeInSeconds)
           .setHybridOffsetLagThreshold(message.hybridStoreConfig.offsetLagThresholdToGoOnline)
           .setHybridTimeLagThreshold(message.hybridStoreConfig.producerTimestampLagThresholdToGoOnlineInSeconds)
-          .setHybridDataReplicationPolicy(DataReplicationPolicy.valueOf(message.hybridStoreConfig.dataReplicationPolicy))
+          .setHybridDataReplicationPolicy(
+              DataReplicationPolicy.valueOf(message.hybridStoreConfig.dataReplicationPolicy))
           .setHybridBufferReplayPolicy(BufferReplayPolicy.valueOf(message.hybridStoreConfig.bufferReplayPolicy));
     }
     params.setAccessControlled(message.accessControlled)
@@ -461,11 +492,13 @@ public class AdminExecutionTask implements Callable<Void> {
     }
 
     params.setNativeReplicationEnabled(message.nativeReplicationEnabled)
-        .setPushStreamSourceAddress(message.pushStreamSourceAddress == null ? null : message.pushStreamSourceAddress.toString())
+        .setPushStreamSourceAddress(
+            message.pushStreamSourceAddress == null ? null : message.pushStreamSourceAddress.toString())
         .setIncrementalPushPolicy(IncrementalPushPolicy.valueOf(message.incrementalPushPolicy))
         .setBackupVersionRetentionMs(message.backupVersionRetentionMs);
 
-    params.setNativeReplicationSourceFabric(message.nativeReplicationSourceFabric == null ? null : message.nativeReplicationSourceFabric.toString());
+    params.setNativeReplicationSourceFabric(
+        message.nativeReplicationSourceFabric == null ? null : message.nativeReplicationSourceFabric.toString());
     params.setActiveActiveReplicationEnabled(message.activeActiveReplicationEnabled);
     params.setRegionsFilter(message.regionsFilter == null ? null : message.regionsFilter.toString());
     params.setApplyTargetVersionFilterForIncPush(message.applyTargetVersionFilterForIncPush);
@@ -487,11 +520,12 @@ public class AdminExecutionTask implements Callable<Void> {
       finalParams = params;
     } else {
       if (message.updatedConfigsList == null || message.updatedConfigsList.size() == 0) {
-        throw new VeniceException("UpdateStore failed for store " + storeName + ". replicateAllConfigs flag was off "
-            + "but there was no config updates.");
+        throw new VeniceException(
+            "UpdateStore failed for store " + storeName + ". replicateAllConfigs flag was off "
+                + "but there was no config updates.");
       }
       finalParams = new UpdateStoreQueryParams();
-      for (CharSequence updatedConfigName : message.updatedConfigsList) {
+      for (CharSequence updatedConfigName: message.updatedConfigsList) {
         finalParams.cloneConfig(updatedConfigName.toString(), params);
       }
     }
@@ -500,8 +534,13 @@ public class AdminExecutionTask implements Callable<Void> {
      */
     params.getRegionsFilter().ifPresent(finalParams::setRegionsFilter);
 
-    if (checkPreConditionForReplicateUpdateStore(clusterName, storeName,
-        message.isMigrating, message.enableReads, message.enableWrites, message.migrationDuplicateStore)) {
+    if (checkPreConditionForReplicateUpdateStore(
+        clusterName,
+        storeName,
+        message.isMigrating,
+        message.enableReads,
+        message.enableWrites,
+        message.migrationDuplicateStore)) {
       admin.replicateUpdateStore(clusterName, storeName, finalParams);
     }
 
@@ -562,19 +601,37 @@ public class AdminExecutionTask implements Callable<Void> {
     int versionNumber = message.versionNum;
     int numberOfPartitions = message.numberOfPartitions;
     Version.PushType pushType = Version.PushType.valueOf(message.pushType);
-    String remoteKafkaBootstrapServers = message.pushStreamSourceAddress == null ? null : message.pushStreamSourceAddress.toString();
+    String remoteKafkaBootstrapServers =
+        message.pushStreamSourceAddress == null ? null : message.pushStreamSourceAddress.toString();
     long rewindTimeInSecondsOverride = message.rewindTimeInSecondsOverride;
     int replicationMetadataVersionId = message.timestampMetadataVersionId;
     if (isParentController) {
       if (checkPreConditionForReplicateAddVersion(clusterName, storeName)) {
         // Parent controller mirrors new version to src or dest cluster if the store is migrating
-        admin.replicateAddVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions,
-            pushType, remoteKafkaBootstrapServers, rewindTimeInSecondsOverride, replicationMetadataVersionId);
+        admin.replicateAddVersionAndStartIngestion(
+            clusterName,
+            storeName,
+            pushJobId,
+            versionNumber,
+            numberOfPartitions,
+            pushType,
+            remoteKafkaBootstrapServers,
+            rewindTimeInSecondsOverride,
+            replicationMetadataVersionId);
       }
     } else {
       // New version for regular Venice store.
-      admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType,
-          remoteKafkaBootstrapServers, rewindTimeInSecondsOverride, replicationMetadataVersionId, message.versionSwapDeferred);
+      admin.addVersionAndStartIngestion(
+          clusterName,
+          storeName,
+          pushJobId,
+          versionNumber,
+          numberOfPartitions,
+          pushType,
+          remoteKafkaBootstrapServers,
+          rewindTimeInSecondsOverride,
+          replicationMetadataVersionId,
+          message.versionSwapDeferred);
     }
   }
 
@@ -583,45 +640,66 @@ public class AdminExecutionTask implements Callable<Void> {
     VeniceUserStoreType storeType = VeniceUserStoreType.valueOf(message.storeType.toString().toUpperCase());
     boolean enableNativeReplication = message.enabled;
     Optional<String> nativeReplicationSourceFabric = (message.nativeReplicationSourceRegion == null)
-        ? Optional.empty() : Optional.of(message.nativeReplicationSourceRegion.toString());
-    Optional<String> regionsFilter = (message.regionsFilter == null)
-        ? Optional.empty() : Optional.of(message.regionsFilter.toString());
-    admin.configureNativeReplication(clusterName, storeType, Optional.of(storeName), enableNativeReplication,
-        nativeReplicationSourceFabric, regionsFilter);
+        ? Optional.empty()
+        : Optional.of(message.nativeReplicationSourceRegion.toString());
+    Optional<String> regionsFilter =
+        (message.regionsFilter == null) ? Optional.empty() : Optional.of(message.regionsFilter.toString());
+    admin.configureNativeReplication(
+        clusterName,
+        storeType,
+        Optional.of(storeName),
+        enableNativeReplication,
+        nativeReplicationSourceFabric,
+        regionsFilter);
   }
 
   private void handleEnableActiveActiveReplicationForCluster(ConfigureActiveActiveReplicationForCluster message) {
     String clusterName = message.clusterName.toString();
     VeniceUserStoreType storeType = VeniceUserStoreType.valueOf(message.storeType.toString().toUpperCase());
     boolean enableActiveActiveReplication = message.enabled;
-    Optional<String> regionsFilter = (message.regionsFilter == null)
-        ? Optional.empty() : Optional.of(message.regionsFilter.toString());
-    admin.configureActiveActiveReplication(clusterName, storeType, Optional.empty(), enableActiveActiveReplication, regionsFilter);
+    Optional<String> regionsFilter =
+        (message.regionsFilter == null) ? Optional.empty() : Optional.of(message.regionsFilter.toString());
+    admin.configureActiveActiveReplication(
+        clusterName,
+        storeType,
+        Optional.empty(),
+        enableActiveActiveReplication,
+        regionsFilter);
   }
 
   private void handleConfigureIncrementalPushForCluster(ConfigureIncrementalPushForCluster message) {
     String clusterName = message.clusterName.toString();
-    IncrementalPushPolicy incrementalPushPolicyToApply = IncrementalPushPolicy.valueOf(message.incrementalPushPolicyToApply);
+    IncrementalPushPolicy incrementalPushPolicyToApply =
+        IncrementalPushPolicy.valueOf(message.incrementalPushPolicyToApply);
     Optional<IncrementalPushPolicy> incrementalPushPolicyToFilter = message.incrementalPushPolicyToFilter >= 0
-                                                                    ? Optional.of(IncrementalPushPolicy.valueOf(message.incrementalPushPolicyToFilter))
-                                                                    : Optional.empty();
-    Optional<String> regionsFilter = (message.regionsFilter == null)
-        ? Optional.empty() : Optional.of(message.regionsFilter.toString());
-    admin.configureIncrementalPushForCluster(clusterName, Optional.of(storeName), incrementalPushPolicyToApply,
-        incrementalPushPolicyToFilter, regionsFilter);
+        ? Optional.of(IncrementalPushPolicy.valueOf(message.incrementalPushPolicyToFilter))
+        : Optional.empty();
+    Optional<String> regionsFilter =
+        (message.regionsFilter == null) ? Optional.empty() : Optional.of(message.regionsFilter.toString());
+    admin.configureIncrementalPushForCluster(
+        clusterName,
+        Optional.of(storeName),
+        incrementalPushPolicyToApply,
+        incrementalPushPolicyToFilter,
+        regionsFilter);
   }
 
   private boolean checkPreConditionForReplicateAddVersion(String clusterName, String storeName) {
     return admin.getStore(clusterName, storeName).isMigrating();
   }
 
-  private boolean checkPreConditionForReplicateUpdateStore(String clusterName, String storeName,
-      boolean isMigrating, boolean isEnableReads, boolean isEnableWrites, boolean isMigrationDuplicateStore) {
+  private boolean checkPreConditionForReplicateUpdateStore(
+      String clusterName,
+      String storeName,
+      boolean isMigrating,
+      boolean isEnableReads,
+      boolean isEnableWrites,
+      boolean isMigrationDuplicateStore) {
     if (this.isParentController && admin.hasStore(clusterName, storeName)) {
       Store store = admin.getStore(clusterName, storeName);
       if (store.isMigrating()) {
         boolean storeMigrationUpdated = isMigrating != store.isMigrating();
-        boolean readabilityUpdated =  isEnableReads != store.isEnableReads();
+        boolean readabilityUpdated = isEnableReads != store.isEnableReads();
         boolean writeabilityUpdated = isEnableWrites != store.isEnableWrites();
         boolean migrationDuplicateStoreUpdated = isMigrationDuplicateStore != store.isMigrationDuplicateStore();
         if (storeMigrationUpdated || readabilityUpdated || writeabilityUpdated || migrationDuplicateStoreUpdated) {
@@ -641,9 +719,19 @@ public class AdminExecutionTask implements Callable<Void> {
     String replicationMetadataSchemaStr = message.metadataSchema.definition.toString();
     int replicationMetadataVersionId = message.timestampMetadataVersionId;
 
-    admin.addReplicationMetadataSchema(clusterName, storeName, valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
-    logger.info("Added replication metadata schema for store {}, value schema ID {}, replication metadata version ID {}, and "
-        + "the added replication metadata schema: {}", storeName, valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
+    admin.addReplicationMetadataSchema(
+        clusterName,
+        storeName,
+        valueSchemaId,
+        replicationMetadataVersionId,
+        replicationMetadataSchemaStr);
+    logger.info(
+        "Added replication metadata schema for store {}, value schema ID {}, replication metadata version ID {}, and "
+            + "the added replication metadata schema: {}",
+        storeName,
+        valueSchemaId,
+        replicationMetadataVersionId,
+        replicationMetadataSchemaStr);
   }
 
   private void handleMetaSystemStoreCreationValidation(MetaSystemStoreAutoCreationValidation message) {
@@ -655,14 +743,18 @@ public class AdminExecutionTask implements Callable<Void> {
   private void handlePushStatusSystemStoreCreationValidation(PushStatusSystemStoreAutoCreationValidation message) {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
-    admin.validateAndMaybeRetrySystemStoreAutoCreation(clusterName, storeName, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE);
+    admin.validateAndMaybeRetrySystemStoreAutoCreation(
+        clusterName,
+        storeName,
+        VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE);
   }
 
   private void handleCreateStoragePersona(CreateStoragePersona message) {
     String clusterName = message.getClusterName().toString();
     String personaName = message.getName().toString();
     long quotaNumber = message.getQuotaNumber();
-    Set<String> storesToEnforce = message.getStoresToEnforce().stream().map(s -> s.toString()).collect(Collectors.toSet());
+    Set<String> storesToEnforce =
+        message.getStoresToEnforce().stream().map(s -> s.toString()).collect(Collectors.toSet());
     Set<String> owners = message.getOwners().stream().map(s -> s.toString()).collect(Collectors.toSet());
     admin.createStoragePersona(clusterName, personaName, quotaNumber, storesToEnforce, owners);
   }
@@ -681,10 +773,12 @@ public class AdminExecutionTask implements Callable<Void> {
       queryParams.setQuota(message.getQuotaNumber());
     }
     if (message.getStoresToEnforce() != null) {
-      queryParams.setStoresToEnforce(new HashSet<>(message.getStoresToEnforce().stream().map(s -> s.toString()).collect(Collectors.toSet())));
+      queryParams.setStoresToEnforce(
+          new HashSet<>(message.getStoresToEnforce().stream().map(s -> s.toString()).collect(Collectors.toSet())));
     }
     if (message.getOwners() != null) {
-      queryParams.setOwners(new HashSet<>(message.getOwners().stream().map(s -> s.toString()).collect(Collectors.toSet())));
+      queryParams
+          .setOwners(new HashSet<>(message.getOwners().stream().map(s -> s.toString()).collect(Collectors.toSet())));
     }
     admin.updateStoragePersona(clusterName, personaName, queryParams);
   }

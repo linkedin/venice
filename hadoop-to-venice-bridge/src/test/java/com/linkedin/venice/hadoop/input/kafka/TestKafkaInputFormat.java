@@ -1,5 +1,8 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.kafka.TopicManager.*;
+
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -22,9 +25,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.kafka.TopicManager.*;
-
 
 public class TestKafkaInputFormat {
   private static final String KAFKA_MESSAGE_KEY_PREFIX = "key_";
@@ -38,7 +38,11 @@ public class TestKafkaInputFormat {
   public void setUp() {
     zkServer = ServiceFactory.getZkServer();
     kafka = ServiceFactory.getKafkaBroker(zkServer);
-    manager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 24 * Time.MS_PER_HOUR, TestUtils.getVeniceConsumerFactory(kafka));
+    manager = new TopicManager(
+        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+        100,
+        24 * Time.MS_PER_HOUR,
+        TestUtils.getVeniceConsumerFactory(kafka));
   }
 
   @AfterClass
@@ -52,7 +56,7 @@ public class TestKafkaInputFormat {
     String topicName = Utils.getUniqueString("test_kafka_input_format");
     manager.createTopic(topicName, numPartition, 1, true);
     VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafka.getAddress());
-    try(VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topicName)) {
+    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topicName)) {
       for (int i = 0; i < numRecord; ++i) {
         veniceWriter.put((KAFKA_MESSAGE_KEY_PREFIX + i).getBytes(), (KAFKA_MESSAGE_VALUE_PREFIX + i).getBytes(), -1);
       }
@@ -65,15 +69,18 @@ public class TestKafkaInputFormat {
    * Each element in {@param expectedSplit} should contain 3 longs:
    * partition, start_offset, end_offset
    */
-  private void getSplitAndValidate(KafkaInputFormat kafkaInputFormat, JobConf conf,
-      long maxRecordsPerMapper, List<long[]> expectedSplit) throws IOException {
+  private void getSplitAndValidate(
+      KafkaInputFormat kafkaInputFormat,
+      JobConf conf,
+      long maxRecordsPerMapper,
+      List<long[]> expectedSplit) throws IOException {
     if (maxRecordsPerMapper > 0) {
       conf.set(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, Long.toString(maxRecordsPerMapper));
     }
     InputSplit[] splits = kafkaInputFormat.getSplits(conf, 100);
     Assert.assertEquals(splits.length, expectedSplit.size());
     Arrays.stream(splits).forEach(split -> Assert.assertTrue(split instanceof KafkaInputSplit));
-    KafkaInputSplit[] kafkaInputSplits = (KafkaInputSplit[])splits;
+    KafkaInputSplit[] kafkaInputSplits = (KafkaInputSplit[]) splits;
     Arrays.sort(kafkaInputSplits, new Comparator<KafkaInputSplit>() {
       @Override
       public int compare(KafkaInputSplit o1, KafkaInputSplit o2) {
@@ -82,7 +89,7 @@ public class TestKafkaInputFormat {
         } else if (o1.getTopicPartition().partition() < o2.getTopicPartition().partition()) {
           return -1;
         } else {
-          return (int)(o1.getStartingOffset() - o2.getStartingOffset());
+          return (int) (o1.getStartingOffset() - o2.getStartingOffset());
         }
       }
     });
@@ -90,7 +97,8 @@ public class TestKafkaInputFormat {
       KafkaInputSplit split = kafkaInputSplits[i];
       long[] expected = expectedSplit.get(i);
       if (expected.length != 3) {
-        throw new RuntimeException("Invalid length of element in param: expectedSplit, and it should be 3, but got: " + expected.length);
+        throw new RuntimeException(
+            "Invalid length of element in param: expectedSplit, and it should be 3, but got: " + expected.length);
       }
       long expectedPartition = expected[0];
       long expectedStartOffset = expected[1];
@@ -117,25 +125,19 @@ public class TestKafkaInputFormat {
     Assert.assertEquals(latestOffsets.get(partition2).longValue(), 350);
 
     // Try to get splits with the default max records per mapper
-    getSplitAndValidate(kafkaInputFormat, conf, -1, Arrays.asList(new long[][] {
-        {0, 0, 300},
-        {1, 0, 356},
-        {2, 0, 350}
-    }));
+    getSplitAndValidate(
+        kafkaInputFormat,
+        conf,
+        -1,
+        Arrays.asList(new long[][] { { 0, 0, 300 }, { 1, 0, 356 }, { 2, 0, 350 } }));
     // max records per mapper: 100
-    getSplitAndValidate(kafkaInputFormat, conf, 100, Arrays.asList(new long[][] {
-        {0, 0, 100},
-        {0, 100, 200},
-        {0, 200, 300},
-        {1, 0, 100},
-        {1, 100, 200},
-        {1, 200, 300},
-        {1, 300, 356},
-        {2, 0, 100},
-        {2, 100, 200},
-        {2, 200, 300},
-        {2, 300, 350}
-    }));
+    getSplitAndValidate(
+        kafkaInputFormat,
+        conf,
+        100,
+        Arrays.asList(
+            new long[][] { { 0, 0, 100 }, { 0, 100, 200 }, { 0, 200, 300 }, { 1, 0, 100 }, { 1, 100, 200 },
+                { 1, 200, 300 }, { 1, 300, 356 }, { 2, 0, 100 }, { 2, 100, 200 }, { 2, 200, 300 }, { 2, 300, 350 } }));
 
   }
 }

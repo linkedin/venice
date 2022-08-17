@@ -14,8 +14,14 @@ public class ErrorCountAppender extends AbstractAppender {
   private final AtomicInteger errorMessageCounter;
   private final String exceptionMessage;
 
-  protected ErrorCountAppender(String name, Filter filter, Layout<? extends Serializable> layout,
-      boolean ignoreExceptions, Property[] properties, AtomicInteger errorMessageCounter, String exceptionMessage) {
+  protected ErrorCountAppender(
+      String name,
+      Filter filter,
+      Layout<? extends Serializable> layout,
+      boolean ignoreExceptions,
+      Property[] properties,
+      AtomicInteger errorMessageCounter,
+      String exceptionMessage) {
     super(name, filter, layout, ignoreExceptions, properties);
     this.errorMessageCounter = errorMessageCounter;
     this.exceptionMessage = exceptionMessage;
@@ -23,7 +29,6 @@ public class ErrorCountAppender extends AbstractAppender {
 
   public static class Builder<B extends Builder<B>> extends AbstractAppender.Builder<B>
       implements org.apache.logging.log4j.core.util.Builder<ErrorCountAppender> {
-
     private AtomicInteger errorMessageCounter;
     private String exceptionMessage;
 
@@ -39,7 +44,14 @@ public class ErrorCountAppender extends AbstractAppender {
 
     @Override
     public ErrorCountAppender build() {
-      return new ErrorCountAppender("ErrorCountAppender", getFilter(), null, false, getPropertyArray(), errorMessageCounter, exceptionMessage);
+      return new ErrorCountAppender(
+          "ErrorCountAppender",
+          getFilter(),
+          null,
+          false,
+          getPropertyArray(),
+          errorMessageCounter,
+          exceptionMessage);
     }
   }
 

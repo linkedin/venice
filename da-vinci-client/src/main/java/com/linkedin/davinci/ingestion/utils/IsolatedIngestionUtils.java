@@ -1,5 +1,9 @@
 package com.linkedin.davinci.ingestion.utils;
 
+import static com.linkedin.venice.CommonConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.*;
+
 import com.linkedin.common.callback.Callback;
 import com.linkedin.common.util.None;
 import com.linkedin.d2.balancer.D2Client;
@@ -68,10 +72,6 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.CommonConfigKeys.*;
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.*;
-
 
 /**
  * IsolatedIngestionUtils class contains methods used for communication between ingestion client and server.
@@ -89,11 +89,11 @@ public class IsolatedIngestionUtils {
   private static final int SHELL_COMMAND_WAIT_TIME = 1000;
 
   private static final InternalAvroSpecificSerializer<IngestionTaskCommand> ingestionTaskCommandSerializer =
-          AvroProtocolDefinition.INGESTION_TASK_COMMAND.getSerializer();
+      AvroProtocolDefinition.INGESTION_TASK_COMMAND.getSerializer();
   private static final InternalAvroSpecificSerializer<IngestionTaskReport> ingestionTaskReportSerializer =
-          AvroProtocolDefinition.INGESTION_TASK_REPORT.getSerializer();
+      AvroProtocolDefinition.INGESTION_TASK_REPORT.getSerializer();
   private static final InternalAvroSpecificSerializer<IngestionMetricsReport> ingestionMetricsReportSerializer =
-          AvroProtocolDefinition.INGESTION_METRICS_REPORT.getSerializer();
+      AvroProtocolDefinition.INGESTION_METRICS_REPORT.getSerializer();
   private static final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
       AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
   private static final InternalAvroSpecificSerializer<IngestionStorageMetadata> ingestionStorageMetadataSerializer =
@@ -103,26 +103,27 @@ public class IsolatedIngestionUtils {
   private static final InternalAvroSpecificSerializer<IngestionTaskCommand> ingestionDummyContentSerializer =
       ingestionTaskCommandSerializer;
 
-
   private static final Map<IngestionAction, InternalAvroSpecificSerializer> ingestionActionToRequestSerializerMap =
-      Stream.of(
-          new AbstractMap.SimpleEntry<>(COMMAND, ingestionTaskCommandSerializer),
-          new AbstractMap.SimpleEntry<>(REPORT, ingestionTaskReportSerializer),
-          new AbstractMap.SimpleEntry<>(METRIC, ingestionDummyContentSerializer),
-          new AbstractMap.SimpleEntry<>(HEARTBEAT, ingestionDummyContentSerializer),
-          new AbstractMap.SimpleEntry<>(UPDATE_METADATA, ingestionStorageMetadataSerializer),
-          new AbstractMap.SimpleEntry<>(SHUTDOWN_COMPONENT, processShutdownCommandSerializer)
-      ).collect(Collectors.toMap(AbstractMap.SimpleEntry::getKey, AbstractMap.SimpleEntry::getValue));
+      Stream
+          .of(
+              new AbstractMap.SimpleEntry<>(COMMAND, ingestionTaskCommandSerializer),
+              new AbstractMap.SimpleEntry<>(REPORT, ingestionTaskReportSerializer),
+              new AbstractMap.SimpleEntry<>(METRIC, ingestionDummyContentSerializer),
+              new AbstractMap.SimpleEntry<>(HEARTBEAT, ingestionDummyContentSerializer),
+              new AbstractMap.SimpleEntry<>(UPDATE_METADATA, ingestionStorageMetadataSerializer),
+              new AbstractMap.SimpleEntry<>(SHUTDOWN_COMPONENT, processShutdownCommandSerializer))
+          .collect(Collectors.toMap(AbstractMap.SimpleEntry::getKey, AbstractMap.SimpleEntry::getValue));
 
   private static final Map<IngestionAction, InternalAvroSpecificSerializer> ingestionActionToResponseSerializerMap =
-      Stream.of(
-          new AbstractMap.SimpleEntry<>(COMMAND, ingestionTaskReportSerializer),
-          new AbstractMap.SimpleEntry<>(REPORT, ingestionDummyContentSerializer),
-          new AbstractMap.SimpleEntry<>(METRIC, ingestionMetricsReportSerializer),
-          new AbstractMap.SimpleEntry<>(HEARTBEAT, ingestionTaskCommandSerializer),
-          new AbstractMap.SimpleEntry<>(UPDATE_METADATA, ingestionTaskReportSerializer),
-          new AbstractMap.SimpleEntry<>(SHUTDOWN_COMPONENT, ingestionTaskReportSerializer)
-      ).collect(Collectors.toMap(AbstractMap.SimpleEntry::getKey, AbstractMap.SimpleEntry::getValue));
+      Stream
+          .of(
+              new AbstractMap.SimpleEntry<>(COMMAND, ingestionTaskReportSerializer),
+              new AbstractMap.SimpleEntry<>(REPORT, ingestionDummyContentSerializer),
+              new AbstractMap.SimpleEntry<>(METRIC, ingestionMetricsReportSerializer),
+              new AbstractMap.SimpleEntry<>(HEARTBEAT, ingestionTaskCommandSerializer),
+              new AbstractMap.SimpleEntry<>(UPDATE_METADATA, ingestionTaskReportSerializer),
+              new AbstractMap.SimpleEntry<>(SHUTDOWN_COMPONENT, ingestionTaskReportSerializer))
+          .collect(Collectors.toMap(AbstractMap.SimpleEntry::getKey, AbstractMap.SimpleEntry::getValue));
 
   private static final IngestionTaskCommand dummyCommand = new IngestionTaskCommand();
   static {
@@ -134,15 +135,21 @@ public class IsolatedIngestionUtils {
     return ingestionActionToRequestSerializerMap.get(action).serialize(null, param);
   }
 
-  public static <T extends SpecificRecordBase> T deserializeIngestionActionRequest(IngestionAction action, byte[] content) {
+  public static <T extends SpecificRecordBase> T deserializeIngestionActionRequest(
+      IngestionAction action,
+      byte[] content) {
     return (T) (ingestionActionToRequestSerializerMap.get(action).deserialize(null, content));
   }
 
-  public static <T extends SpecificRecordBase> byte[] serializeIngestionActionResponse(IngestionAction action, T param) {
+  public static <T extends SpecificRecordBase> byte[] serializeIngestionActionResponse(
+      IngestionAction action,
+      T param) {
     return ingestionActionToResponseSerializerMap.get(action).serialize(null, param);
   }
 
-  public static <T extends SpecificRecordBase> T deserializeIngestionActionResponse(IngestionAction action, byte[] content) {
+  public static <T extends SpecificRecordBase> T deserializeIngestionActionResponse(
+      IngestionAction action,
+      byte[] content) {
     return (T) (ingestionActionToResponseSerializerMap.get(action).deserialize(null, content));
   }
 
@@ -289,7 +296,7 @@ public class IsolatedIngestionUtils {
     String processIds = executeShellCommand("/usr/sbin/lsof -t -i :" + port);
     if (processIds.length() != 0) {
       logger.info("Target port is associated to process IDs:\n" + processIds);
-      for (String processId : processIds.split("\n")) {
+      for (String processId: processIds.split("\n")) {
         if (!processId.equals("")) {
           int pid = Integer.parseInt(processId);
           String fullProcessName = executeShellCommand("ps -p " + pid + " -o command");
@@ -330,7 +337,12 @@ public class IsolatedIngestionUtils {
     }
   }
 
-  public static IngestionTaskReport createIngestionTaskReport(IngestionReportType ingestionReportType, String kafkaTopic, int partitionId, long offset, String message) {
+  public static IngestionTaskReport createIngestionTaskReport(
+      IngestionReportType ingestionReportType,
+      String kafkaTopic,
+      int partitionId,
+      long offset,
+      String message) {
     IngestionTaskReport report = new IngestionTaskReport();
     report.reportType = ingestionReportType.getValue();
     report.message = message;
@@ -399,19 +411,30 @@ public class IsolatedIngestionUtils {
     return createIngestionTaskReport("", 0);
   }
 
-  public static IngestionTaskReport createIngestionTaskReport(IngestionReportType ingestionReportType, String kafkaTopic, int partitionId) {
+  public static IngestionTaskReport createIngestionTaskReport(
+      IngestionReportType ingestionReportType,
+      String kafkaTopic,
+      int partitionId) {
     return createIngestionTaskReport(ingestionReportType, kafkaTopic, partitionId, 0, "");
   }
 
-  public static IngestionTaskReport createIngestionTaskReport(IngestionReportType ingestionReportType, String kafkaTopic, int partitionId, String message) {
+  public static IngestionTaskReport createIngestionTaskReport(
+      IngestionReportType ingestionReportType,
+      String kafkaTopic,
+      int partitionId,
+      String message) {
     return createIngestionTaskReport(ingestionReportType, kafkaTopic, partitionId, 0, message);
   }
 
   public static String buildAndSaveConfigsForForkedIngestionProcess(VeniceConfigLoader configLoader) {
     PropertyBuilder propertyBuilder = new PropertyBuilder();
-    configLoader.getCombinedProperties().toProperties().forEach((key, value) -> propertyBuilder.put(key.toString(), value.toString()));
+    configLoader.getCombinedProperties()
+        .toProperties()
+        .forEach((key, value) -> propertyBuilder.put(key.toString(), value.toString()));
     // Override ingestion isolation's customized configs.
-    configLoader.getCombinedProperties().clipAndFilterNamespace(INGESTION_ISOLATION_CONFIG_PREFIX).toProperties()
+    configLoader.getCombinedProperties()
+        .clipAndFilterNamespace(INGESTION_ISOLATION_CONFIG_PREFIX)
+        .toProperties()
         .forEach((key, value) -> propertyBuilder.put(key.toString(), value.toString()));
     maybePopulateServerIngestionPrincipal(propertyBuilder, configLoader);
     // Populate region name to isolated ingestion process resolved from env/system property.
@@ -423,7 +446,8 @@ public class IsolatedIngestionUtils {
 
   public static void saveForkedIngestionKafkaClusterMapConfig(VeniceConfigLoader configLoader) {
     String configBasePath = configLoader.getVeniceServerConfig().getDataBasePath();
-    String configFilePath = Paths.get(configBasePath, ISOLATED_INGESTION_KAFKA_CLUSTER_MAP_FILENAME).toAbsolutePath().toString();
+    String configFilePath =
+        Paths.get(configBasePath, ISOLATED_INGESTION_KAFKA_CLUSTER_MAP_FILENAME).toAbsolutePath().toString();
     File configFile = new File(configFilePath);
     if (configFile.exists()) {
       logger.info("Kafka cluster map file already exists, will delete existing file: " + configFilePath);
@@ -432,14 +456,17 @@ public class IsolatedIngestionUtils {
       }
     }
     try {
-      VeniceConfigLoader.storeKafkaClusterMap(new File(configBasePath), ISOLATED_INGESTION_KAFKA_CLUSTER_MAP_FILENAME,
+      VeniceConfigLoader.storeKafkaClusterMap(
+          new File(configBasePath),
+          ISOLATED_INGESTION_KAFKA_CLUSTER_MAP_FILENAME,
           configLoader.getVeniceClusterConfig().getKafkaClusterMap());
     } catch (Exception e) {
       throw new VeniceException("Failed to store Kafka cluster map for isolated ingestion process", e);
     }
   }
 
-  public static Optional<Map<String, Map<String, String>>> loadForkedIngestionKafkaClusterMapConfig(String configBasePath) {
+  public static Optional<Map<String, Map<String, String>>> loadForkedIngestionKafkaClusterMapConfig(
+      String configBasePath) {
     try {
       return VeniceConfigLoader.parseKafkaClusterMap(configBasePath, ISOLATED_INGESTION_KAFKA_CLUSTER_MAP_FILENAME);
     } catch (Exception e) {
@@ -447,7 +474,9 @@ public class IsolatedIngestionUtils {
     }
   }
 
-  public static void saveForkedIngestionProcessMetadata(VeniceConfigLoader configLoader, ForkedJavaProcess forkedJavaProcess) {
+  public static void saveForkedIngestionProcessMetadata(
+      VeniceConfigLoader configLoader,
+      ForkedJavaProcess forkedJavaProcess) {
     PropertyBuilder propertyBuilder = new PropertyBuilder();
     propertyBuilder.put(PID, forkedJavaProcess.pid());
     VeniceProperties veniceProperties = propertyBuilder.build();
@@ -476,7 +505,8 @@ public class IsolatedIngestionUtils {
       if (isolatedIngestionServerSslEnabled(configLoader)) {
         // If SSL communication is enabled but SSL configs are missing, we should fail fast here.
         if (!sslEnabled(configLoader)) {
-          throw new VeniceException("Ingestion isolation SSL is enabled for communication, but SSL configs are missing.");
+          throw new VeniceException(
+              "Ingestion isolation SSL is enabled for communication, but SSL configs are missing.");
         }
         logger.info("SSL is enabled, will create SSLEngineComponentFactory");
         SSLConfig sslConfig = new SSLConfig(configLoader.getCombinedProperties());
@@ -498,7 +528,8 @@ public class IsolatedIngestionUtils {
       try {
         // If SSL communication is enabled but SSL configs are missing, we should fail fast here.
         if (!sslEnabled(configLoader)) {
-          throw new VeniceException("Ingestion isolation SSL is enabled for communication, but SSL configs are missing.");
+          throw new VeniceException(
+              "Ingestion isolation SSL is enabled for communication, but SSL configs are missing.");
         }
         logger.info("SSL is enabled, will create SSLFactory");
         return Optional.of(new DefaultSSLFactory(configLoader.getCombinedProperties().toProperties()));
@@ -528,11 +559,15 @@ public class IsolatedIngestionUtils {
 
   public static Optional<IsolatedIngestionServerAclHandler> getAclHandler(VeniceConfigLoader configLoader) {
     if (isolatedIngestionServerSslEnabled(configLoader) && isolatedIngestionServerAclEnabled(configLoader)) {
-      String allowedPrincipalName = configLoader.getCombinedProperties().getString(SERVER_INGESTION_ISOLATION_PRINCIPAL_NAME);
+      String allowedPrincipalName =
+          configLoader.getCombinedProperties().getString(SERVER_INGESTION_ISOLATION_PRINCIPAL_NAME);
       if (StringUtils.isEmpty(allowedPrincipalName)) {
-        throw new VeniceException("Ingestion isolation server SSL and ACL validation are enabled, but allowed principal name is missing in config.");
+        throw new VeniceException(
+            "Ingestion isolation server SSL and ACL validation are enabled, but allowed principal name is missing in config.");
       }
-      logger.info("Isolated ingestion server request ACL validation is enabled. Creating ACL handler with allowed principal name: " + allowedPrincipalName);
+      logger.info(
+          "Isolated ingestion server request ACL validation is enabled. Creating ACL handler with allowed principal name: "
+              + allowedPrincipalName);
       return Optional.of(new IsolatedIngestionServerAclHandler(allowedPrincipalName));
     } else {
       return Optional.empty();
@@ -551,7 +586,9 @@ public class IsolatedIngestionUtils {
     return configLoader.getCombinedProperties().getBoolean(SSL_ENABLED, false);
   }
 
-  private static void maybePopulateServerIngestionPrincipal(PropertyBuilder propertyBuilder, VeniceConfigLoader configLoader) {
+  private static void maybePopulateServerIngestionPrincipal(
+      PropertyBuilder propertyBuilder,
+      VeniceConfigLoader configLoader) {
     if (!isolatedIngestionServerSslEnabled(configLoader)) {
       logger.info("Skip populating service principal name since ingestion server SSL is not enabled.");
       return;
@@ -563,7 +600,8 @@ public class IsolatedIngestionUtils {
     }
 
     // Extract principal name from the KeyStore file
-    try (FileInputStream is = new FileInputStream(configLoader.getCombinedProperties().getString(SSL_KEYSTORE_LOCATION))) {
+    try (FileInputStream is =
+        new FileInputStream(configLoader.getCombinedProperties().getString(SSL_KEYSTORE_LOCATION))) {
       KeyStore keystore = KeyStore.getInstance(configLoader.getCombinedProperties().getString(SSL_KEYSTORE_TYPE));
       keystore.load(is, configLoader.getCombinedProperties().getString(SSL_KEY_PASSWORD).toCharArray());
       String keyStoreAlias = keystore.aliases().nextElement();
@@ -573,7 +611,10 @@ public class IsolatedIngestionUtils {
     }
   }
 
-  private static String storeVenicePropertiesToFile(String basePath, String fileName, VeniceProperties veniceProperties) {
+  private static String storeVenicePropertiesToFile(
+      String basePath,
+      String fileName,
+      VeniceProperties veniceProperties) {
     try {
       // Make sure the base path exists so we can store the config file in the path.
       Files.createDirectories(Paths.get(basePath));

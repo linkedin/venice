@@ -1,5 +1,7 @@
 package com.linkedin.venice.controllerapi;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -19,7 +21,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 
 public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams(Map<String, String> initialParams) {
@@ -44,8 +45,7 @@ public class UpdateStoreQueryParams extends QueryParams {
     // Copy everything except for currentVersion, daVinciPushStatusStoreEnabled, latestSuperSetValueSchemaId,
     // storeMetaSystemStoreEnabled, storeMetadataSystemStoreEnabled
     UpdateStoreQueryParams updateStoreQueryParams =
-        new UpdateStoreQueryParams()
-            .setAccessControlled(srcStore.isAccessControlled())
+        new UpdateStoreQueryParams().setAccessControlled(srcStore.isAccessControlled())
             .setActiveActiveReplicationEnabled(srcStore.isActiveActiveReplicationEnabled())
             .setApplyTargetVersionFilterForIncPush(srcStore.isApplyTargetVersionFilterForIncPush())
             .setBackupStrategy(srcStore.getBackupStrategy())
@@ -80,8 +80,8 @@ public class UpdateStoreQueryParams extends QueryParams {
     }
 
     if (storeMigrating) {
-      updateStoreQueryParams
-          .setLargestUsedVersionNumber(0) // Decrease the largestUsedVersionNumber to trigger bootstrap in dest cluster
+      updateStoreQueryParams.setLargestUsedVersionNumber(0) // Decrease the largestUsedVersionNumber to trigger
+                                                            // bootstrap in dest cluster
           .setStoreMigration(true)
           .setMigrationDuplicateStore(true); // Mark as duplicate store, to which L/F SN refers to avoid multi leaders
     }
@@ -97,7 +97,8 @@ public class UpdateStoreQueryParams extends QueryParams {
     if (hybridStoreConfig != null) {
       updateStoreQueryParams.setHybridOffsetLagThreshold(hybridStoreConfig.getOffsetLagThresholdToGoOnline());
       updateStoreQueryParams.setHybridRewindSeconds(hybridStoreConfig.getRewindTimeInSeconds());
-      updateStoreQueryParams.setHybridTimeLagThreshold(hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds());
+      updateStoreQueryParams
+          .setHybridTimeLagThreshold(hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds());
       updateStoreQueryParams.setHybridDataReplicationPolicy(hybridStoreConfig.getDataReplicationPolicy());
       updateStoreQueryParams.setHybridBufferReplayPolicy(hybridStoreConfig.getBufferReplayPolicy());
     }
@@ -114,7 +115,7 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public boolean isDifferent(UpdateStoreQueryParams newParams) {
     boolean isDifferent = false;
-    for (Map.Entry<String, String> entry : newParams.params.entrySet()) {
+    for (Map.Entry<String, String> entry: newParams.params.entrySet()) {
       if (!Objects.equals(this.params.get(entry.getKey()), entry.getValue())) {
         isDifferent = true;
       }
@@ -126,6 +127,7 @@ public class UpdateStoreQueryParams extends QueryParams {
     params.put(OWNER, owner);
     return this;
   }
+
   public Optional<String> getOwner() {
     return Optional.ofNullable(params.get(OWNER));
   }
@@ -133,6 +135,7 @@ public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams setPartitionCount(int partitionCount) {
     return putInteger(PARTITION_COUNT, partitionCount);
   }
+
   public Optional<Integer> getPartitionCount() {
     return getInteger(PARTITION_COUNT);
   }
@@ -140,6 +143,7 @@ public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams setPartitionerClass(String partitionerClass) {
     return putString(PARTITIONER_CLASS, partitionerClass);
   }
+
   public Optional<String> getPartitionerClass() {
     return getString(PARTITIONER_CLASS);
   }
@@ -147,6 +151,7 @@ public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams setPartitionerParams(Map<String, String> partitionerParams) {
     return (UpdateStoreQueryParams) putStringMap(PARTITIONER_PARAMS, partitionerParams);
   }
+
   public Optional<Map<String, String>> getPartitionerParams() {
     return getStringMap(PARTITIONER_PARAMS);
   }
@@ -154,6 +159,7 @@ public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams setAmplificationFactor(int amplificationFactor) {
     return putInteger(AMPLIFICATION_FACTOR, amplificationFactor);
   }
+
   public Optional<Integer> getAmplificationFactor() {
     return getInteger(AMPLIFICATION_FACTOR);
   }
@@ -161,6 +167,7 @@ public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams setCurrentVersion(int currentVersion) {
     return putInteger(VERSION, currentVersion);
   }
+
   public Optional<Integer> getCurrentVersion() {
     return getInteger(VERSION);
   }
@@ -168,6 +175,7 @@ public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams setLargestUsedVersionNumber(int largestUsedVersionNumber) {
     return putInteger(LARGEST_USED_VERSION_NUMBER, largestUsedVersionNumber);
   }
+
   public Optional<Integer> getLargestUsedVersionNumber() {
     return getInteger(LARGEST_USED_VERSION_NUMBER);
   }
@@ -175,6 +183,7 @@ public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams setEnableReads(boolean enableReads) {
     return putBoolean(ENABLE_READS, enableReads);
   }
+
   public Optional<Boolean> getEnableReads() {
     return getBoolean(ENABLE_READS);
   }
@@ -206,6 +215,7 @@ public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams setStorageQuotaInByte(long storageQuotaInByte) {
     return putLong(STORAGE_QUOTA_IN_BYTE, storageQuotaInByte);
   }
+
   public Optional<Long> getStorageQuotaInByte() {
     return getLong(STORAGE_QUOTA_IN_BYTE);
   }
@@ -214,17 +224,22 @@ public class UpdateStoreQueryParams extends QueryParams {
     return putBoolean(HYBRID_STORE_OVERHEAD_BYPASS, overheadBypass);
   }
 
-  public Optional<Boolean> getHybridStoreDiskQuotaEnabled() { return getBoolean(HYBRID_STORE_DISK_QUOTA_ENABLED); }
+  public Optional<Boolean> getHybridStoreDiskQuotaEnabled() {
+    return getBoolean(HYBRID_STORE_DISK_QUOTA_ENABLED);
+  }
 
   public UpdateStoreQueryParams setHybridStoreDiskQuotaEnabled(boolean enabled) {
     return putBoolean(HYBRID_STORE_DISK_QUOTA_ENABLED, enabled);
   }
 
-  public Optional<Boolean> getHybridStoreOverheadBypass() { return getBoolean(HYBRID_STORE_OVERHEAD_BYPASS); }
+  public Optional<Boolean> getHybridStoreOverheadBypass() {
+    return getBoolean(HYBRID_STORE_OVERHEAD_BYPASS);
+  }
 
   public UpdateStoreQueryParams setReadQuotaInCU(long readQuotaInCU) {
     return putLong(READ_QUOTA_IN_CU, readQuotaInCU);
   }
+
   public Optional<Long> getReadQuotaInCU() {
     return getLong(READ_QUOTA_IN_CU);
   }
@@ -232,6 +247,7 @@ public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams setHybridRewindSeconds(long hybridRewindSeconds) {
     return putLong(REWIND_TIME_IN_SECONDS, hybridRewindSeconds);
   }
+
   public Optional<Long> getHybridRewindSeconds() {
     return getLong(REWIND_TIME_IN_SECONDS);
   }
@@ -239,6 +255,7 @@ public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams setHybridOffsetLagThreshold(long hybridOffsetLagThreshold) {
     return putLong(OFFSET_LAG_TO_GO_ONLINE, hybridOffsetLagThreshold);
   }
+
   public Optional<Long> getHybridOffsetLagThreshold() {
     return getLong(OFFSET_LAG_TO_GO_ONLINE);
   }
@@ -255,6 +272,7 @@ public class UpdateStoreQueryParams extends QueryParams {
     params.put(DATA_REPLICATION_POLICY, dataReplicationPolicy.name());
     return this;
   }
+
   public Optional<DataReplicationPolicy> getHybridDataReplicationPolicy() {
     return Optional.ofNullable(params.get(DATA_REPLICATION_POLICY)).map(DataReplicationPolicy::valueOf);
   }
@@ -271,6 +289,7 @@ public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams setAccessControlled(boolean accessControlled) {
     return putBoolean(ACCESS_CONTROLLED, accessControlled);
   }
+
   public Optional<Boolean> getAccessControlled() {
     return getBoolean(ACCESS_CONTROLLED);
   }
@@ -279,6 +298,7 @@ public class UpdateStoreQueryParams extends QueryParams {
     params.put(COMPRESSION_STRATEGY, compressionStrategy.name());
     return this;
   }
+
   public Optional<CompressionStrategy> getCompressionStrategy() {
     return Optional.ofNullable(params.get(COMPRESSION_STRATEGY)).map(CompressionStrategy::valueOf);
   }
@@ -295,6 +315,7 @@ public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams setChunkingEnabled(boolean chunkingEnabled) {
     return putBoolean(CHUNKING_ENABLED, chunkingEnabled);
   }
+
   public Optional<Boolean> getChunkingEnabled() {
     return getBoolean(CHUNKING_ENABLED);
   }
@@ -302,6 +323,7 @@ public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams setIncrementalPushEnabled(boolean incrementalPushEnabled) {
     return putBoolean(INCREMENTAL_PUSH_ENABLED, incrementalPushEnabled);
   }
+
   public Optional<Boolean> getIncrementalPushEnabled() {
     return getBoolean(INCREMENTAL_PUSH_ENABLED);
   }
@@ -309,20 +331,23 @@ public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams setBatchGetLimit(int batchGetLimit) {
     return putInteger(BATCH_GET_LIMIT, batchGetLimit);
   }
+
   public Optional<Integer> getBatchGetLimit() {
     return getInteger(BATCH_GET_LIMIT);
   }
 
-  public UpdateStoreQueryParams setNumVersionsToPreserve(int numVersionsToPreserve){
+  public UpdateStoreQueryParams setNumVersionsToPreserve(int numVersionsToPreserve) {
     return putInteger(NUM_VERSIONS_TO_PRESERVE, numVersionsToPreserve);
   }
-  public Optional<Integer> getNumVersionsToPreserve(){
+
+  public Optional<Integer> getNumVersionsToPreserve() {
     return getInteger(NUM_VERSIONS_TO_PRESERVE);
   }
 
   public UpdateStoreQueryParams setStoreMigration(boolean migrating) {
     return putBoolean(STORE_MIGRATION, migrating);
   }
+
   public Optional<Boolean> getStoreMigration() {
     return getBoolean(STORE_MIGRATION);
   }
@@ -330,6 +355,7 @@ public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams setWriteComputationEnabled(boolean writeComputationEnabled) {
     return putBoolean(WRITE_COMPUTATION_ENABLED, writeComputationEnabled);
   }
+
   public Optional<Boolean> getWriteComputationEnabled() {
     return getBoolean(WRITE_COMPUTATION_ENABLED);
   }
@@ -345,6 +371,7 @@ public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams setReadComputationEnabled(boolean readComputationEnabled) {
     return putBoolean(READ_COMPUTATION_ENABLED, readComputationEnabled);
   }
+
   public Optional<Boolean> getReadComputationEnabled() {
     return getBoolean(READ_COMPUTATION_ENABLED);
   }
@@ -352,6 +379,7 @@ public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams setBootstrapToOnlineTimeoutInHours(int bootstrapToOnlineTimeoutInHours) {
     return putInteger(BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS, bootstrapToOnlineTimeoutInHours);
   }
+
   public Optional<Integer> getBootstrapToOnlineTimeoutInHours() {
     return getInteger(BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
   }
@@ -371,7 +399,6 @@ public class UpdateStoreQueryParams extends QueryParams {
   public Optional<Boolean> getLeaderFollowerModelEnabled() {
     return getBoolean(LEADER_FOLLOWER_MODEL_ENABLED);
   }
-
 
   public UpdateStoreQueryParams setAutoSchemaPushJobEnabled(boolean autoSchemaPushJobEnabled) {
     return putBoolean(AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, autoSchemaPushJobEnabled);
@@ -427,6 +454,7 @@ public class UpdateStoreQueryParams extends QueryParams {
     params.put(INCREMENTAL_PUSH_POLICY, incrementalPushPolicy.name());
     return this;
   }
+
   public Optional<IncrementalPushPolicy> getIncrementalPushPolicy() {
     return Optional.ofNullable(params.get(INCREMENTAL_PUSH_POLICY)).map(IncrementalPushPolicy::valueOf);
   }
@@ -435,6 +463,7 @@ public class UpdateStoreQueryParams extends QueryParams {
     putLong(BACKUP_VERSION_RETENTION_MS, backupVersionRetentionMs);
     return this;
   }
+
   public Optional<Long> getBackupVersionRetentionMs() {
     return getLong(BACKUP_VERSION_RETENTION_MS);
   }
@@ -451,6 +480,7 @@ public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams setMigrationDuplicateStore(boolean migrationDuplicateStore) {
     return putBoolean(MIGRATION_DUPLICATE_STORE, migrationDuplicateStore);
   }
+
   public Optional<Boolean> getMigrationDuplicateStore() {
     return getBoolean(MIGRATION_DUPLICATE_STORE);
   }
@@ -515,7 +545,7 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getString(PERSONA_NAME);
   }
 
-  //***************** above this line are getters and setters *****************
+  // ***************** above this line are getters and setters *****************
   private UpdateStoreQueryParams putInteger(String name, int value) {
     return (UpdateStoreQueryParams) add(name, value);
   }
@@ -542,10 +572,7 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   private UpdateStoreQueryParams putStringList(String name, List<String> value) {
     try {
-      return (UpdateStoreQueryParams) add(
-          name,
-          mapper.writeValueAsString(value)
-      );
+      return (UpdateStoreQueryParams) add(name, mapper.writeValueAsString(value));
     } catch (JsonProcessingException e) {
       throw new VeniceException(e.getMessage());
     }

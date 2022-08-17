@@ -37,7 +37,7 @@ public class LeaderProducedRecordContext {
    */
   private final MessageType messageType;
 
-  //key for the record.
+  // key for the record.
   private byte[] keyBytes;
 
   /**
@@ -61,27 +61,66 @@ public class LeaderProducedRecordContext {
    */
   private CompletableFuture<Void> persistedToDBFuture = null;
 
-  public static LeaderProducedRecordContext newControlMessageRecord(String consumedKafkaUrl, long consumedOffset, byte[] keyBytes, ControlMessage valueUnion) {
-    return new LeaderProducedRecordContext(consumedKafkaUrl, consumedOffset, MessageType.CONTROL_MESSAGE, keyBytes, valueUnion, true);
+  public static LeaderProducedRecordContext newControlMessageRecord(
+      String consumedKafkaUrl,
+      long consumedOffset,
+      byte[] keyBytes,
+      ControlMessage valueUnion) {
+    return new LeaderProducedRecordContext(
+        consumedKafkaUrl,
+        consumedOffset,
+        MessageType.CONTROL_MESSAGE,
+        keyBytes,
+        valueUnion,
+        true);
   }
 
-  public static LeaderProducedRecordContext newPutRecord(String consumedKafkaUrl, long consumedOffset, byte[] keyBytes, Put valueUnion) {
-    return new LeaderProducedRecordContext(consumedKafkaUrl, consumedOffset, MessageType.PUT, keyBytes, valueUnion, true);
+  public static LeaderProducedRecordContext newPutRecord(
+      String consumedKafkaUrl,
+      long consumedOffset,
+      byte[] keyBytes,
+      Put valueUnion) {
+    return new LeaderProducedRecordContext(
+        consumedKafkaUrl,
+        consumedOffset,
+        MessageType.PUT,
+        keyBytes,
+        valueUnion,
+        true);
   }
 
-  public static LeaderProducedRecordContext newPutRecordWithFuture(String consumedKafkaUrl, long consumedOffset, byte[] keyBytes, Put valueUnion,
+  public static LeaderProducedRecordContext newPutRecordWithFuture(
+      String consumedKafkaUrl,
+      long consumedOffset,
+      byte[] keyBytes,
+      Put valueUnion,
       CompletableFuture<Void> persistedToDBFuture) {
-    LeaderProducedRecordContext
-        leaderProducedRecordContext = new LeaderProducedRecordContext(consumedKafkaUrl, consumedOffset, MessageType.PUT, keyBytes, valueUnion, false);
+    LeaderProducedRecordContext leaderProducedRecordContext =
+        new LeaderProducedRecordContext(consumedKafkaUrl, consumedOffset, MessageType.PUT, keyBytes, valueUnion, false);
     leaderProducedRecordContext.persistedToDBFuture = persistedToDBFuture;
     return leaderProducedRecordContext;
   }
 
-  public static LeaderProducedRecordContext newDeleteRecord(String consumedKafkaUrl, long consumedOffset, byte[] keyBytes, Delete valueUnion) {
-    return new LeaderProducedRecordContext(consumedKafkaUrl, consumedOffset, MessageType.DELETE, keyBytes, valueUnion, true);
+  public static LeaderProducedRecordContext newDeleteRecord(
+      String consumedKafkaUrl,
+      long consumedOffset,
+      byte[] keyBytes,
+      Delete valueUnion) {
+    return new LeaderProducedRecordContext(
+        consumedKafkaUrl,
+        consumedOffset,
+        MessageType.DELETE,
+        keyBytes,
+        valueUnion,
+        true);
   }
 
-  private LeaderProducedRecordContext(String consumedKafkaUrl, long consumedOffset, MessageType messageType, byte[] keyBytes, Object valueUnion,
+  private LeaderProducedRecordContext(
+      String consumedKafkaUrl,
+      long consumedOffset,
+      MessageType messageType,
+      byte[] keyBytes,
+      Object valueUnion,
       boolean createFuture) {
     this.consumedKafkaUrl = consumedKafkaUrl;
     this.consumedOffset = consumedOffset;
@@ -101,7 +140,9 @@ public class LeaderProducedRecordContext {
     this.producedOffset = producerOffset;
   }
 
-  public String getConsumedKafkaUrl() {return consumedKafkaUrl; }
+  public String getConsumedKafkaUrl() {
+    return consumedKafkaUrl;
+  }
 
   public long getConsumedOffset() {
     return consumedOffset;
@@ -141,6 +182,7 @@ public class LeaderProducedRecordContext {
 
   @Override
   public String toString() {
-    return "{ consumedOffset: " + consumedOffset + ", messageType: " + messageType + ", producedOffset: " + producedOffset + " }";
+    return "{ consumedOffset: " + consumedOffset + ", messageType: " + messageType + ", producedOffset: "
+        + producedOffset + " }";
   }
 }

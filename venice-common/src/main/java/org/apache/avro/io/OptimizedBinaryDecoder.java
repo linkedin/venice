@@ -19,7 +19,8 @@ public class OptimizedBinaryDecoder extends BinaryDecoder {
   private int offset;
   private int length;
 
-  OptimizedBinaryDecoder() {}
+  OptimizedBinaryDecoder() {
+  }
 
   /** This function ensures that the class fails fast in Avro 1.4 as well, by redirecting to the other signature. */
   void init(int bufferSize, InputStream in) {
@@ -49,7 +50,7 @@ public class OptimizedBinaryDecoder extends BinaryDecoder {
     return ByteBuffer.wrap(byteBuffer.array(), startPosition, bytesLength);
   }
 
- @Override
+  @Override
   public float readFloat() throws IOException {
     checkInit();
     float f = byteBuffer.getFloat(getPos());

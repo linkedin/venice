@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
-import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
@@ -10,6 +9,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
@@ -44,7 +44,6 @@ public class AdminConsumerService extends AbstractVeniceService {
 
   private final Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader;
 
-
   public AdminConsumerService(
       String cluster,
       VeniceHelixAdmin admin,
@@ -53,7 +52,8 @@ public class AdminConsumerService extends AbstractVeniceService {
       Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader) {
     this.config = config;
     this.admin = admin;
-    this.adminTopicMetadataAccessor = new ZkAdminTopicMetadataAccessor(admin.getZkClient(), admin.getAdapterSerializer());
+    this.adminTopicMetadataAccessor =
+        new ZkAdminTopicMetadataAccessor(admin.getZkClient(), admin.getAdapterSerializer());
     this.metricsRepository = metricsRepository;
     this.remoteConsumptionEnabled = config.isAdminTopicRemoteConsumptionEnabled();
     if (remoteConsumptionEnabled) {
@@ -65,10 +65,9 @@ public class AdminConsumerService extends AbstractVeniceService {
               admin.getVeniceConsumerFactory().getClass(),
               this.getClass(),
               cluster + "_" + remoteKafkaServerUrl.get(),
-              metricsRepository
-          )
-      );
-      this.consumerFactory = admin.getVeniceConsumerFactory().clone(remoteKafkaServerUrl.get(), remoteKafkaZkAddress.get(), metricsParameters);
+              metricsRepository));
+      this.consumerFactory = admin.getVeniceConsumerFactory()
+          .clone(remoteKafkaServerUrl.get(), remoteKafkaZkAddress.get(), metricsParameters);
     } else {
       this.consumerFactory = admin.getVeniceConsumerFactory();
       remoteKafkaServerUrl = Optional.empty();
@@ -101,7 +100,8 @@ public class AdminConsumerService extends AbstractVeniceService {
   }
 
   private AdminConsumptionTask getAdminConsumptionTaskForCluster(String clusterName) {
-    return new AdminConsumptionTask(clusterName,
+    return new AdminConsumptionTask(
+        clusterName,
         createKafkaConsumer(clusterName),
         this.remoteConsumptionEnabled,
         remoteKafkaServerUrl,
@@ -116,16 +116,17 @@ public class AdminConsumerService extends AbstractVeniceService {
         config.getAdminConsumptionMaxWorkerThreadPoolSize());
   }
 
-  public void setOffsetToSkip(String clusterName, long offset, boolean skipDIV){
-    if (clusterName.equals(config.getClusterName())){
+  public void setOffsetToSkip(String clusterName, long offset, boolean skipDIV) {
+    if (clusterName.equals(config.getClusterName())) {
       if (skipDIV) {
         consumerTask.skipMessageDIVWithOffset(offset);
       } else {
         consumerTask.skipMessageWithOffset(offset);
       }
     } else {
-      throw new VeniceException("This AdminConsumptionService is for cluster " + config.getClusterName()
-          + ".  Cannot skip admin message with offset " + offset + " for cluster " + clusterName);
+      throw new VeniceException(
+          "This AdminConsumptionService is for cluster " + config.getClusterName()
+              + ".  Cannot skip admin message with offset " + offset + " for cluster " + clusterName);
     }
   }
 
@@ -133,8 +134,9 @@ public class AdminConsumerService extends AbstractVeniceService {
     if (clusterName.equals(config.getClusterName())) {
       return consumerTask.getLastSucceededExecutionId();
     } else {
-      throw new VeniceException("This AdminConsumptionService is for cluster: " + config.getClusterName()
-          + ".  Cannot get the last succeed execution Id for cluster: " + clusterName);
+      throw new VeniceException(
+          "This AdminConsumptionService is for cluster: " + config.getClusterName()
+              + ".  Cannot get the last succeed execution Id for cluster: " + clusterName);
     }
   }
 
@@ -154,8 +156,9 @@ public class AdminConsumerService extends AbstractVeniceService {
     if (clusterName.equals(config.getClusterName())) {
       return adminTopicMetadataAccessor.getMetadata(clusterName);
     } else {
-      throw new VeniceException("This AdminConsumptionService is for cluster: " + config.getClusterName()
-          + ".  Cannot get the last succeed execution Id for cluster: " + clusterName);
+      throw new VeniceException(
+          "This AdminConsumptionService is for cluster: " + config.getClusterName()
+              + ".  Cannot get the last succeed execution Id for cluster: " + clusterName);
     }
   }
 
@@ -164,8 +167,9 @@ public class AdminConsumerService extends AbstractVeniceService {
       Map<String, Long> metadata = AdminTopicMetadataAccessor.generateMetadataMap(offset, upstreamOffset, executionId);
       adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
     } else {
-      throw new VeniceException("This AdminConsumptionService is for cluster: " + config.getClusterName()
-          + ".  Cannot get the last succeed execution Id for cluster: " + clusterName);
+      throw new VeniceException(
+          "This AdminConsumptionService is for cluster: " + config.getClusterName()
+              + ".  Cannot get the last succeed execution Id for cluster: " + clusterName);
     }
   }
 
@@ -181,16 +185,17 @@ public class AdminConsumerService extends AbstractVeniceService {
      * 1. {@link AdminConsumptionTask} is persisting {@link com.linkedin.venice.offsets.OffsetRecord} in Zookeeper.
      */
     kafkaConsumerProperties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
-    //This is a temporary fix for the issue described here
-    //https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
-    //In our case "com.linkedin.venice.serialization.KafkaKeySerializer" class can not be found
-    //because class loader has no venice-common in class path. This can be only reproduced on JDK11
-    //Trying to avoid class loading via Kafka's ConfigDef class
+    // This is a temporary fix for the issue described here
+    // https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
+    // In our case "com.linkedin.venice.serialization.KafkaKeySerializer" class can not be found
+    // because class loader has no venice-common in class path. This can be only reproduced on JDK11
+    // Trying to avoid class loading via Kafka's ConfigDef class
     kafkaConsumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
     kafkaConsumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
 
     if (kafkaMessageEnvelopeSchemaReader.isPresent()) {
-      kafkaConsumerProperties.put(InternalAvroSpecificSerializer.VENICE_SCHEMA_READER_CONFIG, kafkaMessageEnvelopeSchemaReader.get());
+      kafkaConsumerProperties
+          .put(InternalAvroSpecificSerializer.VENICE_SCHEMA_READER_CONFIG, kafkaMessageEnvelopeSchemaReader.get());
     }
     return consumerFactory.getConsumer(kafkaConsumerProperties);
   }

@@ -15,7 +15,8 @@ public class StoreHealthAuditResponse extends ControllerResponse {
   private Map<String, RegionPushDetails> regionPushDetails = new HashMap<>();
   private Map<Integer, ArrayList<String>> versionToRegion = new HashMap<>();
 
-  public StoreHealthAuditResponse() { }
+  public StoreHealthAuditResponse() {
+  }
 
   public StoreHealthAuditResponse(String storeName) {
     this.storeName = storeName;
@@ -64,7 +65,7 @@ public class StoreHealthAuditResponse extends ControllerResponse {
   public void setRegionPushDetails(Map<String, RegionPushDetails> newRegionPushDetails) {
     this.regionPushDetails = newRegionPushDetails;
     Integer highestVersion = 0;
-    for (Map.Entry<String, RegionPushDetails> details : newRegionPushDetails.entrySet()) {
+    for (Map.Entry<String, RegionPushDetails> details: newRegionPushDetails.entrySet()) {
       String regionName = details.getKey();
       RegionPushDetails pushDetails = details.getValue();
       Integer currentVersion = pushDetails.getCurrentVersion();
@@ -75,7 +76,7 @@ public class StoreHealthAuditResponse extends ControllerResponse {
       getVersionToRegionMap().get(currentVersion).add(regionName);
       highestVersion = highestVersion < currentVersion ? currentVersion : highestVersion;
     }
-    for (Map.Entry<String, RegionPushDetails> details : newRegionPushDetails.entrySet())
+    for (Map.Entry<String, RegionPushDetails> details: newRegionPushDetails.entrySet())
       if (details.getValue().getCurrentVersion() < highestVersion)
         regionsWithStaleData.add(details.getKey());
   }
@@ -86,8 +87,8 @@ public class StoreHealthAuditResponse extends ControllerResponse {
 
   public void setVersionToRegion(Map<Integer, ArrayList<String>> versionToRegion) {
     this.versionToRegion.clear();
-    for (Map.Entry<Integer, ArrayList<String>> entry : versionToRegion.entrySet())
-      this.versionToRegion.put(entry.getKey(), (ArrayList<String>)entry.getValue().clone());
+    for (Map.Entry<Integer, ArrayList<String>> entry: versionToRegion.entrySet())
+      this.versionToRegion.put(entry.getKey(), (ArrayList<String>) entry.getValue().clone());
     this.versionToRegion = versionToRegion;
   }
 }

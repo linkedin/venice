@@ -1,13 +1,12 @@
 package com.linkedin.venice.pushmonitor;
 
-import org.apache.commons.lang.StringUtils;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 
 import java.time.LocalDateTime;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
-
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
+import org.apache.commons.lang.StringUtils;
 
 
 /**
@@ -83,9 +82,8 @@ public class ReplicaStatus {
   private void addHistoricStatus(ExecutionStatus status) {
     // Do not update status in case that replica is already in PROGRESS and target status is also PROGRESS.
     // Because we don't want status history become too long due to lots of PROGRESS statuses.
-    if (status.equals(PROGRESS) && !statusHistory.isEmpty() && statusHistory.get(statusHistory.size() - 1)
-        .getStatus()
-        .equals(PROGRESS)) {
+    if (status.equals(PROGRESS) && !statusHistory.isEmpty()
+        && statusHistory.get(statusHistory.size() - 1).getStatus().equals(PROGRESS)) {
       return;
     }
 
@@ -121,23 +119,23 @@ public class ReplicaStatus {
       }
       StatusSnapshot oldSnapshot = itr.next();
       ExecutionStatus oldStatus = oldSnapshot.getStatus();
-      if (oldStatus == TOPIC_SWITCH_RECEIVED || oldStatus == END_OF_PUSH_RECEIVED
-          || isIncrementalPushStatus(oldStatus) && oldSnapshot.getIncrementalPushVersion().equals(incrementalPushVersion)) {
+      if (oldStatus == TOPIC_SWITCH_RECEIVED || oldStatus == END_OF_PUSH_RECEIVED || isIncrementalPushStatus(oldStatus)
+          && oldSnapshot.getIncrementalPushVersion().equals(incrementalPushVersion)) {
         continue;
       }
-        if (oldStatus == COMPLETED) {
-          if (completeCount > 1) {
-            itr.remove();
-            completeCount--;
-          }
-        }  else if (isIncrementalPushStatus(oldStatus)) {
-          if (incPushCount > 1) {
-            itr.remove();
-            incPushCount--;
-          }
-        } else {
+      if (oldStatus == COMPLETED) {
+        if (completeCount > 1) {
           itr.remove();
+          completeCount--;
         }
+      } else if (isIncrementalPushStatus(oldStatus)) {
+        if (incPushCount > 1) {
+          itr.remove();
+          incPushCount--;
+        }
+      } else {
+        itr.remove();
+      }
     }
   }
 

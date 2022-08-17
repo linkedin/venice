@@ -21,7 +21,9 @@ public abstract class AbstractStoragePartition {
   protected final Logger logger = LogManager.getLogger(getClass());
   protected final Integer partitionId;
 
-  public AbstractStoragePartition(Integer partitionId) { this.partitionId = partitionId; }
+  public AbstractStoragePartition(Integer partitionId) {
+    this.partitionId = partitionId;
+  }
 
   /**
    * returns the id of this partition
@@ -97,7 +99,8 @@ public abstract class AbstractStoragePartition {
   /**
    * Reopen the database.
    */
-  public void reopen() {}
+  public void reopen() {
+  }
 
   /**
    * Check whether current storage partition verifyConfig the given partition config
@@ -106,9 +109,11 @@ public abstract class AbstractStoragePartition {
    */
   public abstract boolean verifyConfig(StoragePartitionConfig storagePartitionConfig);
 
-  public void beginBatchWrite(Map<String, String> checkpointedInfo, Optional<Supplier<byte[]>> checksumSupplier) {}
+  public void beginBatchWrite(Map<String, String> checkpointedInfo, Optional<Supplier<byte[]>> checksumSupplier) {
+  }
 
-  public void endBatchWrite() {}
+  public void endBatchWrite() {
+  }
 
   /**
    * Get the partition database size in bytes

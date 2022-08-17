@@ -27,8 +27,8 @@ public class TestListenerManager {
     manager.subscribe(key, listener2);
     manager.unsubscribe(key, listener2);
     Assert.assertEquals(manager.getListenerMap().get(key).size(), 1, "The listener2 is unsubscribed.");
-    Assert.assertEquals(manager.getListenerMap().get(key).iterator().next(), listener1,
-        "The listener2 is unsubscribed.");
+    Assert
+        .assertEquals(manager.getListenerMap().get(key).iterator().next(), listener1, "The listener2 is unsubscribed.");
   }
 
   @Test
@@ -47,7 +47,8 @@ public class TestListenerManager {
     manager.unsubscribe(Utils.WILDCARD_MATCH_ANY, listener1);
 
     manager.trigger(key, listener -> listener.onRoutingDataDeleted(key));
-    // Listener registered with key should be triggered, but the one registered with wild char would not because it already unsubscribed.
+    // Listener registered with key should be triggered, but the one registered with wild char would not because it
+    // already unsubscribed.
     TestUtils.waitForNonDeterministicCompletion(TEST_TIME_OUT, TimeUnit.MILLISECONDS, () -> listener2.isExecuted);
     TestUtils.waitForNonDeterministicCompletion(TEST_TIME_OUT, TimeUnit.MILLISECONDS, () -> !listener1.isExecuted);
   }

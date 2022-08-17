@@ -26,10 +26,11 @@ public class SparkServerStats extends AbstractVeniceStats {
     currentInFlightRequestTotal = registerSensor("current_in_flight_request", new Total());
     successfulRequest = registerSensor("successful_request", new Count());
     failedRequest = registerSensor("failed_request", new Count());
-    successfulRequestLatency = registerSensor("successful_request_latency",
+    successfulRequestLatency = registerSensor(
+        "successful_request_latency",
         TehutiUtils.getPercentileStat(getName(), "successful_request_latency"));
-    failedRequestLatency = registerSensor("failed_request_latency",
-        TehutiUtils.getPercentileStat(getName(), "failed_request_latency"));
+    failedRequestLatency =
+        registerSensor("failed_request_latency", TehutiUtils.getPercentileStat(getName(), "failed_request_latency"));
   }
 
   public void recordRequest() {

@@ -20,8 +20,7 @@ public class VeniceKafkaInputMapper extends AbstractVeniceMapper<BytesWritable, 
       FastSerializerDeserializerFactory.getFastAvroGenericSerializer(KafkaInputMapperValue.SCHEMA$);
 
   @Override
-  protected AbstractVeniceRecordReader<BytesWritable, KafkaInputMapperValue> getRecordReader(
-      VeniceProperties props) {
+  protected AbstractVeniceRecordReader<BytesWritable, KafkaInputMapperValue> getRecordReader(VeniceProperties props) {
     throw new UnsupportedOperationException();
   }
 
@@ -39,8 +38,7 @@ public class VeniceKafkaInputMapper extends AbstractVeniceMapper<BytesWritable, 
       KafkaInputMapperValue inputValue,
       BytesWritable keyBW,
       BytesWritable valueBW,
-      Reporter reporter
-  ) {
+      Reporter reporter) {
     keyBW.set(inputKey);
     byte[] serializedValue = KAFKA_INPUT_MAPPER_VALUE_SERIALIZER.serialize(inputValue, AvroSerializer.REUSE.get());
     valueBW.set(serializedValue, 0, serializedValue.length);

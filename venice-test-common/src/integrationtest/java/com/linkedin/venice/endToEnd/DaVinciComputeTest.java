@@ -1,5 +1,13 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.client.store.predicate.PredicateBuilder.*;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
+import static com.linkedin.venice.meta.IngestionMode.*;
+import static com.linkedin.venice.meta.PersistenceType.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.client.AvroGenericDaVinciClient;
@@ -57,14 +65,6 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.client.store.predicate.PredicateBuilder.*;
-import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
-import static com.linkedin.venice.meta.IngestionMode.*;
-import static com.linkedin.venice.meta.PersistenceType.*;
-import static org.testng.Assert.*;
-
 
 public class DaVinciComputeTest {
   private static final int TEST_TIMEOUT = 120_000; // ms
@@ -82,84 +82,55 @@ public class DaVinciComputeTest {
   private static final String NON_EXISTING_KEY2 = "z_unknown_key";
   private static final int NON_EXISTING_KEY_NUM = 2;
 
-  private static final String VALUE_SCHEMA_FOR_COMPUTE = "{" +
-      "  \"namespace\": \"example.compute\",    " +
-      "  \"type\": \"record\",        " +
-      "  \"name\": \"MemberFeature\",       " +
-      "  \"fields\": [        " +
-      "         { \"name\": \"id\", \"type\": \"string\" },             " +
-      "         { \"name\": \"name\", \"type\": \"string\" },           " +
-      "         {   \"default\": [], \n  \"name\": \"companiesEmbedding\",  \"type\": {  \"items\": \"float\",  \"type\": \"array\"   }  }, " +
-      "         { \"name\": \"member_feature\", \"type\": { \"type\": \"array\", \"items\": \"float\" } }        " +
-      "  ]       " +
-      " }       ";
+  private static final String VALUE_SCHEMA_FOR_COMPUTE = "{" + "  \"namespace\": \"example.compute\",    "
+      + "  \"type\": \"record\",        " + "  \"name\": \"MemberFeature\",       " + "  \"fields\": [        "
+      + "         { \"name\": \"id\", \"type\": \"string\" },             "
+      + "         { \"name\": \"name\", \"type\": \"string\" },           "
+      + "         {   \"default\": [], \n  \"name\": \"companiesEmbedding\",  \"type\": {  \"items\": \"float\",  \"type\": \"array\"   }  }, "
+      + "         { \"name\": \"member_feature\", \"type\": { \"type\": \"array\", \"items\": \"float\" } }        "
+      + "  ]       " + " }       ";
 
-  private static final String VALUE_SCHEMA_FOR_COMPUTE_MISSING_FIELD = "{" +
-      "  \"namespace\": \"example.compute\",    " +
-      "  \"type\": \"record\",        " +
-      "  \"name\": \"MemberFeature\",       " +
-      "  \"fields\": [        " +
-      "         { \"name\": \"id\", \"type\": \"string\" },             " +
-      "         { \"name\": \"name\", \"type\": \"string\" },           " +
-      "         { \"name\": \"member_feature\", \"type\": { \"type\": \"array\", \"items\": \"float\" } }        " +
-      "  ]       " +
-      " }       ";
+  private static final String VALUE_SCHEMA_FOR_COMPUTE_MISSING_FIELD = "{" + "  \"namespace\": \"example.compute\",    "
+      + "  \"type\": \"record\",        " + "  \"name\": \"MemberFeature\",       " + "  \"fields\": [        "
+      + "         { \"name\": \"id\", \"type\": \"string\" },             "
+      + "         { \"name\": \"name\", \"type\": \"string\" },           "
+      + "         { \"name\": \"member_feature\", \"type\": { \"type\": \"array\", \"items\": \"float\" } }        "
+      + "  ]       " + " }       ";
 
-  private static final String VALUE_SCHEMA_FOR_COMPUTE_NULLABLE_LIST_FIELD = "{" +
-      "  \"namespace\": \"example.compute\",    " +
-      "  \"type\": \"record\",        " +
-      "  \"name\": \"MemberFeature\",       " +
-      "  \"fields\": [        " +
-      "   {\"name\": \"id\", \"type\": \"string\" },             " +
-      "   {\"name\": \"name\", \"type\": \"string\" },           " +
-      "   {\"name\": \"member_feature\", \"type\": [\"null\",{\"type\":\"array\",\"items\":\"float\"}],\"default\": null}" + // nullable field
-      "  ] " +
-      " }  ";
+  private static final String VALUE_SCHEMA_FOR_COMPUTE_NULLABLE_LIST_FIELD = "{"
+      + "  \"namespace\": \"example.compute\",    " + "  \"type\": \"record\",        "
+      + "  \"name\": \"MemberFeature\",       " + "  \"fields\": [        "
+      + "   {\"name\": \"id\", \"type\": \"string\" },             "
+      + "   {\"name\": \"name\", \"type\": \"string\" },           "
+      + "   {\"name\": \"member_feature\", \"type\": [\"null\",{\"type\":\"array\",\"items\":\"float\"}],\"default\": null}"
+      + // nullable field
+      "  ] " + " }  ";
 
-  private static final String VALUE_SCHEMA_FOR_COMPUTE_SWAPPED = "{" +
-      "  \"namespace\": \"example.compute\",    " +
-      "  \"type\": \"record\",        " +
-      "  \"name\": \"MemberFeature\",       " +
-      "  \"fields\": [        " +
-      "         { \"name\": \"id\", \"type\": \"string\" },             " +
-      "         { \"name\": \"name\", \"type\": \"string\" },           " +
-      "         { \"name\": \"member_feature\", \"type\": { \"type\": \"array\", \"items\": \"float\" } },        " +
-      "         {   \"default\": [], \n  \"name\": \"companiesEmbedding\",  \"type\": {  \"items\": \"float\",  \"type\": \"array\"   }  } " +
-      "  ]       " +
-      " }       ";
+  private static final String VALUE_SCHEMA_FOR_COMPUTE_SWAPPED = "{" + "  \"namespace\": \"example.compute\",    "
+      + "  \"type\": \"record\",        " + "  \"name\": \"MemberFeature\",       " + "  \"fields\": [        "
+      + "         { \"name\": \"id\", \"type\": \"string\" },             "
+      + "         { \"name\": \"name\", \"type\": \"string\" },           "
+      + "         { \"name\": \"member_feature\", \"type\": { \"type\": \"array\", \"items\": \"float\" } },        "
+      + "         {   \"default\": [], \n  \"name\": \"companiesEmbedding\",  \"type\": {  \"items\": \"float\",  \"type\": \"array\"   }  } "
+      + "  ]       " + " }       ";
 
   private static final String KEY_SCHEMA_STEAMING_COMPUTE = "\"string\"";
 
-  private static final String VALUE_SCHEMA_STREAMING_COMPUTE = "{\n" +
-      "\"type\": \"record\",\n" +
-      "\"name\": \"test_value_schema\",\n" +
-      "\"fields\": [\n" +
-      "  {\"name\": \"int_field\", \"type\": \"int\"},\n" +
-      "  {\"name\": \"float_field\", \"type\": \"float\"}\n" +
-      "]\n" +
-      "}";
+  private static final String VALUE_SCHEMA_STREAMING_COMPUTE = "{\n" + "\"type\": \"record\",\n"
+      + "\"name\": \"test_value_schema\",\n" + "\"fields\": [\n" + "  {\"name\": \"int_field\", \"type\": \"int\"},\n"
+      + "  {\"name\": \"float_field\", \"type\": \"float\"}\n" + "]\n" + "}";
 
-  private static final String KEY_SCHEMA_PARTIAL_KEY_LOOKUP = "{" +
-      "\"type\":\"record\"," +
-      "\"name\":\"KeyRecord\"," +
-      "\"namespace\":\"example.partialKeyLookup\"," +
-      "\"fields\":[ " +
-      "   {\"name\":\"id\",\"type\":\"string\"}," +
-      "   {\"name\":\"companyId\",\"type\":\"int\"}, " +
-      "   {\"name\":\"name\",\"type\":\"string\"} " +
-      " ]" +
-      "}";
-
+  private static final String KEY_SCHEMA_PARTIAL_KEY_LOOKUP = "{" + "\"type\":\"record\"," + "\"name\":\"KeyRecord\","
+      + "\"namespace\":\"example.partialKeyLookup\"," + "\"fields\":[ " + "   {\"name\":\"id\",\"type\":\"string\"},"
+      + "   {\"name\":\"companyId\",\"type\":\"int\"}, " + "   {\"name\":\"name\",\"type\":\"string\"} " + " ]" + "}";
 
   @BeforeClass
   public void setUp() {
     Utils.thisIsLocalhost();
     Properties clusterConfig = new Properties();
     clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
-    cluster = ServiceFactory.getVeniceCluster(1, 2, 1, 1,
-        100, false, false, clusterConfig);
-    d2Client = new D2ClientBuilder()
-        .setZkHosts(cluster.getZk().getAddress())
+    cluster = ServiceFactory.getVeniceCluster(1, 2, 1, 1, 100, false, false, clusterConfig);
+    d2Client = new D2ClientBuilder().setZkHosts(cluster.getZk().getAddress())
         .setZkSessionTimeout(3, TimeUnit.SECONDS)
         .setZkStartupTimeout(3, TimeUnit.SECONDS)
         .build();
@@ -183,15 +154,20 @@ public class DaVinciComputeTest {
     }
   }
 
-  //TODO This test seems to have a dependency issue.  Running it gives more information, but needs some
+  // TODO This test seems to have a dependency issue. Running it gives more information, but needs some
   // refactoring
-  //@Test(timeOut = TEST_TIMEOUT * 2)
+  // @Test(timeOut = TEST_TIMEOUT * 2)
   public void testComputeOnStoreWithQTFDScompliantSchema() throws Exception {
-    final String storeName = Utils.getUniqueString( "store");
+    final String storeName = Utils.getUniqueString("store");
     cluster.useControllerClient(client -> {
-      TestUtils.assertCommand(client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, VALUE_SCHEMA_FOR_COMPUTE_NULLABLE_LIST_FIELD));
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(logger));}
-    );
+      TestUtils.assertCommand(
+          client.createNewStore(
+              storeName,
+              getClass().getName(),
+              DEFAULT_KEY_SCHEMA,
+              VALUE_SCHEMA_FOR_COMPUTE_NULLABLE_LIST_FIELD));
+      TestUtils.createMetaSystemStore(client, storeName, Optional.of(logger));
+    });
 
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
     String topic = newVersion.getKafkaTopic();
@@ -203,20 +179,29 @@ public class DaVinciComputeTest {
     Map<Integer, GenericRecord> computeResult;
     final int key1 = 1;
     final int key2 = 2;
-    Set<Integer> keySetForCompute = new HashSet<Integer>(){{
-      add(key1);
-      add(key2);
-    }};
+    Set<Integer> keySetForCompute = new HashSet<Integer>() {
+      {
+        add(key1);
+        add(key2);
+      }
+    };
 
     DaVinciTestContext<Integer, Integer> daVinciTestContext =
-        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
-            cluster.getZk().getAddress(), storeName, new DaVinciConfig(), TestUtils.getIngestionIsolationPropertyMap());
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
+            d2Client,
+            new MetricsRepository(),
+            Optional.empty(),
+            cluster.getZk().getAddress(),
+            storeName,
+            new DaVinciConfig(),
+            TestUtils.getIngestionIsolationPropertyMap());
     try (
-        VeniceWriter<Object, Object, byte[]> veniceWriter = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+        VeniceWriter<Object, Object, byte[]> veniceWriter =
+            vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
         CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient()) {
 
-      //Write data to DaVinci Store and subscribe client
+      // Write data to DaVinci Store and subscribe client
       Schema valueSchema = Schema.parse(VALUE_SCHEMA_FOR_COMPUTE_NULLABLE_LIST_FIELD);
       List<Float> memberFeatureEmbedding = Arrays.asList(1.0f, 2.0f, 3.0f);
       GenericRecord value1 = new GenericData.Record(valueSchema);
@@ -236,16 +221,24 @@ public class DaVinciComputeTest {
 
       final Consumer<Map<Integer, GenericRecord>> assertComputeResults = (readComputeResult) -> {
         // Expect no error
-        readComputeResult.forEach((key, value) -> Assert.assertEquals(
-            ((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0));
+        readComputeResult.forEach(
+            (key, value) -> Assert.assertEquals(
+                ((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(),
+                0));
         // Results for key 2 should be all null since the nullable field in the value of key 2 is null
         Assert.assertNull(readComputeResult.get(key2).get("dot_product_result"));
         Assert.assertNull(readComputeResult.get(key2).get("hadamard_product_result"));
         Assert.assertNull(readComputeResult.get(key2).get("cosine_similarity_result"));
         // Results for key 1 should be non-null since the nullable field in the value of key 1 is non-null
-        Assert.assertEquals(readComputeResult.get(key1).get("dot_product_result"), ComputeOperationUtils.dotProduct(memberFeatureEmbedding, memberFeatureEmbedding));
-        Assert.assertEquals(readComputeResult.get(key1).get("hadamard_product_result"), ComputeOperationUtils.hadamardProduct(memberFeatureEmbedding, memberFeatureEmbedding));
-        Assert.assertEquals(readComputeResult.get(key1).get("cosine_similarity_result"), 1.0f); // Cosine similarity between a vector and itself is 1.0
+        Assert.assertEquals(
+            readComputeResult.get(key1).get("dot_product_result"),
+            ComputeOperationUtils.dotProduct(memberFeatureEmbedding, memberFeatureEmbedding));
+        Assert.assertEquals(
+            readComputeResult.get(key1).get("hadamard_product_result"),
+            ComputeOperationUtils.hadamardProduct(memberFeatureEmbedding, memberFeatureEmbedding));
+        Assert.assertEquals(readComputeResult.get(key1).get("cosine_similarity_result"), 1.0f); // Cosine similarity
+                                                                                                // between a vector and
+                                                                                                // itself is 1.0
       };
 
       // Perform compute on client
@@ -253,7 +246,8 @@ public class DaVinciComputeTest {
           .dotProduct("member_feature", memberFeatureEmbedding, "dot_product_result")
           .hadamardProduct("member_feature", memberFeatureEmbedding, "hadamard_product_result")
           .cosineSimilarity("member_feature", memberFeatureEmbedding, "cosine_similarity_result")
-          .execute(keySetForCompute).get();
+          .execute(keySetForCompute)
+          .get();
 
       assertComputeResults.accept(computeResult);
 
@@ -261,7 +255,8 @@ public class DaVinciComputeTest {
           .dotProduct("member_feature", memberFeatureEmbedding, "dot_product_result")
           .hadamardProduct("member_feature", memberFeatureEmbedding, "hadamard_product_result")
           .cosineSimilarity("member_feature", memberFeatureEmbedding, "cosine_similarity_result")
-          .streamingExecute(keySetForCompute).get();
+          .streamingExecute(keySetForCompute)
+          .get();
 
       assertComputeResults.accept(computeResult);
       client.unsubscribeAll();
@@ -270,8 +265,8 @@ public class DaVinciComputeTest {
 
   @Test(timeOut = TEST_TIMEOUT * 2)
   public void testReadComputeMissingField() throws Exception {
-    //Create DaVinci store
-    final String storeName = Utils.getUniqueString( "store");
+    // Create DaVinci store
+    final String storeName = Utils.getUniqueString("store");
     cluster.useControllerClient(client -> {
       TestUtils.assertCommand(
           client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, VALUE_SCHEMA_FOR_COMPUTE));
@@ -284,25 +279,34 @@ public class DaVinciComputeTest {
 
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE);
-    VeniceKafkaSerializer valueSerializerMissingField = new VeniceAvroKafkaSerializer(
-        VALUE_SCHEMA_FOR_COMPUTE_MISSING_FIELD);
+    VeniceKafkaSerializer valueSerializerMissingField =
+        new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE_MISSING_FIELD);
 
     int numRecords = 100;
     Map<Integer, GenericRecord> computeResult;
-    Set<Integer> keySetForCompute = new HashSet<Integer>(){{
-      add(1);
-      add(2);
-    }};
+    Set<Integer> keySetForCompute = new HashSet<Integer>() {
+      {
+        add(1);
+        add(2);
+      }
+    };
 
     DaVinciTestContext<Integer, Integer> daVinciTestContext =
-        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
-            cluster.getZk().getAddress(), storeName, new DaVinciConfig(), TestUtils.getIngestionIsolationPropertyMap());
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
+            d2Client,
+            new MetricsRepository(),
+            Optional.empty(),
+            cluster.getZk().getAddress(),
+            storeName,
+            new DaVinciConfig(),
+            TestUtils.getIngestionIsolationPropertyMap());
     try (
-        VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+        VeniceWriter<Object, Object, byte[]> writer =
+            vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
         CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient()) {
 
-      //Write data to DaVinci Store and subscribe client
+      // Write data to DaVinci Store and subscribe client
       pushSyntheticDataToStore(writer, VALUE_SCHEMA_FOR_COMPUTE, false, 1, numRecords);
       client.subscribeAll().get();
 
@@ -315,37 +319,49 @@ public class DaVinciComputeTest {
       computeResult = client.compute()
           .cosineSimilarity("companiesEmbedding", pymkCosineSimilarityEmbedding, "companiesEmbedding_score")
           .cosineSimilarity("member_feature", pymkCosineSimilarityEmbedding, "member_feature_score")
-          .execute(keySetForCompute).get();
+          .execute(keySetForCompute)
+          .get();
 
-      computeResult.forEach((key, value) -> Assert.assertEquals(
-          ((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0));
+      computeResult.forEach(
+          (key, value) -> Assert
+              .assertEquals(((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0));
 
       computeResult = client.compute()
           .cosineSimilarity("companiesEmbedding", pymkCosineSimilarityEmbedding, "companiesEmbedding_score")
           .cosineSimilarity("member_feature", pymkCosineSimilarityEmbedding, "member_feature_score")
-          .streamingExecute(keySetForCompute).get();
+          .streamingExecute(keySetForCompute)
+          .get();
 
-      computeResult.forEach((key, value) -> Assert.assertEquals(
-          ((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0));
+      computeResult.forEach(
+          (key, value) -> Assert
+              .assertEquals(((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0));
 
       client.unsubscribeAll();
     }
 
     // Add value schema for compute with a missing field
-    cluster.useControllerClient(clientMissingField -> TestUtils.assertCommand(
-        clientMissingField.addValueSchema(storeName, VALUE_SCHEMA_FOR_COMPUTE_MISSING_FIELD)));
+    cluster.useControllerClient(
+        clientMissingField -> TestUtils
+            .assertCommand(clientMissingField.addValueSchema(storeName, VALUE_SCHEMA_FOR_COMPUTE_MISSING_FIELD)));
 
     VersionCreationResponse newVersionMissingField = cluster.getNewVersion(storeName, 1024);
     String topicForMissingField = newVersionMissingField.getKafkaTopic();
 
     DaVinciTestContext<Integer, Integer> daVinciTestContext2 =
-        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(),
-            Optional.empty(), cluster.getZk().getAddress(), storeName, new DaVinciConfig(), TestUtils.getIngestionIsolationPropertyMap());
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
+            d2Client,
+            new MetricsRepository(),
+            Optional.empty(),
+            cluster.getZk().getAddress(),
+            storeName,
+            new DaVinciConfig(),
+            TestUtils.getIngestionIsolationPropertyMap());
 
-    try (VeniceWriter<Object, Object, byte[]> writerForMissingField =
-        vwFactory.createVeniceWriter(topicForMissingField, keySerializer, valueSerializerMissingField, false);
+    try (
+        VeniceWriter<Object, Object, byte[]> writerForMissingField =
+            vwFactory.createVeniceWriter(topicForMissingField, keySerializer, valueSerializerMissingField, false);
         CachingDaVinciClientFactory factoryForMissingFieldClient = daVinciTestContext2.getDaVinciClientFactory();
-        DaVinciClient<Integer, Integer> clientForMissingField = daVinciTestContext2.getDaVinciClient()){
+        DaVinciClient<Integer, Integer> clientForMissingField = daVinciTestContext2.getDaVinciClient()) {
 
       // Write data to DaVinci store with a missing field and subscribe client
       pushSyntheticDataToStore(writerForMissingField, VALUE_SCHEMA_FOR_COMPUTE_MISSING_FIELD, true, 2, numRecords);
@@ -355,18 +371,22 @@ public class DaVinciComputeTest {
       computeResult = clientForMissingField.compute()
           .cosineSimilarity("companiesEmbedding", pymkCosineSimilarityEmbedding, "companiesEmbedding_score")
           .cosineSimilarity("member_feature", pymkCosineSimilarityEmbedding, "member_feature_score")
-          .execute(keySetForCompute).get();
+          .execute(keySetForCompute)
+          .get();
 
-      computeResult.forEach((key, value) -> Assert.assertEquals(
-          ((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 1));
+      computeResult.forEach(
+          (key, value) -> Assert
+              .assertEquals(((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 1));
 
       computeResult = clientForMissingField.compute()
           .cosineSimilarity("companiesEmbedding", pymkCosineSimilarityEmbedding, "companiesEmbedding_score")
           .cosineSimilarity("member_feature", pymkCosineSimilarityEmbedding, "member_feature_score")
-          .streamingExecute(keySetForCompute).get();
+          .streamingExecute(keySetForCompute)
+          .get();
 
-      computeResult.forEach((key, value) -> Assert.assertEquals(
-          ((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 1));
+      computeResult.forEach(
+          (key, value) -> Assert
+              .assertEquals(((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 1));
 
       clientForMissingField.unsubscribeAll();
     }
@@ -375,7 +395,7 @@ public class DaVinciComputeTest {
   @Test(timeOut = TEST_TIMEOUT * 3)
   public void testReadComputeSwappedFields() throws Exception {
     // Create DaVinci store
-    final String storeName = Utils.getUniqueString( "store");
+    final String storeName = Utils.getUniqueString("store");
     cluster.useControllerClient(client -> {
       TestUtils.assertCommand(
           client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, VALUE_SCHEMA_FOR_COMPUTE_SWAPPED));
@@ -392,16 +412,25 @@ public class DaVinciComputeTest {
 
     int numRecords = 100;
     Map<Integer, GenericRecord> computeResult;
-    Set<Integer> keySetForCompute = new HashSet<Integer>(){{
-      add(1);
-      add(2);
-    }};
+    Set<Integer> keySetForCompute = new HashSet<Integer>() {
+      {
+        add(1);
+        add(2);
+      }
+    };
 
     DaVinciTestContext<Integer, Integer> daVinciTestContext =
-        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
-            cluster.getZk().getAddress(), storeName, new DaVinciConfig(), TestUtils.getIngestionIsolationPropertyMap());
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
+            d2Client,
+            new MetricsRepository(),
+            Optional.empty(),
+            cluster.getZk().getAddress(),
+            storeName,
+            new DaVinciConfig(),
+            TestUtils.getIngestionIsolationPropertyMap());
     try (
-        VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+        VeniceWriter<Object, Object, byte[]> writer =
+            vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
         CachingDaVinciClientFactory factory = daVinciTestContext.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient()) {
 
@@ -418,28 +447,37 @@ public class DaVinciComputeTest {
       computeResult = client.compute()
           .cosineSimilarity("companiesEmbedding", pymkCosineSimilarityEmbedding, "companiesEmbedding_score")
           .cosineSimilarity("member_feature", pymkCosineSimilarityEmbedding, "member_feature_score")
-          .execute(keySetForCompute).get();
+          .execute(keySetForCompute)
+          .get();
 
-      computeResult.forEach((key, value) -> Assert.assertEquals(
-          ((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0));
+      computeResult.forEach(
+          (key, value) -> Assert
+              .assertEquals(((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0));
       client.unsubscribeAll();
     }
 
     // Add value schema for compute
-    cluster.useControllerClient(clientMissingField -> TestUtils.assertCommand(
-        clientMissingField.addValueSchema(storeName, VALUE_SCHEMA_FOR_COMPUTE_MISSING_FIELD)));
+    cluster.useControllerClient(
+        clientMissingField -> TestUtils
+            .assertCommand(clientMissingField.addValueSchema(storeName, VALUE_SCHEMA_FOR_COMPUTE_MISSING_FIELD)));
 
     VersionCreationResponse newVersionMissingField = cluster.getNewVersion(storeName, 1024);
     String topicForMissingField = newVersionMissingField.getKafkaTopic();
 
-
     DaVinciTestContext<Integer, Integer> daVinciTestContext2 =
-        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
-            cluster.getZk().getAddress(), storeName, new DaVinciConfig(), TestUtils.getIngestionIsolationPropertyMap());
-    try(
-        VeniceWriter<Object, Object, byte[]> writer2 = vwFactory.createVeniceWriter(topicForMissingField, keySerializer, valueSerializerSwapped, false);
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
+            d2Client,
+            new MetricsRepository(),
+            Optional.empty(),
+            cluster.getZk().getAddress(),
+            storeName,
+            new DaVinciConfig(),
+            TestUtils.getIngestionIsolationPropertyMap());
+    try (
+        VeniceWriter<Object, Object, byte[]> writer2 =
+            vwFactory.createVeniceWriter(topicForMissingField, keySerializer, valueSerializerSwapped, false);
         CachingDaVinciClientFactory factory2 = daVinciTestContext2.getDaVinciClientFactory();
-        DaVinciClient<Integer, Integer> client2 = daVinciTestContext2.getDaVinciClient()){
+        DaVinciClient<Integer, Integer> client2 = daVinciTestContext2.getDaVinciClient()) {
 
       // Write data to DaVinci store
       pushSyntheticDataToStore(writer2, VALUE_SCHEMA_FOR_COMPUTE_SWAPPED, false, 2, numRecords);
@@ -448,10 +486,12 @@ public class DaVinciComputeTest {
       // Execute read compute on new client
       computeResult = client2.compute()
           .cosineSimilarity("member_feature", pymkCosineSimilarityEmbedding, "member_feature_score")
-          .execute(keySetForCompute).get();
+          .execute(keySetForCompute)
+          .get();
 
-      computeResult.forEach((key, value) -> Assert.assertEquals(
-          ((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0));
+      computeResult.forEach(
+          (key, value) -> Assert
+              .assertEquals(((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0));
 
       client2.unsubscribeAll();
     }
@@ -459,11 +499,14 @@ public class DaVinciComputeTest {
 
   @Test(timeOut = TEST_TIMEOUT * 2)
   public void testComputeStreamingExecute() throws ExecutionException, InterruptedException {
-    //Setup Store
-    final String storeName = Utils.getUniqueString( "store");
+    // Setup Store
+    final String storeName = Utils.getUniqueString("store");
     cluster.useControllerClient(client -> {
       TestUtils.assertCommand(
-          client.createNewStore(storeName, getClass().getName(), KEY_SCHEMA_STEAMING_COMPUTE,
+          client.createNewStore(
+              storeName,
+              getClass().getName(),
+              KEY_SCHEMA_STEAMING_COMPUTE,
               VALUE_SCHEMA_STREAMING_COMPUTE));
       TestUtils.createMetaSystemStore(client, storeName, Optional.of(logger));
     });
@@ -492,14 +535,25 @@ public class DaVinciComputeTest {
     config.setNonLocalAccessPolicy(NonLocalAccessPolicy.QUERY_VENICE);
 
     DaVinciTestContext<String, Integer> daVinciTestContext =
-        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
-            cluster.getZk().getAddress(), storeName, config, TestUtils.getIngestionIsolationPropertyMap());
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
+            d2Client,
+            new MetricsRepository(),
+            Optional.empty(),
+            cluster.getZk().getAddress(),
+            storeName,
+            config,
+            TestUtils.getIngestionIsolationPropertyMap());
     try (
-        VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+        VeniceWriter<Object, Object, byte[]> writer =
+            vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
         DaVinciClient<String, Integer> client = daVinciTestContext.getDaVinciClient()) {
 
       // push data to store and subscribe client
-      pushDataToStoreForStreamingCompute(writer, VALUE_SCHEMA_STREAMING_COMPUTE, HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID, numRecords);
+      pushDataToStoreForStreamingCompute(
+          writer,
+          VALUE_SCHEMA_STREAMING_COMPUTE,
+          HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID,
+          numRecords);
       client.subscribeAll().get();
 
       // Test compute with streaming execute using custom provided callback
@@ -526,11 +580,13 @@ public class DaVinciComputeTest {
       computeLatch.await();
 
       Assert.assertEquals(computeResultCnt.get(), MAX_KEY_LIMIT);
-      Assert.assertEquals(finalComputeResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM); // Without non-existing key
+      Assert.assertEquals(finalComputeResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM); // Without non-existing
+                                                                                               // key
       verifyStreamingComputeResult(finalComputeResultMap);
 
       // Test compute with streaming execute using default callback
-      CompletableFuture<VeniceResponseMap<String, GenericRecord>> computeFuture = computeRequestBuilder.streamingExecute(keySet);
+      CompletableFuture<VeniceResponseMap<String, GenericRecord>> computeFuture =
+          computeRequestBuilder.streamingExecute(keySet);
       Map<String, GenericRecord> computeResultMap = computeFuture.get();
       Assert.assertEquals(computeResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM);
       verifyStreamingComputeResult(computeResultMap);
@@ -541,9 +597,14 @@ public class DaVinciComputeTest {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testPartialKeyLookupWithRocksDBBlockBasedTable() throws ExecutionException, InterruptedException {
-    final String storeName = Utils.getUniqueString( "store");
+    final String storeName = Utils.getUniqueString("store");
     cluster.useControllerClient(client -> {
-      TestUtils.assertCommand(client.createNewStore(storeName, getClass().getName(), KEY_SCHEMA_PARTIAL_KEY_LOOKUP, VALUE_SCHEMA_FOR_COMPUTE));
+      TestUtils.assertCommand(
+          client.createNewStore(
+              storeName,
+              getClass().getName(),
+              KEY_SCHEMA_PARTIAL_KEY_LOOKUP,
+              VALUE_SCHEMA_FOR_COMPUTE));
       TestUtils.createMetaSystemStore(client, storeName, Optional.of(logger));
     });
 
@@ -557,8 +618,7 @@ public class DaVinciComputeTest {
     MetricsRepository metricsRepository = new MetricsRepository();
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
 
-    VeniceProperties backendConfig = new PropertyBuilder()
-        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+    VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
@@ -567,21 +627,26 @@ public class DaVinciComputeTest {
     int numRecords = 100;
 
     try (
-        VeniceWriter<GenericRecord, GenericRecord, byte[]> writer = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
-        CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig);
-        DaVinciClient<GenericRecord, GenericRecord> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig().setStorageClass(
-            StorageClass.DISK))) {
+        VeniceWriter<GenericRecord, GenericRecord, byte[]> writer =
+            vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+        CachingDaVinciClientFactory factory =
+            new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig);
+        DaVinciClient<GenericRecord, GenericRecord> client =
+            factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig().setStorageClass(StorageClass.DISK))) {
 
-      pushSyntheticDataToStoreForPartialKeyLookup(writer, KEY_SCHEMA_PARTIAL_KEY_LOOKUP, VALUE_SCHEMA_FOR_COMPUTE, false, 1, numRecords);
+      pushSyntheticDataToStoreForPartialKeyLookup(
+          writer,
+          KEY_SCHEMA_PARTIAL_KEY_LOOKUP,
+          VALUE_SCHEMA_FOR_COMPUTE,
+          false,
+          1,
+          numRecords);
       client.subscribeAll().get();
 
       Map<GenericRecord, GenericRecord> finalComputeResultMap = new VeniceConcurrentHashMap<>();
       CountDownLatch computeLatch = new CountDownLatch(1);
 
-      Predicate partialKey = and(
-          equalTo("id", "key_abcdefgh_1"),
-          equalTo("companyId", 0)
-      );
+      Predicate partialKey = and(equalTo("id", "key_abcdefgh_1"), equalTo("companyId", 0));
 
       Schema keySchema = new Schema.Parser().parse(KEY_SCHEMA_PARTIAL_KEY_LOOKUP);
 
@@ -631,7 +696,11 @@ public class DaVinciComputeTest {
     final String storeName = Utils.getUniqueString("store");
     cluster.useControllerClient(client -> {
       TestUtils.assertCommand(
-          client.createNewStore(storeName, getClass().getName(), KEY_SCHEMA_PARTIAL_KEY_LOOKUP, VALUE_SCHEMA_FOR_COMPUTE));
+          client.createNewStore(
+              storeName,
+              getClass().getName(),
+              KEY_SCHEMA_PARTIAL_KEY_LOOKUP,
+              VALUE_SCHEMA_FOR_COMPUTE));
       TestUtils.createMetaSystemStore(client, storeName, Optional.of(logger));
     });
 
@@ -645,8 +714,7 @@ public class DaVinciComputeTest {
     MetricsRepository metricsRepository = new MetricsRepository();
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
 
-    VeniceProperties backendConfig = new PropertyBuilder()
-        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+    VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
@@ -655,19 +723,25 @@ public class DaVinciComputeTest {
     int numRecords = 100;
 
     try (
-        VeniceWriter<GenericRecord, GenericRecord, byte[]> writer = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
-        CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig);
-        DaVinciClient<GenericRecord, GenericRecord> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig())) {
+        VeniceWriter<GenericRecord, GenericRecord, byte[]> writer =
+            vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+        CachingDaVinciClientFactory factory =
+            new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig);
+        DaVinciClient<GenericRecord, GenericRecord> client =
+            factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig())) {
 
-      pushSyntheticDataToStoreForPartialKeyLookup(writer, KEY_SCHEMA_PARTIAL_KEY_LOOKUP, VALUE_SCHEMA_FOR_COMPUTE, false, 1, numRecords);
+      pushSyntheticDataToStoreForPartialKeyLookup(
+          writer,
+          KEY_SCHEMA_PARTIAL_KEY_LOOKUP,
+          VALUE_SCHEMA_FOR_COMPUTE,
+          false,
+          1,
+          numRecords);
       client.subscribeAll().get();
 
-      Predicate partialKey = and(
-          equalTo("id", "key_abcdefgh_1"),
-          equalTo("companyId", 0)
-      );
+      Predicate partialKey = and(equalTo("id", "key_abcdefgh_1"), equalTo("companyId", 0));
 
-      final boolean[] completed = {false};
+      final boolean[] completed = { false };
 
       client.compute()
           .project("id", "name", "companiesEmbedding", "member_feature")
@@ -681,7 +755,9 @@ public class DaVinciComputeTest {
             public void onCompletion(Optional<Exception> exception) {
               completed[0] = true;
               Assert.assertTrue(exception.isPresent());
-              Assert.assertEquals(exception.get().getMessage(), "Get by key prefix is not supported with RocksDB PlainTable Format.");
+              Assert.assertEquals(
+                  exception.get().getMessage(),
+                  "Get by key prefix is not supported with RocksDB PlainTable Format.");
             }
           });
       Assert.assertTrue(completed[0]);
@@ -707,8 +783,12 @@ public class DaVinciComputeTest {
     }
   }
 
-  private void pushSyntheticDataToStore(VeniceWriter<Object, Object, byte[]> writer, String schema, boolean skip, int valueSchemaId, int numRecords)
-      throws ExecutionException, InterruptedException {
+  private void pushSyntheticDataToStore(
+      VeniceWriter<Object, Object, byte[]> writer,
+      String schema,
+      boolean skip,
+      int valueSchemaId,
+      int numRecords) throws ExecutionException, InterruptedException {
     writer.broadcastStartOfPush(Collections.emptyMap());
     Schema valueSchema = Schema.parse(schema);
 
@@ -728,27 +808,29 @@ public class DaVinciComputeTest {
   private void pushRecordsToStore(
       Map<Integer, GenericRecord> valuesByKey,
       VeniceWriter<Object, Object, byte[]> veniceWriter,
-      int valueSchemaId
-  ) throws Exception {
+      int valueSchemaId) throws Exception {
 
     veniceWriter.broadcastStartOfPush(Collections.emptyMap());
-    for (Map.Entry<Integer, GenericRecord> keyValue : valuesByKey.entrySet()) {
+    for (Map.Entry<Integer, GenericRecord> keyValue: valuesByKey.entrySet()) {
       veniceWriter.put(keyValue.getKey(), keyValue.getValue(), valueSchemaId).get();
     }
     veniceWriter.broadcastEndOfPush(Collections.emptyMap());
   }
 
-  private void pushDataToStoreForStreamingCompute(VeniceWriter<Object, Object, byte[]> writer, String valueSchemaString,
-      int valueSchemaId, int numRecords) throws ExecutionException, InterruptedException {
+  private void pushDataToStoreForStreamingCompute(
+      VeniceWriter<Object, Object, byte[]> writer,
+      String valueSchemaString,
+      int valueSchemaId,
+      int numRecords) throws ExecutionException, InterruptedException {
     writer.broadcastStartOfPush(Collections.emptyMap());
     Schema.Parser schemaParser = new Schema.Parser();
     Schema valueSchema = schemaParser.parse(valueSchemaString);
 
-    for (int i = 0; i < numRecords; i++){
+    for (int i = 0; i < numRecords; i++) {
       GenericRecord valueRecord = new GenericData.Record(valueSchema);
       valueRecord.put("int_field", i);
       valueRecord.put("float_field", i + 100.0f);
-      writer.put(KEY_PREFIX + i, valueRecord,   valueSchemaId).get();
+      writer.put(KEY_PREFIX + i, valueRecord, valueSchemaId).get();
     }
 
     writer.broadcastEndOfPush(Collections.emptyMap());
@@ -763,9 +845,13 @@ public class DaVinciComputeTest {
     }
   }
 
-  private void pushSyntheticDataToStoreForPartialKeyLookup(VeniceWriter<GenericRecord, GenericRecord, byte[]> writer,
-      String keySchemaString, String valueSchemaString, boolean skip, int valueSchemaId, int numRecords)
-      throws ExecutionException, InterruptedException {
+  private void pushSyntheticDataToStoreForPartialKeyLookup(
+      VeniceWriter<GenericRecord, GenericRecord, byte[]> writer,
+      String keySchemaString,
+      String valueSchemaString,
+      boolean skip,
+      int valueSchemaId,
+      int numRecords) throws ExecutionException, InterruptedException {
     writer.broadcastStartOfPush(Collections.emptyMap());
     Schema keySchema = new Schema.Parser().parse(keySchemaString);
     Schema valueSchema = new Schema.Parser().parse(valueSchemaString);
@@ -788,7 +874,6 @@ public class DaVinciComputeTest {
     writer.broadcastEndOfPush(Collections.emptyMap());
   }
 
-
   private List<Float> generateRandomFloatList(int listSize) {
     ThreadLocalRandom rand = ThreadLocalRandom.current();
     List<Float> feature = new ArrayList<>(listSize);
@@ -797,6 +882,5 @@ public class DaVinciComputeTest {
     }
     return feature;
   }
-
 
 }

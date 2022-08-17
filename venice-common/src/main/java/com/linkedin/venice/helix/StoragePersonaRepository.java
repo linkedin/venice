@@ -35,7 +35,6 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
  *
  */
 public class StoragePersonaRepository {
-
   private final StoragePersonaAccessor storagePersonaAccessor;
 
   /** Map from persona names to personas. */
@@ -45,7 +44,11 @@ public class StoragePersonaRepository {
   private final Lock personaLock = new ReentrantLock();
   private final ReadOnlyStoreRepository storeRepository;
 
-  public StoragePersonaRepository(String clusterName, ReadOnlyStoreRepository repository, HelixAdapterSerializer compositeSerializer, ZkClient zkClient) {
+  public StoragePersonaRepository(
+      String clusterName,
+      ReadOnlyStoreRepository repository,
+      HelixAdapterSerializer compositeSerializer,
+      ZkClient zkClient) {
     this.storagePersonaAccessor = new StoragePersonaAccessor(clusterName, compositeSerializer, zkClient);
     this.storeRepository = repository;
     storeRepository.registerStoreDataChangedListener(new StoragePersonaStoreDataListener(this));
@@ -58,7 +61,9 @@ public class StoragePersonaRepository {
    */
   public StoragePersona getPersona(String name) {
     StoragePersona persona = personaMap.get(name);
-    if (persona == null) { return null; }
+    if (persona == null) {
+      return null;
+    }
     return new StoragePersona(persona);
   }
 
@@ -78,7 +83,7 @@ public class StoragePersonaRepository {
     List<StoragePersona> personas = storagePersonaAccessor.getAllPersonasFromZk();
     personaMap = new VeniceConcurrentHashMap<>();
     storeNamePersonaMap = new VeniceConcurrentHashMap<>();
-    for (StoragePersona persona : personas) {
+    for (StoragePersona persona: personas) {
       cachePersona(persona);
     }
     personaLock.unlock();
@@ -129,10 +134,10 @@ public class StoragePersonaRepository {
       storagePersonaAccessor.updatePersona(persona);
       Set<String> oldStoreNames = oldPersona.getStoresToEnforce();
       personaMap.put(persona.getName(), new StoragePersona(persona));
-      for (String storeName : oldStoreNames) {
+      for (String storeName: oldStoreNames) {
         storeNamePersonaMap.remove(storeName);
       }
-      for (String storeName : persona.getStoresToEnforce()) {
+      for (String storeName: persona.getStoresToEnforce()) {
         storeNamePersonaMap.put(storeName, persona.getName());
       }
     }
@@ -157,7 +162,7 @@ public class StoragePersonaRepository {
 
   private void deleteStores(List<String> storeNames) {
     try (AutoCloseableLock ignore = AutoCloseableSingleLock.of(personaLock)) {
-      for (String store : storeNames) {
+      for (String store: storeNames) {
         String personaName = storeNamePersonaMap.get(store);
         if (personaName != null) {
           StoragePersona newPersona = getPersona(personaName);
@@ -171,17 +176,20 @@ public class StoragePersonaRepository {
 
   public StoragePersona getPersonaContainingStore(String storeName) {
     String personaName = storeNamePersonaMap.get(storeName);
-    if (personaName == null) return null;
+    if (personaName == null)
+      return null;
     return getPersona(personaName);
   }
 
   private boolean isStoreSetValid(StoragePersona persona, Optional<Store> additionalStore) {
     Set<String> setToValidate = new HashSet<>();
-    if (additionalStore.isPresent()) setToValidate.add(additionalStore.get().getName());
+    if (additionalStore.isPresent())
+      setToValidate.add(additionalStore.get().getName());
     setToValidate.addAll(persona.getStoresToEnforce());
-    return setToValidate.stream().allMatch(s -> storeRepository.hasStore(s) &&
-        !VeniceSystemStoreUtils.isSystemStore(s) &&
-        (storeNamePersonaMap.get(s) == null || storeNamePersonaMap.get(s).equals(persona.getName())));
+    return setToValidate.stream()
+        .allMatch(
+            s -> storeRepository.hasStore(s) && !VeniceSystemStoreUtils.isSystemStore(s)
+                && (storeNamePersonaMap.get(s) == null || storeNamePersonaMap.get(s).equals(persona.getName())));
   }
 
   private boolean isQuotaValid(StoragePersona persona, Optional<Store> additionalStore) {
@@ -191,8 +199,8 @@ public class StoragePersonaRepository {
     Set<String> storeNames = stores.stream().map(Store::getName).collect(Collectors.toSet());
     /** If the store is currently being updated, use the updated version of the store, not the
      * stale version from the store repository. */
-    Set<Store> personaStores = getPersonaStores(persona).stream()
-        .filter(s -> !storeNames.contains(s.getName())).collect(Collectors.toSet());
+    Set<Store> personaStores =
+        getPersonaStores(persona).stream().filter(s -> !storeNames.contains(s.getName())).collect(Collectors.toSet());
     stores.addAll(personaStores);
     totalStorage = stores.stream().mapToLong(Store::getStorageQuotaInByte).sum();
     return totalStorage <= persona.getQuotaNumber();
@@ -216,13 +224,14 @@ public class StoragePersonaRepository {
   }
 
   public void validatePersona(StoragePersona persona) {
-   validateAddUpdatedStore(persona, Optional.empty());
+    validateAddUpdatedStore(persona, Optional.empty());
   }
 
   public void validateAddUpdatedStore(StoragePersona persona, Optional<Store> store) {
     if (!isStoreSetValid(persona, store)) {
-      throw new VeniceException("Invalid store(s) provided: either not all stores exist within the cluster, "
-          + "one store is already managed by a persona, or one store is a system store");
+      throw new VeniceException(
+          "Invalid store(s) provided: either not all stores exist within the cluster, "
+              + "one store is already managed by a persona, or one store is a system store");
     } else if (!isQuotaValid(persona, store)) {
       throw new VeniceException("Invalid persona quota: total store quota exceeds persona quota");
     } else if (!isOwnersValid(persona)) {
@@ -258,7 +267,7 @@ public class StoragePersonaRepository {
 
   private void cachePersona(StoragePersona persona) {
     personaMap.put(persona.getName(), new StoragePersona(persona));
-    for (String storeName : persona.getStoresToEnforce()) {
+    for (String storeName: persona.getStoresToEnforce()) {
       storeNamePersonaMap.put(storeName, persona.getName());
     }
   }
@@ -266,7 +275,7 @@ public class StoragePersonaRepository {
   private void removePersonaFromCache(StoragePersona persona) {
     personaMap.remove(persona.getName());
     Set<String> storesOwned = persona.getStoresToEnforce();
-    for (String store : storesOwned) {
+    for (String store: storesOwned) {
       /**
        * If the persona did not exist, its stores may not be in the cache.
        */
@@ -279,7 +288,6 @@ public class StoragePersonaRepository {
    * StoragePersonaRepository accordingly.
    */
   public static class StoragePersonaStoreDataListener implements StoreDataChangedListener {
-
     StoragePersonaRepository repository;
 
     public StoragePersonaStoreDataListener(StoragePersonaRepository repository) {
@@ -290,7 +298,8 @@ public class StoragePersonaRepository {
      * Thus, this method does nothing for now, but may be implemented in future versions.
      */
     @Override
-    public void handleStoreCreated(Store store) { }
+    public void handleStoreCreated(Store store) {
+    }
 
     /** This function removes the given store (if it exists) from any existing personas, both in the cache and in ZK,
      * and then removes the mapping from the store to the personas.

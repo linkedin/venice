@@ -1,15 +1,17 @@
 package com.linkedin.venice.client.store;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.store.transport.TransportClientStreamingCallback;
-import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
+import com.linkedin.venice.client.store.transport.TransportClientStreamingCallback;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -35,15 +37,18 @@ import org.apache.avro.generic.GenericRecord;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static org.mockito.Mockito.*;
-
 
 public class AbstractAvroStoreClientTest {
   private static class SimpleStoreClient<K, V> extends AbstractAvroStoreClient<K, V> {
-
-    public SimpleStoreClient(TransportClient transportClient, String storeName, boolean needSchemaReader,
+    public SimpleStoreClient(
+        TransportClient transportClient,
+        String storeName,
+        boolean needSchemaReader,
         Executor deserializationExecutor) {
-      super(transportClient, needSchemaReader, ClientConfig.defaultGenericClientConfig(storeName).setDeserializationExecutor(deserializationExecutor));
+      super(
+          transportClient,
+          needSchemaReader,
+          ClientConfig.defaultGenericClientConfig(storeName).setDeserializationExecutor(deserializationExecutor));
     }
 
     @Override
@@ -96,54 +101,66 @@ public class AbstractAvroStoreClientTest {
     private final Optional<byte[]> responseBody;
     private final Optional<VeniceClientException> completedException;
 
-    public ParameterizedComputeTransportClient(Optional<byte[]> responseBody, Optional<VeniceClientException> completedException) {
+    public ParameterizedComputeTransportClient(
+        Optional<byte[]> responseBody,
+        Optional<VeniceClientException> completedException) {
       this.responseBody = responseBody;
       this.completedException = completedException;
       this.headerMap = new HashMap<>();
-      this.headerMap.put(HttpConstants.VENICE_SCHEMA_ID, Integer.toString(ReadAvroProtocolDefinition.COMPUTE_RESPONSE_V1.getProtocolVersion()));
+      this.headerMap.put(
+          HttpConstants.VENICE_SCHEMA_ID,
+          Integer.toString(ReadAvroProtocolDefinition.COMPUTE_RESPONSE_V1.getProtocolVersion()));
     }
+
     @Override
     public CompletableFuture<TransportClientResponse> get(String requestPath, Map<String, String> headers) {
       return null;
     }
 
     @Override
-    public CompletableFuture<TransportClientResponse> post(String requestPath, Map<String, String> headers,
-    byte[] requestBody) {
+    public CompletableFuture<TransportClientResponse> post(
+        String requestPath,
+        Map<String, String> headers,
+        byte[] requestBody) {
       return null;
     }
 
     @Override
-    public void streamPost(String requestPath, Map<String, String> headers, byte[] requestBody,
-    TransportClientStreamingCallback callback, int keyCount) {
+    public void streamPost(
+        String requestPath,
+        Map<String, String> headers,
+        byte[] requestBody,
+        TransportClientStreamingCallback callback,
+        int keyCount) {
       Map<String, String> headerMap = new HashMap<>();
-      headerMap.put(HttpConstants.VENICE_SCHEMA_ID, Integer.toString(ReadAvroProtocolDefinition.COMPUTE_RESPONSE_V1.getProtocolVersion()));
+      headerMap.put(
+          HttpConstants.VENICE_SCHEMA_ID,
+          Integer.toString(ReadAvroProtocolDefinition.COMPUTE_RESPONSE_V1.getProtocolVersion()));
       callback.onHeaderReceived(headerMap);
       responseBody.ifPresent(body -> callback.onDataReceived(ByteBuffer.wrap(body)));
       callback.onCompletion(completedException);
     }
 
     @Override
-    public void close() throws IOException {}
+    public void close() throws IOException {
+    }
   };
 
   @Test
   public void testCompute() throws ExecutionException, InterruptedException {
     // Mock a transport client response
-    String resultSchemaStr = "{" +
-        "  \"type\": \"record\",        " +
-        "  \"name\": \"test_store_VeniceComputeResult\",       " +
-        "  \"doc\": \"\",                          " +
-        "  \"fields\": [        " +
-        "         { \"name\": \"int_field\", \"type\": \"int\", \"doc\": \"\", \"default\": 0 },             " +
-        "         { \"name\": \"dot_product_for_float_array_field1\", \"type\": [\"null\",\"float\"], \"doc\": \"\", \"default\": null },           " +
-        "         { \"name\": \"cosine_similarity_for_float_array_field2\", \"type\": [\"null\",\"float\"], \"doc\": \"\", \"default\": null },           " +
-        "         { \"name\": \"hadamard_product_for_float_array_field1\", \"type\":[\"null\",{\"type\":\"array\",\"items\":\"float\"}],\"doc\":\"\",\"default\":null },           " +
-        "         { \"name\": \"veniceComputationError\", \"type\": { \"type\": \"map\", \"values\": \"string\" }, \"doc\": \"\", \"default\": { } }        " +
-        "  ]       " +
-        " }       ";
+    String resultSchemaStr = "{" + "  \"type\": \"record\",        "
+        + "  \"name\": \"test_store_VeniceComputeResult\",       " + "  \"doc\": \"\",                          "
+        + "  \"fields\": [        "
+        + "         { \"name\": \"int_field\", \"type\": \"int\", \"doc\": \"\", \"default\": 0 },             "
+        + "         { \"name\": \"dot_product_for_float_array_field1\", \"type\": [\"null\",\"float\"], \"doc\": \"\", \"default\": null },           "
+        + "         { \"name\": \"cosine_similarity_for_float_array_field2\", \"type\": [\"null\",\"float\"], \"doc\": \"\", \"default\": null },           "
+        + "         { \"name\": \"hadamard_product_for_float_array_field1\", \"type\":[\"null\",{\"type\":\"array\",\"items\":\"float\"}],\"doc\":\"\",\"default\":null },           "
+        + "         { \"name\": \"veniceComputationError\", \"type\": { \"type\": \"map\", \"values\": \"string\" }, \"doc\": \"\", \"default\": { } }        "
+        + "  ]       " + " }       ";
     Schema resultSchema = Schema.parse(resultSchemaStr);
-    RecordSerializer<GenericRecord> resultSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(resultSchema);
+    RecordSerializer<GenericRecord> resultSerializer =
+        SerializerDeserializerFactory.getAvroGenericSerializer(resultSchema);
 
     List<Float> hadamardProductResult = Arrays.asList(3.1f, 4.1f);
     List<ComputeResponseRecordV1> responseRecordV1List = new ArrayList<>();
@@ -170,24 +187,30 @@ public class AbstractAvroStoreClientTest {
     responseRecordV1List.add(record1);
     responseRecordV1List.add(record2);
 
-    RecordSerializer<ComputeResponseRecordV1> computeResponseSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.SCHEMA$);
+    RecordSerializer<ComputeResponseRecordV1> computeResponseSerializer =
+        SerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.SCHEMA$);
     byte[] serializedResponse = computeResponseSerializer.serializeObjects(responseRecordV1List);
 
-    TransportClient mockTransportClient = new ParameterizedComputeTransportClient(Optional.of(serializedResponse), Optional.empty());
+    TransportClient mockTransportClient =
+        new ParameterizedComputeTransportClient(Optional.of(serializedResponse), Optional.empty());
 
     String storeName = "test_store";
-    SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(mockTransportClient, storeName,
-        true, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
+    SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(
+        mockTransportClient,
+        storeName,
+        true,
+        AbstractAvroStoreClient.getDefaultDeserializationExecutor());
     MetricsRepository metricsRepository = new MetricsRepository();
     ClientStats stats = ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE, null);
-    ClientStats streamingStats = ClientStats.getClientStats(metricsRepository, storeName,
-        RequestType.COMPUTE_STREAMING, null);
-    CompletableFuture<Map<String, GenericRecord>> computeFuture = storeClient.compute(Optional.of(stats), Optional.of(streamingStats), 0)
-        .project("int_field")
-        .dotProduct("float_array_field1", dotProductParam, "dot_product_for_float_array_field1")
-        .cosineSimilarity("float_array_field2", cosineSimilarityParam, "cosine_similarity_for_float_array_field2")
-        .hadamardProduct("float_array_field1", hadamardProductParam, "hadamard_product_for_float_array_field1")
-        .execute(keys);
+    ClientStats streamingStats =
+        ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE_STREAMING, null);
+    CompletableFuture<Map<String, GenericRecord>> computeFuture =
+        storeClient.compute(Optional.of(stats), Optional.of(streamingStats), 0)
+            .project("int_field")
+            .dotProduct("float_array_field1", dotProductParam, "dot_product_for_float_array_field1")
+            .cosineSimilarity("float_array_field2", cosineSimilarityParam, "cosine_similarity_for_float_array_field2")
+            .hadamardProduct("float_array_field1", hadamardProductParam, "hadamard_product_for_float_array_field1")
+            .execute(keys);
     Map<String, GenericRecord> computeResult = computeFuture.get();
     Assert.assertEquals(computeResult.size(), 2);
     Assert.assertNotNull(computeResult.get("key1"));
@@ -207,19 +230,17 @@ public class AbstractAvroStoreClientTest {
   @Test
   public void testComputeFailure() throws ExecutionException, InterruptedException {
     // Mock a transport client response
-    String resultSchemaStr = "{" +
-        "  \"type\": \"record\",        " +
-        "  \"name\": \"test_store_VeniceComputeResult\",       " +
-        "  \"doc\": \"\",                          " +
-        "  \"fields\": [        " +
-        "         { \"name\": \"int_field\", \"type\": \"int\", \"doc\": \"\", \"default\": 0 },             " +
-        "         { \"name\": \"dot_product_for_float_array_field1\", \"type\": [\"null\",\"float\"], \"doc\": \"\", \"default\": null },           " +
-        "         { \"name\": \"cosine_similarity_for_float_array_field2\", \"type\": [\"null\",\"float\"], \"doc\": \"\", \"default\": null },           " +
-        "         { \"name\": \"veniceComputationError\", \"type\": { \"type\": \"map\", \"values\": \"string\" }, \"doc\": \"\", \"default\": { } }        " +
-        "  ]       " +
-        " }       ";
+    String resultSchemaStr = "{" + "  \"type\": \"record\",        "
+        + "  \"name\": \"test_store_VeniceComputeResult\",       " + "  \"doc\": \"\",                          "
+        + "  \"fields\": [        "
+        + "         { \"name\": \"int_field\", \"type\": \"int\", \"doc\": \"\", \"default\": 0 },             "
+        + "         { \"name\": \"dot_product_for_float_array_field1\", \"type\": [\"null\",\"float\"], \"doc\": \"\", \"default\": null },           "
+        + "         { \"name\": \"cosine_similarity_for_float_array_field2\", \"type\": [\"null\",\"float\"], \"doc\": \"\", \"default\": null },           "
+        + "         { \"name\": \"veniceComputationError\", \"type\": { \"type\": \"map\", \"values\": \"string\" }, \"doc\": \"\", \"default\": { } }        "
+        + "  ]       " + " }       ";
     Schema resultSchema = Schema.parse(resultSchemaStr);
-    RecordSerializer<GenericRecord> resultSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(resultSchema);
+    RecordSerializer<GenericRecord> resultSerializer =
+        SerializerDeserializerFactory.getAvroGenericSerializer(resultSchema);
     List<ComputeResponseRecordV1> responseRecordV1List = new ArrayList<>();
     GenericRecord result1 = new GenericData.Record(resultSchema);
     result1.put("int_field", 1);
@@ -234,22 +255,28 @@ public class AbstractAvroStoreClientTest {
     record1.value = ByteBuffer.wrap(resultSerializer.serialize(result1));
     responseRecordV1List.add(record1);
 
-    RecordSerializer<ComputeResponseRecordV1> computeResponseSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.SCHEMA$);
+    RecordSerializer<ComputeResponseRecordV1> computeResponseSerializer =
+        SerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.SCHEMA$);
 
     byte[] serializedResponse = computeResponseSerializer.serializeObjects(responseRecordV1List);
-    TransportClient mockTransportClient = new ParameterizedComputeTransportClient(Optional.of(serializedResponse), Optional.empty());
+    TransportClient mockTransportClient =
+        new ParameterizedComputeTransportClient(Optional.of(serializedResponse), Optional.empty());
     String storeName = "test_store";
-    SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(mockTransportClient, storeName,
-        true, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
+    SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(
+        mockTransportClient,
+        storeName,
+        true,
+        AbstractAvroStoreClient.getDefaultDeserializationExecutor());
     MetricsRepository metricsRepository = new MetricsRepository();
     ClientStats stats = ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE, null);
-    ClientStats streamingStats = ClientStats.getClientStats(metricsRepository, storeName,
-        RequestType.COMPUTE_STREAMING, null);
-    CompletableFuture<Map<String, GenericRecord>> computeFuture = storeClient.compute(Optional.of(stats), Optional.of(streamingStats), 0)
-        .project("int_field")
-        .dotProduct("float_array_field1", dotProductParam, "dot_product_for_float_array_field1")
-        .cosineSimilarity("float_array_field2", cosineSimilarityParam, "cosine_similarity_for_float_array_field2")
-        .execute(keys);
+    ClientStats streamingStats =
+        ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE_STREAMING, null);
+    CompletableFuture<Map<String, GenericRecord>> computeFuture =
+        storeClient.compute(Optional.of(stats), Optional.of(streamingStats), 0)
+            .project("int_field")
+            .dotProduct("float_array_field1", dotProductParam, "dot_product_for_float_array_field1")
+            .cosineSimilarity("float_array_field2", cosineSimilarityParam, "cosine_similarity_for_float_array_field2")
+            .execute(keys);
     Map<String, GenericRecord> computeResult = computeFuture.get();
     Assert.assertEquals(computeResult.size(), 1);
     Assert.assertNotNull(computeResult.get("key1"));
@@ -259,9 +286,11 @@ public class AbstractAvroStoreClientTest {
       resultForKey1.get("dot_product_for_float_array_field1");
       Assert.fail("An exception should be thrown when retrieving a failed computation result");
     } catch (VeniceException e) {
-      String errorMsgFromVenice = "computing this field: dot_product_for_float_array_field1, error message: array length are different";
-      Assert.assertTrue(e.getMessage().contains(errorMsgFromVenice), "Error message doesn't contain: [" +
-          errorMsgFromVenice + "], and received message is :" + e.getMessage());
+      String errorMsgFromVenice =
+          "computing this field: dot_product_for_float_array_field1, error message: array length are different";
+      Assert.assertTrue(
+          e.getMessage().contains(errorMsgFromVenice),
+          "Error message doesn't contain: [" + errorMsgFromVenice + "], and received message is :" + e.getMessage());
     } catch (Exception e) {
       Assert.fail("Only VeniceException should be thrown");
     }
@@ -269,25 +298,31 @@ public class AbstractAvroStoreClientTest {
       resultForKey1.get("cosine_similarity_for_float_array_field2");
       Assert.fail("An exception should be thrown for the failed cosine similarity computation");
     } catch (VeniceException e) {
-      String errorMsgFromVenice = "computing this field: cosine_similarity_for_float_array_field2, error message: NullPointerException";
-      Assert.assertTrue(e.getMessage().contains(errorMsgFromVenice), "Error message doesn't contain: [" +
-          errorMsgFromVenice + "], and received message is :" + e.getMessage());
+      String errorMsgFromVenice =
+          "computing this field: cosine_similarity_for_float_array_field2, error message: NullPointerException";
+      Assert.assertTrue(
+          e.getMessage().contains(errorMsgFromVenice),
+          "Error message doesn't contain: [" + errorMsgFromVenice + "], and received message is :" + e.getMessage());
     } catch (Exception e) {
       Assert.fail("Only VeniceException should be thrown");
     }
     Assert.assertNull(computeResult.get("key2"));
   }
 
-  @Test (timeOut = 3000, expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*mock_exception.*")
+  @Test(timeOut = 3000, expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*mock_exception.*")
   public void testComputeReceiveNon200Response() throws ExecutionException, InterruptedException {
-    TransportClient mockTransportClient = new ParameterizedComputeTransportClient(Optional.empty(), Optional.of(new VeniceClientException("mock_exception")));
+    TransportClient mockTransportClient = new ParameterizedComputeTransportClient(
+        Optional.empty(),
+        Optional.of(new VeniceClientException("mock_exception")));
 
     String storeName = "test_store";
-    SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(mockTransportClient, storeName,
-        true, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
-    CompletableFuture<Map<String, GenericRecord>> computeFuture = storeClient.compute(Optional.empty(), Optional.empty(), 0)
-        .project("int_field")
-        .execute(keys);
+    SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(
+        mockTransportClient,
+        storeName,
+        true,
+        AbstractAvroStoreClient.getDefaultDeserializationExecutor());
+    CompletableFuture<Map<String, GenericRecord>> computeFuture =
+        storeClient.compute(Optional.empty(), Optional.empty(), 0).project("int_field").execute(keys);
     computeFuture.get();
   }
 }

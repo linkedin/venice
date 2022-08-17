@@ -33,6 +33,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+
 /**
  * Separate the tests from {@link TestAdminSparkServer}, because we need start more storage nodes to execute the
  * resource with bunch of partitions.
@@ -49,7 +50,8 @@ public class TestAdminSparkServerWithMultiServers {
   @BeforeClass
   public void setUp() {
     cluster = ServiceFactory.getVeniceCluster(1, STORAGE_NODE_COUNT, 0);
-    controllerClient = ControllerClient.constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
+    controllerClient =
+        ControllerClient.constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
   }
 
   @AfterClass
@@ -61,14 +63,14 @@ public class TestAdminSparkServerWithMultiServers {
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientShouldListStores() {
     List<String> storeNames = new ArrayList<>();
-    for (int i = 0; i < 10; i++) { //add 10 stores;
+    for (int i = 0; i < 10; i++) { // add 10 stores;
       storeNames.add(cluster.getNewStore(Utils.getUniqueString("venice-store")).getName());
     }
 
     MultiStoreResponse storeResponse = controllerClient.queryStoreList();
     Assert.assertFalse(storeResponse.isError());
     List<String> returnedStoreNames = Arrays.asList(storeResponse.getStores());
-    for (String expectedStore : storeNames) {
+    for (String expectedStore: storeNames) {
       Assert.assertTrue(returnedStoreNames.contains(expectedStore), "Query store list should include " + expectedStore);
     }
   }
@@ -76,32 +78,42 @@ public class TestAdminSparkServerWithMultiServers {
   public void testListStoreWithConfigFilter() {
     // Add a store with native replication enabled
     String nativeReplicationEnabledStore = Utils.getUniqueString("native-replication-store");
-    NewStoreResponse newStoreResponse = controllerClient.createNewStore(nativeReplicationEnabledStore, "test", "\"string\"", "\"string\"");
+    NewStoreResponse newStoreResponse =
+        controllerClient.createNewStore(nativeReplicationEnabledStore, "test", "\"string\"", "\"string\"");
     Assert.assertFalse(newStoreResponse.isError());
-    ControllerResponse updateStoreResponse = controllerClient.updateStore(nativeReplicationEnabledStore, new UpdateStoreQueryParams().setLeaderFollowerModel(true).setNativeReplicationEnabled(true));
+    ControllerResponse updateStoreResponse = controllerClient.updateStore(
+        nativeReplicationEnabledStore,
+        new UpdateStoreQueryParams().setLeaderFollowerModel(true).setNativeReplicationEnabled(true));
     Assert.assertFalse(updateStoreResponse.isError());
 
     // Add a store with incremental push enabled
     String incrementalPushEnabledStore = Utils.getUniqueString("incremental-push-store");
     newStoreResponse = controllerClient.createNewStore(incrementalPushEnabledStore, "test", "\"string\"", "\"string\"");
     Assert.assertFalse(newStoreResponse.isError());
-    updateStoreResponse = controllerClient.updateStore(incrementalPushEnabledStore, new UpdateStoreQueryParams().setIncrementalPushEnabled(true).setHybridOffsetLagThreshold(10L).setHybridRewindSeconds(1L));
+    updateStoreResponse = controllerClient.updateStore(
+        incrementalPushEnabledStore,
+        new UpdateStoreQueryParams().setIncrementalPushEnabled(true)
+            .setHybridOffsetLagThreshold(10L)
+            .setHybridRewindSeconds(1L));
     Assert.assertFalse(updateStoreResponse.isError());
 
     // List stores that have native replication enabled
-    MultiStoreResponse multiStoreResponse = controllerClient.queryStoreList(false, Optional.of("nativeReplicationEnabled"), Optional.of("true"));
+    MultiStoreResponse multiStoreResponse =
+        controllerClient.queryStoreList(false, Optional.of("nativeReplicationEnabled"), Optional.of("true"));
     Assert.assertFalse(multiStoreResponse.isError());
     Assert.assertEquals(multiStoreResponse.getStores().length, 1);
     Assert.assertEquals(multiStoreResponse.getStores()[0], nativeReplicationEnabledStore);
 
     // List stores that have incremental push enabled
-    multiStoreResponse = controllerClient.queryStoreList(false, Optional.of("incrementalPushEnabled"), Optional.of("true"));
+    multiStoreResponse =
+        controllerClient.queryStoreList(false, Optional.of("incrementalPushEnabled"), Optional.of("true"));
     Assert.assertFalse(multiStoreResponse.isError());
     Assert.assertEquals(multiStoreResponse.getStores().length, 1);
     Assert.assertEquals(multiStoreResponse.getStores()[0], incrementalPushEnabledStore);
 
     // List stores that have leader/follower mode enabled (all of them!)
-    multiStoreResponse = controllerClient.queryStoreList(false, Optional.of("leaderFollowerModelEnabled"), Optional.of("true"));
+    multiStoreResponse =
+        controllerClient.queryStoreList(false, Optional.of("leaderFollowerModelEnabled"), Optional.of("true"));
     Assert.assertFalse(multiStoreResponse.isError());
     Assert.assertEquals(multiStoreResponse.getStores().length, controllerClient.listLFStores().getStores().length);
 
@@ -109,20 +121,22 @@ public class TestAdminSparkServerWithMultiServers {
     String hybridNonAggregateStore = Utils.getUniqueString("hybrid-non-aggregate");
     newStoreResponse = controllerClient.createNewStore(hybridNonAggregateStore, "test", "\"string\"", "\"string\"");
     Assert.assertFalse(newStoreResponse.isError());
-    updateStoreResponse = controllerClient.updateStore(hybridNonAggregateStore, new UpdateStoreQueryParams()
-        .setHybridRewindSeconds(100)
-        .setHybridOffsetLagThreshold(10)
-        .setHybridDataReplicationPolicy(DataReplicationPolicy.NON_AGGREGATE));
+    updateStoreResponse = controllerClient.updateStore(
+        hybridNonAggregateStore,
+        new UpdateStoreQueryParams().setHybridRewindSeconds(100)
+            .setHybridOffsetLagThreshold(10)
+            .setHybridDataReplicationPolicy(DataReplicationPolicy.NON_AGGREGATE));
     Assert.assertFalse(updateStoreResponse.isError());
 
     // Add a store with hybrid config enabled and the DataReplicationPolicy is aggregate
     String hybridAggregateStore = Utils.getUniqueString("hybrid-aggregate");
     newStoreResponse = controllerClient.createNewStore(hybridAggregateStore, "test", "\"string\"", "\"string\"");
     Assert.assertFalse(newStoreResponse.isError());
-    updateStoreResponse = controllerClient.updateStore(hybridAggregateStore, new UpdateStoreQueryParams()
-        .setHybridRewindSeconds(100)
-        .setHybridOffsetLagThreshold(10)
-        .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE));
+    updateStoreResponse = controllerClient.updateStore(
+        hybridAggregateStore,
+        new UpdateStoreQueryParams().setHybridRewindSeconds(100)
+            .setHybridOffsetLagThreshold(10)
+            .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE));
     Assert.assertFalse(updateStoreResponse.isError());
 
     // List stores that have hybrid config enabled
@@ -140,7 +154,8 @@ public class TestAdminSparkServerWithMultiServers {
     Assert.assertTrue(hybridStoresSet.contains(incrementalPushEnabledStore));
 
     // List hybrid stores that are on non-aggregate mode
-    multiStoreResponse = controllerClient.queryStoreList(false, Optional.of("dataReplicationPolicy"), Optional.of("NON_AGGREGATE"));
+    multiStoreResponse =
+        controllerClient.queryStoreList(false, Optional.of("dataReplicationPolicy"), Optional.of("NON_AGGREGATE"));
     Assert.assertFalse(multiStoreResponse.isError());
     // Don't check the size of the return store list since the cluster is shared by all test cases.
     Set<String> nonAggHybridStoresSet = new HashSet<>(Arrays.asList(multiStoreResponse.getStores()));
@@ -154,7 +169,8 @@ public class TestAdminSparkServerWithMultiServers {
     Assert.assertTrue(nonAggHybridStoresSet.contains(incrementalPushEnabledStore));
 
     // List hybrid stores that are on aggregate mode
-    multiStoreResponse = controllerClient.queryStoreList(false, Optional.of("dataReplicationPolicy"), Optional.of("AGGREGATE"));
+    multiStoreResponse =
+        controllerClient.queryStoreList(false, Optional.of("dataReplicationPolicy"), Optional.of("AGGREGATE"));
     Assert.assertFalse(multiStoreResponse.isError());
     // Don't check the size of the return store list since the cluster is shared by all test cases.
     Set<String> aggHybridStoresSet = new HashSet<>(Arrays.asList(multiStoreResponse.getStores()));
@@ -169,11 +185,11 @@ public class TestAdminSparkServerWithMultiServers {
     // Create a new store
     String storeName = cluster.getNewStore(Utils.getUniqueString("venice-store")).getName();
     // Send an empty push
-    try{
-      ControllerResponse response = controllerClient.sendEmptyPushAndWait(storeName,
-          Utils.getUniqueString("emptyPushId"), 10000, TEST_TIMEOUT);
+    try {
+      ControllerResponse response =
+          controllerClient.sendEmptyPushAndWait(storeName, Utils.getUniqueString("emptyPushId"), 10000, TEST_TIMEOUT);
       Assert.assertFalse(response.isError(), "Received error response on empty push:" + response.getError());
-    } catch(Exception e) {
+    } catch (Exception e) {
       Assert.fail("Could not send empty push!!", e);
     }
   }
@@ -182,54 +198,53 @@ public class TestAdminSparkServerWithMultiServers {
   public void controllerClientShouldCreateStoreWithParameters() {
     String storeName = Utils.getUniqueString("venice-store");
     try {
-      UpdateStoreQueryParams updateStore = new UpdateStoreQueryParams()
-          .setHybridRewindSeconds(1000)
+      UpdateStoreQueryParams updateStore = new UpdateStoreQueryParams().setHybridRewindSeconds(1000)
           .setHybridOffsetLagThreshold(1000)
           .setHybridStoreOverheadBypass(true)
           .setEnableWrites(true)
           .setOwner("Napolean");
-      ControllerResponse response = controllerClient.createNewStoreWithParameters(storeName, "The_Doge", "\"string\"", "\"string\"", updateStore);
+      ControllerResponse response =
+          controllerClient.createNewStoreWithParameters(storeName, "The_Doge", "\"string\"", "\"string\"", updateStore);
       Assert.assertFalse(response.isError(), "Received error response on store creation:" + response.getError());
       StoreInfo store = controllerClient.getStore(storeName).getStore();
       Assert.assertEquals(store.getOwner(), "Napolean");
       Assert.assertEquals(store.getHybridStoreConfig().getRewindTimeInSeconds(), 1000);
-    } catch(Exception e) {
+    } catch (Exception e) {
       Assert.fail("Could not create new Store with Exception!!", e);
     }
   }
-
 
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientShouldCreateStoreWithParametersAndNotDeleteItIfItExists() {
     String storeName = Utils.getUniqueString("venice-store");
     try {
-      UpdateStoreQueryParams updateStore = new UpdateStoreQueryParams()
-              .setHybridRewindSeconds(1000)
-              .setHybridOffsetLagThreshold(1000)
-              .setHybridStoreOverheadBypass(true)
-              .setEnableWrites(true)
-              .setOwner("Napolean");
-      ControllerResponse response = controllerClient.createNewStoreWithParameters(storeName, "The_Doge", "\"string\"", "\"string\"", updateStore);
+      UpdateStoreQueryParams updateStore = new UpdateStoreQueryParams().setHybridRewindSeconds(1000)
+          .setHybridOffsetLagThreshold(1000)
+          .setHybridStoreOverheadBypass(true)
+          .setEnableWrites(true)
+          .setOwner("Napolean");
+      ControllerResponse response =
+          controllerClient.createNewStoreWithParameters(storeName, "The_Doge", "\"string\"", "\"string\"", updateStore);
       Assert.assertFalse(response.isError(), "Received error response on store creation:" + response.getError());
       StoreInfo store = controllerClient.getStore(storeName).getStore();
       Assert.assertEquals(store.getOwner(), "Napolean");
       Assert.assertEquals(store.getHybridStoreConfig().getRewindTimeInSeconds(), 1000);
 
       // Create it again, and check to make sure it exists
-      updateStore = new UpdateStoreQueryParams()
-              .setHybridRewindSeconds(1000)
-              .setHybridOffsetLagThreshold(1000)
-              .setHybridStoreOverheadBypass(true)
-              .setEnableWrites(true)
-              .setOwner("Napolean");
-      response = controllerClient.createNewStoreWithParameters(storeName, "The_Doge", "\"string\"", "\"string\"", updateStore);
+      updateStore = new UpdateStoreQueryParams().setHybridRewindSeconds(1000)
+          .setHybridOffsetLagThreshold(1000)
+          .setHybridStoreOverheadBypass(true)
+          .setEnableWrites(true)
+          .setOwner("Napolean");
+      response =
+          controllerClient.createNewStoreWithParameters(storeName, "The_Doge", "\"string\"", "\"string\"", updateStore);
       Assert.assertTrue(response.isError(), "No Error Received!!!!!");
       store = controllerClient.getStore(storeName).getStore();
       Assert.assertNotNull(store, "Store unreadable!!  It may no longer exist!");
       Assert.assertEquals(store.getOwner(), "Napolean");
       Assert.assertEquals(store.getHybridStoreConfig().getRewindTimeInSeconds(), 1000);
 
-    } catch(Exception e) {
+    } catch (Exception e) {
       Assert.fail("Could not create new Store with Exception!!", e);
     }
   }
@@ -251,30 +266,64 @@ public class TestAdminSparkServerWithMultiServers {
 
       // Stream
       if (pushType.equals(Version.PushType.STREAM)) {
-        controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(1000).setHybridOffsetLagThreshold(1000));
+        controllerClient.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setHybridRewindSeconds(1000).setHybridOffsetLagThreshold(1000));
         controllerClient.emptyPush(storeName, Utils.getUniqueString("emptyPushId"), 10000);
       }
 
       // Both
-      VersionCreationResponse responseOne =
-          controllerClient.requestTopicForWrites(storeName, 1, pushType, pushOne,
-              true, true, false, Optional.empty(), Optional.empty(), Optional.empty(), false, -1);
+      VersionCreationResponse responseOne = controllerClient.requestTopicForWrites(
+          storeName,
+          1,
+          pushType,
+          pushOne,
+          true,
+          true,
+          false,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          false,
+          -1);
       if (responseOne.isError()) {
         Assert.fail(responseOne.getError());
       }
-      VersionCreationResponse responseTwo =
-          controllerClient.requestTopicForWrites(storeName, 1, pushType, pushTwo,
-              true, false, false, Optional.empty(), Optional.empty(), Optional.empty(), false, -1);
+      VersionCreationResponse responseTwo = controllerClient.requestTopicForWrites(
+          storeName,
+          1,
+          pushType,
+          pushTwo,
+          true,
+          false,
+          false,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          false,
+          -1);
       if (responseTwo.isError()) {
         Assert.fail(responseOne.getError());
       }
 
-      Assert.assertEquals(responseOne.getKafkaTopic(), responseTwo.getKafkaTopic(),
+      Assert.assertEquals(
+          responseOne.getKafkaTopic(),
+          responseTwo.getKafkaTopic(),
           "Multiple requests for topics with the same pushId must return the same kafka topic");
 
-      VersionCreationResponse responseThree =
-          controllerClient.requestTopicForWrites(storeName, 1, pushType, pushThree,
-              true, false, false, Optional.empty(), Optional.empty(), Optional.empty(), false, -1);
+      VersionCreationResponse responseThree = controllerClient.requestTopicForWrites(
+          storeName,
+          1,
+          pushType,
+          pushThree,
+          true,
+          false,
+          false,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          false,
+          -1);
       Assert.assertFalse(responseThree.isError(), "Controller should not allow concurrent push");
     }
   }
@@ -302,7 +351,7 @@ public class TestAdminSparkServerWithMultiServers {
             threads.add(t);
             t.setUncaughtExceptionHandler((t1, e) -> e.printStackTrace());
           }
-          for (Thread t : threads) {
+          for (Thread t: threads) {
             t.start();
           }
           Assert.assertTrue(latch.await(10, TimeUnit.SECONDS));
@@ -312,14 +361,19 @@ public class TestAdminSparkServerWithMultiServers {
             }
           }
           for (int j = 1; j < threadCount; j++) {
-            Assert.assertEquals(responses.get(0).getKafkaTopic(), responses.get(j).getKafkaTopic(),
-                "Idempotent topic requests failed under concurrency on attempt " + i + ".  If this test ever fails, investigate! Don't just run it again and hope it passes");
+            Assert.assertEquals(
+                responses.get(0).getKafkaTopic(),
+                responses.get(j).getKafkaTopic(),
+                "Idempotent topic requests failed under concurrency on attempt " + i
+                    + ".  If this test ever fails, investigate! Don't just run it again and hope it passes");
           }
-          //close the new version so the next iteration gets a new version.
+          // close the new version so the next iteration gets a new version.
           controllerClient.writeEndOfPush(storeName, responses.get(0).getVersion());
-          while (controllerClient.getStore(storeName).getStore().getCurrentVersion() < responses.get(0).getVersion() && Utils.sleep(200)) {}
+          while (controllerClient.getStore(storeName).getStore().getCurrentVersion() < responses.get(0).getVersion()
+              && Utils.sleep(200)) {
+          }
         } finally {
-          for (Thread t : threads) {
+          for (Thread t: threads) {
             TestUtils.shutdownThread(t);
           }
         }
@@ -330,12 +384,28 @@ public class TestAdminSparkServerWithMultiServers {
     }
   }
 
-  private Thread requestTopicThread(String pushId, String storeName, List<VersionCreationResponse> output, CountDownLatch latch, AtomicReference<String> errString) {
+  private Thread requestTopicThread(
+      String pushId,
+      String storeName,
+      List<VersionCreationResponse> output,
+      CountDownLatch latch,
+      AtomicReference<String> errString) {
     return new Thread(() -> {
       final VersionCreationResponse vcr = new VersionCreationResponse();
       try {
-        VersionCreationResponse thisVcr = controllerClient.requestTopicForWrites(storeName, 1, Version.PushType.BATCH, pushId,
-            true, false, false, Optional.empty(), Optional.empty(), Optional.empty(), false, -1);
+        VersionCreationResponse thisVcr = controllerClient.requestTopicForWrites(
+            storeName,
+            1,
+            Version.PushType.BATCH,
+            pushId,
+            true,
+            false,
+            false,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            false,
+            -1);
         vcr.setKafkaTopic(thisVcr.getKafkaTopic());
         vcr.setVersion(thisVcr.getVersion());
       } catch (Throwable t) {
@@ -355,14 +425,29 @@ public class TestAdminSparkServerWithMultiServers {
     cluster.getNewStore(storeName);
     StoreResponse freshStore = controllerClient.getStore(storeName);
     int oldVersion = freshStore.getStore().getCurrentVersion();
-    VersionCreationResponse versionResponse = controllerClient.requestTopicForWrites(storeName, 1, Version.PushType.BATCH, pushId,
-        true, true, false, Optional.empty(), Optional.empty(), Optional.empty(), false, -1);
+    VersionCreationResponse versionResponse = controllerClient.requestTopicForWrites(
+        storeName,
+        1,
+        Version.PushType.BATCH,
+        pushId,
+        true,
+        true,
+        false,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        false,
+        -1);
     int newVersion = versionResponse.getVersion();
-    Assert.assertNotEquals(newVersion, oldVersion, "Requesting a new version must not return the current version number");
+    Assert
+        .assertNotEquals(newVersion, oldVersion, "Requesting a new version must not return the current version number");
     controllerClient.writeEndOfPush(storeName, newVersion);
     TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.SECONDS, () -> {
       StoreResponse storeResponse = controllerClient.getStore(storeName);
-      Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), newVersion, "Writing end of push must flip the version to current");
+      Assert.assertEquals(
+          storeResponse.getStore().getCurrentVersion(),
+          newVersion,
+          "Writing end of push must flip the version to current");
     });
   }
 
@@ -379,7 +464,8 @@ public class TestAdminSparkServerWithMultiServers {
     cluster.stopVeniceServer(server.getPort());
     response = controllerClient.removeNodeFromCluster(nodeId);
     Assert.assertFalse(response.isError(), "Node is already disconnected, could be removed.");
-    Assert.assertFalse(admin.getStorageNodes(cluster.getClusterName()).contains(nodeId),
+    Assert.assertFalse(
+        admin.getStorageNodes(cluster.getClusterName()).contains(nodeId),
         "Node should be removed from the cluster.");
   }
 }

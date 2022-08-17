@@ -7,7 +7,6 @@ import java.util.List;
 
 @JsonDeserialize(as = SystemStoreAttributesImpl.class)
 public interface SystemStoreAttributes extends DataModelBackedStructure<SystemStoreProperties> {
-
   int getLargestUsedVersionNumber();
 
   void setLargestUsedVersionNumber(int largestUsedVersionNumber);
@@ -24,5 +23,5 @@ public interface SystemStoreAttributes extends DataModelBackedStructure<SystemSt
 
   void setVersions(List<Version> versions);
 
-   SystemStoreAttributes clone();
+  SystemStoreAttributes clone();
 }

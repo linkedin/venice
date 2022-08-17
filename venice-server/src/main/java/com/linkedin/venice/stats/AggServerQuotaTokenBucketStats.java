@@ -6,12 +6,17 @@ import com.linkedin.venice.meta.StoreDataChangedListener;
 import io.tehuti.metrics.MetricsRepository;
 
 
-public class AggServerQuotaTokenBucketStats extends AbstractVeniceAggStats<ServerQuotaTokenBucketStats> implements StoreDataChangedListener {
-  public AggServerQuotaTokenBucketStats(MetricsRepository metricsRepository, ReadQuotaEnforcementHandler quotaEnforcer) {
-    super(metricsRepository,
-        (metrics, storeName) -> new ServerQuotaTokenBucketStats(metrics, storeName,
-            () -> quotaEnforcer.getBucketForStore(storeName))
-    );
+public class AggServerQuotaTokenBucketStats extends AbstractVeniceAggStats<ServerQuotaTokenBucketStats>
+    implements StoreDataChangedListener {
+  public AggServerQuotaTokenBucketStats(
+      MetricsRepository metricsRepository,
+      ReadQuotaEnforcementHandler quotaEnforcer) {
+    super(
+        metricsRepository,
+        (metrics, storeName) -> new ServerQuotaTokenBucketStats(
+            metrics,
+            storeName,
+            () -> quotaEnforcer.getBucketForStore(storeName)));
   }
 
   @Override
@@ -21,7 +26,7 @@ public class AggServerQuotaTokenBucketStats extends AbstractVeniceAggStats<Serve
 
   @Override
   public void handleStoreDeleted(String storeName) {
-    //no-op
+    // no-op
   }
 
   @Override
@@ -29,9 +34,9 @@ public class AggServerQuotaTokenBucketStats extends AbstractVeniceAggStats<Serve
     initializeStatsForStore(store.getName());
   }
 
-  public void initializeStatsForStore(String storeName){
-    //The side-effect of this call is to create the stat if it does not
-    //already exist.  That side-effect is idempotent.
+  public void initializeStatsForStore(String storeName) {
+    // The side-effect of this call is to create the stat if it does not
+    // already exist. That side-effect is idempotent.
     getStoreStats(storeName);
   }
 }

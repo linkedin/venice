@@ -19,7 +19,6 @@ import org.testng.annotations.Test;
 
 
 public class TestOptimizedKafkaValueSerializer {
-
   @Test
   public static void testControlMessageDeserialization() {
     KafkaMessageEnvelope record = new KafkaMessageEnvelope();
@@ -48,9 +47,12 @@ public class TestOptimizedKafkaValueSerializer {
     byte[] serializedRecord = valueSerializer.serialize(topic, record);
 
     KafkaMessageEnvelope deserializedRecord = valueSerializer.deserialize(topic, serializedRecord);
-    EndOfSegment deserializedEndOfSegment = (EndOfSegment)((ControlMessage)deserializedRecord.payloadUnion).controlMessageUnion;
+    EndOfSegment deserializedEndOfSegment =
+        (EndOfSegment) ((ControlMessage) deserializedRecord.payloadUnion).controlMessageUnion;
     ByteBuffer deserializedChecksumValue = deserializedEndOfSegment.checksumValue;
-    Assert.assertTrue(deserializedChecksumValue.position() > 0, "Deserialized checksum should be backed by the original byte array");
+    Assert.assertTrue(
+        deserializedChecksumValue.position() > 0,
+        "Deserialized checksum should be backed by the original byte array");
     Assert.assertEquals(deserializedChecksumValue, ByteBuffer.wrap(checksumBytes));
   }
 
@@ -76,7 +78,7 @@ public class TestOptimizedKafkaValueSerializer {
     byte[] serializedRecord = valueSerializer.serialize(topic, record);
 
     KafkaMessageEnvelope deserializedRecord = valueSerializer.deserialize(topic, serializedRecord);
-    Put deserializedPut = (Put)deserializedRecord.payloadUnion;
+    Put deserializedPut = (Put) deserializedRecord.payloadUnion;
     int expectedPutValueLen = putValueBytes.length;
     Assert.assertEquals(deserializedPut.putValue.remaining(), expectedPutValueLen);
     Assert.assertTrue(deserializedPut.putValue.position() > 0, "There must be some head room at the beginning");

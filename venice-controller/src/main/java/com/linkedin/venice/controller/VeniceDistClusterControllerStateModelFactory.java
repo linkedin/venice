@@ -21,8 +21,7 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
   private final ZkClient zkClient;
   private final HelixAdapterSerializer adapterSerializer;
   private final VeniceControllerMultiClusterConfig clusterConfigs;
-  private final ConcurrentMap<String, VeniceControllerStateModel> clusterToStateModelsMap =
-      new ConcurrentHashMap<>();
+  private final ConcurrentMap<String, VeniceControllerStateModel> clusterToStateModelsMap = new ConcurrentHashMap<>();
   private final VeniceHelixAdmin admin;
   private final MetricsRepository metricsRepository;
   private final ClusterLeaderInitializationRoutine controllerInitialization;
@@ -56,8 +55,7 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
    */
   @Override
   public VeniceControllerStateModel createNewStateModel(String resourceName, String partitionName) {
-    String veniceClusterName =
-        VeniceControllerStateModel.getVeniceClusterNameFromPartitionName(partitionName);
+    String veniceClusterName = VeniceControllerStateModel.getVeniceClusterNameFromPartitionName(partitionName);
     VeniceControllerStateModel model = new VeniceControllerStateModel(
         veniceClusterName,
         zkClient,
@@ -84,7 +82,7 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
   /**
    * @return all {@code VeniceControllerStateModel} created by the factory.
    */
-  public Collection<VeniceControllerStateModel> getAllModels(){
+  public Collection<VeniceControllerStateModel> getAllModels() {
     return clusterToStateModelsMap.values();
   }
 }

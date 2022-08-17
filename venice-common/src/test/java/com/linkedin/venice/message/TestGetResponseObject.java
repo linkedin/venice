@@ -9,7 +9,6 @@ import org.testng.annotations.Test;
  * Created by mwise on 1/14/16.
  */
 public class TestGetResponseObject {
-
   @Test
   public void getResponseCanBeSerializedAndDeserialized() {
 

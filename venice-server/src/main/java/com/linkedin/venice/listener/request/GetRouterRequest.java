@@ -47,11 +47,11 @@ public class GetRouterRequest extends RouterRequest {
     // Generating a URI lets us always take just the path but we need to add on the query string
     URI fullUri = URI.create(uri);
     String path = fullUri.getRawPath();
-    if (fullUri.getRawQuery() != null){
+    if (fullUri.getRawQuery() != null) {
       path += "?" + fullUri.getRawQuery();
     }
     String[] requestParts = path.split("/");
-    if (requestParts.length == 5) {//   [0]""/[1]"action"/[2]"store"/[3]"partition"/[4]"key"
+    if (requestParts.length == 5) {// [0]""/[1]"action"/[2]"store"/[3]"partition"/[4]"key"
       String topicName = requestParts[2];
       int partition = Integer.parseInt(requestParts[3]);
       byte[] keyBytes = getKeyBytesFromUrlKeyString(requestParts[4]);
@@ -62,7 +62,7 @@ public class GetRouterRequest extends RouterRequest {
     }
   }
 
-  public static byte[] getKeyBytesFromUrlKeyString(String keyString){
+  public static byte[] getKeyBytesFromUrlKeyString(String keyString) {
     QueryStringDecoder queryStringParser = new QueryStringDecoder(keyString, StandardCharsets.UTF_8);
     String format = RequestConstants.DEFAULT_FORMAT;
     if (queryStringParser.parameters().containsKey(RequestConstants.FORMAT_KEY)) {
@@ -80,7 +80,7 @@ public class GetRouterRequest extends RouterRequest {
    * throws VeniceException if we don't handle the specified api version
    * @param headers
    */
-  public static void verifyApiVersion(HttpHeaders headers, String expectedVersion){
+  public static void verifyApiVersion(HttpHeaders headers, String expectedVersion) {
     if (headers.contains(HttpConstants.VENICE_API_VERSION)) { /* if not present, assume latest version */
       String clientApiVersion = headers.get(HttpConstants.VENICE_API_VERSION);
       if (!clientApiVersion.equals(expectedVersion)) {

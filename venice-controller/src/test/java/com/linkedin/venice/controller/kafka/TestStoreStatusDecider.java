@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller.kafka;
 
 import com.linkedin.venice.helix.ResourceAssignment;
-import com.linkedin.venice.meta.AbstractStore;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -15,7 +14,6 @@ import java.util.ArrayList;
 import java.util.List;
 import org.mockito.Mockito;
 import org.testng.Assert;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -39,16 +37,18 @@ public class TestStoreStatusDecider {
   public void testGetFullyReplicatedStoreStatus() {
     int partitionCount = 2;
 
-    prepare(partitionCount, new int[]{replicationFactor, replicationFactor});
-    for (String status : StoreStatusDecider.getStoreStatues(storeList, resourceAssignment, mockPushMonitor).values()) {
+    prepare(partitionCount, new int[] { replicationFactor, replicationFactor });
+    for (String status: StoreStatusDecider.getStoreStatues(storeList, resourceAssignment, mockPushMonitor).values()) {
       Assert.assertEquals(status, StoreStatus.FULLLY_REPLICATED.toString(), "Store should be fully replicated.");
     }
   }
 
   @Test
   public void testGetUnavailableStoreStatus() {
-    for (String status : StoreStatusDecider.getStoreStatues(storeList, resourceAssignment, mockPushMonitor).values()) {
-      Assert.assertEquals(status, StoreStatus.UNAVAILABLE.toString(),
+    for (String status: StoreStatusDecider.getStoreStatues(storeList, resourceAssignment, mockPushMonitor).values()) {
+      Assert.assertEquals(
+          status,
+          StoreStatus.UNAVAILABLE.toString(),
           "Store should be unavailable, because there is not version in that store.");
     }
   }
@@ -57,9 +57,11 @@ public class TestStoreStatusDecider {
   public void testGetDegradedStoreStatusMissingPartition() {
     int partitionCount = 3;
 
-    prepare(partitionCount, new int[]{replicationFactor, replicationFactor});
-    for (String status : StoreStatusDecider.getStoreStatues(storeList, resourceAssignment, mockPushMonitor).values()) {
-      Assert.assertEquals(status, StoreStatus.DEGRADED.toString(),
+    prepare(partitionCount, new int[] { replicationFactor, replicationFactor });
+    for (String status: StoreStatusDecider.getStoreStatues(storeList, resourceAssignment, mockPushMonitor).values()) {
+      Assert.assertEquals(
+          status,
+          StoreStatus.DEGRADED.toString(),
           "Store should be degraded because missing one partition.");
     }
   }
@@ -68,9 +70,11 @@ public class TestStoreStatusDecider {
   public void testGetDegradedStoreStatusMissingReplicas() {
     int partitionCount = 2;
 
-    prepare(partitionCount, new int[]{replicationFactor, 0});
-    for (String status : StoreStatusDecider.getStoreStatues(storeList, resourceAssignment, mockPushMonitor).values()) {
-      Assert.assertEquals(status, StoreStatus.DEGRADED.toString(),
+    prepare(partitionCount, new int[] { replicationFactor, 0 });
+    for (String status: StoreStatusDecider.getStoreStatues(storeList, resourceAssignment, mockPushMonitor).values()) {
+      Assert.assertEquals(
+          status,
+          StoreStatus.DEGRADED.toString(),
           "Store should be degraded because one partition does not have any online replica.");
     }
   }
@@ -79,9 +83,11 @@ public class TestStoreStatusDecider {
   public void testGetUnderReplicatedStoreStatus() {
     int partitionCount = 2;
 
-    prepare(partitionCount, new int[]{replicationFactor - 1, replicationFactor - 1});
-    for (String status : StoreStatusDecider.getStoreStatues(storeList, resourceAssignment, mockPushMonitor).values()) {
-      Assert.assertEquals(status, StoreStatus.UNDER_REPLICATED.toString(),
+    prepare(partitionCount, new int[] { replicationFactor - 1, replicationFactor - 1 });
+    for (String status: StoreStatusDecider.getStoreStatues(storeList, resourceAssignment, mockPushMonitor).values()) {
+      Assert.assertEquals(
+          status,
+          StoreStatus.UNDER_REPLICATED.toString(),
           "Store should be under replicated because each partition only has replicaFactor -1 replicas.");
     }
   }

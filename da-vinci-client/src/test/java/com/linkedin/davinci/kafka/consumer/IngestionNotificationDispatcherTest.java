@@ -1,18 +1,16 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static org.mockito.Mockito.*;
+
+import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
-import com.linkedin.davinci.notifier.VeniceNotifier;
-
 import com.linkedin.venice.utils.Utils;
-
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Queue;
 import org.mockito.Mockito;
 import org.testng.annotations.Test;
-
-import static org.mockito.Mockito.*;
 
 
 public class IngestionNotificationDispatcherTest {
@@ -36,7 +34,7 @@ public class IngestionNotificationDispatcherTest {
     Mockito.doReturn(true).when(psc).isHybrid();
     Mockito.doReturn(true).when(psc).isEndOfPushReceived();
     Mockito.doReturn(false).when(psc).isErrorReported();
-    dispatcher.reportKilled(Arrays.asList(new PartitionConsumptionState[]{psc}), error);
+    dispatcher.reportKilled(Arrays.asList(new PartitionConsumptionState[] { psc }), error);
     // Should report kill for a hybrid partition
     Mockito.verify(mockNotifier, Mockito.times(1)).error(topic, partitionId, error.getMessage(), error);
 
@@ -44,14 +42,14 @@ public class IngestionNotificationDispatcherTest {
     Mockito.reset(mockNotifier);
     Mockito.doReturn(false).when(psc).isHybrid();
     Mockito.doReturn(true).when(psc).isCompletionReported();
-    dispatcher.reportKilled(Arrays.asList(new PartitionConsumptionState[]{psc}), error);
+    dispatcher.reportKilled(Arrays.asList(new PartitionConsumptionState[] { psc }), error);
     // Should not report error for a completed batch partition
     Mockito.verify(mockNotifier, Mockito.never()).error(topic, partitionId, error.getMessage(), error);
 
     // Error has already been reported
     Mockito.reset(mockNotifier);
     Mockito.doReturn(true).when(psc).isErrorReported();
-    dispatcher.reportKilled(Arrays.asList(new PartitionConsumptionState[]{psc}), error);
+    dispatcher.reportKilled(Arrays.asList(new PartitionConsumptionState[] { psc }), error);
     Mockito.verify(mockNotifier, Mockito.never()).error(topic, partitionId, error.getMessage(), error);
   }
 
@@ -69,7 +67,9 @@ public class IngestionNotificationDispatcherTest {
     Mockito.doReturn(true).when(pcs).isEndOfPushReceived();
     Mockito.doReturn(false).when(pcs).isErrorReported();
     Mockito.doReturn(false).when(pcs).isComplete();
-    dispatcher.reportError(Arrays.asList(new PartitionConsumptionState[]{pcs}), "fake ingestion error",
+    dispatcher.reportError(
+        Arrays.asList(new PartitionConsumptionState[] { pcs }),
+        "fake ingestion error",
         mock(VeniceException.class));
   }
 }

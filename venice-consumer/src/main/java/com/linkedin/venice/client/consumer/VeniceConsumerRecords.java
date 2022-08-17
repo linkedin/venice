@@ -2,6 +2,7 @@ package com.linkedin.venice.client.consumer;
 
 import java.util.Iterator;
 
+
 /**
  * A wrapper for a batch of Venice records.
  *

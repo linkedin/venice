@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 
+
 public class RegionPushDetails {
   private String regionName = null;
   private String pushStartLocalDateTime = null;
@@ -26,7 +27,8 @@ public class RegionPushDetails {
     setRegionName(_regionName);
   }
 
-  public RegionPushDetails() { }
+  public RegionPushDetails() {
+  }
 
   public String getRegionName() {
     return regionName;
@@ -92,7 +94,7 @@ public class RegionPushDetails {
   }
 
   public void setVersions(ArrayList<Integer> versions) {
-    this.versions = (ArrayList<Integer>)versions.clone();
+    this.versions = (ArrayList<Integer>) versions.clone();
   }
 
 }

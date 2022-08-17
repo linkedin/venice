@@ -31,7 +31,10 @@ public abstract class AbstractVeniceAggStats<T extends AbstractVeniceStats> {
     this.totalStats = statsSupplier.get(metricsRepository, STORE_NAME_FOR_TOTAL_STAT);
   }
 
-  public AbstractVeniceAggStats(String clusterName, MetricsRepository metricsRepository, StatsSupplier<T> statsSupplier) {
+  public AbstractVeniceAggStats(
+      String clusterName,
+      MetricsRepository metricsRepository,
+      StatsSupplier<T> statsSupplier) {
     this.metricsRepository = metricsRepository;
     this.statsFactory = statsSupplier;
 
@@ -40,7 +43,6 @@ public abstract class AbstractVeniceAggStats<T extends AbstractVeniceStats> {
   }
 
   protected T getStoreStats(String storeName) {
-    return storeStats.computeIfAbsent(storeName,
-        k -> statsFactory.get(metricsRepository, storeName));
+    return storeStats.computeIfAbsent(storeName, k -> statsFactory.get(metricsRepository, storeName));
   }
 }

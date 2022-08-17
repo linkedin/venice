@@ -1,5 +1,7 @@
 package com.linkedin.venice.listener;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.acl.StaticAccessController;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -18,8 +20,6 @@ import javax.net.ssl.SSLSession;
 import org.mockito.ArgumentMatcher;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
-
-import static org.mockito.Mockito.*;
 
 
 public class ServerAclHandlerTest {
@@ -47,7 +47,7 @@ public class ServerAclHandlerTest {
     SSLSession sslSession = mock(SSLSession.class);
     when(sslEngine.getSession()).thenReturn(sslSession);
     X509Certificate cert = mock(X509Certificate.class);
-    when(sslSession.getPeerCertificates()).thenReturn(new Certificate[]{cert});
+    when(sslSession.getPeerCertificates()).thenReturn(new Certificate[] { cert });
 
     // Host
     Channel channel = mock(Channel.class);
@@ -81,7 +81,7 @@ public class ServerAclHandlerTest {
   @Test
   public void testDenyWithDisabledFailOnAccessRejection() throws Exception {
     when(accessController.hasAccess(any(), any(), any())).thenReturn(false);
-    aclHandler  = spy(new ServerAclHandler(accessController, false));
+    aclHandler = spy(new ServerAclHandler(accessController, false));
     aclHandler.channelRead0(ctx, req);
     verify(ctx).fireChannelRead(req);
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
@@ -97,7 +97,7 @@ public class ServerAclHandlerTest {
 
     @Override
     public boolean matches(FullHttpResponse argument) {
-      return argument.status().equals(status) ;
+      return argument.status().equals(status);
     }
   }
 }

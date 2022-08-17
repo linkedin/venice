@@ -11,7 +11,8 @@ import org.testng.annotations.Test;
 
 public class TestPartitionerConfig {
   static ObjectMapper objectMapper = ObjectMapperFactory.getInstance();
-  static final String serialized = "{\"partitionerParams\":{\"majorField\" : \"jobId\"}, \"partitionerClass\": \"com.linkedin.venice.partitioner.DefaultVenicePartitioner\", \"amplificationFactor\":10}";
+  static final String serialized =
+      "{\"partitionerParams\":{\"majorField\" : \"jobId\"}, \"partitionerClass\": \"com.linkedin.venice.partitioner.DefaultVenicePartitioner\", \"amplificationFactor\":10}";
 
   /**
    * This test verifies that we can deserialize existing {@link PartitionerConfig} objects. If we add a field then this
@@ -26,8 +27,9 @@ public class TestPartitionerConfig {
 
     PartitionerConfig partitionerConfig = objectMapper.readValue(serialized, PartitionerConfig.class);
     Assert.assertEquals(partitionerConfig.getPartitionerParams(), testPartitionParams);
-    Assert.assertEquals(partitionerConfig.getPartitionerClass(), "com.linkedin.venice.partitioner.DefaultVenicePartitioner");
+    Assert.assertEquals(
+        partitionerConfig.getPartitionerClass(),
+        "com.linkedin.venice.partitioner.DefaultVenicePartitioner");
     Assert.assertEquals(partitionerConfig.getAmplificationFactor(), 10);
   }
 }
-

@@ -50,21 +50,22 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   private final int controllerClusterReplicaCount;
   private final CloudConfig.Builder cloudConfigBuilder;
 
-  public ZkHelixAdminClient(VeniceControllerMultiClusterConfig multiClusterConfigs, MetricsRepository metricsRepository) {
+  public ZkHelixAdminClient(
+      VeniceControllerMultiClusterConfig multiClusterConfigs,
+      MetricsRepository metricsRepository) {
     this.multiClusterConfigs = multiClusterConfigs;
     haasSuperClusterName = multiClusterConfigs.getControllerHAASSuperClusterName();
     controllerClusterName = multiClusterConfigs.getControllerClusterName();
     controllerClusterReplicaCount = multiClusterConfigs.getControllerClusterReplica();
     ZkClient helixAdminZkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
-    helixAdminZkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, CONTROLLER_HAAS_ZK_CLIENT_NAME));
+    helixAdminZkClient
+        .subscribeStateChanges(new ZkClientStatusStats(metricsRepository, CONTROLLER_HAAS_ZK_CLIENT_NAME));
     helixAdminZkClient.setZkSerializer(new ZNRecordSerializer());
     if (!helixAdminZkClient.waitUntilConnected(ZkClient.DEFAULT_CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS)) {
       throw new VeniceException("Failed to connect to ZK within " + ZkClient.DEFAULT_CONNECTION_TIMEOUT + " ms!");
     }
     helixAdmin = new ZKHelixAdmin(helixAdminZkClient);
-    cloudConfigBuilder = new CloudConfig.Builder()
-        .setCloudEnabled(true)
-        .setCloudProvider(CloudProvider.AZURE);
+    cloudConfigBuilder = new CloudConfig.Builder().setCloudEnabled(true).setCloudProvider(CloudProvider.AZURE);
   }
 
   /**
@@ -80,7 +81,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
    */
   @Override
   public boolean isVeniceStorageClusterCreated(String clusterName) {
-     return helixAdmin.getClusters().contains(clusterName);
+    return helixAdmin.getClusters().contains(clusterName);
   }
 
   /**
@@ -88,29 +89,31 @@ public class ZkHelixAdminClient implements HelixAdminClient {
    */
   @Override
   public void createVeniceControllerCluster(boolean isControllerInAzureFabric) {
-    boolean success = RetryUtils.executeWithMaxAttempt(
-        () -> {
-          if (!isVeniceControllerClusterCreated()) {
-            if (!helixAdmin.addCluster(controllerClusterName, false)) {
-              throw new VeniceRetriableException("Failed to create Helix cluster, will retry");
-            }
-            Map<String, String> helixClusterProperties = new HashMap<>();
-            helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
-            // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constrains on CRUSH alg to choose proper instance to hold the replica.
-            helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.TOPOLOGY_AWARE_ENABLED.name(), String.valueOf(false));
+    boolean success = RetryUtils.executeWithMaxAttempt(() -> {
+      if (!isVeniceControllerClusterCreated()) {
+        if (!helixAdmin.addCluster(controllerClusterName, false)) {
+          throw new VeniceRetriableException("Failed to create Helix cluster, will retry");
+        }
+        Map<String, String> helixClusterProperties = new HashMap<>();
+        helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
+        // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constrains on CRUSH alg to
+        // choose proper instance to hold the replica.
+        helixClusterProperties
+            .put(ClusterConfig.ClusterConfigProperty.TOPOLOGY_AWARE_ENABLED.name(), String.valueOf(false));
 
-            updateClusterConfigs(controllerClusterName, helixClusterProperties);
-            helixAdmin.addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
+        updateClusterConfigs(controllerClusterName, helixClusterProperties);
+        helixAdmin.addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
 
-            if (isControllerInAzureFabric) {
-              helixAdmin.addCloudConfig(controllerClusterName, cloudConfigBuilder.build());
-            }
-          }
-          return true;
-        }, 3, Duration.ofSeconds(5), Collections.singletonList(Exception.class));
+        if (isControllerInAzureFabric) {
+          helixAdmin.addCloudConfig(controllerClusterName, cloudConfigBuilder.build());
+        }
+      }
+      return true;
+    }, 3, Duration.ofSeconds(5), Collections.singletonList(Exception.class));
     if (!success) {
-      throw new VeniceException("Failed to create Helix cluster: " + controllerClusterName
-          + " after 3 attempts. HelixAdmin#addCluster returned false");
+      throw new VeniceException(
+          "Failed to create Helix cluster: " + controllerClusterName
+              + " after 3 attempts. HelixAdmin#addCluster returned false");
     }
   }
 
@@ -118,27 +121,30 @@ public class ZkHelixAdminClient implements HelixAdminClient {
    * @see HelixAdminClient#createVeniceStorageCluster(String, Map, boolean)
    */
   @Override
-  public void createVeniceStorageCluster(String clusterName, Map<String, String> helixClusterProperties,
+  public void createVeniceStorageCluster(
+      String clusterName,
+      Map<String, String> helixClusterProperties,
       boolean isControllerInAzureFabric) {
-    boolean success = RetryUtils.executeWithMaxAttempt(
-        () -> {
-          if (!isVeniceStorageClusterCreated(clusterName)) {
-            if (!helixAdmin.addCluster(clusterName, false)) {
-              throw new VeniceRetriableException("Failed to create Helix cluster, will retry");
-            }
-            updateClusterConfigs(clusterName, helixClusterProperties);
-            helixAdmin.addStateModelDef(clusterName, VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL,
-                VeniceStateModel.getDefinition());
-            helixAdmin.addStateModelDef(clusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
-            if (isControllerInAzureFabric) {
-              helixAdmin.addCloudConfig(clusterName, cloudConfigBuilder.build());
-            }
-          }
-          return true;
-        }, 3, Duration.ofSeconds(5), Collections.singletonList(Exception.class));
+    boolean success = RetryUtils.executeWithMaxAttempt(() -> {
+      if (!isVeniceStorageClusterCreated(clusterName)) {
+        if (!helixAdmin.addCluster(clusterName, false)) {
+          throw new VeniceRetriableException("Failed to create Helix cluster, will retry");
+        }
+        updateClusterConfigs(clusterName, helixClusterProperties);
+        helixAdmin.addStateModelDef(
+            clusterName,
+            VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL,
+            VeniceStateModel.getDefinition());
+        helixAdmin.addStateModelDef(clusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
+        if (isControllerInAzureFabric) {
+          helixAdmin.addCloudConfig(clusterName, cloudConfigBuilder.build());
+        }
+      }
+      return true;
+    }, 3, Duration.ofSeconds(5), Collections.singletonList(Exception.class));
     if (!success) {
-      throw new VeniceException("Failed to create Helix cluster: " + clusterName
-          + " after 3 attempts. HelixAdmin#addCluster returned false");
+      throw new VeniceException(
+          "Failed to create Helix cluster: " + clusterName + " after 3 attempts. HelixAdmin#addCluster returned false");
     }
   }
 
@@ -156,8 +162,13 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   @Override
   public void addVeniceStorageClusterToControllerCluster(String clusterName) {
     try {
-      helixAdmin.addResource(controllerClusterName, clusterName, CONTROLLER_CLUSTER_PARTITION_COUNT, LeaderStandbySMD.name,
-          IdealState.RebalanceMode.FULL_AUTO.toString(), AutoRebalanceStrategy.class.getName());
+      helixAdmin.addResource(
+          controllerClusterName,
+          clusterName,
+          CONTROLLER_CLUSTER_PARTITION_COUNT,
+          LeaderStandbySMD.name,
+          IdealState.RebalanceMode.FULL_AUTO.toString(),
+          AutoRebalanceStrategy.class.getName());
       IdealState idealState = helixAdmin.getResourceIdealState(controllerClusterName, clusterName);
       idealState.setMinActiveReplicas(controllerClusterReplicaCount);
       idealState.setRebalancerClassName(DelayedAutoRebalancer.class.getName());
@@ -165,7 +176,8 @@ public class ZkHelixAdminClient implements HelixAdminClient {
       helixAdmin.setResourceIdealState(controllerClusterName, clusterName, idealState);
       helixAdmin.rebalance(controllerClusterName, clusterName, controllerClusterReplicaCount);
     } catch (Exception e) {
-      // Check if the cluster resource is already added to the controller cluster by another Venice controller concurrently.
+      // Check if the cluster resource is already added to the controller cluster by another Venice controller
+      // concurrently.
       if (!isVeniceStorageClusterInControllerCluster(clusterName)) {
         throw e;
       }
@@ -200,8 +212,8 @@ public class ZkHelixAdminClient implements HelixAdminClient {
    */
   @Override
   public void updateClusterConfigs(String clusterName, Map<String, String> helixClusterProperties) {
-    HelixConfigScope configScope = new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).
-        forCluster(clusterName).build();
+    HelixConfigScope configScope =
+        new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(clusterName).build();
     helixAdmin.setConfig(configScope, helixClusterProperties);
   }
 
@@ -209,8 +221,12 @@ public class ZkHelixAdminClient implements HelixAdminClient {
    * @see HelixAdminClient#enablePartition(boolean, String, String, String, List)
    */
   @Override
-  public void enablePartition(boolean enabled, String clusterName, String instanceName,
-      String resourceName, List<String> partitionNames) {
+  public void enablePartition(
+      boolean enabled,
+      String clusterName,
+      String instanceName,
+      String resourceName,
+      List<String> partitionNames) {
     helixAdmin.enablePartition(enabled, clusterName, instanceName, resourceName, partitionNames);
   }
 
@@ -226,10 +242,17 @@ public class ZkHelixAdminClient implements HelixAdminClient {
    * @see HelixAdminClient#createVeniceStorageClusterResources(String, String, int, int, boolean)
    */
   @Override
-  public void createVeniceStorageClusterResources(String clusterName, String kafkaTopic , int numberOfPartition ,
-      int replicationFactor, boolean isLeaderFollowerStateModel) {
+  public void createVeniceStorageClusterResources(
+      String clusterName,
+      String kafkaTopic,
+      int numberOfPartition,
+      int replicationFactor,
+      boolean isLeaderFollowerStateModel) {
     if (!helixAdmin.getResourcesInCluster(clusterName).contains(kafkaTopic)) {
-      helixAdmin.addResource(clusterName, kafkaTopic, numberOfPartition,
+      helixAdmin.addResource(
+          clusterName,
+          kafkaTopic,
+          numberOfPartition,
           isLeaderFollowerStateModel ? LeaderStandbySMD.name : VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL,
           IdealState.RebalanceMode.FULL_AUTO.toString(),
           AutoRebalanceStrategy.class.getName());
@@ -272,7 +295,11 @@ public class ZkHelixAdminClient implements HelixAdminClient {
    * @see HelixAdminClient#resetPartition(String, String, String, List)
    */
   @Override
-  public void resetPartition(String clusterName, String instanceName, String resourceName, List<String> partitionNames) {
+  public void resetPartition(
+      String clusterName,
+      String instanceName,
+      String resourceName,
+      List<String> partitionNames) {
     helixAdmin.resetPartition(clusterName, instanceName, resourceName, partitionNames);
   }
 

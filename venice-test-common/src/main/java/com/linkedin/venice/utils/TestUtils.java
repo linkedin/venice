@@ -1,5 +1,10 @@
 package com.linkedin.venice.utils;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.utils.TestPushUtils.*;
+import static org.mockito.Mockito.*;
+import static org.testng.Assert.*;
+
 import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.AggKafkaConsumerService;
@@ -114,10 +119,6 @@ import org.rocksdb.ComparatorOptions;
 import org.rocksdb.util.BytewiseComparator;
 import org.testng.Assert;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.utils.TestPushUtils.*;
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
 
 /**
  * General-purpose utility functions for tests.
@@ -129,7 +130,8 @@ public class TestUtils {
   private static final long ND_ASSERTION_MIN_WAIT_TIME_MS = 100;
   private static final long ND_ASSERTION_MAX_WAIT_TIME_MS = 3000;
 
-  private static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+  private static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+      AvroProtocolDefinition.PARTITION_STATE.getSerializer();
 
   public static String dequalifyClassName(String className) {
     return className.substring(className.lastIndexOf('.') + 1);
@@ -137,12 +139,19 @@ public class TestUtils {
 
   private static String getCallingMethod() {
     return Arrays.stream(Thread.currentThread().getStackTrace())
-        .filter(frame -> frame.getClassName().startsWith("com.linkedin.") &&
-                             !frame.getClassName().equals(TestUtils.class.getName()))
+        .filter(
+            frame -> frame.getClassName().startsWith("com.linkedin.")
+                && !frame.getClassName().equals(TestUtils.class.getName()))
         .findFirst()
-        .map(frame -> String.format("%s.%s.%d", dequalifyClassName(frame.getClassName()), frame.getMethodName(), frame.getLineNumber()))
+        .map(
+            frame -> String.format(
+                "%s.%s.%d",
+                dequalifyClassName(frame.getClassName()),
+                frame.getMethodName(),
+                frame.getLineNumber()))
         .orElse("UNKNOWN_METHOD");
   }
+
   /**
    * To be used for tests when we need to wait for an async operation to complete.  Pass a timeout, and a lambda
    * for checking if the operation is complete.
@@ -152,7 +161,8 @@ public class TestUtils {
    * @param condition A {@link BooleanSupplier} which should execute the non-deterministic action and
    *                           return true if it is successful, false otherwise.
    */
-  public static void waitForNonDeterministicCompletion(long timeout, TimeUnit timeoutUnit, BooleanSupplier condition) throws AssertionError {
+  public static void waitForNonDeterministicCompletion(long timeout, TimeUnit timeoutUnit, BooleanSupplier condition)
+      throws AssertionError {
     long startTimeMs = System.currentTimeMillis();
     long nextDelayMs = ND_ASSERTION_MIN_WAIT_TIME_MS;
     long deadlineMs = startTimeMs + timeoutUnit.toMillis(timeout);
@@ -167,8 +177,11 @@ public class TestUtils {
     }
   }
 
-  public static ControllerResponse updateStoreToHybrid(String storeName, ControllerClient parentControllerClient,
-      Optional<Boolean> enableNativeReplication, Optional<Boolean> enableActiveActiveReplication,
+  public static ControllerResponse updateStoreToHybrid(
+      String storeName,
+      ControllerClient parentControllerClient,
+      Optional<Boolean> enableNativeReplication,
+      Optional<Boolean> enableActiveActiveReplication,
       Optional<Boolean> enableChunking) {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
         .setHybridRewindSeconds(25L)
@@ -249,39 +262,63 @@ public class TestUtils {
     }
   }
 
-  public static VersionCreationResponse createVersionWithBatchData(ControllerClient controllerClient, String storeName,
-      String keySchema, String valueSchema, Stream<Map.Entry> batchData) {
-    return createVersionWithBatchData(controllerClient, storeName, keySchema, valueSchema, batchData,
+  public static VersionCreationResponse createVersionWithBatchData(
+      ControllerClient controllerClient,
+      String storeName,
+      String keySchema,
+      String valueSchema,
+      Stream<Map.Entry> batchData) {
+    return createVersionWithBatchData(
+        controllerClient,
+        storeName,
+        keySchema,
+        valueSchema,
+        batchData,
         HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
   }
 
-  public static VersionCreationResponse createVersionWithBatchData(ControllerClient controllerClient, String storeName,
-      String keySchema, String valueSchema, Stream<Map.Entry> batchData, int valueSchemaId) {
-    VersionCreationResponse response = TestUtils.assertCommand(controllerClient.requestTopicForWrites(
-        storeName,
-        1024,
-        Version.PushType.BATCH,
-        Version.guidBasedDummyPushId(),
-        true,
-        false,
-        false,
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        false,
-        -1));
+  public static VersionCreationResponse createVersionWithBatchData(
+      ControllerClient controllerClient,
+      String storeName,
+      String keySchema,
+      String valueSchema,
+      Stream<Map.Entry> batchData,
+      int valueSchemaId) {
+    VersionCreationResponse response = TestUtils.assertCommand(
+        controllerClient.requestTopicForWrites(
+            storeName,
+            1024,
+            Version.PushType.BATCH,
+            Version.guidBasedDummyPushId(),
+            true,
+            false,
+            false,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            false,
+            -1));
     writeBatchData(response, keySchema, valueSchema, batchData, valueSchemaId);
     return response;
   }
 
-  public static void writeBatchData(VersionCreationResponse response, String keySchema, String valueSchema,
-      Stream<Map.Entry> batchData, int valueSchemaId) {
-    writeBatchData(response, keySchema, valueSchema, batchData, valueSchemaId, CompressionStrategy.NO_OP,
-        null);
+  public static void writeBatchData(
+      VersionCreationResponse response,
+      String keySchema,
+      String valueSchema,
+      Stream<Map.Entry> batchData,
+      int valueSchemaId) {
+    writeBatchData(response, keySchema, valueSchema, batchData, valueSchemaId, CompressionStrategy.NO_OP, null);
   }
-  public static void writeBatchData(VersionCreationResponse response, String keySchema, String valueSchema,
-      Stream<Map.Entry> batchData, int valueSchemaId, CompressionStrategy compressionStrategy,
-      Function<String,ByteBuffer> compressionDictionaryGenerator) {
+
+  public static void writeBatchData(
+      VersionCreationResponse response,
+      String keySchema,
+      String valueSchema,
+      Stream<Map.Entry> batchData,
+      int valueSchemaId,
+      CompressionStrategy compressionStrategy,
+      Function<String, ByteBuffer> compressionDictionaryGenerator) {
     Properties props = new Properties();
     props.put(KAFKA_BOOTSTRAP_SERVERS, response.getKafkaBootstrapServers());
     props.setProperty(PARTITIONER_CLASS, response.getPartitionerClass());
@@ -296,38 +333,68 @@ public class TestUtils {
         response.getAmplificationFactor(),
         new VeniceProperties(partitionerProperties));
 
-    if ( compressionStrategy != CompressionStrategy.NO_OP) {
-      writeCompressed(writerFactory, keySchema, valueSchema, valueSchemaId, response.getKafkaTopic(),
-          response.getPartitions() * response.getAmplificationFactor(), venicePartitioner, batchData,
-          compressionStrategy, compressionDictionaryGenerator.apply(response.getKafkaTopic()));
+    if (compressionStrategy != CompressionStrategy.NO_OP) {
+      writeCompressed(
+          writerFactory,
+          keySchema,
+          valueSchema,
+          valueSchemaId,
+          response.getKafkaTopic(),
+          response.getPartitions() * response.getAmplificationFactor(),
+          venicePartitioner,
+          batchData,
+          compressionStrategy,
+          compressionDictionaryGenerator.apply(response.getKafkaTopic()));
     } else {
-        writeUncompressed(writerFactory, keySchema, valueSchema, valueSchemaId, response.getKafkaTopic(),
-            response.getPartitions() * response.getAmplificationFactor(), venicePartitioner, batchData);
+      writeUncompressed(
+          writerFactory,
+          keySchema,
+          valueSchema,
+          valueSchemaId,
+          response.getKafkaTopic(),
+          response.getPartitions() * response.getAmplificationFactor(),
+          venicePartitioner,
+          batchData);
     }
   }
 
-  private static void writeCompressed(VeniceWriterFactory writerFactory, String keySchema, String valueSchema, int valueSchemaId, String kafkaTopic, int partitionCount, VenicePartitioner venicePartitioner,
-      Stream<Map.Entry> batchData, CompressionStrategy compressionStrategy, ByteBuffer compressionDictionary) {
+  private static void writeCompressed(
+      VeniceWriterFactory writerFactory,
+      String keySchema,
+      String valueSchema,
+      int valueSchemaId,
+      String kafkaTopic,
+      int partitionCount,
+      VenicePartitioner venicePartitioner,
+      Stream<Map.Entry> batchData,
+      CompressionStrategy compressionStrategy,
+      ByteBuffer compressionDictionary) {
     VeniceCompressor compressor = null;
     if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
       compressor = new ZstdWithDictCompressor(compressionDictionary.array(), 0);
-    } else if (compressionStrategy == CompressionStrategy.GZIP ){
+    } else if (compressionStrategy == CompressionStrategy.GZIP) {
       compressor = new GzipCompressor();
     } else {
       compressor = new NoopCompressor();
     }
-    try (VeniceWriter<byte[], byte[], byte[]> writer = writerFactory.createVeniceWriter(kafkaTopic, new DefaultSerializer(),
+    try (VeniceWriter<byte[], byte[], byte[]> writer = writerFactory.createVeniceWriter(
+        kafkaTopic,
+        new DefaultSerializer(),
         new DefaultSerializer(),
         partitionCount,
         venicePartitioner)) {
-        writer.broadcastStartOfPush(false, false, compressionStrategy,
-            Optional.ofNullable(compressionDictionary), Collections.emptyMap());
+      writer.broadcastStartOfPush(
+          false,
+          false,
+          compressionStrategy,
+          Optional.ofNullable(compressionDictionary),
+          Collections.emptyMap());
       VeniceAvroKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(keySchema);
       VeniceAvroKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(valueSchema);
       LinkedList<Future> putFutures = new LinkedList<>();
-      for (Map.Entry e : (Iterable<Map.Entry>) batchData::iterator) {
-        byte[] key = keySerializer.serialize(kafkaTopic,e.getKey());
-        byte[] value = valueSerializer.serialize(kafkaTopic,e.getValue());
+      for (Map.Entry e: (Iterable<Map.Entry>) batchData::iterator) {
+        byte[] key = keySerializer.serialize(kafkaTopic, e.getKey());
+        byte[] value = valueSerializer.serialize(kafkaTopic, e.getValue());
         value = compressor.compress(value);
         putFutures.add(writer.put(key, value, valueSchemaId));
       }
@@ -335,7 +402,7 @@ public class TestUtils {
         future.get();
       }
       writer.broadcastEndOfPush(Collections.emptyMap());
-    } catch (InterruptedException|ExecutionException|IOException e) {
+    } catch (InterruptedException | ExecutionException | IOException e) {
       throw new VeniceException(e);
     }
   }
@@ -350,21 +417,23 @@ public class TestUtils {
       VenicePartitioner venicePartitioner,
       Stream<Map.Entry> batchData) {
 
-    try (VeniceWriter<Object, Object, byte[]> writer = writerFactory.createVeniceWriter(kafkaTopic, new VeniceAvroKafkaSerializer(keySchema),
+    try (VeniceWriter<Object, Object, byte[]> writer = writerFactory.createVeniceWriter(
+        kafkaTopic,
+        new VeniceAvroKafkaSerializer(keySchema),
         new VeniceAvroKafkaSerializer(valueSchema),
         partitionCount,
         venicePartitioner)) {
-      writer.broadcastStartOfPush( Collections.emptyMap());
+      writer.broadcastStartOfPush(Collections.emptyMap());
 
       LinkedList<Future> putFutures = new LinkedList<>();
-      for (Map.Entry e : (Iterable<Map.Entry>) batchData::iterator) {
+      for (Map.Entry e: (Iterable<Map.Entry>) batchData::iterator) {
         putFutures.add(writer.put(e.getKey(), e.getValue(), valueSchemaId));
       }
       for (Future future: putFutures) {
         future.get();
       }
       writer.broadcastEndOfPush(Collections.emptyMap());
-    } catch (InterruptedException|ExecutionException e) {
+    } catch (InterruptedException | ExecutionException e) {
       throw new VeniceException(e);
     }
   }
@@ -379,23 +448,32 @@ public class TestUtils {
       long timeout,
       TimeUnit timeoutUnit) {
     waitForNonDeterministicAssertion(timeout, timeoutUnit, () -> {
-      JobStatusQueryResponse jobStatusQueryResponse = assertCommand(
-          controllerClient.queryJobStatus(topicName, Optional.empty()));
+      JobStatusQueryResponse jobStatusQueryResponse =
+          assertCommand(controllerClient.queryJobStatus(topicName, Optional.empty()));
       ExecutionStatus executionStatus = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());
       if (executionStatus == ExecutionStatus.ERROR) {
         throw new VeniceException("Unexpected push failure: " + jobStatusQueryResponse.toString());
       }
-      assertEquals(executionStatus, ExecutionStatus.COMPLETED, "Push is yet to complete: " + jobStatusQueryResponse.toString());
+      assertEquals(
+          executionStatus,
+          ExecutionStatus.COMPLETED,
+          "Push is yet to complete: " + jobStatusQueryResponse.toString());
     });
   }
 
   public static Store createTestStore(String name, String owner, long createdTime) {
-      Store store = new ZKStore(name, owner, createdTime, PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH,
-          ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS,
-          3); // TODO: figure out how to get hold of a sensible RF value here
-      // Set the default timestamp to make sure every creation will return the same Store object.
-      store.setLatestVersionPromoteToCurrentTimestamp(-1);
-      return store;
+    Store store = new ZKStore(
+        name,
+        owner,
+        createdTime,
+        PersistenceType.IN_MEMORY,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        3); // TODO: figure out how to get hold of a sensible RF value here
+    // Set the default timestamp to make sure every creation will return the same Store object.
+    store.setLatestVersionPromoteToCurrentTimestamp(-1);
+    return store;
   }
 
   /**
@@ -403,23 +481,30 @@ public class TestUtils {
    * TODO: migrate to use {@link ServiceFactory} for generating a participant
    * */
   @Deprecated
-  public static SafeHelixManager getParticipant(String cluster, String nodeId, String zkAddress, int httpPort, String stateModelDef) {
+  public static SafeHelixManager getParticipant(
+      String cluster,
+      String nodeId,
+      String zkAddress,
+      int httpPort,
+      String stateModelDef) {
     ZkClient foo = new ZkClient(zkAddress);
     foo.close();
-    VeniceOfflinePushMonitorAccessor
-        offlinePushStatusAccessor = new VeniceOfflinePushMonitorAccessor(cluster, new ZkClient(zkAddress),
-        new HelixAdapterSerializer(), 3, 1000);
+    VeniceOfflinePushMonitorAccessor offlinePushStatusAccessor =
+        new VeniceOfflinePushMonitorAccessor(cluster, new ZkClient(zkAddress), new HelixAdapterSerializer(), 3, 1000);
     MockTestStateModelFactory stateModelFactory = new MockTestStateModelFactory(offlinePushStatusAccessor);
     return getParticipant(cluster, nodeId, zkAddress, httpPort, stateModelFactory, stateModelDef);
   }
 
-  public static SafeHelixManager getParticipant(String cluster, String nodeId, String zkAddress, int httpPort,
-      StateModelFactory<StateModel> stateModelFactory, String stateModelDef) {
+  public static SafeHelixManager getParticipant(
+      String cluster,
+      String nodeId,
+      String zkAddress,
+      int httpPort,
+      StateModelFactory<StateModel> stateModelFactory,
+      String stateModelDef) {
     SafeHelixManager participant = new SafeHelixManager(
         HelixManagerFactory.getZKHelixManager(cluster, nodeId, InstanceType.PARTICIPANT, zkAddress));
-    participant.getStateMachineEngine()
-        .registerStateModelFactory(stateModelDef,
-            stateModelFactory);
+    participant.getStateMachineEngine().registerStateModelFactory(stateModelDef, stateModelFactory);
     participant.setLiveInstanceInfoProvider(
         () -> HelixInstanceConverter.convertInstanceToZNRecord(new Instance(nodeId, Utils.getHostName(), httpPort)));
     return participant;
@@ -452,8 +537,8 @@ public class TestUtils {
 
   public static VeniceControllerMultiClusterConfig getMultiClusterConfigFromOneCluster(
       VeniceControllerConfig controllerConfig) {
-    Map<String,VeniceControllerConfig> configMap = new HashMap<>();
-    configMap.put(controllerConfig.getClusterName(),controllerConfig);
+    Map<String, VeniceControllerConfig> configMap = new HashMap<>();
+    configMap.put(controllerConfig.getClusterName(), controllerConfig);
     return new VeniceControllerMultiClusterConfig(configMap);
   }
 
@@ -462,8 +547,7 @@ public class TestUtils {
     if (currentPath.endsWith("venice-controller")) {
       currentPath += "/..";
     }
-    VeniceProperties clusterProps =
-        Utils.parseProperties(currentPath + "/venice-server/config/cluster.properties");
+    VeniceProperties clusterProps = Utils.parseProperties(currentPath + "/venice-server/config/cluster.properties");
     VeniceProperties baseControllerProps =
         Utils.parseProperties(currentPath + "/venice-controller/config/controller.properties");
     Properties properties = new Properties();
@@ -495,12 +579,23 @@ public class TestUtils {
     factoryProperties.put(KAFKA_REQUEST_TIMEOUT_MS, 5000);
     factoryProperties.put(KAFKA_DELIVERY_TIMEOUT_MS, 5000);
     factoryProperties.putAll(properties);
-    return new SharedKafkaProducerService(factoryProperties, 1,
-        ApacheKafkaProducer::new, new MetricsRepository(),
-        new HashSet<>(Arrays.asList("outgoing-byte-rate", "record-send-rate", "batch-size-max", "batch-size-avg", "buffer-available-bytes", "buffer-exhausted-rate")));
+    return new SharedKafkaProducerService(
+        factoryProperties,
+        1,
+        ApacheKafkaProducer::new,
+        new MetricsRepository(),
+        new HashSet<>(
+            Arrays.asList(
+                "outgoing-byte-rate",
+                "record-send-rate",
+                "batch-size-max",
+                "batch-size-avg",
+                "buffer-available-bytes",
+                "buffer-exhausted-rate")));
   }
 
-  public static VeniceWriterFactory getVeniceWriterFactoryWithSharedProducer(Properties properties,
+  public static VeniceWriterFactory getVeniceWriterFactoryWithSharedProducer(
+      Properties properties,
       Optional<SharedKafkaProducerService> sharedKafkaProducerService) {
     Properties factoryProperties = new Properties();
     factoryProperties.putAll(properties);
@@ -514,6 +609,7 @@ public class TestUtils {
   private static class TestKafkaClientFactory extends KafkaClientFactory {
     private final String kafkaBootstrapServers;
     private final String kafkaZkAddress;
+
     public TestKafkaClientFactory(String kafkaBootstrapServers, String kafkaZkAddress) {
       this.kafkaBootstrapServers = kafkaBootstrapServers;
       this.kafkaZkAddress = kafkaZkAddress;
@@ -551,13 +647,17 @@ public class TestUtils {
     }
 
     @Override
-    protected KafkaClientFactory clone(String kafkaBootstrapServers, String kafkaZkAddress, Optional<MetricsParameters> metricsParameters) {
+    protected KafkaClientFactory clone(
+        String kafkaBootstrapServers,
+        String kafkaZkAddress,
+        Optional<MetricsParameters> metricsParameters) {
       return new TestKafkaClientFactory(kafkaBootstrapServers, kafkaZkAddress);
     }
   }
 
   public static Store getRandomStore() {
-    return new ZKStore(Utils.getUniqueString("RandomStore"),
+    return new ZKStore(
+        Utils.getUniqueString("RandomStore"),
         Utils.getUniqueString("RandomOwner"),
         System.currentTimeMillis(),
         PersistenceType.ROCKS_DB,
@@ -579,10 +679,12 @@ public class TestUtils {
   public static void preventSystemExit() {
     System.setSecurityManager(new SecurityManager() {
       @Override
-      public void checkPermission(Permission perm) {}
+      public void checkPermission(Permission perm) {
+      }
 
       @Override
-      public void checkPermission(Permission perm, Object context) {}
+      public void checkPermission(Permission perm, Object context) {
+      }
 
       @Override
       public void checkExit(int status) {
@@ -600,10 +702,14 @@ public class TestUtils {
     System.setSecurityManager(null);
   }
 
-  public static void createAndVerifyStoreInAllRegions(String storeName, ControllerClient parentControllerClient, List<ControllerClient> controllerClientList) {
-    Assert.assertFalse(parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA).isError());
+  public static void createAndVerifyStoreInAllRegions(
+      String storeName,
+      ControllerClient parentControllerClient,
+      List<ControllerClient> controllerClientList) {
+    Assert
+        .assertFalse(parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA).isError());
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-      for (ControllerClient client : controllerClientList) {
+      for (ControllerClient client: controllerClientList) {
         Assert.assertFalse(client.getStore(storeName).isError());
       }
     });
@@ -615,7 +721,7 @@ public class TestUtils {
       List<ControllerClient> controllerClientList) {
     String systemStoreName = systemStoreType.getSystemStoreName(regularStoreName);
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-      for (ControllerClient client : controllerClientList) {
+      for (ControllerClient client: controllerClientList) {
         StoreResponse response = client.getStore(systemStoreName);
         Assert.assertFalse(response.isError());
         Assert.assertTrue(response.getStore().getCurrentVersion() > 0);
@@ -623,18 +729,31 @@ public class TestUtils {
     });
   }
 
-  public static void verifyDCConfigNativeAndActiveRepl(ControllerClient controllerClient, String storeName, boolean enabledNR, boolean enabledAA) {
+  public static void verifyDCConfigNativeAndActiveRepl(
+      ControllerClient controllerClient,
+      String storeName,
+      boolean enabledNR,
+      boolean enabledAA) {
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       StoreResponse storeResponse = controllerClient.getStore(storeName);
       Assert.assertFalse(storeResponse.isError());
-      Assert.assertEquals(storeResponse.getStore().isNativeReplicationEnabled(), enabledNR, "The native replication config does not match.");
-      Assert.assertEquals(storeResponse.getStore().isActiveActiveReplicationEnabled(), enabledAA, "The active active replication config does not match.");
+      Assert.assertEquals(
+          storeResponse.getStore().isNativeReplicationEnabled(),
+          enabledNR,
+          "The native replication config does not match.");
+      Assert.assertEquals(
+          storeResponse.getStore().isActiveActiveReplicationEnabled(),
+          enabledAA,
+          "The active active replication config does not match.");
     });
   }
 
-  public static VeniceCompressor getVeniceCompressor(CompressionStrategy compressionStrategy, String storeName, int storeVersion,
-      VeniceClusterWrapper venice, CloseableHttpAsyncClient storageNodeClient)
-      throws IOException, ExecutionException, InterruptedException {
+  public static VeniceCompressor getVeniceCompressor(
+      CompressionStrategy compressionStrategy,
+      String storeName,
+      int storeVersion,
+      VeniceClusterWrapper venice,
+      CloseableHttpAsyncClient storageNodeClient) throws IOException, ExecutionException, InterruptedException {
     CompressorFactory compressorFactory = new CompressorFactory();
     if (compressionStrategy.equals(CompressionStrategy.ZSTD_WITH_DICT)) {
       // query the dictionary
@@ -650,8 +769,9 @@ public class TestUtils {
       HttpGet getReq = new HttpGet(sb.toString());
       try (InputStream bodyStream = storageNodeClient.execute(getReq, null).get().getEntity().getContent()) {
         byte[] dictionary = IOUtils.toByteArray(bodyStream);
-        return compressorFactory.createCompressorWithDictionary(compressionStrategy, dictionary, Zstd.maxCompressionLevel());
-      } catch (InterruptedException|ExecutionException e) {
+        return compressorFactory
+            .createCompressorWithDictionary(compressionStrategy, dictionary, Zstd.maxCompressionLevel());
+      } catch (InterruptedException | ExecutionException e) {
         throw e;
       }
     } else {
@@ -722,8 +842,7 @@ public class TestUtils {
 
     doReturn(Optional.of(version)).when(mockStore).getVersion(anyInt());
 
-    return new StoreIngestionTaskFactory.Builder()
-        .setVeniceWriterFactory(mock(VeniceWriterFactory.class))
+    return new StoreIngestionTaskFactory.Builder().setVeniceWriterFactory(mock(VeniceWriterFactory.class))
         .setKafkaClientFactory(mockKafkaClientFactory)
         .setStorageEngineRepository(mock(StorageEngineRepository.class))
         .setStorageMetadataService(mockStorageMetadataService)
@@ -751,7 +870,11 @@ public class TestUtils {
         .setIsDaVinciClient(false);
   }
 
-  public static Map<byte[], byte[]> generateInput(int recordCnt, boolean sorted, int startId, AvroSerializer serializer) {
+  public static Map<byte[], byte[]> generateInput(
+      int recordCnt,
+      boolean sorted,
+      int startId,
+      AvroSerializer serializer) {
     Map<byte[], byte[]> records;
     if (sorted) {
       BytewiseComparator comparator = new BytewiseComparator(new ComparatorOptions());
@@ -786,7 +909,8 @@ public class TestUtils {
     shutdownExecutor(executor, 5, TimeUnit.SECONDS);
   }
 
-  public static void shutdownExecutor(ExecutorService executor, long timeout, TimeUnit unit) throws InterruptedException {
+  public static void shutdownExecutor(ExecutorService executor, long timeout, TimeUnit unit)
+      throws InterruptedException {
     if (executor == null) {
       return;
     }
@@ -795,7 +919,10 @@ public class TestUtils {
     Assert.assertTrue(executor.awaitTermination(timeout, unit));
   }
 
-  public static void createMetaSystemStore(ControllerClient controllerClient, String storeName, Optional<Logger> logger) {
+  public static void createMetaSystemStore(
+      ControllerClient controllerClient,
+      String storeName,
+      Optional<Logger> logger) {
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
     VersionCreationResponse response = controllerClient.emptyPush(metaSystemStoreName, "testEmptyPush", 1234321);
     Assert.assertFalse(response.isError());

@@ -1,5 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -8,11 +10,8 @@ import java.util.Optional;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static org.mockito.Mockito.*;
-
 
 public class TopicExistenceCheckerTest {
-
   @Test
   public void testMetadataBasedTopicExistenceChecker() {
     String exitingTopic1 = "existingTopic_v123";
@@ -28,7 +27,8 @@ public class TopicExistenceCheckerTest {
     doReturn(store).when(repository).getStoreOrThrow("existingTopic");
     doThrow(new VeniceNoStoreException(nontExitingTopic1)).when(repository).getStoreOrThrow("non-existingTopic");
     doReturn(true).when(store).isHybrid();
-    MetadataRepoBasedTopicExistingCheckerImpl topicExistingChecker = new MetadataRepoBasedTopicExistingCheckerImpl(repository);
+    MetadataRepoBasedTopicExistingCheckerImpl topicExistingChecker =
+        new MetadataRepoBasedTopicExistingCheckerImpl(repository);
 
     Assert.assertTrue(topicExistingChecker.checkTopicExists(exitingTopic1));
     Assert.assertTrue(topicExistingChecker.checkTopicExists(exitingTopic2));

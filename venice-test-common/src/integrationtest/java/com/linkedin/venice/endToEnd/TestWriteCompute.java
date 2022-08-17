@@ -1,5 +1,11 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.utils.TestPushUtils.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTaskBackdoor;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -41,15 +47,8 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.utils.TestPushUtils.*;
-import static org.testng.Assert.*;
-
 
 public class TestWriteCompute {
-
   private static final int STREAMING_RECORD_SIZE = 1024;
 
   private VeniceClusterWrapper veniceClusterWrapper;
@@ -59,17 +58,11 @@ public class TestWriteCompute {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
     int maxMessageSizeInServer = STREAMING_RECORD_SIZE / 2;
-    extraProperties.setProperty(VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, Integer.toString(maxMessageSizeInServer));
+    extraProperties.setProperty(
+        VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES,
+        Integer.toString(maxMessageSizeInServer));
     // N.B.: RF 2 with 2 servers is important, in order to test both the leader and follower code paths
-    veniceClusterWrapper = ServiceFactory.getVeniceCluster(
-        1,
-        2,
-        1,
-        2,
-        1000000,
-        false,
-        false,
-        extraProperties);
+    veniceClusterWrapper = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 1000000, false, false, extraProperties);
   }
 
   @AfterClass
@@ -77,8 +70,11 @@ public class TestWriteCompute {
     veniceClusterWrapper.close();
   }
 
-  @Test(timeOut = 120 * Time.MS_PER_SECOND, dataProvider = "Boolean-Compression", dataProviderClass = DataProviderUtils.class)
-  public void testWriteComputeWithHybridLeaderFollowerLargeRecord(boolean writeComputeFromCache, CompressionStrategy compressionStrategy) throws Exception {
+  @Test(timeOut = 120
+      * Time.MS_PER_SECOND, dataProvider = "Boolean-Compression", dataProviderClass = DataProviderUtils.class)
+  public void testWriteComputeWithHybridLeaderFollowerLargeRecord(
+      boolean writeComputeFromCache,
+      CompressionStrategy compressionStrategy) throws Exception {
     SystemProducer veniceProducer = null;
 
     try {
@@ -93,19 +89,20 @@ public class TestWriteCompute {
       Properties h2vProperties = defaultH2VProps(veniceClusterWrapper, inputDirPath, storeName);
 
       try (
-          ControllerClient controllerClient = createStoreForJob(veniceClusterWrapper.getClusterName(), recordSchema, h2vProperties);
+          ControllerClient controllerClient =
+              createStoreForJob(veniceClusterWrapper.getClusterName(), recordSchema, h2vProperties);
           AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
-              ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceClusterWrapper.getRandomRouterURL())
-          )
-      ) {
+              ClientConfig.defaultGenericClientConfig(storeName)
+                  .setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
 
-        ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
-            .setHybridRewindSeconds(streamingRewindSeconds)
-            .setHybridOffsetLagThreshold(streamingMessageLag)
-            .setLeaderFollowerModel(true)
-            .setChunkingEnabled(true)
-            .setCompressionStrategy(compressionStrategy)
-            .setWriteComputationEnabled(true));
+        ControllerResponse response = controllerClient.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setHybridRewindSeconds(streamingRewindSeconds)
+                .setHybridOffsetLagThreshold(streamingMessageLag)
+                .setLeaderFollowerModel(true)
+                .setChunkingEnabled(true)
+                .setCompressionStrategy(compressionStrategy)
+                .setWriteComputationEnabled(true));
 
         Assert.assertFalse(response.isError());
 
@@ -117,10 +114,10 @@ public class TestWriteCompute {
         // Note that Write Compute schema needs to be registered manually here because the integration test harness
         // does not create any parent controller. In production, when a value schema is added to a WC-enabled store via
         // a parent controller, it will automatically generate and register its WC schema.
-        Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(
-            AvroCompatibilityHelper.parse(NESTED_SCHEMA_STRING_V2)
-        );
-        schemaResponse = controllerClient.addDerivedSchema(storeName, schemaResponse.getId(), writeComputeSchema.toString());
+        Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance()
+            .convertFromValueRecordSchema(AvroCompatibilityHelper.parse(NESTED_SCHEMA_STRING_V2));
+        schemaResponse =
+            controllerClient.addDerivedSchema(storeName, schemaResponse.getId(), writeComputeSchema.toString());
         Assert.assertFalse(schemaResponse.isError());
 
         // H2V push
@@ -142,20 +139,18 @@ public class TestWriteCompute {
           }
         });
 
-//        VersionCreationResponse versionCreationResponse = controllerClient.emptyPush(storeName, Utils.getUniqueString("emptyPushId"), 10000);
-//        Assert.assertFalse(versionCreationResponse.isError());
-//        final int expectedVersionNumber = 1;
-//        TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS,
-//            () -> controllerClient.getStore(storeName).getStore().getCurrentVersion() == expectedVersionNumber);
+        // VersionCreationResponse versionCreationResponse = controllerClient.emptyPush(storeName,
+        // Utils.getUniqueString("emptyPushId"), 10000);
+        // Assert.assertFalse(versionCreationResponse.isError());
+        // final int expectedVersionNumber = 1;
+        // TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS,
+        // () -> controllerClient.getStore(storeName).getStore().getCurrentVersion() == expectedVersionNumber);
 
-        //disable the purging of transientRecord buffer using reflection.
+        // disable the purging of transientRecord buffer using reflection.
         if (writeComputeFromCache) {
           String topicName = Version.composeKafkaTopic(storeName, 1);
-          for (VeniceServerWrapper veniceServerWrapper : veniceClusterWrapper.getVeniceServers()) {
-            StoreIngestionTaskBackdoor.setPurgeTransientRecordBuffer(
-                veniceServerWrapper,
-                topicName,
-                false);
+          for (VeniceServerWrapper veniceServerWrapper: veniceClusterWrapper.getVeniceServers()) {
+            StoreIngestionTaskBackdoor.setPurgeTransientRecordBuffer(veniceServerWrapper, topicName, false);
           }
         }
 
@@ -318,25 +313,25 @@ public class TestWriteCompute {
     properties.put(VENICE_URL_PROP, veniceClusterWrapper.getRandmonVeniceController().getControllerUrl());
     properties.put(VENICE_STORE_NAME_PROP, storeName);
 
-    UpdateStoreQueryParams storeParams = new UpdateStoreQueryParams()
-        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-        .setCompressionStrategy(CompressionStrategy.NO_OP)
-        .setBatchGetLimit(2000)
-        .setReadQuotaInCU(DEFAULT_PER_ROUTER_READ_QUOTA)
-        .setChunkingEnabled(false)
-        .setIncrementalPushEnabled(false)
-        .setLeaderFollowerModel(true)
-        .setHybridRewindSeconds(10L)
-        .setHybridOffsetLagThreshold(2L)
-        .setWriteComputationEnabled(true);
+    UpdateStoreQueryParams storeParams =
+        new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+            .setCompressionStrategy(CompressionStrategy.NO_OP)
+            .setBatchGetLimit(2000)
+            .setReadQuotaInCU(DEFAULT_PER_ROUTER_READ_QUOTA)
+            .setChunkingEnabled(false)
+            .setIncrementalPushEnabled(false)
+            .setLeaderFollowerModel(true)
+            .setHybridRewindSeconds(10L)
+            .setHybridOffsetLagThreshold(2L)
+            .setWriteComputationEnabled(true);
 
     SystemProducer veniceProducer = null;
     try (
-        ControllerClient controllerClient = createStoreForJob(clusterName, keySchemaStr, valueSchemaV1Str, properties, storeParams, true);
+        ControllerClient controllerClient =
+            createStoreForJob(clusterName, keySchemaStr, valueSchemaV1Str, properties, storeParams, true);
         AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
-            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceClusterWrapper.getRandomRouterURL())
-        )
-    ) {
+            ClientConfig.defaultGenericClientConfig(storeName)
+                .setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
       addValueAndWriteComputeSchemas(storeName, controllerClient, valueSchemaV2Str);
       addValueAndWriteComputeSchemas(storeName, controllerClient, valueSchemaV3Str);
       doEmptyPush(storeName, controllerClient);
@@ -367,7 +362,8 @@ public class TestWriteCompute {
       });
 
       // Step 2: Partially update a field that exists in V2 schema (and it does not exist in V1 schema).
-      Schema writeComputeSchemaV2 = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchemaV2);
+      Schema writeComputeSchemaV2 =
+          WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchemaV2);
       UpdateBuilder updateBuilder = new UpdateBuilderImpl(writeComputeSchemaV2);
       updateBuilder.setNewFieldValue("name", "Lebron James");
       updateBuilder.setNewFieldValue("hometown", "Akron");
@@ -396,21 +392,27 @@ public class TestWriteCompute {
   }
 
   private void doEmptyPush(String storeName, ControllerClient controllerClient) {
-    VersionCreationResponse versionCreationResponse = controllerClient.emptyPush(storeName, Utils.getUniqueString("emptyPushId"), 10000);
+    VersionCreationResponse versionCreationResponse =
+        controllerClient.emptyPush(storeName, Utils.getUniqueString("emptyPushId"), 10000);
     Assert.assertFalse(versionCreationResponse.isError());
     final int expectedVersionNumber = 1;
-    TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS,
+    TestUtils.waitForNonDeterministicCompletion(
+        10,
+        TimeUnit.SECONDS,
         () -> controllerClient.getStore(storeName).getStore().getCurrentVersion() == expectedVersionNumber);
   }
 
-  private void addValueAndWriteComputeSchemas(String storeName, ControllerClient controllerClient, String valueSchemaStr) {
+  private void addValueAndWriteComputeSchemas(
+      String storeName,
+      ControllerClient controllerClient,
+      String valueSchemaStr) {
     SchemaResponse schemaResponse = controllerClient.addValueSchema(storeName, valueSchemaStr);
     Assert.assertFalse(schemaResponse.isError(), "Got error: " + schemaResponse.getError());
 
-    Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(
-        AvroCompatibilityHelper.parse(valueSchemaStr)
-    );
-    schemaResponse = controllerClient.addDerivedSchema(storeName, schemaResponse.getId(), writeComputeSchema.toString());
+    Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance()
+        .convertFromValueRecordSchema(AvroCompatibilityHelper.parse(valueSchemaStr));
+    schemaResponse =
+        controllerClient.addDerivedSchema(storeName, schemaResponse.getId(), writeComputeSchema.toString());
     Assert.assertFalse(schemaResponse.isError(), "Got error: " + schemaResponse.getError());
   }
 
@@ -426,9 +428,12 @@ public class TestWriteCompute {
     String jobName = Utils.getUniqueString("write-compute-job-" + expectedVersionNumber);
     try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
       job.run();
-      TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS,
+      TestUtils.waitForNonDeterministicCompletion(
+          5,
+          TimeUnit.SECONDS,
           () -> controllerClient.getStore((String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
-              .getStore().getCurrentVersion() == expectedVersionNumber);
+              .getStore()
+              .getCurrentVersion() == expectedVersionNumber);
     }
   }
 }

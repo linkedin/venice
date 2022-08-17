@@ -3,13 +3,11 @@ package com.linkedin.venice.controller.kafka.protocol.admin;
 import com.linkedin.avro.fastserde.FastSerdeCache;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.schema.avro.SchemaCompatibility;
+import com.linkedin.venice.utils.TestUtils;
 import java.util.Collections;
 import java.util.Map;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-
-import com.linkedin.venice.utils.TestUtils;
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaValidationException;
 import org.apache.avro.SchemaValidator;
@@ -43,10 +41,12 @@ public class AdminOperationProtocolCompatibilityTest {
         }
         SchemaCompatibility.SchemaPairCompatibility backwardCompatibility =
             SchemaCompatibility.checkReaderWriterCompatibility(latestSchema, schema);
-        String failMessage = "Older admin operation protocol with schema id: " + schemaId + ", schema: " + schema.toString(true)
-            + " is not compatible with the latest admin operation protocol with schema id: " + latestSchemaId
-            + ", schema: " + latestSchema.toString(true);
-        Assert.assertEquals(backwardCompatibility.getType(), SchemaCompatibility.SchemaCompatibilityType.COMPATIBLE,
+        String failMessage = "Older admin operation protocol with schema id: " + schemaId + ", schema: "
+            + schema.toString(true) + " is not compatible with the latest admin operation protocol with schema id: "
+            + latestSchemaId + ", schema: " + latestSchema.toString(true);
+        Assert.assertEquals(
+            backwardCompatibility.getType(),
+            SchemaCompatibility.SchemaCompatibilityType.COMPATIBLE,
             failMessage);
 
         /**
@@ -61,7 +61,10 @@ public class AdminOperationProtocolCompatibilityTest {
         } catch (SchemaValidationException e) {
           Assert.fail(failMessage);
         } catch (Exception e) {
-          Assert.fail("Received schema validation exception, and please check the content of schema with ids: " + latestSchemaId + " or " + schemaId, e);
+          Assert.fail(
+              "Received schema validation exception, and please check the content of schema with ids: " + latestSchemaId
+                  + " or " + schemaId,
+              e);
         }
 
         /**

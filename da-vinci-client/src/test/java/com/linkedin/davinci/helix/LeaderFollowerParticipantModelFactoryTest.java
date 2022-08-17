@@ -10,15 +10,12 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.TestUtils;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-
-import com.linkedin.venice.utils.TestUtils;
 import org.apache.helix.model.Message;
 import org.apache.helix.participant.statemachine.StateModel;
 import org.mockito.Mockito;
-import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
@@ -72,7 +69,9 @@ public class LeaderFollowerParticipantModelFactoryTest {
         mockIngestionBackend,
         mockConfigLoader,
         this.executorService,
-        mockReadOnlyStoreRepository, null, null);
+        mockReadOnlyStoreRepository,
+        null,
+        null);
   }
 
   @Test
@@ -88,7 +87,8 @@ public class LeaderFollowerParticipantModelFactoryTest {
   @Test
   public void testLeaderFollowerStateModelCanBeBuiltWhenMetaRepoThrows() {
     String partitionName = HelixUtils.getPartitionName(resourceName, testPartition);
-    Mockito.when(mockReadOnlyStoreRepository.getStore(Version.parseStoreFromKafkaTopicName(resourceName))).thenThrow(new VeniceException());
+    Mockito.when(mockReadOnlyStoreRepository.getStore(Version.parseStoreFromKafkaTopicName(resourceName)))
+        .thenThrow(new VeniceException());
     StateModel stateModel = factory.createNewStateModel(resourceName, partitionName);
   }
 }

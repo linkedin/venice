@@ -1,8 +1,6 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixState;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,10 +18,14 @@ public class PartitionAssignmentTest {
     for (int i = 0; i < partitionCount; i++) {
       partitionAssignment.addPartition(new Partition(i, stateToInstancesMap));
     }
-    Assert.assertEquals(partitionAssignment.getAssignedNumberOfPartitions(), partitionCount,
+    Assert.assertEquals(
+        partitionAssignment.getAssignedNumberOfPartitions(),
+        partitionCount,
         partitionCount + "Partitions have been added in to partition assignment object.");
     for (int i = 0; i < partitionCount; i++) {
-      Assert.assertEquals(partitionAssignment.getPartition(i).getId(), i,
+      Assert.assertEquals(
+          partitionAssignment.getPartition(i).getId(),
+          i,
           "Partition:" + i + " has been added into partition assignment object.");
     }
 
@@ -41,12 +43,13 @@ public class PartitionAssignmentTest {
 
     }
   }
+
   @Test
-  public void testInvalidAssignment(){
+  public void testInvalidAssignment() {
     try {
       new PartitionAssignment("test", 0);
       Assert.fail("Expected number of partitions should be larger than 0.");
-    }catch(VeniceException e){
+    } catch (VeniceException e) {
 
     }
   }
@@ -57,7 +60,9 @@ public class PartitionAssignmentTest {
     Map<String, List<Instance>> stateToInstancesMap = new HashMap<>();
     partitionAssignment.addPartition(new Partition(1, stateToInstancesMap));
     partitionAssignment.removePartition(1);
-    Assert.assertEquals(partitionAssignment.getAssignedNumberOfPartitions(), 0,
+    Assert.assertEquals(
+        partitionAssignment.getAssignedNumberOfPartitions(),
+        0,
         "Partition 1 is deleted, there is no partition assigned.");
   }
 }

@@ -1,8 +1,8 @@
 package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -11,21 +11,23 @@ import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificData;
 import org.apache.avro.specific.SpecificRecord;
 
+
 /**
  * {@link AvroSpecificStoreClient} implementation for Avro SpecificRecord.
  * @param <V>
  */
-public class AvroSpecificStoreClientImpl<K, V extends SpecificRecord>
-    extends AbstractAvroStoreClient<K, V> implements AvroSpecificStoreClient<K, V> {
+public class AvroSpecificStoreClientImpl<K, V extends SpecificRecord> extends AbstractAvroStoreClient<K, V>
+    implements AvroSpecificStoreClient<K, V> {
   private final Class<V> valueClass;
 
   public AvroSpecificStoreClientImpl(TransportClient transportClient, ClientConfig clientConfig) {
     this(transportClient, true, clientConfig);
   }
 
-  private AvroSpecificStoreClientImpl(TransportClient transportClient,
-                                     boolean needSchemaReader,
-                                     ClientConfig clientConfig) {
+  private AvroSpecificStoreClientImpl(
+      TransportClient transportClient,
+      boolean needSchemaReader,
+      ClientConfig clientConfig) {
     super(transportClient, needSchemaReader, clientConfig);
     valueClass = clientConfig.getSpecificValueClass();
 
@@ -44,7 +46,8 @@ public class AvroSpecificStoreClientImpl<K, V extends SpecificRecord>
     SchemaReader schemaReader = getSchemaReader();
     Schema writeSchema = schemaReader.getValueSchema(schemaId);
     if (null == writeSchema) {
-      throw new VeniceClientException("Failed to get value schema for store: " + getStoreName() + " and id: " + schemaId);
+      throw new VeniceClientException(
+          "Failed to get value schema for store: " + getStoreName() + " and id: " + schemaId);
     }
     if (isUseFastAvro()) {
       return FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(writeSchema, valueClass);
@@ -60,8 +63,10 @@ public class AvroSpecificStoreClientImpl<K, V extends SpecificRecord>
    */
   @Override
   protected AbstractAvroStoreClient<K, V> getStoreClientForSchemaReader() {
-    return new AvroSpecificStoreClientImpl<K, V>(getTransportClient().getCopyIfNotUsableInCallback(),
-        false, ClientConfig.defaultSpecificClientConfig(getStoreName(), valueClass));
+    return new AvroSpecificStoreClientImpl<K, V>(
+        getTransportClient().getCopyIfNotUsableInCallback(),
+        false,
+        ClientConfig.defaultSpecificClientConfig(getStoreName(), valueClass));
   }
 
   @Override

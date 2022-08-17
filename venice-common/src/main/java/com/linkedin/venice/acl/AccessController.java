@@ -7,7 +7,6 @@ import java.security.cert.X509Certificate;
  * An AccessController allows a request to be checked against an Access Control List (ACL).
  */
 public interface AccessController {
-
   /**
    * Check if client has permission to access a particular resource.
    * This method is invoked by every single request, therefore

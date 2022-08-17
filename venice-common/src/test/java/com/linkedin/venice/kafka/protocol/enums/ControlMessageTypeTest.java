@@ -1,9 +1,9 @@
 package com.linkedin.venice.kafka.protocol.enums;
 
+import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.*;
+
 import org.testng.Assert;
 import org.testng.annotations.Test;
-
-import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.*;
 
 
 public class ControlMessageTypeTest {

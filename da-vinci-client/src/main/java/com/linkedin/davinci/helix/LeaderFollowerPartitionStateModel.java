@@ -34,7 +34,7 @@ import org.apache.helix.participant.statemachine.Transition;
  * latch is released when ingestion has caught up the lag or the ingestion has reached the last known
  * offset of VT.
  */
-@StateModelInfo(initialState = HelixState.OFFLINE_STATE, states = {HelixState.LEADER_STATE, HelixState.STANDBY_STATE})
+@StateModelInfo(initialState = HelixState.OFFLINE_STATE, states = { HelixState.LEADER_STATE, HelixState.STANDBY_STATE })
 public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateModel {
   /**
    * For each role transition between leader and follower, assign an unique and increasing leader session id for
@@ -52,10 +52,14 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
 
   private final LeaderFollowerIngestionProgressNotifier notifier;
 
-  public LeaderFollowerPartitionStateModel(VeniceIngestionBackend ingestionBackend,
-                                           VeniceStoreVersionConfig storeConfig, int partition, LeaderFollowerIngestionProgressNotifier notifier,
-                                           ReadOnlyStoreRepository metadataRepo,
-                                           CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture, String instanceName) {
+  public LeaderFollowerPartitionStateModel(
+      VeniceIngestionBackend ingestionBackend,
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
+      LeaderFollowerIngestionProgressNotifier notifier,
+      ReadOnlyStoreRepository metadataRepo,
+      CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture,
+      String instanceName) {
     super(ingestionBackend, metadataRepo, storeConfig, partition, partitionPushStatusAccessorFuture, instanceName);
     this.notifier = notifier;
   }
@@ -80,8 +84,11 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       try {
         long startTimeForSettingUpNewStorePartitionInNs = System.nanoTime();
         setupNewStorePartition();
-        logger.info("Completed setting up new store partition for {} partition {}. Total elapsed time: {} ms",
-            resourceName, getPartition(), LatencyUtils.getLatencyInMS(startTimeForSettingUpNewStorePartitionInNs));
+        logger.info(
+            "Completed setting up new store partition for {} partition {}. Total elapsed time: {} ms",
+            resourceName,
+            getPartition(),
+            LatencyUtils.getLatencyInMS(startTimeForSettingUpNewStorePartitionInNs));
       } catch (Exception e) {
         logger.error("Failed to set up new store partition for {} partition {}", resourceName, getPartition(), e);
         if (isRegularStoreCurrentVersion) {
@@ -98,13 +105,19 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   @Transition(to = HelixState.LEADER_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeLeaderFromStandby(Message message, NotificationContext context) {
     LeaderSessionIdChecker checker = new LeaderSessionIdChecker(leaderSessionId.incrementAndGet(), leaderSessionId);
-    executeStateTransition(message, context, () -> getIngestionBackend().promoteToLeader(getStoreConfig(), getPartition(), checker));
+    executeStateTransition(
+        message,
+        context,
+        () -> getIngestionBackend().promoteToLeader(getStoreConfig(), getPartition(), checker));
   }
 
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.LEADER_STATE)
   public void onBecomeStandbyFromLeader(Message message, NotificationContext context) {
     LeaderSessionIdChecker checker = new LeaderSessionIdChecker(leaderSessionId.incrementAndGet(), leaderSessionId);
-    executeStateTransition(message, context, () -> getIngestionBackend().demoteToStandby(getStoreConfig(), getPartition(), checker));
+    executeStateTransition(
+        message,
+        context,
+        () -> getIngestionBackend().demoteToStandby(getStoreConfig(), getPartition(), checker));
   }
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.STANDBY_STATE)
@@ -119,13 +132,13 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.DROPPED_STATE)
   public void onBecomeOfflineFromDropped(Message message, NotificationContext context) {
-    //Venice is not supporting automatically partition recovery. No-oped here.
+    // Venice is not supporting automatically partition recovery. No-oped here.
     logger.warn("unexpected state transition from DROPPED to OFFLINE");
   }
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.ERROR_STATE)
   public void onBecomeOfflineFromError(Message message, NotificationContext context) {
-    //Venice is not supporting automatically partition recovery. No-oped here.
+    // Venice is not supporting automatically partition recovery. No-oped here.
     logger.warn("unexpected state transition from ERROR to OFFLINE");
   }
 
@@ -137,6 +150,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   public static class LeaderSessionIdChecker {
     private final long assignedSessionId;
     private final AtomicLong latestSessionIdHandle;
+
     public LeaderSessionIdChecker(long assignedSessionId, AtomicLong latestSessionIdHandle) {
       this.assignedSessionId = assignedSessionId;
       this.latestSessionIdHandle = latestSessionIdHandle;

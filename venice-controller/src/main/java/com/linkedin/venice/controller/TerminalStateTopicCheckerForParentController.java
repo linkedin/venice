@@ -35,8 +35,10 @@ public class TerminalStateTopicCheckerForParentController implements Runnable, C
   private final Map<String, Pair<Long, Long>> topicToBackoffMap = new HashMap<>();
   private final long checkDelayInMs;
 
-  public TerminalStateTopicCheckerForParentController(VeniceParentHelixAdmin parentController,
-      HelixReadOnlyStoreConfigRepository storeConfigRepository, long checkDelayInMs) {
+  public TerminalStateTopicCheckerForParentController(
+      VeniceParentHelixAdmin parentController,
+      HelixReadOnlyStoreConfigRepository storeConfigRepository,
+      long checkDelayInMs) {
     this.parentController = parentController;
     this.storeConfigRepository = storeConfigRepository;
     this.checkDelayInMs = checkDelayInMs;
@@ -52,7 +54,7 @@ public class TerminalStateTopicCheckerForParentController implements Runnable, C
   @Override
   public void run() {
     logger.info("Started running " + getClass().getSimpleName());
-    while(isRunning.get()) {
+    while (isRunning.get()) {
       try {
         Thread.sleep(checkDelayInMs);
         storeConfigRepository.refresh();
@@ -114,7 +116,7 @@ public class TerminalStateTopicCheckerForParentController implements Runnable, C
   private Map<String, Map<String, Long>> getRelevantVeniceVersionTopics() {
     Map<String, Long> topicRetentions = parentController.getTopicManager().getAllTopicRetentions();
     Map<String, Map<String, Long>> allVeniceVersionTopics = new HashMap<>();
-    for (Map.Entry<String, Long> entry : topicRetentions.entrySet()) {
+    for (Map.Entry<String, Long> entry: topicRetentions.entrySet()) {
       String topic = entry.getKey();
       try {
         if (!Version.isRealTimeTopic(topic) && Version.isVersionTopicOrStreamReprocessingTopic(topic)) {
@@ -140,8 +142,10 @@ public class TerminalStateTopicCheckerForParentController implements Runnable, C
           });
         }
       } catch (Exception e) {
-        logger.error("Unexpected exception while processing topic: " + topic
-            + " for populating relevant Venice version topics map", e);
+        logger.error(
+            "Unexpected exception while processing topic: " + topic
+                + " for populating relevant Venice version topics map",
+            e);
       }
     }
     return allVeniceVersionTopics;

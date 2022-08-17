@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.locks.ReentrantLock;
 
+
 /**
  * A helper class to return the same lock for the same raw key bytes. There is an upper limit of how many locks available.
  *
@@ -58,9 +59,10 @@ public class KeyLevelLocksManager {
           currentPoolSize++;
           return LockWithReferenceCount.wrap(new ReentrantLock());
         } else {
-          throw new VeniceException("Store version: " + storeVersion + ". Key level locks pool is empty and current pool "
-              + "size is approaching the maximum pool size: " + maxPoolSize + ", which shouldn't happen. "
-              + "Initial pool size = " + initialPoolSize);
+          throw new VeniceException(
+              "Store version: " + storeVersion + ". Key level locks pool is empty and current pool "
+                  + "size is approaching the maximum pool size: " + maxPoolSize + ", which shouldn't happen. "
+                  + "Initial pool size = " + initialPoolSize);
         }
       }
       return nextAvailableLock;

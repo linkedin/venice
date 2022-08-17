@@ -1,5 +1,7 @@
 package com.linkedin.venice.controllerapi;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.HttpConstants;
@@ -15,8 +17,6 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.NameValuePair;
 import org.apache.http.message.BasicNameValuePair;
-
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 
 
 /**
@@ -59,13 +59,15 @@ public class QueryParams {
   }
 
   public List<NameValuePair> getNameValuePairs() {
-    return params.entrySet().stream()
+    return params.entrySet()
+        .stream()
         .map(entry -> new BasicNameValuePair(entry.getKey(), entry.getValue()))
         .collect(Collectors.toList());
   }
 
   public List<NameValuePair> getAbbreviatedNameValuePairs() {
-    return params.entrySet().stream()
+    return params.entrySet()
+        .stream()
         .map(entry -> new BasicNameValuePair(entry.getKey(), StringUtils.abbreviate(entry.getValue(), 500)))
         .collect(Collectors.toList());
   }
@@ -80,10 +82,7 @@ public class QueryParams {
 
   public QueryParams putStringSet(String name, Set<String> value) {
     try {
-      return add(
-          name,
-          mapper.writeValueAsString(value)
-      );
+      return add(name, mapper.writeValueAsString(value));
     } catch (JsonProcessingException e) {
       throw new VeniceException(e);
     }
@@ -120,7 +119,6 @@ public class QueryParams {
   public Optional<Long> getLong(String name) {
     return Optional.ofNullable(params.get(name)).map(Long::valueOf);
   }
-
 
   @Override
   public String toString() {

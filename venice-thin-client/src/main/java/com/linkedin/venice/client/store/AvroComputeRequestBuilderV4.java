@@ -1,5 +1,8 @@
 package com.linkedin.venice.client.store;
 
+import static com.linkedin.venice.VeniceConstants.*;
+import static org.apache.avro.Schema.Type.*;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.ClientStats;
@@ -27,28 +30,46 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
 
-import static com.linkedin.venice.VeniceConstants.*;
-import static org.apache.avro.Schema.Type.*;
 
-
-public class AvroComputeRequestBuilderV4<K> extends AvroComputeRequestBuilderV3<K>{
-
+public class AvroComputeRequestBuilderV4<K> extends AvroComputeRequestBuilderV3<K> {
   private static final int computeRequestVersion = COMPUTE_REQUEST_VERSION_V4;
 
-  public AvroComputeRequestBuilderV4(Schema latestValueSchema, AvroGenericReadComputeStoreClient storeClient,
-      Optional<ClientStats> stats, Optional<ClientStats> streamingStats) {
+  public AvroComputeRequestBuilderV4(
+      Schema latestValueSchema,
+      AvroGenericReadComputeStoreClient storeClient,
+      Optional<ClientStats> stats,
+      Optional<ClientStats> streamingStats) {
     this(latestValueSchema, storeClient, stats, streamingStats, new SystemTime(), false, null, null);
   }
 
-  public AvroComputeRequestBuilderV4(Schema latestValueSchema, AvroGenericReadComputeStoreClient storeClient,
-      Optional<ClientStats> stats, Optional<ClientStats> streamingStats, boolean reuseObjects,
-      BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) {
-    this(latestValueSchema, storeClient, stats, streamingStats, new SystemTime(), reuseObjects, reusedEncoder, reusedOutputStream);
+  public AvroComputeRequestBuilderV4(
+      Schema latestValueSchema,
+      AvroGenericReadComputeStoreClient storeClient,
+      Optional<ClientStats> stats,
+      Optional<ClientStats> streamingStats,
+      boolean reuseObjects,
+      BinaryEncoder reusedEncoder,
+      ByteArrayOutputStream reusedOutputStream) {
+    this(
+        latestValueSchema,
+        storeClient,
+        stats,
+        streamingStats,
+        new SystemTime(),
+        reuseObjects,
+        reusedEncoder,
+        reusedOutputStream);
   }
 
-  public AvroComputeRequestBuilderV4(Schema latestValueSchema, AvroGenericReadComputeStoreClient storeClient,
-      Optional<ClientStats> stats, Optional<ClientStats> streamingStats, Time time, boolean reuseObjects,
-      BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) {
+  public AvroComputeRequestBuilderV4(
+      Schema latestValueSchema,
+      AvroGenericReadComputeStoreClient storeClient,
+      Optional<ClientStats> stats,
+      Optional<ClientStats> streamingStats,
+      Time time,
+      boolean reuseObjects,
+      BinaryEncoder reusedEncoder,
+      ByteArrayOutputStream reusedOutputStream) {
     super(latestValueSchema, storeClient, stats, streamingStats, time, reuseObjects, reusedEncoder, reusedOutputStream);
   }
 
@@ -64,9 +85,11 @@ public class AvroComputeRequestBuilderV4<K> extends AvroComputeRequestBuilderV3<
   }
 
   @Override
-  public void executeWithFilter(Predicate requiredPrefixFields, StreamingCallback<GenericRecord, GenericRecord> callback) {
+  public void executeWithFilter(
+      Predicate requiredPrefixFields,
+      StreamingCallback<GenericRecord, GenericRecord> callback) {
     byte[] prefixBytes = extractKeyPrefixBytesFromPredicate(requiredPrefixFields, storeClient.getKeySchema());
-    Pair<Schema,String> resultSchema = getResultSchema();
+    Pair<Schema, String> resultSchema = getResultSchema();
     ComputeRequestWrapper computeRequestWrapper = generateComputeRequest(resultSchema.getSecond());
 
     storeClient.computeWithKeyPrefixFilter(prefixBytes, computeRequestWrapper, callback);
@@ -79,42 +102,45 @@ public class AvroComputeRequestBuilderV4<K> extends AvroComputeRequestBuilderV3<
 
     if (null == keySchema) {
       throw new VeniceClientException("Key schema cannot be null");
-    } else if (RECORD != keySchema.getType()){
+    } else if (RECORD != keySchema.getType()) {
       throw new VeniceClientException("Key schema must be of type Record to execute with a filter on key fields");
     }
 
     Map<String, Object> keyFieldsFromPredicate = new HashMap<>();
     populateKeyFieldMapFromPredicate(requiredPrefixFields, keyFieldsFromPredicate);
 
-    List<Schema.Field> prefixFields = getAndCheckExpectedPrefixFields(keySchema.getFields(), keyFieldsFromPredicate.keySet());
+    List<Schema.Field> prefixFields =
+        getAndCheckExpectedPrefixFields(keySchema.getFields(), keyFieldsFromPredicate.keySet());
     Schema prefixSchema = Schema.createRecord("prefixSchema", "", "", false);
     prefixSchema.setFields(prefixFields);
 
     GenericData.Record prefix = new GenericData.Record(prefixSchema);
 
-    for (Map.Entry<String, Object> keyField : keyFieldsFromPredicate.entrySet()) {
+    for (Map.Entry<String, Object> keyField: keyFieldsFromPredicate.entrySet()) {
       prefix.put(keyField.getKey(), keyField.getValue());
     }
 
     try {
-      RecordSerializer<GenericRecord> serializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(prefixSchema, false);
+      RecordSerializer<GenericRecord> serializer =
+          FastSerializerDeserializerFactory.getFastAvroGenericSerializer(prefixSchema, false);
       return serializer.serialize(prefix, AvroSerializer.REUSE.get());
     } catch (Exception e) {
       throw new VeniceClientException(
-          "Cannot serialize partial key. Please ensure the leading fields are completely specified", e);
+          "Cannot serialize partial key. Please ensure the leading fields are completely specified",
+          e);
     }
   }
 
   private void populateKeyFieldMapFromPredicate(Predicate predicate, Map<String, Object> keyFields) {
     if (predicate instanceof AndPredicate) {
       List<Predicate> childPredicates = ((AndPredicate) predicate).getChildPredicates();
-      for (Predicate p : childPredicates) {
+      for (Predicate p: childPredicates) {
         populateKeyFieldMapFromPredicate(p, keyFields);
       }
     } else if (predicate instanceof EqualsRelationalOperator) {
       EqualsRelationalOperator equalsPredicate = (EqualsRelationalOperator) predicate;
-      if (keyFields.containsKey(equalsPredicate.getFieldName()) && !keyFields.get(
-          equalsPredicate.getFieldName()).equals(equalsPredicate.getExpectedValue())) {
+      if (keyFields.containsKey(equalsPredicate.getFieldName())
+          && !keyFields.get(equalsPredicate.getFieldName()).equals(equalsPredicate.getExpectedValue())) {
         throw new VeniceException("Key field \"" + equalsPredicate.getFieldName() + "\" cannot have multiple values");
       }
       keyFields.put(equalsPredicate.getFieldName(), equalsPredicate.getExpectedValue());
@@ -124,14 +150,16 @@ public class AvroComputeRequestBuilderV4<K> extends AvroComputeRequestBuilderV3<
     }
   }
 
-  private List<Schema.Field> getAndCheckExpectedPrefixFields(List<Schema.Field> keySchemaFields, Set<String> expectedPrefixKeys) {
+  private List<Schema.Field> getAndCheckExpectedPrefixFields(
+      List<Schema.Field> keySchemaFields,
+      Set<String> expectedPrefixKeys) {
     if (expectedPrefixKeys.isEmpty()) {
       throw new VeniceException("Predicate must contain at least one key field");
     }
 
     List<Schema.Field> prefixFields = new ArrayList<>();
 
-    for (Schema.Field keyField : keySchemaFields) {
+    for (Schema.Field keyField: keySchemaFields) {
       if (expectedPrefixKeys.contains(keyField.name())) {
         prefixFields.add(AvroCompatibilityHelper.createSchemaField(keyField.name(), keyField.schema(), "", null));
       } else {

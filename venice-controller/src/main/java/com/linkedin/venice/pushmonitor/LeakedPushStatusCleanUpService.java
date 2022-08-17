@@ -1,5 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
+import static com.linkedin.venice.pushmonitor.PushStatusCleanUpServiceState.*;
+
 import com.linkedin.venice.controller.HelixVeniceClusterResources;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -14,8 +16,6 @@ import java.util.PriorityQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.pushmonitor.PushStatusCleanUpServiceState.*;
 
 
 /**
@@ -56,8 +56,12 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
   private final Thread cleanupThread;
   private final AtomicBoolean stop = new AtomicBoolean(false);
 
-  public LeakedPushStatusCleanUpService(String clusterName, OfflinePushAccessor offlinePushAccessor,
-      ReadOnlyStoreRepository metadataRepository, AggPushStatusCleanUpStats aggPushStatusCleanUpStats, long sleepIntervalInMs) {
+  public LeakedPushStatusCleanUpService(
+      String clusterName,
+      OfflinePushAccessor offlinePushAccessor,
+      ReadOnlyStoreRepository metadataRepository,
+      AggPushStatusCleanUpStats aggPushStatusCleanUpStats,
+      long sleepIntervalInMs) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.metadataRepository = metadataRepository;
@@ -85,7 +89,7 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
    */
   private static Map<String, PriorityQueue<Integer>> groupVersionsByStore(List<String> storeVersions) {
     Map<String, PriorityQueue<Integer>> storeToVersions = new HashMap<>();
-    for (String storeVersion : storeVersions) {
+    for (String storeVersion: storeVersions) {
       if (!Version.isVersionTopic(storeVersion)) {
         LOGGER.warn("Found an invalid push status path: " + storeVersion);
         continue;
@@ -104,7 +108,6 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
   }
 
   private class PushStatusCleanUpTask implements Runnable {
-
     @Override
     public void run() {
       aggPushStatusCleanUpStats.recordLeakedPushStatusCleanUpServiceState(RUNNING);
@@ -115,7 +118,7 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
            */
           List<String> pushStatusPaths = offlinePushAccessor.loadOfflinePushStatusPaths();
           Map<String, PriorityQueue<Integer>> storeToVersions = groupVersionsByStore(pushStatusPaths);
-          for (Map.Entry<String, PriorityQueue<Integer>> entry : storeToVersions.entrySet()) {
+          for (Map.Entry<String, PriorityQueue<Integer>> entry: storeToVersions.entrySet()) {
             String storeName = entry.getKey();
             PriorityQueue<Integer> versions = entry.getValue();
             List<String> leakedPushStatuses = new ArrayList<>();
@@ -144,13 +147,15 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
                * Delete all leaked push statuses
                */
               leakedPushStatuses.stream().forEach(offlinePushAccessor::deleteOfflinePushStatusAndItsPartitionStatuses);
-              aggPushStatusCleanUpStats.recordSuccessfulLeakedPushStatusCleanUpCount(storeName, leakedPushStatuses.size());
+              aggPushStatusCleanUpStats
+                  .recordSuccessfulLeakedPushStatusCleanUpCount(storeName, leakedPushStatuses.size());
             } catch (Throwable e) {
               /**
                * Don't stop the service for one single store
                */
-              LOGGER.error(storeName + " doesn't exist in metadata repo in cluster " + clusterName + " but has leaked push "
-                  + "status: " + Version.composeKafkaTopic(storeName, versions.iterator().next()));
+              LOGGER.error(
+                  storeName + " doesn't exist in metadata repo in cluster " + clusterName + " but has leaked push "
+                      + "status: " + Version.composeKafkaTopic(storeName, versions.iterator().next()));
               aggPushStatusCleanUpStats.recordFailedLeakedPushStatusCleanUpCount(storeName, leakedPushStatuses.size());
             }
           }

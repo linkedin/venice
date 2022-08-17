@@ -5,7 +5,6 @@ import org.testng.annotations.Test;
 
 
 public class PendingRequestThrottlerTest {
-
   @Test
   public void testThrottlePut() {
     PendingRequestThrottler throttler = new PendingRequestThrottler(2);

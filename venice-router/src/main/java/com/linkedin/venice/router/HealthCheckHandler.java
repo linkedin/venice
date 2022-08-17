@@ -1,5 +1,10 @@
 package com.linkedin.venice.router;
 
+import static com.linkedin.venice.router.api.VenicePathParser.*;
+import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
+import static com.linkedin.venice.utils.NettyUtils.*;
+import static io.netty.handler.codec.http.HttpResponseStatus.*;
+
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.router.stats.HealthCheckStats;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
@@ -10,15 +15,9 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.util.ReferenceCountUtil;
 import java.net.InetSocketAddress;
-
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.router.api.VenicePathParser.*;
-import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
-import static com.linkedin.venice.utils.NettyUtils.*;
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
 
 @ChannelHandler.Sharable
@@ -60,10 +59,11 @@ public class HealthCheckHandler extends SimpleChannelInboundHandler<HttpRequest>
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable e) {
     healthCheckStats.recordErrorHealthCheck();
-    InetSocketAddress sockAddr = (InetSocketAddress)(ctx.channel().remoteAddress());
+    InetSocketAddress sockAddr = (InetSocketAddress) (ctx.channel().remoteAddress());
     String remoteAddr = sockAddr.getHostName() + ":" + sockAddr.getPort();
     if (!filter.isRedundantException(sockAddr.getHostName(), e)) {
-      logger.error("Got exception while handling health check request from " + remoteAddr + ", and error: " + e.getMessage());
+      logger.error(
+          "Got exception while handling health check request from " + remoteAddr + ", and error: " + e.getMessage());
     }
     setupResponseAndFlush(INTERNAL_SERVER_ERROR, EMPTY_BYTES, false, ctx);
     ctx.close();

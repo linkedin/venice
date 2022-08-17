@@ -7,23 +7,11 @@ import org.testng.annotations.Test;
 
 
 public class TestWriteComputeSchemaValidator {
-  static String nestedRecordStr = "{\n" +
-      "  \"type\" : \"record\",\n" +
-      "  \"name\" : \"testRecord\",\n" +
-      "  \"fields\" : [ {\n" +
-      "    \"name\" : \"recordField\",\n" +
-      "    \"type\" : {\n" +
-      "      \"type\" : \"record\",\n" +
-      "      \"name\" : \"nestedRecord\",\n" +
-      "      \"fields\" : [ {\n" +
-      "        \"name\" : \"intField\",\n" +
-      "        \"type\" : \"int\"\n" +
-      "      } ]\n" + "    },\n" +
-      "    \"default\" : {\n" +
-      "      \"intField\" : 1\n" +
-      "    }\n" +
-      "  } ]\n" +
-      "}";
+  static String nestedRecordStr = "{\n" + "  \"type\" : \"record\",\n" + "  \"name\" : \"testRecord\",\n"
+      + "  \"fields\" : [ {\n" + "    \"name\" : \"recordField\",\n" + "    \"type\" : {\n"
+      + "      \"type\" : \"record\",\n" + "      \"name\" : \"nestedRecord\",\n" + "      \"fields\" : [ {\n"
+      + "        \"name\" : \"intField\",\n" + "        \"type\" : \"int\"\n" + "      } ]\n" + "    },\n"
+      + "    \"default\" : {\n" + "      \"intField\" : 1\n" + "    }\n" + "  } ]\n" + "}";
 
   private final WriteComputeSchemaConverter writeComputeSchemaConverter = WriteComputeSchemaConverter.getInstance();
 

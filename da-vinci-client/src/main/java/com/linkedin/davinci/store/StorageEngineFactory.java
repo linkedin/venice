@@ -61,7 +61,6 @@ public abstract class StorageEngineFactory {
    */
   public abstract void closeStorageEngine(AbstractStorageEngine engine);
 
-
   /**
    * Return the persistence type current factory supports.
    * @return
@@ -70,18 +69,18 @@ public abstract class StorageEngineFactory {
 
   public void verifyPersistenceType(VeniceStoreVersionConfig storeConfig) {
     if (!storeConfig.getStorePersistenceType().equals(getPersistenceType())) {
-      throw new VeniceException("Required store persistence type: " + storeConfig.getStorePersistenceType() + " of store: "
-          + storeConfig.getStoreVersionName() + " isn't supported in current factory: " + getClass().getName() +
-          " with type: " + getPersistenceType());
+      throw new VeniceException(
+          "Required store persistence type: " + storeConfig.getStorePersistenceType() + " of store: "
+              + storeConfig.getStoreVersionName() + " isn't supported in current factory: " + getClass().getName()
+              + " with type: " + getPersistenceType());
     }
   }
 
   public void verifyPersistenceType(AbstractStorageEngine engine) {
     if (!engine.getType().equals(getPersistenceType())) {
-      throw new VeniceException("Required store persistence type: " + engine.getType() + " of store: "
-          + engine.getStoreName() + " isn't supported in current factory: " + getClass().getName() +
-          " with type: " + getPersistenceType());
+      throw new VeniceException(
+          "Required store persistence type: " + engine.getType() + " of store: " + engine.getStoreName()
+              + " isn't supported in current factory: " + getClass().getName() + " with type: " + getPersistenceType());
     }
   }
 }
-

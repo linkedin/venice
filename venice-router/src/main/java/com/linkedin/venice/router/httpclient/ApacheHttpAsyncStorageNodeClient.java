@@ -57,14 +57,15 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
+public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
   private static final Logger logger = LogManager.getLogger(ApacheHttpAsyncStorageNodeClient.class);
 
   // see: https://hc.apache.org/httpcomponents-asyncclient-dev/quickstart.html
   private final int clientPoolSize;
   private final ArrayList<CloseableHttpAsyncClient> clientPool;
   private final Random random = new Random();
-  private final Map<String, HttpClientUtils.ClosableHttpAsyncClientWithConnManager> nodeIdToClientMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, HttpClientUtils.ClosableHttpAsyncClientWithConnManager> nodeIdToClientMap =
+      new VeniceConcurrentHashMap<>();
   private final HttpConnectionPoolStats poolStats;
   private final LiveInstanceMonitor liveInstanceMonitor;
   private final VeniceRouterConfig routerConfig;
@@ -79,7 +80,9 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
   private Optional<CachedDnsResolver> dnsResolver = Optional.empty();
   private ClientConnectionWarmingService clientConnectionWarmingService = null;
 
-  public ApacheHttpAsyncStorageNodeClient(VeniceRouterConfig config, Optional<SSLEngineComponentFactory> sslFactory,
+  public ApacheHttpAsyncStorageNodeClient(
+      VeniceRouterConfig config,
+      Optional<SSLEngineComponentFactory> sslFactory,
       MetricsRepository metricsRepository,
       LiveInstanceMonitor monitor) {
 
@@ -98,9 +101,14 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
     // Whether to enable DNS cache
     if (config.isDnsCacheEnabled()) {
       DnsLookupStats dnsLookupStats = new DnsLookupStats(metricsRepository, "dns_lookup");
-      dnsResolver = Optional.of(new CachedDnsResolver(config.getHostPatternForDnsCache(), config.getDnsCacheRefreshIntervalInMs(), dnsLookupStats));
-      logger.info("CachedDnsResolver is enabled, cached host pattern: " + config.getHostPatternForDnsCache() +
-          ", refresh interval: " + config.getDnsCacheRefreshIntervalInMs() + "ms");
+      dnsResolver = Optional.of(
+          new CachedDnsResolver(
+              config.getHostPatternForDnsCache(),
+              config.getDnsCacheRefreshIntervalInMs(),
+              dnsLookupStats));
+      logger.info(
+          "CachedDnsResolver is enabled, cached host pattern: " + config.getHostPatternForDnsCache()
+              + ", refresh interval: " + config.getDnsCacheRefreshIntervalInMs() + "ms");
     }
 
     /**
@@ -114,10 +122,10 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
      * We couldn't start multiple http clients in perNodeClient mode since {@link #liveInstanceMonitor} contains
      * nothing during construction.
      */
-    if (! perNodeClientEnabled) {
-      ioThreadNumPerClient = (int)Math.ceil(((double)totalIOThreadNum) / clientPoolSize);
-      totalMaxConnPerClient = (int)Math.ceil(((double)maxConn) / clientPoolSize);
-      maxConnPerRoutePerClient = (int)Math.ceil(((double)maxConnPerRoute) / clientPoolSize);
+    if (!perNodeClientEnabled) {
+      ioThreadNumPerClient = (int) Math.ceil(((double) totalIOThreadNum) / clientPoolSize);
+      totalMaxConnPerClient = (int) Math.ceil(((double) maxConn) / clientPoolSize);
+      maxConnPerRoutePerClient = (int) Math.ceil(((double) maxConnPerRoute) / clientPoolSize);
 
       for (int i = 0; i < clientPoolSize; ++i) {
         clientPool.add(createAndStartNewClient().getClient());
@@ -141,12 +149,13 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
   public void start() {
     if (perNodeClientEnabled) {
       ioThreadNumPerClient = routerConfig.getPerNodeClientThreadCount();
-      maxConnPerRoutePerClient = routerConfig.getMaxOutgoingConnPerRoute(); // Per host client gets the max config per client
-      totalMaxConnPerClient = routerConfig.getMaxOutgoingConnPerRoute(); // Using the same maxConnPerRoute, may need to tune later.
+      maxConnPerRoutePerClient = routerConfig.getMaxOutgoingConnPerRoute(); // Per host client gets the max config per
+                                                                            // client
+      totalMaxConnPerClient = routerConfig.getMaxOutgoingConnPerRoute(); // Using the same maxConnPerRoute, may need to
+                                                                         // tune later.
       // TODO: clean up clients when host dies.
       Set<Instance> instanceSet = liveInstanceMonitor.getAllLiveInstances();
-      instanceSet.forEach(host -> nodeIdToClientMap.put(host.getNodeId(),
-          createAndStartNewClient()));
+      instanceSet.forEach(host -> nodeIdToClientMap.put(host.getNodeId(), createAndStartNewClient()));
       if (routerConfig.isHttpasyncclientConnectionWarmingEnabled()) {
         logger.info("Connection warming is enabled in HttpAsyncClient");
         clientConnectionWarmingService = new ClientConnectionWarmingService();
@@ -165,7 +174,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
   @Override
   public void close() {
     if (perNodeClientEnabled) {
-      nodeIdToClientMap.forEach((k,v) ->  Utils.closeQuietlyWithErrorLogged(v.getClient()));
+      nodeIdToClientMap.forEach((k, v) -> Utils.closeQuietlyWithErrorLogged(v.getClient()));
       if (clientConnectionWarmingService != null) {
         try {
           clientConnectionWarmingService.stop();
@@ -204,7 +213,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
     private final long CONNECTION_WARMING_WAIT_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(1); // 1 mins.
     private final long CONNECTION_WARMING_TOTAL_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(5); // 5 mins
     private final long CONNECTION_WARMING_SCANNER_SLEEP_INTERVAL_IN_MS = TimeUnit.MINUTES.toMillis(5); // 5 mins
-    private final long CLIENT_GRACEFUL_SHUTDOWN_DELAY_IN_MS = TimeUnit.MINUTES.toMillis(3);  // 3 mins
+    private final long CLIENT_GRACEFUL_SHUTDOWN_DELAY_IN_MS = TimeUnit.MINUTES.toMillis(3); // 3 mins
 
     private final Set<String> ongoingWarmUpClientSet = new HashSet<>();
     private final Map<CloseableHttpAsyncClient, Long> clientToCloseTimestampMap = new VeniceConcurrentHashMap<>();
@@ -223,23 +232,26 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
 
     public ClientConnectionWarmingService() {
       // Initialize the ongoing client warming executor
-      this.clientConnWarmingExecutor = Executors.newFixedThreadPool(routerConfig.getHttpasyncclientConnectionWarmingExecutorThreadNum(),
+      this.clientConnWarmingExecutor = Executors.newFixedThreadPool(
+          routerConfig.getHttpasyncclientConnectionWarmingExecutorThreadNum(),
           new DaemonThreadFactory(CONNECTION_WARMING_THREAD_PREFIX));
       this.connectionWarmingLowWaterMark = routerConfig.getHttpasyncclientConnectionWarmingLowWaterMark();
       if (connectionWarmingLowWaterMark > maxConnPerRoutePerClient) {
-        throw new VeniceException("Connection warming low water mark: " + connectionWarmingLowWaterMark +
-            " shouldn't be higher than the max connection per client: " + maxConnPerRoutePerClient);
+        throw new VeniceException(
+            "Connection warming low water mark: " + connectionWarmingLowWaterMark
+                + " shouldn't be higher than the max connection per client: " + maxConnPerRoutePerClient);
       }
       this.newInstanceDelayJoinMs = routerConfig.getHttpasyncclientConnectionWarmingNewInstanceDelayJoinMs();
-      this.clientConnHealthinessScannerThread = new Thread(new ClientConnHealthinessScanner(), CONNECTION_WARMING_THREAD_PREFIX + "scanner");
+      this.clientConnHealthinessScannerThread =
+          new Thread(new ClientConnHealthinessScanner(), CONNECTION_WARMING_THREAD_PREFIX + "scanner");
     }
 
     public boolean isInstanceReadyToServe(String instanceId) {
-      Long forceJoinTimestamp =  nodeIdToForceJoinTimeMap.get(instanceId);
+      Long forceJoinTimestamp = nodeIdToForceJoinTimeMap.get(instanceId);
       if (null == forceJoinTimestamp) {
         return true;
       }
-      if  (forceJoinTimestamp < System.currentTimeMillis()) {
+      if (forceJoinTimestamp < System.currentTimeMillis()) {
         nodeIdToForceJoinTimeMap.remove(instanceId);
         return true;
       }
@@ -257,15 +269,19 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
        * This is for one-time use during start, and we would like to warm up the connections to all the instances
        * as fast as possible.
        */
-      ExecutorService clientConnectionWarmingExecutorDuringStart = Executors.newFixedThreadPool(instanceNum, new DaemonThreadFactory(CONNECTION_WARMING_THREAD_PREFIX));
+      ExecutorService clientConnectionWarmingExecutorDuringStart =
+          Executors.newFixedThreadPool(instanceNum, new DaemonThreadFactory(CONNECTION_WARMING_THREAD_PREFIX));
 
       List<CompletableFuture<?>> futureList = new ArrayList<>(instanceNum);
-      nodeIdToClientMap.forEach( (nodeId, clientWithConnManager) -> {
+      nodeIdToClientMap.forEach((nodeId, clientWithConnManager) -> {
         futureList.add(CompletableFuture.runAsync(() -> {
           Instance instance = Instance.fromNodeId(nodeId);
           String instanceUrl = instance.getUrl(sslFactory.isPresent());
           logger.info("Started warming up " + maxConnPerRoutePerClient + " connections to server: " + instanceUrl);
-          warmUpConnection(clientWithConnManager.getClient(), instanceUrl, maxConnPerRoutePerClient,
+          warmUpConnection(
+              clientWithConnManager.getClient(),
+              instanceUrl,
+              maxConnPerRoutePerClient,
               routerConfig.getHttpasyncclientConnectionWarmingSleepIntervalMs());
           logger.info("Finished warming up " + maxConnPerRoutePerClient + " connections to server: " + instanceUrl);
         }, clientConnectionWarmingExecutorDuringStart));
@@ -289,8 +305,8 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
         @Override
         public void handleNewInstances(Set<Instance> newInstances) {
           long currentTimestamp = System.currentTimeMillis();
-          newInstances.forEach( instance -> {
-            nodeIdToForceJoinTimeMap.put(instance.getNodeId(), currentTimestamp  + newInstanceDelayJoinMs);
+          newInstances.forEach(instance -> {
+            nodeIdToForceJoinTimeMap.put(instance.getNodeId(), currentTimestamp + newInstanceDelayJoinMs);
             logger.info("Create and warm up a new http async client for instance: " + instance);
             asyncCreateAndWarmupNewClientAndSwapAsync(instance, true);
           });
@@ -317,7 +333,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
             Thread.sleep(CONNECTION_WARMING_SCANNER_SLEEP_INTERVAL_IN_MS);
 
             // First close the deprecated clients
-            clientToCloseTimestampMap.forEach( (client, closeTimestamp) -> {
+            clientToCloseTimestampMap.forEach((client, closeTimestamp) -> {
               if (closeTimestamp <= System.currentTimeMillis()) {
                 try {
                   client.close();
@@ -328,7 +344,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
             });
 
             // Then scan the existing clients
-            nodeIdToClientMap.forEach( (nodeId, clientWithConnManager) -> {
+            nodeIdToClientMap.forEach((nodeId, clientWithConnManager) -> {
               Instance currentInstance = Instance.fromNodeId(nodeId);
               if (!liveInstanceMonitor.isInstanceAlive(currentInstance)) {
                 // Not alive right now
@@ -337,8 +353,10 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
               PoolStats stats = clientWithConnManager.getConnManager().getTotalStats();
               int availableConnections = stats.getAvailable() + stats.getLeased();
               if (availableConnections < connectionWarmingLowWaterMark) {
-                logger.info("Create a new httpasyncclient and warm it up for instance: " + currentInstance + " since the total "
-                    + "available connections: " + availableConnections + " is lower than connection warming  low water mark: " + connectionWarmingLowWaterMark);
+                logger.info(
+                    "Create a new httpasyncclient and warm it up for instance: " + currentInstance + " since the total "
+                        + "available connections: " + availableConnections
+                        + " is lower than connection warming  low water mark: " + connectionWarmingLowWaterMark);
                 asyncCreateAndWarmupNewClientAndSwapAsync(currentInstance, false);
               }
             });
@@ -353,7 +371,9 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
     private synchronized void asyncCreateAndWarmupNewClientAndSwapAsync(Instance instance, boolean force) {
       String nodeId = instance.getNodeId();
       if (!force && ongoingWarmUpClientSet.contains(nodeId)) {
-        logger.info("Connection warming for instance: " + instance + " has already stared, so the new connection warming request will be skipped");
+        logger.info(
+            "Connection warming for instance: " + instance
+                + " has already stared, so the new connection warming request will be skipped");
         return;
       }
       ongoingWarmUpClientSet.add(nodeId);
@@ -362,36 +382,46 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
           HttpClientUtils.ClosableHttpAsyncClientWithConnManager newClientWithConnManager =
               createAndWarmupNewClient(routerConfig.getHttpasyncclientConnectionWarmingSleepIntervalMs(), instance);
           // create new client
-          HttpClientUtils.ClosableHttpAsyncClientWithConnManager existingClientWithConnManager = nodeIdToClientMap.get(nodeId);
+          HttpClientUtils.ClosableHttpAsyncClientWithConnManager existingClientWithConnManager =
+              nodeIdToClientMap.get(nodeId);
           if (existingClientWithConnManager != null) {
             // Remove the conn manager of the deprecated client from stats
             poolStats.removeConnectionPoolManager(existingClientWithConnManager.getConnManager());
             // Gracefully shutdown the current client
-            clientToCloseTimestampMap.put(existingClientWithConnManager.getClient(), System.currentTimeMillis() + CLIENT_GRACEFUL_SHUTDOWN_DELAY_IN_MS);
+            clientToCloseTimestampMap.put(
+                existingClientWithConnManager.getClient(),
+                System.currentTimeMillis() + CLIENT_GRACEFUL_SHUTDOWN_DELAY_IN_MS);
           }
           nodeIdToClientMap.put(nodeId, newClientWithConnManager);
         } finally {
-          // No matter the connection warming succeeds or not, we need to clean it up to allow the retry in the next round if needed.
+          // No matter the connection warming succeeds or not, we need to clean it up to allow the retry in the next
+          // round if needed.
           ongoingWarmUpClientSet.remove(nodeId);
-          if (force)  {
+          if (force) {
             nodeIdToForceJoinTimeMap.remove(nodeId);
           }
         }
       });
     }
 
-    private HttpClientUtils.ClosableHttpAsyncClientWithConnManager createAndWarmupNewClient(long connectionWarmingSleepIntervalMs, Instance host) {
+    private HttpClientUtils.ClosableHttpAsyncClientWithConnManager createAndWarmupNewClient(
+        long connectionWarmingSleepIntervalMs,
+        Instance host) {
       HttpClientUtils.ClosableHttpAsyncClientWithConnManager clientWithConnManager = createAndStartNewClient();
       String instanceUrl = host.getUrl(sslFactory.isPresent());
       logger.info("Started warming up " + maxConnPerRoutePerClient + " connections to server: " + instanceUrl);
       try {
-        warmUpConnection(clientWithConnManager.getClient(), instanceUrl, maxConnPerRoutePerClient,
+        warmUpConnection(
+            clientWithConnManager.getClient(),
+            instanceUrl,
+            maxConnPerRoutePerClient,
             connectionWarmingSleepIntervalMs);
         logger.info("Finished warming up " + maxConnPerRoutePerClient + " connections to server: " + instanceUrl);
       } catch (Exception e) {
         Utils.closeQuietlyWithErrorLogged(clientWithConnManager.getClient());
-        throw new VeniceException("Received exception while warming up " + maxConnPerRoutePerClient + " connections to server: " + instanceUrl
-            + ", and closed the new created httpasyncclient, and exception: " + e);
+        throw new VeniceException(
+            "Received exception while warming up " + maxConnPerRoutePerClient + " connections to server: " + instanceUrl
+                + ", and closed the new created httpasyncclient, and exception: " + e);
       }
       return clientWithConnManager;
     }
@@ -399,6 +429,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
     private class BlockingAsyncResponseConsumer extends BasicAsyncResponseConsumer {
       private final CountDownLatch latch;
       private final String instanceUrl;
+
       public BlockingAsyncResponseConsumer(CountDownLatch latch, String instanceUrl) {
         super();
         this.latch = latch;
@@ -417,6 +448,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
         return super.buildResult(context);
       }
     }
+
     /**
      * This function leverages {@link CloseableHttpAsyncClient#execute(HttpAsyncRequestProducer, HttpAsyncResponseConsumer, FutureCallback)} for connection warming up.
      * High-level ideas:
@@ -427,7 +459,11 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
      *
      * With this way, it is guaranteed that each request will trigger one new connection.
      */
-    private void warmUpConnection(CloseableHttpAsyncClient client, String instanceUrl, int maxConnPerRoutePerClient, long connectionWarmingSleepIntervalMs) {
+    private void warmUpConnection(
+        CloseableHttpAsyncClient client,
+        String instanceUrl,
+        int maxConnPerRoutePerClient,
+        long connectionWarmingSleepIntervalMs) {
       FutureCallback<HttpResponse> dummyCallback = new FutureCallback<HttpResponse>() {
         @Override
         public void completed(HttpResponse result) {
@@ -442,7 +478,9 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
         }
       };
       // Create a heart-beat request
-      HttpAsyncRequestProducer requestProducer = new BasicAsyncRequestProducer(HttpHost.create(instanceUrl), new HttpGet(instanceUrl + "/" + QueryAction.HEALTH.toString().toLowerCase()));
+      HttpAsyncRequestProducer requestProducer = new BasicAsyncRequestProducer(
+          HttpHost.create(instanceUrl),
+          new HttpGet(instanceUrl + "/" + QueryAction.HEALTH.toString().toLowerCase()));
       CountDownLatch latch = new CountDownLatch(1);
       List<Future> connectionWarmupResponseFutures = new ArrayList<>(maxConnPerRoutePerClient);
       try {
@@ -452,7 +490,8 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
           requestConfigBuilder.setSocketTimeout(routerConfig.getHttpasyncclientConnectionWarmingSocketTimeoutMs());
           context.setRequestConfig(requestConfigBuilder.build());
 
-          Future responseFuture = client.execute(requestProducer, new BlockingAsyncResponseConsumer(latch, instanceUrl), context, dummyCallback);
+          Future responseFuture = client
+              .execute(requestProducer, new BlockingAsyncResponseConsumer(latch, instanceUrl), context, dummyCallback);
           connectionWarmupResponseFutures.add(responseFuture);
           // To avoid overwhelming storage nodes
           Thread.sleep(connectionWarmingSleepIntervalMs);
@@ -462,7 +501,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
          * then we could let the response processing proceed.
          */
         latch.countDown();
-        for (Future future : connectionWarmupResponseFutures) {
+        for (Future future: connectionWarmupResponseFutures) {
           /**
            * Waiting for up to {@link #CONNECTION_WARMING_WAIT_TIMEOUT_MS} to let new connection setup finish.
            * So that, all the new connections will be ready to use after.
@@ -482,9 +521,18 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
   }
 
   private HttpClientUtils.ClosableHttpAsyncClientWithConnManager createAndStartNewClient() {
-    HttpClientUtils.ClosableHttpAsyncClientWithConnManager clientWithConnManager = HttpClientUtils.getMinimalHttpClientWithConnManager(ioThreadNumPerClient, maxConnPerRoutePerClient,
-        totalMaxConnPerClient, socketTimeout, connectionTimeout, sslFactory, dnsResolver, Optional.of(poolStats),
-        routerConfig.isIdleConnectionToServerCleanupEnabled(), routerConfig.getIdleConnectionToServerCleanupThresholdMins());
+    HttpClientUtils.ClosableHttpAsyncClientWithConnManager clientWithConnManager =
+        HttpClientUtils.getMinimalHttpClientWithConnManager(
+            ioThreadNumPerClient,
+            maxConnPerRoutePerClient,
+            totalMaxConnPerClient,
+            socketTimeout,
+            connectionTimeout,
+            sslFactory,
+            dnsResolver,
+            Optional.of(poolStats),
+            routerConfig.isIdleConnectionToServerCleanupEnabled(),
+            routerConfig.getIdleConnectionToServerCleanupThresholdMins());
     clientWithConnManager.getClient().start();
     return clientWithConnManager;
   }
@@ -508,7 +556,12 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
       httpGet.setConfig(requestConfig);
     }
 
-    client.execute(httpGet, new HttpAsyncClientFutureCallBack(responseFuture::complete, responseFuture::completeExceptionally, () -> responseFuture.cancel(false)));
+    client.execute(
+        httpGet,
+        new HttpAsyncClientFutureCallBack(
+            responseFuture::complete,
+            responseFuture::completeExceptionally,
+            () -> responseFuture.cancel(false)));
   }
 
   @Override
@@ -525,7 +578,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
      */
     poolStats.addStatsForRoute(host.getHost());
 
-    //  http(s)://host:port/path
+    // http(s)://host:port/path
     String address = host.getHostUrl(sslFactory.isPresent());
     final HttpUriRequest routerRequest = path.composeRouterRequest(address);
     // set up header to pass map required by the Venice server
@@ -533,13 +586,15 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
     CloseableHttpAsyncClient selectedClient;
     if (perNodeClientEnabled) {
       // If all the pool are used up by the set of live instances, spawn new client
-      selectedClient = nodeIdToClientMap.computeIfAbsent(host.getNodeId(), h-> createAndStartNewClient()).getClient();
+      selectedClient = nodeIdToClientMap.computeIfAbsent(host.getNodeId(), h -> createAndStartNewClient()).getClient();
     } else {
       int selectedClientId = Math.abs(random.nextInt() % clientPoolSize);
       selectedClient = clientPool.get(selectedClientId);
     }
 
-    selectedClient.execute(routerRequest, new HttpAsyncClientFutureCallBack(completedCallBack, failedCallBack, cancelledCallBack));
+    selectedClient.execute(
+        routerRequest,
+        new HttpAsyncClientFutureCallBack(completedCallBack, failedCallBack, cancelledCallBack));
   }
 
   private static class HttpAsyncClientFutureCallBack implements FutureCallback<HttpResponse> {

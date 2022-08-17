@@ -4,7 +4,6 @@ import org.apache.avro.specific.SpecificRecord;
 
 
 public interface DataModelBackedStructure<T extends SpecificRecord> {
-
   /**
    * Return the backed data model.
    * @return

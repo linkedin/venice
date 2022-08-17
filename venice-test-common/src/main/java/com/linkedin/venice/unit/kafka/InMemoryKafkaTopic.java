@@ -3,6 +3,7 @@ package com.linkedin.venice.unit.kafka;
 import java.util.ArrayList;
 import java.util.Optional;
 
+
 /**
  * Maintains queues for each partition of an in-memory topic.
  *
@@ -48,7 +49,8 @@ class InMemoryKafkaTopic {
 
     if (offset > Integer.MAX_VALUE) {
       throw new IllegalArgumentException(
-          "Offsets larger than " + Integer.MAX_VALUE + " are not supported by " + InMemoryKafkaTopic.class.getSimpleName());
+          "Offsets larger than " + Integer.MAX_VALUE + " are not supported by "
+              + InMemoryKafkaTopic.class.getSimpleName());
     }
 
     try {
@@ -62,7 +64,8 @@ class InMemoryKafkaTopic {
     int numberOfPartitions = getPartitionCount();
     if (numberOfPartitions <= requestedPartition) {
       throw new IllegalArgumentException(
-          "This topic has " + numberOfPartitions + " partitions. Partition number " + requestedPartition + " does not exist.");
+          "This topic has " + numberOfPartitions + " partitions. Partition number " + requestedPartition
+              + " does not exist.");
     }
   }
 

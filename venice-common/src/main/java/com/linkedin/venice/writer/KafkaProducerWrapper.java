@@ -8,7 +8,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.kafka.clients.producer.Callback;
@@ -18,6 +17,7 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 
 public interface KafkaProducerWrapper {
   ExecutorService timeOutExecutor = Executors.newSingleThreadExecutor();
+
   int getNumberOfPartitions(String topic);
 
   default int getNumberOfPartitions(String topic, int timeout, TimeUnit timeUnit)
@@ -27,12 +27,30 @@ public interface KafkaProducerWrapper {
     return future.get(timeout, timeUnit);
   }
 
-  Future<RecordMetadata> sendMessage(String topic, KafkaKey key, KafkaMessageEnvelope value, int partition, Callback callback);
+  Future<RecordMetadata> sendMessage(
+      String topic,
+      KafkaKey key,
+      KafkaMessageEnvelope value,
+      int partition,
+      Callback callback);
+
   Future<RecordMetadata> sendMessage(ProducerRecord<KafkaKey, KafkaMessageEnvelope> record, Callback callback);
+
   void flush();
+
   void close(int closeTimeOutMs);
-  default void close(int closeTimeOutMs, boolean doFlush) {close(closeTimeOutMs);}
-  default void close(String topic, int closeTimeOutMs, boolean doFlush) {close(closeTimeOutMs, doFlush);}
-  default void close(String topic, int closeTimeOutMs) { close(closeTimeOutMs, true); }
+
+  default void close(int closeTimeOutMs, boolean doFlush) {
+    close(closeTimeOutMs);
+  }
+
+  default void close(String topic, int closeTimeOutMs, boolean doFlush) {
+    close(closeTimeOutMs, doFlush);
+  }
+
+  default void close(String topic, int closeTimeOutMs) {
+    close(closeTimeOutMs, true);
+  }
+
   Map<String, Double> getMeasurableProducerMetrics();
 }

@@ -1,5 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
+import static com.linkedin.venice.VeniceConstants.*;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
@@ -20,8 +22,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
 
-import static com.linkedin.venice.VeniceConstants.*;
-
 
 /**
  * This push monitor is able to query push job status from routers; it only works for
@@ -39,7 +39,11 @@ public class RouterBasedPushMonitor implements Closeable {
   private final PushMonitorTask pushMonitorTask;
   private ExecutionStatus currentStatus = ExecutionStatus.UNKNOWN;
 
-  public RouterBasedPushMonitor(D2TransportClient d2TransportClient, String resourceName, VeniceSystemFactory factory, SystemProducer producer) {
+  public RouterBasedPushMonitor(
+      D2TransportClient d2TransportClient,
+      String resourceName,
+      VeniceSystemFactory factory,
+      SystemProducer producer) {
     this.topicName = resourceName;
     executor = Executors.newSingleThreadExecutor(new DaemonThreadFactory("RouterBasedPushMonitor"));
     pushMonitorTask = new PushMonitorTask(d2TransportClient, topicName, this, factory, producer);
@@ -79,8 +83,12 @@ public class RouterBasedPushMonitor implements Closeable {
 
     private SamzaExitMode exitMode = SamzaExitMode.SUCCESS_EXIT;
 
-    public PushMonitorTask(D2TransportClient transportClient, String topicName, RouterBasedPushMonitor pushMonitorService,
-        VeniceSystemFactory factory, SystemProducer producer) {
+    public PushMonitorTask(
+        D2TransportClient transportClient,
+        String topicName,
+        RouterBasedPushMonitor pushMonitorService,
+        VeniceSystemFactory factory,
+        SystemProducer producer) {
       this.transportClient = transportClient;
       this.topicName = topicName;
       this.requestPath = buildPushStatusRequestPath(topicName);
@@ -150,7 +158,9 @@ public class RouterBasedPushMonitor implements Closeable {
               // Stop polling
               return;
             default:
-              logger.info("Current stream reprocessing job state: " + pushStatusResponse.getExecutionStatus() + " for store version: " + topicName);
+              logger.info(
+                  "Current stream reprocessing job state: " + pushStatusResponse.getExecutionStatus()
+                      + " for store version: " + topicName);
           }
 
           Utils.sleep(POLL_CYCLE_DELAY_MS);

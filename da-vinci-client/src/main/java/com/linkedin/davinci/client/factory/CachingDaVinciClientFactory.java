@@ -35,18 +35,30 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
   protected final List<DaVinciClient> isolatedClients = new ArrayList<>();
   protected final Map<String, DaVinciConfig> configs = new HashMap<>();
 
-  public CachingDaVinciClientFactory(D2Client d2Client, MetricsRepository metricsRepository, VeniceProperties backendConfig) {
+  public CachingDaVinciClientFactory(
+      D2Client d2Client,
+      MetricsRepository metricsRepository,
+      VeniceProperties backendConfig) {
     this(d2Client, metricsRepository, backendConfig, Optional.empty(), null);
   }
 
-  public CachingDaVinciClientFactory(D2Client d2Client, MetricsRepository metricsRepository,
-      VeniceProperties backendConfig, Optional<Set<String>> managedClients) {
+  public CachingDaVinciClientFactory(
+      D2Client d2Client,
+      MetricsRepository metricsRepository,
+      VeniceProperties backendConfig,
+      Optional<Set<String>> managedClients) {
     this(d2Client, metricsRepository, backendConfig, managedClients, null);
   }
 
-  public CachingDaVinciClientFactory(D2Client d2Client, MetricsRepository metricsRepository,
-      VeniceProperties backendConfig, Optional<Set<String>> managedClients, ICProvider icProvider) {
-    logger.info("Creating client factory, managedClients=" + managedClients + "existingMetrics=" + metricsRepository.metrics().keySet());
+  public CachingDaVinciClientFactory(
+      D2Client d2Client,
+      MetricsRepository metricsRepository,
+      VeniceProperties backendConfig,
+      Optional<Set<String>> managedClients,
+      ICProvider icProvider) {
+    logger.info(
+        "Creating client factory, managedClients=" + managedClients + "existingMetrics="
+            + metricsRepository.metrics().keySet());
     this.d2Client = d2Client;
     this.metricsRepository = metricsRepository;
     this.backendConfig = backendConfig;
@@ -65,7 +77,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
     List<DaVinciClient> clients = new ArrayList<>(sharedClients.values());
     clients.addAll(isolatedClients);
     logger.info("Closing client factory, clientCount=" + clients.size());
-    for (DaVinciClient client : clients) {
+    for (DaVinciClient client: clients) {
       try {
         client.close();
       } catch (Throwable e) {
@@ -89,13 +101,31 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
   }
 
   @Override
-  public <K, V extends SpecificRecord> DaVinciClient<K, V> getSpecificAvroClient(String storeName, DaVinciConfig config, Class<V> valueClass) {
-    return getClient(storeName, config, valueClass, AvroSpecificDaVinciClient::new, AvroSpecificDaVinciClient.class, false);
+  public <K, V extends SpecificRecord> DaVinciClient<K, V> getSpecificAvroClient(
+      String storeName,
+      DaVinciConfig config,
+      Class<V> valueClass) {
+    return getClient(
+        storeName,
+        config,
+        valueClass,
+        AvroSpecificDaVinciClient::new,
+        AvroSpecificDaVinciClient.class,
+        false);
   }
 
   @Override
-  public <K, V extends SpecificRecord> DaVinciClient<K, V> getAndStartSpecificAvroClient(String storeName, DaVinciConfig config, Class<V> valueClass) {
-    return getClient(storeName, config, valueClass, AvroSpecificDaVinciClient::new, AvroSpecificDaVinciClient.class, true);
+  public <K, V extends SpecificRecord> DaVinciClient<K, V> getAndStartSpecificAvroClient(
+      String storeName,
+      DaVinciConfig config,
+      Class<V> valueClass) {
+    return getClient(
+        storeName,
+        config,
+        valueClass,
+        AvroSpecificDaVinciClient::new,
+        AvroSpecificDaVinciClient.class,
+        true);
   }
 
   public VeniceProperties getBackendConfig() {
@@ -103,8 +133,12 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
   }
 
   protected interface DaVinciClientConstructor {
-    AvroGenericDaVinciClient apply(DaVinciConfig config, ClientConfig clientConfig, VeniceProperties backendConfig,
-        Optional<Set<String>> managedClients, ICProvider icProvider);
+    AvroGenericDaVinciClient apply(
+        DaVinciConfig config,
+        ClientConfig clientConfig,
+        VeniceProperties backendConfig,
+        Optional<Set<String>> managedClients,
+        ICProvider icProvider);
   }
 
   protected synchronized DaVinciClient getClient(
@@ -120,31 +154,27 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
 
     DaVinciConfig originalConfig = configs.computeIfAbsent(storeName, k -> config);
     if (originalConfig.isManaged() != config.isManaged()) {
-      throw new VeniceException("Managed flag conflict"
-                                    + ", storeName=" + storeName
-                                    + ", original=" + originalConfig.isManaged()
-                                    + ", requested=" + config.isManaged());
+      throw new VeniceException(
+          "Managed flag conflict" + ", storeName=" + storeName + ", original=" + originalConfig.isManaged()
+              + ", requested=" + config.isManaged());
     }
 
     if (originalConfig.getMemoryLimit() != config.getMemoryLimit()) {
-      throw new VeniceException("Memory limit conflict"
-                                    + ", storeName=" + storeName
-                                    + ", original=" + originalConfig.getMemoryLimit()
-                                    + ", requested=" + config.getMemoryLimit());
+      throw new VeniceException(
+          "Memory limit conflict" + ", storeName=" + storeName + ", original=" + originalConfig.getMemoryLimit()
+              + ", requested=" + config.getMemoryLimit());
     }
 
     if (originalConfig.getStorageClass() != config.getStorageClass()) {
-      throw new VeniceException("Storage class conflict"
-          + ", storeName=" + storeName
-          + ", original=" + originalConfig.getStorageClass()
-          + ", requested=" + config.getStorageClass());
+      throw new VeniceException(
+          "Storage class conflict" + ", storeName=" + storeName + ", original=" + originalConfig.getStorageClass()
+              + ", requested=" + config.getStorageClass());
     }
 
-    ClientConfig clientConfig = new ClientConfig(storeName)
-            .setD2Client(d2Client)
-            .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
-            .setMetricsRepository(metricsRepository)
-            .setSpecificValueClass(valueClass);
+    ClientConfig clientConfig = new ClientConfig(storeName).setD2Client(d2Client)
+        .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
+        .setMetricsRepository(metricsRepository)
+        .setSpecificValueClass(valueClass);
 
     AvroGenericDaVinciClient client;
     if (config.isIsolated()) {
@@ -154,20 +184,19 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
       isolatedClients.add(client);
     } else {
       if (originalConfig.getNonLocalAccessPolicy() != config.getNonLocalAccessPolicy()) {
-        throw new VeniceException("Non-local access policy conflict"
-                                      + ", storeName=" + storeName
-                                      + ", original=" + originalConfig.getNonLocalAccessPolicy()
-                                      + ", requested=" + config.getNonLocalAccessPolicy());
+        throw new VeniceException(
+            "Non-local access policy conflict" + ", storeName=" + storeName + ", original="
+                + originalConfig.getNonLocalAccessPolicy() + ", requested=" + config.getNonLocalAccessPolicy());
       }
 
-      client = sharedClients.computeIfAbsent(storeName,
+      client = sharedClients.computeIfAbsent(
+          storeName,
           k -> clientConstructor.apply(config, clientConfig, backendConfig, managedClients, icProvider));
 
       if (!clientClass.isInstance(client)) {
-        throw new VeniceException("Client type conflict"
-                                      + ", storeName=" + storeName
-                                      + ", originalClientClass=" + client.getClass()
-                                      + ", requestedClientClass=" + clientClass);
+        throw new VeniceException(
+            "Client type conflict" + ", storeName=" + storeName + ", originalClientClass=" + client.getClass()
+                + ", requestedClientClass=" + clientClass);
       }
     }
 

@@ -26,9 +26,9 @@ public class RouteHttpRequestStats {
   private final Map<String, InternalHostStats> routeStatsMap = new VeniceConcurrentHashMap<>();
 
   public RouteHttpRequestStats(MetricsRepository metricsRepository, StorageNodeClient storageNodeClient) {
-      this.metricsRepository = metricsRepository;
-      this.storageNodeClient = storageNodeClient;
-    }
+    this.metricsRepository = metricsRepository;
+    this.storageNodeClient = storageNodeClient;
+  }
 
   public void recordPendingRequest(String hostName) {
     InternalHostStats stats = routeStatsMap.computeIfAbsent(hostName, h -> new InternalHostStats(metricsRepository, h));
@@ -53,19 +53,24 @@ public class RouteHttpRequestStats {
     return stat.pendingRequestCount.get();
   }
 
-  class InternalHostStats extends AbstractVeniceStats  {
+  class InternalHostStats extends AbstractVeniceStats {
     private final Sensor pendingRequestCountSensor;
     private final Sensor unhealthyPendingQueueDuration;
     private final Sensor unhealthyPendingRateSensor;
     private AtomicLong pendingRequestCount;
-
 
     public InternalHostStats(MetricsRepository metricsRepository, String hostName) {
       super(metricsRepository, StatsUtils.convertHostnameToMetricName(hostName));
       pendingRequestCount = new AtomicLong();
       pendingRequestCountSensor = registerSensor("pending_request_count", new Gauge(() -> pendingRequestCount.get()));
 
-      unhealthyPendingQueueDuration  = registerSensor("unhealthy_pending_queue_duration_per_route", new Avg(), new Min(), new Max(), new SampledTotal());;
+      unhealthyPendingQueueDuration = registerSensor(
+          "unhealthy_pending_queue_duration_per_route",
+          new Avg(),
+          new Min(),
+          new Max(),
+          new SampledTotal());
+      ;
       unhealthyPendingRateSensor = registerSensor("unhealthy_pending_queue_per_route", new OccurrenceRate());
     }
 

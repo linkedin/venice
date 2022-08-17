@@ -20,8 +20,7 @@ public class TrackableControllerResponse extends ControllerResponse {
 
   @JsonIgnore
   public String toString() {
-    return ControllerResponse.class.getSimpleName() + "(cluster: " + this.getCluster() +
-        ", name: " + this.getName() +
-        ", error: " + this.getError() + ", executionId: " + executionId + ")";
+    return ControllerResponse.class.getSimpleName() + "(cluster: " + this.getCluster() + ", name: " + this.getName()
+        + ", error: " + this.getError() + ", executionId: " + executionId + ")";
   }
 }

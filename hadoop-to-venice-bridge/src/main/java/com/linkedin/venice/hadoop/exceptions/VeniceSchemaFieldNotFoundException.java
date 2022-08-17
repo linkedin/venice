@@ -9,14 +9,14 @@ import com.linkedin.venice.hadoop.VenicePushJob;
  * in {@link VenicePushJob}
  */
 public class VeniceSchemaFieldNotFoundException extends VeniceException {
-    private String fieldName;
+  private String fieldName;
 
-    public VeniceSchemaFieldNotFoundException(String fieldName, String message) {
-        super(message);
-        this.fieldName = fieldName;
-    }
+  public VeniceSchemaFieldNotFoundException(String fieldName, String message) {
+    super(message);
+    this.fieldName = fieldName;
+  }
 
-    public String getFieldName() {
-        return fieldName;
-    }
+  public String getFieldName() {
+    return fieldName;
+  }
 }

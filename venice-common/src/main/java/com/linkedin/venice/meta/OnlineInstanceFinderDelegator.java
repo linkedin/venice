@@ -20,15 +20,18 @@ public class OnlineInstanceFinderDelegator implements OnlineInstanceFinder {
 
   private final Map<String, OnlineInstanceFinder> topicToInstanceFinderMap = new VeniceConcurrentHashMap<>();
 
-  public OnlineInstanceFinderDelegator(ReadOnlyStoreRepository metadataRepo,
+  public OnlineInstanceFinderDelegator(
+      ReadOnlyStoreRepository metadataRepo,
       RoutingDataRepository routingDataOnlineInstanceFinder,
       PartitionStatusOnlineInstanceFinder partitionStatusOnlineInstanceFinder) {
     this(metadataRepo, routingDataOnlineInstanceFinder, partitionStatusOnlineInstanceFinder, false);
   }
 
-  public OnlineInstanceFinderDelegator(ReadOnlyStoreRepository metadataRepo,
+  public OnlineInstanceFinderDelegator(
+      ReadOnlyStoreRepository metadataRepo,
       RoutingDataRepository routingDataOnlineInstanceFinder,
-      PartitionStatusOnlineInstanceFinder partitionStatusOnlineInstanceFinder, boolean isHelixCustomizedViewEnabled) {
+      PartitionStatusOnlineInstanceFinder partitionStatusOnlineInstanceFinder,
+      boolean isHelixCustomizedViewEnabled) {
     this.metadataRepo = metadataRepo;
     this.routingDataOnlineInstanceFinder = routingDataOnlineInstanceFinder;
     this.partitionStatusOnlineInstanceFinder = partitionStatusOnlineInstanceFinder;
@@ -61,7 +64,8 @@ public class OnlineInstanceFinderDelegator implements OnlineInstanceFinder {
   }
 
   public OnlineInstanceFinder getInstanceFinder(String kafkaTopic) {
-    // If HelixCustomizedView is enabled, always use routingDataOnlineInstanceFinder, which is initialized as CustomizedViewRepository.
+    // If HelixCustomizedView is enabled, always use routingDataOnlineInstanceFinder, which is initialized as
+    // CustomizedViewRepository.
     if (isHelixCustomizedViewEnabled) {
       return routingDataOnlineInstanceFinder;
     }
@@ -69,19 +73,25 @@ public class OnlineInstanceFinderDelegator implements OnlineInstanceFinder {
     return topicToInstanceFinderMap.computeIfAbsent(kafkaTopic, topic -> {
       Store store = metadataRepo.getStore(Version.parseStoreFromKafkaTopicName(kafkaTopic));
       if (store == null) {
-        logger.warn("Cannot find store corresponding to the topic. Use partition status based instance finder by default."
-            + " Topic: " + kafkaTopic);
+        logger.warn(
+            "Cannot find store corresponding to the topic. Use partition status based instance finder by default."
+                + " Topic: " + kafkaTopic);
         return partitionStatusOnlineInstanceFinder;
       }
 
       Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(kafkaTopic));
       if (!version.isPresent()) {
-        logger.warn("Version finder cannot retrieve version info from store metadata repo. Use store's metadata by default."
-            + " Store: " + store.getName() + " Version: " + version);
-        return store.isLeaderFollowerModelEnabled() ? partitionStatusOnlineInstanceFinder : routingDataOnlineInstanceFinder;
+        logger.warn(
+            "Version finder cannot retrieve version info from store metadata repo. Use store's metadata by default."
+                + " Store: " + store.getName() + " Version: " + version);
+        return store.isLeaderFollowerModelEnabled()
+            ? partitionStatusOnlineInstanceFinder
+            : routingDataOnlineInstanceFinder;
       }
 
-      return version.get().isLeaderFollowerModelEnabled() ? partitionStatusOnlineInstanceFinder : routingDataOnlineInstanceFinder;
+      return version.get().isLeaderFollowerModelEnabled()
+          ? partitionStatusOnlineInstanceFinder
+          : routingDataOnlineInstanceFinder;
     });
   }
 }

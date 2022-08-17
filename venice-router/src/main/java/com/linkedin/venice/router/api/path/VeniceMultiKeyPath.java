@@ -1,5 +1,7 @@
 package com.linkedin.venice.router.api.path;
 
+import static io.netty.handler.codec.http.HttpResponseStatus.*;
+
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
@@ -23,10 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import javax.annotation.Nonnull;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpUriRequest;
-import org.apache.http.entity.BasicHttpEntity;
 import org.apache.http.entity.ByteArrayEntity;
-
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
 
 public abstract class VeniceMultiKeyPath<K> extends VenicePath {
@@ -36,15 +35,28 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
   private final int longTailRetryMaxRouteForMultiKeyReq;
   private AtomicInteger currentAllowedRetryRouteCnt = new AtomicInteger(0);
 
-  public VeniceMultiKeyPath(String resourceName, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs,
+  public VeniceMultiKeyPath(
+      String resourceName,
+      boolean smartLongTailRetryEnabled,
+      int smartLongTailRetryAbortThresholdMs,
       int longTailRetryMaxRouteForMultiKeyReq) {
     // HashMap's performance is better than TreeMap
-    this(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs, new HashMap<>(), new HashMap<>(),
+    this(
+        resourceName,
+        smartLongTailRetryEnabled,
+        smartLongTailRetryAbortThresholdMs,
+        new HashMap<>(),
+        new HashMap<>(),
         longTailRetryMaxRouteForMultiKeyReq);
   }
 
-  public VeniceMultiKeyPath(String resourceName, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs,
-      Map<RouterKey, K> routerKeyMap, Map<Integer, RouterKey> keyIdxToRouterKey, int longTailRetryMaxRouteForMultiKeyReq) {
+  public VeniceMultiKeyPath(
+      String resourceName,
+      boolean smartLongTailRetryEnabled,
+      int smartLongTailRetryAbortThresholdMs,
+      Map<RouterKey, K> routerKeyMap,
+      Map<Integer, RouterKey> keyIdxToRouterKey,
+      int longTailRetryMaxRouteForMultiKeyReq) {
     super(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs);
     this.keyNum = routerKeyMap.size();
     this.routerKeyMap = routerKeyMap;
@@ -61,8 +73,12 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
    * @param maxKeyCount
    * @throws RouterException
    */
-  public void initialize(String resourceName, Iterable<ByteBuffer> keys, VenicePartitionFinder partitionFinder,
-      int maxKeyCount, Optional<RouterStats<AggRouterHttpRequestStats>> stats) throws RouterException {
+  public void initialize(
+      String resourceName,
+      Iterable<ByteBuffer> keys,
+      VenicePartitionFinder partitionFinder,
+      int maxKeyCount,
+      Optional<RouterStats<AggRouterHttpRequestStats>> stats) throws RouterException {
     keyNum = 0;
     int keyIdx = 0;
     int partitionNum = -1;
@@ -70,7 +86,7 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
 
     try {
       partitionNum = partitionFinder.getNumPartitions(resourceName);
-    } catch (VeniceNoHelixResourceException e){
+    } catch (VeniceNoHelixResourceException e) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTrackingResourceNotFound(
           Optional.of(getStoreName()),
           Optional.of(RequestType.COMPUTE),
@@ -78,7 +94,7 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
           e.getMessage());
     }
 
-    for (ByteBuffer key : keys) {
+    for (ByteBuffer key: keys) {
       RouterKey routerKey = new RouterKey(key);
 
       keyNum++;
@@ -93,7 +109,7 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
       try {
         partitionId = partitionFinder.findPartitionNumber(routerKey, partitionNum, getStoreName(), getVersionNumber());
         routerKey.setPartitionId(partitionId);
-      } catch (VeniceNoHelixResourceException e){
+      } catch (VeniceNoHelixResourceException e) {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
             Optional.of(getStoreName()),
             Optional.of(RequestType.COMPUTE),
@@ -118,8 +134,11 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
        *
        * If application is using Venice client to send batch-get request, this piece of logic shouldn't be triggered.
        */
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(getStoreName()), Optional.of(getRequestType()),
-          BAD_REQUEST, "Key count in multi-get request should not be zero");
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+          Optional.of(getStoreName()),
+          Optional.of(getRequestType()),
+          BAD_REQUEST,
+          "Key count in multi-get request should not be zero");
     }
   }
 
@@ -136,8 +155,11 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
   public VenicePath substitutePartitionKey(RouterKey s) {
     K routerRequestKey = routerKeyMap.get(s);
     if (null == routerRequestKey) {
-      throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(getStoreName()), Optional.of(getRequestType()),
-          BAD_GATEWAY, "RouterKey: " + s + " should exist in the original path");
+      throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
+          Optional.of(getStoreName()),
+          Optional.of(getRequestType()),
+          BAD_GATEWAY,
+          "RouterKey: " + s + " should exist in the original path");
     }
     Map<RouterKey, K> newRouterKeyMap = new HashMap<>();
     Map<Integer, RouterKey> newKeyIdxToRouterKey = new HashMap<>();
@@ -161,7 +183,7 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
   public VenicePath substitutePartitionKey(@Nonnull Collection<RouterKey> s) {
     Map<RouterKey, K> newRouterKeyMap = new HashMap<>();
     Map<Integer, RouterKey> newKeyIdxToRouterKey = new HashMap<>();
-    for (RouterKey key : s) {
+    for (RouterKey key: s) {
       /**
        * Using {@link Map#get(Object)} and checking whether it is null is faster than the following statements:
        * if (!routerKeyMap.containsKey(key)) {
@@ -175,8 +197,11 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
        */
       K routerRequestKey = routerKeyMap.get(key);
       if (null == routerRequestKey) {
-        throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(getStoreName()), Optional.of(getRequestType()),
-            BAD_GATEWAY, "RouterKey: " + key + " should exist in the original path");
+        throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
+            Optional.of(getStoreName()),
+            Optional.of(getRequestType()),
+            BAD_GATEWAY,
+            "RouterKey: " + key + " should exist in the original path");
       }
 
       newRouterKeyMap.put(key, routerRequestKey);
@@ -234,7 +259,7 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
   @Override
   protected void setupRetryRelatedInfo(VenicePath originalPath) {
     super.setupRetryRelatedInfo(originalPath);
-    if (! (originalPath instanceof VeniceMultiKeyPath)) {
+    if (!(originalPath instanceof VeniceMultiKeyPath)) {
       throw new VeniceException("Expected `VeniceMultiKeyPath` type here, but found: " + originalPath.getClass());
     }
     /**
@@ -266,7 +291,9 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
    * @param keyIdxToRouterKey
    * @return a sub-path with a new set of keys
    */
-  protected abstract VenicePath fixRetryRequestForSubPath(Map<RouterKey, K> routerKeyMap, Map<Integer, RouterKey> keyIdxToRouterKey);
+  protected abstract VenicePath fixRetryRequestForSubPath(
+      Map<RouterKey, K> routerKeyMap,
+      Map<Integer, RouterKey> keyIdxToRouterKey);
 
   /**
    * For multi-get requests, simply serialize the set of RouterKey to bytes;

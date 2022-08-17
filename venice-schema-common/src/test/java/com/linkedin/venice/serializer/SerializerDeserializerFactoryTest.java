@@ -3,12 +3,12 @@ package com.linkedin.venice.serializer;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.schemas.TestValueRecord;
 import com.linkedin.venice.client.store.schemas.TestValueRecordWithMoreFields;
+import java.io.IOException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import java.io.IOException;
 
 public class SerializerDeserializerFactoryTest {
   @Test

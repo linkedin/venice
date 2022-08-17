@@ -79,8 +79,9 @@ public class HelixInstanceConfigRepository implements VeniceResource, InstanceCo
        * If this issue is happening a lot, we need to consider to do force refresh periodically.
        */
       if (unknownInstanceCall.incrementAndGet() % 100 == 1) {
-        LOGGER.warn("Couldn't find group id for instance: " + instanceId + ", and we need to look into this issue to understand"
-            + " how it happens and come up with the right mitigation/solution since it will affect the scatter-gathering perf");
+        LOGGER.warn(
+            "Couldn't find group id for instance: " + instanceId + ", and we need to look into this issue to understand"
+                + " how it happens and come up with the right mitigation/solution since it will affect the scatter-gathering perf");
       }
       return DEFAULT_INSTANCE_GROUP_ID;
     }
@@ -105,7 +106,7 @@ public class HelixInstanceConfigRepository implements VeniceResource, InstanceCo
     Map<String, Integer> newInstanceGroupIdMapping = new VeniceConcurrentHashMap<>();
     Map<String, Integer> groupIdMapping = new HashMap<>();
     final AtomicInteger groupIdCnt = new AtomicInteger(0);
-    for (InstanceConfig instanceConfig : instanceConfigs) {
+    for (InstanceConfig instanceConfig: instanceConfigs) {
       // Extract group config
       if (instanceConfig.getInstanceEnabled()) {
         Map<String, String> domainConfigMap = instanceConfig.getDomainAsMap();

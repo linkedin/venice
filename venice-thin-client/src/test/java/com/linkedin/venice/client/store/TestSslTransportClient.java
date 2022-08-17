@@ -23,14 +23,15 @@ public class TestSslTransportClient {
   @DataProvider(name = "leaderControllerPathProvider")
   private static Object[][] dataProvider() {
     // go/inclusivecode deprecated (alias="leader_controller")
-    return new Object[][] {{"/master_controller"},
-        {"/leader_controller"}};
+    return new Object[][] { { "/master_controller" }, { "/leader_controller" } };
   }
 
   @Test(dataProvider = "leaderControllerPathProvider")
-  public void SslTransportClientCanTalkToRouter(String leaderControllerPath) throws ExecutionException, InterruptedException, IOException {
+  public void SslTransportClientCanTalkToRouter(String leaderControllerPath)
+      throws ExecutionException, InterruptedException, IOException {
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
-        MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zkServer.getAddress(), true, new Properties())) {
+        MockVeniceRouterWrapper router =
+            ServiceFactory.getMockVeniceRouter(zkServer.getAddress(), true, new Properties())) {
       String routerSslUrl = "https://" + router.getHost() + ":" + router.getSslPort();
       try (HttpsTransportClient client = new HttpsTransportClient(routerSslUrl, SslUtils.getLocalSslFactory())) {
 
@@ -38,8 +39,9 @@ public class TestSslTransportClient {
         byte[] response = transportClientResponse.getBody();
 
         String responseJson = new String(response, StandardCharsets.UTF_8);
-        Map<String, String> responseMap = ObjectMapperFactory.getInstance().readValue(responseJson, new TypeReference<HashMap<String, String>>() {
-        });
+        Map<String, String> responseMap =
+            ObjectMapperFactory.getInstance().readValue(responseJson, new TypeReference<HashMap<String, String>>() {
+            });
         Assert.assertEquals(responseMap.get("cluster"), router.getClusterName());
         Assert.assertEquals(responseMap.get("url"), "http://localhost:1234");
       }

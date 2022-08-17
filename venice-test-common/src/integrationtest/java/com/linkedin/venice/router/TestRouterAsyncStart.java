@@ -49,7 +49,7 @@ public class TestRouterAsyncStart {
     routerProperties.put(ConfigKeys.ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_SLEEP_INTERVAL_MS, 0);
     routerProperties.put(ConfigKeys.ROUTER_ASYNC_START_ENABLED, false);
 
-    // Venice Router should fail to start because of connection warming  since storage node won't respond to any request
+    // Venice Router should fail to start because of connection warming since storage node won't respond to any request
     Assert.assertThrows(() -> ServiceFactory.withMaxAttempt(1, () -> veniceCluster.addVeniceRouter(routerProperties)));
   }
 }

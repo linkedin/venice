@@ -4,7 +4,6 @@ package com.linkedin.venice.meta;
  * Cluster level metadata for all routers.
  */
 public class RoutersClusterConfig {
-
   private int expectedRouterCount;
 
   private boolean throttlingEnabled = true;
@@ -78,7 +77,7 @@ public class RoutersClusterConfig {
     return result;
   }
 
-  public RoutersClusterConfig cloneRoutesClusterConfig(){
+  public RoutersClusterConfig cloneRoutesClusterConfig() {
     RoutersClusterConfig config = new RoutersClusterConfig();
     config.setThrottlingEnabled(isThrottlingEnabled());
     config.setQuotaRebalanceEnabled(isQuotaRebalanceEnabled());

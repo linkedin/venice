@@ -1,7 +1,15 @@
 package com.linkedin.venice.schema.vson;
 
+import static com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter.stripFromUnion;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.serializer.AvroSerializer;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.io.BinaryDecoder;
@@ -9,14 +17,6 @@ import org.apache.avro.io.DecoderFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.util.*;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.function.Consumer;
-import java.util.function.Supplier;
-
-import static com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter.stripFromUnion;
 
 public class TestVsonAvroDatumReader {
   @Test
@@ -32,26 +32,34 @@ public class TestVsonAvroDatumReader {
     Schema avroSchema = VsonAvroSchemaAdapter.parse(byteSchema);
     byte[] randomBytes = new byte[10];
     ThreadLocalRandom.current().nextBytes(randomBytes);
-    testReader(byteSchema, () -> ByteBuffer.wrap(randomBytes),
+    testReader(
+        byteSchema,
+        () -> ByteBuffer.wrap(randomBytes),
         (vsonObject) -> Assert.assertEquals(vsonObject, randomBytes));
     testReadNullValue(byteSchema);
 
-    //single byte
-    byte[] singleByteArray = {randomBytes[0]};
+    // single byte
+    byte[] singleByteArray = { randomBytes[0] };
     GenericData.Fixed fixedByte = AvroCompatibilityHelper.newFixedField(
-        Schema.createFixed(VsonAvroSchemaAdapter.BYTE_WRAPPER, VsonAvroSchemaAdapter.DEFAULT_DOC,
-            VsonAvroSchemaAdapter.DEFAULT_NAMESPACE, 1), singleByteArray);
-    testReader("\"int8\"", () -> fixedByte,
-        vsonObject -> Assert.assertEquals(vsonObject, randomBytes[0]));
+        Schema.createFixed(
+            VsonAvroSchemaAdapter.BYTE_WRAPPER,
+            VsonAvroSchemaAdapter.DEFAULT_DOC,
+            VsonAvroSchemaAdapter.DEFAULT_NAMESPACE,
+            1),
+        singleByteArray);
+    testReader("\"int8\"", () -> fixedByte, vsonObject -> Assert.assertEquals(vsonObject, randomBytes[0]));
     testReadNullValue("\"int8\"");
 
-    //short
-    byte[] shortBytesArray = {(byte) 0xFF, (byte) 0xFE}; //0xFFFE = -2
+    // short
+    byte[] shortBytesArray = { (byte) 0xFF, (byte) 0xFE }; // 0xFFFE = -2
     GenericData.Fixed fixedShort = AvroCompatibilityHelper.newFixedField(
-        Schema.createFixed(VsonAvroSchemaAdapter.SHORT_WRAPPER, VsonAvroSchemaAdapter.DEFAULT_DOC,
-            VsonAvroSchemaAdapter.DEFAULT_NAMESPACE, 2), shortBytesArray);
-    testReader("\"int16\"", () -> fixedShort,
-        vsonObject -> Assert.assertEquals(vsonObject, (short) -2));
+        Schema.createFixed(
+            VsonAvroSchemaAdapter.SHORT_WRAPPER,
+            VsonAvroSchemaAdapter.DEFAULT_DOC,
+            VsonAvroSchemaAdapter.DEFAULT_NAMESPACE,
+            2),
+        shortBytesArray);
+    testReader("\"int16\"", () -> fixedShort, vsonObject -> Assert.assertEquals(vsonObject, (short) -2));
     testReadNullValue("\"int16\"");
   }
 
@@ -59,7 +67,7 @@ public class TestVsonAvroDatumReader {
   public void testReaderCanReadRecord() throws IOException {
     String vsonSchemaStr = "{\"member_id\":\"int32\", \"score\":\"float32\"}";
 
-    //strip the top level union as this is intended for constructing Avro GenericData.Record
+    // strip the top level union as this is intended for constructing Avro GenericData.Record
     Schema avroSchema = stripFromUnion(VsonAvroSchemaAdapter.parse(vsonSchemaStr));
     GenericData.Record record = new GenericData.Record(avroSchema);
     record.put("member_id", 1);
@@ -84,7 +92,9 @@ public class TestVsonAvroDatumReader {
     List<Integer> record = Arrays.asList(1, 2, null);
 
     testReader(vsonSchemaStr, () -> record, (vsonObject) -> {
-      Assert.assertTrue(vsonObject instanceof VsonAvroDatumReader.DeepEqualsArrayList, "VsonAvroDatumReader should return a DeepEqualsArrayList for 'Array' schema");
+      Assert.assertTrue(
+          vsonObject instanceof VsonAvroDatumReader.DeepEqualsArrayList,
+          "VsonAvroDatumReader should return a DeepEqualsArrayList for 'Array' schema");
 
       Assert.assertEquals(((List) vsonObject).get(0), 1);
       Assert.assertEquals(((List) vsonObject).get(1), 2);
@@ -93,7 +103,8 @@ public class TestVsonAvroDatumReader {
       try {
         ((List) vsonObject).get(3);
         Assert.fail();
-      } catch (IndexOutOfBoundsException e) {}
+      } catch (IndexOutOfBoundsException e) {
+      }
     });
 
     testReadNullValue(vsonSchemaStr);
@@ -138,8 +149,8 @@ public class TestVsonAvroDatumReader {
     regularMap2.put("key1", "value1");
     regularMap2.put("key2", "value2".getBytes());
 
-    String assertMessageForDeepEqualsHashMap = "DeepEqualsHashMap should implement deep equal properly even"
-        + " it contains byte[] value.";
+    String assertMessageForDeepEqualsHashMap =
+        "DeepEqualsHashMap should implement deep equal properly even" + " it contains byte[] value.";
     String assertMessageForRegularHashMap = "HashMap supports deep equals() properly even it contains byte[] value so"
         + " the DeepEqualsHashMap is not necessary anymore.";
 
@@ -148,7 +159,6 @@ public class TestVsonAvroDatumReader {
     Assert.assertFalse(regularMap1.equals(deMap1), assertMessageForRegularHashMap);
     Assert.assertFalse(regularMap1.equals(regularMap2), assertMessageForRegularHashMap);
   }
-
 
   @Test
   public void testDeepEqualsArrayList() {
@@ -168,11 +178,11 @@ public class TestVsonAvroDatumReader {
     regularList2.add("value1".getBytes());
     regularList2.add("value2".getBytes());
 
-
-    String assertMessageForDeepEqualsArrayList = "DeepEqualsArrayList should implement deep equal properly even"
-        + " it contains byte[] elements.";
-    String assertMessageForRegularArrayList = "ArrayList supports deep equals() properly even it contains byte[] elements so"
-        + " the DeepEqualsArrayList is not necessary anymore.";
+    String assertMessageForDeepEqualsArrayList =
+        "DeepEqualsArrayList should implement deep equal properly even" + " it contains byte[] elements.";
+    String assertMessageForRegularArrayList =
+        "ArrayList supports deep equals() properly even it contains byte[] elements so"
+            + " the DeepEqualsArrayList is not necessary anymore.";
 
     Assert.assertTrue(deList1.equals(deList2), assertMessageForDeepEqualsArrayList);
     Assert.assertTrue(deList1.equals(regularList1), assertMessageForDeepEqualsArrayList);

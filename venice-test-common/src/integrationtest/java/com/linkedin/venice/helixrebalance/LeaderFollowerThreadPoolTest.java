@@ -1,10 +1,8 @@
 package com.linkedin.venice.helixrebalance;
 
-
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModelFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
@@ -49,8 +47,8 @@ public class LeaderFollowerThreadPoolTest {
     int numOfServers = 0;
     int numOfRouters = 1;
 
-    cluster = ServiceFactory.getVeniceCluster(numOfController, numOfServers, numOfRouters, replicaFactor,
-        partitionSize,  false, false);
+    cluster = ServiceFactory
+        .getVeniceCluster(numOfController, numOfServers, numOfRouters, replicaFactor, partitionSize, false, false);
   }
 
   @AfterMethod
@@ -79,12 +77,18 @@ public class LeaderFollowerThreadPoolTest {
     // Start a new version push.
     String topicNameV2 = createVersionAndPushData(storeName, dataSize);
 
-    // New version can complete successfully (it will not complete without having a separate thread pool for future version)
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> Assert.assertEquals(
-        cluster.getLeaderVeniceController()
-            .getVeniceAdmin()
-            .getOffLinePushStatus(cluster.getClusterName(), topicNameV2)
-            .getExecutionStatus(), ExecutionStatus.COMPLETED));
+    // New version can complete successfully (it will not complete without having a separate thread pool for future
+    // version)
+    TestUtils.waitForNonDeterministicAssertion(
+        60,
+        TimeUnit.SECONDS,
+        true,
+        () -> Assert.assertEquals(
+            cluster.getLeaderVeniceController()
+                .getVeniceAdmin()
+                .getOffLinePushStatus(cluster.getClusterName(), topicNameV2)
+                .getExecutionStatus(),
+            ExecutionStatus.COMPLETED));
   }
 
   /**
@@ -113,7 +117,8 @@ public class LeaderFollowerThreadPoolTest {
   private void commonTestProcedures(boolean isDualPoolEnabled) throws InterruptedException {
     setUpServers(isDualPoolEnabled);
 
-    storeName = Utils.getUniqueString("testLeaderFollowerThreadPools_" + (isDualPoolEnabled ? "DualPool" : "SinglePool"));
+    storeName =
+        Utils.getUniqueString("testLeaderFollowerThreadPools_" + (isDualPoolEnabled ? "DualPool" : "SinglePool"));
     dataSize = partitionNum * partitionSize;
 
     cluster.getNewStore(storeName);
@@ -122,11 +127,16 @@ public class LeaderFollowerThreadPoolTest {
     String topicNameV1 = createVersionAndPushData(storeName, dataSize);
 
     // Wait until push is completed successfully.
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> Assert.assertEquals(
-        cluster.getLeaderVeniceController()
-            .getVeniceAdmin()
-            .getOffLinePushStatus(cluster.getClusterName(), topicNameV1)
-            .getExecutionStatus(), ExecutionStatus.COMPLETED));
+    TestUtils.waitForNonDeterministicAssertion(
+        60,
+        TimeUnit.SECONDS,
+        true,
+        () -> Assert.assertEquals(
+            cluster.getLeaderVeniceController()
+                .getVeniceAdmin()
+                .getOffLinePushStatus(cluster.getClusterName(), topicNameV1)
+                .getExecutionStatus(),
+            ExecutionStatus.COMPLETED));
 
     // Running a blocking task to occupy all threads in thread pool for current && backup versions.
     ExecutorService leaderFollowerPool =
@@ -188,10 +198,12 @@ public class LeaderFollowerThreadPoolTest {
     if (isDualPool) {
       // Set a reasonable size for future version thread pool.
       extraProperties.put(ConfigKeys.MAX_FUTURE_VERSION_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER, 3);
-      extraProperties.put(ConfigKeys.LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY,
+      extraProperties.put(
+          ConfigKeys.LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY,
           LeaderFollowerPartitionStateModelFactory.LeaderFollowerThreadPoolStrategy.DUAL_POOL_STRATEGY.name());
     } else {
-      extraProperties.put(ConfigKeys.LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY,
+      extraProperties.put(
+          ConfigKeys.LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY,
           LeaderFollowerPartitionStateModelFactory.LeaderFollowerThreadPoolStrategy.SINGLE_POOL_STRATEGY.name());
     }
     server0 = cluster.addVeniceServer(new Properties(), extraProperties);

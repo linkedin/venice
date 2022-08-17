@@ -1,5 +1,7 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import static org.rocksdb.RateLimiter.*;
+
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
@@ -34,8 +36,6 @@ import org.rocksdb.RocksDBException;
 import org.rocksdb.SstFileManager;
 import org.rocksdb.Statistics;
 import org.rocksdb.WriteBufferManager;
-
-import static org.rocksdb.RateLimiter.*;
 
 
 public class RocksDBStorageEngineFactory extends StorageEngineFactory {
@@ -90,13 +90,18 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
 
   public RocksDBStorageEngineFactory(VeniceServerConfig serverConfig) {
-    this(serverConfig, null, AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
+    this(
+        serverConfig,
+        null,
+        AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
         AvroProtocolDefinition.PARTITION_STATE.getSerializer());
   }
-  public RocksDBStorageEngineFactory(VeniceServerConfig serverConfig,
-                                     RocksDBMemoryStats rocksDBMemoryStats,
-                                     InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
-                                     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
+
+  public RocksDBStorageEngineFactory(
+      VeniceServerConfig serverConfig,
+      RocksDBMemoryStats rocksDBMemoryStats,
+      InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
     this.rocksDBServerConfig = serverConfig.getRocksDBServerConfig();
     this.rocksDBPath = serverConfig.getDataBasePath() + File.separator + "rocksdb";
     this.rocksDBMemoryStats = rocksDBMemoryStats;
@@ -116,16 +121,17 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
 
     // Shared cache across all the RocksDB databases
     if (RocksDBBlockCacheImplementations.CLOCK.equals(rocksDBServerConfig.getRocksDBBlockCacheImplementation())) {
-      this.sharedCache = new ClockCache(rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
-              rocksDBServerConfig.getRocksDBBlockCacheShardBits(),
-              rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimit());
+      this.sharedCache = new ClockCache(
+          rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
+          rocksDBServerConfig.getRocksDBBlockCacheShardBits(),
+          rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimit());
     } else {
       // Default to LRUCache
-      this.sharedCache = new LRUCache(rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
-              rocksDBServerConfig.getRocksDBBlockCacheShardBits(),
-              rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimit());
+      this.sharedCache = new LRUCache(
+          rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
+          rocksDBServerConfig.getRocksDBBlockCacheShardBits(),
+          rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimit());
     }
-
 
     if (rocksDBServerConfig.isRocksDBStatisticsEnabled()) {
       // Ignore all the histogram types for performance concern.
@@ -136,15 +142,20 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
 
     // Write buffer manager across all the RocksDB databases
     // The memory usage of all the memtables will cost to the shared block cache
-    this.writeBufferManager = new WriteBufferManager(rocksDBServerConfig.getRocksDBTotalMemtableUsageCapInBytes(), this.sharedCache);
+    this.writeBufferManager =
+        new WriteBufferManager(rocksDBServerConfig.getRocksDBTotalMemtableUsageCapInBytes(), this.sharedCache);
     try {
       this.sstFileManager = new SstFileManager(this.env);
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to create the shared SstFileManager", e);
     }
     this.rocksDBThrottler = new RocksDBThrottler(rocksDBServerConfig.getDatabaseOpenOperationThrottle());
-    this.rateLimiter = new RateLimiter(rocksDBServerConfig.getWriteQuotaBytesPerSecond(), DEFAULT_REFILL_PERIOD_MICROS,
-        DEFAULT_FAIRNESS, DEFAULT_MODE, rocksDBServerConfig.isAutoTunedRateLimiterEnabled());
+    this.rateLimiter = new RateLimiter(
+        rocksDBServerConfig.getWriteQuotaBytesPerSecond(),
+        DEFAULT_REFILL_PERIOD_MICROS,
+        DEFAULT_FAIRNESS,
+        DEFAULT_MODE,
+        rocksDBServerConfig.isAutoTunedRateLimiterEnabled());
   }
 
   public Optional<Statistics> getAggStatistics() {
@@ -172,17 +183,30 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
   }
 
   @Override
-  public synchronized AbstractStorageEngine getStorageEngine(VeniceStoreVersionConfig storeConfig) throws StorageInitializationException {
+  public synchronized AbstractStorageEngine getStorageEngine(VeniceStoreVersionConfig storeConfig)
+      throws StorageInitializationException {
     return getStorageEngine(storeConfig, false);
   }
 
   @Override
-  public synchronized AbstractStorageEngine getStorageEngine(VeniceStoreVersionConfig storeConfig, boolean replicationMetadataEnabled) throws StorageInitializationException {
+  public synchronized AbstractStorageEngine getStorageEngine(
+      VeniceStoreVersionConfig storeConfig,
+      boolean replicationMetadataEnabled) throws StorageInitializationException {
     verifyPersistenceType(storeConfig);
     final String storeName = storeConfig.getStoreVersionName();
     try {
-      storageEngineMap.putIfAbsent(storeName, new RocksDBStorageEngine(storeConfig, this, rocksDBPath, rocksDBMemoryStats,
-          rocksDBThrottler, rocksDBServerConfig, storeVersionStateSerializer, partitionStateSerializer, replicationMetadataEnabled));
+      storageEngineMap.putIfAbsent(
+          storeName,
+          new RocksDBStorageEngine(
+              storeConfig,
+              this,
+              rocksDBPath,
+              rocksDBMemoryStats,
+              rocksDBThrottler,
+              rocksDBServerConfig,
+              storeVersionStateSerializer,
+              partitionStateSerializer,
+              replicationMetadataEnabled));
       return storageEngineMap.get(storeName);
     } catch (Exception e) {
       throw new StorageInitializationException(e);
@@ -207,7 +231,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
   @Override
   public synchronized void close() {
     LOGGER.info("Closing RocksDBStorageEngineFactory");
-    storageEngineMap.forEach( (storeName, storageEngine) -> {
+    storageEngineMap.forEach((storeName, storageEngine) -> {
       storageEngine.close();
     });
     storageEngineMap.clear();

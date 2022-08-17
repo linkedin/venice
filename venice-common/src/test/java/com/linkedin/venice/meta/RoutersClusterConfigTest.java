@@ -1,6 +1,5 @@
 package com.linkedin.venice.meta;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -11,7 +10,9 @@ public class RoutersClusterConfigTest {
     int expectedNumber = 100;
     RoutersClusterConfig config = new RoutersClusterConfig();
     config.setExpectedRouterCount(expectedNumber);
-    Assert.assertEquals(config.getExpectedRouterCount(), expectedNumber,
+    Assert.assertEquals(
+        config.getExpectedRouterCount(),
+        expectedNumber,
         "Expected number should settled while creating the config object.");
   }
 

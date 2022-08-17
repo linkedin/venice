@@ -54,7 +54,7 @@ public class StorageEngineRepository {
 
   public void close() {
     VeniceException lastException = null;
-    for (AbstractStorageEngine store : localStorageEngines.values()) {
+    for (AbstractStorageEngine store: localStorageEngines.values()) {
       String storeName = store.getStoreName();
       logger.info("Closing storage engine for " + storeName);
       try {

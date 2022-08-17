@@ -1,19 +1,19 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.venice.SSLConfig;
+import static com.linkedin.venice.ConfigConstants.*;
+import static com.linkedin.venice.ConfigKeys.*;
+import static org.apache.kafka.common.config.SslConfigs.*;
+
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Optional;
 import java.util.Properties;
 import org.apache.kafka.clients.CommonClientConfigs;
-
-import static com.linkedin.venice.ConfigConstants.*;
-import static com.linkedin.venice.ConfigKeys.*;
-import static org.apache.kafka.common.config.SslConfigs.*;
 
 
 /**
@@ -26,8 +26,7 @@ public class ServerKafkaClientFactory extends KafkaClientFactory {
   public ServerKafkaClientFactory(
       VeniceServerConfig serverConfig,
       Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
-      Optional<MetricsParameters> metricsParameters
-  ) {
+      Optional<MetricsParameters> metricsParameters) {
     super(kafkaMessageEnvelopeSchemaReader, metricsParameters, serverConfig.isAutoCloseIdleConsumersEnabled());
     this.serverConfig = serverConfig;
   }
@@ -87,14 +86,16 @@ public class ServerKafkaClientFactory extends KafkaClientFactory {
   }
 
   @Override
-  protected KafkaClientFactory clone(String kafkaBootstrapServers, String kafkaZkAddress, Optional<MetricsParameters> metricsParameters) {
+  protected KafkaClientFactory clone(
+      String kafkaBootstrapServers,
+      String kafkaZkAddress,
+      Optional<MetricsParameters> metricsParameters) {
     Properties clonedProperties = this.serverConfig.getClusterProperties().toProperties();
     clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
     clonedProperties.setProperty(KAFKA_ZK_ADDRESS, kafkaZkAddress);
     return new ServerKafkaClientFactory(
         new VeniceServerConfig(new VeniceProperties(clonedProperties)),
         kafkaMessageEnvelopeSchemaReader,
-        metricsParameters
-    );
+        metricsParameters);
   }
 }

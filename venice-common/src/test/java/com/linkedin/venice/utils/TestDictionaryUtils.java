@@ -1,5 +1,7 @@
 package com.linkedin.venice.utils;
 
+import static com.linkedin.venice.kafka.TopicManager.*;
+
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
@@ -12,7 +14,6 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.writer.VeniceWriter;
-
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Optional;
@@ -25,11 +26,8 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.kafka.TopicManager.*;
-
 
 public class TestDictionaryUtils {
-
   private static final long MIN_COMPACTION_LAG = 24 * Time.MS_PER_HOUR;
 
   /** Wait time for {@link #manager} operations, in seconds */
@@ -45,7 +43,9 @@ public class TestDictionaryUtils {
     String topicName = Utils.getUniqueString(callingFunction);
     int replicas = 1;
     manager.createTopic(topicName, partitionCount, replicas, false);
-    TestUtils.waitForNonDeterministicAssertion(WAIT_TIME, TimeUnit.SECONDS,
+    TestUtils.waitForNonDeterministicAssertion(
+        WAIT_TIME,
+        TimeUnit.SECONDS,
         () -> Assert.assertTrue(manager.containsTopicAndAllPartitionsAreOnline(topicName)));
     return topicName;
   }
@@ -65,7 +65,11 @@ public class TestDictionaryUtils {
     zkServer = ServiceFactory.getZkServer();
     mockTime = new MockTime();
     kafka = ServiceFactory.getKafkaBroker(zkServer, Optional.of(mockTime));
-    manager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, TestUtils.getVeniceConsumerFactory(kafka));
+    manager = new TopicManager(
+        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+        100,
+        MIN_COMPACTION_LAG,
+        TestUtils.getVeniceConsumerFactory(kafka));
   }
 
   @AfterClass
@@ -81,8 +85,14 @@ public class TestDictionaryUtils {
     byte[] dictionaryToSend = "TEST_DICT".getBytes();
     Properties props = getKafkaProperties();
 
-    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = TestUtils.getVeniceWriterFactory(props).createVeniceWriter(topic, partitionCount)) {
-      veniceWriter.broadcastStartOfPush(true, false, CompressionStrategy.ZSTD_WITH_DICT, Optional.of(ByteBuffer.wrap(dictionaryToSend)), null);
+    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter =
+        TestUtils.getVeniceWriterFactory(props).createVeniceWriter(topic, partitionCount)) {
+      veniceWriter.broadcastStartOfPush(
+          true,
+          false,
+          CompressionStrategy.ZSTD_WITH_DICT,
+          Optional.of(ByteBuffer.wrap(dictionaryToSend)),
+          null);
       veniceWriter.broadcastEndOfPush(null);
     }
 
@@ -95,7 +105,8 @@ public class TestDictionaryUtils {
     String topic = getTopic();
     Properties props = getKafkaProperties();
 
-    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = TestUtils.getVeniceWriterFactory(props).createVeniceWriter(topic, partitionCount)) {
+    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter =
+        TestUtils.getVeniceWriterFactory(props).createVeniceWriter(topic, partitionCount)) {
       veniceWriter.broadcastStartOfPush(true, false, CompressionStrategy.ZSTD_WITH_DICT, null);
       veniceWriter.broadcastEndOfPush(null);
     }
@@ -109,7 +120,8 @@ public class TestDictionaryUtils {
     String topic = getTopic();
     Properties props = getKafkaProperties();
 
-    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = TestUtils.getVeniceWriterFactory(props).createVeniceWriter(topic, partitionCount)) {
+    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter =
+        TestUtils.getVeniceWriterFactory(props).createVeniceWriter(topic, partitionCount)) {
       veniceWriter.put(new KafkaKey(MessageType.PUT, "blah".getBytes()), "blah".getBytes(), 1, null);
     }
 

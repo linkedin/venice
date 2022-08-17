@@ -1,7 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
-
 import org.apache.commons.lang.StringUtils;
 
 

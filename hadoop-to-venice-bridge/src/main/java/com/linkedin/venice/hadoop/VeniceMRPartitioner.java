@@ -10,6 +10,7 @@ import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Partitioner;
 
+
 /**
  * {@link VeniceMRPartitioner} will use the exact same partitioner: {@link DefaultVenicePartitioner} inside
  * {@link com.linkedin.venice.writer.VeniceWriter} to make sure the messages inside each reducer belong to

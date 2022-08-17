@@ -1,5 +1,10 @@
 package com.linkedin.venice.fastclient;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.meta.PersistenceType.*;
+import static com.linkedin.venice.system.store.MetaStoreWriter.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
@@ -64,11 +69,6 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Ignore;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.meta.PersistenceType.*;
-import static com.linkedin.venice.system.store.MetaStoreWriter.*;
-import static org.testng.Assert.*;
-
 
 /**
  * This is copied from the AvroClientEndToEndTest class . Will need to adapt to batchget ( scatter gather) use cases .
@@ -96,12 +96,13 @@ public class BatchGetAvroStoreClientTest {
   private static final long TIME_OUT_IN_SECONDS = 60;
   protected static final String KEY_SCHEMA_STR = "\"string\"";
   protected static final String VALUE_FIELD_NAME = "int_field";
-  protected static final String VALUE_SCHEMA_STR = "{\n" + "\"type\": \"record\",\n" + "\"name\": \"TestValueSchema\",\n"
-      + "\"namespace\": \"com.linkedin.venice.fastclient.schema\",\n" + "\"fields\": [\n" + "  {\"name\": \""
-      + VALUE_FIELD_NAME + "\", \"type\": \"int\"}]\n" + "}";
+  protected static final String VALUE_SCHEMA_STR = "{\n" + "\"type\": \"record\",\n"
+      + "\"name\": \"TestValueSchema\",\n" + "\"namespace\": \"com.linkedin.venice.fastclient.schema\",\n"
+      + "\"fields\": [\n" + "  {\"name\": \"" + VALUE_FIELD_NAME + "\", \"type\": \"int\"}]\n" + "}";
   protected static final Schema VALUE_SCHEMA = new Schema.Parser().parse(VALUE_SCHEMA_STR);
   private ClientConfig clientConfig;
   private VeniceProperties daVinciBackendConfig;
+
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
     Utils.thisIsLocalhost();
@@ -174,10 +175,10 @@ public class BatchGetAvroStoreClientTest {
       @Override
       public void onRecordReceived(String key, GenericRecord value) {
         LOGGER.info("Record received " + key + ":" + value);
-        if ( "nonExisting".equals(key)) {
+        if ("nonExisting".equals(key)) {
           Assert.assertNull(value);
         } else {
-          if ( results.containsKey(key)) {
+          if (results.containsKey(key)) {
             isDuplicate.set(true);
           } else {
             results.put(key, value);
@@ -188,7 +189,7 @@ public class BatchGetAvroStoreClientTest {
       @Override
       public void onCompletion(Optional<Exception> exception) {
         LOGGER.info("Exception received " + exception);
-        Assert.assertEquals(exception,Optional.empty());
+        Assert.assertEquals(exception, Optional.empty());
         isComplete.set(true);
         completeLatch.countDown();
       }
@@ -199,28 +200,34 @@ public class BatchGetAvroStoreClientTest {
       Assert.fail("Test did not complete within timeout");
     }
 
-    Assert.assertFalse(isDuplicate.get(),"Duplicate records received");
+    Assert.assertFalse(isDuplicate.get(), "Duplicate records received");
     for (int i = 0; i < recordCnt; ++i) {
       String key = keyPrefix + i;
       GenericRecord value = results.get(key);
       Assert.assertNotNull(value, "Expected non null value but got null for key " + key);
-      Assert.assertEquals(value.get(VALUE_FIELD_NAME), i,
+      Assert.assertEquals(
+          value.get(VALUE_FIELD_NAME),
+          i,
           "Expected value " + i + " for key " + key + " but got " + value.get(VALUE_FIELD_NAME));
     }
-    Assert.assertEquals(results.size(), recordCnt,
+    Assert.assertEquals(
+        results.size(),
+        recordCnt,
         "Incorrect record count . Expected " + recordCnt + " actual " + results.size());
-    Assert.assertFalse(results.containsKey("nonExisting"),
+    Assert.assertFalse(
+        results.containsKey("nonExisting"),
         " Results contained nonExisting key with value " + results.get("nonExisting"));
     ClientStats stats = clientConfig.getStats(RequestType.MULTI_GET);
     List<Double> metricValues = stats.getMetricValues("multiget_request_key_count", "Avg");
     Assert.assertEquals(metricValues.get(0), 101.0);
     metricValues = stats.getMetricValues("multiget_success_request_key_count", "Avg");
     Assert.assertEquals(metricValues.get(0), 100.0);
-    LOGGER.info("STATS: latency -> " + stats.buildSensorStatSummary("multiget_healthy_request_latency","99thPercentile"));
+    LOGGER.info(
+        "STATS: latency -> " + stats.buildSensorStatSummary("multiget_healthy_request_latency", "99thPercentile"));
     printAllStats();
   }
 
- /* Interpretation of available stats when printstats is enabled
+  /* Interpretation of available stats when printstats is enabled
   * multiget_request:OccurrenceRate=0.03329892444474044 -> no. of total requests per second
   * multiget_healthy_request:OccurrenceRate=0.03331556503198294 -> No. of healthy request per second. This is over a
     30 second window so the numbers won't make sense for a unit test
@@ -253,15 +260,22 @@ public class BatchGetAvroStoreClientTest {
       String key = keyPrefix + i;
       GenericRecord value = veniceResponseMap.get(key);
       Assert.assertNotNull(value, "Expected non null value but got null for key " + key);
-      Assert.assertEquals(value.get(VALUE_FIELD_NAME), i,
+      Assert.assertEquals(
+          value.get(VALUE_FIELD_NAME),
+          i,
           "Expected value " + i + " for key " + key + " but got " + value.get(VALUE_FIELD_NAME));
     }
-    Assert.assertEquals(veniceResponseMap.size(), recordCnt,
+    Assert.assertEquals(
+        veniceResponseMap.size(),
+        recordCnt,
         "Incorrect record count . Expected " + recordCnt + " actual " + veniceResponseMap.size());
-    Assert.assertFalse(veniceResponseMap.containsKey("nonExisting"),
+    Assert.assertFalse(
+        veniceResponseMap.containsKey("nonExisting"),
         " Results contained nonExisting key with value " + veniceResponseMap.get("nonExisting"));
     Assert.assertNotNull(veniceResponseMap.getNonExistingKeys(), " Expected non existing keys to be not null");
-    Assert.assertEquals(veniceResponseMap.getNonExistingKeys().size(), 1,
+    Assert.assertEquals(
+        veniceResponseMap.getNonExistingKeys().size(),
+        1,
         "Incorrect non existing key size . Expected  1 got " + veniceResponseMap.getNonExistingKeys().size());
   }
 
@@ -305,13 +319,16 @@ public class BatchGetAvroStoreClientTest {
     veniceCluster.useControllerClient(controllerClient -> {
       VersionCreationResponse metaSystemStoreVersionCreationResponse =
           controllerClient.emptyPush(metaSystemStoreName, "test_bootstrap_meta_system_store", 10000);
-      assertFalse(metaSystemStoreVersionCreationResponse.isError(),
+      assertFalse(
+          metaSystemStoreVersionCreationResponse.isError(),
           "New version creation for meta system store failed with error: "
               + metaSystemStoreVersionCreationResponse.getError());
-      TestUtils.waitForNonDeterministicPushCompletion(metaSystemStoreVersionCreationResponse.getKafkaTopic(),
-          controllerClient, 30, TimeUnit.SECONDS);
-      daVinciBackendConfig = new PropertyBuilder()
-          .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
+      TestUtils.waitForNonDeterministicPushCompletion(
+          metaSystemStoreVersionCreationResponse.getKafkaTopic(),
+          controllerClient,
+          30,
+          TimeUnit.SECONDS);
+      daVinciBackendConfig = new PropertyBuilder().put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
           .put(PERSISTENCE_TYPE, ROCKS_DB)
           .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
           .put(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, true)
@@ -319,21 +336,23 @@ public class BatchGetAvroStoreClientTest {
     });
 
     // Verify meta system store received the snapshot writes.
-    try (
-        AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> metaClient = com.linkedin.venice.client.store.ClientFactory
-            .getAndStartSpecificAvroClient(
-                com.linkedin.venice.client.store.ClientConfig.defaultSpecificClientConfig(metaSystemStoreName,
-                    StoreMetaValue.class)
-                    .setVeniceURL(veniceCluster.getRandomRouterURL())
-                    .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()))) {
+    try (AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> metaClient =
+        com.linkedin.venice.client.store.ClientFactory.getAndStartSpecificAvroClient(
+            com.linkedin.venice.client.store.ClientConfig
+                .defaultSpecificClientConfig(metaSystemStoreName, StoreMetaValue.class)
+                .setVeniceURL(veniceCluster.getRandomRouterURL())
+                .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()))) {
       StoreMetaKey replicaStatusKey =
-          MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(new HashMap<String, String>() {{
-            put(KEY_STRING_STORE_NAME, storeName);
-            put(KEY_STRING_CLUSTER_NAME, veniceCluster.getClusterName());
-            put(KEY_STRING_VERSION_NUMBER,
-                Integer.toString(Version.parseVersionFromVersionTopicName(storeVersionName)));
-            put(KEY_STRING_PARTITION_ID, "0");
-          }});
+          MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(new HashMap<String, String>() {
+            {
+              put(KEY_STRING_STORE_NAME, storeName);
+              put(KEY_STRING_CLUSTER_NAME, veniceCluster.getClusterName());
+              put(
+                  KEY_STRING_VERSION_NUMBER,
+                  Integer.toString(Version.parseVersionFromVersionTopicName(storeVersionName)));
+              put(KEY_STRING_PARTITION_ID, "0");
+            }
+          });
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         assertNotNull(metaClient.get(replicaStatusKey).get());
       });
@@ -358,12 +377,13 @@ public class BatchGetAvroStoreClientTest {
                 .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()));
     clientConfigBuilder.setGenericThinClient(genericThinClient);
 
-    CachingDaVinciClientFactory daVinciClientFactory = new CachingDaVinciClientFactory(d2Client,
-          new MetricsRepository(), daVinciBackendConfig);
-    DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore = daVinciClientFactory.getAndStartSpecificAvroClient(
-          VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName),
-          new DaVinciConfig(),
-          StoreMetaValue.class);
+    CachingDaVinciClientFactory daVinciClientFactory =
+        new CachingDaVinciClientFactory(d2Client, new MetricsRepository(), daVinciBackendConfig);
+    DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore =
+        daVinciClientFactory.getAndStartSpecificAvroClient(
+            VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName),
+            new DaVinciConfig(),
+            StoreMetaValue.class);
     clientConfigBuilder.setDaVinciClientForMetaStore(daVinciClientForMetaStore);
     clientConfig = clientConfigBuilder.build();
 
@@ -393,9 +413,12 @@ public class BatchGetAvroStoreClientTest {
     clientConfigBuilder.setSpecificThinClient(specificThinClient);
 
     ClientConfig clientConfig = clientConfigBuilder.build();
-    RouterBasedStoreMetadata storeMetadata =
-        new RouterBasedStoreMetadata(routerWrapper.getMetaDataRepository(), routerWrapper.getSchemaRepository(),
-            routerWrapper.getOnlineInstanceFinder(), storeName, clientConfig);
+    RouterBasedStoreMetadata storeMetadata = new RouterBasedStoreMetadata(
+        routerWrapper.getMetaDataRepository(),
+        routerWrapper.getSchemaRepository(),
+        routerWrapper.getOnlineInstanceFinder(),
+        storeName,
+        clientConfig);
 
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     return ClientFactory.getAndStartSpecificStoreClient(storeMetadata, clientConfigBuilder.build());
@@ -404,13 +427,14 @@ public class BatchGetAvroStoreClientTest {
   private void printAllStats() {
     /* The print_stats flag controls if all stats are printed. Usually it will be too much info but while running
      * locally this can help understand what metrics are used */
-    if ( ! PRINT_STATS || clientConfig == null) return;
+    if (!PRINT_STATS || clientConfig == null)
+      return;
     // Prints all available stats. Useful for debugging
     Map<String, List<Metric>> metricsSan = new HashMap<>();
     ClientStats stats = clientConfig.getStats(RequestType.MULTI_GET);
     MetricsRepository metricsRepository = stats.getMetricsRepository();
     Map<String, ? extends Metric> metrics = metricsRepository.metrics();
-    for (Map.Entry<String,? extends Metric> metricName : metrics.entrySet()) {
+    for (Map.Entry<String, ? extends Metric> metricName: metrics.entrySet()) {
       String metricNameSan = StringUtils.substringBetween(metricName.getKey(), "--", ".");
       if (StringUtils.startsWith(metricNameSan, "multiget_")) {
         metricsSan.computeIfAbsent(metricNameSan, (k) -> new ArrayList<>()).add(metricName.getValue());
@@ -418,9 +442,9 @@ public class BatchGetAvroStoreClientTest {
     }
     List<String> valMetrics = new ArrayList<>();
     List<String> noValMetrics = new ArrayList<>();
-    for (Map.Entry<String,List<Metric>> metricNameSan : metricsSan.entrySet()) {
+    for (Map.Entry<String, List<Metric>> metricNameSan: metricsSan.entrySet()) {
       boolean hasVal = false;
-      for (Metric metric : metricNameSan.getValue()) {
+      for (Metric metric: metricNameSan.getValue()) {
         if (metric != null) {
           double value = metric.value();
           if (Double.isFinite(value) && value != 0f) {
@@ -429,15 +453,19 @@ public class BatchGetAvroStoreClientTest {
         }
       }
       if (!hasVal) {
-        noValMetrics.add(metricNameSan + ":" + metricsSan.get(metricNameSan.getKey())
-            .stream()
-            .map((m) -> StringUtils.substringAfterLast(m.name(), "."))
-            .collect(Collectors.joining(",")));
+        noValMetrics.add(
+            metricNameSan + ":"
+                + metricsSan.get(metricNameSan.getKey())
+                    .stream()
+                    .map((m) -> StringUtils.substringAfterLast(m.name(), "."))
+                    .collect(Collectors.joining(",")));
       } else {
-        valMetrics.add(metricNameSan + ":" + metricsSan.get(metricNameSan.getKey())
-            .stream()
-            .map((m) -> StringUtils.substringAfterLast(m.name(), ".") + "=" + m.value())
-            .collect(Collectors.joining(",")));
+        valMetrics.add(
+            metricNameSan + ":"
+                + metricsSan.get(metricNameSan.getKey())
+                    .stream()
+                    .map((m) -> StringUtils.substringAfterLast(m.name(), ".") + "=" + m.value())
+                    .collect(Collectors.joining(",")));
       }
     }
     valMetrics.sort(Comparator.naturalOrder());

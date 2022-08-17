@@ -1,5 +1,7 @@
 package com.linkedin.venice.hadoop;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -7,23 +9,16 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.Arrays;
 import java.util.List;
+import javax.xml.bind.DatatypeConverter;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.mapred.JobConf;
-
-import javax.xml.bind.DatatypeConverter;
 import org.testng.annotations.DataProvider;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
 
 public class AbstractTestVeniceMR {
-  protected static final String SCHEMA_STR = "{\n" +
-      "\t\"type\": \"record\",\n" +
-      "\t\"name\": \"TestRecord\",\n" +
-      "\t\"fields\": [\n" +
-      "\t\t{\"name\": \"key\", \"type\": \"string\"},\n" +
-      "\t\t{\"name\": \"value\", \"type\": \"string\"}\n" +
-      "\t]\n" +
-      "}";
+  protected static final String SCHEMA_STR = "{\n" + "\t\"type\": \"record\",\n" + "\t\"name\": \"TestRecord\",\n"
+      + "\t\"fields\": [\n" + "\t\t{\"name\": \"key\", \"type\": \"string\"},\n"
+      + "\t\t{\"name\": \"value\", \"type\": \"string\"}\n" + "\t]\n" + "}";
   protected static final String KEY_FIELD = "key";
   protected static final String VALUE_FIELD = "value";
   protected static final int VALUE_SCHEMA_ID = 1;

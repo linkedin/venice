@@ -1,8 +1,6 @@
 package com.linkedin.venice.serializer;
 
-
 import com.linkedin.venice.exceptions.VeniceException;
-
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import org.apache.avro.io.BinaryEncoder;
@@ -11,6 +9,7 @@ import org.apache.avro.io.BinaryEncoder;
 public interface RecordSerializer<T> {
   interface ReusableObjects {
     BinaryEncoder getBinaryEncoder();
+
     ByteArrayOutputStream getByteArrayOutputStream();
   }
 
@@ -18,7 +17,8 @@ public interface RecordSerializer<T> {
 
   byte[] serialize(T object, ReusableObjects reuse) throws VeniceException;
 
-  byte[] serialize(T object, BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) throws VeniceException;
+  byte[] serialize(T object, BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream)
+      throws VeniceException;
 
   byte[] serializeObjects(Iterable<T> objects) throws VeniceException;
 
@@ -40,5 +40,9 @@ public interface RecordSerializer<T> {
 
   byte[] serializeObjects(Iterable<T> objects, ByteBuffer prefix, ReusableObjects reuse) throws VeniceException;
 
-  byte[] serializeObjects(Iterable<T> objects, ByteBuffer prefix, BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) throws VeniceException;
+  byte[] serializeObjects(
+      Iterable<T> objects,
+      ByteBuffer prefix,
+      BinaryEncoder reusedEncoder,
+      ByteArrayOutputStream reusedOutputStream) throws VeniceException;
 }

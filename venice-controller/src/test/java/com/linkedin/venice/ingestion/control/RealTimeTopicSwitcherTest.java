@@ -1,5 +1,9 @@
 package com.linkedin.venice.ingestion.control;
 
+import static com.linkedin.venice.meta.BufferReplayPolicy.*;
+import static org.mockito.Mockito.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.DataReplicationPolicy;
@@ -21,9 +25,6 @@ import org.apache.kafka.common.PartitionInfo;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.meta.BufferReplayPolicy.*;
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
 
 public class RealTimeTopicSwitcherTest {
   private RealTimeTopicSwitcher leaderStorageNodeReplicator;
@@ -38,8 +39,8 @@ public class RealTimeTopicSwitcherTest {
     Properties properties = new Properties();
     properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "dummy");
     // filler bootstrap servers
-    leaderStorageNodeReplicator = new RealTimeTopicSwitcher(
-        mockTopicManager, mockVeniceWriterFactory, new VeniceProperties(properties));
+    leaderStorageNodeReplicator =
+        new RealTimeTopicSwitcher(mockTopicManager, mockVeniceWriterFactory, new VeniceProperties(properties));
   }
 
   @Test
@@ -64,8 +65,12 @@ public class RealTimeTopicSwitcherTest {
     doReturn(mockVeniceWriter).when(mockVeniceWriterFactory)
         .createBasicVeniceWriter(anyString(), any(Time.class), any(VenicePartitioner.class), anyInt());
 
-
-    leaderStorageNodeReplicator.switchToRealTimeTopic(srcTopic, destTopic, mockStore, aggregateRealTimeSourceKafkaUrl, Collections.emptyList());
+    leaderStorageNodeReplicator.switchToRealTimeTopic(
+        srcTopic,
+        destTopic,
+        mockStore,
+        aggregateRealTimeSourceKafkaUrl,
+        Collections.emptyList());
 
     verify(mockVeniceWriter).broadcastTopicSwitch(any(), anyString(), anyLong(), any());
   }
@@ -94,7 +99,12 @@ public class RealTimeTopicSwitcherTest {
     doReturn(mockVeniceWriter).when(mockVeniceWriterFactory)
         .createBasicVeniceWriter(anyString(), any(Time.class), any(VenicePartitioner.class), anyInt());
 
-    leaderStorageNodeReplicator.switchToRealTimeTopic(srcTopic, destTopic, mockStore, aggregateRealTimeSourceKafkaUrl, Collections.emptyList());
+    leaderStorageNodeReplicator.switchToRealTimeTopic(
+        srcTopic,
+        destTopic,
+        mockStore,
+        aggregateRealTimeSourceKafkaUrl,
+        Collections.emptyList());
 
     List<CharSequence> expectedSourceClusters = new ArrayList<>();
     expectedSourceClusters.add(aggregateRealTimeSourceKafkaUrl);

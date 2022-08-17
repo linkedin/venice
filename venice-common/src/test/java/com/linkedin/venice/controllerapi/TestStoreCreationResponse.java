@@ -20,8 +20,7 @@ public class TestStoreCreationResponse {
   static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
 
   @Test
-  public void creationResponseCanBeSerialized()
-      throws IOException {
+  public void creationResponseCanBeSerialized() throws IOException {
     VersionCreationResponse obj = new VersionCreationResponse();
     obj.setName(STORENAME);
     obj.setKafkaBootstrapServers(KAFKA);

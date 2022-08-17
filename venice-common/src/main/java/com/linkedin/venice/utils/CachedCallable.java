@@ -1,6 +1,5 @@
 package com.linkedin.venice.utils;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -32,7 +31,7 @@ public class CachedCallable<T> implements Callable<T> {
   public T call() throws Exception {
     T value = valueRef.get();
     long now = time.getMilliseconds();
-    if (value == null || now -lastCalledMs > ttlMs) {
+    if (value == null || now - lastCalledMs > ttlMs) {
       T newValue = inner.call();
       if (valueRef.compareAndSet(value, newValue)) {
         lastCalledMs = now;

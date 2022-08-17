@@ -13,15 +13,24 @@ import java.util.concurrent.atomic.DoubleAccumulator;
  */
 public class MetricsUtils {
   public static double getMax(String metricName, List<? extends MetricsAware> metricsAwareWrapperList) {
-    return getMetricValue(metricName, metricsAwareWrapperList, new DoubleAccumulator((left, right) -> Math.max(left, right), Double.MIN_VALUE));
+    return getMetricValue(
+        metricName,
+        metricsAwareWrapperList,
+        new DoubleAccumulator((left, right) -> Math.max(left, right), Double.MIN_VALUE));
   }
 
   public static double getMin(String metricName, List<? extends MetricsAware> metricsAwareWrapperList) {
-    return getMetricValue(metricName, metricsAwareWrapperList, new DoubleAccumulator((left, right) -> Math.min(left, right), Double.MAX_VALUE));
+    return getMetricValue(
+        metricName,
+        metricsAwareWrapperList,
+        new DoubleAccumulator((left, right) -> Math.min(left, right), Double.MAX_VALUE));
   }
 
   public static double getSum(String metricName, List<? extends MetricsAware> metricsAwareWrapperList) {
-    return getMetricValue(metricName, metricsAwareWrapperList, new DoubleAccumulator((left, right) -> left + right, 0.0));
+    return getMetricValue(
+        metricName,
+        metricsAwareWrapperList,
+        new DoubleAccumulator((left, right) -> left + right, 0.0));
   }
 
   public static double getAvg(String metricName, List<? extends MetricsAware> metricsAwareWrapperList) {
@@ -32,8 +41,11 @@ public class MetricsUtils {
     }, 0.0));
   }
 
-  public static double getMetricValue(String metricName, List<? extends MetricsAware> metricsAwareWrapperList, DoubleAccumulator accumulator) {
-    for (MetricsAware metricsAware : metricsAwareWrapperList) {
+  public static double getMetricValue(
+      String metricName,
+      List<? extends MetricsAware> metricsAwareWrapperList,
+      DoubleAccumulator accumulator) {
+    for (MetricsAware metricsAware: metricsAwareWrapperList) {
       MetricsRepository metricsRepository = metricsAware.getMetricsRepository();
       Map<String, ? extends Metric> metrics = metricsRepository.metrics();
       if (metrics.containsKey(metricName)) {

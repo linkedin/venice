@@ -1,17 +1,17 @@
 package com.linkedin.venice.stats;
 
+import static com.linkedin.venice.stats.AbstractVeniceAggStats.*;
+
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
-import io.tehuti.metrics.TehutiMetric;
 import io.tehuti.metrics.stats.Percentiles;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 
-import static com.linkedin.venice.stats.AbstractVeniceAggStats.*;
 
 public class AbstractVeniceStats {
   public static final String DELIMITER = "--";
@@ -22,7 +22,8 @@ public class AbstractVeniceStats {
 
   public AbstractVeniceStats(MetricsRepository metricsRepository, String name) {
     this.metricsRepository = metricsRepository;
-    // N.B. colons are illegal characters in mbeans and Tehuti splits the metric name by dot character to get sensor name
+    // N.B. colons are illegal characters in mbeans and Tehuti splits the metric name by dot character to get sensor
+    // name
     // and attribute name, so they cause issues if we let them slip in...
     this.name = name.replace(':', '_').replace(".", "_");
     this.sensors = new VeniceConcurrentHashMap<>();
@@ -33,7 +34,7 @@ public class AbstractVeniceStats {
   }
 
   public String getName() {
-    //add "." in front of the name because dot separator is a must in Tehuti to split package name and sensor name
+    // add "." in front of the name because dot separator is a must in Tehuti to split package name and sensor name
     return "." + name;
   }
 
@@ -41,7 +42,10 @@ public class AbstractVeniceStats {
     return registerSensor(getSensorFullName(getName(), sensorName), null, null, stats);
   }
 
-  protected Sensor registerSensorWithAttributeOverride(String sensorName, String attributeName, MeasurableStat... stats) {
+  protected Sensor registerSensorWithAttributeOverride(
+      String sensorName,
+      String attributeName,
+      MeasurableStat... stats) {
     return registerSensor(getSensorFullName(getName(), sensorName), Optional.of(attributeName), null, null, stats);
   }
 
@@ -49,12 +53,21 @@ public class AbstractVeniceStats {
     return registerSensor(getSensorFullName(getName(), sensorName), null, parents, stats);
   }
 
-  protected Sensor registerSensor(String sensorFullName, MetricConfig config, Sensor[] parents, MeasurableStat... stats) {
+  protected Sensor registerSensor(
+      String sensorFullName,
+      MetricConfig config,
+      Sensor[] parents,
+      MeasurableStat... stats) {
     return registerSensor(sensorFullName, Optional.empty(), config, parents, stats);
   }
 
   @SuppressWarnings("SynchronizationOnLocalVariableOrMethodParameter")
-  protected Sensor registerSensor(String sensorFullName, Optional<String> attributeName, MetricConfig config, Sensor[] parents, MeasurableStat... stats) {
+  protected Sensor registerSensor(
+      String sensorFullName,
+      Optional<String> attributeName,
+      MetricConfig config,
+      Sensor[] parents,
+      MeasurableStat... stats) {
     return sensors.computeIfAbsent(sensorFullName, key -> {
       /**
        * The sensors concurrentmap will not prevent other objects working on the same metrics repository to execute
@@ -67,11 +80,12 @@ public class AbstractVeniceStats {
        * multiple times the contention will be minimal
        */
       Sensor sensor = metricsRepository.sensor(sensorFullName, parents);
-      synchronized (sensor){
-        for (MeasurableStat stat : stats) {
+      synchronized (sensor) {
+        for (MeasurableStat stat: stats) {
           if (stat instanceof Percentiles) {
             Percentiles percentilesStat = (Percentiles) stat;
-            if (percentilesStat.stats().size() > 0 ) { // Only checking one is enough to determine if we have already added this set
+            if (percentilesStat.stats().size() > 0) { // Only checking one is enough to determine if we have already
+                                                      // added this set
               String metricName = percentilesStat.stats().get(0).name();
               if (metricsRepository.getMetric(metricName) == null) {
                 sensor.add(percentilesStat, config);
@@ -93,10 +107,13 @@ public class AbstractVeniceStats {
     return registerSensorWithAggregate(sensorName, null, stats);
   }
 
-  protected Sensor registerSensorWithAggregate(String sensorName, MetricConfig config, Supplier<MeasurableStat[]> stats) {
+  protected Sensor registerSensorWithAggregate(
+      String sensorName,
+      MetricConfig config,
+      Supplier<MeasurableStat[]> stats) {
     synchronized (AbstractVeniceStats.class) {
-      Sensor parent = registerSensorIfAbsent(STORE_NAME_FOR_TOTAL_STAT, sensorName, config,null, stats.get());
-      return registerSensorIfAbsent(getName(), sensorName, config, new Sensor[]{parent}, stats.get());
+      Sensor parent = registerSensorIfAbsent(STORE_NAME_FOR_TOTAL_STAT, sensorName, config, null, stats.get());
+      return registerSensorIfAbsent(getName(), sensorName, config, new Sensor[] { parent }, stats.get());
     }
   }
 
@@ -104,7 +121,12 @@ public class AbstractVeniceStats {
     return registerSensorIfAbsent(getName(), sensorName, null, null, stats);
   }
 
-  protected Sensor registerSensorIfAbsent(String resourceName, String sensorName, MetricConfig config, Sensor[] parents, MeasurableStat... stats) {
+  protected Sensor registerSensorIfAbsent(
+      String resourceName,
+      String sensorName,
+      MetricConfig config,
+      Sensor[] parents,
+      MeasurableStat... stats) {
     String fullSensorName = getSensorFullName(resourceName, sensorName);
     Sensor sensor = metricsRepository.getSensor(fullSensorName);
     if (null == sensor) {

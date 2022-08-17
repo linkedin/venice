@@ -9,6 +9,7 @@ import java.net.URI;
 public class DictionaryFetchRequest {
   private final String storeName;
   private final String resourceName;
+
   private DictionaryFetchRequest(String storeName, String resourceName) {
     this.storeName = storeName;
     this.resourceName = resourceName;
@@ -20,11 +21,11 @@ public class DictionaryFetchRequest {
     // Generating a URI lets us always take just the path but we need to add on the query string
     URI fullUri = URI.create(uri);
     String path = fullUri.getRawPath();
-    if (fullUri.getRawQuery() != null){
+    if (fullUri.getRawQuery() != null) {
       path += "?" + fullUri.getRawQuery();
     }
     String[] requestParts = path.split("/");
-    if (requestParts.length == 4) {//   [0]""/[1]"action"/[2]"store"/[3]"version"
+    if (requestParts.length == 4) {// [0]""/[1]"action"/[2]"store"/[3]"version"
       String storeName = requestParts[2];
       int storeVersion = Integer.parseInt(requestParts[3]);
 

@@ -1,6 +1,5 @@
 package com.linkedin.venice.stats;
 
-
 /**
  * This enum tracks the error codes that we use to report anomalies in metrics.
  *

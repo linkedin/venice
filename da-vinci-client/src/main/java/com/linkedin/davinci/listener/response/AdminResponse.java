@@ -72,7 +72,7 @@ public class AdminResponse {
       avroDatumWriter.write(storeVersionState, byteToHexJsonEncoder);
       byteToHexJsonEncoder.flush();
       output.flush();
-      responseRecord.storeVersionState =  new String(output.toByteArray());
+      responseRecord.storeVersionState = new String(output.toByteArray());
     } catch (IOException exception) {
       throw new VeniceException(exception);
     }
@@ -86,7 +86,7 @@ public class AdminResponse {
       responseRecord.serverConfigs = new ServerConfigSnapshot();
     }
     Map<CharSequence, CharSequence> configMap = new HashMap<>();
-    for (Map.Entry<Object, Object> entry : properties.entrySet()) {
+    for (Map.Entry<Object, Object> entry: properties.entrySet()) {
       configMap.put(String.valueOf(entry.getKey()), String.valueOf(entry.getValue()));
     }
     responseRecord.serverConfigs.configMap = configMap;

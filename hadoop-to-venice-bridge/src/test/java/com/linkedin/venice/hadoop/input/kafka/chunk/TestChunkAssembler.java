@@ -1,5 +1,7 @@
 package com.linkedin.venice.hadoop.input.kafka.chunk;
 
+import static com.linkedin.venice.hadoop.input.kafka.chunk.TestChunkingUtils.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
@@ -15,12 +17,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
-import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
-
 import org.testng.Assert;
 import org.testng.annotations.Test;
-import static com.linkedin.venice.hadoop.input.kafka.chunk.TestChunkingUtils.*;
 
 
 public class TestChunkAssembler {
@@ -28,11 +27,13 @@ public class TestChunkAssembler {
   // Since every invocation on this method should clear its internal state, all tests sharing one instance should work
   private final ChunkAssembler chunkAssembler = new ChunkAssembler();
 
-  private final static int CHUNK_MANIFEST_SCHEMA_ID = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+  private final static int CHUNK_MANIFEST_SCHEMA_ID =
+      AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
   private final static int CHUNK_VALUE_SCHEMA_ID = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
   private final static int VALUE_SCHEMA_ID = 1234;
   private final static int VALUE_SCHEMA_ID_2 = 2234;
-  private final static ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER = new ChunkedValueManifestSerializer(true);
+  private final static ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER =
+      new ChunkedValueManifestSerializer(true);
   private final static ChunkedKeySuffixSerializer CHUNKED_KEY_SUFFIX_SERIALIZER = new ChunkedKeySuffixSerializer();
 
   // E.g. chunk_0, chunk_1, … chunk_N, chunk_manifest
@@ -55,10 +56,10 @@ public class TestChunkAssembler {
         segmentNumber,
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0
-    );
+        0);
     Collections.shuffle(values);
-    Optional<ChunkAssembler.ValueBytesAndSchemaId> optionalAssembledValue = chunkAssembler.assembleAndGetValue(serializedKey, values);
+    Optional<ChunkAssembler.ValueBytesAndSchemaId> optionalAssembledValue =
+        chunkAssembler.assembleAndGetValue(serializedKey, values);
 
     ChunkAssembler.ValueBytesAndSchemaId assembledValue = optionalAssembledValue.orElse(null);
     Assert.assertNotNull(assembledValue);
@@ -67,7 +68,7 @@ public class TestChunkAssembler {
   }
 
   // E.g. chunk_0, chunk_1, … chunk_N (no manifest)
-  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*No regular value nor chunk manifest.*")
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*No regular value nor chunk manifest.*")
   public void testNoCompleteLargeValueWithMissingManifest() {
     final int totalChunkCount = 10;
     final int eachCountSizeInBytes = 20;
@@ -86,8 +87,7 @@ public class TestChunkAssembler {
         segmentNumber,
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0
-    );
+        0);
     values.remove(values.size() - 1); // Remove the last value which should be a manifest
     Collections.shuffle(values);
 
@@ -97,7 +97,7 @@ public class TestChunkAssembler {
   }
 
   // E.g. chunk_0, chunk_1, … chunk_N, chunk_N + 2, ... chunk_manifest (missing one chunk "chunk_N + 1")
-  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Cannot assemble a large value. Missing a chunk.*")
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Cannot assemble a large value. Missing a chunk.*")
   public void testNoCompleteLargeValueWithMissingChunk() {
     final int totalChunkCount = 10;
     final int eachCountSizeInBytes = 20;
@@ -114,15 +114,15 @@ public class TestChunkAssembler {
         segmentNumber,
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0
-    );
+        0);
     int indexOfMissingChunk = ThreadLocalRandom.current().nextInt(values.size() - 1);
     values.remove(indexOfMissingChunk); // Remove a chunk
     Collections.shuffle(values);
     chunkAssembler.assembleAndGetValue(serializedKey, values);
   }
 
-  // E.g. chunk_A_0, chunk_A_1, … chunk_A_N, chunk_A_manifest, chunk_B_0, chunk_B_1 ... chunk_B_M (no manifest for large value B)
+  // E.g. chunk_A_0, chunk_A_1, … chunk_A_N, chunk_A_manifest, chunk_B_0, chunk_B_1 ... chunk_B_M (no manifest for large
+  // value B)
   @Test
   public void testOneCompleteLargeValueAndOneIncompleteLargeValue() {
     final int totalChunkCount1 = 10;
@@ -149,8 +149,7 @@ public class TestChunkAssembler {
         chunkId1.segmentNumber,
         chunkId1.messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0
-    );
+        0);
 
     List<KafkaInputMapperValue> values2 = createKafkaInputMapperValues(
         serializedKey,
@@ -160,8 +159,7 @@ public class TestChunkAssembler {
         chunkId2.segmentNumber,
         chunkId2.messageSequenceNumber,
         VALUE_SCHEMA_ID_2,
-        totalChunkCount1 + 1
-    );
+        totalChunkCount1 + 1);
 
     values2.remove(values2.size() - 1); // Remove the manifest from the second sequence
     List<KafkaInputMapperValue> allValues = new ArrayList<>();
@@ -179,8 +177,9 @@ public class TestChunkAssembler {
     Assert.assertEquals(assembledValue.getBytes(), createChunkBytes(0, totalChunkCount1 * eachCountSizeInBytes1));
   }
 
-  // E.g. chunk_A_0, chunk_A_1, … chunk_A_N, chunk_A_manifest, chunk_B_0, chunk_B_2 ... chunk_B_manifest (missing chunk in large value B)
-  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Cannot assemble a large value. Missing a chunk.*")
+  // E.g. chunk_A_0, chunk_A_1, … chunk_A_N, chunk_A_manifest, chunk_B_0, chunk_B_2 ... chunk_B_manifest (missing chunk
+  // in large value B)
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Cannot assemble a large value. Missing a chunk.*")
   public void testOneCompleteLargeValueAndOneIncompleteLargeValueCase2() {
     final int totalChunkCount1 = 10;
     final int eachCountSizeInBytes1 = 20;
@@ -206,8 +205,7 @@ public class TestChunkAssembler {
         chunkId1.segmentNumber,
         chunkId1.messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0
-    );
+        0);
 
     List<KafkaInputMapperValue> values2 = createKafkaInputMapperValues(
         serializedKey,
@@ -217,8 +215,7 @@ public class TestChunkAssembler {
         chunkId2.segmentNumber,
         chunkId2.messageSequenceNumber,
         VALUE_SCHEMA_ID_2,
-        totalChunkCount1
-    );
+        totalChunkCount1);
 
     int indexOfMissingChunk = ThreadLocalRandom.current().nextInt(values2.size() - 1);
     values2.remove(indexOfMissingChunk); // Remove a chunk from the second sequence
@@ -228,7 +225,8 @@ public class TestChunkAssembler {
     chunkAssembler.assembleAndGetValue(serializedKey, allValues);
   }
 
-  // E.g. chunk_A_0, chunk_A_1, … chunk_A_N, chunk_A_manifest, chunk_B_0, chunk_B_1 ... chunk_B_manifest (2 complete large values)
+  // E.g. chunk_A_0, chunk_A_1, … chunk_A_N, chunk_A_manifest, chunk_B_0, chunk_B_1 ... chunk_B_manifest (2 complete
+  // large values)
   @Test
   public void testTwoCompleteLargeValues() {
     final int totalChunkCount1 = 10;
@@ -255,8 +253,7 @@ public class TestChunkAssembler {
         chunkId1.segmentNumber,
         chunkId1.messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0
-    );
+        0);
 
     List<KafkaInputMapperValue> values2 = createKafkaInputMapperValues(
         serializedKey,
@@ -266,8 +263,7 @@ public class TestChunkAssembler {
         chunkId2.segmentNumber,
         chunkId2.messageSequenceNumber,
         VALUE_SCHEMA_ID_2,
-        totalChunkCount1
-    );
+        totalChunkCount1);
     List<KafkaInputMapperValue> allValues = new ArrayList<>();
     allValues.addAll(values1);
     allValues.addAll(values2);
@@ -309,8 +305,7 @@ public class TestChunkAssembler {
         chunkId1.segmentNumber,
         chunkId1.messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0
-    );
+        0);
 
     // Simulate a duplicated chunk
     KafkaInputMapperValue randomChunk = values1.get(ThreadLocalRandom.current().nextInt(values1.size() - 1));
@@ -330,8 +325,7 @@ public class TestChunkAssembler {
         chunkId2.segmentNumber,
         chunkId2.messageSequenceNumber,
         VALUE_SCHEMA_ID_2,
-        totalChunkCount1 + 1
-    );
+        totalChunkCount1 + 1);
     List<KafkaInputMapperValue> allValues = new ArrayList<>();
     allValues.addAll(values1);
     allValues.addAll(values2);
@@ -346,7 +340,8 @@ public class TestChunkAssembler {
     Assert.assertEquals(assembledValue.getBytes(), createChunkBytes(0, totalChunkCount2 * eachCountSizeInBytes2));
   }
 
-  // E.g. chunk_A_0, chunk_A_1, … chunk_A_N, chunk_A_manifest, chunk_A_manifest, chunk_B_0, chunk_B_0, chunk_B_1 ... chunk_B_manifest
+  // E.g. chunk_A_0, chunk_A_1, … chunk_A_N, chunk_A_manifest, chunk_A_manifest, chunk_B_0, chunk_B_0, chunk_B_1 ...
+  // chunk_B_manifest
   @Test
   public void testTwoCompleteLargeValuesWithOneDuplicatedManifest() {
     final int totalChunkCount1 = 10;
@@ -373,8 +368,7 @@ public class TestChunkAssembler {
         chunkId1.segmentNumber,
         chunkId1.messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0
-    );
+        0);
 
     // Simulate a duplicated manifest
     KafkaInputMapperValue manifestValue = values1.get(values1.size() - 1);
@@ -394,8 +388,7 @@ public class TestChunkAssembler {
         chunkId2.segmentNumber,
         chunkId2.messageSequenceNumber,
         VALUE_SCHEMA_ID_2,
-        totalChunkCount1 + 1
-    );
+        totalChunkCount1 + 1);
     List<KafkaInputMapperValue> allValues = new ArrayList<>();
     allValues.addAll(values1);
     allValues.addAll(values2);
@@ -429,8 +422,7 @@ public class TestChunkAssembler {
         segmentNumber,
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0
-    );
+        0);
     byte[] regularValueBytes = createChunkBytes(100, 23);
     values.add(createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, totalChunkCount + 1, MapperValueType.PUT));
     Collections.shuffle(values);
@@ -462,8 +454,7 @@ public class TestChunkAssembler {
         segmentNumber,
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0
-    );
+        0);
     // Randomly remove a value to simulate the incomplete large value
     values.remove(ThreadLocalRandom.current().nextInt(values.size()));
 
@@ -493,7 +484,8 @@ public class TestChunkAssembler {
     List<KafkaInputMapperValue> values = new ArrayList<>(3);
     values.add(createRegularValue(value1Bytes, VALUE_SCHEMA_ID_2, value1Offset, MapperValueType.PUT));
     values.add(createRegularValue(value2Bytes, VALUE_SCHEMA_ID_2, value2Offset, MapperValueType.PUT));
-    values.add(createRegularValue(value3Bytes, VALUE_SCHEMA_ID_2, value3Offset, MapperValueType.PUT)); // The third value wins
+    values.add(createRegularValue(value3Bytes, VALUE_SCHEMA_ID_2, value3Offset, MapperValueType.PUT)); // The third
+                                                                                                       // value wins
     Collections.shuffle(values);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
@@ -519,7 +511,8 @@ public class TestChunkAssembler {
     List<KafkaInputMapperValue> values = new ArrayList<>(3);
     values.add(createRegularValue(value1Bytes, VALUE_SCHEMA_ID_2, value1Offset, MapperValueType.PUT));
     values.add(createRegularValue(new byte[0], -1, value2Offset, MapperValueType.DELETE));
-    values.add(createRegularValue(value3Bytes, VALUE_SCHEMA_ID_2, value3Offset, MapperValueType.PUT)); // The third value wins
+    values.add(createRegularValue(value3Bytes, VALUE_SCHEMA_ID_2, value3Offset, MapperValueType.PUT)); // The third
+                                                                                                       // value wins
     Collections.shuffle(values);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
@@ -551,8 +544,7 @@ public class TestChunkAssembler {
         segmentNumber,
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0
-    );
+        0);
     // "Delete value" at the end
     values.add(createRegularValue(new byte[0], -1, totalChunkCount + 1, MapperValueType.DELETE));
     Collections.shuffle(values);
@@ -580,8 +572,7 @@ public class TestChunkAssembler {
         segmentNumber,
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0
-    );
+        0);
     // Randomly remove a value to simulate the incomplete large value
     values.remove(ThreadLocalRandom.current().nextInt(values.size()));
 
@@ -616,7 +607,7 @@ public class TestChunkAssembler {
     Assert.assertFalse(optionalAssembledValue.isPresent());
   }
 
-  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Cannot assemble a large value. Missing a chunk.*")
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Cannot assemble a large value. Missing a chunk.*")
   public void testRegularValueAndIncompleteLargeValue() { // regular value wins
     final int totalChunkCount = 10;
     final int eachCountSizeInBytes = 20;
@@ -639,9 +630,7 @@ public class TestChunkAssembler {
             segmentNumber,
             messageSequenceNumber,
             VALUE_SCHEMA_ID,
-            1
-        )
-    );
+            1));
     // Randomly remove a value chunk to simulate the incomplete large value
     values.remove(ThreadLocalRandom.current().nextInt(values.size() - 2) + 1);
 
@@ -678,9 +667,7 @@ public class TestChunkAssembler {
             segmentNumber,
             messageSequenceNumber,
             VALUE_SCHEMA_ID,
-            1
-        )
-    );
+            1));
     Collections.shuffle(values);
     Optional<ChunkAssembler.ValueBytesAndSchemaId> optionalAssembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values);
@@ -714,9 +701,7 @@ public class TestChunkAssembler {
             segmentNumber,
             messageSequenceNumber,
             VALUE_SCHEMA_ID,
-            1
-        )
-    );
+            1));
     Collections.shuffle(values);
     Optional<ChunkAssembler.ValueBytesAndSchemaId> optionalAssembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values);
@@ -727,7 +712,7 @@ public class TestChunkAssembler {
     Assert.assertEquals(assembledValue.getBytes(), createChunkBytes(0, totalChunkCount * eachCountSizeInBytes));
   }
 
-  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Cannot assemble a large value. Missing a chunk.*")
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Cannot assemble a large value. Missing a chunk.*")
   public void testDeleteValueAndIncompleteLargeValue() {
     final int totalChunkCount = 10;
     final int eachCountSizeInBytes = 20;
@@ -749,9 +734,7 @@ public class TestChunkAssembler {
             segmentNumber,
             messageSequenceNumber,
             VALUE_SCHEMA_ID,
-            1
-        )
-    );
+            1));
     // Randomly remove a chunk value to simulate the incomplete large value
     values.remove(ThreadLocalRandom.current().nextInt(values.size() - 2) + 1);
 
@@ -762,10 +745,14 @@ public class TestChunkAssembler {
     Assert.assertFalse(optionalAssembledValue.isPresent());
   }
 
-  private KafkaInputMapperValue createRegularValue(byte[] valueBytes, int schemaId, int offset, MapperValueType valueType) {
+  private KafkaInputMapperValue createRegularValue(
+      byte[] valueBytes,
+      int schemaId,
+      int offset,
+      MapperValueType valueType) {
     KafkaInputMapperValue regularValue = new KafkaInputMapperValue();
-    regularValue.chunkedKeySuffix =
-        ByteBuffer.wrap(CHUNKED_KEY_SUFFIX_SERIALIZER.serialize("", KeyWithChunkingSuffixSerializer.NON_CHUNK_KEY_SUFFIX));
+    regularValue.chunkedKeySuffix = ByteBuffer
+        .wrap(CHUNKED_KEY_SUFFIX_SERIALIZER.serialize("", KeyWithChunkingSuffixSerializer.NON_CHUNK_KEY_SUFFIX));
     regularValue.schemaId = schemaId;
     regularValue.offset = offset;
     regularValue.value = ByteBuffer.wrap(valueBytes);
@@ -784,8 +771,7 @@ public class TestChunkAssembler {
       int segmentNumber,
       int messageSequenceNumber,
       int valueSchemaID,
-      int startOffset
-  ) {
+      int startOffset) {
     List<KafkaInputMapperValue> values = new ArrayList<>(totalChunkCount + 1);
     KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
     final ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
@@ -805,7 +791,8 @@ public class TestChunkAssembler {
       values.add(mapperValue);
       currStartingByteValue += eachCountSizeInBytes;
 
-      ByteBuffer keyWithSuffix = ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkedKeySuffix));
+      ByteBuffer keyWithSuffix =
+          ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkedKeySuffix));
       chunkedValueManifest.keysWithChunkIdSuffix.add(keyWithSuffix);
     }
 
@@ -816,8 +803,8 @@ public class TestChunkAssembler {
     lastMapperValue.offset = currOffset;
     lastMapperValue.schemaId = CHUNK_MANIFEST_SCHEMA_ID;
     lastMapperValue.value = ByteBuffer.wrap(CHUNKED_VALUE_MANIFEST_SERIALIZER.serialize("", chunkedValueManifest));
-    lastMapperValue.chunkedKeySuffix =
-        ByteBuffer.wrap(CHUNKED_KEY_SUFFIX_SERIALIZER.serialize("", KeyWithChunkingSuffixSerializer.NON_CHUNK_KEY_SUFFIX));
+    lastMapperValue.chunkedKeySuffix = ByteBuffer
+        .wrap(CHUNKED_KEY_SUFFIX_SERIALIZER.serialize("", KeyWithChunkingSuffixSerializer.NON_CHUNK_KEY_SUFFIX));
 
     values.add(lastMapperValue);
     return values;

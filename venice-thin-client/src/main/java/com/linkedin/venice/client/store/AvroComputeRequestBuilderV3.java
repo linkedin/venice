@@ -1,5 +1,8 @@
 package com.linkedin.venice.client.store;
 
+import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.*;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.predicate.Predicate;
@@ -22,9 +25,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
 
-import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.*;
-
 
 /**
  * This class is used to build a {@link ComputeRequestWrapper} object according to the specification,
@@ -35,26 +35,49 @@ import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperatio
  * @param <K>
  */
 public class AvroComputeRequestBuilderV3<K> extends AbstractAvroComputeRequestBuilder<K> {
-  private static final Schema COUNT_RESULT_SCHEMA = Schema.createUnion(Arrays.asList(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.INT)));
+  private static final Schema COUNT_RESULT_SCHEMA =
+      Schema.createUnion(Arrays.asList(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.INT)));
   private static final String COUNT_SPEC = "count_spec";
   private List<Count> countLists = new LinkedList<>();
 
   private static final int computeRequestVersion = COMPUTE_REQUEST_VERSION_V3;
 
-  public AvroComputeRequestBuilderV3(Schema latestValueSchema, AvroGenericReadComputeStoreClient storeClient,
-      Optional<ClientStats> stats, Optional<ClientStats> streamingStats) {
+  public AvroComputeRequestBuilderV3(
+      Schema latestValueSchema,
+      AvroGenericReadComputeStoreClient storeClient,
+      Optional<ClientStats> stats,
+      Optional<ClientStats> streamingStats) {
     this(latestValueSchema, storeClient, stats, streamingStats, new SystemTime(), false, null, null);
   }
 
-  public AvroComputeRequestBuilderV3(Schema latestValueSchema, AvroGenericReadComputeStoreClient storeClient,
-      Optional<ClientStats> stats, Optional<ClientStats> streamingStats, boolean reuseObjects,
-      BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) {
-    this(latestValueSchema, storeClient, stats, streamingStats, new SystemTime(), reuseObjects, reusedEncoder, reusedOutputStream);
+  public AvroComputeRequestBuilderV3(
+      Schema latestValueSchema,
+      AvroGenericReadComputeStoreClient storeClient,
+      Optional<ClientStats> stats,
+      Optional<ClientStats> streamingStats,
+      boolean reuseObjects,
+      BinaryEncoder reusedEncoder,
+      ByteArrayOutputStream reusedOutputStream) {
+    this(
+        latestValueSchema,
+        storeClient,
+        stats,
+        streamingStats,
+        new SystemTime(),
+        reuseObjects,
+        reusedEncoder,
+        reusedOutputStream);
   }
 
-  public AvroComputeRequestBuilderV3(Schema latestValueSchema, AvroGenericReadComputeStoreClient storeClient,
-      Optional<ClientStats> stats, Optional<ClientStats> streamingStats, Time time, boolean reuseObjects,
-      BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) {
+  public AvroComputeRequestBuilderV3(
+      Schema latestValueSchema,
+      AvroGenericReadComputeStoreClient storeClient,
+      Optional<ClientStats> stats,
+      Optional<ClientStats> streamingStats,
+      Time time,
+      boolean reuseObjects,
+      BinaryEncoder reusedEncoder,
+      ByteArrayOutputStream reusedOutputStream) {
     super(latestValueSchema, storeClient, stats, streamingStats, time, reuseObjects, reusedEncoder, reusedOutputStream);
   }
 
@@ -63,7 +86,7 @@ public class AvroComputeRequestBuilderV3<K> extends AbstractAvroComputeRequestBu
     Map<String, Object> computeSpec = getCommonComputeSpec();
 
     List<Pair<CharSequence, CharSequence>> countPairs = new LinkedList<>();
-    countLists.forEach( count -> {
+    countLists.forEach(count -> {
       countPairs.add(Pair.create(count.field, count.resultFieldName));
     });
     computeSpec.put(COUNT_SPEC, countPairs);
@@ -76,15 +99,18 @@ public class AvroComputeRequestBuilderV3<K> extends AbstractAvroComputeRequestBu
       // Check the validity first
       Set<String> computeResultFields = commonValidityCheck();
 
-      countLists.forEach(count -> checkComputeFieldValidity(count.field.toString(), count.resultFieldName.toString(), computeResultFields, COUNT));
+      countLists.forEach(
+          count -> checkComputeFieldValidity(
+              count.field.toString(),
+              count.resultFieldName.toString(),
+              computeResultFields,
+              COUNT));
 
       // Generate result schema
       List<Schema.Field> resultSchemaFields = getCommonResultFields();
-      countLists.forEach( count -> {
-        Schema.Field countField = AvroCompatibilityHelper.createSchemaField(count.resultFieldName.toString(),
-            COUNT_RESULT_SCHEMA,
-            "",
-            null);
+      countLists.forEach(count -> {
+        Schema.Field countField =
+            AvroCompatibilityHelper.createSchemaField(count.resultFieldName.toString(), COUNT_RESULT_SCHEMA, "", null);
         resultSchemaFields.add(countField);
       });
 
@@ -105,10 +131,10 @@ public class AvroComputeRequestBuilderV3<K> extends AbstractAvroComputeRequestBu
     return computeRequestWrapper;
   }
 
-  protected List<ComputeOperation> getComputeRequestOperations(){
+  protected List<ComputeOperation> getComputeRequestOperations() {
     List<ComputeOperation> operations = getCommonComputeOperations();
 
-    countLists.forEach( count -> {
+    countLists.forEach(count -> {
       ComputeOperation computeOperation = new ComputeOperation();
       computeOperation.operationType = COUNT.getValue();
       computeOperation.operation = count;

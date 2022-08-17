@@ -16,7 +16,6 @@ public class ErrorPartitionStats extends AbstractVeniceStats {
   private final Sensor currentVersionErrorPartitionUnrecoverableFromReset;
   private final Sensor errorPartitionProcessingTime;
 
-
   public ErrorPartitionStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
 

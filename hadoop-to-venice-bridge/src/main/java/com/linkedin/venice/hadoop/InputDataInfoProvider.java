@@ -8,7 +8,6 @@ import org.apache.avro.Schema;
  * This interface lets users get input data information
  */
 public interface InputDataInfoProvider extends Closeable {
-
   /**
    * A POJO that contains input data information (schema information and input data file size)
    */
@@ -19,7 +18,8 @@ public interface InputDataInfoProvider extends Closeable {
 
     InputDataInfo(VenicePushJob.SchemaInfo schemaInfo, long inputFileDataSizeInBytes, boolean hasRecords) {
       if (inputFileDataSizeInBytes <= 0) {
-        throw new IllegalArgumentException("The input data file size is expected to be positive. Got: " + inputFileDataSizeInBytes);
+        throw new IllegalArgumentException(
+            "The input data file size is expected to be positive. Got: " + inputFileDataSizeInBytes);
       }
       this.schemaInfo = schemaInfo;
       this.inputFileDataSizeInBytes = inputFileDataSizeInBytes;

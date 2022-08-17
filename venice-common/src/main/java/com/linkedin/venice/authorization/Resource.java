@@ -5,7 +5,6 @@ package com.linkedin.venice.authorization;
  * This is an immutable class.
  */
 public class Resource {
-
   private final String name;
 
   public Resource(String name) {

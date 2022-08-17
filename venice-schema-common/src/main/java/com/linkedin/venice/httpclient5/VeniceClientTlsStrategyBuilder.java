@@ -22,8 +22,7 @@ import org.apache.hc.core5.util.ReflectionUtils;
  * The only change is in function: {@link #build}, and this class will return {@link VeniceClientTlsStrategy}
  * instead of {@link org.apache.hc.client5.http.ssl.DefaultClientTlsStrategy}.
  */
-public class VeniceClientTlsStrategyBuilder  {
-
+public class VeniceClientTlsStrategyBuilder {
   public static VeniceClientTlsStrategyBuilder create() {
     return new VeniceClientTlsStrategyBuilder();
   }
@@ -131,8 +130,7 @@ public class VeniceClientTlsStrategyBuilder  {
         @Override
         public TlsDetails create(final SSLEngine sslEngine) {
           final SSLSession sslSession = sslEngine.getSession();
-          final String applicationProtocol = ReflectionUtils.callGetter(sslEngine,
-              "ApplicationProtocol", String.class);
+          final String applicationProtocol = ReflectionUtils.callGetter(sslEngine, "ApplicationProtocol", String.class);
           return new TlsDetails(sslSession, applicationProtocol);
         }
       };

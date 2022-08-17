@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.linkedin.venice.systemstore.schemas.StorePartitionerConfig;
 import java.util.Map;
 
+
 /**
  * This interface defines all the public APIs, and if you need to add accessors to
  * some new fields, this interface needs to be changed accordingly.
@@ -20,7 +21,7 @@ public interface PartitionerConfig extends DataModelBackedStructure<StorePartiti
 
   void setPartitionerClass(String partitionerClass);
 
-  void setPartitionerParams(Map<String, String> partitionerParams) ;
+  void setPartitionerParams(Map<String, String> partitionerParams);
 
   PartitionerConfig clone();
 }

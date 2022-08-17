@@ -3,8 +3,8 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.VeniceSerializer;
 import com.linkedin.venice.schema.SchemaEntry;
-
 import java.io.IOException;
+
 
 /**
  * This class to use to serialize/deserialize Zookeeper node

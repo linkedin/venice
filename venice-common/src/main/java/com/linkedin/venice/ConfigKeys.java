@@ -3,8 +3,10 @@ package com.linkedin.venice;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 
+
 public class ConfigKeys {
-  private ConfigKeys() {}
+  private ConfigKeys() {
+  }
 
   // cluster specific properties
   public static final String CLUSTER_NAME = "cluster.name";
@@ -14,7 +16,6 @@ public class ConfigKeys {
   public static final String OFFSET_MANAGER_FLUSH_INTERVAL_MS = "offset.manager.flush.interval.ms";
   public static final String OFFSET_MANAGER_LOG_FILE_MAX_BYTES = "offset.manager.log.file.max.bytes";
   public static final String ZOOKEEPER_ADDRESS = "zookeeper.address";
-
 
   public static final String ADMIN_PORT = "admin.port";
   public static final String ADMIN_SECURE_PORT = "admin.secure.port";
@@ -37,18 +38,25 @@ public class ConfigKeys {
   public static final String KAFKA_BROKER_PORT = "kafka.broker.port";
   public static final String KAFKA_CONSUMER_FETCH_BUFFER_SIZE = "kafka.consumer.fetch.buffer.size";
   public static final String KAFKA_CONSUMER_SOCKET_TIMEOUT_MS = "kafka.consumer.socket.timeout.ms";
-  public static final String KAFKA_CONSUMER_NUM_METADATA_REFRESH_RETRIES = "kafka.consumer.num.metadata.refresh.retries";
+  public static final String KAFKA_CONSUMER_NUM_METADATA_REFRESH_RETRIES =
+      "kafka.consumer.num.metadata.refresh.retries";
   public static final String KAFKA_CONSUMER_METADATA_REFRESH_BACKOFF_MS = "kafka.consumer.metadata.refresh.backoff.ms";
 
   public static final String KAFKA_BOOTSTRAP_SERVERS = "kafka.bootstrap.servers";
   public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = "ssl.kafka.bootstrap.servers";
-  public static final String KAFKA_ADMIN_GET_TOPIC_CONFG_MAX_RETRY_TIME_SEC = "kafka.admin.get.topic.config.max.retry.sec";
+  public static final String KAFKA_ADMIN_GET_TOPIC_CONFG_MAX_RETRY_TIME_SEC =
+      "kafka.admin.get.topic.config.max.retry.sec";
 
-  public static final String KAFKA_REQUEST_TIMEOUT_MS = ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG;
-  public static final String KAFKA_DELIVERY_TIMEOUT_MS = ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG;
-  public static final String KAFKA_MAX_BLOCK_MS = ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.MAX_BLOCK_MS_CONFIG;
-  public static final String KAFKA_LINGER_MS = ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.LINGER_MS_CONFIG;
-  public static final String KAFKA_BATCH_SIZE = ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.BATCH_SIZE_CONFIG;
+  public static final String KAFKA_REQUEST_TIMEOUT_MS =
+      ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG;
+  public static final String KAFKA_DELIVERY_TIMEOUT_MS =
+      ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG;
+  public static final String KAFKA_MAX_BLOCK_MS =
+      ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.MAX_BLOCK_MS_CONFIG;
+  public static final String KAFKA_LINGER_MS =
+      ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.LINGER_MS_CONFIG;
+  public static final String KAFKA_BATCH_SIZE =
+      ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.BATCH_SIZE_CONFIG;
   /**
    * The time window used by the consumption throttler. Throttler will sum the requests during the time window and
    * compare with the quota accumulated in the time window to see whether the usage exceeds quota or not.
@@ -67,11 +75,14 @@ public class ConfigKeys {
    * If the consume rate reached this quota, the consumption thread will be blocked until there is the available quota.
    * The value for this config is read from cluster configs in Zk.
    */
-  public static final String SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND = "server.kafka.fetch.quota.records.per.second";
+  public static final String SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND =
+      "server.kafka.fetch.quota.records.per.second";
 
   // Unordered throttlers aren't compatible with Shared Kafka Consumer and have no effect when Shared Consumer is used.
-  public static final String KAFKA_FETCH_QUOTA_UNORDERED_BYTES_PER_SECOND = "kafka.fetch.quota.unordered.bytes.per.second";
-  public static final String KAFKA_FETCH_QUOTA_UNORDERED_RECORDS_PER_SECOND = "kafka.fetch.quota.unordered.records.per.second";
+  public static final String KAFKA_FETCH_QUOTA_UNORDERED_BYTES_PER_SECOND =
+      "kafka.fetch.quota.unordered.bytes.per.second";
+  public static final String KAFKA_FETCH_QUOTA_UNORDERED_RECORDS_PER_SECOND =
+      "kafka.fetch.quota.unordered.records.per.second";
 
   // Kafka security protocol
   public static final String KAFKA_SECURITY_PROTOCOL = "security.protocol";
@@ -91,7 +102,8 @@ public class ConfigKeys {
    *
    * Will take effect at topic creation time, and when the incremental push config for the store is turned on.
    */
-  public static final String KAFKA_LOG_COMPACTION_FOR_INCREMENTAL_PUSH_STORES = "kafka.log.compaction.for.incremental.push.stores";
+  public static final String KAFKA_LOG_COMPACTION_FOR_INCREMENTAL_PUSH_STORES =
+      "kafka.log.compaction.for.incremental.push.stores";
 
   /**
    * For log compaction enabled topics, this config will define the minimum time a message will remain uncompacted in the log.
@@ -123,7 +135,8 @@ public class ConfigKeys {
   /**
    * Cluster-level config to enable native replication for all incremental push stores.
    */
-  public static final String ENABLE_NATIVE_REPLICATION_FOR_INCREMENTAL_PUSH = "enable.native.replication.for.incremental.push";
+  public static final String ENABLE_NATIVE_REPLICATION_FOR_INCREMENTAL_PUSH =
+      "enable.native.replication.for.incremental.push";
 
   /**
    * Cluster-level config to enable native replication for all hybrid stores.
@@ -133,32 +146,38 @@ public class ConfigKeys {
   /**
    * Cluster-level config to enable native replication for new batch-only stores.
    */
-  public static final String ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY = "enable.native.replication.as.default.for.batch.only";
+  public static final String ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY =
+      "enable.native.replication.as.default.for.batch.only";
 
   /**
    * Cluster-level config to enable native replication for new incremental push stores.
    */
-  public static final String ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH = "enable.native.replication.as.default.for.incremental.push";
+  public static final String ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH =
+      "enable.native.replication.as.default.for.incremental.push";
 
   /**
    * Cluster-level config to enable native replication for new hybrid stores.
    */
-  public static final String ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID = "enable.native.replication.as.default.for.hybrid";
+  public static final String ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID =
+      "enable.native.replication.as.default.for.hybrid";
 
   /**
    * Cluster-level config to enable active-active replication for new batch-only stores.
    */
-  public static final String ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY_STORE = "enable.active.active.replication.as.default.for.batch.only.store";
+  public static final String ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY_STORE =
+      "enable.active.active.replication.as.default.for.batch.only.store";
 
   /**
    * Cluster-level config to enable active-active replication for new hybrid stores.
    */
-  public static final String ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE = "enable.active.active.replication.as.default.for.hybrid.store";
+  public static final String ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE =
+      "enable.active.active.replication.as.default.for.hybrid.store";
 
   /**
    * Cluster-level config to enable active-active replication for new incremental push stores.
    */
-  public static final String ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORE = "enable.active.active.replication.as.default.for.incremental.push.store";
+  public static final String ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORE =
+      "enable.active.active.replication.as.default.for.incremental.push.store";
 
   /**
    * Controller level config to disable the dependency that L/F mode must be enabled before turning on native replication.
@@ -194,8 +213,7 @@ public class ConfigKeys {
   /**
    * Sets the default for whether or not do schema validation for all stores
    */
-  public static final String CONTROLLER_SCHEMA_VALIDATION_ENABLED =
-      "controller.schema.validation.enabled";
+  public static final String CONTROLLER_SCHEMA_VALIDATION_ENABLED = "controller.schema.validation.enabled";
 
   /**
    * Fallback to remain compatible with the old config spelling.
@@ -253,9 +271,11 @@ public class ConfigKeys {
    * Sleep interval between each topic list fetch from Kafka ZK in TopicCleanup service.
    * We don't want to hit Kafka Zookeeper too frequently.
    */
-  public static final String TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS = "topic.cleanup.sleep.interval.between.topic.list.fetch.ms";
+  public static final String TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS =
+      "topic.cleanup.sleep.interval.between.topic.list.fetch.ms";
   public static final String TOPIC_CLEANUP_DELAY_FACTOR = "topic.cleanup.delay.factor";
-  public static final String TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS = "topic.cleanup.send.concurrent.delete.requests.enabled";
+  public static final String TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS =
+      "topic.cleanup.send.concurrent.delete.requests.enabled";
 
   /**
    * Sleep interval for polling topic deletion status from ZK.
@@ -265,18 +285,20 @@ public class ConfigKeys {
   /**
    * The following config is to control the default retention time in milliseconds if it is not specified in store level.
    */
-  public static final String CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS = "controller.backup.version.default.retention.ms";
+  public static final String CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS =
+      "controller.backup.version.default.retention.ms";
 
   /**
    * The following config is to control whether to enable backup version cleanup based on retention policy or not at cluster level.
    */
-  public static final String CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED = "controller.backup.version.retention.based.cleanup.enabled";
-
+  public static final String CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED =
+      "controller.backup.version.retention.based.cleanup.enabled";
 
   /**
    * Whether to automatically create zk shared metadata system store in Controller or not
    */
-  public static final String CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED = "controller.zk.shared.metadata.system.schema.store.auto.creation.enabled";
+  public static final String CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED =
+      "controller.zk.shared.metadata.system.schema.store.auto.creation.enabled";
 
   /**
    * Whether controller should enforce SSL.
@@ -296,7 +318,8 @@ public class ConfigKeys {
   /**
    * This following config defines whether admin consumption should be enabled or not, and this config will only control the behavior in Child Controller.
    */
-  public static final String CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED = "child.controller.admin.topic.consumption.enabled";
+  public static final String CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED =
+      "child.controller.admin.topic.consumption.enabled";
 
   /**
    * This config defines the source region of aggregate hybrid store real-time data when native replication is enabled
@@ -327,7 +350,8 @@ public class ConfigKeys {
   public static final String ENABLE_SERVER_WHITE_LIST = "enable.server.whitelist";
   public static final String ENABLE_SERVER_ALLOW_LIST = "enable.server.allowlist";
   public static final String MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER = "max.state.transition.thread.number";
-  public static final String MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER = "max.leader.follower.state.transition.thread.number";
+  public static final String MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER =
+      "max.leader.follower.state.transition.thread.number";
   public static final String MAX_FUTURE_VERSION_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER =
       "max.future.version.leader.follower.state.transition.thread.number";
   public static final String LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY =
@@ -341,8 +365,10 @@ public class ConfigKeys {
   public static final String SERVER_REST_SERVICE_STORAGE_THREAD_NUM = "server.rest.service.storage.thread.num";
   public static final String SERVER_NETTY_IDLE_TIME_SECONDS = "server.netty.idle.time.seconds";
   public static final String SERVER_MAX_REQUEST_SIZE = "server.max.request.size";
-  public static final String SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS = "server.source.topic.offset.check.interval.ms";
-  public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS = "server.netty.graceful.shutdown.period.seconds";
+  public static final String SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS =
+      "server.source.topic.offset.check.interval.ms";
+  public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS =
+      "server.netty.graceful.shutdown.period.seconds";
   public static final String SERVER_NETTY_WORKER_THREADS = "server.netty.worker.threads";
   public static final String SSL_TO_KAFKA = "ssl.to.kakfa";
   public static final String SERVER_COMPUTE_THREAD_NUM = "server.compute.thread.num";
@@ -352,7 +378,8 @@ public class ConfigKeys {
   public static final String ROUTER_MAX_READ_CAPACITY = "router.max.read.capacity";
   public static final String ROUTER_QUOTA_CHECK_WINDOW = "router.quota.check.window";
 
-  public static final String SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS = "server.remote.ingestion.repair.sleep.interval.seconds";
+  public static final String SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS =
+      "server.remote.ingestion.repair.sleep.interval.seconds";
   /**
    * Whether to enable epoll in rest service layer.
    * This will be a best-effort since epoll support is only available in Linux, not Mac.
@@ -367,7 +394,8 @@ public class ConfigKeys {
    *
    * Negative value will disable this threshold.
    */
-  public static final String SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE = "server.database.sync.bytes.interval.for.transactional.mode";
+  public static final String SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE =
+      "server.database.sync.bytes.interval.for.transactional.mode";
   /**
    * Database sync per bytes for deferred-write mode.
    * This parameter will impact the sync frequency of database during batch push.
@@ -377,7 +405,8 @@ public class ConfigKeys {
    *
    * Negative value will disable this threshold.
    */
-  public static final String SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE = "server.database.sync.bytes.interval.for.deferred.write.mode";
+  public static final String SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE =
+      "server.database.sync.bytes.interval.for.deferred.write.mode";
 
   /**
    * When load balance happens, a replica could be moved to another storage node.
@@ -389,19 +418,22 @@ public class ConfigKeys {
    * To mitigate this issue, we will add a delay in state transition: 'OFFLINE' -> 'DROPPED' to drain all the incoming
    * requests to the to-drop partition, and we will enable error-retry on Router as well.
    */
-  public static final String SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS = "server.partition.graceful.drop.time.in.seconds";
+  public static final String SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS =
+      "server.partition.graceful.drop.time.in.seconds";
 
   /**
    * When a BDB partition is dropped, the disk space is not released immediately; a checkpoint is needed to release the disk space;
    * so a cleaner thread is spawned for the entire storage service; the cleaner thread will wake up every few hours and check
    * whether it needs to do a checkpoint; if so, clean up each store sequentially.
    */
-  public static final String SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES = "server.leaked.resource.clean.up.interval.in.minutes";
+  public static final String SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES =
+      "server.leaked.resource.clean.up.interval.in.minutes";
 
   /**
    * For batch-only store, enabling read-only could improve the performance greatly.
    */
-  public static final String SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED = "server.db.read.only.for.batch.only.store.enabled";
+  public static final String SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED =
+      "server.db.read.only.for.batch.only.store.enabled";
 
   /**
    * Set to true to enable enforcement of quota by the storage node
@@ -411,7 +443,8 @@ public class ConfigKeys {
   /**
    * Set to true to enable disk quota usage based on partitions assignment reported by the storage node
    */
-  public static final String SEVER_CALCULATE_QUOTA_USAGE_BASED_ON_PARTITIONS_ASSIGNMENT_ENABLED = "server.calculate.quota.usage.based.on.partitions.assignment.enabled";
+  public static final String SEVER_CALCULATE_QUOTA_USAGE_BASED_ON_PARTITIONS_ASSIGNMENT_ENABLED =
+      "server.calculate.quota.usage.based.on.partitions.assignment.enabled";
 
   /**
    * Number of Read Capacity Units per second that the node can handle across all stores.
@@ -442,7 +475,8 @@ public class ConfigKeys {
    * This config decides the frequency of the disk health check; the disk health check service writes
    * 64KB data to a temporary file in the database directory and read from the file for each health check.
    */
-  public static final String SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS = "server.disk.health.check.interval.in.seconds";
+  public static final String SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS =
+      "server.disk.health.check.interval.in.seconds";
 
   /**
    * When there is an actual disk failure, health check operation would hang, so this config decides how fast the
@@ -450,7 +484,8 @@ public class ConfigKeys {
    * reduce the possibility of false alerts (for example, the health check updates can be delayed by GC), we couldn't
    * set the timeout too small. Currently by default, the timeout is 30 seconds.
    */
-  public static final String SERVER_DISK_HEALTH_CHECK_TIMEOUT_IN_SECONDS = "server.disk.health.check.timeout.in.seconds";
+  public static final String SERVER_DISK_HEALTH_CHECK_TIMEOUT_IN_SECONDS =
+      "server.disk.health.check.timeout.in.seconds";
 
   /**
    * This config is used to enable/disable the disk health check service.
@@ -477,7 +512,8 @@ public class ConfigKeys {
    * The key will be store name, and the value will be the actual threshold.
    * This config is temporary, and in the long run, we will ask Venice Client to pass the actual timeout to the backend.
    */
-  public static final String SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP = "server.store.to.early.termination.threshold.ms.map";
+  public static final String SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP =
+      "server.store.to.early.termination.threshold.ms.map";
 
   /**
    * The following config is used to control the maximum database lookup requests queued, when the queue is full,
@@ -516,7 +552,8 @@ public class ConfigKeys {
   /**
    * Consumer pool size per Kafka cluster.
    */
-  public static final String SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER = "server.consumer.pool.size.per.kafka.cluster";
+  public static final String SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER =
+      "server.consumer.pool.size.per.kafka.cluster";
 
   /**
    * Whether to enable partition wise balanced shared consumer assignment.
@@ -532,7 +569,8 @@ public class ConfigKeys {
   /**
    * Whether Server will try to warm up cache before reporting ready-to-serve or not.
    */
-  public static final String SERVER_CACHE_WARMING_BEFORE_READY_TO_SERVE_ENABLED = "server.cache.warming.before.ready.to.serve.enabled";
+  public static final String SERVER_CACHE_WARMING_BEFORE_READY_TO_SERVE_ENABLED =
+      "server.cache.warming.before.ready.to.serve.enabled";
 
   /**
    * Store list to enable cache warming, and it is comma separated list.
@@ -567,8 +605,8 @@ public class ConfigKeys {
   /**
    * Use a seprate drainer queue for sorted ingestion and un-sorted ingestion.
    */
-  public static final String SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED = "server.dedicated.drainer.queue.for.sorted.input.enabled";
-
+  public static final String SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED =
+      "server.dedicated.drainer.queue.for.sorted.input.enabled";
 
   /**
    * A boolean config to specify if we are using Da Vinci client for ingestion. This config will be parsed by
@@ -591,7 +629,8 @@ public class ConfigKeys {
    * Port number for ingestion listener. For Parent/Child mode, it will be used by parent process. For SplitService mode,
    * it will be used by venice server that are using the ingestion service.
    */
-  public static final String SERVER_INGESTION_ISOLATION_APPLICATION_PORT = "server.ingestion.isolation.application.port";
+  public static final String SERVER_INGESTION_ISOLATION_APPLICATION_PORT =
+      "server.ingestion.isolation.application.port";
 
   /**
    * A list of fully-qualified class names of all stats classes that needs to be initialized in isolated ingestion process,
@@ -599,10 +638,11 @@ public class ConfigKeys {
    * for example: JVM GC/Memory stats. All the classes defined here will be extending {@link com.linkedin.venice.stats.AbstractVeniceStats},
    * and will take {@link io.tehuti.metrics.MetricsRepository} as the only parameter in their constructor.
    */
-  public static final String SERVER_INGESTION_ISOLATION_STATS_CLASS_LIST = "server.ingestion.isolation.stats.class.list";
+  public static final String SERVER_INGESTION_ISOLATION_STATS_CLASS_LIST =
+      "server.ingestion.isolation.stats.class.list";
 
-
-  public static final String SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS = "server.ingestion.isolation.heartbeat.timout.ms";
+  public static final String SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS =
+      "server.ingestion.isolation.heartbeat.timout.ms";
 
   public static final String SERVER_INGESTION_ISOLATION_SSL_ENABLED = "server.ingestion.isolation.ssl.enabled";
 
@@ -620,7 +660,8 @@ public class ConfigKeys {
    * keep a running checksum for all and only PUT kafka data message received in the ingestion task and periodically
    * verify it against the key/values saved in the database persistency layer.
    */
-  public static final String SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED = "server.database.checksum.verification.enabled";
+  public static final String SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED =
+      "server.database.checksum.verification.enabled";
 
   /**
    * Any server config that start with "server.local.consumer.config.prefix" will be used as a customized consumer config
@@ -639,7 +680,8 @@ public class ConfigKeys {
    * Having different storage types (BlockBasedTable and PlainTable) in read ops and write ops may lead to corruption of
    * RocksDB storage and crash of servers.
    */
-  public static final String SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED = "server.rocksdb.storage.config.check.enabled";
+  public static final String SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED =
+      "server.rocksdb.storage.config.check.enabled";
 
   /**
    * This config is used to control how much time we should wait before cleaning up the corresponding ingestion task
@@ -649,20 +691,23 @@ public class ConfigKeys {
    * If `consumer#listTopics` still doesn't return the topic after the configured delay, Venice SN will unsubscribe the topic,
    * and fail the corresponding ingestion job.
    */
-  public static final String SERVER_SHARED_CONSUMER_NON_EXISTING_TOPIC_CLEANUP_DELAY_MS = "server.shared.cosnumer.non.existing.topic.cleanup.delay.ms";
+  public static final String SERVER_SHARED_CONSUMER_NON_EXISTING_TOPIC_CLEANUP_DELAY_MS =
+      "server.shared.cosnumer.non.existing.topic.cleanup.delay.ms";
 
   /**
    * This config is used to control whether Storage Node should enable auto compaction for Samza Reprocessing Job or not.
    * Default: true
    */
-  public static final String SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED = "server.auto.compaction.for.samza.reprocessing.job.enabled";
+  public static final String SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED =
+      "server.auto.compaction.for.samza.reprocessing.job.enabled";
 
   /**
    * This config will determine whether live update will be suppressed. When the feature is turned on, ingestion will stop
    * once a partition is ready to serve; after Da Vinci client restarts or server restarts, if local data exists, ingestion
    * will not start in Da Vinci or report ready-to-serve immediately without ingesting new data in Venice.
    */
-  public static final String FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS = "freeze.ingestion.if.ready.to.serve.or.local.data.exists";
+  public static final String FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS =
+      "freeze.ingestion.if.ready.to.serve.or.local.data.exists";
 
   /**
    * Whether to enable shared kafka producer in storage node.
@@ -672,7 +717,8 @@ public class ConfigKeys {
   /**
    * Shared kafka producer pool size per Kafka cluster.
    */
-  public static final String SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER = "server.kafka.producer.pool.size.per.kafka.cluster";
+  public static final String SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER =
+      "server.kafka.producer.pool.size.per.kafka.cluster";
 
   /**
    * a comma seperated list of kafka producer metrics that will be reported.
@@ -701,8 +747,8 @@ public class ConfigKeys {
   // TODO with controller and server.
   public static final String LISTENER_SSL_PORT = "listener.ssl.port";
   public static final String CLIENT_TIMEOUT = "client.timeout";
-  public static final String HEARTBEAT_TIMEOUT =  "heartbeat.timeout";
-  public static final String HEARTBEAT_CYCLE =  "heartbeat.cycle";
+  public static final String HEARTBEAT_TIMEOUT = "heartbeat.timeout";
+  public static final String HEARTBEAT_CYCLE = "heartbeat.cycle";
   public static final String MAX_READ_CAPACITY = "max.read.capacity";
   public static final String SSL_TO_STORAGE_NODES = "sslToStorageNodes";
   /**
@@ -710,7 +756,8 @@ public class ConfigKeys {
    *
    * Practically, we need to manually select the threshold (e.g. P95) for retrying based on latency metrics.
    */
-  public static final String ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS = "router.long.tail.retry.for.single.get.threshold.ms";
+  public static final String ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS =
+      "router.long.tail.retry.for.single.get.threshold.ms";
 
   /**
    * After this amount of time, DDS Router will retry once for the slow storage node request.
@@ -732,7 +779,8 @@ public class ConfigKeys {
    * So coarse-grained config should be good enough.
    *
    */
-  public static final String ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS = "router.long.tail.retry.for.batch.get.threshold.ms";
+  public static final String ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS =
+      "router.long.tail.retry.for.batch.get.threshold.ms";
 
   /**
    * Whether to enable smart long tail retry logic, and this logic is only useful for batch-get retry currently.
@@ -760,7 +808,8 @@ public class ConfigKeys {
    * This config is used to tune the smart long-tail retry logic to avoid unnecessary retries,
    * check more details: {@link #ROUTER_SMART_LONG_TAIL_RETRY_ENABLED}
    */
-  public static final String ROUTER_SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS = "router.smart.long.tail.retry.abort.threshold.ms";
+  public static final String ROUTER_SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS =
+      "router.smart.long.tail.retry.abort.threshold.ms";
 
   /**
    * This config is used to limit the maximum retries in route unit.
@@ -771,7 +820,8 @@ public class ConfigKeys {
    * This could mitigate the latency issue in most of the case since the chance to have multiple slow storage nodes is low,
    * also even with unlimited retries, it won't help since multiple replicas for the same partition are in a degraded state.
    */
-  public static final String ROUTER_LONG_TAIL_RETRY_MAX_ROUTE_FOR_MULTI_KEYS_REQ = "router.long.tail.retry.max.route.for.multi.keys.req";
+  public static final String ROUTER_LONG_TAIL_RETRY_MAX_ROUTE_FOR_MULTI_KEYS_REQ =
+      "router.long.tail.retry.max.route.for.multi.keys.req";
 
   /**
    * The max key count allowed in one multi-get request.
@@ -821,7 +871,8 @@ public class ConfigKeys {
    * Helix group selection strategy when Helix assisted routing is enabled.
    * Available strategies listed here: {@literal HelixGroupSelectionStrategyEnum}.
    */
-  public static final String ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_STRATEGY = "router.helix.assisted.routing.group.selection.strategy";
+  public static final String ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_STRATEGY =
+      "router.helix.assisted.routing.group.selection.strategy";
 
   /**
    * The buffer we will add to the per storage node read quota. E.g 0.5 means 50% extra quota.
@@ -900,17 +951,20 @@ public class ConfigKeys {
   /**
    * Timeout for getting a channel from channel pool; if timeout, create a new channel
    */
-  public static final String ROUTER_NETTY_CLIENT_CHANNEL_POOL_ACQUIRE_TIMEOUT_MS = "router.netty.client.channel.pool.acquire.timeout.ms";
+  public static final String ROUTER_NETTY_CLIENT_CHANNEL_POOL_ACQUIRE_TIMEOUT_MS =
+      "router.netty.client.channel.pool.acquire.timeout.ms";
 
   /**
    * Minimum connections for each host (a host is identified by InetSocketAddress)
    */
-  public static final String ROUTER_NETTY_CLIENT_CHANNEL_POOL_MIN_CONNECTIONS = "router.netty.client.channel.pool.min.connections";
+  public static final String ROUTER_NETTY_CLIENT_CHANNEL_POOL_MIN_CONNECTIONS =
+      "router.netty.client.channel.pool.min.connections";
 
   /**
    * Maximum connections for each host/InetSocketAddress
    */
-  public static final String ROUTER_NETTY_CLIENT_CHANNEL_POOL_MAX_CONNECTIONS = "router.netty.client.channel.pool.max.connections";
+  public static final String ROUTER_NETTY_CLIENT_CHANNEL_POOL_MAX_CONNECTIONS =
+      "router.netty.client.channel.pool.max.connections";
 
   /**
    * The maximum number of pending acquires for a channel in the channel pool.
@@ -918,12 +972,14 @@ public class ConfigKeys {
    * If the pending acquires exceed the threshold, netty client will fail the new requests without blocking and it won't
    * throw exception in the router thread.
    */
-  public static final String ROUTER_NETTY_CLIENT_CHANNEL_POOL_MAX_PENDING_ACQUIRES = "router.netty.client.channel.pool.max.pending.acquires";
+  public static final String ROUTER_NETTY_CLIENT_CHANNEL_POOL_MAX_PENDING_ACQUIRES =
+      "router.netty.client.channel.pool.max.pending.acquires";
 
   /**
    * Interval between each channel health check
    */
-  public static final String ROUTER_NETTY_CLIENT_CHANNEL_POOL_HEALTH_CHECK_INTERVAL_MS = "router.netty.client.channel.pool.health.check.interval.ms";
+  public static final String ROUTER_NETTY_CLIENT_CHANNEL_POOL_HEALTH_CHECK_INTERVAL_MS =
+      "router.netty.client.channel.pool.health.check.interval.ms";
 
   /**
    * The maximum length of the aggregated content (response from SN to router) in bytes.
@@ -931,7 +987,8 @@ public class ConfigKeys {
    * If the length of the aggregated content exceeds this value, an exception will be thrown in router and the channel that
    * receives this response will be closed.
    */
-  public static final String ROUTER_NETTY_CLIENT_MAX_AGGREGATED_OBJECT_LENGTH = "router.netty.client.max.aggregated.object.length";
+  public static final String ROUTER_NETTY_CLIENT_MAX_AGGREGATED_OBJECT_LENGTH =
+      "router.netty.client.max.aggregated.object.length";
 
   /**
    * Netty graceful shutdown period considering the following factors:
@@ -939,7 +996,8 @@ public class ConfigKeys {
    * 2. Client could take some  time to receive/apply the zk update event from D2 server about router shutdown;
    * 3. Router needs some time to handle already-received client requests;
    */
-  public static final String ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS = "router.netty.graceful.shutdown.period.seconds";
+  public static final String ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS =
+      "router.netty.graceful.shutdown.period.seconds";
 
   public static final String ROUTER_CLIENT_DECOMPRESSION_ENABLED = "router.client.decompression.enabled";
 
@@ -964,12 +1022,14 @@ public class ConfigKeys {
    * more stable by disabling the idle connection cleanup.
    * The potential long-term solutions could be connection warm-up for HTTP/1.1 or adopting HTTP/2
    */
-  public static final String ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_ENABLED = "router.idle.connection.to.server.cleanup.enabled";
+  public static final String ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_ENABLED =
+      "router.idle.connection.to.server.cleanup.enabled";
 
   /**
    * The idle threshold for cleaning up the connections to storage node.
    */
-  public static final String ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_THRESHOLD_MINS = "router.idle.connection.to.server.cleanup.threshold.mins";
+  public static final String ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_THRESHOLD_MINS =
+      "router.idle.connection.to.server.cleanup.threshold.mins";
 
   /**
    * The following config controls how long the server with full pending queue will be taken OOR.
@@ -981,37 +1041,43 @@ public class ConfigKeys {
    * So far, it only works when Router starts and runs in http-client-per-route mode, and it will try to warm up {@link #ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE}
    * connections per route.
    */
-  public static final String ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_ENABLED = "router.httpasyncclient.connection.warming.enabled";
+  public static final String ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_ENABLED =
+      "router.httpasyncclient.connection.warming.enabled";
 
   /**
    * When Router starts, for a given route, the following config controls the warming up speed to minimize the impact to storage nodes.
    */
-  public static final String ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_SLEEP_INTERVAL_MS = "router.httpasyncclient.connection.warming.sleep.interval.ms";
+  public static final String ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_SLEEP_INTERVAL_MS =
+      "router.httpasyncclient.connection.warming.sleep.interval.ms";
 
   /**
    * When the available connections in an httpasyncclient is below the low water mark, the connection warming service will try to
    * spin up a new client to replace it.
    * In theory, this config must be lower than  {@link #ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE}.
    */
-  public static final String ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_LOW_WATER_MARK = "router.httpasyncclient.connection.warming.low.water.mark";
+  public static final String ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_LOW_WATER_MARK =
+      "router.httpasyncclient.connection.warming.low.water.mark";
 
   /**
    * Connection warming executor thread num.
    */
-  public static final String ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_EXECUTOR_THREAD_NUM = "router.httpasyncclient.connection.warming.executor.thread.num";
+  public static final String ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_EXECUTOR_THREAD_NUM =
+      "router.httpasyncclient.connection.warming.executor.thread.num";
 
   /**
    * For the new instance (Storage Node) detected by Router, the following config defines how much delay because of connection warming it could tolerate.
    * If the connection warming takes longer than it, Router will put it in to serve online traffic by creating a new client without connection warming.
    */
-  public static final String ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_NEW_INSTANCE_DELAY_JOIN_MS  = "router.httpasyncclient.connection.warming.new.instance.delay.join.ms";
+  public static final String ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_NEW_INSTANCE_DELAY_JOIN_MS =
+      "router.httpasyncclient.connection.warming.new.instance.delay.join.ms";
 
   /**
    * This config is used to control the socket timeout for connection warming requests.
    * In some cases, we would like to have different(maybe longer timeout) than the regular requests considering the deployment procedure,
    * and the connection warming requests could be very instensive.
    */
-  public static final String ROUTER_HTTPAYSNCCLIENT_CONNECTION_WARMING_SOCKET_TIMEOUT_MS = "router.httpasyncclient.connection.warming.socket.timeout.ms";
+  public static final String ROUTER_HTTPAYSNCCLIENT_CONNECTION_WARMING_SOCKET_TIMEOUT_MS =
+      "router.httpasyncclient.connection.warming.socket.timeout.ms";
 
   /**
    * Whether to enable async start in Router startup procedure.
@@ -1037,7 +1103,6 @@ public class ConfigKeys {
   /** Timeout for create topic and delete topic operations. */
   public static final String TOPIC_MANAGER_KAFKA_OPERATION_TIMEOUT_MS = "topic.manager.kafka.operation.timeout.ms";
 
-
   /**
    * This is the minimum number of Kafka topics that are guaranteed to be preserved by the leaky topic clean
    * up routine. The topics with the highest version numbers will be favored by this preservative behavior.
@@ -1055,7 +1120,8 @@ public class ConfigKeys {
    *
    * @see
    */
-  public static final String MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE = "min.number.of.unused.kafka.topics.to.preserve";
+  public static final String MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE =
+      "min.number.of.unused.kafka.topics.to.preserve";
 
   /**
    * This is the number of fully-functional store-versions we wish to maintain. All resources of these versions
@@ -1074,7 +1140,8 @@ public class ConfigKeys {
    * This is mostly used to investigate the Kafka missing message issue.
    * If the issue gets resolved, we could change this config to be '0'.
    */
-  public static final String PARENT_CONTROLLER_MAX_ERRORED_TOPIC_NUM_TO_KEEP = "parent.controller.max.errored.topic.num.to.keep";
+  public static final String PARENT_CONTROLLER_MAX_ERRORED_TOPIC_NUM_TO_KEEP =
+      "parent.controller.max.errored.topic.num.to.keep";
 
   /**
    * Only required when controller.parent.mode=true
@@ -1113,17 +1180,20 @@ public class ConfigKeys {
   /**
    * The default source fabric used for native replication for batch only stores.
    */
-  public static final String NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES = "native.replication.source.fabric.as.default.for.batch.only.stores";
+  public static final String NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES =
+      "native.replication.source.fabric.as.default.for.batch.only.stores";
 
   /**
    * The default source fabric used for native replication for hybrid stores.
    */
-  public static final String NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES = "native.replication.source.fabric.as.default.for.hybrid.stores";
+  public static final String NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES =
+      "native.replication.source.fabric.as.default.for.hybrid.stores";
 
   /**
    * The default source fabric used for native replication for incremental push stores.
    */
-  public static final String NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES = "native.replication.source.fabric.as.default.for.incremental.push.stores";
+  public static final String NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES =
+      "native.replication.source.fabric.as.default.for.incremental.push.stores";
   /**
    * The highest priority source fabric selection config, specified in parent controller.
    */
@@ -1172,7 +1242,6 @@ public class ConfigKeys {
    */
   public static final String PARENT_KAFKA_CLUSTER_FABRIC_LIST = "parent.kafka.cluster.fabric.list";
 
-
   /**
    * Whether A/A is enabled on the controller. When it is true, all A/A required config (e.g. {@link ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST})
    * must be set.
@@ -1192,7 +1261,8 @@ public class ConfigKeys {
    * After replication the parent controller consumes the message from the stream and processes it there.  This is the
    * timeout for waiting until that consumption happens.
    * */
-  public static final String PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS = "parent.controller.waiting.time.for.consumption.ms";
+  public static final String PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS =
+      "parent.controller.waiting.time.for.consumption.ms";
 
   /**
    * If there is a failure in consuming from the admin topic, skip the message after retrying for this many minutes
@@ -1212,7 +1282,8 @@ public class ConfigKeys {
   /**
    * The maximum number of threads allowed in the pool for executing admin messages.
    */
-  public static final String ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE = "admin.consumption.max.worker.thread.pool.size";
+  public static final String ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE =
+      "admin.consumption.max.worker.thread.pool.size";
 
   /**
    * This factor is used to estimate potential push size. H2V reducer multiplies it
@@ -1279,7 +1350,8 @@ public class ConfigKeys {
    * This config is for {@literal LeakedCompletableFutureCleanupService}.
    * Polling interval.
    */
-  public static final String ROUTER_LEAKED_FUTURE_CLEANUP_POLL_INTERVAL_MS = "router.leaked.future.cleanup.poll.interval.ms";
+  public static final String ROUTER_LEAKED_FUTURE_CLEANUP_POLL_INTERVAL_MS =
+      "router.leaked.future.cleanup.poll.interval.ms";
   /**
    * This config is for {@literal LeakedCompletableFutureCleanupService}.
    * If the CompletableFuture stays in current service beyonds the configured threshold,
@@ -1350,13 +1422,15 @@ public class ConfigKeys {
   * Maximum number of pending router request per storage node after which router concludes that host to be unhealthy
   * and stops sending further request to it..
   */
-  public static final String ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE = "router.unhealthy.pending.connection.threshold.per.host";
+  public static final String ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE =
+      "router.unhealthy.pending.connection.threshold.per.host";
 
   /**
    * This is the threshold for pending request queue depth per storage node after which router resumes sending requests once a storage node
    * which was previously marked unhealthy due to high ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE
    */
-  public static final String ROUTER_PENDING_CONNECTION_RESUME_THRESHOLD_PER_ROUTE = "router.pending.connection.resume.threshold.per.host";
+  public static final String ROUTER_PENDING_CONNECTION_RESUME_THRESHOLD_PER_ROUTE =
+      "router.pending.connection.resume.threshold.per.host";
 
   /**
    * Enables HttpAsyncClient allocation per storage node.
@@ -1408,7 +1482,8 @@ public class ConfigKeys {
    * and potential starts producing to the version topic. Basically, the wait time could help us avoid the scenario that
    * more than one replica is producing to the version topic.
    */
-  public static final String SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS = "server.promotion.to.leader.replica.delay.seconds";
+  public static final String SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS =
+      "server.promotion.to.leader.replica.delay.seconds";
 
   /**
    * The system store, such as replica status related requires fast leadership fail over to avoid the stable info in
@@ -1416,7 +1491,8 @@ public class ConfigKeys {
    * Since we do have a way to correct the unordered data if it really happens, such as produce a full snapshot
    * periodically, but the freshness is very important.
    */
-  public static final String SERVER_SYSTEM_STORE_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS = "server.system.store.promotion.to.leader.replica.delay.seconds";
+  public static final String SERVER_SYSTEM_STORE_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS =
+      "server.system.store.promotion.to.leader.replica.delay.seconds";
 
   /**
    * Whether to support http/2 inbound request.
@@ -1477,7 +1553,8 @@ public class ConfigKeys {
    * in Child Controller will require a lot of refactoring.
    * So the current strategy is to enable it by default, but disable it in EI and PROD.
    */
-  public static final String CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD = "controller.enable.batch.push.from.admin.in.child";
+  public static final String CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD =
+      "controller.enable.batch.push.from.admin.in.child";
 
   /**
    * A config that turns the key/value profiling stats on and off. This config can be placed in both Router and SNs and it
@@ -1582,12 +1659,14 @@ public class ConfigKeys {
   /**
    * Whether to skip the cipher check when using Httpclient5.
    */
-  public static final String ROUTER_HTTP_CLIENT5_SKIP_CIPHER_CHECK_ENABLED = "router.http.client5.skip.cipher.check.enabled";
+  public static final String ROUTER_HTTP_CLIENT5_SKIP_CIPHER_CHECK_ENABLED =
+      "router.http.client5.skip.cipher.check.enabled";
 
   /**
    * Number of IO threads used for AHAC client.
    */
-  public static final String ROUTER_HTTPASYNCCLIENT_CLIENT_POOL_THREAD_COUNT = "router.httpasyncclient.client.pool.io.thread.count";
+  public static final String ROUTER_HTTPASYNCCLIENT_CLIENT_POOL_THREAD_COUNT =
+      "router.httpasyncclient.client.pool.io.thread.count";
 
   /** Maximum number of times controller will automatically reset an error partition for the current/serving version
    * to mitigate impact of transient or long running issues during re-balance or restart.
@@ -1615,14 +1694,16 @@ public class ConfigKeys {
   /**
    * The refresh interval for system store repositories that rely on periodic polling.
    */
-  public static final String CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS = "client.system.store.repository.refresh.interval.seconds";
+  public static final String CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS =
+      "client.system.store.repository.refresh.interval.seconds";
 
   /**
    * Test only config used to disable parent topic truncation upon job completion. This is needed because kafka cluster
    * in test environment is shared between parent and child controllers. Truncating topic upon completion will confuse
    * child controllers in certain scenarios.
    */
-  public static final String CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION = "controller.disable.parent.topic.truncation.upon.completion";
+  public static final String CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION =
+      "controller.disable.parent.topic.truncation.upon.completion";
 
   /**
    * ZooKeeper address of d2 client.
@@ -1634,18 +1715,21 @@ public class ConfigKeys {
    */
   public static final String PUSH_STATUS_STORE_ENABLED = "push.status.store.enabled";
 
-  public static final String CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED = "controller.zk.shared.davinci.push.status.system.schema.store.auto.creation.enabled";
+  public static final String CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED =
+      "controller.zk.shared.davinci.push.status.system.schema.store.auto.creation.enabled";
 
   /**
    * Interval for Da Vinci clients to send heartbeats.
    */
-  public static final String PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS = "push.status.store.heartbeat.interval.seconds";
+  public static final String PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS =
+      "push.status.store.heartbeat.interval.seconds";
 
   /**
    * The expiration timeout. If an instance not sending heartbeats for over the expiration
    * time, it will be considered as stale.
    */
-  public static final String PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS = "push.status.store.heartbeat.expiration.seconds";
+  public static final String PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS =
+      "push.status.store.heartbeat.expiration.seconds";
 
   /**
    * Derived schemaId for push status store write compute.
@@ -1689,29 +1773,34 @@ public class ConfigKeys {
    * Lease timeout for leaving quota disabled for a router. If quota was disabled through an API, it will be reset after
    * lease expiry.
    */
-  public static final String ROUTER_READ_QUOTA_THROTTLING_LEASE_TIMEOUT_MS = "router.read.quota.throttling.lease.timeout.ms";
+  public static final String ROUTER_READ_QUOTA_THROTTLING_LEASE_TIMEOUT_MS =
+      "router.read.quota.throttling.lease.timeout.ms";
 
   /**
    * The delay in ms between each synchronization attempt between the Venice store acls and its corresponding system
    * store acls if any synchronization is needed.
    */
-  public static final String CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS = "controller.system.store.acl.synchronization.delay.ms";
+  public static final String CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS =
+      "controller.system.store.acl.synchronization.delay.ms";
 
   /**
    * This config defines the sleep interval in leaked push status clean up service.
    */
-  public static final String LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS = "leaked.push.status.clean.up.service.interval.ms";
+  public static final String LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS =
+      "leaked.push.status.clean.up.service.interval.ms";
 
   /**
    * This config controls whether to use da-vinci based implementation of the system store repository when
    * CLIENT_USE_SYSTEM_STORE_REPOSITORY is set to true. By default the thin-client based implementation will be used.
    */
-  public static final String CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY = "client.use.da.vinci.based.system.store.repository";
+  public static final String CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY =
+      "client.use.da.vinci.based.system.store.repository";
 
   /**
    *
    */
-  public static final String CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES = "controller.disable.parent.request.topic.for.stream.pushes";
+  public static final String CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES =
+      "controller.disable.parent.request.topic.for.stream.pushes";
 
   public static final String CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER = "controller.default.read.quota.per.router";
 
@@ -1729,12 +1818,14 @@ public class ConfigKeys {
    * This config controls whether to make an empty push to materialize meta system store for newly created user stores
    * if possible.
    */
-  public static final String CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE = "controller.auto.materialize.meta.system.store";
+  public static final String CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE =
+      "controller.auto.materialize.meta.system.store";
 
   /**
    *
    */
-  public static final String CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE = "controller.auto.materialize.davinci.push.status.system.store";
+  public static final String CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE =
+      "controller.auto.materialize.davinci.push.status.system.store";
 
   /**
    * This will indicate which ReplicationMetadataSchemaGenerator version to use to generate replication metadata schema.
@@ -1751,7 +1842,8 @@ public class ConfigKeys {
   /**
    * Enable offset collection for kafka topic partition from kafka consumer metrics.
    */
-  public static final String SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED = "server.kafka.consumer.offset.collection.enabled";
+  public static final String SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED =
+      "server.kafka.consumer.offset.collection.enabled";
 
   /**
    * Kafka bootstrap server id to url map
@@ -1786,7 +1878,8 @@ public class ConfigKeys {
   public static final String KAFKA_CLUSTER_MAP_KEY_NAME = "name";
   public static final String KAFKA_CLUSTER_MAP_KEY_URL = "url";
 
-  public static final String SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING = "server.enable.live.config.based.kafka.throttling";
+  public static final String SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING =
+      "server.enable.live.config.based.kafka.throttling";
 
   /**
    * Enable usage of {@link com.linkedin.venice.kafka.consumer.AutoClosingKafkaConsumer} instead of the raw
@@ -1806,7 +1899,8 @@ public class ConfigKeys {
    *       metadata and producer states into disk
    * False: servers will not flush any data during shutdown. After restart, servers will resume ingestion from the last checkpoint.
    */
-  public static final String SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED = "server.ingestion.checkpoint.during.graceful.shutdown.enabled";
+  public static final String SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED =
+      "server.ingestion.checkpoint.during.graceful.shutdown.enabled";
 
   /**
    * A config to control which status store to use for fetching incremental push job status from the controller. This config
@@ -1814,7 +1908,8 @@ public class ConfigKeys {
    * True: use push system status store
    * False: use zookeeper store
    */
-  public static final String USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH = "controller.server.incremental.push.use.push.status.store";
+  public static final String USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH =
+      "controller.server.incremental.push.use.push.status.store";
 
   /**
    * A config to control whether VeniceServer will optimize the database for the backup version to
@@ -1823,7 +1918,8 @@ public class ConfigKeys {
    * This feature should be very useful for RocksDB plaintable to unload the mmapped memory and it will be useful for
    * RocksDB block-based format as well to evict the unused index/filters from the shared block cache.
    */
-  public static final String SERVER_OPTIMIZE_DATABASE_FOR_BACKUP_VERSION_ENABLED = "server.optimize.database.for.backup.version.enabled";
+  public static final String SERVER_OPTIMIZE_DATABASE_FOR_BACKUP_VERSION_ENABLED =
+      "server.optimize.database.for.backup.version.enabled";
 
   /**
    * A config to control the no read threshold when the database optimization should kick in.
@@ -1838,4 +1934,3 @@ public class ConfigKeys {
       "server.optimize.database.service.schedule.internal.seconds";
 
 }
-

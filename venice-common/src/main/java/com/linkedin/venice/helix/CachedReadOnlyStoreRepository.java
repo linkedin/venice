@@ -1,5 +1,7 @@
 package com.linkedin.venice.helix;
 
+import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
+
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -25,8 +27,6 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
-
 
 public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   protected static final Logger logger = LogManager.getLogger(CachedReadOnlyStoreRepository.class);
@@ -44,15 +44,19 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   private final AtomicLong totalStoreReadQuota = new AtomicLong();
   private final Set<StoreDataChangedListener> listeners = new CopyOnWriteArraySet<>();
 
-
-  public CachedReadOnlyStoreRepository(ZkClient zkClient, String clusterName, HelixAdapterSerializer compositeSerializer,
+  public CachedReadOnlyStoreRepository(
+      ZkClient zkClient,
+      String clusterName,
+      HelixAdapterSerializer compositeSerializer,
       ClusterLockManager clusterLockManager) {
     this.zkClient = zkClient;
     this.zkDataAccessor = new ZkBaseDataAccessor<>(zkClient);
     this.clusterName = clusterName;
-    this.clusterStoreRepositoryPath = Paths.get(HelixUtils.getHelixClusterZkPath(clusterName), STORE_REPOSITORY_PATH).toString();
+    this.clusterStoreRepositoryPath =
+        Paths.get(HelixUtils.getHelixClusterZkPath(clusterName), STORE_REPOSITORY_PATH).toString();
     compositeSerializer.registerSerializer(clusterStoreRepositoryPath, new VeniceJsonSerializer<>(Integer.TYPE));
-    compositeSerializer.registerSerializer(getStoreZkPath(PathResourceRegistry.WILDCARD_MATCH_ANY),  new StoreJSONSerializer());
+    compositeSerializer
+        .registerSerializer(getStoreZkPath(PathResourceRegistry.WILDCARD_MATCH_ANY), new StoreJSONSerializer());
     zkClient.setZkSerializer(compositeSerializer);
     this.clusterLockManager = clusterLockManager;
   }
@@ -104,14 +108,16 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
     logger.info("Refresh started for cluster " + clusterName + "'s " + getClass().getSimpleName());
     try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       List<Store> newStores = getStoresFromZk();
-      logger.info("Got " + newStores.size() + " stores from cluster " + clusterName + " during refresh in repo: " + getClass().getSimpleName());
+      logger.info(
+          "Got " + newStores.size() + " stores from cluster " + clusterName + " during refresh in repo: "
+              + getClass().getSimpleName());
       Set<String> deletedStoreNames = storeMap.values().stream().map(Store::getName).collect(Collectors.toSet());
-      for (Store newStore : newStores) {
+      for (Store newStore: newStores) {
         putStore(newStore);
         deletedStoreNames.remove(newStore.getName());
       }
 
-      for (String storeName : deletedStoreNames) {
+      for (String storeName: deletedStoreNames) {
         removeStore(storeName);
       }
       logger.info("Refresh finished for cluster " + clusterName + "'s " + getClass().getSimpleName());
@@ -206,7 +212,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   }
 
   protected void notifyStoreCreated(Store store) {
-    for (StoreDataChangedListener listener : listeners) {
+    for (StoreDataChangedListener listener: listeners) {
       try {
         listener.handleStoreCreated(store);
       } catch (Throwable e) {
@@ -216,7 +222,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   }
 
   protected void notifyStoreDeleted(Store store) {
-    for (StoreDataChangedListener listener : listeners) {
+    for (StoreDataChangedListener listener: listeners) {
       try {
         listener.handleStoreDeleted(store);
       } catch (Throwable e) {
@@ -226,7 +232,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   }
 
   protected void notifyStoreChanged(Store store) {
-    for (StoreDataChangedListener listener : listeners) {
+    for (StoreDataChangedListener listener: listeners) {
       try {
         listener.handleStoreChanged(store);
       } catch (Throwable e) {

@@ -35,27 +35,36 @@ import org.apache.logging.log4j.Logger;
  * Don't keep a map of [storeName->client] to minimize states kept by controller.
  */
 public class PushStatusStoreReader implements Closeable {
-
   private static final Logger logger = LogManager.getLogger(PushStatusStoreReader.class);
-  private final Map<String, AvroSpecificStoreClient<PushStatusKey, PushStatusValue>> veniceClients = new VeniceConcurrentHashMap<>();
+  private final Map<String, AvroSpecificStoreClient<PushStatusKey, PushStatusValue>> veniceClients =
+      new VeniceConcurrentHashMap<>();
   private final D2Client d2Client;
   private final long heartbeatExpirationTimeInSeconds;
-  private static final int PUSH_STATUS_READER_BATCH_GET_LIMIT = 100; // if store limit is less than this then batchGet will fail
+  private static final int PUSH_STATUS_READER_BATCH_GET_LIMIT = 100; // if store limit is less than this then batchGet
+                                                                     // will fail
 
   public PushStatusStoreReader(D2Client d2Client, long heartbeatExpirationTimeInSeconds) {
     this.d2Client = d2Client;
     this.heartbeatExpirationTimeInSeconds = heartbeatExpirationTimeInSeconds;
   }
 
-  public Map<CharSequence, Integer> getPartitionStatus(String storeName, int version, int partitionId,
+  public Map<CharSequence, Integer> getPartitionStatus(
+      String storeName,
+      int version,
+      int partitionId,
       Optional<String> incrementalPushVersion) {
     return getPartitionStatus(storeName, version, partitionId, incrementalPushVersion, Optional.empty());
   }
 
-  public Map<CharSequence, Integer> getPartitionStatus(String storeName, int version, int partitionId,
-      Optional<String> incrementalPushVersion, Optional<String> incrementalPushPrefix) {
+  public Map<CharSequence, Integer> getPartitionStatus(
+      String storeName,
+      int version,
+      int partitionId,
+      Optional<String> incrementalPushVersion,
+      Optional<String> incrementalPushPrefix) {
     AvroSpecificStoreClient<PushStatusKey, PushStatusValue> client = getVeniceClient(storeName);
-    PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion, incrementalPushPrefix);
+    PushStatusKey pushStatusKey =
+        PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion, incrementalPushPrefix);
     try {
       PushStatusValue pushStatusValue = client.get(pushStatusKey).get();
       if (pushStatusValue == null) {
@@ -65,7 +74,7 @@ public class PushStatusStoreReader implements Closeable {
         return pushStatusValue.instances;
       }
     } catch (Exception e) {
-      logger.error("Failed to read push status of partition:{} store:{}", partitionId, storeName,  e);
+      logger.error("Failed to read push status of partition:{} store:{}", partitionId, storeName, e);
       throw new VeniceException(e);
     }
   }
@@ -74,17 +83,33 @@ public class PushStatusStoreReader implements Closeable {
    * Return statuses of all replicas belonging to partitions with partitionIds in the range [0 (inclusive), numberOfPartitions (exclusive))
    * {partitionId: {instance:status, instance:status,...},...}
    */
-  public Map<Integer, Map<CharSequence, Integer>> getPartitionStatuses(String storeName, int storeVersion,
-      String incrementalPushVersion, int numberOfPartitions) {
+  public Map<Integer, Map<CharSequence, Integer>> getPartitionStatuses(
+      String storeName,
+      int storeVersion,
+      String incrementalPushVersion,
+      int numberOfPartitions) {
     Set<Integer> partitionIds = IntStream.range(0, numberOfPartitions).boxed().collect(Collectors.toSet());
     return getPartitionStatuses(
-        storeName, storeVersion, incrementalPushVersion, partitionIds, Optional.of(PUSH_STATUS_READER_BATCH_GET_LIMIT));
+        storeName,
+        storeVersion,
+        incrementalPushVersion,
+        partitionIds,
+        Optional.of(PUSH_STATUS_READER_BATCH_GET_LIMIT));
   }
 
-  public Map<Integer, Map<CharSequence, Integer>> getPartitionStatuses(String storeName, int storeVersion,
-      String incrementalPushVersion, int numberOfPartitions, int batchGetLimit) {
+  public Map<Integer, Map<CharSequence, Integer>> getPartitionStatuses(
+      String storeName,
+      int storeVersion,
+      String incrementalPushVersion,
+      int numberOfPartitions,
+      int batchGetLimit) {
     Set<Integer> partitionIds = IntStream.range(0, numberOfPartitions).boxed().collect(Collectors.toSet());
-    return getPartitionStatuses(storeName, storeVersion, incrementalPushVersion, partitionIds, Optional.of(batchGetLimit));
+    return getPartitionStatuses(
+        storeName,
+        storeVersion,
+        incrementalPushVersion,
+        partitionIds,
+        Optional.of(batchGetLimit));
   }
 
   /**
@@ -92,13 +117,21 @@ public class PushStatusStoreReader implements Closeable {
    * a partition then empty map will be returned as a value for that partition.
    * {partitionId: {instance:status, instance:status,...},...}
    */
-  public Map<Integer, Map<CharSequence, Integer>> getPartitionStatuses(String storeName, int storeVersion,
-      String incrementalPushVersion, Set<Integer> partitionIds, Optional<Integer> batchGetLimitOption) {
+  public Map<Integer, Map<CharSequence, Integer>> getPartitionStatuses(
+      String storeName,
+      int storeVersion,
+      String incrementalPushVersion,
+      Set<Integer> partitionIds,
+      Optional<Integer> batchGetLimitOption) {
     // create push status key for each partition mentioned in partitionIds
     List<PushStatusKey> pushStatusKeys = new ArrayList<>(partitionIds.size());
-    for (int partitionId : partitionIds) {
-      pushStatusKeys.add(PushStatusStoreUtils.getServerIncrementalPushKey(storeVersion, partitionId,
-          incrementalPushVersion, PushStatusStoreUtils.SERVER_INCREMENTAL_PUSH_PREFIX));
+    for (int partitionId: partitionIds) {
+      pushStatusKeys.add(
+          PushStatusStoreUtils.getServerIncrementalPushKey(
+              storeVersion,
+              partitionId,
+              incrementalPushVersion,
+              PushStatusStoreUtils.SERVER_INCREMENTAL_PUSH_PREFIX));
     }
     // get push status store client
     AvroSpecificStoreClient<PushStatusKey, PushStatusValue> storeClient = getVeniceClient(storeName);
@@ -108,7 +141,8 @@ public class PushStatusStoreReader implements Closeable {
     if (batchGetLimitOption.isPresent()) {
       batchGetLimit = batchGetLimitOption.get();
     }
-    int numberOfBatchRequests = partitionIds.size() / batchGetLimit + (partitionIds.size() % batchGetLimit == 0 ? 0 : 1);
+    int numberOfBatchRequests =
+        partitionIds.size() / batchGetLimit + (partitionIds.size() % batchGetLimit == 0 ? 0 : 1);
     try {
       for (int i = 0; i < numberOfBatchRequests; i++) {
         int start = i * batchGetLimit;
@@ -117,7 +151,7 @@ public class PushStatusStoreReader implements Closeable {
         CompletableFuture<Map<PushStatusKey, PushStatusValue>> completableFuture = storeClient.batchGet(keySet);
         completableFutures.add(completableFuture);
       }
-      for (CompletableFuture<Map<PushStatusKey, PushStatusValue>> completableFuture : completableFutures) {
+      for (CompletableFuture<Map<PushStatusKey, PushStatusValue>> completableFuture: completableFutures) {
         Map<PushStatusKey, PushStatusValue> statuses = completableFuture.get();
         if (statuses == null) {
           logger.warn("Failed to get incremental push status of some partitions. BatchGet returned null.");
@@ -126,16 +160,24 @@ public class PushStatusStoreReader implements Closeable {
         pushStatusMap.putAll(statuses);
       }
     } catch (InterruptedException | ExecutionException | VeniceClientException e) {
-      logger.error("Failed to get statuses of partitions. store:{}, storeVersion:{} incrementalPushVersion:{} "
-          + "partitionIds:{} Exception:{}", storeName, storeVersion, incrementalPushVersion, partitionIds, e);
+      logger.error(
+          "Failed to get statuses of partitions. store:{}, storeVersion:{} incrementalPushVersion:{} "
+              + "partitionIds:{} Exception:{}",
+          storeName,
+          storeVersion,
+          incrementalPushVersion,
+          partitionIds,
+          e);
       throw new VeniceException("Failed to fetch push statuses from the push status store");
     }
     Map<Integer, Map<CharSequence, Integer>> result = new HashMap<>();
-    for (PushStatusKey pushStatusKey : pushStatusKeys) {
+    for (PushStatusKey pushStatusKey: pushStatusKeys) {
       PushStatusValue pushStatusValue = pushStatusMap.get(pushStatusKey);
       result.put(
           PushStatusStoreUtils.getPartitionIdFromServerIncrementalPushKey(pushStatusKey),
-          (pushStatusValue == null || pushStatusValue.instances == null) ? Collections.emptyMap() : pushStatusValue.instances);
+          (pushStatusValue == null || pushStatusValue.instances == null)
+              ? Collections.emptyMap()
+              : pushStatusValue.instances);
     }
     return result;
   }
@@ -160,7 +202,8 @@ public class PushStatusStoreReader implements Closeable {
 
   public boolean isInstanceAlive(String storeName, String instanceName) {
     long lastReportTimeStamp = getHeartbeat(storeName, instanceName);
-    return System.currentTimeMillis() - lastReportTimeStamp <= TimeUnit.SECONDS.toMillis(heartbeatExpirationTimeInSeconds);
+    return System.currentTimeMillis() - lastReportTimeStamp <= TimeUnit.SECONDS
+        .toMillis(heartbeatExpirationTimeInSeconds);
   }
 
   public Map<CharSequence, Integer> getSupposedlyOngoingIncrementalPushVersions(String storeName, int storeVersion) {
@@ -170,7 +213,7 @@ public class PushStatusStoreReader implements Closeable {
     try {
       pushStatusValue = storeClient.get(pushStatusKey).get();
     } catch (InterruptedException | ExecutionException | VeniceException e) {
-      logger.error("Failed to get ongoing incremental pushes for store:{}.", storeName,  e);
+      logger.error("Failed to get ongoing incremental pushes for store:{}.", storeName, e);
       throw new VeniceException(e);
     }
     if (pushStatusValue == null || pushStatusValue.instances == null) {
@@ -183,11 +226,12 @@ public class PushStatusStoreReader implements Closeable {
   // visible for testing
   AvroSpecificStoreClient<PushStatusKey, PushStatusValue> getVeniceClient(String storeName) {
     return veniceClients.computeIfAbsent(storeName, (s) -> {
-      ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName))
-          .setD2Client(d2Client)
-          .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
-          .setSpecificValueClass(PushStatusValue.class);
-     return ClientFactory.getAndStartSpecificAvroClient(clientConfig);
+      ClientConfig clientConfig =
+          ClientConfig.defaultGenericClientConfig(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName))
+              .setD2Client(d2Client)
+              .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
+              .setSpecificValueClass(PushStatusValue.class);
+      return ClientFactory.getAndStartSpecificAvroClient(clientConfig);
     });
   }
 

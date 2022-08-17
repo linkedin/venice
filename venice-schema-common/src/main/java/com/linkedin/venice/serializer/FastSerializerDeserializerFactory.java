@@ -26,13 +26,12 @@ public class FastSerializerDeserializerFactory extends SerializerDeserializerFac
 
   private static FastSerdeCache cache = FastSerdeCache.getDefaultInstance();
 
-  private static Map<SchemaPairAndClassContainer, AvroGenericDeserializer<Object>>
-      avroFastGenericDeserializerMap = new VeniceConcurrentHashMap<>();
-  private static Map<SchemaPairAndClassContainer, AvroSpecificDeserializer<? extends SpecificRecord>>
-      avroFastSpecificDeserializerMap = new VeniceConcurrentHashMap<>();
+  private static Map<SchemaPairAndClassContainer, AvroGenericDeserializer<Object>> avroFastGenericDeserializerMap =
+      new VeniceConcurrentHashMap<>();
+  private static Map<SchemaPairAndClassContainer, AvroSpecificDeserializer<? extends SpecificRecord>> avroFastSpecificDeserializerMap =
+      new VeniceConcurrentHashMap<>();
 
-  private static Map<Schema, AvroSerializer<Object>>
-      avroFastGenericSerializerMap = new VeniceConcurrentHashMap<>();
+  private static Map<Schema, AvroSerializer<Object>> avroFastGenericSerializerMap = new VeniceConcurrentHashMap<>();
 
   /**
    * Verify whether fast-avro could generate a fast specific deserializer, but there is no guarantee that
@@ -48,7 +47,7 @@ public class FastSerializerDeserializerFactory extends SerializerDeserializerFac
       if (fastAvroSanityCheckDoneForSpecificSerializer) {
         return false;
       }
-      for (Class<? extends SpecificRecord> c : Arrays.asList(specificClass, MultiGetResponseRecordV1.class)) {
+      for (Class<? extends SpecificRecord> c: Arrays.asList(specificClass, MultiGetResponseRecordV1.class)) {
         Schema schema = SpecificData.get().getSchema(c);
         try {
           cache.buildFastSpecificDeserializer(schema, schema);
@@ -86,7 +85,8 @@ public class FastSerializerDeserializerFactory extends SerializerDeserializerFac
   public static void cacheFastAvroGenericDeserializer(Schema writerSchema, Schema readerSchema, long warmUpTimeout) {
     int durationRetryMS = 100;
     RetryUtils.executeWithMaxAttemptNoIntermediateLogging(
-        () -> tryCacheFastGenericDeserializer(writerSchema, readerSchema), (int)(warmUpTimeout/durationRetryMS),
+        () -> tryCacheFastGenericDeserializer(writerSchema, readerSchema),
+        (int) (warmUpTimeout / durationRetryMS),
         Duration.ofMillis(durationRetryMS),
         Collections.singletonList(VeniceException.class));
   }
@@ -100,21 +100,28 @@ public class FastSerializerDeserializerFactory extends SerializerDeserializerFac
 
   public static <V> RecordDeserializer<V> getFastAvroGenericDeserializer(Schema writer, Schema reader) {
     SchemaPairAndClassContainer container = new SchemaPairAndClassContainer(writer, reader, Object.class);
-    return (AvroGenericDeserializer<V>) avroFastGenericDeserializerMap.computeIfAbsent(
-        container, key -> new FastAvroGenericDeserializer(key.writer, key.reader, cache));
+    return (AvroGenericDeserializer<V>) avroFastGenericDeserializerMap
+        .computeIfAbsent(container, key -> new FastAvroGenericDeserializer(key.writer, key.reader, cache));
   }
 
-  public static <V extends SpecificRecord> RecordDeserializer<V> getFastAvroSpecificDeserializer(Schema writer, Class<V> c) {
-    return getAvroSpecificDeserializerInternal(writer, c,
-        container -> avroFastSpecificDeserializerMap.computeIfAbsent(container,
+  public static <V extends SpecificRecord> RecordDeserializer<V> getFastAvroSpecificDeserializer(
+      Schema writer,
+      Class<V> c) {
+    return getAvroSpecificDeserializerInternal(
+        writer,
+        c,
+        container -> avroFastSpecificDeserializerMap.computeIfAbsent(
+            container,
             k -> new FastAvroSpecificDeserializer<V>(container.writer, container.c, cache)));
   }
 
   public static <K> RecordSerializer<K> getFastAvroGenericSerializer(Schema schema) {
-    return (RecordSerializer<K>) avroFastGenericSerializerMap.computeIfAbsent(schema, (s) -> new FastAvroSerializer<>(s, cache));
+    return (RecordSerializer<K>) avroFastGenericSerializerMap
+        .computeIfAbsent(schema, (s) -> new FastAvroSerializer<>(s, cache));
   }
 
   public static <K> RecordSerializer<K> getFastAvroGenericSerializer(Schema schema, boolean buffered) {
-    return (RecordSerializer<K>) avroFastGenericSerializerMap.computeIfAbsent(schema, (s) -> new FastAvroSerializer<>(s, cache, buffered));
+    return (RecordSerializer<K>) avroFastGenericSerializerMap
+        .computeIfAbsent(schema, (s) -> new FastAvroSerializer<>(s, cache, buffered));
   }
 }

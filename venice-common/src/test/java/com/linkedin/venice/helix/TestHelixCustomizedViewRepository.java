@@ -63,14 +63,18 @@ public class TestHelixCustomizedViewRepository {
     zkAddress = zkServerWrapper.getAddress();
     admin = new ZKHelixAdmin(zkAddress);
     admin.addCluster(clusterName);
-    HelixConfigScope configScope = new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).
-        forCluster(clusterName).build();
+    HelixConfigScope configScope =
+        new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(clusterName).build();
     Map<String, String> helixClusterProperties = new HashMap<String, String>();
     helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
     admin.setConfig(configScope, helixClusterProperties);
     admin.addStateModelDef(clusterName, MockTestStateModel.UNIT_TEST_STATE_MODEL, MockTestStateModel.getDefinition());
 
-    admin.addResource(clusterName, resourceName, 3, MockTestStateModel.UNIT_TEST_STATE_MODEL,
+    admin.addResource(
+        clusterName,
+        resourceName,
+        3,
+        MockTestStateModel.UNIT_TEST_STATE_MODEL,
         IdealState.RebalanceMode.FULL_AUTO.toString());
     admin.rebalance(clusterName, resourceName, 2);
 
@@ -85,23 +89,32 @@ public class TestHelixCustomizedViewRepository {
     adminPort = 50000 + (int) (System.currentTimeMillis() % 10000) + 2;
 
     controller = new SafeHelixManager(
-        HelixControllerMain.startHelixController(zkAddress, clusterName, Utils.getHelixNodeIdentifier(adminPort),
+        HelixControllerMain.startHelixController(
+            zkAddress,
+            clusterName,
+            Utils.getHelixNodeIdentifier(adminPort),
             HelixControllerMain.STANDALONE));
 
-    manager0 = TestUtils.getParticipant(clusterName, Utils.getHelixNodeIdentifier(httpPort0), zkAddress, httpPort0,
+    manager0 = TestUtils.getParticipant(
+        clusterName,
+        Utils.getHelixNodeIdentifier(httpPort0),
+        zkAddress,
+        httpPort0,
         MockTestStateModel.UNIT_TEST_STATE_MODEL);
     manager0.connect();
     Thread.sleep(WAIT_TIME);
-    accessor0 = new HelixPartitionStatusAccessor(manager0.getOriginalManager(),
-        manager0.getInstanceName(), false);
+    accessor0 = new HelixPartitionStatusAccessor(manager0.getOriginalManager(), manager0.getInstanceName(), false);
 
-    manager1 = TestUtils.getParticipant(clusterName, Utils.getHelixNodeIdentifier(httpPort1), zkAddress, httpPort1,
+    manager1 = TestUtils.getParticipant(
+        clusterName,
+        Utils.getHelixNodeIdentifier(httpPort1),
+        zkAddress,
+        httpPort1,
         MockTestStateModel.UNIT_TEST_STATE_MODEL);
     manager1.connect();
 
     Thread.sleep(WAIT_TIME);
-    accessor1 = new HelixPartitionStatusAccessor(manager1.getOriginalManager(),
-        manager1.getInstanceName(), true);
+    accessor1 = new HelixPartitionStatusAccessor(manager1.getOriginalManager(), manager1.getInstanceName(), true);
 
     readManager = new SafeHelixManager(
         HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress));
@@ -121,13 +134,14 @@ public class TestHelixCustomizedViewRepository {
     accessor1.updateHybridQuotaReplicaStatus(resourceName, partitionId1, HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
     accessor1.updateHybridQuotaReplicaStatus(resourceName, partitionId2, HybridStoreQuotaStatus.QUOTA_VIOLATED);
 
-    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS,
+    TestUtils.waitForNonDeterministicCompletion(
+        30,
+        TimeUnit.SECONDS,
         () -> offlinePushOnlyRepository.containsKafkaTopic(resourceName)
             && offlinePushOnlyRepository.getReplicaStates(resourceName, partitionId0).size() == 2
             && offlinePushOnlyRepository.getReplicaStates(resourceName, partitionId1).size() == 2);
 
   }
-
 
   @AfterMethod(alwaysRun = true)
   public void HelixCleanup() {
@@ -140,27 +154,34 @@ public class TestHelixCustomizedViewRepository {
     zkServerWrapper.close();
   }
 
-
   @Test
   public void testGetQuotaExceedStores() throws Exception {
     String fakeResourceName = "FakeUnitTest";
-    Assert.assertEquals(HybridStoreQuotaStatus.UNKNOWN, hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(fakeResourceName));
+    Assert.assertEquals(
+        HybridStoreQuotaStatus.UNKNOWN,
+        hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(fakeResourceName));
     Assert.assertEquals(1, hybridStoreQuotaOnlyRepository.getHybridQuotaViolatedStores().size());
     Assert.assertEquals(resourceName, hybridStoreQuotaOnlyRepository.getHybridQuotaViolatedStores().get(0));
-    Assert.assertEquals(HybridStoreQuotaStatus.QUOTA_VIOLATED, hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(resourceName));
+    Assert.assertEquals(
+        HybridStoreQuotaStatus.QUOTA_VIOLATED,
+        hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(resourceName));
 
     // Change resource from quota violated to quota not violated.
     accessor1.updateHybridQuotaReplicaStatus(resourceName, partitionId2, HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
     Thread.sleep(WAIT_TIME);
     Assert.assertEquals(0, hybridStoreQuotaOnlyRepository.getHybridQuotaViolatedStores().size());
-    Assert.assertEquals(HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED, hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(resourceName));
+    Assert.assertEquals(
+        HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED,
+        hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(resourceName));
 
     // Change resource from quota not violated to quota violated.
     accessor0.updateHybridQuotaReplicaStatus(resourceName, partitionId1, HybridStoreQuotaStatus.QUOTA_VIOLATED);
     Thread.sleep(WAIT_TIME);
     Assert.assertEquals(0, hybridStoreQuotaOnlyRepository.getHybridQuotaViolatedStores().size());
     // But accessor0 can not report hybrid quota status, since helix hybrid store quota is not enabled.
-    Assert.assertEquals(HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED, hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(resourceName));
+    Assert.assertEquals(
+        HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED,
+        hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(resourceName));
   }
 
   @Test
@@ -181,7 +202,8 @@ public class TestHelixCustomizedViewRepository {
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       List<Instance> instancesList = offlinePushOnlyRepository.getReadyToServeInstances(resourceName, partitionId0);
       Assert.assertEquals(instancesList.size(), 2);
-      Assert.assertEquals(new HashSet<>(Arrays.asList(instancesList.get(0).getPort(), instancesList.get(1).getPort())),
+      Assert.assertEquals(
+          new HashSet<>(Arrays.asList(instancesList.get(0).getPort(), instancesList.get(1).getPort())),
           new HashSet<>(Arrays.asList(httpPort0, httpPort1)));
     });
 
@@ -189,7 +211,8 @@ public class TestHelixCustomizedViewRepository {
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       List<Instance> instancesList = offlinePushOnlyRepository.getReadyToServeInstances(resourceName, partitionId1);
       Assert.assertEquals(instancesList.size(), 2);
-      Assert.assertEquals(new HashSet<>(Arrays.asList(instancesList.get(0).getPort(), instancesList.get(1).getPort())),
+      Assert.assertEquals(
+          new HashSet<>(Arrays.asList(instancesList.get(0).getPort(), instancesList.get(1).getPort())),
           new HashSet<>(Arrays.asList(httpPort0, httpPort1)));
     });
 
@@ -205,13 +228,15 @@ public class TestHelixCustomizedViewRepository {
 
     // Add a new participant
     int newHttpPort = httpPort0 + 10;
-    SafeHelixManager newManager =
-        TestUtils.getParticipant(clusterName, Utils.getHelixNodeIdentifier(newHttpPort), zkAddress, newHttpPort,
-            MockTestStateModel.UNIT_TEST_STATE_MODEL);
+    SafeHelixManager newManager = TestUtils.getParticipant(
+        clusterName,
+        Utils.getHelixNodeIdentifier(newHttpPort),
+        zkAddress,
+        newHttpPort,
+        MockTestStateModel.UNIT_TEST_STATE_MODEL);
     newManager.connect();
     HelixPartitionStatusAccessor newAccessor =
-        new HelixPartitionStatusAccessor(newManager.getOriginalManager(), newManager.getInstanceName(),
-            true);
+        new HelixPartitionStatusAccessor(newManager.getOriginalManager(), newManager.getInstanceName(), true);
     newAccessor.updateReplicaStatus(resourceName, partitionId0, ExecutionStatus.COMPLETED);
     newAccessor.updateReplicaStatus(resourceName, partitionId1, ExecutionStatus.COMPLETED);
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
@@ -227,10 +252,11 @@ public class TestHelixCustomizedViewRepository {
   public void testGetReplicaStates() {
     List<ReplicaState> replicaStates = offlinePushOnlyRepository.getReplicaStates(resourceName, partitionId0);
     Assert.assertEquals(replicaStates.size(), 2, "Unexpected replication factor");
-    for (ReplicaState replicaState : replicaStates) {
+    for (ReplicaState replicaState: replicaStates) {
       Assert.assertEquals(replicaState.getPartition(), partitionId0, "Unexpected partition number");
       Assert.assertNotNull(replicaState.getParticipantId(), "Participant id should not be null");
-      Assert.assertEquals(replicaState.isReadyToServe(),
+      Assert.assertEquals(
+          replicaState.isReadyToServe(),
           replicaState.getVenicePushStatus().equals(ExecutionStatus.COMPLETED.name()));
     }
   }
@@ -275,9 +301,11 @@ public class TestHelixCustomizedViewRepository {
   public void testGetPartitions() throws Exception {
     PartitionAssignment customizedPartitionAssignment = offlinePushOnlyRepository.getPartitionAssignments(resourceName);
     Assert.assertEquals(2, customizedPartitionAssignment.getAssignedNumberOfPartitions());
-    Assert.assertEquals(1, customizedPartitionAssignment.getPartition(partitionId0)
-        .getInstancesInState(ExecutionStatus.COMPLETED.name())
-        .size());
+    Assert.assertEquals(
+        1,
+        customizedPartitionAssignment.getPartition(partitionId0)
+            .getInstancesInState(ExecutionStatus.COMPLETED.name())
+            .size());
     Assert.assertEquals(0, customizedPartitionAssignment.getPartition(partitionId0).getWorkingInstances().size());
 
     Instance instance = customizedPartitionAssignment.getPartition(partitionId0)
@@ -298,14 +326,16 @@ public class TestHelixCustomizedViewRepository {
     Thread.sleep(WAIT_TIME);
     customizedPartitionAssignment = offlinePushOnlyRepository.getPartitionAssignments(resourceName);
     Assert.assertEquals(2, customizedPartitionAssignment.getAssignedNumberOfPartitions());
-    Assert.assertEquals(0, customizedPartitionAssignment.getPartition(partitionId0)
-        .getInstancesInState(ExecutionStatus.COMPLETED.name())
-        .size());
+    Assert.assertEquals(
+        0,
+        customizedPartitionAssignment.getPartition(partitionId0)
+            .getInstancesInState(ExecutionStatus.COMPLETED.name())
+            .size());
   }
 
   @Test
   public void testListeners() throws Exception {
-    final boolean[] isNoticed = {false, false, false, false};
+    final boolean[] isNoticed = { false, false, false, false };
     RoutingDataRepository.RoutingDataChangedListener listener = new RoutingDataRepository.RoutingDataChangedListener() {
       @Override
       public void onExternalViewChange(PartitionAssignment partitionAssignment) {

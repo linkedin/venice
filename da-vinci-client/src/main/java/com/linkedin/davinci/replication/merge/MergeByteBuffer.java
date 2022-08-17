@@ -1,12 +1,12 @@
 package com.linkedin.davinci.replication.merge;
 
+import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
+
 import com.linkedin.venice.schema.merge.ValueAndReplicationMetadata;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
-
-import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
 
 
 /**
@@ -14,7 +14,6 @@ import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
  * whole byte buffer level. Specifically, given 2 byte buffers to merge, only one of them will win completely.
  */
 public class MergeByteBuffer extends AbstractMerge<ByteBuffer> {
-
   @Override
   public ValueAndReplicationMetadata<ByteBuffer> put(
       ValueAndReplicationMetadata<ByteBuffer> oldValueAndReplicationMetadata,
@@ -22,8 +21,7 @@ public class MergeByteBuffer extends AbstractMerge<ByteBuffer> {
       long putOperationTimestamp,
       int writeOperationColoID,
       long sourceOffsetOfNewValue,
-      int newValueSourceBrokerID
-  ) {
+      int newValueSourceBrokerID) {
     final GenericRecord oldReplicationMetadata = oldValueAndReplicationMetadata.getReplicationMetadata();
     final Object tsObject = oldReplicationMetadata.get(TIMESTAMP_FIELD_NAME);
     RmdTimestampType rmdTimestampType = MergeUtils.getReplicationMetadataType(tsObject);
@@ -35,8 +33,7 @@ public class MergeByteBuffer extends AbstractMerge<ByteBuffer> {
           putOperationTimestamp,
           sourceOffsetOfNewValue,
           newValueSourceBrokerID,
-          newValue
-      );
+          newValue);
     } else {
       throw new IllegalArgumentException("Only handle record-level timestamp. Got: " + rmdTimestampType);
     }
@@ -48,8 +45,7 @@ public class MergeByteBuffer extends AbstractMerge<ByteBuffer> {
       long deleteOperationTimestamp,
       int deleteOperationColoID,
       long newValueSourceOffset,
-      int newValueSourceBrokerID
-  ) {
+      int newValueSourceBrokerID) {
     final GenericRecord oldReplicationMetadata = oldValueAndReplicationMetadata.getReplicationMetadata();
     final Object tsObject = oldReplicationMetadata.get(TIMESTAMP_FIELD_NAME);
     RmdTimestampType rmdTimestampType = MergeUtils.getReplicationMetadataType(tsObject);
@@ -59,8 +55,7 @@ public class MergeByteBuffer extends AbstractMerge<ByteBuffer> {
           deleteOperationTimestamp,
           newValueSourceOffset,
           newValueSourceBrokerID,
-          oldValueAndReplicationMetadata
-      );
+          oldValueAndReplicationMetadata);
     } else {
       throw new IllegalArgumentException("Only handle record-level timestamp. Got: " + rmdTimestampType);
     }
@@ -74,8 +69,7 @@ public class MergeByteBuffer extends AbstractMerge<ByteBuffer> {
       long updateOperationTimestamp,
       int updateOperationColoID,
       long newValueSourceOffset,
-      int newValueSourceBrokerID
-  ) {
+      int newValueSourceBrokerID) {
     throw new IllegalStateException("Update request should not be handled by this class.");
   }
 

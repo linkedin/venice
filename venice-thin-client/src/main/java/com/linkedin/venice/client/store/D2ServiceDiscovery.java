@@ -1,5 +1,7 @@
 package com.linkedin.venice.client.store;
 
+import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.*;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
@@ -17,8 +19,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.*;
 
 
 /**
@@ -68,7 +68,8 @@ public class D2ServiceDiscovery {
           storeNotFound = true;
           break;
         }
-        D2ServiceDiscoveryResponseV2 result = OBJECT_MAPPER.readValue(response.getBody(), D2ServiceDiscoveryResponseV2.class);
+        D2ServiceDiscoveryResponseV2 result =
+            OBJECT_MAPPER.readValue(response.getBody(), D2ServiceDiscoveryResponseV2.class);
         if (result.isError()) {
           throw new VeniceException(result.getError());
         }
@@ -76,7 +77,12 @@ public class D2ServiceDiscovery {
         return result;
 
       } catch (TimeoutException | ExecutionException e) {
-        LOGGER.warn("Failed to find d2 service for {}, attempt {}/{}, reason {}", storeName, attempt + 1, maxAttempts, e.getCause());
+        LOGGER.warn(
+            "Failed to find d2 service for {}, attempt {}/{}, reason {}",
+            storeName,
+            attempt + 1,
+            maxAttempts,
+            e.getCause());
 
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
@@ -90,6 +96,7 @@ public class D2ServiceDiscovery {
       // Short circuit the retry if the store is not found.
       throw new ServiceDiscoveryException(new VeniceNoStoreException(storeName));
     }
-    throw new ServiceDiscoveryException("Failed to find d2 service for " + storeName + " after " + maxAttempts + " attempts");
+    throw new ServiceDiscoveryException(
+        "Failed to find d2 service for " + storeName + " after " + maxAttempts + " attempts");
   }
 }

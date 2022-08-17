@@ -10,15 +10,11 @@ import com.fasterxml.jackson.annotation.JsonEnumDefaultValue;
  */
 @SuppressWarnings("deprecation")
 public enum ErrorType {
-  INCORRECT_CONTROLLER(ExceptionType.INCORRECT_CONTROLLER),
-  INVALID_SCHEMA(ExceptionType.INVALID_SCHEMA),
-  INVALID_CONFIG(ExceptionType.INVALID_CONFIG),
-  STORE_NOT_FOUND(ExceptionType.STORE_NOT_FOUND),
-  SCHEMA_NOT_FOUND(ExceptionType.SCHEMA_NOT_FOUND),
-  CONNECTION_ERROR(ExceptionType.CONNECTION_ERROR),
+  INCORRECT_CONTROLLER(ExceptionType.INCORRECT_CONTROLLER), INVALID_SCHEMA(ExceptionType.INVALID_SCHEMA),
+  INVALID_CONFIG(ExceptionType.INVALID_CONFIG), STORE_NOT_FOUND(ExceptionType.STORE_NOT_FOUND),
+  SCHEMA_NOT_FOUND(ExceptionType.SCHEMA_NOT_FOUND), CONNECTION_ERROR(ExceptionType.CONNECTION_ERROR),
   @JsonEnumDefaultValue
-  GENERAL_ERROR(ExceptionType.GENERAL_ERROR),
-  BAD_REQUEST(ExceptionType.BAD_REQUEST),
+  GENERAL_ERROR(ExceptionType.GENERAL_ERROR), BAD_REQUEST(ExceptionType.BAD_REQUEST),
   CONCURRENT_BATCH_PUSH(ExceptionType.BAD_REQUEST);
 
   private final ExceptionType exceptionType;
