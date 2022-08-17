@@ -139,7 +139,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       Properties configProperties,
       boolean forkServer,
       String serverName,
-      Optional<Map<String, Map<String, String>>> kafkaClusterMap) {
+      Map<String, Map<String, String>> kafkaClusterMap) {
     return (serviceName, dataDirectory) -> {
       boolean enableServerAllowlist = Boolean.parseBoolean(
           getPropertyWithAlternative(
@@ -160,12 +160,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       FileUtils.forceMkdir(configDirectory);
 
       // Generate cluster.properties in config directory
-      VeniceProperties clusterProps = IntegrationTestUtils.getClusterProps(
-          clusterName,
-          dataDirectory,
-          kafkaBrokerWrapper.getZkAddress(),
-          kafkaBrokerWrapper,
-          sslToKafka);
+      VeniceProperties clusterProps = IntegrationTestUtils
+          .getClusterProps(clusterName, kafkaBrokerWrapper.getZkAddress(), kafkaBrokerWrapper, sslToKafka);
       File clusterConfigFile = new File(configDirectory, VeniceConfigLoader.CLUSTER_PROPERTIES_FILE);
       clusterProps.storeFlattened(clusterConfigFile);
 

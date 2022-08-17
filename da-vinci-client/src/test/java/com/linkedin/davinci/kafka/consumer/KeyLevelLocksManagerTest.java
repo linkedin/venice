@@ -1,7 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.exceptions.VeniceException;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.locks.ReentrantLock;
 import org.testng.Assert;
@@ -13,9 +13,9 @@ public class KeyLevelLocksManagerTest {
   public void testSameLockReturnedForSameKeyBytes() {
     KeyLevelLocksManager keyLevelLocksManager = new KeyLevelLocksManager("testStoreVersion", 4, 4);
     byte[] rawKeyBytes = { 'a', 'b', 'c' };
-    ReentrantLock lock1 = keyLevelLocksManager.acquireLockByKey(ByteBuffer.wrap(rawKeyBytes));
+    ReentrantLock lock1 = keyLevelLocksManager.acquireLockByKey(ByteArrayKey.wrap(rawKeyBytes));
     byte[] sameRawKeyBytes = "abc".getBytes(StandardCharsets.UTF_8);
-    ReentrantLock lock2 = keyLevelLocksManager.acquireLockByKey(ByteBuffer.wrap(sameRawKeyBytes));
+    ReentrantLock lock2 = keyLevelLocksManager.acquireLockByKey(ByteArrayKey.wrap(sameRawKeyBytes));
     Assert.assertEquals(lock1, lock2);
   }
 
@@ -29,23 +29,23 @@ public class KeyLevelLocksManagerTest {
     // Key Manager can offer maxPoolSize locks.
     for (int i = 0; i < maxPoolSize; i++) {
       newRawKeyBytes = new byte[] { (byte) ('a' + i), (byte) ('b' + i), (byte) ('c' + i) };
-      keyLevelLocksManager.acquireLockByKey(ByteBuffer.wrap(newRawKeyBytes));
+      keyLevelLocksManager.acquireLockByKey(ByteArrayKey.wrap(newRawKeyBytes));
     }
     // Release initialPoolSize locks.
     for (int i = 0; i < initialPoolSize; i++) {
       newRawKeyBytes = new byte[] { (byte) ('a' + i), (byte) ('b' + i), (byte) ('c' + i) };
-      keyLevelLocksManager.releaseLock(ByteBuffer.wrap(newRawKeyBytes));
+      keyLevelLocksManager.releaseLock(ByteArrayKey.wrap(newRawKeyBytes));
     }
     // Request initialPoolSize locks.
     for (int i = maxPoolSize; i < maxPoolSize + initialPoolSize; i++) {
       newRawKeyBytes = new byte[] { (byte) ('a' + i), (byte) ('b' + i), (byte) ('c' + i) };
-      keyLevelLocksManager.acquireLockByKey(ByteBuffer.wrap(newRawKeyBytes));
+      keyLevelLocksManager.acquireLockByKey(ByteArrayKey.wrap(newRawKeyBytes));
     }
     try {
       int keyIndexExceedLimit = maxPoolSize + initialPoolSize;
       newRawKeyBytes = new byte[] { (byte) ('a' + keyIndexExceedLimit), (byte) ('b' + keyIndexExceedLimit),
           (byte) ('c' + keyIndexExceedLimit) };
-      keyLevelLocksManager.acquireLockByKey(ByteBuffer.wrap(newRawKeyBytes));
+      keyLevelLocksManager.acquireLockByKey(ByteArrayKey.wrap(newRawKeyBytes));
       Assert.fail("The lock pool size limit does work correctly.");
     } catch (VeniceException e) {
       // expected; if a lock poll size limit is exceeded, there should be exceptions thrown.
@@ -59,9 +59,9 @@ public class KeyLevelLocksManagerTest {
     KeyLevelLocksManager keyLevelLocksManager =
         new KeyLevelLocksManager("testStoreVersion", initialPoolSize, maxPoolSize);
     byte[] rawKeyBytes = { 'a', 'b', 'c' };
-    ReentrantLock lock1 = keyLevelLocksManager.acquireLockByKey(ByteBuffer.wrap(rawKeyBytes));
+    ReentrantLock lock1 = keyLevelLocksManager.acquireLockByKey(ByteArrayKey.wrap(rawKeyBytes));
     byte[] differentRawKeyBytes = { 'x', 'y', 'z' };
-    ReentrantLock lock2 = keyLevelLocksManager.acquireLockByKey(ByteBuffer.wrap(differentRawKeyBytes));
+    ReentrantLock lock2 = keyLevelLocksManager.acquireLockByKey(ByteArrayKey.wrap(differentRawKeyBytes));
     Assert.assertNotEquals(lock1, lock2);
   }
 
@@ -75,7 +75,7 @@ public class KeyLevelLocksManagerTest {
      * If different users acquire locks for the same key at the same time, same lock should be returned
      */
     byte[] rawKeyBytes = { 'a', 'b', 'c' };
-    ByteBuffer key1 = ByteBuffer.wrap(rawKeyBytes);
+    ByteArrayKey key1 = ByteArrayKey.wrap(rawKeyBytes);
     keyLevelLocksManager.acquireLockByKey(key1);
     Assert.assertEquals(keyLevelLocksManager.getLocksPool().size(), poolSize - 1);
 
@@ -95,7 +95,7 @@ public class KeyLevelLocksManagerTest {
      * If different users acquire locks for different keys at the same time, different locks should be returned
      */
     byte[] rawKeyBytes2 = { 'x', 'y', 'z' };
-    ByteBuffer key2 = ByteBuffer.wrap(rawKeyBytes2);
+    ByteArrayKey key2 = ByteArrayKey.wrap(rawKeyBytes2);
     keyLevelLocksManager.acquireLockByKey(key1);
     Assert.assertEquals(keyLevelLocksManager.getLocksPool().size(), poolSize - 1);
 

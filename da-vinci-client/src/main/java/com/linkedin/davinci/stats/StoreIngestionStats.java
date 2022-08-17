@@ -14,8 +14,10 @@ import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.Rate;
 import io.tehuti.metrics.stats.Total;
-import java.util.HashMap;
-import java.util.Map;
+import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
+
 
 
 public class StoreIngestionStats extends AbstractVeniceStats {
@@ -53,7 +55,7 @@ public class StoreIngestionStats extends AbstractVeniceStats {
   /**
    * Sensors for emitting if/when we detect DCR violations (such as a backwards timestamp or receding offset vector)
    */
-  private final Sensor timestampRegresssionDCRErrorRate;
+  private final Sensor timestampRegressionDCRErrorRate;
   private final Sensor offsetRegressionDCRErrorRate;
 
   /**
@@ -116,8 +118,8 @@ public class StoreIngestionStats extends AbstractVeniceStats {
   private final Sensor totalFollowerRecordsConsumedSensor;
   private final Sensor totalLeaderBytesProducedSensor;
   private final Sensor totalLeaderRecordsProducedSensor;
-  private final Map<Integer, Sensor> totalRegionHybridBytesConsumedMap;
-  private final Map<Integer, Sensor> totalRegionHybridRecordsConsumedMap;
+  private final Int2ObjectMap<Sensor> totalRegionHybridBytesConsumedMap;
+  private final Int2ObjectMap<Sensor> totalRegionHybridRecordsConsumedMap;
 
   private final Sensor checksumVerificationFailureSensor;
 
@@ -232,16 +234,18 @@ public class StoreIngestionStats extends AbstractVeniceStats {
     totalFollowerRecordsConsumedSensor = registerSensor("follower_records_consumed", new Rate());
     totalLeaderBytesProducedSensor = registerSensor("leader_bytes_produced", new Rate());
     totalLeaderRecordsProducedSensor = registerSensor("leader_records_produced", new Rate());
-    totalRegionHybridBytesConsumedMap = new HashMap<>();
-    totalRegionHybridRecordsConsumedMap = new HashMap<>();
-    for (Map.Entry<Integer, String> entry: serverConfig.getKafkaClusterIdToAliasMap().entrySet()) {
+    Int2ObjectMap<Sensor> tmpTotalRegionHybridBytesConsumedMap = new Int2ObjectArrayMap<>();
+    Int2ObjectMap<Sensor> tmpTotalRegionHybridRecordsConsumedMap = new Int2ObjectArrayMap<>();
+    for (Int2ObjectMap.Entry<String> entry: serverConfig.getKafkaClusterIdToAliasMap().int2ObjectEntrySet()) {
       String regionNamePrefix =
           RegionUtils.getRegionSpecificMetricPrefix(serverConfig.getRegionName(), entry.getValue());
-      totalRegionHybridBytesConsumedMap
-          .put(entry.getKey(), registerSensor(regionNamePrefix + "_rt_bytes_consumed", new Rate()));
-      totalRegionHybridRecordsConsumedMap
-          .put(entry.getKey(), registerSensor(regionNamePrefix + "_rt_records_consumed", new Rate()));
+      tmpTotalRegionHybridBytesConsumedMap
+          .put(entry.getIntKey(), registerSensor(regionNamePrefix + "_rt_bytes_consumed", new Rate()));
+      tmpTotalRegionHybridRecordsConsumedMap
+          .put(entry.getIntKey(), registerSensor(regionNamePrefix + "_rt_records_consumed", new Rate()));
     }
+    totalRegionHybridBytesConsumedMap = Int2ObjectMaps.unmodifiable(tmpTotalRegionHybridBytesConsumedMap);
+    totalRegionHybridRecordsConsumedMap = Int2ObjectMaps.unmodifiable(tmpTotalRegionHybridRecordsConsumedMap);
 
     checksumVerificationFailureSensor = registerSensor("checksum_verification_failure", new Count());
 
@@ -255,7 +259,7 @@ public class StoreIngestionStats extends AbstractVeniceStats {
     updateIgnoredDCRSensor = registerSensor("update_ignored_dcr", new Rate());
     tombstoneCreationDCRSensor = registerSensor("tombstone_creation_dcr", new Rate());
 
-    timestampRegresssionDCRErrorRate = registerSensor("timestamp_regression_dcr_error", new Rate());
+    timestampRegressionDCRErrorRate = registerSensor("timestamp_regression_dcr_error", new Rate());
     offsetRegressionDCRErrorRate = registerSensor("offset_regression_dcr_error", new Rate());
 
     leaderDelegateRealTimeRecordLatencySensor =
@@ -414,7 +418,7 @@ public class StoreIngestionStats extends AbstractVeniceStats {
   }
 
   public void recordTotalRegionHybridRecordConsumed(int regionId) {
-    Sensor sensor = totalRegionHybridBytesConsumedMap.get(regionId);
+    Sensor sensor = totalRegionHybridRecordsConsumedMap.get(regionId);
     if (sensor != null) {
       sensor.record(1);
     }
@@ -433,7 +437,7 @@ public class StoreIngestionStats extends AbstractVeniceStats {
   }
 
   public void recordTimestampRegressionDCRError() {
-    timestampRegresssionDCRErrorRate.record();
+    timestampRegressionDCRErrorRate.record();
   }
 
   public void recordOffsetRegressionDCRError() {

@@ -331,8 +331,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     logger.info("Final region name for this node: " + this.regionName);
     this.disabledRoutes = parseControllerRoutes(props, CONTROLLER_DISABLED_ROUTES, Collections.emptyList());
     this.adminTopicRemoteConsumptionEnabled = props.getBoolean(ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED, false);
-    if (adminTopicRemoteConsumptionEnabled
-        && (childDataCenterKafkaUrlMap == null || childDataCenterKafkaUrlMap.isEmpty())) {
+    if (adminTopicRemoteConsumptionEnabled && childDataCenterKafkaUrlMap.isEmpty()) {
       throw new VeniceException("Admin topic remote consumption is enabled but Kafka url map is empty");
     }
     this.adminTopicSourceRegion = props.getString(ADMIN_TOPIC_SOURCE_REGION, "");
@@ -430,8 +429,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    * values are a list of cluster URLs that can be used to reach that cluster with the controller client.  List provides
    * redundancy in case of hardware or other failure.  Clients of this list should be sure they use another url if the
    * first one fails.
-   *
-   * @return
    */
   public Map<String, String> getChildDataCenterControllerUrlMap() {
     return childDataCenterControllerUrlMap;
@@ -715,7 +712,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    * @param clusterPros list of child controller uris
    * @param datacenterAllowlist data centers that are taken into account
    * @param D2Routing whether uses D2 to route or not
-   * @return
    */
   public static Map<String, String> parseClusterMap(
       VeniceProperties clusterPros,
@@ -760,9 +756,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         CHILD_DATA_CENTER_KAFKA_URL_PREFIX,
         clusterPros,
         datacenterAllowlist,
-        (m, k, v, e) -> {
-          m.putIfAbsent(k, v);
-        });
+        (m, k, v, e) -> m.putIfAbsent(k, v));
   }
 
   /**

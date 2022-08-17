@@ -10,16 +10,23 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
+import org.apache.kafka.common.protocol.SecurityProtocol;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
+  private static final Logger LOGGER = LogManager.getLogger();
   public static final String SERVICE_NAME = "VeniceTwoLayerMultiCluster";
   private final List<VeniceMultiClusterWrapper> clusters;
   private final List<VeniceControllerWrapper> parentControllers;
@@ -184,8 +191,8 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       finalChildControllerProperties.putAll(defaultChildControllerProps);
       childControllerPropertiesOverride.ifPresent(finalChildControllerProperties::putAll);
 
-      Optional<Map<String, Map<String, String>>> kafkaClusterMap =
-          addKafkaClusterIDMappingToServerConfigs(serverProperties, parentColoName, childColoNames, allKafkaBrokers);
+      Map<String, Map<String, String>> kafkaClusterMap =
+          addKafkaClusterIDMappingToServerConfigs(serverProperties, childColoNames, allKafkaBrokers);
 
       // Create multi-clusters
       for (int i = 0; i < numberOfColos; i++) {
@@ -253,27 +260,47 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
     }
   }
 
-  private static Optional<Map<String, Map<String, String>>> addKafkaClusterIDMappingToServerConfigs(
+  private static Map<String, Map<String, String>> addKafkaClusterIDMappingToServerConfigs(
       Optional<VeniceProperties> serverProperties,
-      String parentColoName,
       List<String> coloNames,
       List<KafkaBrokerWrapper> kafkaBrokers) {
     if (serverProperties.isPresent()) {
+      SecurityProtocol baseSecurityProtocol = SecurityProtocol
+          .valueOf(serverProperties.get().getString(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name));
       Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
 
-      Map<String, String> mapping = new HashMap<>();
-      mapping.put(KAFKA_CLUSTER_MAP_KEY_NAME, parentColoName);
-      mapping.put(KAFKA_CLUSTER_MAP_KEY_URL, kafkaBrokers.get(0).getAddress());
-      kafkaClusterMap.put(String.valueOf(0), mapping);
+      Map<String, String> mapping;
       for (int i = 1; i <= coloNames.size(); i++) {
         mapping = new HashMap<>();
-        mapping.put(KAFKA_CLUSTER_MAP_KEY_NAME, coloNames.get(i - 1));
-        mapping.put(KAFKA_CLUSTER_MAP_KEY_URL, kafkaBrokers.get(i).getAddress());
-        kafkaClusterMap.put(String.valueOf(i), mapping);
+        int clusterId = i - 1;
+        mapping.put(KAFKA_CLUSTER_MAP_KEY_NAME, coloNames.get(clusterId));
+        SecurityProtocol securityProtocol = baseSecurityProtocol;
+        if (clusterId > 0) {
+          // Testing mixed security on any 2-layer setup with 2 or more DCs.
+          securityProtocol = SecurityProtocol.SSL;
+        }
+        mapping.put(KAFKA_CLUSTER_MAP_SECURITY_PROTOCOL, securityProtocol.name);
+
+        // N.B. the first Kafka broker in the list is the parent, which we're excluding from the mapping, so this
+        // is why the index here is offset by 1 compared to the cluster ID.
+        KafkaBrokerWrapper kafkaBrokerWrapper = kafkaBrokers.get(i);
+        String kafkaAddress = securityProtocol == SecurityProtocol.SSL
+            ? kafkaBrokerWrapper.getSSLAddress()
+            : kafkaBrokerWrapper.getAddress();
+        mapping.put(KAFKA_CLUSTER_MAP_KEY_URL, kafkaAddress);
+        String otherKafkaAddress = securityProtocol == SecurityProtocol.PLAINTEXT
+            ? kafkaBrokerWrapper.getSSLAddress()
+            : kafkaBrokerWrapper.getAddress();
+        mapping.put(KAFKA_CLUSTER_MAP_KEY_OTHER_URLS, otherKafkaAddress);
+        kafkaClusterMap.put(String.valueOf(clusterId), mapping);
       }
-      return Optional.of(kafkaClusterMap);
+      LOGGER.info(
+          "addKafkaClusterIDMappingToServerConfigs \n\treceived broker list: \n\t\t{} \n\tand generated cluster map: \n\t\t{}",
+          kafkaBrokers.stream().map(KafkaBrokerWrapper::toString).collect(Collectors.joining("\n\t\t")),
+          kafkaClusterMap.entrySet().stream().map(Objects::toString).collect(Collectors.joining("\n\t\t")));
+      return kafkaClusterMap;
     } else {
-      return Optional.empty(); // Do not populate if it is Optional.empty()
+      return Collections.emptyMap();
     }
   }
 

@@ -110,6 +110,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.ByteBuffer;
@@ -183,7 +184,6 @@ public class StoreIngestionTaskTest {
   private InMemoryKafkaBroker inMemoryRemoteKafkaBroker;
   private MockInMemoryConsumer inMemoryLocalKafkaConsumer;
   private MockInMemoryConsumer inMemoryRemoteKafkaConsumer;
-  private String localAndRemoteKafkaBootstrapServers;
   private VeniceWriterFactory mockWriterFactory;
   private VeniceWriter localVeniceWriter;
   private StorageEngineRepository mockStorageEngineRepository;
@@ -310,8 +310,12 @@ public class StoreIngestionTaskTest {
 
   @AfterMethod(alwaysRun = true)
   public void methodCleanUp() throws Exception {
-    localKafkaConsumerService.stop();
-    remoteKafkaConsumerService.stop();
+    if (localKafkaConsumerService != null) {
+      localKafkaConsumerService.stopInner();
+    }
+    if (remoteKafkaConsumerService != null) {
+      remoteKafkaConsumerService.stopInner();
+    }
   }
 
   @BeforeMethod(alwaysRun = true)
@@ -325,10 +329,6 @@ public class StoreIngestionTaskTest {
     inMemoryRemoteKafkaBroker = new InMemoryKafkaBroker("remote");
     inMemoryRemoteKafkaBroker.createTopic(topic, PARTITION_COUNT);
 
-    localAndRemoteKafkaBootstrapServers = String.join(
-        ",",
-        inMemoryLocalKafkaBroker.getKafkaBootstrapServer(),
-        inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
     localVeniceWriter = getVeniceWriter(() -> new MockInMemoryProducer(inMemoryLocalKafkaBroker));
 
     mockStorageEngineRepository = mock(StorageEngineRepository.class);
@@ -808,14 +808,14 @@ public class StoreIngestionTaskTest {
         localKafkaConsumerService.attach(topicWiseKafkaConsumer, topic, storeIngestionTask);
         localConsumedDataReceiver = (StorePartitionDataReceiver) localKafkaConsumerService.setDataReceiver(
             topicPartition,
-            new StorePartitionDataReceiver(storeIngestionTask, topicPartition, kafkaUrl));
+            new StorePartitionDataReceiver(storeIngestionTask, topicPartition, kafkaUrl, 0));
         topicWiseKafkaConsumer.subscribe(topic, partition, offset);
       } else if (kafkaUrl.equals(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer())) {
         KafkaConsumerWrapper topicWiseKafkaConsumer = remoteKafkaConsumerService.assignConsumerFor(storeIngestionTask);
         remoteKafkaConsumerService.attach(topicWiseKafkaConsumer, topic, storeIngestionTask);
         remoteConsumedDataReceiver = (StorePartitionDataReceiver) remoteKafkaConsumerService.setDataReceiver(
             topicPartition,
-            new StorePartitionDataReceiver(storeIngestionTask, topicPartition, kafkaUrl));
+            new StorePartitionDataReceiver(storeIngestionTask, topicPartition, kafkaUrl, 1));
         topicWiseKafkaConsumer.subscribe(topic, partition, offset);
       }
 
@@ -2353,7 +2353,7 @@ public class StoreIngestionTaskTest {
     propertyBuilder.put(ZOOKEEPER_ADDRESS, "");
     propertyBuilder.put(KAFKA_ZK_ADDRESS, "");
     propertyBuilder.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 500L);
-    propertyBuilder.put(KAFKA_BOOTSTRAP_SERVERS, localAndRemoteKafkaBootstrapServers);
+    propertyBuilder.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
     propertyBuilder.put(HYBRID_QUOTA_ENFORCEMENT_ENABLED, false);
     propertyBuilder.put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, databaseChecksumVerificationEnabled);
     propertyBuilder.put(SERVER_LOCAL_CONSUMER_CONFIG_PREFIX, new VeniceProperties());
@@ -2372,7 +2372,7 @@ public class StoreIngestionTaskTest {
     remoteKafkaMapping.put(KAFKA_CLUSTER_MAP_KEY_URL, inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
     kafkaClusterMap.put(String.valueOf(1), remoteKafkaMapping);
 
-    return new VeniceServerConfig(propertyBuilder.build(), Optional.of(kafkaClusterMap));
+    return new VeniceServerConfig(propertyBuilder.build(), kafkaClusterMap);
   }
 
   private void verifyPutAndDelete(
@@ -2906,6 +2906,7 @@ public class StoreIngestionTaskTest {
     VeniceProperties mockVeniceProperties = mock(VeniceProperties.class);
     doReturn(true).when(mockVeniceProperties).isEmpty();
     doReturn(mockVeniceProperties).when(mockVeniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
+    doReturn(Object2IntMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
 
     StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName)
         .setTopicManagerRepository(mockTopicManagerRepository)
@@ -2964,6 +2965,7 @@ public class StoreIngestionTaskTest {
     doReturn(new VeniceProperties()).when(veniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
     doReturn(new VeniceProperties()).when(veniceServerConfig).getKafkaConsumerConfigsForRemoteConsumption();
     doReturn(true).when(veniceServerConfig).isSharedConsumerPoolEnabled();
+    doReturn(Object2IntMaps.emptyMap()).when(veniceServerConfig).getKafkaClusterUrlToIdMap();
     doReturn(veniceServerConfig).when(builder).getServerConfig();
     doReturn(mock(ReadOnlyStoreRepository.class)).when(builder).getMetadataRepo();
     doReturn(mock(ReadOnlySchemaRepository.class)).when(builder).getSchemaRepo();

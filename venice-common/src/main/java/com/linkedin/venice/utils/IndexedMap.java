@@ -1,4 +1,4 @@
-package com.linkedin.davinci.utils;
+package com.linkedin.venice.utils;
 
 import java.util.Map;
 

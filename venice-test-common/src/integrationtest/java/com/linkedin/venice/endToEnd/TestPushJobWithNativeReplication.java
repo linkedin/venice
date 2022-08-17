@@ -211,7 +211,7 @@ public class TestPushJobWithNativeReplication {
         });
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT * 2)
   public void testNativeReplicationWithLeadershipHandover() throws Exception {
     int recordCount = 10000;
     motherOfAllTests(
@@ -242,7 +242,7 @@ public class TestPushJobWithNativeReplication {
               veniceClusterWrapper.stopAndRestartVeniceServer(leaderNode.getPort());
             });
 
-            TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+            TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
               for (int version: parentControllerClient.getStore(storeName)
                   .getStore()
                   .getColoToCurrentVersions()
@@ -281,9 +281,6 @@ public class TestPushJobWithNativeReplication {
             Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
           }
 
-          String parentControllerUrls = parentControllers.stream()
-              .map(VeniceControllerWrapper::getControllerUrl)
-              .collect(Collectors.joining(","));
           // Setup meta system store for Da Vinci usage.
           TestUtils.createMetaSystemStore(parentControllerClient, storeName, Optional.of(logger));
 
@@ -353,9 +350,6 @@ public class TestPushJobWithNativeReplication {
             }
 
             String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
-            String parentControllerUrls = parentControllers.stream()
-                .map(VeniceControllerWrapper::getControllerUrl)
-                .collect(Collectors.joining(","));
             try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
                 ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
               TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
@@ -511,9 +505,6 @@ public class TestPushJobWithNativeReplication {
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
         10,
         (parentControllerClient, clusterName, batchOnlyStoreName, props, inputDir) -> {
-          String parentControllerUrls = parentControllers.stream()
-              .map(VeniceControllerWrapper::getControllerUrl)
-              .collect(Collectors.joining(","));
           // Create a hybrid store
           String hybridStoreName = Utils.getUniqueString("hybrid-store");
           NewStoreResponse newStoreResponse =

@@ -10,11 +10,6 @@ public class ConfigKeys {
 
   // cluster specific properties
   public static final String CLUSTER_NAME = "cluster.name";
-  public static final String ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT = "enable.kafka.consumers.offset.management";
-  public static final String OFFSET_MANAGER_TYPE = "offset.manager.type";
-  public static final String OFFSET_DATA_BASE_PATH = "offsets.data.base.path";
-  public static final String OFFSET_MANAGER_FLUSH_INTERVAL_MS = "offset.manager.flush.interval.ms";
-  public static final String OFFSET_MANAGER_LOG_FILE_MAX_BYTES = "offset.manager.log.file.max.bytes";
   public static final String ZOOKEEPER_ADDRESS = "zookeeper.address";
 
   public static final String ADMIN_PORT = "admin.port";
@@ -29,30 +24,14 @@ public class ConfigKeys {
    */
   public static final String ADMIN_CHECK_READ_METHOD_FOR_KAFKA = "admin.check.read.method.for.kafka";
 
-  public static final String STATUS_MESSAGE_RETRY_COUNT = "status.message.retry.count";
-  public static final String STATUS_MESSAGE_RETRY_DURATION_MS = "status.message.retry.duration.ms";
-
   // store specific properties
   public static final String PERSISTENCE_TYPE = "persistence.type";
-  public static final String KAFKA_BROKERS = "kafka.brokers";
-  public static final String KAFKA_BROKER_PORT = "kafka.broker.port";
-  public static final String KAFKA_CONSUMER_FETCH_BUFFER_SIZE = "kafka.consumer.fetch.buffer.size";
-  public static final String KAFKA_CONSUMER_SOCKET_TIMEOUT_MS = "kafka.consumer.socket.timeout.ms";
-  public static final String KAFKA_CONSUMER_NUM_METADATA_REFRESH_RETRIES =
-      "kafka.consumer.num.metadata.refresh.retries";
-  public static final String KAFKA_CONSUMER_METADATA_REFRESH_BACKOFF_MS = "kafka.consumer.metadata.refresh.backoff.ms";
 
   public static final String KAFKA_BOOTSTRAP_SERVERS = "kafka.bootstrap.servers";
   public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = "ssl.kafka.bootstrap.servers";
-  public static final String KAFKA_ADMIN_GET_TOPIC_CONFG_MAX_RETRY_TIME_SEC =
+  public static final String KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC =
       "kafka.admin.get.topic.config.max.retry.sec";
 
-  public static final String KAFKA_REQUEST_TIMEOUT_MS =
-      ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG;
-  public static final String KAFKA_DELIVERY_TIMEOUT_MS =
-      ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG;
-  public static final String KAFKA_MAX_BLOCK_MS =
-      ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.MAX_BLOCK_MS_CONFIG;
   public static final String KAFKA_LINGER_MS =
       ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.LINGER_MS_CONFIG;
   public static final String KAFKA_BATCH_SIZE =
@@ -361,7 +340,6 @@ public class ConfigKeys {
   public static final String UNSORTED_INPUT_DRAINER_SIZE = "unsorted.input.drainer.size";
   public static final String STORE_WRITER_BUFFER_MEMORY_CAPACITY = "store.writer.buffer.memory.capacity";
   public static final String STORE_WRITER_BUFFER_NOTIFY_DELTA = "store.writer.buffer.notify.delta";
-  public static final String OFFSET_DATABASE_CACHE_SIZE = "offset.database.cache.size";
   public static final String SERVER_REST_SERVICE_STORAGE_THREAD_NUM = "server.rest.service.storage.thread.num";
   public static final String SERVER_NETTY_IDLE_TIME_SECONDS = "server.netty.idle.time.seconds";
   public static final String SERVER_MAX_REQUEST_SIZE = "server.max.request.size";
@@ -880,47 +858,10 @@ public class ConfigKeys {
   public static final String ROUTER_PER_STORAGE_NODE_READ_QUOTA_BUFFER = "router.per.storage.node.read.quota.buffer";
 
   /**
-   * Whether router cache is enabled or not.
-   */
-  public static final String ROUTER_CACHE_ENABLED = "router.cache.enabled";
-
-  /**
-   * Router cache size, and this cache is for all the stores, which enables cache feature.
-   */
-  public static final String ROUTER_CACHE_SIZE_IN_BYTES = "router.cache.size.in.bytes";
-
-  /**
-   * Concurrency setup for router cache, and this is must be power of 2 when using 'OFF_HEAP_CACHE'.
-   */
-  public static final String ROUTER_CACHE_CONCURRENCY = "router.cache.concurrency";
-
-  /**
-   * Valid cache types: 'ON_HEAP_CACHE', 'OFF_HEAP_CACHE'.
-   */
-  public static final String ROUTER_CACHE_TYPE = "router.cache.type";
-
-  /**
-   * Valid cache eviction algorithms: 'LRU', 'W_TINY_LFU'.
-   *
-   * For 'ON_HEAP_CACHE', 'LRU' is the only available cache eviction for now.
-   */
-  public static final String ROUTER_CACHE_EVICTION = "router.cache.eviction";
-
-  /**
-   * Max hash table size per cache segment, and it must be power of 2, and it is only useful when using 'OFF_HEAP_CACHE'.
-   */
-  public static final String ROUTER_CACHE_HASH_TABLE_SIZE = "router.cache.hash.table.size";
-
-  /**
    * The TTL for each entry in router cache (millisecond)
    * If 0, TTL is not enabled; other, cache TTL is enabled
    */
   public static final String ROUTER_CACHE_TTL_MILLIS = "router.cache.ttl.millis";
-
-  /**
-   * The request is still being throttled even it is a cache hit, but just with smaller weight.
-   */
-  public static final String ROUTER_CACHE_HIT_REQUEST_THROTTLE_WEIGHT = "router.cache.hit.request.throttle.weight";
 
   /**
    * Whether to enable customized dns cache in router or not.
@@ -1117,8 +1058,6 @@ public class ConfigKeys {
    * Furthermore, if a store with the same name is ever re-created, then the clean up routine would resume
    * and clean up the older leaky topics successfully. This edge case is deemed a small enough concern for
    * now, though it could be addressed with a more significant redesign of the replication pipeline.
-   *
-   * @see
    */
   public static final String MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE =
       "min.number.of.unused.kafka.topics.to.preserve";
@@ -1243,14 +1182,14 @@ public class ConfigKeys {
   public static final String PARENT_KAFKA_CLUSTER_FABRIC_LIST = "parent.kafka.cluster.fabric.list";
 
   /**
-   * Whether A/A is enabled on the controller. When it is true, all A/A required config (e.g. {@link ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST})
-   * must be set.
+   * Whether A/A is enabled on the controller. When it is true, all A/A required config (e.g.
+   * {@link #ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST}) must be set.
    */
   public static final String ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER = "active.active.enabled.on.controller";
 
   /**
    * A list of fabrics that are source(s) of the active active real time replication. When active-active replication
-   * is enabled on the controller {@link ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER} is true, this list should contain fabrics
+   * is enabled on the controller {@link #ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER} is true, this list should contain fabrics
    * where the Venice server should consume from when it accepts the TS (TopicSwitch) message.
    * Example value of this config: "prod-lva1,prod-lor1,prod-ltx1".
    */
@@ -1291,11 +1230,6 @@ public class ConfigKeys {
    * TODO: it will be moved to Store metadata if we allow stores have various storage engine types.
    */
   public static final String STORAGE_ENGINE_OVERHEAD_RATIO = "storage.engine.overhead.ratio";
-
-  /**
-   * Env variable for setting keystore when running Venice with quickstart.
-   */
-  public static final String KEYSTORE_ENV = "VENICE_KEYSTORE";
 
   // go/inclusivecode deprecated(alias="enable.offline.push.ssl.allowlist")
   public static final String ENABLE_OFFLINE_PUSH_SSL_WHITELIST = "enable.offline.push.ssl.whitelist";
@@ -1640,8 +1574,9 @@ public class ConfigKeys {
   public static final String ROUTER_HTTP_MAX_RESPONSE_SIZE = "router.http.max.response.size";
 
   /**
-   * @deprecated, and it will be replaced by {@link #ROUTER_HTTP2_CLIENT_ENABLED}.
+   * Will be replaced by {@link #ROUTER_HTTP2_CLIENT_ENABLED}.
    */
+  @Deprecated
   public static final String ROUTER_HTTP2_R2_CLIENT_ENABLED = "router.http2.r2.client.enabled";
 
   public static final String ROUTER_HTTP2_CLIENT_ENABLED = "router.http2.client.enabled";
@@ -1736,14 +1671,6 @@ public class ConfigKeys {
    */
   public static final String PUSH_STATUS_STORE_DERIVED_SCHEMA_ID = "push.status.store.derived.schema.id";
 
-  /*
-   * Temporary config to specify the version number of the corresponding metadata system store. This config will retire
-   * once multi-versioned metadata system store is properly supported. Setting the config will enable DaVinci to
-   * bootstrap the metadata system store locally. The config should be a map of Venice store name to their corresponding
-   * metadata store version.
-   */
-  public static final String CLIENT_METADATA_SYSTEM_STORE_VERSION_MAP = "client.metadata.system.store.version.map";
-
   /**
    * Whether to throttle SSL connections between router and client.
    */
@@ -1805,11 +1732,6 @@ public class ConfigKeys {
   public static final String CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER = "controller.default.read.quota.per.router";
 
   /**
-   * This config specifies the client to use thin client meta system store based repository.
-   */
-  public static final String CLIENT_USE_META_SYSTEM_STORE_REPOSITORY = "client.use.meta.system.store.repository";
-
-  /**
    * This config will specify the region name of a controller; the region name can be customized by Venice internal.
    */
   public static final String LOCAL_REGION_NAME = "local.region.name";
@@ -1846,12 +1768,6 @@ public class ConfigKeys {
       "server.kafka.consumer.offset.collection.enabled";
 
   /**
-   * Kafka bootstrap server id to url map
-   * e.g. 0:ei-ltx1@kafka.venice.kafka.ei-ltx1.atd.stg.linkedin.com:16637,1:ei4@kafka.venice.kafka.ei4.atd.int.linkedin.com:16637
-   */
-  public static final String SERVER_KAFKA_CLUSTER_ID_TO_URL = "server.kafka.cluster.id.to.url";
-
-  /**
    * This indicates if server will perform the schema presence check or not.
    * By default it is set to true.
    */
@@ -1877,6 +1793,8 @@ public class ConfigKeys {
    */
   public static final String KAFKA_CLUSTER_MAP_KEY_NAME = "name";
   public static final String KAFKA_CLUSTER_MAP_KEY_URL = "url";
+  public static final String KAFKA_CLUSTER_MAP_KEY_OTHER_URLS = "otherUrls";
+  public static final String KAFKA_CLUSTER_MAP_SECURITY_PROTOCOL = "securityProtocol";
 
   public static final String SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING =
       "server.enable.live.config.based.kafka.throttling";

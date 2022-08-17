@@ -70,4 +70,12 @@ public class StatusSnapshot {
     result = 31 * result + time.hashCode();
     return result;
   }
+
+  @Override
+  public String toString() {
+    String incPush = (incrementalPushVersion != null && !incrementalPushVersion.isEmpty())
+        ? ", incrementalPushVersion='" + incrementalPushVersion + '\''
+        : "";
+    return "StatusSnapshot{" + "status=" + status + ", time='" + time + '\'' + incPush + '}';
+  }
 }

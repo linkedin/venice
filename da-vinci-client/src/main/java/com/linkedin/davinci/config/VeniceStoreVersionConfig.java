@@ -7,6 +7,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Collections;
+import java.util.Map;
 import java.util.Optional;
 
 
@@ -29,15 +31,22 @@ public class VeniceStoreVersionConfig extends VeniceServerConfig {
   private boolean restoreDataPartitions = true;
   private boolean restoreMetadataPartition = true;
 
-  public VeniceStoreVersionConfig(String storeVersionName, VeniceProperties storeProperties)
-      throws ConfigurationException {
-    super(storeProperties);
+  public VeniceStoreVersionConfig(
+      String storeVersionName,
+      VeniceProperties storeProperties,
+      Map<String, Map<String, String>> kafkaClusterMap) {
+    super(storeProperties, kafkaClusterMap);
     this.storeVersionName = storeVersionName;
 
     // Stores all storage engine configs that are needed to be persisted to disk.
     this.persistStorageEngineConfigs = new PropertyBuilder()
         .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled())
         .build();
+  }
+
+  public VeniceStoreVersionConfig(String storeVersionName, VeniceProperties storeProperties)
+      throws ConfigurationException {
+    this(storeVersionName, storeProperties, Collections.emptyMap());
   }
 
   public VeniceStoreVersionConfig(

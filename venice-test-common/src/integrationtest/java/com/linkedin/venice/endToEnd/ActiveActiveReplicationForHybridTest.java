@@ -50,7 +50,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -79,7 +78,8 @@ import org.testng.annotations.Test;
  *       is done.
  */
 public class ActiveActiveReplicationForHybridTest {
-  private static final int TEST_TIMEOUT = 120_000; // ms
+  private static final int TEST_TIMEOUT = 5 * Time.MS_PER_MINUTE;
+  private static final int PUSH_TIMEOUT = TEST_TIMEOUT / 2;
 
   protected static final int NUMBER_OF_CHILD_DATACENTERS = 3;
   protected static final int NUMBER_OF_CLUSTERS = 1;
@@ -99,10 +99,6 @@ public class ActiveActiveReplicationForHybridTest {
   private ControllerClient dc2Client;
   private List<ControllerClient> dcControllerClientList;
 
-  public Map<String, Object> getExtraServerProperties() {
-    return Collections.emptyMap();
-  }
-
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     /**
@@ -118,7 +114,6 @@ public class ActiveActiveReplicationForHybridTest {
     serverProperties.put(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
     serverProperties.put(SERVER_SHARED_KAFKA_PRODUCER_ENABLED, true);
     serverProperties.put(SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER, "2");
-    serverProperties.putAll(getExtraServerProperties());
 
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
@@ -152,7 +147,7 @@ public class ActiveActiveReplicationForHybridTest {
 
     String clusterName = CLUSTER_NAMES[0];
     String parentControllerURLs =
-        parentControllers.stream().map(c -> c.getControllerUrl()).collect(Collectors.joining(","));
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
     parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
     dc0Client = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     dc1Client = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
@@ -344,11 +339,8 @@ public class ActiveActiveReplicationForHybridTest {
 
       // Empty push to create a version
       ControllerResponse controllerResponse = assertCommand(
-          parentControllerClient.sendEmptyPushAndWait(
-              storeName,
-              Utils.getUniqueString("empty-hybrid-push"),
-              1L,
-              60 * Time.MS_PER_SECOND));
+          parentControllerClient
+              .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L, PUSH_TIMEOUT));
       assertTrue(controllerResponse instanceof JobStatusQueryResponse);
       JobStatusQueryResponse jobStatusQueryResponse = (JobStatusQueryResponse) controllerResponse;
       int versionNumber = jobStatusQueryResponse.getVersion();
@@ -554,11 +546,8 @@ public class ActiveActiveReplicationForHybridTest {
 
       // Empty push to create a version
       assertCommand(
-          parentControllerClient.sendEmptyPushAndWait(
-              storeName,
-              Utils.getUniqueString("empty-hybrid-push"),
-              1L,
-              60 * Time.MS_PER_SECOND));
+          parentControllerClient
+              .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L, PUSH_TIMEOUT));
 
       // Verify that version 1 is already created in dc-0 region
       waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
@@ -741,11 +730,8 @@ public class ActiveActiveReplicationForHybridTest {
       updateStoreToHybrid(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(true));
       // Empty push to create a version
       ControllerResponse response = assertCommand(
-          parentControllerClient.sendEmptyPushAndWait(
-              storeName,
-              Utils.getUniqueString("empty-hybrid-push"),
-              1L,
-              60 * Time.MS_PER_SECOND));
+          parentControllerClient
+              .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L, PUSH_TIMEOUT));
       assertTrue(response instanceof JobStatusQueryResponse);
       JobStatusQueryResponse jobStatusQueryResponse = (JobStatusQueryResponse) response;
       kafkaTopic = Version.composeKafkaTopic(storeName, jobStatusQueryResponse.getVersion());

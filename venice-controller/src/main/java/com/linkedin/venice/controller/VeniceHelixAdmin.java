@@ -1118,6 +1118,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             new HashMap<>());
       }
       veniceWriter.broadcastEndOfPush(new HashMap<>());
+      veniceWriter.flush();
     }
   }
 

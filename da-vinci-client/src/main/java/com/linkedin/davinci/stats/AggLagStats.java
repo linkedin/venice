@@ -9,13 +9,13 @@ import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2LongMap;
 import it.unimi.dsi.fastutil.ints.Int2LongOpenHashMap;
-import java.util.Map;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 
 public class AggLagStats extends AbstractVeniceStats {
   private final StoreIngestionService storeIngestionService;
-  private final Map<Integer, String> kafkaClusterIdToAliasMap;
+  private final Int2ObjectMap<String> kafkaClusterIdToAliasMap;
   private final Int2LongMap aggRegionHybridOffsetLagTotalMap;
 
   private long aggBatchReplicationLagFuture;
@@ -31,11 +31,13 @@ public class AggLagStats extends AbstractVeniceStats {
     this.kafkaClusterIdToAliasMap =
         storeIngestionService.getVeniceConfigLoader().getVeniceServerConfig().getKafkaClusterIdToAliasMap();
     this.aggRegionHybridOffsetLagTotalMap = new Int2LongOpenHashMap(kafkaClusterIdToAliasMap.size());
-    for (Map.Entry<Integer, String> entry: kafkaClusterIdToAliasMap.entrySet()) {
+    for (Int2ObjectMap.Entry<String> entry: kafkaClusterIdToAliasMap.int2ObjectEntrySet()) {
       String regionNamePrefix = RegionUtils.getRegionSpecificMetricPrefix(
           storeIngestionService.getVeniceConfigLoader().getVeniceServerConfig().getRegionName(),
           entry.getValue());
-      registerSensor(regionNamePrefix + "_rt_lag", new Gauge(() -> getAggRegionHybridOffsetLagTotal(entry.getKey())));
+      registerSensor(
+          regionNamePrefix + "_rt_lag",
+          new Gauge(() -> getAggRegionHybridOffsetLagTotal(entry.getIntKey())));
     }
     registerSensor("agg_batch_replication_lag_future", new Gauge(this::getAggBatchReplicationLagFuture));
     registerSensor("agg_batch_leader_offset_lag_future", new Gauge(this::getAggBatchLeaderOffsetLagFuture));

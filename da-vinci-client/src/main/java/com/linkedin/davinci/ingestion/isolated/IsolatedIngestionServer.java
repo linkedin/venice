@@ -143,7 +143,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     String configBasePath =
         (new VeniceConfigLoader(loadedVeniceProperties, loadedVeniceProperties)).getVeniceServerConfig()
             .getDataBasePath();
-    Optional<Map<String, Map<String, String>>> kafkaClusterMap =
+    Map<String, Map<String, String>> kafkaClusterMap =
         IsolatedIngestionUtils.loadForkedIngestionKafkaClusterMapConfig(configBasePath);
     this.configLoader = new VeniceConfigLoader(loadedVeniceProperties, loadedVeniceProperties, kafkaClusterMap);
     this.servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();

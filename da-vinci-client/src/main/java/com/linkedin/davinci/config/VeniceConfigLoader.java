@@ -12,9 +12,9 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -85,13 +85,13 @@ public class VeniceConfigLoader {
   }
 
   public VeniceConfigLoader(VeniceProperties clusterProperties, VeniceProperties serverProperties) {
-    this(clusterProperties, serverProperties, Optional.empty());
+    this(clusterProperties, serverProperties, Collections.emptyMap());
   }
 
   public VeniceConfigLoader(
       VeniceProperties clusterProperties,
       VeniceProperties serverProperties,
-      Optional<Map<String, Map<String, String>>> kafkaClusterMap) {
+      Map<String, Map<String, String>> kafkaClusterMap) {
     this.combinedProperties =
         new PropertyBuilder().put(clusterProperties.toProperties()).put(serverProperties.toProperties()).build();
     this.veniceServerConfig = new VeniceServerConfig(combinedProperties, kafkaClusterMap);
@@ -111,7 +111,7 @@ public class VeniceConfigLoader {
 
   public VeniceStoreVersionConfig getStoreConfig(String storeName) {
     VeniceProperties storeProperties = combinedProperties.getStoreProperties(storeName);
-    return new VeniceStoreVersionConfig(storeName, storeProperties);
+    return new VeniceStoreVersionConfig(storeName, storeProperties, veniceServerConfig.getKafkaClusterMap());
   }
 
   public VeniceStoreVersionConfig getStoreConfig(String storeName, PersistenceType storePersistenceType) {
@@ -142,29 +142,56 @@ public class VeniceConfigLoader {
           "Attempt to load configuration from , " + fullFilePath + " failed. That is not a readable directory.");
     }
 
-    VeniceProperties clusterProperties, serverProperties;
-    Optional<Map<String, Map<String, String>>> kafkaClusterMap;
     try {
-      clusterProperties = Utils.parseProperties(configDirPath, CLUSTER_PROPERTIES_FILE, false);
-      serverProperties = Utils.parseProperties(configDirPath, SERVER_PROPERTIES_FILE, false);
-      kafkaClusterMap = parseKafkaClusterMap(configDirPath);
+      VeniceProperties clusterProperties = Utils.parseProperties(configDirPath, CLUSTER_PROPERTIES_FILE, false);
+      VeniceProperties serverProperties = Utils.parseProperties(configDirPath, SERVER_PROPERTIES_FILE, false);
+      Map<String, Map<String, String>> kafkaClusterMap = parseKafkaClusterMap(configDirPath);
+      return new VeniceConfigLoader(clusterProperties, serverProperties, kafkaClusterMap);
     } catch (Exception e) {
       throw new ConfigurationException("Loading configuration files failed", e);
     }
-    return new VeniceConfigLoader(clusterProperties, serverProperties, kafkaClusterMap);
   }
 
-  public static Optional<Map<String, Map<String, String>>> parseKafkaClusterMap(String configDirectory)
-      throws Exception {
+  public static Map<String, Map<String, String>> parseKafkaClusterMap(String configDirectory) throws Exception {
     return parseKafkaClusterMap(configDirectory, VeniceConfigLoader.KAFKA_CLUSTER_MAP_FILE);
   }
 
-  public static Optional<Map<String, Map<String, String>>> parseKafkaClusterMap(String configDirectory, String fileName)
+  /**
+   * The file contains the following info:
+   *
+   * <map>
+   *   <entry key="0">
+   *     <map>
+   *       <entry key="name" value="dc0"/>
+   *       <entry key="url" value="kafka.in.dc0.my.company.com:1234"/>
+   *       <entry key="otherUrls" value="alt1.kafka.in.dc0.my.company.com:1234,alt2.kafka.in.dc0.my.company.com:1234"/>
+   *       <entry key="securityProtocol" value="PLAINTEXT"/>
+   *     </map>
+   *   </entry>
+   *   <entry key="1">
+   *     <map>
+   *       <entry key="name" value="dc1"/>
+   *       <entry key="url" value="kafka.in.dc1.my.company.com:1234"/>
+   *       <entry key="otherUrls" value="alt1.kafka.in.dc1.my.company.com:1234,alt2.kafka.in.dc1.my.company.com:1234"/>
+   *       <entry key="securityProtocol" value="SSL"/>
+   *     </map>
+   *   </entry>
+   * </map>
+   *
+   * The otherUrls field is used to translate URLs coming from other processes (e.g. coming from the
+   * {@link com.linkedin.venice.kafka.protocol.TopicSwitch} emitted by the controller, or by a previous run of the
+   * server which was configured differently). The various URLs included in otherUrls fields must be globally unique.
+   *
+   * The securityProtocol entry must be compatible with the url entry (i.e. have the right port).
+   *
+   * N.B.: This is actually JSON, not XML, and it has some weird escaping in it. TODO: Clean this up.
+  =  */
+  public static Map<String, Map<String, String>> parseKafkaClusterMap(String configDirectory, String fileName)
       throws Exception {
     String mapFilePath = configDirectory + File.separator + fileName;
     File mapFile = new File(mapFilePath);
     if (!mapFile.exists()) {
-      return Optional.empty();
+      return Collections.emptyMap();
     }
 
     try (BufferedReader reader = new BufferedReader(new FileReader(mapFile))) {
@@ -177,27 +204,26 @@ public class VeniceConfigLoader {
       for (Map.Entry<String, String> entry: flatMap.entrySet()) {
         kafkaClusterMap.put(entry.getKey(), mapper.readValue(entry.getValue(), Map.class));
       }
-      return Optional.of(kafkaClusterMap);
+      return kafkaClusterMap;
     }
   }
 
-  public static void storeKafkaClusterMap(
-      File configDirectory,
-      Optional<Map<String, Map<String, String>>> kafkaClusterMap) throws Exception {
+  public static void storeKafkaClusterMap(File configDirectory, Map<String, Map<String, String>> kafkaClusterMap)
+      throws Exception {
     storeKafkaClusterMap(configDirectory, VeniceConfigLoader.KAFKA_CLUSTER_MAP_FILE, kafkaClusterMap);
   }
 
   public static void storeKafkaClusterMap(
       File configDirectory,
       String fileName,
-      Optional<Map<String, Map<String, String>>> kafkaClusterMap) throws Exception {
-    if (!kafkaClusterMap.isPresent()) {
+      Map<String, Map<String, String>> kafkaClusterMap) throws Exception {
+    if (kafkaClusterMap.isEmpty()) {
       return;
     }
 
     ObjectMapper mapper = ObjectMapperFactory.getInstance();
     Map<String, String> flatMap = new HashMap<>();
-    for (Map.Entry<String, Map<String, String>> entry: kafkaClusterMap.get().entrySet()) {
+    for (Map.Entry<String, Map<String, String>> entry: kafkaClusterMap.entrySet()) {
       flatMap.put(entry.getKey(), mapper.writeValueAsString(entry.getValue()));
     }
 

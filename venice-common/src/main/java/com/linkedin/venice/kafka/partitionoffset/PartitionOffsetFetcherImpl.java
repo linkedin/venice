@@ -112,7 +112,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
             .endOffsets(Collections.singletonList(topicPartition), DEFAULT_KAFKA_OFFSET_API_TIMEOUT);
         Long offset = offsetMap.get(topicPartition);
         if (offset != null) {
-          return offset.longValue();
+          return offset;
         } else {
           throw new VeniceException("offset result returned from endOffsets does not contain entry: " + topicPartition);
         }
@@ -152,17 +152,13 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
   @Override
   public long getPartitionOffsetByTime(String topic, int partition, long timestamp) {
     final TopicPartition topicPartition = new TopicPartition(topic, partition);
-    return getOffsetsByTimeWithRetry(Collections.singletonMap(topicPartition, timestamp), 3, Duration.ofSeconds(5))
-        .get(topicPartition);
+    return getOffsetsByTimeWithRetry(Collections.singletonMap(topicPartition, timestamp)).get(topicPartition);
   }
 
-  private Map<TopicPartition, Long> getOffsetsByTimeWithRetry(
-      Map<TopicPartition, Long> timestampsToSearch,
-      int maxAttempt,
-      Duration delay) {
+  private Map<TopicPartition, Long> getOffsetsByTimeWithRetry(Map<TopicPartition, Long> timestampsToSearch) {
     try (AutoCloseableLock ignore = AutoCloseableLock.of(rawConsumerLock)) {
       final int expectedPartitionNum = timestampsToSearch.size();
-      Map<TopicPartition, Long> result = offsetsForTimesWithRetry(timestampsToSearch, maxAttempt, delay).entrySet()
+      Map<TopicPartition, Long> result = offsetsForTimesWithRetry(timestampsToSearch).entrySet()
           .stream()
           .collect(Collectors.toMap(partitionToOffset -> {
             Validate.notNull(partitionToOffset.getKey(), "Got a null TopicPartition key out of the offsetsForTime API");
@@ -176,7 +172,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
       // The given timestamp exceed the timestamp of the last message. So return the last offset.
       if (result.isEmpty()) {
         logger.warn("Offsets result is empty. Will complement with the last offsets.");
-        result = endOffsetsWithRetry(timestampsToSearch.keySet(), maxAttempt, delay).entrySet()
+        result = endOffsetsWithRetry(timestampsToSearch.keySet()).entrySet()
             .stream()
             .collect(Collectors.toMap(partitionToOffset -> {
               Validate.notNull(partitionToOffset);
@@ -188,7 +184,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
             "Missing offsets for some partitions. Partition Number should be :" + expectedPartitionNum
                 + " but only got: " + result.size() + ". Will complement with the last offsets.");
         // Get partial offsets result.
-        Map<TopicPartition, Long> endOffsets = endOffsetsWithRetry(timestampsToSearch.keySet(), maxAttempt, delay);
+        Map<TopicPartition, Long> endOffsets = endOffsetsWithRetry(timestampsToSearch.keySet());
 
         for (TopicPartition topicPartition: timestampsToSearch.keySet()) {
           if (!result.containsKey(topicPartition)) {
@@ -207,27 +203,26 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
   }
 
   private Map<TopicPartition, OffsetAndTimestamp> offsetsForTimesWithRetry(
-      Map<TopicPartition, Long> timestampsToSearch,
-      int maxAttempt,
-      Duration delay) {
+      Map<TopicPartition, Long> timestampsToSearch) {
     try (AutoCloseableLock ignore = AutoCloseableLock.of(rawConsumerLock)) {
-      return RetryUtils.executeWithMaxAttempt(
+      return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
           () -> kafkaRawBytesConsumer.get().offsetsForTimes(timestampsToSearch, kafkaOperationTimeout),
-          maxAttempt,
-          delay,
+          25,
+          Duration.ofMillis(100),
+          Duration.ofSeconds(5),
+          Duration.ofMinutes(1),
           KAFKA_RETRIABLE_FAILURES);
     }
   }
 
-  private Map<TopicPartition, Long> endOffsetsWithRetry(
-      Collection<TopicPartition> partitions,
-      int maxAttempt,
-      Duration delay) {
+  private Map<TopicPartition, Long> endOffsetsWithRetry(Collection<TopicPartition> partitions) {
     try (AutoCloseableLock ignore = AutoCloseableLock.of(rawConsumerLock)) {
-      return RetryUtils.executeWithMaxAttempt(
+      return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
           () -> kafkaRawBytesConsumer.get().endOffsets(partitions),
-          maxAttempt,
-          delay,
+          25,
+          Duration.ofMillis(100),
+          Duration.ofSeconds(5),
+          Duration.ofMinutes(1),
           KAFKA_RETRIABLE_FAILURES);
     }
   }

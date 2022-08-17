@@ -584,9 +584,6 @@ public abstract class TestBatch {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
       }
     };
-    ControllerClient controllerClient =
-        new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getRandomRouterURL());
-
     String storeName = testBatchStore(inputDir -> {
       Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
       return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());

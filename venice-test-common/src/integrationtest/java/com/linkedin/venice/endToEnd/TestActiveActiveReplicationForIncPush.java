@@ -166,7 +166,6 @@ public class TestActiveActiveReplicationForIncPush {
       createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, propsBatch, updateStoreParams).close();
 
       UpdateStoreQueryParams enableAARepl = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true);
-      UpdateStoreQueryParams disableAARepl = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(false);
 
       // Print all the kafka cluster URLs
       LOGGER.info("KafkaURL dc-0:" + childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
