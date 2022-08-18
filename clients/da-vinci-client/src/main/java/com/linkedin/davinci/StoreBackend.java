@@ -100,10 +100,6 @@ public class StoreBackend {
     config.store();
   }
 
-  public void setMemoryLimit(long memoryLimit) {
-    backend.setMemoryLimit(storeName, memoryLimit);
-  }
-
   public StoreBackendStats getStats() {
     return stats;
   }

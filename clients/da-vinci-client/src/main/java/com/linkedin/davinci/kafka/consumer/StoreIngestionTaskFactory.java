@@ -7,7 +7,6 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
-import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
@@ -99,13 +98,11 @@ public class StoreIngestionTaskFactory {
     private KafkaClientFactory kafkaClientFactory;
     private StorageEngineRepository storageEngineRepository;
     private StorageMetadataService storageMetadataService;
-    private Queue<VeniceNotifier> onlineOfflineNotifiers;
     private Queue<VeniceNotifier> leaderFollowerNotifiers;
     private EventThrottler bandwidthThrottler;
     private EventThrottler recordsThrottler;
     private EventThrottler unorderedBandwidthThrottler;
     private EventThrottler unorderedRecordsThrottler;
-    private KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler;
     private ReadOnlySchemaRepository schemaRepo;
     private ReadOnlyStoreRepository metadataRepo;
     private TopicManagerRepository topicManagerRepository;
@@ -117,7 +114,6 @@ public class StoreIngestionTaskFactory {
     private VeniceServerConfig serverConfig;
     private DiskUsage diskUsage;
     private AggKafkaConsumerService aggKafkaConsumerService;
-    private RocksDBMemoryStats rocksDBMemoryStats;
     private ExecutorService cacheWarmingThreadPool;
     private long startReportingReadyToServeTimestamp;
     private InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
@@ -230,15 +226,6 @@ public class StoreIngestionTaskFactory {
       return set(() -> this.unorderedRecordsThrottler = throttler);
     }
 
-    public KafkaClusterBasedRecordThrottler getKafkaClusterBasedRecordThrottler() {
-      return kafkaClusterBasedRecordThrottler;
-    }
-
-    public Builder setKafkaClusterBasedRecordThrottler(
-        KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler) {
-      return set(() -> this.kafkaClusterBasedRecordThrottler = kafkaClusterBasedRecordThrottler);
-    }
-
     public ReadOnlySchemaRepository getSchemaRepo() {
       return schemaRepo;
     }
@@ -325,14 +312,6 @@ public class StoreIngestionTaskFactory {
 
     public Builder setAggKafkaConsumerService(AggKafkaConsumerService aggKafkaConsumerService) {
       return set(() -> this.aggKafkaConsumerService = aggKafkaConsumerService);
-    }
-
-    public RocksDBMemoryStats getRocksDBMemoryStats() {
-      return rocksDBMemoryStats;
-    }
-
-    public Builder setRocksDBMemoryStats(RocksDBMemoryStats rocksDBMemoryStats) {
-      return set(() -> this.rocksDBMemoryStats = rocksDBMemoryStats);
     }
 
     public ExecutorService getCacheWarmingThreadPool() {

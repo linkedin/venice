@@ -214,7 +214,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long routerConnectionWarmingDelayMs;
   private final boolean helixHybridStoreQuotaEnabled;
   private final long ssdHealthCheckShutdownTimeMs;
-  private final boolean sharedConsumerPoolEnabled;
   private final KafkaConsumerService.ConsumerAssignmentStrategy sharedConsumerAssignmentStrategy;
   private final int consumerPoolSizePerKafkaCluster;
   private final boolean leakedResourceCleanupEnabled;
@@ -419,7 +418,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     kafkaReadOnlyClass = serverProperties.getString(KAFKA_READ_ONLY_ADMIN_CLASS, kafkaAdminClass);
     // Disable it by default, and when router connection warming is enabled, we need to adjust this config.
     routerConnectionWarmingDelayMs = serverProperties.getLong(SERVER_ROUTER_CONNECTION_WARMING_DELAY_MS, 0);
-    sharedConsumerPoolEnabled = serverProperties.getBoolean(SERVER_SHARED_CONSUMER_POOL_ENABLED, true);
     String sharedConsumerAssignmentStrategyStr = serverProperties.getString(
         SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY,
         KafkaConsumerService.ConsumerAssignmentStrategy.TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY.name());
@@ -766,10 +764,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getSsdHealthCheckShutdownTimeMs() {
     return ssdHealthCheckShutdownTimeMs;
-  }
-
-  public boolean isSharedConsumerPoolEnabled() {
-    return sharedConsumerPoolEnabled;
   }
 
   public KafkaConsumerService.ConsumerAssignmentStrategy getSharedConsumerAssignmentStrategy() {

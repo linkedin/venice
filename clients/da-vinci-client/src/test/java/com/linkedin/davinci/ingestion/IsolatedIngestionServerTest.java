@@ -108,16 +108,16 @@ public class IsolatedIngestionServerTest {
   }
 
   private VeniceConfigLoader getConfigLoader(int servicePort) {
+    String dummyKafkaUrl = "localhost:1234";
     VeniceProperties properties = new PropertyBuilder().put(CLUSTER_NAME, Utils.getUniqueString())
         .put(ZOOKEEPER_ADDRESS, zkServerWrapper.getAddress())
-        .put(KAFKA_BOOTSTRAP_SERVERS, Utils.getUniqueString())
+        .put(KAFKA_BOOTSTRAP_SERVERS, dummyKafkaUrl)
         .put(KAFKA_ZK_ADDRESS, Utils.getUniqueString())
         .put(D2_CLIENT_ZK_HOSTS_ADDRESS, zkServerWrapper.getAddress())
         .put(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 100)
         .put(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 10 * Time.MS_PER_SECOND)
         .put(INGESTION_ISOLATION_CONFIG_PREFIX + "." + SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 10)
         .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
-        .put(SERVER_SHARED_CONSUMER_POOL_ENABLED, false)
         .build();
     return new VeniceConfigLoader(properties, properties);
   }

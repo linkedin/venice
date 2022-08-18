@@ -523,11 +523,6 @@ public class ConfigKeys {
   public static final String SERVER_ROUTER_CONNECTION_WARMING_DELAY_MS = "server.router.connection.warming.delay.ms";
 
   /**
-   * Whether to enable shared consumer pool in storage node.
-   */
-  public static final String SERVER_SHARED_CONSUMER_POOL_ENABLED = "server.shared.consumer.pool.enabled";
-
-  /**
    * Consumer pool size per Kafka cluster.
    */
   public static final String SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER =

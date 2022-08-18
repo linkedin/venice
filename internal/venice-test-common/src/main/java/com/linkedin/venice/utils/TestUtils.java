@@ -8,13 +8,11 @@ import static org.testng.Assert.*;
 import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.AggKafkaConsumerService;
-import com.linkedin.davinci.kafka.consumer.KafkaClusterBasedRecordThrottler;
 import com.linkedin.davinci.kafka.consumer.StoreBufferService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTaskFactory;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
-import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.ConfigKeys;
@@ -843,7 +841,6 @@ public class TestUtils {
         .setRecordsThrottler(mock(EventThrottler.class))
         .setUnorderedBandwidthThrottler(mock(EventThrottler.class))
         .setUnorderedRecordsThrottler(mock(EventThrottler.class))
-        .setKafkaClusterBasedRecordThrottler(mock(KafkaClusterBasedRecordThrottler.class))
         .setSchemaRepository(mock(ReadOnlySchemaRepository.class))
         .setMetadataRepository(mockReadOnlyStoreRepository)
         .setTopicManagerRepository(mock(TopicManagerRepository.class))
@@ -853,7 +850,6 @@ public class TestUtils {
         .setVersionedIngestionStats(mock(AggVersionedIngestionStats.class))
         .setStoreBufferService(mock(StoreBufferService.class))
         .setDiskUsage(mock(DiskUsage.class))
-        .setRocksDBMemoryStats(mock(RocksDBMemoryStats.class))
         .setAggKafkaConsumerService(mock(AggKafkaConsumerService.class))
         .setServerConfig(mock(VeniceServerConfig.class))
         .setServerConfig(mockVeniceServerConfig)

@@ -63,8 +63,7 @@ import org.testng.Assert;
 @Warmup(iterations = 5)
 @Measurement(iterations = 5)
 public class IngestionBenchmarkWithTwoProcesses {
-  @Param({ "DISABLED", "TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY",
-      "PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY" })
+  @Param({ "TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY", "PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY" })
   private static String sharedConsumerAssignmentStrategy;
 
   @Param({ "1", "2", "4" })
@@ -118,13 +117,8 @@ public class IngestionBenchmarkWithTwoProcesses {
       backendConfig.put(ConfigKeys.DATA_BASE_PATH, dataBasePath);
       backendConfig.put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB);
       backendConfig.put(RocksDBServerConfig.ROCKSDB_PUT_REUSE_BYTE_BUFFER, true);
-      if (sharedConsumerAssignmentStrategy.equals("DISABLED")) {
-        backendConfig.put(SERVER_SHARED_CONSUMER_POOL_ENABLED, false);
-      } else {
-        backendConfig.put(SERVER_SHARED_CONSUMER_POOL_ENABLED, true);
-        ConsumerAssignmentStrategy strategy = ConsumerAssignmentStrategy.valueOf(sharedConsumerAssignmentStrategy);
-        backendConfig.put(SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY, strategy);
-      }
+      ConsumerAssignmentStrategy strategy = ConsumerAssignmentStrategy.valueOf(sharedConsumerAssignmentStrategy);
+      backendConfig.put(SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY, strategy);
       backendConfig.put(SORTED_INPUT_DRAINER_SIZE, drainerSize);
       backendConfig.put(UNSORTED_INPUT_DRAINER_SIZE, drainerSize);
 

@@ -1,8 +1,5 @@
 package com.linkedin.davinci;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static java.lang.Thread.*;
-
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.StoreBackendConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -69,6 +66,9 @@ import java.util.concurrent.TimeUnit;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import static com.linkedin.venice.ConfigKeys.*;
+import static java.lang.Thread.*;
 
 
 public class DaVinciBackend implements Closeable {
@@ -452,12 +452,6 @@ public class DaVinciBackend implements Closeable {
     return versionByTopicMap;
   }
 
-  void setMemoryLimit(String storeName, long memoryLimit) {
-    if (rocksDBMemoryStats != null) {
-      rocksDBMemoryStats.registerStore(storeName, memoryLimit);
-    }
-  }
-
   PushStatusStoreWriter getPushStatusStoreWriter() {
     return pushStatusStoreWriter;
   }
@@ -487,10 +481,6 @@ public class DaVinciBackend implements Closeable {
     StoreBackend storeBackend = storeByNameMap.remove(storeName);
     if (storeBackend != null) {
       storeBackend.delete();
-    }
-    if (rocksDBMemoryStats != null) {
-      rocksDBMemoryStats
-          .unregisterStore(storeName, configLoader.getVeniceServerConfig().isUnregisterMetricForDeletedStoreEnabled());
     }
   }
 

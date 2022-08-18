@@ -159,12 +159,6 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
               + ", requested=" + config.isManaged());
     }
 
-    if (originalConfig.getMemoryLimit() != config.getMemoryLimit()) {
-      throw new VeniceException(
-          "Memory limit conflict" + ", storeName=" + storeName + ", original=" + originalConfig.getMemoryLimit()
-              + ", requested=" + config.getMemoryLimit());
-    }
-
     if (originalConfig.getStorageClass() != config.getStorageClass()) {
       throw new VeniceException(
           "Storage class conflict" + ", storeName=" + storeName + ", original=" + originalConfig.getStorageClass()
