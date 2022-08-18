@@ -15,6 +15,7 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -2690,8 +2691,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       int kafkaClusterId,
       PartitionConsumptionState partitionConsumptionState) {
     final int subPartition = partitionConsumptionState.getPartition();
-    final int updateSchemaId = update.updateSchemaId;
     final int latestValueSchemaId = schemaRepository.getLatestValueSchema(storeName).getId();
+    final int updateSchemaId = isIngestingSystemStore()
+        ? schemaRepository.getLatestDerivedSchema(storeName, latestValueSchemaId).getId()
+        : update.updateSchemaId;
     final Optional<GenericRecord> currValue = readStoredValueRecord(
         partitionConsumptionState,
         keyBytes,
@@ -2891,6 +2894,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         pcs,
         this::getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement,
         shouldLog);
+  }
+
+  private boolean isIngestingSystemStore() {
+    return VeniceSystemStoreUtils.isSystemStore(storeName);
   }
 
   /**
