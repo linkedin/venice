@@ -212,11 +212,6 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
     }
   }
 
-  public void recordResponseResultsDeserializationLatency(String storeName, double latency) {
-    totalStats.recordResponseResultsDeserializationLatency(latency);
-    getStoreStats(storeName).recordResponseResultsDeserializationLatency(latency);
-  }
-
   public void recordNettyClientFirstResponseLatency(String storeName, double latency) {
     totalStats.recordNettyClientFirstResponseLatency(latency);
     getStoreStats(storeName).recordNettyClientFirstResponseLatency(latency);
