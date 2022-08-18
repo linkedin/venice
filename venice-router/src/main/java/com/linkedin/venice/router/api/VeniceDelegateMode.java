@@ -319,7 +319,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
   }
 
   // Select host with the least pending queue depth.
-  private <H> H selectLeastLoadedHost(List<H> hosts, VenicePath path, String storeName) throws RouterException {
+  private <H> H selectLeastLoadedHost(List<H> hosts, VenicePath path) throws RouterException {
     H host;
     long minCount = Long.MAX_VALUE;
     H minHost = null;
@@ -335,7 +335,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     }
     if (minHost == null) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-          Optional.of(storeName),
+          Optional.of(path.getStoreName()),
           Optional.of(path.getRequestType()),
           SERVICE_UNAVAILABLE,
           "Could not find ready-to-serve replica for request path: " + path.getResourceName());
@@ -383,7 +383,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       } else if (hosts.size() > 1) {
         VenicePath venicePath = (VenicePath) path;
 
-        H host = selectLeastLoadedHost(hosts, venicePath, resourceName);
+        H host = selectLeastLoadedHost(hosts, venicePath);
 
         scatter.addOnlineRequest(new ScatterGatherRequest<>(Collections.singletonList(host), keySet, partitionName));
       } else {
@@ -558,7 +558,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         Optional<Integer> assignedHelixGroupId) throws RouterException {
       String resourceName = venicePath.getResourceName();
       for (K key: partitionKeys) {
-        H selectedHost = selectLeastLoadedHost(partitionReplicas, venicePath, resourceName);
+        H selectedHost = selectLeastLoadedHost(partitionReplicas, venicePath);
         /**
          * Using {@link HashMap#get} and checking whether the result is null or not
          * is faster than {@link HashMap#containsKey(Object)} and {@link HashMap#get}

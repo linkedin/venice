@@ -45,7 +45,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor keyNumSensor;
   // Reflect the real request usage, e.g count each key as an unit of request usage.
   private final Sensor requestUsageSensor;
-  private final Sensor responseResultsDeserializationLatencySensor;
   private final Sensor requestParsingLatencySensor;
   private final Sensor requestRoutingLatencySensor;
   private final Sensor unAvailableRequestSensor;
@@ -64,15 +63,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor allowedRetryRequestSensor;
   private final Sensor disallowedRetryRequestSensor;
   private final Sensor errorRetryAttemptTriggeredByPendingRequestCheckSensor;
-
-  // QPS metrics
-  public RouterHttpRequestStats(
-      MetricsRepository metricsRepository,
-      String storeName,
-      RequestType requestType,
-      ScatterGatherStats scatterGatherStats) {
-    this(metricsRepository, storeName, requestType, scatterGatherStats, false);
-  }
 
   // QPS metrics
   public RouterHttpRequestStats(
@@ -138,9 +128,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         "retry_faster_than_original_count",
         new LambdaStat(() -> scatterGatherStats.getTotalRetriesWinner()));
 
-    responseResultsDeserializationLatencySensor = registerSensor(
-        "response_results_deserialization_latency",
-        TehutiUtils.getPercentileStat(getName(), getFullMetricName("response_results_deserialization_latency")));
     keyNumSensor = registerSensor("key_num", new Avg(), new Max(0));
     /**
      * request_usage.Total is incoming KPS while request_usage.OccurrenceRate is QPS
@@ -320,10 +307,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordFindUnhealthyHostRequest() {
     findUnhealthyHostRequestSensor.record();
-  }
-
-  public void recordResponseResultsDeserializationLatency(double latency) {
-    responseResultsDeserializationLatencySensor.record(latency);
   }
 
   public void recordNettyClientFirstResponseLatency(double latency) {
