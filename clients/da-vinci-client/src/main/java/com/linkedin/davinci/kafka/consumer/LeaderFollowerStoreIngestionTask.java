@@ -26,7 +26,6 @@ import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -2173,27 +2172,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       pcs -> !pcs.isEndOfPushReceived() && pcs.consumeRemotely() && pcs.getLeaderFollowerState().equals(LEADER);
 
   protected long getPartitionOffsetLag(String kafkaSourceAddress, String topic, int partition) {
-    if (serverConfig.isSharedConsumerPoolEnabled()) {
-      return aggKafkaConsumerService.getOffsetLagFor(kafkaSourceAddress, kafkaVersionTopic, topic, partition);
-    } else {
-      KafkaConsumerWrapper dedicatedKafkaConsumer = kafkaUrlToDedicatedConsumerMap.get(localKafkaServer);
-      if (dedicatedKafkaConsumer != null) {
-        return dedicatedKafkaConsumer.getOffsetLag(kafkaVersionTopic, partition);
-      }
-    }
-    return -1;
+    return aggKafkaConsumerService.getOffsetLagFor(kafkaSourceAddress, kafkaVersionTopic, topic, partition);
   }
 
   private long getPartitionLatestOffset(String kafkaSourceAddress, String topic, int partition) {
-    if (serverConfig.isSharedConsumerPoolEnabled()) {
-      return aggKafkaConsumerService.getLatestOffsetFor(kafkaSourceAddress, kafkaVersionTopic, topic, partition);
-    } else {
-      KafkaConsumerWrapper dedicatedKafkaConsumer = kafkaUrlToDedicatedConsumerMap.get(localKafkaServer);
-      if (dedicatedKafkaConsumer != null) {
-        return dedicatedKafkaConsumer.getLatestOffset(kafkaVersionTopic, partition);
-      }
-    }
-    return -1;
+    return aggKafkaConsumerService.getLatestOffsetFor(kafkaSourceAddress, kafkaVersionTopic, topic, partition);
   }
 
   @Override
@@ -2446,23 +2429,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   public void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState) {
     String leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
-
-    if (serverConfig.isSharedConsumerPoolEnabled()) {
-      if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER) && leaderTopic != null) {
-        aggKafkaConsumerService
-            .unsubscribeConsumerFor(kafkaVersionTopic, leaderTopic, partitionConsumptionState.getPartition());
-      } else {
-        aggKafkaConsumerService
-            .unsubscribeConsumerFor(kafkaVersionTopic, kafkaVersionTopic, partitionConsumptionState.getPartition());
-      }
+    if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER) && leaderTopic != null) {
+      aggKafkaConsumerService
+          .unsubscribeConsumerFor(kafkaVersionTopic, leaderTopic, partitionConsumptionState.getPartition());
     } else {
-      getDedicatedConsumers().forEach(dedicatedConsumer -> {
-        if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER) && leaderTopic != null) {
-          dedicatedConsumer.unSubscribe(leaderTopic, partitionConsumptionState.getPartition());
-        } else {
-          dedicatedConsumer.unSubscribe(kafkaVersionTopic, partitionConsumptionState.getPartition());
-        }
-      });
+      aggKafkaConsumerService
+          .unsubscribeConsumerFor(kafkaVersionTopic, kafkaVersionTopic, partitionConsumptionState.getPartition());
     }
 
     /**

@@ -687,7 +687,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       if (managedClients.isPresent()) {
         storeBackend.setManaged(daVinciConfig.isManaged());
       }
-      storeBackend.setMemoryLimit(daVinciConfig.getMemoryLimit());
 
       Schema keySchema = getBackend().getSchemaRepository().getKeySchema(getStoreName()).getSchema();
       keySerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(keySchema, false);

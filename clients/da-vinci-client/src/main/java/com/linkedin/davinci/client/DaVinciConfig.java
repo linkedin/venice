@@ -29,13 +29,6 @@ public class DaVinciConfig {
   private NonLocalAccessPolicy nonLocalAccessPolicy = NonLocalAccessPolicy.FAIL_FAST;
 
   /**
-   * Indicates total memory limit in bytes per store, where zero means no limit. The limit is best effort and its
-   * precision greatly depends on granularity, the recommended limit granularity is 1GB. Da Vinci stalls ingestion
-   * of new data when the limit is met.
-   */
-  private long memoryLimit = 0;
-
-  /**
    * Cache settings
    */
   private ObjectCacheConfig cacheConfig;
@@ -48,15 +41,13 @@ public class DaVinciConfig {
         .setIsolated(isIsolated())
         .setStorageClass(getStorageClass())
         .setNonLocalAccessPolicy(getNonLocalAccessPolicy())
-        .setMemoryLimit(getMemoryLimit())
         .setCacheConfig(getCacheConfig());
   }
 
   @Override
   public String toString() {
     return "DaVinciConfig{" + "managed=" + managed + ", isolated=" + isolated + ", storageClass=" + storageClass
-        + ", nonLocalAccessPolicy=" + nonLocalAccessPolicy + ", memoryLimit=" + memoryLimit + ", cacheConfig="
-        + cacheConfig + "}";
+        + ", nonLocalAccessPolicy=" + nonLocalAccessPolicy + ", cacheConfig=" + cacheConfig + "}";
   }
 
   public boolean isManaged() {
@@ -92,15 +83,6 @@ public class DaVinciConfig {
 
   public DaVinciConfig setNonLocalAccessPolicy(NonLocalAccessPolicy nonLocalAccessPolicy) {
     this.nonLocalAccessPolicy = nonLocalAccessPolicy;
-    return this;
-  }
-
-  public long getMemoryLimit() {
-    return memoryLimit;
-  }
-
-  public DaVinciConfig setMemoryLimit(long memoryLimit) {
-    this.memoryLimit = memoryLimit;
     return this;
   }
 

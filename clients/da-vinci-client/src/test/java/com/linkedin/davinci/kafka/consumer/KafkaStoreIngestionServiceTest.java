@@ -37,11 +37,14 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.function.Function;
+import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class KafkaStoreIngestionServiceTest {
+@Test
+public abstract class KafkaStoreIngestionServiceTest {
   private StorageEngineRepository mockStorageEngineRepository;
   private VeniceConfigLoader mockVeniceConfigLoader;
   private StorageMetadataService storageMetadataService;
@@ -66,8 +69,12 @@ public class KafkaStoreIngestionServiceTest {
     setupMockConfig();
   }
 
+  abstract KafkaConsumerService.ConsumerAssignmentStrategy getConsumerAssignmentStrategy();
+
   private void setupMockConfig() {
     mockVeniceConfigLoader = mock(VeniceConfigLoader.class);
+    String dummyKafkaUrl = "localhost:16637";
+    String dummyKafkaZKAddress = "localhost:1234";
 
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     doReturn(-1l).when(mockVeniceServerConfig).getKafkaFetchQuotaBytesPerSecond();
@@ -79,11 +86,21 @@ public class KafkaStoreIngestionServiceTest {
     doReturn(Int2ObjectMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterIdToAliasMap();
     doReturn(Object2IntMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
 
+    // Consumer related configs for preparing kafka consumer service.
+    doReturn(dummyKafkaUrl).when(mockVeniceServerConfig).getKafkaBootstrapServers();
+    Function<String, String> kafkaClusterUrlResolver = String::toString;
+    doReturn(kafkaClusterUrlResolver).when(mockVeniceServerConfig).getKafkaClusterUrlResolver();
+    doReturn(new VeniceProperties()).when(mockVeniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
+    doReturn(getConsumerAssignmentStrategy()).when(mockVeniceServerConfig).getSharedConsumerAssignmentStrategy();
+    doReturn(1).when(mockVeniceServerConfig).getConsumerPoolSizePerKafkaCluster();
+    doReturn(SecurityProtocol.PLAINTEXT).when(mockVeniceServerConfig).getKafkaSecurityProtocol(dummyKafkaUrl);
+    doReturn(10).when(mockVeniceServerConfig).getKafkaMaxPollRecords();
+
     VeniceClusterConfig mockVeniceClusterConfig = mock(VeniceClusterConfig.class);
-    doReturn("localhost:1234").when(mockVeniceClusterConfig).getKafkaZkAddress();
+    doReturn(dummyKafkaZKAddress).when(mockVeniceClusterConfig).getKafkaZkAddress();
     Properties properties = new Properties();
-    properties.put(KAFKA_ZK_ADDRESS, "localhost:1234");
-    properties.put(KAFKA_BOOTSTRAP_SERVERS, "localhost:16637");
+    properties.put(KAFKA_ZK_ADDRESS, dummyKafkaZKAddress);
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, dummyKafkaUrl);
     VeniceProperties mockVeniceProperties = new VeniceProperties(properties);
     doReturn(mockVeniceProperties).when(mockVeniceClusterConfig).getClusterProperties();
 

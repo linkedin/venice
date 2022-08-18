@@ -400,7 +400,6 @@ public class MetaSystemStoreTest {
         .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
         .build();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
-    daVinciConfig.setMemoryLimit(1024 * 1024 * 1024);
     D2Client d2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
     try (CachingDaVinciClientFactory factory =
         new CachingDaVinciClientFactory(d2Client, new MetricsRepository(), backendConfig)) {

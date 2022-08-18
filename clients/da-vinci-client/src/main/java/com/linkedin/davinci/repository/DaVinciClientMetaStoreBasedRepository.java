@@ -46,7 +46,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataRepository {
   private static final int KEY_SCHEMA_ID = 1;
-  private static final long DEFAULT_DA_VINCI_CLIENT_ROCKS_DB_MEMORY_LIMIT = 1024 * 1024 * 1024; // 1GB
   private static final Logger logger = LogManager.getLogger(DaVinciClientMetaStoreBasedRepository.class);
 
   // Map of user store name to their corresponding meta store which is used for finding the correct current version.
@@ -96,7 +95,6 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
         Optional.ofNullable(clientConfig.getMetricsRepository())
             .orElse(TehutiUtils.getMetricsRepository("davinci-client")),
         backendConfig);
-    daVinciConfig.setMemoryLimit(DEFAULT_DA_VINCI_CLIENT_ROCKS_DB_MEMORY_LIMIT);
     ClientConfig clonedClientConfig = ClientConfig.cloneConfig(clientConfig)
         .setStoreName(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName())
         .setSpecificValueClass(StoreMetaValue.class);

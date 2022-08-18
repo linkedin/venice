@@ -1756,7 +1756,6 @@ public class TestHybrid {
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
 
     serverProperties.setProperty(SSL_TO_KAFKA, "false");
-    serverProperties.setProperty(SERVER_SHARED_CONSUMER_POOL_ENABLED, "true");
     serverProperties.setProperty(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, "3");
     serverProperties.setProperty(SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED, "true");
 

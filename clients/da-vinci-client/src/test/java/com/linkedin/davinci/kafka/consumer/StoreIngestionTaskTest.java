@@ -698,8 +698,6 @@ public abstract class StoreIngestionTaskTest {
 
     // Recreate the map so that immutable maps that get passed in can be mutated...
     extraServerProperties = new HashMap<>(extraServerProperties);
-    // TODO: Change putIfAbsent to put so that all unit tests are in shared consumer mode.
-    extraServerProperties.putIfAbsent(SERVER_SHARED_CONSUMER_POOL_ENABLED, true);
     veniceServerConfig = buildVeniceServerConfig(extraServerProperties);
 
     MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
@@ -760,7 +758,6 @@ public abstract class StoreIngestionTaskTest {
         .setRecordsThrottler(mockRecordsThrottler)
         .setUnorderedBandwidthThrottler(mockUnorderedBandwidthThrottler)
         .setUnorderedRecordsThrottler(mockUnorderedRecordsThrottler)
-        .setKafkaClusterBasedRecordThrottler(kafkaClusterBasedRecordThrottler)
         .setSchemaRepository(mockSchemaRepo)
         .setMetadataRepository(mockMetadataRepo)
         .setTopicManagerRepository(mockTopicManagerRepository)
@@ -2442,7 +2439,6 @@ public abstract class StoreIngestionTaskTest {
 
     Map<String, Object> extraServerProperties = new HashMap<>();
     extraServerProperties.put(SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING, true);
-    extraServerProperties.put(SERVER_SHARED_CONSUMER_POOL_ENABLED, true);
 
     StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(
         new RandomPollStrategy(),
@@ -2956,7 +2952,6 @@ public abstract class StoreIngestionTaskTest {
     VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
     doReturn(new VeniceProperties()).when(veniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
     doReturn(new VeniceProperties()).when(veniceServerConfig).getKafkaConsumerConfigsForRemoteConsumption();
-    doReturn(true).when(veniceServerConfig).isSharedConsumerPoolEnabled();
     doReturn(Object2IntMaps.emptyMap()).when(veniceServerConfig).getKafkaClusterUrlToIdMap();
     doReturn(veniceServerConfig).when(builder).getServerConfig();
     doReturn(mock(ReadOnlyStoreRepository.class)).when(builder).getMetadataRepo();

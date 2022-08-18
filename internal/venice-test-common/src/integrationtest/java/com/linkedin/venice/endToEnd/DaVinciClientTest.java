@@ -52,7 +52,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
-import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.nio.ByteBuffer;
@@ -404,7 +403,6 @@ public class DaVinciClientTest {
     extraBackendConfigMap.put(
         SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER,
         VeniceServerConfig.MINIMUM_CONSUMER_NUM_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER);
-    extraBackendConfigMap.put(SERVER_SHARED_CONSUMER_POOL_ENABLED, false);
 
     DaVinciTestContext<Integer, Integer> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
@@ -765,32 +763,6 @@ public class DaVinciClientTest {
     }
   }
 
-  // TODO: add comprehensive tests for memory limit feature
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testMemoryLimit() throws Exception {
-    VeniceProperties backendConfig =
-        new PropertyBuilder().put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
-            .put(PERSISTENCE_TYPE, ROCKS_DB)
-            .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-            .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-            // TODO: Fix shared consumer mode compatibility (or remove memory limit feature entirely)
-            .put(SERVER_SHARED_CONSUMER_POOL_ENABLED, false)
-            .build();
-    MetricsRepository metricsRepository = new MetricsRepository();
-    try (CachingDaVinciClientFactory factory =
-        new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
-      String storeName = createStoreWithMetaSystemStore(KEY_COUNT);
-      DaVinciConfig daVinciConfig = new DaVinciConfig().setMemoryLimit(KEY_COUNT / 2);
-      DaVinciClient<Integer, Object> client = factory.getAndStartGenericAvroClient(storeName, daVinciConfig);
-      assertThrows(() -> client.subscribeAll().get(5, TimeUnit.SECONDS));
-      Metric memoryUsageMetric =
-          metricsRepository.getMetric(".RocksDBMemoryStats--" + storeName + ".rocksdb.memory-usage.Gauge");
-      assertNotNull(memoryUsageMetric);
-      double memoryUsage = memoryUsageMetric.value();
-      assertTrue(memoryUsage > 0);
-    }
-  }
-
   @Test(timeOut = TEST_TIMEOUT)
   public void testSubscribeAndUnsubscribe() throws Exception {
     // Verify DaVinci client doesn't hang in a deadlock when calling unsubscribe right after subscribing.
@@ -798,7 +770,6 @@ public class DaVinciClientTest {
     // only completed when the main process's ingestion task is subscribed to avoid deadlock.
     String storeName = createStoreWithMetaSystemStore(KEY_COUNT);
     DaVinciConfig daVinciConfig = new DaVinciConfig();
-    daVinciConfig.setMemoryLimit(1024 * 1024 * 1024); // 1GB
 
     Map<String, Object> extraConfigMap = TestUtils.getIngestionIsolationPropertyMap();
     DaVinciTestContext<String, GenericRecord> daVinciTestContext =
@@ -825,7 +796,6 @@ public class DaVinciClientTest {
     String storeName = createStoreWithMetaSystemStore(10000); // A large amount of keys to give window for potential
                                                               // race conditions
     DaVinciConfig daVinciConfig = new DaVinciConfig();
-    daVinciConfig.setMemoryLimit(1024 * 1024 * 1024); // 1GB
     Map<String, Object> extraConfigMap = TestUtils.getIngestionIsolationPropertyMap();
     DaVinciTestContext<String, GenericRecord> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(

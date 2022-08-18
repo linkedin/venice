@@ -405,38 +405,31 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
               + "may not be killed if admin helix messaging channel is disabled");
     }
 
-    if (serverConfig.isSharedConsumerPoolEnabled()) {
-      aggKafkaConsumerService = new AggKafkaConsumerService(
-          veniceConsumerFactory,
-          serverConfig,
-          bandwidthThrottler,
-          recordsThrottler,
-          kafkaClusterBasedRecordThrottler,
-          metricsRepository,
-          new MetadataRepoBasedTopicExistingCheckerImpl(this.getMetadataRepo()));
-      /**
-       * After initializing a {@link AggKafkaConsumerService} service, it doesn't contain KafkaConsumerService yet until
-       * a new Kafka cluster is registered; here we explicitly create KafkaConsumerService for the local Kafka cluster.
-       *
-       * Pass through all the customized Kafka consumer configs into the consumer as long as the customized config key
-       * starts with {@link ConfigKeys#SERVER_LOCAL_CONSUMER_CONFIG_PREFIX}; the clipping and filtering work is done
-       * in {@link VeniceServerConfig} already.
-       *
-       * Here, we only pass through the customized Kafka consumer configs for local consumption, if an ingestion task
-       * creates a dedicated consumer or a new consumer service for a remote Kafka URL, we will passthrough the configs
-       * for remote consumption inside the ingestion task.
-       */
-      Properties commonKafkaConsumerConfigs = getCommonKafkaConsumerProperties(serverConfig);
-      if (!serverConfig.getKafkaConsumerConfigsForLocalConsumption().isEmpty()) {
-        commonKafkaConsumerConfigs.putAll(serverConfig.getKafkaConsumerConfigsForLocalConsumption().toProperties());
-      }
-      aggKafkaConsumerService.createKafkaConsumerService(commonKafkaConsumerConfigs);
-    } else {
-      aggKafkaConsumerService = null;
+    aggKafkaConsumerService = new AggKafkaConsumerService(
+        veniceConsumerFactory,
+        serverConfig,
+        bandwidthThrottler,
+        recordsThrottler,
+        kafkaClusterBasedRecordThrottler,
+        metricsRepository,
+        new MetadataRepoBasedTopicExistingCheckerImpl(this.getMetadataRepo()));
+    /**
+     * After initializing a {@link AggKafkaConsumerService} service, it doesn't contain KafkaConsumerService yet until
+     * a new Kafka cluster is registered; here we explicitly create KafkaConsumerService for the local Kafka cluster.
+     *
+     * Pass through all the customized Kafka consumer configs into the consumer as long as the customized config key
+     * starts with {@link ConfigKeys#SERVER_LOCAL_CONSUMER_CONFIG_PREFIX}; the clipping and filtering work is done
+     * in {@link VeniceServerConfig} already.
+     *
+     * Here, we only pass through the customized Kafka consumer configs for local consumption, if an ingestion task
+     * creates a dedicated consumer or a new consumer service for a remote Kafka URL, we will passthrough the configs
+     * for remote consumption inside the ingestion task.
+     */
+    Properties commonKafkaConsumerConfigs = getCommonKafkaConsumerProperties(serverConfig);
+    if (!serverConfig.getKafkaConsumerConfigsForLocalConsumption().isEmpty()) {
+      commonKafkaConsumerConfigs.putAll(serverConfig.getKafkaConsumerConfigsForLocalConsumption().toProperties());
     }
-    logger.info(
-        "Shared consumer pool for ingestion is "
-            + (serverConfig.isSharedConsumerPoolEnabled() ? "enabled" : "disabled"));
+    aggKafkaConsumerService.createKafkaConsumerService(commonKafkaConsumerConfigs);
 
     if (serverConfig.isCacheWarmingBeforeReadyToServeEnabled()) {
       cacheWarmingExecutorService = Executors
@@ -465,7 +458,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setRecordsThrottler(recordsThrottler)
         .setUnorderedBandwidthThrottler(unorderedBandwidthThrottler)
         .setUnorderedRecordsThrottler(unorderedRecordsThrottler)
-        .setKafkaClusterBasedRecordThrottler(kafkaClusterBasedRecordThrottler)
         .setSchemaRepository(schemaRepo)
         .setMetadataRepository(metadataRepo)
         .setTopicManagerRepository(topicManagerRepository)
@@ -477,7 +469,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setServerConfig(serverConfig)
         .setDiskUsage(diskUsage)
         .setAggKafkaConsumerService(aggKafkaConsumerService)
-        .setRocksDBMemoryStats(rocksDBMemoryStats)
         .setCacheWarmingThreadPool(cacheWarmingExecutorService)
         .setStartReportingReadyToServeTimestamp(System.currentTimeMillis() + serverConfig.getDelayReadyToServeMS())
         .setPartitionStateSerializer(partitionStateSerializer)

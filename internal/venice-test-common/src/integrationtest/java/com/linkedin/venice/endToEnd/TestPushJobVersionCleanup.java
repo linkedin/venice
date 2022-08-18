@@ -47,7 +47,6 @@ public class TestPushJobVersionCleanup {
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     Properties serverProperties = new Properties();
-    serverProperties.put(SERVER_SHARED_CONSUMER_POOL_ENABLED, "true");
     serverProperties.setProperty(PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS, "60000");
 
     Properties controllerProps = new Properties();

@@ -170,7 +170,6 @@ public class DaVinciClusterAgnosticTest {
             .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
             .build();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
-    daVinciConfig.setMemoryLimit(1024 * 1024 * 1024);
     D2Client daVinciD2 = D2TestUtils.getAndStartD2Client(multiClusterVenice.getZkServerWrapper().getAddress());
 
     try (CachingDaVinciClientFactory factory =
