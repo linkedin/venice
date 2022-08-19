@@ -22,17 +22,13 @@ public class SslUtils {
   private static final Logger logger = LogManager.getLogger(SslUtils.class);
 
   /**
-   * Self-signed cert, expires 2027, use keystore as truststore since self-signed.
-   * cert has CN=localhost
+   * Self-signed cert. Use keystore as truststore since self-signed. Cert has CN=localhost
    *
    * IMPORTANT NOTE: the "localhost.jks", "localhost.cert", "localhost.key" and "localhost.p12" files only exist
    *                 in the code base; do not try to load this files in actual hosts
    */
   public static final String LOCAL_PASSWORD = "dev_pass";
-  private static final String LOCAL_KEYSTORE_P12 = "localhost.p12";
-  private static final String LOCAL_KEYSTORE_JKS = "localhost.jks";
-  private static final String LOCAL_CERT = "localhost.cert";
-  private static final String LOCAL_KEY = "localhost.key";
+  public static final String LOCAL_KEYSTORE_JKS = "localhost.jks";
 
   /**
    * This function should be used in test cases only.

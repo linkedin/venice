@@ -9,6 +9,7 @@ import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AuditInfo;
+import com.linkedin.venice.controller.spark.VeniceSparkServerFactory;
 import com.linkedin.venice.controller.stats.SparkServerStats;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.ErrorType;
@@ -117,8 +118,7 @@ public class AdminSparkServer extends AbstractVeniceService {
           null,
           config.getSslTrustStoreLocation(),
           config.getSslTrustStorePassword(),
-          config.isSslNeedsClientCert(),
-          null);
+          config.isSslNeedsClientCert());
     }
 
     httpService.before((request, response) -> {

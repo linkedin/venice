@@ -1,4 +1,4 @@
-package com.linkedin.venice.controller.server;
+package com.linkedin.venice.controller.spark;
 
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
@@ -18,7 +18,6 @@ import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.eclipse.jetty.util.thread.ThreadPool;
 import spark.embeddedserver.EmbeddedServer;
-import spark.embeddedserver.jetty.SocketConnectorFactory;
 import spark.embeddedserver.jetty.websocket.WebSocketHandlerWrapper;
 import spark.embeddedserver.jetty.websocket.WebSocketServletContextHandlerFactory;
 import spark.ssl.SslStores;
@@ -40,9 +39,10 @@ public class VeniceSparkEmbeddedJettyServer implements EmbeddedServer {
   private final Logger logger = LogManager.getLogger(this.getClass());
 
   private Map<String, WebSocketHandlerWrapper> webSocketHandlers;
-  private Optional<Integer> webSocketIdleTimeoutMillis;
+  private Optional<Long> webSocketIdleTimeoutMillis;
 
   private ThreadPool threadPool = null;
+  private boolean trustForwardHeaders = true; // true by default
 
   public VeniceSparkEmbeddedJettyServer(VeniceProperties jettyConfigOverrides, Handler handler) {
     this.handler = handler;
@@ -52,10 +52,15 @@ public class VeniceSparkEmbeddedJettyServer implements EmbeddedServer {
   @Override
   public void configureWebSockets(
       Map<String, WebSocketHandlerWrapper> webSocketHandlers,
-      Optional<Integer> webSocketIdleTimeoutMillis) {
+      Optional<Long> webSocketIdleTimeoutMillis) {
 
     this.webSocketHandlers = webSocketHandlers;
     this.webSocketIdleTimeoutMillis = webSocketIdleTimeoutMillis;
+  }
+
+  @Override
+  public void trustForwardHeaders(boolean trust) {
+    this.trustForwardHeaders = trust;
   }
 
   /**
@@ -107,9 +112,10 @@ public class VeniceSparkEmbeddedJettyServer implements EmbeddedServer {
     ServerConnector connector;
 
     if (sslStores == null) {
-      connector = SocketConnectorFactory.createSocketConnector(server, host, port);
+      connector = VeniceSocketConnectorFactory.createSocketConnector(server, host, port, trustForwardHeaders);
     } else {
-      connector = SocketConnectorFactory.createSecureSocketConnector(server, host, port, sslStores);
+      connector =
+          VeniceSocketConnectorFactory.createSecureSocketConnector(server, host, port, sslStores, trustForwardHeaders);
     }
 
     Connector previousConnectors[] = server.getConnectors();

@@ -1,6 +1,7 @@
 package com.linkedin.venice.utils;
 
 import static com.linkedin.venice.ConfigConstants.*;
+import static com.linkedin.venice.utils.SslUtils.*;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.Arrays;
@@ -28,16 +29,6 @@ public class KafkaSSLUtils {
       SslConfigs.SSL_KEYMANAGER_ALGORITHM_CONFIG,
       SslConfigs.SSL_TRUSTMANAGER_ALGORITHM_CONFIG,
       SslConfigs.SSL_SECURE_RANDOM_IMPLEMENTATION_CONFIG);
-
-  /**
-   * Self-signed cert, expires 2027, use keystore as truststore since self-signed.
-   * cert has CN=localhost
-   *
-   * IMPORTANT NOTE: the "localhost.jks", "localhost.cert", "localhost.key" and "localhost.p12" files only exist
-   *                 in the code base; do not try to load this files in actual hosts
-   */
-  private static final String LOCAL_PASSWORD = "dev_pass";
-  private static final String LOCAL_KEYSTORE_JKS = "localhost.jks";
 
   public static Properties getLocalKafkaBrokerSSlConfig(String host, int port, int sslPort) {
     Properties properties = new Properties();

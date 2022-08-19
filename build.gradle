@@ -89,9 +89,7 @@ ext.libraries = [
     routerImpl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:' + ddsStorageCoreVersion,
     routerLnkd: 'com.linkedin.dds-storage-core:dds-storage-router-lnkd:' + ddsStorageCoreVersion,
     samzaApi: 'com.linkedin.samza-li:samza-api:311.1050.0.66', // Equivalent to Samza-1.5
-    // TODO: move back to open source sparkjava once they fix Jetty SSL.
-    // spark: 'com.sparkjava:spark-core:2.9.1',
-    spark: 'com.linkedin.li-sparkjava:li-sparkjava-impl:0.0.2',
+    spark: 'com.sparkjava:spark-core:2.9.4',
     spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
     tehuti: 'io.tehuti:tehuti:0.8.8',
     testng: 'org.testng:testng:6.14.3',

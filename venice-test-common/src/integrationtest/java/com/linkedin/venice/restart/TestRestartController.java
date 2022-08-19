@@ -22,7 +22,7 @@ import org.testng.annotations.Test;
 
 @Test(singleThreaded = true)
 public class TestRestartController {
-  private static final int OPERATION_TIMEOUT_MS = 3000;
+  private static final int OPERATION_TIMEOUT_MS = 3 * Time.MS_PER_SECOND;
   private VeniceClusterWrapper cluster;
 
   @BeforeMethod
