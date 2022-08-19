@@ -85,7 +85,7 @@ if __name__ == "__main__":
       raise SystemExit("No changes")
 
     revision = '#' + run_command("git rev-parse --short HEAD")
-    response = run_command("git diff --patch --find-renames --compact-summary {0} | {1}"
+    response = run_command("git diff --binary --find-renames --compact-summary {0} | {1}"
       .format(params["baseline"], command + shlex.quote("-;filename=" + revision)))
 
     print("Submitted working copy {0} for testing:".format(revision))

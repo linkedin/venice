@@ -48,3 +48,12 @@ dependencies {
   testImplementation project(':venice-controller')
   testImplementation project(':da-vinci-client')
 }
+
+task generateSslCertificate(type: Exec) {
+  def source = file('./create-ssl-cert.sh')
+  def outputDir = file("$buildDir/generated/resources")
+  inputs.file(source)
+  outputs.dir(outputDir)
+  commandLine = [source, outputDir]
+}
+sourceSets.main.resources.srcDir(generateSslCertificate)
