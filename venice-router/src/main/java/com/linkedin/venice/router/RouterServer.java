@@ -1,7 +1,5 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
-
 import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.ddsstorage.base.concurrency.AsyncFuture;
 import com.linkedin.ddsstorage.base.concurrency.TimeoutProcessor;
@@ -42,6 +40,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.DictionaryRetrievalService;
+import com.linkedin.venice.router.api.MetaStoreShadowReader;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterHeartbeat;
 import com.linkedin.venice.router.api.RouterKey;
@@ -139,6 +138,7 @@ public class RouterServer extends AbstractVeniceService {
   private final ZkClient zkClient;
   private SafeHelixManager manager;
   private ReadOnlySchemaRepository schemaRepository;
+  private Optional<MetaStoreShadowReader> metaStoreShadowReader;
   private HelixBaseRoutingRepository routingDataRepository;
   private Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository;
   private ReadOnlyStoreRepository metadataRepository;
@@ -286,6 +286,9 @@ public class RouterServer extends AbstractVeniceService {
             config.getClusterName(),
             config.getRefreshAttemptsForZkReconnect(),
             config.getRefreshIntervalForZkReconnectInMs()));
+    this.metaStoreShadowReader = config.isMetaStoreShadowReadEnabled()
+        ? Optional.of(new MetaStoreShadowReader(this.schemaRepository))
+        : Optional.empty();
     this.routingDataRepository = config.isHelixOfflinePushEnabled()
         ? new HelixCustomizedViewOfflinePushRepository(manager)
         : new HelixExternalViewRepository(manager);
@@ -320,7 +323,7 @@ public class RouterServer extends AbstractVeniceService {
       this.manager = new SafeHelixManager(
           new ZKHelixManager(config.getClusterName(), null, InstanceType.SPECTATOR, config.getZkConnection()));
     }
-
+    this.metaStoreShadowReader = Optional.empty();
     this.metricsRepository = metricsRepository;
     this.routerStats = new RouterStats<>(
         requestType -> new AggRouterHttpRequestStats(
@@ -554,7 +557,7 @@ public class RouterServer extends AbstractVeniceService {
       }
     };
 
-    responseAggregator = new VeniceResponseAggregator(routerStats);
+    responseAggregator = new VeniceResponseAggregator(routerStats, metaStoreShadowReader);
     /**
      * No need to setup {@link com.linkedin.ddsstorage.router.api.HostHealthMonitor} here since
      * {@link VeniceHostFinder} will always do health check.

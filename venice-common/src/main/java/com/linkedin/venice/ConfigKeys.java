@@ -1789,6 +1789,11 @@ public class ConfigKeys {
   public static final String ROUTER_MULTI_KEY_DECOMPRESSION_BATCH_SIZE = "router.multi.key.decompression.batch.size";
 
   /**
+   * The number of records
+   */
+  public static final String ROUTER_META_STORE_SHADOW_READ_ENABLED = "router.meta.store.shadow.read.enabled";
+
+  /**
    * Defines the key names in venice.server.kafkaClustersMap
    */
   public static final String KAFKA_CLUSTER_MAP_KEY_NAME = "name";

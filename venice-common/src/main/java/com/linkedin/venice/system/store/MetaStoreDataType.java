@@ -4,6 +4,8 @@ import static com.linkedin.venice.system.store.MetaStoreWriter.*;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
+import com.linkedin.venice.utils.EnumUtils;
+import com.linkedin.venice.utils.VeniceEnumValue;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -14,7 +16,7 @@ import java.util.Map;
 /**
  * All the data types supported in meta system store.
  */
-public enum MetaStoreDataType {
+public enum MetaStoreDataType implements VeniceEnumValue {
   STORE_PROPERTIES(0, Arrays.asList(KEY_STRING_STORE_NAME, KEY_STRING_CLUSTER_NAME)),
   STORE_KEY_SCHEMAS(1, Collections.singletonList(KEY_STRING_STORE_NAME)),
   STORE_VALUE_SCHEMAS(2, Collections.singletonList(KEY_STRING_STORE_NAME)),
@@ -24,6 +26,8 @@ public enum MetaStoreDataType {
   ), STORE_CLUSTER_CONFIG(4, Collections.singletonList(KEY_STRING_STORE_NAME)),
   STORE_VALUE_SCHEMA(5, Arrays.asList(KEY_STRING_STORE_NAME, KEY_STRING_SCHEMA_ID)),
   VALUE_SCHEMAS_WRITTEN_PER_STORE_VERSION(6, Arrays.asList(KEY_STRING_STORE_NAME, KEY_STRING_VERSION_NUMBER));
+
+  private static final MetaStoreDataType[] TYPES_ARRAY = EnumUtils.getEnumValuesArray(MetaStoreDataType.class);
 
   private final int value;
   private final List<String> requiredKeys;
@@ -35,6 +39,14 @@ public enum MetaStoreDataType {
 
   public int getValue() {
     return value;
+  }
+
+  public static MetaStoreDataType valueOf(int value) {
+    try {
+      return TYPES_ARRAY[value];
+    } catch (IndexOutOfBoundsException e) {
+      throw new VeniceException("Invalid compression strategy: " + value);
+    }
   }
 
   public StoreMetaKey getStoreMetaKey(Map<String, String> params) {
