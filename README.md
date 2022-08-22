@@ -78,3 +78,5 @@ The following talks have been given about Venice:
 - 2019: [Enabling next generation models for PYMK Scale](https://www.youtube.com/watch?v=znd-Q6IvCqY)
 
 Keep in mind that older content reflects an earlier phase of the project and may not be entirely correct anymore.
+
+[//]: # (TODO: Add link to setup and execution guide)
