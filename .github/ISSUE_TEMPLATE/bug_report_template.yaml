@@ -1,0 +1,94 @@
+name: Bug Report
+description: Create a bug report to help us reproduce and correct the bug
+labels: 'bug'
+title: '[BUG]'
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for submitting an issue.
+        #### Please fill in this bug report template to ensure a timely and thorough response.
+
+  - type: dropdown
+    id: contribution
+    attributes:
+      label: Willingness to contribute
+      description: The Venice Community encourages bug fix contributions. Would you or another member of your organization be willing to contribute a fix for this issue or bug to the Venice code base?
+      options:
+        - Yes. I can contribute a fix for this bug independently.
+        - Yes. I would be willing to contribute a fix for this bug with guidance from the Venice community.
+        - No. I cannot contribute a bug fix at this time.
+    validations:
+      required: true
+
+  - type: input
+    validations:
+      required: true
+    attributes:
+      label: Venice version
+      description: Venice version
+
+  - type: textarea
+    attributes:
+      label: System information
+      description: |
+        Describe the system where you encountered the bug.
+      value: |
+        - **OS Platform and Distribution (e.g., Linux Ubuntu 20.0)**:
+        - **JDK version**:
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Describe the problem
+      description: |
+        Describe the problem clearly here. Include descriptions of the expected behavior and the actual behavior if it is a bug report.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Tracking information
+      description: |
+        Please provide the logs and errors for reproducibility.
+    validations:
+      required: false
+
+  - type: textarea
+    attributes:
+      label: Code to reproduce bug
+      description: |
+        Provide a reproducible test case that is the bare minimum necessary to generate the problem.
+      placeholder: |
+        ```java
+        // test case to reproduce bug
+        ```
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: component
+    attributes:
+      label: What component(s) does this bug affect?
+      description: Please choose one or more components below.
+      options:
+        - label: "`Controller`: This is the control-plane for Venice. Used to create/update/query stores and their metadata."
+          required: false
+        - label: "`Router`: This is the stateless query-routing layer for serving read requests."
+          required: false
+        - label: "`Server`: This is the component that persists all the store data."
+          required: false
+        - label: "`VenicePushJob/H2V`: This is the component that pushes derived data from Hadoop to Venice backend."
+          required: false
+        - label: "`Thin Client`: This is a stateless client users use to query Venice Router for reading store data."
+          required: false
+        - label: "`Fast Client`: This is a stateful client users use to query Venice Server for reading store data."
+          required: false
+        - label: "`Da Vinci Client`: This is an embedded, stateful client that materializes store data locally."
+          required: false
+        - label: "`Samza`: This is the library users use to make nearline updates to store data."
+          required: false
+        - label: "`Admin Tool`: This is the stand-alone client used for ad-hoc operations on Venice."
+          required: false

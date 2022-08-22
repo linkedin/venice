@@ -1,0 +1,74 @@
+name: Feature Request
+description: Use this template for feature requests.
+labels: 'enhancement'
+title: '[Feature]'
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for submitting an issue.
+        #### Please fill in this bug report template to ensure a timely and thorough response.
+
+  - type: dropdown
+    id: contribution
+    attributes:
+      label: Willingness to contribute
+      description: The Venice Community encourages bug fix contributions. Would you or another member of your organization be willing to contribute a fix for this issue or bug to the Venice code base?
+      options:
+        - Yes. I can contribute a fix for this bug independently.
+        - Yes. I would be willing to contribute a fix for this bug with guidance from the Venice community.
+        - No. I cannot contribute a bug fix at this time.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Feature Request Proposal
+      description: |
+        Provide a clear high-level description of feature request proposal
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Motivation
+      description: |
+        What would this Feature request help Venice users?
+      value: |
+        > #### What is the use case for this feature?
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Details
+      description: |
+        Give a clear description here.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: component
+    attributes:
+      label: What component(s) does this bug affect?
+      description: Please choose one or more components below.
+      options:
+        - label: "`Controller`: This is the control-plane for Venice. Used to create/update/query stores and their metadata."
+          required: false
+        - label: "`Router`: This is the stateless query-routing layer for serving read requests."
+          required: false
+        - label: "`Server`: This is the component that persists all the store data."
+          required: false
+        - label: "`VenicePushJob/H2V`: This is the component that pushes derived data from Hadoop to Venice backend."
+          required: false
+        - label: "`Thin Client`: This is a stateless client users use to query Venice Router for reading store data."
+          required: false
+        - label: "`Fast Client`: This is a stateful client users use to query Venice Server for reading store data."
+          required: false
+        - label: "`Da Vinci Client`: This is an embedded, stateful client that materializes store data locally."
+          required: false
+        - label: "`Samza`: This is the library users use to make nearline updates to store data."
+          required: false
+        - label: "`Admin Tool`: This is the stand-alone client used for ad-hoc operations on Venice."
+          required: false

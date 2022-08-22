@@ -322,11 +322,21 @@ spotless {
   }
 }
 
-task gitHooks(type: Copy) {
-  from ("$rootDir/gradle/githooks")
-  into ("$rootDir/.git/hooks")
-  eachFile {
-    println "Copying ${relativePath(it.file)} to .git/hooks"
+task setupLocalRepo {
+  println "Setting up default repo configs"
+  def gitConfig = [
+      'core.hooksPath' : 'gradle/githooks',
+      'pull.rebase' : 'true',
+      'branch.autosetupmerge' : 'true', // Only track remote branches
+      'branch.autosetuprebase' : 'always',
+  ]
+  gitConfig.each {
+    def configKey = it.key
+    def configValue = it.value
+    println "Setting $configKey = $configValue"
+    exec {
+      commandLine = ['git', 'config', configKey, configValue]
+    }
   }
 }
 
@@ -342,7 +352,7 @@ test {
 
 assemble {
   dependsOn (
-    gitHooks,
+    setupLocalRepo,
     testClasses,
     'venice-test-common:jmhClasses',
     'venice-test-common:integrationTestClasses'

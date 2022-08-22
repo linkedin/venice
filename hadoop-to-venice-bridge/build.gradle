@@ -52,20 +52,9 @@ artifacts {
 
 shadowJar {
   include '**'
-  exclude '**/com/linkedin/azkaban**'
   exclude '**/com/linkedin/hadoop**'
   exclude '**/org.apache.hadoop*'
   exclude '**/org/apache/commons/**'
   exclude '**/org/apache/hadoop/**'
   exclude '**/org/apache/xerces/**'
-}
-
-task zipAzkabanDev(type: Zip, dependsOn: jar) {
-  classifier = 'azkaban-dev'
-
-  from 'azkaban-dev-pack/' include '*'
-
-  from (tasks.jar.archivePath) {
-    into 'libs'
-  }
 }
