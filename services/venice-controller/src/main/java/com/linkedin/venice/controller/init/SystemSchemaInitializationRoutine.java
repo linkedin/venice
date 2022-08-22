@@ -58,6 +58,9 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
     this.autoRegisterDerivedComputeSchema = autoRegisterDerivedComputeSchema;
   }
 
+  /**
+   * @see ClusterLeaderInitializationRoutine#execute(String)
+   */
   @Override
   public void execute(String clusterToInit) {
     String intendedCluster = multiClusterConfigs.getSystemSchemaClusterName();

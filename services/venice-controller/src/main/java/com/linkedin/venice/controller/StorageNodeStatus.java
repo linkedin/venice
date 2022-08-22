@@ -19,12 +19,12 @@ public class StorageNodeStatus {
     replicaToStatusMap = new HashMap<>();
   }
 
-  protected void addStatusForReplica(String partitionName, String status) {
+  void addStatusForReplica(String partitionName, String status) {
     HelixState state = HelixState.valueOf(status);
     replicaToStatusMap.put(partitionName, state);
   }
 
-  public int getStatusValueForReplica(String partitionName) {
+  int getStatusValueForReplica(String partitionName) {
     if (replicaToStatusMap.containsKey(partitionName)) {
       return replicaToStatusMap.get(partitionName).getStateValue();
     } else {
@@ -40,11 +40,11 @@ public class StorageNodeStatus {
    * <p>
    * Even the server is just restarted, as long as the partition is not moved out we could find the replica in our
    * routing data repository(actually from external view), the replica is OFFLINE. If the resource is deleted
-   * during the server upgrading, the replica should be dropped and we could not find the replica in the routing data
-   * repository. So we don't need to filter the status by resources in idealstate to avoid the wrong result, because
+   * during the server upgrading, the replica should be dropped, and we could not find the replica in the routing data
+   * repository. So we don't need to filter the status by resources in IdealState to avoid the wrong result, because
    * we only compare the resource/replica in the current storage node status.
    */
-  public boolean isNewerOrEqual(StorageNodeStatus oldStatus) {
+  boolean isNewerOrEqual(StorageNodeStatus oldStatus) {
     for (String partitionName: replicaToStatusMap.keySet()) {
       int oldReplicaStatus = oldStatus.getStatusValueForReplica(partitionName);
       int replicaStatus = getStatusValueForReplica(partitionName);

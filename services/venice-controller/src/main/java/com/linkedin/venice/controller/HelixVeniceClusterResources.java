@@ -49,7 +49,7 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * Aggregate all of essentials resources which is required by controller to manage a Venice cluster.
+ * Aggregate all essentials resources required by controller to manage a Venice cluster.
  * <p>
  * All resources in this class is dedicated for one Venice cluster.
  */
@@ -219,7 +219,6 @@ public class HelixVeniceClusterResources implements VeniceResource {
   /**
    * This function is used to repair all the stores with replication factor: 0.
    * And these stores will be updated to use the replication factor configured in cluster level.
-   * @param metadataRepository
    */
   private void repairStoreReplicationFactor(ReadWriteStoreRepository metadataRepository) {
     List<Store> stores = metadataRepository.getAllStores();
@@ -238,7 +237,6 @@ public class HelixVeniceClusterResources implements VeniceResource {
           logger.info(
               "Updated replication factor from " + previousReplicationFactor + " to " + config.getReplicationFactor()
                   + " for store: " + store.getName() + " in cluster: " + clusterName);
-
         }
       }
     }
@@ -247,13 +245,11 @@ public class HelixVeniceClusterResources implements VeniceResource {
   @Override
   public void refresh() {
     clear();
-    // make sure that metadataRepo is initialized first since schemaRepo and
-    // pushMonitor depends on it
+    // Make sure that metadataRepo is initialized first since schemaRepo and pushMonitor depend on it.
     storeMetadataRepository.refresh();
     repairStoreReplicationFactor(storeMetadataRepository);
-    /**
-     * Initialize the dynamic access client and also register the acl creation/deletion listener.
-     */
+
+    // Initialize the dynamic access client and also register the acl creation/deletion listener.
     if (accessController.isPresent()) {
       DynamicAccessController accessClient = accessController.get();
       accessClient
@@ -282,12 +278,18 @@ public class HelixVeniceClusterResources implements VeniceResource {
     routersClusterManager.clear();
   }
 
+  /**
+   * Cause {@link ErrorPartitionResetTask} service to begin executing.
+   */
   public void startErrorPartitionResetTask() {
     if (errorPartitionResetTask != null) {
       errorPartitionResetExecutorService.submit(errorPartitionResetTask);
     }
   }
 
+  /**
+   * Cause {@link ErrorPartitionResetTask} service to stop executing.
+   */
   public void stopErrorPartitionResetTask() {
     if (errorPartitionResetTask != null) {
       errorPartitionResetTask.close();
@@ -300,12 +302,18 @@ public class HelixVeniceClusterResources implements VeniceResource {
     }
   }
 
+  /**
+   * Cause {@link LeakedPushStatusCleanUpService} service to begin executing.
+   */
   public void startLeakedPushStatusCleanUpService() {
     if (leakedPushStatusCleanUpService != null) {
       leakedPushStatusCleanUpService.start();
     }
   }
 
+  /**
+   * Cause {@link LeakedPushStatusCleanUpService} service to stop executing.
+   */
   public void stopLeakedPushStatusCleanUpService() {
     if (leakedPushStatusCleanUpService != null) {
       try {
@@ -355,10 +363,6 @@ public class HelixVeniceClusterResources implements VeniceResource {
 
   public ZkRoutersClusterManager getRoutersClusterManager() {
     return routersClusterManager;
-  }
-
-  public AggPartitionHealthStats getAggPartitionHealthStats() {
-    return aggPartitionHealthStats;
   }
 
   public Optional<MetaStoreWriter> getMetaStoreWriter() {

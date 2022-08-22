@@ -30,6 +30,9 @@ public class NodeRemovableResult {
     return new NodeRemovableResult();
   }
 
+  /**
+   * @return a {@link NodeRemovableResult} object with specified parameters.
+   */
   public static NodeRemovableResult nonremoveableResult(
       String blockingResource,
       BlockingRemoveReason blockingReason,

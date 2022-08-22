@@ -44,7 +44,7 @@ public class SystemStoreAclSynchronizationTask implements Runnable, Closeable {
   }
 
   /**
-   * Since acl synchronization could be a long running task we want to make sure we can handle stale states from local
+   * Since acl synchronization could be a long-running task we want to make sure we can handle stale states from local
    * variable, race conditions and early termination gracefully.
    */
   @Override

@@ -20,6 +20,9 @@ public class AuditInfo {
     this.method = request.requestMethod();
   }
 
+  /**
+   * @return a string representation of {@link AuditInfo} object.
+   */
   @Override
   public String toString() {
     StringJoiner joiner = new StringJoiner(" ");
@@ -30,10 +33,16 @@ public class AuditInfo {
     return joiner.toString();
   }
 
+  /**
+   * @return a audit-successful string.
+   */
   public String successString() {
     return toString(true, null);
   }
 
+  /**
+   * @return a audit-failure string.
+   */
   public String failureString(String errMsg) {
     return toString(false, errMsg);
   }

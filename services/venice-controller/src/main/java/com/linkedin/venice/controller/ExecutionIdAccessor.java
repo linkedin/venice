@@ -38,8 +38,8 @@ public interface ExecutionIdAccessor {
   void updateLastGeneratedExecutionId(String clusterName, Long lastGeneratedExecutionId);
 
   /**
-   * Read the current value from ZK; tries to increment the value by 1 and write it back to ZK
-   * @return  updated execution id
+   * Read the current value from ZK and try to increment the value by 1 and write it back to ZK.
+   * @return  updated execution id.
    */
   Long incrementAndGetExecutionId(String clusterName);
 }

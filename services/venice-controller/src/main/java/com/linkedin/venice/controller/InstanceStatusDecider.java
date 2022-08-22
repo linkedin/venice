@@ -30,16 +30,12 @@ import org.apache.logging.log4j.Logger;
 public class InstanceStatusDecider {
   private static final Logger logger = LogManager.getLogger(InstanceStatusDecider.class);
 
-  protected static List<Replica> getReplicasForInstance(HelixVeniceClusterResources resources, String instanceId) {
+  static List<Replica> getReplicasForInstance(HelixVeniceClusterResources resources, String instanceId) {
     RoutingDataRepository routingDataRepository = resources.getRoutingDataRepository();
     return Utils.getReplicasForInstance(routingDataRepository, instanceId);
   }
 
-  protected static NodeRemovableResult isRemovable(
-      HelixVeniceClusterResources resources,
-      String clusterName,
-      String instanceId) {
-
+  static NodeRemovableResult isRemovable(HelixVeniceClusterResources resources, String clusterName, String instanceId) {
     return isRemovable(resources, clusterName, instanceId, Collections.emptyList(), false);
   }
 
@@ -57,14 +53,15 @@ public class InstanceStatusDecider {
 
   /**
    * Decide whether the given instance could be moved out from the cluster. An instance is removable if:
-   * 1. It's not a live instance any more.
+   * <p>
+   * 1. It's not a live instance anymore.
    * 2. For each online version exists in this instance:
    *  2.1 No data loss after removing this node from the cluster.
    *  2.2 No Helix load re-balance after removing this node from cluster
    * 3. For each ongoing version(during the push) exists in this instance:
    *  3.1 Push will not fail after removing this node from the cluster.
    */
-  protected static NodeRemovableResult isRemovable(
+  static NodeRemovableResult isRemovable(
       HelixVeniceClusterResources resources,
       String clusterName,
       String instanceId,
@@ -78,7 +75,7 @@ public class InstanceStatusDecider {
 
       RoutingDataRepository routingDataRepository = resources.getRoutingDataRepository();
 
-      // Get all of replicas hold by given instance
+      // Get all replicas held by given instance.
       List<Replica> replicas = getReplicasForInstance(resources, instanceId);
       // Get and lock the resource assignment to avoid it's changed during the checking.
       ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
@@ -176,7 +173,7 @@ public class InstanceStatusDecider {
       int activeReplicaCount = partitionAfterRemoving.getWorkingInstances().size();
       activeReplicaCount += partitionAfterRemoving.getErrorInstances().size();
       if (activeReplicaCount < minActiveReplicas) {
-        // After removing the instance, Venice would not have enough active replicas so a rebalance would be triggered..
+        // After removing the instance, Venice would not have enough active replicas so a re-balance would be triggered.
         return new Pair<>(
             true,
             "Partition: " + partitionAfterRemoving.getId() + " will only have " + activeReplicaCount

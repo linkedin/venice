@@ -637,7 +637,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return disabledRoutes;
   }
 
-  public static List<ControllerRoute> parseControllerRoutes(
+  static List<ControllerRoute> parseControllerRoutes(
       VeniceProperties clusterProps,
       String property,
       List<String> defaultValue) {
@@ -716,9 +716,9 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    * This helper function will parse the config with above format and return a Map from data center to
    * its controller urls.
    *
-   * @param clusterPros list of child controller uris
-   * @param datacenterAllowlist data centers that are taken into account
-   * @param D2Routing whether uses D2 to route or not
+   * @param clusterPros list of child controller uris.
+   * @param datacenterAllowlist data centers that are taken into account.
+   * @param D2Routing whether it uses D2 to route or not.
    */
   public static Map<String, String> parseClusterMap(
       VeniceProperties clusterPros,

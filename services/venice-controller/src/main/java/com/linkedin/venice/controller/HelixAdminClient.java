@@ -41,7 +41,7 @@ public interface HelixAdminClient {
   /**
    * Check if the given Venice storage cluster's cluster resource is in the Venice controller cluster.
    * @param clusterName of the Venice storage cluster.
-   * @return ture of false.
+   * @return true or false.
    */
   boolean isVeniceStorageClusterInControllerCluster(String clusterName);
 
@@ -72,12 +72,7 @@ public interface HelixAdminClient {
   void updateClusterConfigs(String clusterName, Map<String, String> helixClusterProperties);
 
   /**
-   * Disable or enable a list of partitions on an instance
-   * @param enabled
-   * @param clusterName
-   * @param instanceName
-   * @param resourceName
-   * @param partitionNames
+   * Disable or enable a list of partitions on an instance.
    */
   void enablePartition(
       boolean enabled,
@@ -87,19 +82,13 @@ public interface HelixAdminClient {
       List<String> partitionNames);
 
   /**
-   * Get a list of instances under a cluster
-   * @param clusterName
-   * @return a list of instance names
+   * Get a list of instances under a cluster.
+   * @return a list of instance names.
    */
   List<String> getInstancesInCluster(String clusterName);
 
   /**
    * Create resources for a given storage node cluster.
-   * @param clusterName
-   * @param kafkaTopic
-   * @param numberOfPartition
-   * @param replicationFactor
-   * @param isLeaderFollowerStateModel
    */
   void createVeniceStorageClusterResources(
       String clusterName,
@@ -109,27 +98,20 @@ public interface HelixAdminClient {
       boolean isLeaderFollowerStateModel);
 
   /**
-   * Drop a resource from a cluster
-   * @param clusterName
-   * @param resourceName
+   * Drop a resource from a cluster.
    */
   void dropResource(String clusterName, String resourceName);
 
   /**
-   * Drop a storage node instance from the given cluster
-   * @param clusterName
-   * @param instanceName
+   * Drop a storage node instance from the given cluster.
    */
   void dropStorageInstance(String clusterName, String instanceName);
 
   /**
-   * Reset a list of partitions in error state for an instance
-   * The partitions are assume to be in error state and reset will bring them from error
+   * Reset a list of partitions in error state for an instance.
+   * <p>
+   * The partitions are assumed to be in error state and reset will bring them from error
    * to initial state. An error to initial state transition is required for reset.
-   * @param clusterName
-   * @param instanceName
-   * @param resourceName
-   * @param partitionNames
    */
   void resetPartition(String clusterName, String instanceName, String resourceName, List<String> partitionNames);
 
