@@ -469,7 +469,7 @@ public class VeniceControllerClusterConfig {
   }
 
   /**
-   * returns kafka Bootstrap Urls . IF there is more than one url, they are separated by commas.
+   * @return kafka Bootstrap Urls. If there is more than one url, they are separated by commas.
    */
   public String getKafkaBootstrapServers() {
     return kafkaBootstrapServers;

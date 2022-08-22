@@ -16,6 +16,10 @@ public abstract class AdminTopicMetadataAccessor {
   private static final String EXECUTION_ID_KEY = "executionId";
   private static final long UNDEFINED_VALUE = -1;
 
+  /**
+   * @return a map with {@linkplain AdminTopicMetadataAccessor#OFFSET_KEY}, {@linkplain AdminTopicMetadataAccessor#UPSTREAM_OFFSET_KEY},
+   *         {@linkplain AdminTopicMetadataAccessor#EXECUTION_ID_KEY} specified to input values.
+   */
   public static Map<String, Long> generateMetadataMap(long localOffset, long upstreamOffset, long executionId) {
     Map<String, Long> metadata = new HashMap<>();
     metadata.put(OFFSET_KEY, localOffset);
@@ -24,12 +28,19 @@ public abstract class AdminTopicMetadataAccessor {
     return metadata;
   }
 
+  /**
+   * @return a pair of values to which the specified keys are mapped to {@linkplain AdminTopicMetadataAccessor#OFFSET_KEY}
+   * and {@linkplain AdminTopicMetadataAccessor#UPSTREAM_OFFSET_KEY}.
+   */
   public static Pair<Long, Long> getOffsets(Map<String, Long> metadata) {
     long localOffset = metadata.getOrDefault(OFFSET_KEY, UNDEFINED_VALUE);
     long upstreamOffset = metadata.getOrDefault(UPSTREAM_OFFSET_KEY, UNDEFINED_VALUE);
     return new Pair<>(localOffset, upstreamOffset);
   }
 
+  /**
+   * @return the value to which the specified key is mapped to {@linkplain AdminTopicMetadataAccessor#EXECUTION_ID_KEY}.
+   */
   public static long getExecutionId(Map<String, Long> metadata) {
     return metadata.getOrDefault(EXECUTION_ID_KEY, UNDEFINED_VALUE);
   }

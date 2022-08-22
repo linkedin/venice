@@ -44,6 +44,9 @@ public class TerminalStateTopicCheckerForParentController implements Runnable, C
     this.checkDelayInMs = checkDelayInMs;
   }
 
+  /**
+   * Causes {@link TerminalStateTopicCheckerForParentController} task to stop executing.
+   */
   @Override
   public void close() {
     isRunning.set(false);
@@ -110,7 +113,7 @@ public class TerminalStateTopicCheckerForParentController implements Runnable, C
   }
 
   /**
-   * Get version topics that doesn't have incremental push enabled and the current controller is the leader of its
+   * Get version topics that don't have incremental push enabled and the current controller is the leader of its
    * corresponding Venice cluster.
    */
   private Map<String, Map<String, Long>> getRelevantVeniceVersionTopics() {

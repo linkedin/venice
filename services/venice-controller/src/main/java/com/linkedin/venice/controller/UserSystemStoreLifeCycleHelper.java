@@ -30,8 +30,8 @@ import org.apache.logging.log4j.Logger;
  * corresponding user store is created or deleted.
  */
 public class UserSystemStoreLifeCycleHelper {
-  public static final String AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX = "Auto_meta_system_store_empty_push_";
-  public static final long DEFAULT_META_SYSTEM_STORE_SIZE = 1024 * 1024 * 1024;
+  static final String AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX = "Auto_meta_system_store_empty_push_";
+  static final long DEFAULT_META_SYSTEM_STORE_SIZE = 1024 * 1024 * 1024;
   private static final VeniceSystemStoreType[] aclRequiredSystemStores =
       new VeniceSystemStoreType[] { VeniceSystemStoreType.META_STORE, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE };
   private static final Set<VeniceSystemStoreType> aclRequiredSystemStoresSet =

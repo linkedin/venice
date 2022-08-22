@@ -5,6 +5,7 @@ import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -56,6 +57,9 @@ public class DataRecoveryManager implements Closeable {
     }
   }
 
+  /**
+   * Initiate data recovery process by recreating the version, kafka topic, and Helix resources accordingly.
+   */
   public void initiateDataRecovery(
       String clusterName,
       String storeName,
@@ -93,6 +97,9 @@ public class DataRecoveryManager implements Closeable {
     veniceAdmin.createHelixResourceAndStartMonitoring(clusterName, storeName, dataRecoveryVersion);
   }
 
+  /**
+   * @see Admin#prepareDataRecovery(String, String, int, String, String, Optional)
+   */
   public void prepareStoreVersionForDataRecovery(
       String clusterName,
       String storeName,
@@ -102,8 +109,10 @@ public class DataRecoveryManager implements Closeable {
     verifyStoreIsCapableOfDataRecovery(clusterName, storeName, sourceAmplificationFactor);
     Store store = veniceAdmin.getStore(clusterName, storeName);
     if (store.getCurrentVersion() == versionNumber) {
-      // We need to set the store's current version to the backup version or Store.NON_EXISTING_VERSION in order to
-      // perform data recovery on the current version.
+      /**
+       * We need to set the store's current version to the backup version or {@link Store#NON_EXISTING_VERSION} in order to
+       * perform data recovery on the current version.
+       */
       Optional<Version> backupVersion =
           store.getVersions().stream().filter(v -> v.getNumber() != versionNumber).findFirst();
       veniceAdmin.updateStore(
@@ -137,6 +146,9 @@ public class DataRecoveryManager implements Closeable {
     }
   }
 
+  /**
+   * Verify that target store version is ready for data recovery.
+   */
   public void verifyStoreVersionIsReadyForDataRecovery(
       String clusterName,
       String storeName,
@@ -200,6 +212,9 @@ public class DataRecoveryManager implements Closeable {
     });
   }
 
+  /**
+   * Cause all Venice avro client to close.
+   */
   @Override
   public void close() {
     for (AvroSpecificStoreClient client: clientMap.values()) {

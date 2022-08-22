@@ -31,10 +31,12 @@ import org.apache.logging.log4j.Logger;
 
 /**
  * A task that iterates over store version resources and reset error partitions if they meet the following criteria:
- * 1. The store version resource is the current version.
- * 2. The error partition only has exactly one error replica.
- * 3. For L/F model, using EV to check error replicas misses internal error replica states. For example, a replica is
- * is shown Leader in EV but actually ERROR in offline push status.
+ * <ol>
+ * <li>The store version resource is the current version.</li>
+ * <li>The error partition only has exactly one error replica.</li>
+ * <li>For L/F model, using EV to check error replicas misses internal error replica states. For example, a replica is
+ *    shown Leader in EV but actually ERROR in offline push status.</li>
+ * </ol>
  */
 public class ErrorPartitionResetTask implements Runnable, Closeable {
   private static final String TASK_ID_FORMAT = ErrorPartitionResetTask.class.getSimpleName() + " [cluster: %s] ";
@@ -130,7 +132,7 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
         } else {
           // We are only interested in resetting error partitions with exactly 1 error replica. This is because we have
           // MIN_ACTIVE set to 2 and replication factor set to 3. If we have more than 2 error replicas then Helix
-          // recovery rebalance should take care of it and it's best not to mess with it using a reset.
+          // recovery re-balance should take care of it, and it's best not to mess with it using a reset.
 
           Integer currentResetCount = partitionResetCountMap.getOrDefault(partition.getId(), 0);
           if (currentResetCount > errorPartitionAutoResetLimit) {
@@ -166,7 +168,7 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
           } else if (errorInstances.size() > 1) {
             // The following scenarios can occur:
             // 1. Helix will trigger recovery re-balance in attempt to bring more replicas ONLINE.
-            // 2. The recovery re-balance was successful and we now have excess error replicas that should be reset.
+            // 2. The recovery re-balance was successful, and we now have excess error replicas that should be reset.
             // e.g. 2 ERROR 3 ONLINE or 3 ERROR and 2 ONLINE for replication factor of 3 .
             // 3. All replicas are in ERROR state and Helix has given up on this partition until manual intervention.
             if ((partition.getNumOfTotalInstances() - errorInstances.size()) >= store.getReplicationFactor() - 1) {
@@ -186,7 +188,7 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
         }
       }
 
-      // Update the tracker with newest reset count map
+      // Update the tracker with the newest reset count map.
       errorPartitionResetTracker.put(resourceName, partitionResetCountMap);
       resetMap.forEach((k, v) -> {
         helixAdminClient.resetPartition(clusterName, k, resourceName, v);
@@ -212,6 +214,9 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
             && states.contains(HelixState.LEADER_STATE) && states.contains(HelixState.STANDBY_STATE)));
   }
 
+  /**
+   * Cause {@link ErrorPartitionResetTask} to stop executing.
+   */
   @Override
   public void close() {
     isRunning.set(false);

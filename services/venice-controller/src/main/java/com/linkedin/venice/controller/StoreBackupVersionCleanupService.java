@@ -27,7 +27,7 @@ import org.apache.logging.log4j.Logger;
 public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(StoreBackupVersionCleanupService.class);
   /**
-   * The minimal delay to cleanup backup version, and this is used to make sure all the Routers have enough
+   * The minimum delay to clean up backup version, and this is used to make sure all the Routers have enough
    * time to switch to the new promoted version.
    */
   private static final long MINIMAL_BACKUP_VERSION_CLEANUP_DELAY = TimeUnit.HOURS.toMillis(1);
@@ -61,12 +61,18 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     this.time = time;
   }
 
+  /**
+   * @see {@link AbstractVeniceService#startInner()}
+   */
   @Override
   public boolean startInner() throws Exception {
     cleanupThread.start();
     return true;
   }
 
+  /**
+   * @see {@link AbstractVeniceService#stopInner()}
+   */
   @Override
   public void stopInner() throws Exception {
     stop = true;
@@ -87,13 +93,11 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
 
   /**
    * Using a separate function for store cleanup is to make it easy for testing.
-   * @param store
-   *
    * @return whether any backup version is removed or not
    */
   protected boolean cleanupBackupVersion(Store store, String clusterName) {
     if (!whetherStoreReadyToBeCleanup(store, defaultBackupVersionRetentionMs, time)) {
-      // not ready to cleanup backup versions yet
+      // not ready to clean up backup versions yet
       return false;
     }
 

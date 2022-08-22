@@ -17,6 +17,9 @@ public class LatestVersionPromoteToCurrentTimestampCorrectionRoutine implements 
     this.veniceHelixAdmin = veniceHelixAdmin;
   }
 
+  /**
+   * @see ClusterLeaderInitializationRoutine#execute(String)
+   */
   @Override
   public void execute(String clusterToInit) {
     for (Store store: veniceHelixAdmin.getAllStores(clusterToInit)) {

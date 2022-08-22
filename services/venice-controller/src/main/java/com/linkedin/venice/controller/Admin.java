@@ -268,7 +268,7 @@ public interface Admin extends AutoCloseable, Closeable {
    * only have 2 ONLINE replicas in the current version, we say this store is under replicated. Refer to {@link
    * com.linkedin.venice.meta.StoreStatus} for the definition of each status.
    *
-   * @return a map which's key is store name and value is store's status.
+   * @return a map whose key is store name and value is store's status.
    */
   Map<String, String> getAllStoreStatuses(String clusterName);
 
@@ -734,7 +734,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
   /**
    * Returns true if A/A replication is enabled in all child controller and parent controller. This is implemented only in parent controller.
-   * Otherwise return false.
+   * Otherwise, return false.
    */
   boolean isActiveActiveReplicationEnabledInAllRegion(
       String clusterName,
@@ -833,7 +833,6 @@ public interface Admin extends AutoCloseable, Closeable {
 
   /**
    * Return all stores in a cluster.
-   * @return
    */
   ArrayList<StoreInfo> getClusterStores(String clusterName);
 

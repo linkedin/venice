@@ -35,6 +35,9 @@ public class InternalRTStoreInitializationRoutine implements ClusterLeaderInitia
     this.valueSchema = valueSchema;
   }
 
+  /**
+   * @see ClusterLeaderInitializationRoutine#execute(String)
+   */
   @Override
   public void execute(String clusterName) {
     String storeName = storeNameSupplier.apply(clusterName);

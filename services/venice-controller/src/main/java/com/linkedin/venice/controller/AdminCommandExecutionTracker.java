@@ -12,7 +12,7 @@ import org.apache.logging.log4j.Logger;
 
 /**
  * This class is used to track the execution of the async admin command. Async admin command is a kind of admin
- * command which is send to a parent controller and propagated through a Kafka admin topic. Eventually command would be
+ * command which is sent to a parent controller and propagated through a Kafka admin topic. Eventually command would be
  * executed by the controller in each PROD fabric.
  * <p>
  * The context of command execution would be stored in this tracker and expired in case it lives longer than TTL. It
@@ -22,7 +22,7 @@ import org.apache.logging.log4j.Logger;
  * This class is Thread-safe.
  */
 public class AdminCommandExecutionTracker {
-  public static final int DEFAULT_TTL_HOUR = 24;
+  private static final int DEFAULT_TTL_HOUR = 24;
   private static final Logger logger = LogManager.getLogger(AdminCommandExecutionTracker.class);
 
   private final String cluster;
@@ -108,11 +108,11 @@ public class AdminCommandExecutionTracker {
     return execution;
   }
 
-  public synchronized AdminCommandExecution getExecution(long id) {
+  synchronized AdminCommandExecution getExecution(long id) {
     return idToExecutionMap.get(id);
   }
 
-  protected long getNextAvailableExecutionId() {
+  private long getNextAvailableExecutionId() {
     return executionIdAccessor.incrementAndGetExecutionId(cluster);
   }
 
@@ -120,11 +120,7 @@ public class AdminCommandExecutionTracker {
     return executionIdAccessor.getLastGeneratedExecutionId(cluster);
   }
 
-  protected Map<String, ControllerClient> getFabricToControllerClientsMap() {
+  Map<String, ControllerClient> getFabricToControllerClientsMap() {
     return fabricToControllerClientsMap;
-  }
-
-  public String executionsAsString() {
-    return idToExecutionMap.toString();
   }
 }
