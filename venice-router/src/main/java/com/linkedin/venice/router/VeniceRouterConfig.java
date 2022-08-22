@@ -125,6 +125,7 @@ public class VeniceRouterConfig {
   private int http2InitialWindowSize;
   private int http2HeaderTableSize;
   private int http2MaxHeaderListSize;
+  private boolean metaStoreShadowReadEnabled;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -341,6 +342,8 @@ public class VeniceRouterConfig {
     http2InitialWindowSize = props.getInt(ROUTER_HTTP2_INITIAL_WINDOW_SIZE, 8 * 1024 * 1024);
     http2HeaderTableSize = props.getInt(ROUTER_HTTP2_HEADER_TABLE_SIZE, 4096);
     http2MaxHeaderListSize = props.getInt(ROUTER_HTTP2_MAX_HEADER_LIST_SIZE, 8192);
+
+    metaStoreShadowReadEnabled = props.getBoolean(ROUTER_META_STORE_SHADOW_READ_ENABLED, false);
   }
 
   public String getClusterName() {
@@ -817,5 +820,9 @@ public class VeniceRouterConfig {
 
   public int getHttp2MaxHeaderListSize() {
     return http2MaxHeaderListSize;
+  }
+
+  public boolean isMetaStoreShadowReadEnabled() {
+    return metaStoreShadowReadEnabled;
   }
 }

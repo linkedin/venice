@@ -177,6 +177,11 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
     getStoreStats(storeName).recordResponse();
   }
 
+  public void recordMetaStoreShadowRead(String storeName) {
+    totalStats.recordMetaStoreShadowRead();
+    getStoreStats(storeName).recordMetaStoreShadowRead();
+  }
+
   private class AggScatterGatherStats extends ScatterGatherStats {
     private long getAggStats(Function<ScatterGatherStats, Long> func) {
       long total = 0;

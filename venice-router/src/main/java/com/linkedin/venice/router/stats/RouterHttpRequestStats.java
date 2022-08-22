@@ -63,6 +63,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor allowedRetryRequestSensor;
   private final Sensor disallowedRetryRequestSensor;
   private final Sensor errorRetryAttemptTriggeredByPendingRequestCheckSensor;
+  private final Sensor metaStoreShadowReadSensor;
 
   // QPS metrics
   public RouterHttpRequestStats(
@@ -199,6 +200,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     disallowedRetryRequestSensor = registerSensor("disallowed_retry_request_count", new OccurrenceRate());
     errorRetryAttemptTriggeredByPendingRequestCheckSensor =
         registerSensor("error_retry_attempt_triggered_by_pending_request_check", new OccurrenceRate());
+    metaStoreShadowReadSensor = registerSensor("meta_store_shadow_read", new OccurrenceRate());
   }
 
   /**
@@ -379,5 +381,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordErrorRetryAttemptTriggeredByPendingRequestCheck() {
     errorRetryAttemptTriggeredByPendingRequestCheckSensor.record();
+  }
+
+  public void recordMetaStoreShadowRead() {
+    metaStoreShadowReadSensor.record();
   }
 }

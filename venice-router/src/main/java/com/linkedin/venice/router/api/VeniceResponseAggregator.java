@@ -10,6 +10,7 @@ import com.linkedin.ddsstorage.base.misc.TimeValue;
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.ddsstorage.router.api.ResponseAggregatorFactory;
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceStoreIsMigratedException;
@@ -50,6 +51,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
   private static final Logger LOGGER = LogManager.getLogger(VeniceResponseAggregator.class);
 
   private final RouterStats<AggRouterHttpRequestStats> routerStats;
+  private final Optional<MetaStoreShadowReader> metaStoreShadowReaderOptional;
 
   private HelixGroupSelector helixGroupSelector;
 
@@ -79,8 +81,11 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         Integer.toString(ReadAvroProtocolDefinition.COMPUTE_RESPONSE_V1.getProtocolVersion()));
   }
 
-  public VeniceResponseAggregator(RouterStats<AggRouterHttpRequestStats> routerStats) {
+  public VeniceResponseAggregator(
+      RouterStats<AggRouterHttpRequestStats> routerStats,
+      Optional<MetaStoreShadowReader> metaStoreShadowReaderOptional) {
     this.routerStats = routerStats;
+    this.metaStoreShadowReaderOptional = metaStoreShadowReaderOptional;
   }
 
   public VeniceResponseAggregator withSingleGetTardyThreshold(long timeout, TimeUnit unit) {
@@ -173,7 +178,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     int versionNumber = venicePath.getVersionNumber();
 
     VeniceResponseDecompressor responseDecompressor = venicePath.getResponseDecompressor();
-    FullHttpResponse finalResponse = null;
+    FullHttpResponse finalResponse;
     if (venicePath.isStreamingRequest()) {
       /**
        * All the request with type: {@link RequestType.MULTI_GET_STREAMING} and {@link RequestType.COMPUTE_STREAMING}
@@ -200,6 +205,16 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       }
     }
     stats.recordFanoutRequestCount(storeName, gatheredResponses.size());
+
+    if (metaStoreShadowReaderOptional.isPresent()) {
+      MetaStoreShadowReader metaStoreShadowReader = metaStoreShadowReaderOptional.get();
+      if (metaStoreShadowReader.shouldPerformShadowRead(venicePath, finalResponse)) {
+        // Record meta store shadow read for the user store.
+        String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+        routerStats.getStatsByType(RequestType.SINGLE_GET).recordMetaStoreShadowRead(metaStoreName);
+        finalResponse = metaStoreShadowReader.shadowReadMetaStore(venicePath, finalResponse);
+      }
+    }
 
     HttpResponseStatus responseStatus = finalResponse.status();
     Map<String, TimeValue> allMetrics = metrics.getMetrics();

@@ -32,9 +32,9 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -47,7 +47,7 @@ import org.testng.annotations.Test;
 
 
 public class TestVeniceResponseAggregator {
-  private static Schema STRING_SCHEMA = Schema.parse("\"string\"");
+  private static final Schema STRING_SCHEMA = Schema.parse("\"string\"");
 
   private VenicePath getPath(
       String storeName,
@@ -100,7 +100,7 @@ public class TestVeniceResponseAggregator {
     metrics.setPath(
         getPath(storeName, RequestType.SINGLE_GET, mockRouterStat, request, compressorFactory, decompressionExecutor));
 
-    VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(mockRouterStat);
+    VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(mockRouterStat, Optional.empty());
     FullHttpResponse finalResponse = responseAggregator.buildResponse(request, metrics, gatheredResponses);
     Assert.assertEquals(finalResponse.status(), OK);
     Assert.assertEquals(finalResponse.content().array(), fakeContent);
@@ -168,7 +168,7 @@ public class TestVeniceResponseAggregator {
     metrics.setPath(
         getPath(storeName, RequestType.MULTI_GET, mockRouterStat, request, compressorFactory, decompressionExecutor));
 
-    VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(mockRouterStat);
+    VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(mockRouterStat, Optional.empty());
     FullHttpResponse finalResponse = responseAggregator.buildResponse(request, metrics, gatheredResponses);
     Assert.assertEquals(finalResponse.status(), OK);
     byte[] finalContent;
@@ -187,13 +187,12 @@ public class TestVeniceResponseAggregator {
     expectedValues.add(value1);
     expectedValues.add(value2);
     expectedValues.add(value3);
-    int cnt = 0;
-    Iterator<CharSequence> valueIterator = values.iterator();
-    while (valueIterator.hasNext()) {
-      ++cnt;
-      Assert.assertTrue(expectedValues.contains(valueIterator.next().toString()));
+    int count = 0;
+    for (CharSequence value: values) {
+      ++count;
+      Assert.assertTrue(expectedValues.contains(value.toString()));
     }
-    Assert.assertEquals(cnt, 3, "There should be 3 records in the final response");
+    Assert.assertEquals(count, 3, "There should be 3 records in the final response");
     verify(mockStatsForMultiGet).recordFanoutRequestCount(storeName, 3);
 
     // Test with different headers among sub responses
@@ -219,14 +218,14 @@ public class TestVeniceResponseAggregator {
     // record it properly
     FullHttpResponse response5 = buildFullHttpResponse(TOO_MANY_REQUESTS, new byte[0], headers);
     metrics.setMetric(MetricNames.ROUTER_SERVER_TIME.name(), new TimeValue(1, TimeUnit.MILLISECONDS));
-    responseAggregator.buildResponse(request, metrics, Arrays.asList(response5));
+    responseAggregator.buildResponse(request, metrics, Collections.singletonList(response5));
     verify(mockStatsForMultiGet).recordThrottledRequest(storeName, 1.0);
   }
 
   @Test
   public void testBuildResponseForMigratedStore() {
     RouterStats mockRouterStat = mock(RouterStats.class);
-    VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(mockRouterStat);
+    VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(mockRouterStat, Optional.empty());
 
     BasicFullHttpRequest request =
         new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/storage/tesStore", -1, -1);
@@ -248,7 +247,7 @@ public class TestVeniceResponseAggregator {
    * compression strategy in the response header.
    */
   @Test
-  public void TestRouterReturnsCompressionStrategyHeaderIfClientSupportsDecompressionForMultiGet() {
+  public void testRouterReturnsCompressionStrategyHeaderIfClientSupportsDecompressionForMultiGet() {
     String storeName = "GzipEnabledStore";
     String requestPath = String.format("storage/%s/ApqFzqwN?f=b64", storeName);
     BasicFullHttpRequest request =
@@ -256,7 +255,7 @@ public class TestVeniceResponseAggregator {
     request.headers().add(VENICE_SUPPORTED_COMPRESSION_STRATEGY, CompressionStrategy.GZIP.getValue());
 
     RouterStats<AggRouterHttpRequestStats> routerStats = mock(RouterStats.class);
-    VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(routerStats);
+    VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(routerStats, Optional.empty());
 
     CompositeByteBuf content = Unpooled.compositeBuffer();
     FullHttpResponse storageNodeResponse1 = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, content);
@@ -269,10 +268,8 @@ public class TestVeniceResponseAggregator {
     storageNodeResponse2.headers().add(VENICE_SCHEMA_ID, "1");
     storageNodeResponse2.headers().add(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
 
-    FullHttpResponse routerResponse = responseAggregator.processMultiGetResponses(
-        Arrays.asList(new FullHttpResponse[] { storageNodeResponse1, storageNodeResponse2 }),
-        storeName,
-        1);
+    FullHttpResponse routerResponse = responseAggregator
+        .processMultiGetResponses(Arrays.asList(storageNodeResponse1, storageNodeResponse2), storeName, 1);
 
     Assert.assertEquals(routerResponse.status(), OK);
     Assert.assertEquals(
@@ -285,7 +282,7 @@ public class TestVeniceResponseAggregator {
    * compression strategy in the response header.
    */
   @Test
-  public void TestRouterReturnsNoOpCompressionHeaderIfServerReturnsErrorForMultiGet() {
+  public void testRouterReturnsNoOpCompressionHeaderIfServerReturnsErrorForMultiGet() {
     String storeName = "GzipEnabledStore";
     String requestPath = String.format("storage/%s/ApqFzqwN?f=b64", storeName);
     BasicFullHttpRequest request =
@@ -293,7 +290,7 @@ public class TestVeniceResponseAggregator {
     request.headers().add(VENICE_SUPPORTED_COMPRESSION_STRATEGY, CompressionStrategy.GZIP.getValue());
 
     RouterStats<AggRouterHttpRequestStats> routerStats = mock(RouterStats.class);
-    VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(routerStats);
+    VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(routerStats, Optional.empty());
 
     CompositeByteBuf content = Unpooled.compositeBuffer();
     FullHttpResponse storageNodeResponse1 = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, NOT_FOUND, content);
@@ -306,10 +303,8 @@ public class TestVeniceResponseAggregator {
     storageNodeResponse2.headers().add(VENICE_SCHEMA_ID, "1");
     storageNodeResponse2.headers().add(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
 
-    FullHttpResponse routerResponse = responseAggregator.processMultiGetResponses(
-        Arrays.asList(new FullHttpResponse[] { storageNodeResponse1, storageNodeResponse2 }),
-        storeName,
-        1);
+    FullHttpResponse routerResponse = responseAggregator
+        .processMultiGetResponses(Arrays.asList(storageNodeResponse1, storageNodeResponse2), storeName, 1);
 
     Assert.assertEquals(routerResponse.status(), NOT_FOUND);
     Assert.assertEquals(
@@ -322,7 +317,7 @@ public class TestVeniceResponseAggregator {
    * NO_OP compression strategy in the response header.
    */
   @Test
-  public void TestRouterReturnsNoopCompressionStrategyHeaderIfClientDoesntSupportsDecompressionAndServerReturnsErrorForMultiGet() {
+  public void testRouterReturnsNoopCompressionStrategyHeaderIfClientDoesntSupportsDecompressionAndServerReturnsErrorForMultiGet() {
     String storeName = "ZstdWithDictEnabledStore";
     String requestPath = String.format("storage/%s/ApqFzqwN?f=b64", storeName);
     BasicFullHttpRequest request =
@@ -330,7 +325,7 @@ public class TestVeniceResponseAggregator {
     request.headers().add(VENICE_SUPPORTED_COMPRESSION_STRATEGY, CompressionStrategy.GZIP.getValue());
 
     RouterStats<AggRouterHttpRequestStats> routerStats = mock(RouterStats.class);
-    VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(routerStats);
+    VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(routerStats, Optional.empty());
 
     CompositeByteBuf content1 = Unpooled.compositeBuffer();
     FullHttpResponse storageNodeResponse1 = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, NOT_FOUND, content1);
@@ -344,10 +339,8 @@ public class TestVeniceResponseAggregator {
     storageNodeResponse2.headers().add(VENICE_SCHEMA_ID, "1");
     storageNodeResponse2.headers().add(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
 
-    FullHttpResponse routerResponse = responseAggregator.processMultiGetResponses(
-        Arrays.asList(new FullHttpResponse[] { storageNodeResponse1, storageNodeResponse2 }),
-        storeName,
-        1);
+    FullHttpResponse routerResponse = responseAggregator
+        .processMultiGetResponses(Arrays.asList(storageNodeResponse1, storageNodeResponse2), storeName, 1);
 
     Assert.assertEquals(routerResponse.status(), NOT_FOUND);
     Assert.assertEquals(
