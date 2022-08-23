@@ -2727,6 +2727,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                   update.schemaId,
                   readerValueSchemaId,
                   update.updateValue,
+                  update.updateSchemaId,
                   readerUpdateProtocolVersion));
       storeIngestionStats
           .recordWriteComputeUpdateLatency(storeName, LatencyUtils.getLatencyInMS(writeComputeStartTimeInNS));
