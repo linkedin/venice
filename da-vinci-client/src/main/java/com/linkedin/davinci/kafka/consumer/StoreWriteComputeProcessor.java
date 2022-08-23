@@ -44,29 +44,31 @@ public class StoreWriteComputeProcessor {
   }
 
   /**
-   * Apply Write Compute operation on the current value record.
+   * Apply Update operation on the current value record.
    *
    * @param currValue value record that is currently stored on this Venice server. It is {@link Optional#empty()} when there
    *                  is currently no value stored on this Venice server.
    * @param writeComputeBytes serialized write-compute operation.
-   * @param valueSchemaId ID of the value schema used by the value record. This value schema ID should be used to deserialize
-   *                      the Write Compute bytes into a record and it is also used as the writer schema to serialize the
-   *                      updated value record into bytes.
-   * @param writeComputeSchemaId ID of the schema that this Write Compute operation is associated with.
+   * @param writerValueSchemaId ID of the writer value schema.
+   * @param readerValueSchemaId ID of the reader value schema.
+   * @param writerUpdateProtocolVersion Update protocol version used to serialize Update payload bytes.
+   * @param readerUpdateProtocolVersion Update protocol version used to deserialize Update payload bytes.
    *
-   * @return Serialized bytes from the write-compute-updated original value.
+   * @return Bytes of partially updated original value.
    */
   public byte[] applyWriteCompute(
       Optional<GenericRecord> currValue,
       int writerValueSchemaId,
       int readerValueSchemaId,
       ByteBuffer writeComputeBytes,
-      int writeComputeSchemaId) {
+      int writerUpdateProtocolVersion,
+      int readerUpdateProtocolVersion) {
     GenericRecord writeComputeRecord = deserializeWriteComputeRecord(
         writeComputeBytes,
         writerValueSchemaId,
         readerValueSchemaId,
-        writeComputeSchemaId);
+        writerUpdateProtocolVersion,
+        readerUpdateProtocolVersion);
     Schema valueSchema = getValueSchema(readerValueSchemaId);
     GenericRecord updatedValue = writeComputeProcessor.updateRecord(valueSchema, currValue, writeComputeRecord);
 
@@ -92,11 +94,12 @@ public class StoreWriteComputeProcessor {
       ByteBuffer writeComputeBytes,
       int writerValueSchemaId,
       int readerValueSchemaId,
-      int writeComputeSchemaId) {
+      int writerUpdateProtocolVersion,
+      int readerUpdateProtocolVersion) {
     Schema writerSchema =
-        getValueAndWriteComputeSchemas(writerValueSchemaId, writeComputeSchemaId).getWriteComputeSchema();
+        getValueAndWriteComputeSchemas(writerValueSchemaId, writerUpdateProtocolVersion).getWriteComputeSchema();
     Schema readerSchema =
-        getValueAndWriteComputeSchemas(readerValueSchemaId, writeComputeSchemaId).getWriteComputeSchema();
+        getValueAndWriteComputeSchemas(readerValueSchemaId, readerUpdateProtocolVersion).getWriteComputeSchema();
 
     // Map in write compute needs to have consistent ordering. On the sender side, users may not care about ordering
     // in their maps. However, on the receiver side, we still want to make sure that the same serialized map bytes
