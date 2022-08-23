@@ -44,9 +44,6 @@ public class AggVersionedStorageIngestionStats extends
   private static final String STALE_PARTITIONS_WITHOUT_INGESTION_TASK_METRIC_NAME =
       "stale_partitions_without_ingestion_task";
   private static final String SUBSCRIBE_ACTION_PREP_LATENCY = "subscribe_action_prep_latency";
-  private static final String SUBSCRIBE_ACTION_GET_CONSUMER_LATENCY = "subscribe_action_get_consumer_latency";
-  private static final String SUBSCRIBE_SUBSCRIBE_ACTION_CONSUMER_SUBSCRIBE_LATENCY =
-      "subscribe_action_consumer_subscribe_latency";
   private static final String UPDATE_IGNORED_DCR = "update_ignored_dcr";
   private static final String TOTAL_DCR = "total_dcr";
   private static final String TIMESTAMP_REGRESSION_DCR_ERROR = "timestamp_regression_dcr_error";
@@ -91,25 +88,25 @@ public class AggVersionedStorageIngestionStats extends
     }
   }
 
-  public void recordRecordsConsumed(String storeName, int version, int count) {
-    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordRecordsConsumed(count));
+  public void recordRecordsConsumed(String storeName, int version) {
+    recordVersionedAndTotalStat(storeName, version, StorageIngestionStats::recordRecordsConsumed);
   }
 
   public void recordBytesConsumed(String storeName, int version, long bytes) {
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordBytesConsumed(bytes));
   }
 
-  public void recordLeaderConsumed(String storeName, int version, long bytes, int recordCount) {
+  public void recordLeaderConsumed(String storeName, int version, long bytes) {
     recordVersionedAndTotalStat(storeName, version, stat -> {
       stat.recordLeaderBytesConsumed(bytes);
-      stat.recordLeaderRecordsConsumed(recordCount);
+      stat.recordLeaderRecordsConsumed();
     });
   }
 
-  public void recordFollowerConsumed(String storeName, int version, long bytes, int recordCount) {
+  public void recordFollowerConsumed(String storeName, int version, long bytes) {
     recordVersionedAndTotalStat(storeName, version, stat -> {
       stat.recordFollowerBytesConsumed(bytes);
-      stat.recordFollowerRecordsConsumed(recordCount);
+      stat.recordFollowerRecordsConsumed();
     });
   }
 
@@ -194,11 +191,7 @@ public class AggVersionedStorageIngestionStats extends
     private final Int2ObjectMap<Avg> regionIdToHybridAvgConsumedOffsetMap;
     private final Count stalePartitionsWithoutIngestionTaskCount;
     private final Avg subscribePrepLatencyAvg;
-    private final Avg subscribeGetConsumerLatencyAvg;
-    private final Avg subscribeConsumerSubscribeLatencyAvg;
     private final Max subscribePrepLatencyMax;
-    private final Max subscribeGetConsumerLatencyMax;
-    private final Max subscribeConsumerSubscribeLatencyMax;
 
     private final Sensor recordsConsumedSensor;
     private final Sensor bytesConsumedSensor;
@@ -328,15 +321,9 @@ public class AggVersionedStorageIngestionStats extends
           SUBSCRIBE_ACTION_PREP_LATENCY + subscribePrepLatencyMax.getClass().getSimpleName(),
           subscribePrepLatencyMax);
       subscribePrepLatencySensor.add(
-          SUBSCRIBE_ACTION_PREP_LATENCY + subscribePrepLatencyAvg,
-          getClass().getSimpleName(),
+          SUBSCRIBE_ACTION_PREP_LATENCY + subscribePrepLatencyAvg.getClass().getSimpleName(),
           subscribePrepLatencyAvg);
 
-      subscribeGetConsumerLatencyAvg = new Avg();
-      subscribeGetConsumerLatencyMax = new Max();
-
-      subscribeConsumerSubscribeLatencyAvg = new Avg();
-      subscribeConsumerSubscribeLatencyMax = new Max();
       updatedIgnoredDCRRate = new Rate();
       conflictResolutionUpdateIgnoredSensor = localMetricRepository.sensor(UPDATE_IGNORED_DCR);
       conflictResolutionUpdateIgnoredSensor
@@ -490,22 +477,6 @@ public class AggVersionedStorageIngestionStats extends
       return subscribePrepLatencyMax.measure(METRIC_CONFIG, System.currentTimeMillis());
     }
 
-    public double getSubscribeGetConsumerLatencyAvg() {
-      return subscribeGetConsumerLatencyAvg.measure(METRIC_CONFIG, System.currentTimeMillis());
-    }
-
-    public double getSubscribeGetConsumerLatencyMax() {
-      return subscribeGetConsumerLatencyMax.measure(METRIC_CONFIG, System.currentTimeMillis());
-    }
-
-    public double getSubscribeConsumerSubscribeLatencyAvg() {
-      return subscribeConsumerSubscribeLatencyAvg.measure(METRIC_CONFIG, System.currentTimeMillis());
-    }
-
-    public double getSubscribeConsumerSubscribeLatencyMax() {
-      return subscribeConsumerSubscribeLatencyMax.measure(METRIC_CONFIG, System.currentTimeMillis());
-    }
-
     public void recordStalePartitionsWithoutIngestionTask() {
       stalePartitionsWithoutIngestionTaskSensor.record();
     }
@@ -518,8 +489,8 @@ public class AggVersionedStorageIngestionStats extends
       return recordsConsumedRate.measure(METRIC_CONFIG, System.currentTimeMillis());
     }
 
-    public void recordRecordsConsumed(double value) {
-      recordsConsumedSensor.record(value);
+    public void recordRecordsConsumed() {
+      recordsConsumedSensor.record();
     }
 
     public double getBytesConsumed() {
@@ -534,8 +505,8 @@ public class AggVersionedStorageIngestionStats extends
       return leaderRecordsConsumedRate.measure(METRIC_CONFIG, System.currentTimeMillis());
     }
 
-    public void recordLeaderRecordsConsumed(double value) {
-      leaderRecordsConsumedSensor.record(value);
+    public void recordLeaderRecordsConsumed() {
+      leaderRecordsConsumedSensor.record();
     }
 
     public double getLeaderBytesConsumed() {
@@ -550,8 +521,8 @@ public class AggVersionedStorageIngestionStats extends
       return followerRecordsConsumedRate.measure(METRIC_CONFIG, System.currentTimeMillis());
     }
 
-    public void recordFollowerRecordsConsumed(double value) {
-      followerRecordsConsumedSensor.record(value);
+    public void recordFollowerRecordsConsumed() {
+      followerRecordsConsumedSensor.record();
     }
 
     public double getFollowerBytesConsumed() {
@@ -735,18 +706,6 @@ public class AggVersionedStorageIngestionStats extends
       registerSensor(
           SUBSCRIBE_ACTION_PREP_LATENCY + MAX,
           new IngestionStatsGauge(this, () -> getStats().getSubscribePrepLatencyMax(), 0));
-      registerSensor(
-          SUBSCRIBE_ACTION_GET_CONSUMER_LATENCY + AVG,
-          new IngestionStatsGauge(this, () -> getStats().getSubscribeGetConsumerLatencyAvg(), 0));
-      registerSensor(
-          SUBSCRIBE_ACTION_GET_CONSUMER_LATENCY + MAX,
-          new IngestionStatsGauge(this, () -> getStats().getSubscribeGetConsumerLatencyMax(), 0));
-      registerSensor(
-          SUBSCRIBE_SUBSCRIBE_ACTION_CONSUMER_SUBSCRIBE_LATENCY + AVG,
-          new IngestionStatsGauge(this, () -> getStats().getSubscribeConsumerSubscribeLatencyAvg(), 0));
-      registerSensor(
-          SUBSCRIBE_SUBSCRIBE_ACTION_CONSUMER_SUBSCRIBE_LATENCY + MAX,
-          new IngestionStatsGauge(this, () -> getStats().getSubscribeConsumerSubscribeLatencyMax(), 0));
     }
 
     // Only register these stats if the store is hybrid.

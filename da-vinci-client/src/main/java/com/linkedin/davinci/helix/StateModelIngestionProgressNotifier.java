@@ -50,7 +50,7 @@ public abstract class StateModelIngestionProgressNotifier implements VeniceNotif
         logger.error(errorMsg);
         // Report ingestion_failure
         String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
-        storeIngestionService.getAggStoreIngestionStats().recordIngestionFailure(storeName);
+        storeIngestionService.recordIngestionFailure(storeName);
         VeniceException veniceException = new VeniceException(errorMsg);
         storeIngestionService.getStoreIngestionTask(resourceName).reportError(errorMsg, partitionId, veniceException);
       }

@@ -75,7 +75,6 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
         .thenReturn(mockStore);
     Mockito.when(mockStore.getBootstrapToOnlineTimeoutInHours()).thenReturn(Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
 
-    Mockito.when(mockStoreIngestionService.getAggStoreIngestionStats()).thenReturn(mockAggStoreIngestionStats);
     Mockito.when(mockStoreIngestionService.getAggVersionedStorageIngestionStats())
         .thenReturn(mockAggVersionedStorageIngestionStats);
 

@@ -20,6 +20,7 @@ import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
+import com.linkedin.davinci.stats.StoreIngestionStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -165,17 +166,14 @@ import org.testng.annotations.Test;
 public class StoreIngestionTaskTest {
   private static final Logger logger = LogManager.getLogger(StoreIngestionTaskTest.class);
 
-  private static final long TEST_TIMEOUT_MS;
-  private static final int RUN_TEST_FUNCTION_TIMEOUT_SECONDS = 10;
   private static final long READ_CYCLE_DELAY_MS = 5;
+  private static final long TEST_TIMEOUT_MS = 1000 * READ_CYCLE_DELAY_MS;
+  private static final int RUN_TEST_FUNCTION_TIMEOUT_SECONDS = 10;
   private static final long EMPTY_POLL_SLEEP_MS = 0;
 
   static {
     StoreIngestionTask.SCHEMA_POLLING_DELAY_MS = 100;
     IngestionNotificationDispatcher.PROGRESS_REPORT_INTERVAL = -1; // Report all the time.
-    // Report progress/throttling for every message
-    StoreIngestionTask.OFFSET_REPORTING_INTERVAL = 1;
-    TEST_TIMEOUT_MS = 1000 * READ_CYCLE_DELAY_MS;
   }
 
   private InMemoryKafkaBroker inMemoryLocalKafkaBroker;
@@ -203,7 +201,8 @@ public class StoreIngestionTaskTest {
   private KafkaConsumerWrapper mockRemoteKafkaConsumer;
   private TopicManager mockTopicManager;
   private TopicManagerRepository mockTopicManagerRepository;
-  private AggStoreIngestionStats mockStoreIngestionStats;
+  private AggStoreIngestionStats mockAggStoreIngestionStats;
+  private StoreIngestionStats mockStoreIngestionStats;
   private AggVersionedDIVStats mockVersionedDIVStats;
   private AggVersionedStorageIngestionStats mockVersionedStorageIngestionStats;
   private StoreIngestionTask storeIngestionTaskUnderTest;
@@ -375,7 +374,10 @@ public class StoreIngestionTaskTest {
     mockTopicManagerRepository = mock(TopicManagerRepository.class);
     doReturn(mockTopicManager).when(mockTopicManagerRepository).getTopicManager();
 
-    mockStoreIngestionStats = mock(AggStoreIngestionStats.class);
+    mockAggStoreIngestionStats = mock(AggStoreIngestionStats.class);
+    mockStoreIngestionStats = mock(StoreIngestionStats.class);
+    doReturn(mockStoreIngestionStats).when(mockAggStoreIngestionStats).getStoreStats(anyString());
+
     mockVersionedDIVStats = mock(AggVersionedDIVStats.class);
     mockVersionedStorageIngestionStats = mock(AggVersionedStorageIngestionStats.class);
 
@@ -766,7 +768,7 @@ public class StoreIngestionTaskTest {
         .setSchemaRepository(mockSchemaRepo)
         .setMetadataRepository(mockMetadataRepo)
         .setTopicManagerRepository(mockTopicManagerRepository)
-        .setStoreIngestionStats(mockStoreIngestionStats)
+        .setStoreIngestionStats(mockAggStoreIngestionStats)
         .setVersionedDIVStats(mockVersionedDIVStats)
         .setVersionedStorageIngestionStats(mockVersionedStorageIngestionStats)
         .setStoreBufferService(storeBufferService)
@@ -2966,6 +2968,7 @@ public class StoreIngestionTaskTest {
     doReturn(mock(ReadOnlyStoreRepository.class)).when(builder).getMetadataRepo();
     doReturn(mock(ReadOnlySchemaRepository.class)).when(builder).getSchemaRepo();
     doReturn(mock(AggKafkaConsumerService.class)).when(builder).getAggKafkaConsumerService();
+    doReturn(mockAggStoreIngestionStats).when(builder).getIngestionStats();
 
     Version version = mock(Version.class);
     doReturn(1).when(version).getPartitionCount();

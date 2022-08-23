@@ -6,6 +6,8 @@ import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.davinci.stats.AggStoreIngestionStats;
+import com.linkedin.davinci.stats.StoreIngestionStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.meta.Store;
@@ -37,10 +39,14 @@ public class PushTimeoutTest {
     notifiers.add(exceptionCaptorNotifier);
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     doReturn(Object2IntMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
+    AggStoreIngestionStats mockAggStoreIngestionStats = mock(AggStoreIngestionStats.class);
+    StoreIngestionStats mockStoreIngestionStats = mock(StoreIngestionStats.class);
+    doReturn(mockStoreIngestionStats).when(mockAggStoreIngestionStats).getStoreStats(anyString());
 
     StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName)
         .setLeaderFollowerNotifiersQueue(notifiers)
-        .setServerConfig(mockVeniceServerConfig);
+        .setServerConfig(mockVeniceServerConfig)
+        .setStoreIngestionStats(mockAggStoreIngestionStats);
 
     Store mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
     Version version = mockStore.getVersion(versionNumber).get();
@@ -89,11 +95,15 @@ public class PushTimeoutTest {
     StorageMetadataService mockStorageMetadataService = mock(StorageMetadataService.class);
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     doReturn(Object2IntMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
+    AggStoreIngestionStats mockAggStoreIngestionStats = mock(AggStoreIngestionStats.class);
+    StoreIngestionStats mockStoreIngestionStats = mock(StoreIngestionStats.class);
+    doReturn(mockStoreIngestionStats).when(mockAggStoreIngestionStats).getStoreStats(anyString());
 
     StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName)
         .setLeaderFollowerNotifiersQueue(notifiers)
         .setStorageMetadataService(mockStorageMetadataService)
-        .setServerConfig(mockVeniceServerConfig);
+        .setServerConfig(mockVeniceServerConfig)
+        .setStoreIngestionStats(mockAggStoreIngestionStats);
 
     Store mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
     Version version = mockStore.getVersion(versionNumber).get();

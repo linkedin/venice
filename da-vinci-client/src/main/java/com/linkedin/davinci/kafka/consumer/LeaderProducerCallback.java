@@ -2,9 +2,9 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
 
-import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.davinci.stats.StoreIngestionStats;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -41,7 +41,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
   private final AggVersionedDIVStats versionedDIVStats;
   private final LeaderProducedRecordContext leaderProducedRecordContext;
   private final AggVersionedStorageIngestionStats versionedStorageIngestionStats;
-  private final AggStoreIngestionStats storeIngestionStats;
+  private final StoreIngestionStats storeIngestionStats;
   private final long produceTimeNs;
 
   /**
@@ -65,7 +65,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
       AggVersionedDIVStats versionedDIVStats,
       LeaderProducedRecordContext leaderProducedRecordContext,
       AggVersionedStorageIngestionStats versionedStorageIngestionStats,
-      AggStoreIngestionStats storeIngestionStats,
+      StoreIngestionStats storeIngestionStats,
       long produceTimeNs) {
     this.ingestionTask = ingestionTask;
     this.sourceConsumerRecord = sourceConsumerRecord;

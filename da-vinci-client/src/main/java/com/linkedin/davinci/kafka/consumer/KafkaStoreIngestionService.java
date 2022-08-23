@@ -957,9 +957,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return result;
   }
 
-  @Override
-  public AggStoreIngestionStats getAggStoreIngestionStats() {
-    return ingestionStats;
+  public void recordIngestionFailure(String storeName) {
+    ingestionStats.getStoreStats(storeName).recordIngestionFailure();
   }
 
   @Override

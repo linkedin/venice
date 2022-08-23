@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
+import com.linkedin.davinci.stats.StoreIngestionStats;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
@@ -17,7 +18,9 @@ import org.testng.annotations.Test;
 
 
 public class AggStoreIngestionStatsTest {
-  private AggStoreIngestionStats stats;
+  private AggStoreIngestionStats aggStats;
+  private StoreIngestionStats fooStats;
+  private StoreIngestionStats barStats;
   private MetricsRepository metricsRepository;
   private MockTehutiReporter reporter;
 
@@ -31,20 +34,22 @@ public class AggStoreIngestionStatsTest {
     metricsRepository.addReporter(reporter);
     VeniceServerConfig mockVeniceServerConfig = Mockito.mock(VeniceServerConfig.class);
     doReturn(Int2ObjectMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterIdToAliasMap();
-    stats = new AggStoreIngestionStats(metricsRepository, mockVeniceServerConfig);
+    aggStats = new AggStoreIngestionStats(metricsRepository, mockVeniceServerConfig);
+    fooStats = aggStats.getStoreStats(STORE_FOO);
+    barStats = aggStats.getStoreStats(STORE_BAR);
 
     StoreIngestionTask task = Mockito.mock(StoreIngestionTask.class);
     Mockito.doReturn(true).when(task).isRunning();
 
-    stats.recordPollResultNum(STORE_FOO, 1);
-    stats.recordPollResultNum(STORE_BAR, 2);
+    fooStats.recordPollResultNum(1);
+    barStats.recordPollResultNum(2);
 
-    stats.recordStorageQuotaUsed(STORE_FOO, 0.6);
-    stats.recordStorageQuotaUsed(STORE_FOO, 1);
-    stats.recordTotalBytesReadFromKafkaAsUncompressedSize(100);
-    stats.recordTotalBytesReadFromKafkaAsUncompressedSize(200);
-    stats.recordDiskQuotaAllowed(STORE_FOO, 100);
-    stats.recordDiskQuotaAllowed(STORE_FOO, 200);
+    fooStats.recordStorageQuotaUsed(0.6);
+    fooStats.recordStorageQuotaUsed(1);
+    fooStats.recordTotalBytesReadFromKafkaAsUncompressedSize(100);
+    barStats.recordTotalBytesReadFromKafkaAsUncompressedSize(200);
+    fooStats.recordDiskQuotaAllowed(100);
+    fooStats.recordDiskQuotaAllowed(200);
   }
 
   @AfterTest

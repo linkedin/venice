@@ -146,7 +146,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         keyLevelLock.unlock();
         this.keyLevelLocksManager.get().releaseLock(byteArrayKey);
         storeIngestionStats.recordLeaderDelegateRealTimeRecordLatency(
-            storeName,
             LatencyUtils.getLatencyInMS(delegateRealTimeTopicRecordStartTimeInNs));
       }
     }
@@ -232,7 +231,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       int subPartition) {
     PartitionConsumptionState.TransientRecord cachedRecord = partitionConsumptionState.getTransientRecord(key);
     if (cachedRecord != null) {
-      storeIngestionStats.recordIngestionReplicationMetadataCacheHitCount(storeName);
+      storeIngestionStats.recordIngestionReplicationMetadataCacheHitCount();
       return Optional.of(
           new RmdWithValueSchemaId(
               cachedRecord.getValueSchemaId(),
@@ -243,7 +242,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     final long lookupStartTimeInNS = System.nanoTime();
     byte[] replicationMetadataWithValueSchemaBytes = storageEngine.getReplicationMetadata(subPartition, key);
     storeIngestionStats
-        .recordIngestionReplicationMetadataLookUpLatency(storeName, LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
+        .recordIngestionReplicationMetadataLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
     if (replicationMetadataWithValueSchemaBytes == null) {
       return Optional.empty(); // No RMD for this key
     }
@@ -469,10 +468,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           storeName,
           compressorFactory,
           false);
-      storeIngestionStats
-          .recordIngestionValueBytesLookUpLatency(storeName, LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
+      storeIngestionStats.recordIngestionValueBytesLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
     } else {
-      storeIngestionStats.recordIngestionValueBytesCacheHitCount(storeName);
+      storeIngestionStats.recordIngestionValueBytesCacheHitCount();
       // construct originalValue from this transient record only if it's not null.
       if (transientRecord.getValue() != null) {
         originalValue = ByteBuffer
@@ -738,7 +736,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                     newSourceTopicName,
                     sourceTopicPartition,
                     upstreamStartOffset));
-            storeIngestionStats.recordIngestionFailure(storeName);
+            storeIngestionStats.recordIngestionFailure();
 
             // Add to repair queue
             if (remoteIngestionRepairService != null) {
