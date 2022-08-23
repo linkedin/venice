@@ -46,6 +46,7 @@ public class MergeConflictResolver {
   private final MergeByteBuffer mergeByteBuffer;
   private final MergeResultValueSchemaResolver mergeResultValueSchemaResolver;
   private final ReplicationMetadataSerDe rmdSerde;
+  private final boolean enableHandlingUpdate;
 
   MergeConflictResolver(
       ReadOnlySchemaRepository schemaRepository,
@@ -54,7 +55,8 @@ public class MergeConflictResolver {
       MergeGenericRecord mergeGenericRecord,
       MergeByteBuffer mergeByteBuffer,
       MergeResultValueSchemaResolver mergeResultValueSchemaResolver,
-      ReplicationMetadataSerDe rmdSerde) {
+      ReplicationMetadataSerDe rmdSerde,
+      boolean enableHandlingUpdate) {
     this.schemaRepository = Validate.notNull(schemaRepository);
     this.storeName = Validate.notNull(storeName);
     this.newRmdCreator = Validate.notNull(newRmdCreator);
@@ -62,6 +64,7 @@ public class MergeConflictResolver {
     this.mergeResultValueSchemaResolver = Validate.notNull(mergeResultValueSchemaResolver);
     this.mergeByteBuffer = Validate.notNull(mergeByteBuffer);
     this.rmdSerde = Validate.notNull(rmdSerde);
+    this.enableHandlingUpdate = enableHandlingUpdate;
   }
 
   /**
@@ -240,8 +243,10 @@ public class MergeConflictResolver {
 
     // RMD record should contain a per-field timestamp and it should use the RMD schema generated from
     // mergeResultValueSchema.
-    oldRmdRecord = maybeConvertToPerFieldTimestampRecord(oldRmdRecord, oldValueRecord);
-    oldRmdRecord = mayConvertRmdToUseReaderValueSchema(readerValueSchemaID, oldValueWriterSchemaID, oldRmdRecord);
+    oldRmdRecord = convertToPerFieldTimestampRmd(oldRmdRecord, oldValueRecord);
+    if (readerValueSchemaID != oldValueWriterSchemaID) {
+      oldRmdRecord = convertRmdToUseReaderValueSchema(readerValueSchemaID, oldValueWriterSchemaID, oldRmdRecord);
+    }
     ValueAndReplicationMetadata<GenericRecord> createdOldValueAndRmd =
         new ValueAndReplicationMetadata<>(Lazy.of(() -> oldValueRecord), oldRmdRecord);
     createdOldValueAndRmd.setValueSchemaID(readerValueSchemaID);
@@ -259,7 +264,7 @@ public class MergeConflictResolver {
     return deserializeValue(oldValueBytes, oldValueWriterSchema, readerValueSchema);
   }
 
-  private GenericRecord mayConvertRmdToUseReaderValueSchema(
+  private GenericRecord convertRmdToUseReaderValueSchema(
       final int readerValueSchemaID,
       final int writerValueSchemaID,
       GenericRecord oldRmdRecord) {
@@ -523,26 +528,34 @@ public class MergeConflictResolver {
       Optional<ReplicationMetadataWithValueSchemaId> rmdWithValueSchemaIdOptional,
       ByteBuffer updateBytes,
       final int incomingValueSchemaId,
-      final int incomingWriteComputeSchemaId,
+      final int incomingUpdateProtocolVersion,
       final long updateOperationTimestamp,
       final long newValueSourceOffset,
       final int newValueSourceBrokerID,
       final int newValueColoID) {
-    if (true) {
+    if (!enableHandlingUpdate) {
       // We need more testing and validation before actually enabling this method. For now, we throw an exception to
       // preserve the previous behavior.
       throw new VeniceUnsupportedOperationException(
           "TODO: add more unit and integration tests first and then remove this exception.");
     }
-    GenericRecord writeComputeRecord =
-        deserializeWriteComputeBytes(incomingValueSchemaId, incomingWriteComputeSchemaId, updateBytes);
+    final SchemaEntry supersetValueSchemaEntry = schemaRepository.getSupersetSchema(storeName).orElse(null);
+    if (supersetValueSchemaEntry == null) {
+      throw new IllegalStateException("Expect to get superset value schema for store: " + storeName);
+    }
+
+    GenericRecord writeComputeRecord = deserializeWriteComputeBytes(
+        incomingValueSchemaId,
+        supersetValueSchemaEntry.getId(),
+        incomingUpdateProtocolVersion,
+        updateBytes);
     if (ignoreNewUpdate(updateOperationTimestamp, writeComputeRecord, rmdWithValueSchemaIdOptional)) {
       return MergeConflictResult.getIgnoredResult();
     }
     ValueAndReplicationMetadata<GenericRecord> oldValueAndRmd = prepareValueAndRmdForUpdate(
         Optional.ofNullable(oldValueBytesProvider.get()),
         rmdWithValueSchemaIdOptional,
-        incomingValueSchemaId);
+        supersetValueSchemaEntry);
 
     int oldValueSchemaID = oldValueAndRmd.getValueSchemaID();
     Schema oldValueSchema = getValueSchema(oldValueAndRmd.getValueSchemaID());
@@ -568,56 +581,48 @@ public class MergeConflictResolver {
   }
 
   private GenericRecord deserializeWriteComputeBytes(
-      int incomingValueSchemaId,
-      int incomingWriteComputeSchemaId,
+      int writerValueSchemaId,
+      int readerValueSchemaId,
+      int updateProtocolVersion,
       ByteBuffer updateBytes) {
-    Schema writeComputeSchema = getWriteComputeSchema(incomingValueSchemaId, incomingWriteComputeSchemaId);
-    return deserializeValue(updateBytes, writeComputeSchema, writeComputeSchema);
+    Schema writerSchema = getWriteComputeSchema(writerValueSchemaId, updateProtocolVersion);
+    Schema readerSchema = getWriteComputeSchema(readerValueSchemaId, updateProtocolVersion);
+    return deserializeValue(updateBytes, writerSchema, readerSchema);
   }
 
   private ValueAndReplicationMetadata<GenericRecord> prepareValueAndRmdForUpdate(
       Optional<ByteBuffer> oldValueOptional,
       Optional<ReplicationMetadataWithValueSchemaId> rmdWithValueSchemaIdOptional,
-      final int incomingValueSchemaId) {
+      SchemaEntry readerValueSchemaEntry) {
     if (oldValueOptional.isPresent() && (!rmdWithValueSchemaIdOptional.isPresent())) {
       throw new IllegalArgumentException("If old value bytes present, value schema ID must present too.");
     }
     ByteBuffer oldValueBytes = oldValueOptional.orElse(null);
     ReplicationMetadataWithValueSchemaId rmdWithValueSchemaId = rmdWithValueSchemaIdOptional.orElse(null);
     if (oldValueBytes == null && rmdWithValueSchemaId == null) {
-      // Value never existed
-      Schema valueSchema = getValueSchema(incomingValueSchemaId);
-      GenericRecord newValue = SchemaUtils.createGenericRecord(valueSchema);
-      GenericRecord newRmd = newRmdCreator.apply(incomingValueSchemaId);
+      // Value and RMD both never existed
+      GenericRecord newValue = SchemaUtils.createGenericRecord(readerValueSchemaEntry.getSchema());
+      GenericRecord newRmd = newRmdCreator.apply(readerValueSchemaEntry.getId());
       newRmd.put(TIMESTAMP_FIELD_NAME, createPerFieldTimestampRecord(newRmd.getSchema(), 0L, newValue));
       newRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD, new ArrayList<Long>());
       return new ValueAndReplicationMetadata<>(Lazy.of(() -> newValue), newRmd);
     }
 
     int oldValueWriterSchemaId = rmdWithValueSchemaId.getValueSchemaId();
-    int oldValueReaderSchemaId = oldValueWriterSchemaId;
-
-    if (oldValueWriterSchemaId != incomingValueSchemaId) {
-      // Schema mismatch and convert old value and its RMD both to use the superset schema.
-      SchemaEntry supersetSchemaEntry = schemaRepository.getSupersetSchema(storeName).orElse(null);
-      if (supersetSchemaEntry == null) {
-        throw new IllegalStateException("Expect superset schema to exist for store: " + storeName);
-      }
-      oldValueReaderSchemaId = supersetSchemaEntry.getId();
-    }
     return createOldValueAndRmd(
-        getValueSchema(oldValueReaderSchemaId),
-        oldValueReaderSchemaId,
+        readerValueSchemaEntry.getSchema(),
+        readerValueSchemaEntry.getId(),
         oldValueWriterSchemaId,
         Lazy.of(() -> oldValueBytes),
         rmdWithValueSchemaId.getReplicationMetadataRecord());
   }
 
-  private GenericRecord maybeConvertToPerFieldTimestampRecord(GenericRecord rmd, GenericRecord oldValueRecord) {
+  private GenericRecord convertToPerFieldTimestampRmd(GenericRecord rmd, GenericRecord oldValueRecord) {
     Object timestampObject = rmd.get(TIMESTAMP_FIELD_NAME);
     RmdTimestampType timestampType = MergeUtils.getReplicationMetadataType(timestampObject);
     switch (timestampType) {
       case PER_FIELD_TIMESTAMP:
+        // Nothing needs to happen in this case.
         return rmd;
 
       case VALUE_LEVEL_TIMESTAMP:

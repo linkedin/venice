@@ -22,6 +22,14 @@ public class MergeConflictResolverFactory {
       ReadOnlySchemaRepository schemaRepository,
       ReplicationMetadataSerDe rmdSerDe,
       String storeName) {
+    return createMergeConflictResolver(schemaRepository, rmdSerDe, storeName, false);
+  }
+
+  public MergeConflictResolver createMergeConflictResolver(
+      ReadOnlySchemaRepository schemaRepository,
+      ReplicationMetadataSerDe rmdSerDe,
+      String storeName,
+      boolean enableHandlingUpdate) {
     MergeRecordHelper mergeRecordHelper = new CollectionTimestampMergeRecordHelper();
     return new MergeConflictResolver(
         schemaRepository,
@@ -30,6 +38,7 @@ public class MergeConflictResolverFactory {
         new MergeGenericRecord(new WriteComputeProcessor(mergeRecordHelper), mergeRecordHelper),
         new MergeByteBuffer(),
         new MergeResultValueSchemaResolverImpl(schemaRepository, storeName),
-        rmdSerDe);
+        rmdSerDe,
+        enableHandlingUpdate);
   }
 }
