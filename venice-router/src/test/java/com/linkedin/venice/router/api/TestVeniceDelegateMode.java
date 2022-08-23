@@ -258,7 +258,7 @@ public class TestVeniceDelegateMode {
     Assert.assertTrue(instanceList.contains(selectedHost));
   }
 
-  @Test(expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*not available for store.*")
+  @Test(expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*not available to serve request of type: SINGLE_GET")
   public void testScatterWithSingleGetWithNotAvailablePartition() throws RouterException {
     String storeName = Utils.getUniqueString("test_store");
     String resourceName = storeName + "_v1";
@@ -277,7 +277,6 @@ public class TestVeniceDelegateMode {
     HostFinder<Instance, VeniceRole> hostFinder = getHostFinder(partitionInstanceMap);
     HostHealthMonitor monitor = getHostHealthMonitor();
     ReadRequestThrottler throttler = getReadRequestThrottle(false);
-
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
     doReturn(LEAST_LOADED_ROUTING).when(config).getMultiKeyRoutingStrategy();
 
@@ -294,6 +293,67 @@ public class TestVeniceDelegateMode {
         monitor,
         VeniceRole.REPLICA,
         new Metrics());
+  }
+
+  @Test(expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*not available to serve retry request of type: MULTI_GET")
+  public void testLeastLoadedOnSlowHosts() throws RouterException {
+    String storeName = Utils.getUniqueString("test_store");
+    String resourceName = storeName + "_v1";
+    RouterKey key1 = new RouterKey("key_1".getBytes());
+    key1.setPartitionId(1);
+    List<RouterKey> keys = new ArrayList<>();
+    keys.add(key1);
+    Instance instance1 = new Instance("host1_123", "host1", 123);
+    Instance instance2 = new Instance("host2_123", "host2", 123);
+    Set<String> slowStorageNodeSet = new HashSet<>();
+    slowStorageNodeSet.add(instance1.getNodeId());
+    slowStorageNodeSet.add(instance2.getNodeId());
+    VenicePath path = getVenicePath(resourceName, RequestType.MULTI_GET, keys, slowStorageNodeSet);
+    path.setRetryRequest();
+    Scatter<Instance, VenicePath, RouterKey> scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
+    String requestMethod = HttpMethod.POST.name();
+
+    Map<RouterKey, String> keyPartitionMap = new HashMap<>();
+    String p1 = HelixUtils.getPartitionName(resourceName, 1);
+    String p2 = HelixUtils.getPartitionName(resourceName, 2);
+    String p3 = HelixUtils.getPartitionName(resourceName, 3);
+    keyPartitionMap.put(key1, p1);
+    PartitionFinder partitionFinder = getPartitionFinder(keyPartitionMap);
+    ReadRequestThrottler throttler = getReadRequestThrottle(false);
+
+    List<Instance> instanceListForP1 = new ArrayList<>();
+    instanceListForP1.add(instance1);
+    instanceListForP1.add(instance2);
+    List<Instance> instanceListForP2 = new ArrayList<>();
+    instanceListForP2.add(instance1);
+    instanceListForP2.add(instance2);
+    List<Instance> instanceListForP3 = new ArrayList<>();
+    instanceListForP3.add(instance1);
+    Map<String, List<Instance>> partitionInstanceMap = new HashMap<>();
+    partitionInstanceMap.put(p1, instanceListForP1);
+    partitionInstanceMap.put(p2, instanceListForP2);
+    partitionInstanceMap.put(p3, instanceListForP3);
+    HostFinder<Instance, VeniceRole> hostFinder = getHostFinder(partitionInstanceMap);
+    HostHealthMonitor monitor = getHostHealthMonitor();
+    VeniceRouterConfig config = mock(VeniceRouterConfig.class);
+    doReturn(LEAST_LOADED_ROUTING).when(config).getMultiKeyRoutingStrategy();
+
+    VeniceDelegateMode scatterMode =
+        new VeniceDelegateMode(config, mock(RouterStats.class), mock(RouteHttpRequestStats.class));
+    scatterMode.initReadRequestThrottler(throttler);
+
+    Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode.scatter(
+        scatter,
+        requestMethod,
+        resourceName,
+        partitionFinder,
+        hostFinder,
+        monitor,
+        VeniceRole.REPLICA,
+        new Metrics());
+
+    Collection<ScatterGatherRequest<Instance, RouterKey>> requests = finalScatter.getOnlineRequests();
+    Assert.assertEquals(requests.size(), 3);
   }
 
   /**
@@ -325,6 +385,12 @@ public class TestVeniceDelegateMode {
     keys.add(key4);
     keys.add(key5);
     keys.add(key6);
+    Instance instance1 = new Instance("host1_123", "host1", 123);
+    Instance instance2 = new Instance("host2_123", "host2", 123);
+    Instance instance3 = new Instance("host3_123", "host3", 123);
+    Instance instance4 = new Instance("host4_123", "host4", 123);
+    Instance instance5 = new Instance("host5_123", "host5", 123);
+
     VenicePath path = getVenicePath(resourceName, RequestType.MULTI_GET, keys);
     Scatter<Instance, VenicePath, RouterKey> scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
     String requestMethod = HttpMethod.POST.name();
@@ -344,11 +410,7 @@ public class TestVeniceDelegateMode {
     keyPartitionMap.put(key6, p6);
     PartitionFinder partitionFinder = getPartitionFinder(keyPartitionMap);
 
-    Instance instance1 = new Instance("host1_123", "host1", 123);
-    Instance instance2 = new Instance("host2_123", "host2", 123);
-    Instance instance3 = new Instance("host3_123", "host3", 123);
-    Instance instance4 = new Instance("host4_123", "host4", 123);
-    Instance instance5 = new Instance("host5_123", "host5", 123);
+
     List<Instance> instanceListForP1 = new ArrayList<>();
     instanceListForP1.add(instance1);
     instanceListForP1.add(instance2);
@@ -379,7 +441,7 @@ public class TestVeniceDelegateMode {
     HostHealthMonitor monitor = getHostHealthMonitor();
     ReadRequestThrottler throttler = getReadRequestThrottle(false);
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
-    doReturn(GROUP_BY_PRIMARY_HOST_ROUTING).when(config).getMultiKeyRoutingStrategy();
+    doReturn(LEAST_LOADED_ROUTING).when(config).getMultiKeyRoutingStrategy();
 
     VeniceDelegateMode scatterMode =
         new VeniceDelegateMode(config, mock(RouterStats.class), mock(RouteHttpRequestStats.class));

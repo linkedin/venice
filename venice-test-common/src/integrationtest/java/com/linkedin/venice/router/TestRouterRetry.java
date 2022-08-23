@@ -64,14 +64,14 @@ public class TestRouterRetry {
     extraProperties.put(ConfigKeys.ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, MAX_KEY_LIMIT); // 10 keys at most in a
                                                                                          // batch-get request
     extraProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-:1");
-    extraProperties.put(ConfigKeys.ROUTER_SMART_LONG_TAIL_RETRY_ENABLED, false);
+    extraProperties.put(ConfigKeys.ROUTER_SMART_LONG_TAIL_RETRY_ENABLED, true);
 
     // For Controller
     extraProperties.put(
         ConfigKeys.DEFAULT_OFFLINE_PUSH_STRATEGY,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION.toString());
 
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 1, 2, 100, true, false, extraProperties);
+    veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 100, true, false, extraProperties);
     routerAddr = veniceCluster.getRandomRouterSslURL();
 
     // Create test store
@@ -111,6 +111,7 @@ public class TestRouterRetry {
     });
 
     veniceCluster.refreshAllRouterMetaData();
+    veniceCluster.stopVeniceServer(veniceCluster.getVeniceServers().get(0).getPort());
   }
 
   @AfterClass(alwaysRun = true)

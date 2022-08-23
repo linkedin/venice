@@ -222,12 +222,14 @@ public class VeniceDelegateMode extends ScatterGatherMode {
           // don't record it as unhealthy request.
           failureType = RouterExceptionAndTrackingUtils.FailureType.RETRY_ABORTED_BY_NO_AVAILABLE_REPLICA;
         }
+        String isRetry = venicePath.isRetryRequest() ? "retry " : "";
+        String errMsg = "Partitions : " + partitions + " not available to serve " + isRetry + "request of type: "
+            + venicePath.getRequestType();
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
             Optional.of(storeName),
             Optional.of(venicePath.getRequestType()),
             SERVICE_UNAVAILABLE,
-            "Partitions : " + partitions + " not available for store: " + storeName + " to serve request type: "
-                + venicePath.getRequestType(),
+            errMsg,
             failureType);
       }
     }
@@ -258,18 +260,6 @@ public class VeniceDelegateMode extends ScatterGatherMode {
             "Ready-to-serve host must be an 'Instance'");
       }
       Instance veniceInstance = (Instance) host;
-      String instanceNodeId = veniceInstance.getNodeId();
-      if (!venicePath.canRequestStorageNode(instanceNodeId)) {
-        /**
-         * When retry request is aborted, Router will wait for the original request.
-         */
-        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-            Optional.of(storeName),
-            Optional.of(venicePath.getRequestType()),
-            SERVICE_UNAVAILABLE,
-            "Retry request aborted because of slow route: " + instanceNodeId,
-            RouterExceptionAndTrackingUtils.FailureType.SMART_RETRY_ABORTED_BY_SLOW_ROUTE);
-      }
 
       if (!venicePath.isRetryRequest()) {
         /**
@@ -334,11 +324,20 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       }
     }
     if (minHost == null) {
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-          Optional.of(path.getStoreName()),
-          Optional.of(path.getRequestType()),
-          SERVICE_UNAVAILABLE,
-          "Could not find ready-to-serve replica for request path: " + path.getResourceName());
+      if (path.isRetryRequest()) {
+        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+            Optional.of(path.getStoreName()),
+            Optional.of(path.getRequestType()),
+            SERVICE_UNAVAILABLE,
+            "Retry request aborted because of slow route for request path: " + path.getResourceName(),
+            RouterExceptionAndTrackingUtils.FailureType.SMART_RETRY_ABORTED_BY_SLOW_ROUTE);
+      } else {
+        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+            Optional.of(path.getStoreName()),
+            Optional.of(path.getRequestType()),
+            SERVICE_UNAVAILABLE,
+            "Could not find ready-to-serve replica for request path: " + path.getResourceName());
+      }
     }
     H finalHost = minHost;
     hosts.removeIf(aHost -> !aHost.equals(finalHost));
@@ -556,7 +555,6 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         Map<H, KeyPartitionSet<H, K>> hostMap,
         Optional<Integer> helixGroupNum,
         Optional<Integer> assignedHelixGroupId) throws RouterException {
-      String resourceName = venicePath.getResourceName();
       for (K key: partitionKeys) {
         H selectedHost = selectLeastLoadedHost(partitionReplicas, venicePath);
         /**
@@ -676,14 +674,5 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       }
       keyPartitionSet.addKeyPartitions(partitionKeys, partitionName);
     }
-  }
-
-  protected static <H, K> H chooseHostByKey(K key, List<H> hosts) {
-    int hostsSize = hosts.size();
-    /**
-     * Use {@link Math.floorMod} to avoid negative index here.
-     */
-    int chosenIndex = Math.floorMod(key.hashCode(), hostsSize);
-    return hosts.get(chosenIndex);
   }
 }
