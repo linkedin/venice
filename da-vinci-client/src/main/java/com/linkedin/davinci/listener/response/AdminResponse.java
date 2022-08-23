@@ -54,8 +54,6 @@ public class AdminResponse {
     snapshot.completionReported = state.isCompletionReported();
     snapshot.leaderState = state.getLeaderFollowerState().toString().toUpperCase();
     snapshot.isLatchReleased = state.isLatchReleased();
-    snapshot.processedRecordNum = state.getProcessedRecordNum();
-    snapshot.processedRecordSize = state.getProcessedRecordSize();
     snapshot.processedRecordSizeSinceLastSync = state.getProcessedRecordSizeSinceLastSync();
     snapshot.consumeRemotely = state.consumeRemotely();
     snapshot.latestMessageConsumptionTimestampInMs = state.getLatestMessageConsumptionTimestampInMs();

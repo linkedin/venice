@@ -1,0 +1,137 @@
+{
+  "name": "AdminResponseRecord",
+  "namespace": "com.linkedin.venice.admin.protocol.response",
+  "doc": "Response record for admin request, version 1",
+  "type": "record",
+  "fields": [
+    {
+      "name": "partitionConsumptionStates",
+      "doc": "Consumption states snapshots for the requested partitions",
+      "type": {
+        "type": "array",
+        "items": {
+          "name": "ConsumptionStateSnapshot",
+          "type": "record",
+          "doc": "Type describes all the version attributes",
+          "fields": [
+            {
+              "name": "partitionId",
+              "type": "int",
+              "default": -1,
+              "doc": "The partition which this state snapshot belongs to."
+            },
+            {
+              "name": "hybrid",
+              "type": "boolean",
+              "doc": "Whether the store is hybrid."
+            },
+            {
+              "name": "isIncrementalPushEnabled",
+              "type": "boolean",
+              "default": false,
+              "doc": "Whether the store is incremental push enabled."
+            },
+            {
+              "name": "offsetRecord",
+              "type": [
+                "null",
+                "bytes",
+                "string"
+              ],
+              "default": null,
+              "doc": "Offset checkpoint info and DIV info"
+            },
+            {
+              "name": "deferredWrite",
+              "type": "boolean",
+              "default": false,
+              "doc": "Whether deferred write mode is enabled currently"
+            },
+            {
+              "name": "errorReported",
+              "type": "boolean",
+              "default": false,
+              "doc": "Whether error has already been reported"
+            },
+            {
+              "name": "lagCaughtUp",
+              "type": "boolean",
+              "default": false,
+              "doc": "Whether lag has ever caught up; it doesn't always indicate the current lag status"
+            },
+            {
+              "name": "completionReported",
+              "type": "boolean",
+              "default": false,
+              "doc": "Whether completion has been reported before"
+            },
+            {
+              "name": "leaderState",
+              "type": "string",
+              "default": "",
+              "doc": "STANDBY; LEADER; IN_TRANSITION_FROM_STANDBY_TO_LEADER; PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER"
+            },
+            {
+              "name": "isLatchReleased",
+              "type": "boolean",
+              "default": false,
+              "doc": "Whether transition latch is released"
+            },
+            {
+              "name": "processedRecordSizeSinceLastSync",
+              "type": "long",
+              "default": 0,
+              "doc": "How much bytes have been processed since last sync"
+            },
+            {
+              "name": "consumeRemotely",
+              "type": "boolean",
+              "default": false,
+              "doc": "Whether the node is consuming remotely for this partition"
+            },
+            {
+              "name": "latestMessageConsumptionTimestampInMs",
+              "type": "long",
+              "default": 0,
+              "doc": "the last time when the node consumes any message for this partition"
+            }
+          ]
+        }
+      },
+      "default": []
+    },
+    {
+      "name": "storeVersionState",
+      "doc": "Metadata for the version, including info like: sorted, chunked, compressionStrategy, TopicSwitch, etc",
+      "type": [
+        "null",
+        "bytes",
+        "string"
+      ],
+      "default": null
+    },
+    {
+      "name": "serverConfigs",
+      "doc": "All server configs in runtime",
+      "type": [
+        "null",
+        {
+          "name": "ServerConfigSnapshot",
+          "type": "record",
+          "fields": [
+            {
+              "name": "configMap",
+              "doc": "A map that contains all the configs in runtime",
+              "type": {
+                "type": "map",
+                "values": "string"
+              },
+              "default": {}
+            }
+          ]
+        }
+      ],
+      "default": null
+    }
+  ]
+}

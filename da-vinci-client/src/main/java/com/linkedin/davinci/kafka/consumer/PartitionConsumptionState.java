@@ -68,8 +68,6 @@ public class PartitionConsumptionState {
    * The following priorities are used to store the progress of processed records since it is not efficient to
    * update offset db for every record.
    */
-  private int processedRecordNum;
-  private int processedRecordSize;
   private long processedRecordSizeSinceLastSync;
 
   /**
@@ -175,8 +173,6 @@ public class PartitionConsumptionState {
     this.lagCaughtUp = false;
     this.completionReported = false;
     this.isSubscribed = true;
-    this.processedRecordNum = 0;
-    this.processedRecordSize = 0;
     this.processedRecordSizeSinceLastSync = 0;
     this.leaderFollowerState = LeaderFollowerStateType.STANDBY;
     this.expectedSSTFileChecksum = Optional.empty();
@@ -281,10 +277,6 @@ public class PartitionConsumptionState {
     return this.errorReported;
   }
 
-  public void incrementProcessedRecordNum() {
-    ++this.processedRecordNum;
-  }
-
   public boolean isComplete() {
     if (!isEndOfPushReceived()) {
       return false;
@@ -292,30 +284,6 @@ public class PartitionConsumptionState {
 
     // for regular push store, receiving EOP is good to go
     return (!isIncrementalPushEnabled && !hybrid) || lagCaughtUp;
-  }
-
-  /**
-   * This value is not reliable for Hybrid ingest.  Check its current usage before relying on it.
-   * @return
-   */
-  public int getProcessedRecordNum() {
-    return this.processedRecordNum;
-  }
-
-  public void resetProcessedRecordNum() {
-    this.processedRecordNum = 0;
-  }
-
-  public void incrementProcessedRecordSize(int recordSize) {
-    this.processedRecordSize += recordSize;
-  }
-
-  public int getProcessedRecordSize() {
-    return this.processedRecordSize;
-  }
-
-  public void resetProcessedRecordSize() {
-    this.processedRecordSize = 0;
   }
 
   public void setIncrementalPush(IncrementalPush ip) {
@@ -351,10 +319,6 @@ public class PartitionConsumptionState {
         .append(isStarted())
         .append(", lagCaughtUp=")
         .append(lagCaughtUp)
-        .append(", processedRecordNum=")
-        .append(processedRecordNum)
-        .append(", processedRecordSize=")
-        .append(processedRecordSize)
         .append(", processedRecordSizeSinceLastSync=")
         .append(processedRecordSizeSinceLastSync)
         .append(", leaderFollowerState=")

@@ -591,8 +591,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
     }
     if (emitMetrics.get()) {
-      storeIngestionStats
-          .recordCheckLongRunningTasksLatency(storeName, LatencyUtils.getLatencyInMS(checkStartTimeInNS));
+      storeIngestionStats.recordCheckLongRunningTasksLatency(LatencyUtils.getLatencyInMS(checkStartTimeInNS));
     }
 
     if (pushTimeout) {
@@ -1731,18 +1730,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   protected void recordProcessedRecordStats(
       PartitionConsumptionState partitionConsumptionState,
-      int processedRecordSize,
-      int processedRecordNum) {
+      int processedRecordSize) {
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
-      versionedStorageIngestionStats
-          .recordLeaderConsumed(storeName, versionNumber, processedRecordSize, processedRecordNum);
+      versionedStorageIngestionStats.recordLeaderConsumed(storeName, versionNumber, processedRecordSize);
       storeIngestionStats.recordTotalLeaderBytesConsumed(processedRecordSize);
-      storeIngestionStats.recordTotalLeaderRecordsConsumed(processedRecordNum);
+      storeIngestionStats.recordTotalLeaderRecordsConsumed();
     } else {
-      versionedStorageIngestionStats
-          .recordFollowerConsumed(storeName, versionNumber, processedRecordSize, processedRecordNum);
+      versionedStorageIngestionStats.recordFollowerConsumed(storeName, versionNumber, processedRecordSize);
       storeIngestionStats.recordTotalFollowerBytesConsumed(processedRecordSize);
-      storeIngestionStats.recordTotalFollowerRecordsConsumed(processedRecordNum);
+      storeIngestionStats.recordTotalFollowerRecordsConsumed();
     }
   }
 
@@ -2108,7 +2104,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           long synchronizeStartTimeInNS = System.nanoTime();
           lastFuture.get(WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED, MILLISECONDS);
           storeIngestionStats
-              .recordLeaderProducerSynchronizeLatency(storeName, LatencyUtils.getLatencyInMS(synchronizeStartTimeInNS));
+              .recordLeaderProducerSynchronizeLatency(LatencyUtils.getLatencyInMS(synchronizeStartTimeInNS));
         }
       } catch (InterruptedException e) {
         logger.warn(
@@ -2736,8 +2732,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                   update.updateValue,
                   update.updateSchemaId,
                   readerUpdateProtocolVersion));
-      storeIngestionStats
-          .recordWriteComputeUpdateLatency(storeName, LatencyUtils.getLatencyInMS(writeComputeStartTimeInNS));
+      storeIngestionStats.recordWriteComputeUpdateLatency(LatencyUtils.getLatencyInMS(writeComputeStartTimeInNS));
     } catch (Exception e) {
       writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code;
       throw new RuntimeException(e);
@@ -2827,14 +2822,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             storeName,
             compressorFactory,
             false);
-        storeIngestionStats
-            .recordWriteComputeLookUpLatency(storeName, LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
+        storeIngestionStats.recordWriteComputeLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
       } catch (Exception e) {
         writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
         throw e;
       }
     } else {
-      storeIngestionStats.recordWriteComputeCacheHitCount(storeName);
+      storeIngestionStats.recordWriteComputeCacheHitCount();
       // construct currValue from this transient record only if it's not null.
       if (transientRecord.getValue() != null) {
         try {
