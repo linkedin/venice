@@ -1779,7 +1779,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         logger.info("Starting consumer action " + action);
         action.incrementAttempt();
         processConsumerAction(action, store);
-        consumerActionsQueue.poll();
+        // Remove the action that is processed recently (not necessarily the head of consumerActionsQueue).
+        consumerActionsQueue.remove(action);
         logger.info("Finished consumer action " + action);
       } catch (VeniceIngestionTaskKilledException | InterruptedException e) {
         throw e;
@@ -1793,7 +1794,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             e);
         // After MAX_CONSUMER_ACTION_ATTEMPTS retries we should give up and error the ingestion task.
         PartitionConsumptionState state = partitionConsumptionStateMap.get(action.getPartition());
-        consumerActionsQueue.poll();
+
+        // Remove the action that is failed to execute recently (not necessarily the head of consumerActionsQueue).
+        consumerActionsQueue.remove(action);
         if (state != null && !state.isCompletionReported()) {
           reportError(
               "Error when processing consumer action: " + action.toString(),
