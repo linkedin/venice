@@ -2,7 +2,7 @@ package com.linkedin.venice.meta;
 
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 
 
@@ -64,7 +64,7 @@ public interface ReadWriteSchemaRepository extends ReadOnlySchemaRepository {
 
   int preCheckDerivedSchemaAndGetNextAvailableId(String storeName, int valueSchemaId, String derivedSchemaStr);
 
-  ReplicationMetadataSchemaEntry addReplicationMetadataSchema(
+  RmdSchemaEntry addReplicationMetadataSchema(
       String storeName,
       int valueSchemaId,
       String replicationMetadataSchemaStr,

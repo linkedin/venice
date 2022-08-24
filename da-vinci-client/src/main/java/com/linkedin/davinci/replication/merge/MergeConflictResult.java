@@ -16,18 +16,18 @@ public class MergeConflictResult {
   private int valueSchemaId;
   private final boolean updateIgnored; // Whether we should skip the incoming message since it could be a stale message.
   private boolean resultReusesInput;
-  private GenericRecord replicationMetadataRecord;
+  private GenericRecord rmdRecord;
 
   public MergeConflictResult(
       Optional<ByteBuffer> newValue,
       int valueSchemaID,
       boolean resultReusesInput,
-      GenericRecord replicationMetadataRecord) {
+      GenericRecord rmdRecord) {
     this.updateIgnored = false;
     this.newValue = newValue;
     this.valueSchemaId = valueSchemaID;
     this.resultReusesInput = resultReusesInput;
-    this.replicationMetadataRecord = replicationMetadataRecord;
+    this.rmdRecord = rmdRecord;
   }
 
   private MergeConflictResult() {
@@ -54,7 +54,7 @@ public class MergeConflictResult {
     return resultReusesInput;
   }
 
-  public GenericRecord getReplicationMetadataRecord() {
-    return replicationMetadataRecord;
+  public GenericRecord getRmdRecord() {
+    return rmdRecord;
   }
 }

@@ -1,8 +1,8 @@
 package com.linkedin.davinci.replication.merge;
 
-import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
+import static com.linkedin.venice.schema.rmd.RmdConstants.*;
 
-import com.linkedin.venice.schema.merge.ValueAndReplicationMetadata;
+import com.linkedin.venice.schema.merge.ValueAndRmd;
 import java.util.List;
 import java.util.Optional;
 import org.apache.avro.generic.GenericRecord;
@@ -14,67 +14,67 @@ import org.apache.avro.generic.GenericRecord;
  * @param <T> type of value that merge happens on.
  */
 abstract class AbstractMerge<T> implements Merge<T> {
-  protected ValueAndReplicationMetadata<T> putWithRecordLevelTimestamp(
+  protected ValueAndRmd<T> putWithRecordLevelTimestamp(
       final long oldTimestamp,
-      ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata,
+      ValueAndRmd<T> oldValueAndRmd,
       final long putOperationTimestamp,
       final long newValueSourceOffset,
       final int newValueSourceBrokerID,
       T newValue) {
-    final GenericRecord oldReplicationMetadata = oldValueAndReplicationMetadata.getReplicationMetadata();
+    final GenericRecord oldRmd = oldValueAndRmd.getRmd();
 
     if (oldTimestamp < putOperationTimestamp) {
       // New value wins
-      oldValueAndReplicationMetadata.setValue(newValue);
-      oldReplicationMetadata.put(TIMESTAMP_FIELD_NAME, putOperationTimestamp);
-      updateReplicationCheckpointVector(oldReplicationMetadata, newValueSourceOffset, newValueSourceBrokerID);
+      oldValueAndRmd.setValue(newValue);
+      oldRmd.put(TIMESTAMP_FIELD_NAME, putOperationTimestamp);
+      updateReplicationCheckpointVector(oldRmd, newValueSourceOffset, newValueSourceBrokerID);
 
     } else if (oldTimestamp == putOperationTimestamp) {
       // When timestamps tie, compare decide which one should win.
-      final T oldValue = oldValueAndReplicationMetadata.getValue();
+      final T oldValue = oldValueAndRmd.getValue();
       newValue = compareAndReturn(oldValue, newValue);
       if (newValue == oldValue) { // Old value wins
-        oldValueAndReplicationMetadata.setUpdateIgnored(true);
+        oldValueAndRmd.setUpdateIgnored(true);
       } else {
-        oldValueAndReplicationMetadata.setValue(newValue);
-        updateReplicationCheckpointVector(oldReplicationMetadata, newValueSourceOffset, newValueSourceBrokerID);
+        oldValueAndRmd.setValue(newValue);
+        updateReplicationCheckpointVector(oldRmd, newValueSourceOffset, newValueSourceBrokerID);
       }
 
     } else {
       // Old value wins.
-      oldValueAndReplicationMetadata.setUpdateIgnored(true);
+      oldValueAndRmd.setUpdateIgnored(true);
     }
-    return oldValueAndReplicationMetadata;
+    return oldValueAndRmd;
   }
 
-  protected ValueAndReplicationMetadata<T> deleteWithValueLevelTimestamp(
+  protected ValueAndRmd<T> deleteWithValueLevelTimestamp(
       final long oldTimestamp,
       final long deleteOperationTimestamp,
       final long newValueSourceOffset,
       final int newValueSourceBrokerID,
-      ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata) {
+      ValueAndRmd<T> oldValueAndRmd) {
     // Delete wins when old and new write operation timestamps are equal.
     if (oldTimestamp <= deleteOperationTimestamp) {
-      oldValueAndReplicationMetadata.setValue(null);
+      oldValueAndRmd.setValue(null);
       // Still need to track the delete timestamp in order to reject future PUT record with lower replication timestamp
-      final GenericRecord oldReplicationMetadata = oldValueAndReplicationMetadata.getReplicationMetadata();
-      oldReplicationMetadata.put(TIMESTAMP_FIELD_NAME, deleteOperationTimestamp);
-      updateReplicationCheckpointVector(oldReplicationMetadata, newValueSourceOffset, newValueSourceBrokerID);
+      final GenericRecord oldRmd = oldValueAndRmd.getRmd();
+      oldRmd.put(TIMESTAMP_FIELD_NAME, deleteOperationTimestamp);
+      updateReplicationCheckpointVector(oldRmd, newValueSourceOffset, newValueSourceBrokerID);
 
     } else {
-      oldValueAndReplicationMetadata.setUpdateIgnored(true);
+      oldValueAndRmd.setUpdateIgnored(true);
     }
-    return oldValueAndReplicationMetadata;
+    return oldValueAndRmd;
   }
 
   protected void updateReplicationCheckpointVector(
-      GenericRecord oldReplicationMetadata,
+      GenericRecord oldRmd,
       long newValueSourceOffset,
       int newValueSourceBrokerID) {
-    oldReplicationMetadata.put(
+    oldRmd.put(
         REPLICATION_CHECKPOINT_VECTOR_FIELD,
         MergeUtils.mergeOffsetVectors(
-            Optional.ofNullable((List<Long>) oldReplicationMetadata.get(REPLICATION_CHECKPOINT_VECTOR_FIELD)),
+            Optional.ofNullable((List<Long>) oldRmd.get(REPLICATION_CHECKPOINT_VECTOR_FIELD)),
             newValueSourceOffset,
             newValueSourceBrokerID));
   }

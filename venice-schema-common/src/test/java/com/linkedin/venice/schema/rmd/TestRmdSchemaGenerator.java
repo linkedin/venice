@@ -1,6 +1,6 @@
 package com.linkedin.venice.schema.rmd;
 
-import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
+import static com.linkedin.venice.schema.rmd.RmdConstants.*;
 import static org.apache.avro.Schema.Type.*;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -19,8 +19,8 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
-public class TestReplicationMetadataSchemaGenerator {
-  private static final Logger logger = LogManager.getLogger(TestReplicationMetadataSchemaGenerator.class);
+public class TestRmdSchemaGenerator {
+  private static final Logger logger = LogManager.getLogger(TestRmdSchemaGenerator.class);
   private static final Schema EMPTY_RECORD_SCHEMA;
   static {
     EMPTY_RECORD_SCHEMA = Schema.createRecord("EmptyRecord", "", "", false);
@@ -96,7 +96,7 @@ public class TestReplicationMetadataSchemaGenerator {
   @Test
   public void testMetadataSchemaForPrimitive() {
     Schema origSchema = Schema.create(INT);
-    Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema);
+    Schema aaSchema = RmdSchemaGenerator.generateMetadataSchema(origSchema);
     String aaSchemaStr = aaSchema.toString(true);
     logger.info(aaSchemaStr);
 
@@ -106,7 +106,7 @@ public class TestReplicationMetadataSchemaGenerator {
   @Test
   public void testMetadataSchemaForPrimitiveTyped() {
     Schema origSchema = AvroCompatibilityHelper.parse(primitiveTypedSchemaStr);
-    Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema);
+    Schema aaSchema = RmdSchemaGenerator.generateMetadataSchema(origSchema);
     String aaSchemaStr = aaSchema.toString(true);
     logger.info(aaSchemaStr);
     Assert.assertEquals(aaSchema, AvroCompatibilityHelper.parse(aaSchema.toString()));
@@ -121,7 +121,7 @@ public class TestReplicationMetadataSchemaGenerator {
   public void testMetadataSchemaForRecord() {
     Schema origSchema = AvroCompatibilityHelper.parse(recordSchemaStr);
     String OrigSchemaStr = origSchema.toString(true);
-    Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema);
+    Schema aaSchema = RmdSchemaGenerator.generateMetadataSchema(origSchema);
     String aaSchemaStr = aaSchema.toString(true);
     logger.info(OrigSchemaStr);
     logger.info(aaSchemaStr);
@@ -157,7 +157,7 @@ public class TestReplicationMetadataSchemaGenerator {
         origSchema.getField("field2").schema().getElementType(),
         "Expect the original schema to have 2 fields with the same element type");
 
-    final Schema rmdSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema);
+    final Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(origSchema);
     logger.info(origSchema.toString(true));
     logger.info(rmdSchema.toString(true));
 
@@ -190,7 +190,7 @@ public class TestReplicationMetadataSchemaGenerator {
         origSchema.getField("field2").schema().getElementType(),
         "Expect the original schema to have 2 fields with different array element type");
 
-    final Schema rmdSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema);
+    final Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(origSchema);
     logger.info(origSchema.toString(true));
     logger.info(rmdSchema.toString(true));
 
@@ -233,7 +233,7 @@ public class TestReplicationMetadataSchemaGenerator {
         origSchema.getField("field3").schema().getElementType(),
         "Expect the original schema to have last 2 fields with different array element type");
 
-    final Schema rmdSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema);
+    final Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(origSchema);
     logger.info(origSchema.toString(true));
     logger.info(rmdSchema.toString(true));
 
@@ -286,7 +286,7 @@ public class TestReplicationMetadataSchemaGenerator {
   @Test
   public void testMetadataSchemaForRecordOfMap() {
     Schema origSchema = createRecordOfMap(Schema.createMap(Schema.create(INT)));
-    Schema rmdSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema);
+    Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(origSchema);
 
     logger.info(origSchema.toString(true));
     logger.info(rmdSchema.toString(true));
@@ -304,7 +304,7 @@ public class TestReplicationMetadataSchemaGenerator {
   @Test
   public void testMetadataSchemaForArray() {
     Schema origSchema = AvroCompatibilityHelper.parse(arraySchemaStr);
-    Schema rmdSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema);
+    Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(origSchema);
     logger.info(origSchema.toString(true));
     logger.info(rmdSchema.toString(true));
     Assert.assertEquals(
@@ -317,7 +317,7 @@ public class TestReplicationMetadataSchemaGenerator {
   public void testMetadataSchemaForMap() {
     Schema origSchema = AvroCompatibilityHelper.parse(mapSchemaStr);
     String OrigSchemaStr = origSchema.toString(true);
-    Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema);
+    Schema aaSchema = RmdSchemaGenerator.generateMetadataSchema(origSchema);
     String aaSchemaStr = aaSchema.toString(true);
     logger.info(OrigSchemaStr);
     logger.info(aaSchemaStr);
@@ -328,7 +328,7 @@ public class TestReplicationMetadataSchemaGenerator {
   @Test
   public void testMetadataSchemaForUnion() {
     Schema origSchema = AvroCompatibilityHelper.parse(unionSchemaStr);
-    Schema rmdSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema);
+    Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(origSchema);
     logger.info(origSchema.toString(true));
     logger.info(rmdSchema.toString(true));
     Assert.assertEquals(
@@ -353,7 +353,7 @@ public class TestReplicationMetadataSchemaGenerator {
                 .setDoc("")
                 .setOrder(Schema.Field.Order.ASCENDING)
                 .build()));
-    Schema rmdSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema);
+    Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(origSchema);
     verifyFullUpdateTsRecordPresent(rmdSchema, false);
   }
 
@@ -375,7 +375,7 @@ public class TestReplicationMetadataSchemaGenerator {
                 .setOrder(Schema.Field.Order.ASCENDING)
                 .build()));
 
-    Schema rmdSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema);
+    Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(origSchema);
     verifyFullUpdateTsRecordPresent(rmdSchema, false);
 
     Assert.assertEquals(rmdSchema.getField(TIMESTAMP_FIELD_NAME).schema().getType(), UNION);

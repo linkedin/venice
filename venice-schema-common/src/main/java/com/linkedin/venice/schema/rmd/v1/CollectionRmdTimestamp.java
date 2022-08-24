@@ -22,7 +22,7 @@ import org.apache.commons.lang.Validate;
  * metadata schema and its generic record away for users.
  */
 @NotThreadSafe
-public class CollectionReplicationMetadata<DELETED_ELEMENT_TYPE> {
+public class CollectionRmdTimestamp<DELETED_ELEMENT_TYPE> {
   // Constants that are used to construct collection field's timestamp RECORD
   public static final String COLLECTION_TOP_LEVEL_TS_FIELD_NAME = "topLevelFieldTimestamp";
   public static final String COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME = "topLevelColoID";
@@ -38,11 +38,11 @@ public class CollectionReplicationMetadata<DELETED_ELEMENT_TYPE> {
   private final Map<DELETED_ELEMENT_TYPE, ElementTimestampAndIdx> deletedElementInfo;
 
   // Copy constructor for testing purpose.
-  public CollectionReplicationMetadata(CollectionReplicationMetadata other) {
+  public CollectionRmdTimestamp(CollectionRmdTimestamp other) {
     this(GenericData.get().deepCopy(other.collectionRmdRecord.getSchema(), other.collectionRmdRecord));
   }
 
-  public CollectionReplicationMetadata(GenericRecord collectionRmdRecord) {
+  public CollectionRmdTimestamp(GenericRecord collectionRmdRecord) {
     validateCollectionReplicationMetadataRecord(collectionRmdRecord);
     this.collectionRmdRecord = collectionRmdRecord;
     this.deletedElementInfo = new HashMap<>();
@@ -224,10 +224,10 @@ public class CollectionReplicationMetadata<DELETED_ELEMENT_TYPE> {
     if (this == o) {
       return true;
     }
-    if (!(o instanceof CollectionReplicationMetadata)) {
+    if (!(o instanceof CollectionRmdTimestamp)) {
       return false;
     }
-    CollectionReplicationMetadata<DELETED_ELEMENT_TYPE> that = (CollectionReplicationMetadata<DELETED_ELEMENT_TYPE>) o;
+    CollectionRmdTimestamp<DELETED_ELEMENT_TYPE> that = (CollectionRmdTimestamp<DELETED_ELEMENT_TYPE>) o;
     Schema thatCollectionRmdSchema = that.collectionRmdRecord.getSchema();
     if (!thatCollectionRmdSchema.equals(collectionRmdRecord.getSchema())) {
       return false;
@@ -326,7 +326,7 @@ public class CollectionReplicationMetadata<DELETED_ELEMENT_TYPE> {
   public static Schema createCollectionTimeStampSchema(String metadataRecordName, String namespace, Schema elemSchema) {
     Schema.Field topLevelTSField = AvroCompatibilityHelper.newField(null)
         .setName(COLLECTION_TOP_LEVEL_TS_FIELD_NAME)
-        .setSchema(ReplicationMetadataSchemaGeneratorV1.LONG_TYPE_TIMESTAMP_SCHEMA)
+        .setSchema(RmdSchemaGeneratorV1.LONG_TYPE_TIMESTAMP_SCHEMA)
         .setDoc("Timestamp of the last partial update attempting to set every element of this collection.")
         .setDefault(0)
         .setOrder(Schema.Field.Order.ASCENDING)

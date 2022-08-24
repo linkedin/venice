@@ -2,7 +2,7 @@ package com.linkedin.venice.schema.merge;
 
 import static org.apache.avro.Schema.Type.*;
 
-import com.linkedin.venice.schema.rmd.v1.CollectionReplicationMetadata;
+import com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp;
 import com.linkedin.venice.utils.IndexedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -11,7 +11,7 @@ import org.apache.avro.generic.GenericRecord;
 
 
 /**
- * This class handles merges with replication metadata with collection metadata timestamp {@link CollectionReplicationMetadata}
+ * This class handles merges with replication metadata with collection metadata timestamp {@link CollectionRmdTimestamp}
  * for collection field. If the replication does not have collection metadata timestamp for collection field, exceptions
  * will be thrown.
  *
@@ -83,8 +83,7 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
       String fieldName,
       final long putOperationTimestamp,
       final int putOperationColoID) {
-    final CollectionReplicationMetadata collectionRmd =
-        new CollectionReplicationMetadata(collectionFieldTimestampRecord);
+    final CollectionRmdTimestamp collectionRmd = new CollectionRmdTimestamp(collectionFieldTimestampRecord);
     Object currFieldValue = currValueRecord.get(fieldName);
 
     if (currFieldValue instanceof List<?>) {
@@ -138,7 +137,7 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
         return collectionFieldOperationHandler.handleDeleteList(
             deleteTimestamp,
             coloID,
-            new CollectionReplicationMetadata((GenericRecord) timestamp),
+            new CollectionRmdTimestamp((GenericRecord) timestamp),
             currValueRecord,
             fieldName);
 
@@ -146,7 +145,7 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
         return collectionFieldOperationHandler.handleDeleteMap(
             deleteTimestamp,
             coloID,
-            new CollectionReplicationMetadata((GenericRecord) timestamp),
+            new CollectionRmdTimestamp((GenericRecord) timestamp),
             currValueRecord,
             fieldName);
 

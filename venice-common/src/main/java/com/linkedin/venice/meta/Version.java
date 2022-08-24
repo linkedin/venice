@@ -175,32 +175,32 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   /**
    * Get the replication metadata version id.
    * @deprecated
-   * Use {@link Version#getReplicationMetadataVersionId} instead
+   * Use {@link Version#getRmdVersionId} instead
    *
    * @return the replication metadata version id
    */
   @Deprecated
   default int getTimestampMetadataVersionId() {
-    return getReplicationMetadataVersionId();
+    return getRmdVersionId();
   }
 
   /**
    * Set the replication metadata version id.
    * @deprecated
-   * Use {@link Version#setReplicationMetadataVersionId(int)} instead
+   * Use {@link Version#setRmdVersionId(int)} instead
    */
   @Deprecated
   default void setTimestampMetadataVersionId(int replicationMetadataVersionId) {
-    setReplicationMetadataVersionId(replicationMetadataVersionId);
+    setRmdVersionId(replicationMetadataVersionId);
   }
 
   Version cloneVersion();
 
   @JsonIgnore
-  int getReplicationMetadataVersionId();
+  int getRmdVersionId();
 
   @JsonIgnore
-  void setReplicationMetadataVersionId(int replicationMetadataVersionId);
+  void setRmdVersionId(int replicationMetadataVersionId);
 
   /**
    * Kafka topic name is composed by store name and version.

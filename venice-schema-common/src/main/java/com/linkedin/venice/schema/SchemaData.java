@@ -1,7 +1,7 @@
 package com.linkedin.venice.schema;
 
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataVersionId;
+import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdVersionId;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
@@ -27,8 +27,8 @@ public final class SchemaData {
   private Map<SchemaEntry, Integer> valueSchemaRMap;
   private Map<Pair<Integer, Integer>, DerivedSchemaEntry> derivedSchemaMap;
   private Map<DerivedSchemaEntry, Pair<Integer, Integer>> derivedSchemaRMap;
-  private Map<ReplicationMetadataVersionId, ReplicationMetadataSchemaEntry> replicationMetadataSchemaMap;
-  private Map<Schema, ReplicationMetadataVersionId> replicationMetadataSchemaRMap;
+  private Map<RmdVersionId, RmdSchemaEntry> replicationMetadataSchemaMap;
+  private Map<Schema, RmdVersionId> replicationMetadataSchemaRMap;
 
   public static int UNKNOWN_SCHEMA_ID = 0;
   public static int INVALID_VALUE_SCHEMA_ID = -1;
@@ -119,30 +119,25 @@ public final class SchemaData {
     return valueSchemas;
   }
 
-  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(
-      int valueSchemaId,
-      int replicationMetadataVersionId) {
-    return replicationMetadataSchemaMap
-        .get(new ReplicationMetadataVersionId(valueSchemaId, replicationMetadataVersionId));
+  public RmdSchemaEntry getReplicationMetadataSchema(int valueSchemaId, int replicationMetadataVersionId) {
+    return replicationMetadataSchemaMap.get(new RmdVersionId(valueSchemaId, replicationMetadataVersionId));
   }
 
-  public Collection<ReplicationMetadataSchemaEntry> getReplicationMetadataSchemas() {
+  public Collection<RmdSchemaEntry> getReplicationMetadataSchemas() {
     return replicationMetadataSchemaMap.values();
   }
 
-  public ReplicationMetadataVersionId getReplicationMetadataVersionId(ReplicationMetadataSchemaEntry entry) {
+  public RmdVersionId getReplicationMetadataVersionId(RmdSchemaEntry entry) {
     if (replicationMetadataSchemaRMap.containsKey(entry.getSchema())) {
       return replicationMetadataSchemaRMap.get(entry.getSchema());
     }
 
-    return new ReplicationMetadataVersionId(INVALID_VALUE_SCHEMA_ID, INVALID_VALUE_SCHEMA_ID);
+    return new RmdVersionId(INVALID_VALUE_SCHEMA_ID, INVALID_VALUE_SCHEMA_ID);
   }
 
-  public void addReplicationMetadataSchema(ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry) {
-    ReplicationMetadataVersionId replicationMetadataVersionId = new ReplicationMetadataVersionId(
-        replicationMetadataSchemaEntry.getValueSchemaID(),
-        replicationMetadataSchemaEntry.getId());
-    replicationMetadataSchemaMap.put(replicationMetadataVersionId, replicationMetadataSchemaEntry);
-    replicationMetadataSchemaRMap.put(replicationMetadataSchemaEntry.getSchema(), replicationMetadataVersionId);
+  public void addReplicationMetadataSchema(RmdSchemaEntry rmdSchemaEntry) {
+    RmdVersionId rmdVersionId = new RmdVersionId(rmdSchemaEntry.getValueSchemaID(), rmdSchemaEntry.getId());
+    replicationMetadataSchemaMap.put(rmdVersionId, rmdSchemaEntry);
+    replicationMetadataSchemaRMap.put(rmdSchemaEntry.getSchema(), rmdVersionId);
   }
 }

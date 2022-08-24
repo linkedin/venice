@@ -2,7 +2,7 @@ package com.linkedin.venice.schema.merge;
 
 import com.linkedin.avro.api.PrimitiveLongList;
 import com.linkedin.avro.fastserde.primitive.PrimitiveLongArrayList;
-import com.linkedin.venice.schema.rmd.v1.CollectionReplicationMetadata;
+import com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp;
 import com.linkedin.venice.utils.IndexedHashMap;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -31,7 +31,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       final long putTimestamp,
       final int coloID,
       List<Object> toPutList,
-      CollectionReplicationMetadata<Object> collectionFieldRmd,
+      CollectionRmdTimestamp<Object> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName) {
     if (ignoreIncomingRequest(putTimestamp, coloID, collectionFieldRmd)) {
@@ -193,7 +193,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       final long putTimestamp,
       final int coloID,
       IndexedHashMap<String, Object> toPutMap,
-      CollectionReplicationMetadata<String> collectionFieldRmd,
+      CollectionRmdTimestamp<String> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName) {
     if (ignoreIncomingRequest(putTimestamp, coloID, collectionFieldRmd)) {
@@ -285,7 +285,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
   public UpdateResultStatus handleDeleteList(
       final long deleteTimestamp,
       final int coloID,
-      CollectionReplicationMetadata collectionFieldRmd,
+      CollectionRmdTimestamp collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName) {
     if (ignoreIncomingRequest(deleteTimestamp, coloID, collectionFieldRmd)) {
@@ -331,7 +331,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
   public UpdateResultStatus handleDeleteMap(
       final long deleteTimestamp,
       final int coloID,
-      CollectionReplicationMetadata<String> collectionFieldRmd,
+      CollectionRmdTimestamp<String> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName) {
     if (ignoreIncomingRequest(deleteTimestamp, coloID, collectionFieldRmd)) {
@@ -373,7 +373,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
   @Override
   public UpdateResultStatus handleModifyList(
       final long modifyTimestamp,
-      CollectionReplicationMetadata<Object> collectionFieldRmd,
+      CollectionRmdTimestamp<Object> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName,
       List<Object> toAddElements,
@@ -412,7 +412,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
   private UpdateResultStatus handleModifyPutOnlyList(
       final long modifyTimestamp,
-      CollectionReplicationMetadata<Object> collectionFieldRmd,
+      CollectionRmdTimestamp<Object> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName,
       Set<Object> toAddElementSet,
@@ -512,7 +512,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
   // the put-only part and the second part being the collection-merge part.
   private UpdateResultStatus handleModifyCollectionMergeList(
       final long modifyTimestamp,
-      CollectionReplicationMetadata<Object> collectionFieldRmd,
+      CollectionRmdTimestamp<Object> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName,
       Set<Object> toAddElementSet,
@@ -633,7 +633,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       int newPutOnlyPartLength,
       GenericRecord currValueRecord,
       String fieldName,
-      CollectionReplicationMetadata<Object> collectionFieldRmd) {
+      CollectionRmdTimestamp<Object> collectionFieldRmd) {
     List<Object> newActiveElements = new ArrayList<>(activeElementAndTsList.size());
     PrimitiveLongList newActiveTimestamps =
         new PrimitiveLongArrayList(activeElementAndTsList.size() - newPutOnlyPartLength);
@@ -652,7 +652,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
   private void setDeletedDeletedElementAndTsList(
       List<ElementAndTimestamp> deletedElementAndTsList,
-      CollectionReplicationMetadata<Object> collectionFieldRmd) {
+      CollectionRmdTimestamp<Object> collectionFieldRmd) {
     List<Object> deletedElements = new ArrayList<>(deletedElementAndTsList.size());
     PrimitiveLongList deletedTimestamps = new PrimitiveLongArrayList(deletedElementAndTsList.size());
     for (ElementAndTimestamp deletedElementAndTs: deletedElementAndTsList) {
@@ -689,7 +689,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
   @Override
   public UpdateResultStatus handleModifyMap(
       final long modifyTimestamp,
-      CollectionReplicationMetadata<String> collectionFieldRmd,
+      CollectionRmdTimestamp<String> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName,
       Map<String, Object> newEntries,
@@ -728,7 +728,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
   private UpdateResultStatus handleModifyPutOnlyMap(
       final long modifyTimestamp,
-      CollectionReplicationMetadata<String> collectionFieldRmd,
+      CollectionRmdTimestamp<String> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName,
       Map<String, Object> newEntries,
@@ -782,7 +782,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       Map<String, Object> newEntries,
       GenericRecord currValueRecord,
       String fieldName,
-      CollectionReplicationMetadata<String> collectionFieldRmd,
+      CollectionRmdTimestamp<String> collectionFieldRmd,
       final long modifyTimestamp) {
     final int newPutOnlyPartLength = putOnlyPartMap.size();
     final IndexedHashMap<String, Object> resMap = putOnlyPartMap; // Rename. It means that resMap starts with the
@@ -801,7 +801,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
   private void setDeletedMapKeyAndTs(
       List<String> deletedKeys,
-      CollectionReplicationMetadata<String> collectionFieldRmd,
+      CollectionRmdTimestamp<String> collectionFieldRmd,
       final long deleteTimestamp) {
     PrimitiveLongList newDeletedTimestamps = new PrimitiveLongArrayList(deletedKeys.size());
     for (int i = 0; i < deletedKeys.size(); i++) {
@@ -812,7 +812,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
   private UpdateResultStatus handleModifyCollectionMergeMap(
       final long modifyTimestamp,
-      CollectionReplicationMetadata<String> collectionFieldRmd,
+      CollectionRmdTimestamp<String> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName,
       Map<String, Object> newEntries,
@@ -985,7 +985,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       final int newPutOnlyPartLength,
       GenericRecord currValueRecord,
       String fieldName,
-      CollectionReplicationMetadata<String> collectionFieldRmd) {
+      CollectionRmdTimestamp<String> collectionFieldRmd) {
     Map<String, Object> newMap = new IndexedHashMap<>();
     PrimitiveLongList newActiveTimestamps =
         new PrimitiveLongArrayList(activeElementAndTsList.size() - newPutOnlyPartLength);
@@ -1005,7 +1005,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
   private void setDeletedDeletedKeyAndTsList(
       List<ElementAndTimestamp> deletedElementAndTsList,
-      CollectionReplicationMetadata<String> collectionFieldRmd) {
+      CollectionRmdTimestamp<String> collectionFieldRmd) {
     List<String> deletedKeys = new ArrayList<>(deletedElementAndTsList.size());
     PrimitiveLongList deletedTimestamps = new PrimitiveLongArrayList(deletedElementAndTsList.size());
     for (ElementAndTimestamp deletedKeyAndTs: deletedElementAndTsList) {
@@ -1018,7 +1018,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
   private boolean ignoreIncomingRequest(
       final long incomingRequestTimestamp,
       final int incomingRequestColoID,
-      CollectionReplicationMetadata<?> currCollectionFieldRmd) {
+      CollectionRmdTimestamp<?> currCollectionFieldRmd) {
     if (currCollectionFieldRmd.getTopLevelFieldTimestamp() > incomingRequestTimestamp) {
       return true;
 

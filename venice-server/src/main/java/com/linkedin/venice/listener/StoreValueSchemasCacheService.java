@@ -7,7 +7,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -215,7 +215,7 @@ public class StoreValueSchemasCacheService extends AbstractVeniceService impleme
   }
 
   @Override
-  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(
+  public RmdSchemaEntry getReplicationMetadataSchema(
       String storeName,
       int valueSchemaId,
       int replicationMetadataVersionId) {
@@ -223,7 +223,7 @@ public class StoreValueSchemasCacheService extends AbstractVeniceService impleme
   }
 
   @Override
-  public Collection<ReplicationMetadataSchemaEntry> getReplicationMetadataSchemas(String storeName) {
+  public Collection<RmdSchemaEntry> getReplicationMetadataSchemas(String storeName) {
     throw new VeniceException("Function: getReplicationMetadataSchemas is not supported!");
   }
 

@@ -13,28 +13,28 @@ import org.apache.kafka.clients.producer.Callback;
  */
 public class DeleteMetadata {
   private final int valueSchemaId;
-  private final int replicationMetadataVersionId;
-  private final ByteBuffer replicationMetadataPayload;
+  private final int rmdVersionId;
+  private final ByteBuffer rmdPayload;
 
-  public DeleteMetadata(int valueSchemaId, int replicationMetadataVersionId, ByteBuffer replicationMetadataPayload) {
+  public DeleteMetadata(int valueSchemaId, int rmdVersionId, ByteBuffer rmdPayload) {
     this.valueSchemaId = valueSchemaId;
-    this.replicationMetadataVersionId = replicationMetadataVersionId;
-    this.replicationMetadataPayload = replicationMetadataPayload;
+    this.rmdVersionId = rmdVersionId;
+    this.rmdPayload = rmdPayload;
   }
 
   public int getValueSchemaId() {
     return valueSchemaId;
   }
 
-  public int getReplicationMetadataVersionId() {
-    return replicationMetadataVersionId;
+  public int getRmdVersionId() {
+    return rmdVersionId;
   }
 
-  public ByteBuffer getReplicationMetadataPayload() {
-    return replicationMetadataPayload;
+  public ByteBuffer getRmdPayload() {
+    return rmdPayload;
   }
 
   public int getSerializedSize() {
-    return 2 * ByteUtils.SIZE_OF_INT + replicationMetadataPayload.remaining();
+    return 2 * ByteUtils.SIZE_OF_INT + rmdPayload.remaining();
   }
 }

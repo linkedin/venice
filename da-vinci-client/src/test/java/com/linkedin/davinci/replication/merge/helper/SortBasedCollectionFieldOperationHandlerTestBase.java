@@ -13,8 +13,8 @@ import com.linkedin.davinci.replication.merge.helper.utils.PutMapOperation;
 import com.linkedin.davinci.writecompute.CollectionTimestampBuilder;
 import com.linkedin.venice.schema.merge.AvroCollectionElementComparator;
 import com.linkedin.venice.schema.merge.SortBasedCollectionFieldOpHandler;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
-import com.linkedin.venice.schema.rmd.v1.CollectionReplicationMetadata;
+import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
+import com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp;
 import com.linkedin.venice.utils.IndexedHashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -46,7 +46,7 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
   private static final Schema RMD_TIMESTAMP_SCHEMA;
 
   static {
-    Schema rmdSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(VALUE_SCHEMA);
+    Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(VALUE_SCHEMA);
     RMD_TIMESTAMP_SCHEMA = rmdSchema.getField("timestamp").schema().getTypes().get(1);
   }
   protected static final int COLO_ID_1 = 1;
@@ -76,17 +76,16 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
     collectionTimestampBuilder.setDeletedElementTimestamps(new LinkedList<>());
     collectionTimestampBuilder.setDeletedElements(Schema.create(Schema.Type.LONG), new LinkedList<>());
     collectionTimestampBuilder.setCollectionTimestampSchema(RMD_TIMESTAMP_SCHEMA.getField(LIST_FIELD_NAME).schema());
-    CollectionReplicationMetadata collectionMetadata =
-        new CollectionReplicationMetadata(collectionTimestampBuilder.build());
+    CollectionRmdTimestamp collectionMetadata = new CollectionRmdTimestamp(collectionTimestampBuilder.build());
     SortBasedCollectionFieldOpHandler handlerToTest =
         new SortBasedCollectionFieldOpHandler(AvroCollectionElementComparator.INSTANCE);
 
     GenericRecord prevValueRecord = null;
-    CollectionReplicationMetadata prevCollectionRmd = null;
+    CollectionRmdTimestamp prevCollectionRmd = null;
 
     for (int i = 0; i < allOpSequences.size(); i++) {
       GenericRecord currValueRecordCopy = GenericData.get().deepCopy(VALUE_SCHEMA, currValueRecord);
-      CollectionReplicationMetadata<?> collectionRmdCopy = new CollectionReplicationMetadata<>(collectionMetadata);
+      CollectionRmdTimestamp<?> collectionRmdCopy = new CollectionRmdTimestamp<>(collectionMetadata);
       List<CollectionOperation> opSequence = allOpSequences.get(i);
       logger.info("Applying operation sequence: " + opSequence);
 
@@ -163,7 +162,7 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
 
   private void applyOperationOnValue(
       CollectionOperation op,
-      CollectionReplicationMetadata collectionMetadata,
+      CollectionRmdTimestamp collectionMetadata,
       SortBasedCollectionFieldOpHandler handlerToTest,
       GenericRecord currValueRecord) {
     if (op instanceof PutListOperation) {
@@ -171,7 +170,7 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
           op.getOpTimestamp(),
           op.getOpColoID(),
           ((PutListOperation) op).getNewList(),
-          (CollectionReplicationMetadata<Object>) collectionMetadata,
+          (CollectionRmdTimestamp<Object>) collectionMetadata,
           currValueRecord,
           op.getFieldName());
 
@@ -180,14 +179,14 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
           op.getOpTimestamp(),
           op.getOpColoID(),
           ((PutMapOperation) op).getNewMap(),
-          (CollectionReplicationMetadata<String>) collectionMetadata,
+          (CollectionRmdTimestamp<String>) collectionMetadata,
           currValueRecord,
           op.getFieldName());
 
     } else if (op instanceof MergeListOperation) {
       handlerToTest.handleModifyList(
           op.getOpTimestamp(),
-          (CollectionReplicationMetadata<Object>) collectionMetadata,
+          (CollectionRmdTimestamp<Object>) collectionMetadata,
           currValueRecord,
           op.getFieldName(),
           ((MergeListOperation) op).getNewElements(),
@@ -196,7 +195,7 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
     } else if (op instanceof MergeMapOperation) {
       handlerToTest.handleModifyMap(
           op.getOpTimestamp(),
-          (CollectionReplicationMetadata<String>) collectionMetadata,
+          (CollectionRmdTimestamp<String>) collectionMetadata,
           currValueRecord,
           op.getFieldName(),
           ((MergeMapOperation) op).getNewEntries(),
@@ -206,7 +205,7 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
       handlerToTest.handleDeleteList(
           op.getOpTimestamp(),
           op.getOpColoID(),
-          (CollectionReplicationMetadata<Object>) collectionMetadata,
+          (CollectionRmdTimestamp<Object>) collectionMetadata,
           currValueRecord,
           op.getFieldName());
 
@@ -214,7 +213,7 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
       handlerToTest.handleDeleteMap(
           op.getOpTimestamp(),
           op.getOpColoID(),
-          (CollectionReplicationMetadata<String>) collectionMetadata,
+          (CollectionRmdTimestamp<String>) collectionMetadata,
           currValueRecord,
           op.getFieldName());
     } else {

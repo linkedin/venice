@@ -75,8 +75,8 @@ public class VeniceReducer extends AbstractMapReduceTask
     private final byte[] keyBytes;
     private final byte[] valueBytes;
     private final int valueSchemaId;
-    private final int replicationMetadataVersionId;
-    private final ByteBuffer replicationMetadataPayload;
+    private final int rmdVersionId;
+    private final ByteBuffer rmdPayload;
     private final Consumer<AbstractVeniceWriter<byte[], byte[], byte[]>> consumer;
 
     public VeniceWriterMessage(
@@ -93,27 +93,26 @@ public class VeniceReducer extends AbstractMapReduceTask
         byte[] keyBytes,
         byte[] valueBytes,
         int valueSchemaId,
-        int replicationMetadataVersionId,
-        ByteBuffer replicationMetadataPayload,
+        int rmdVersionId,
+        ByteBuffer rmdPayload,
         Callback callback,
         boolean enableWriteCompute,
         int derivedValueSchemaId) {
       this.keyBytes = keyBytes;
       this.valueBytes = valueBytes;
       this.valueSchemaId = valueSchemaId;
-      this.replicationMetadataPayload = replicationMetadataPayload;
-      this.replicationMetadataVersionId = replicationMetadataVersionId;
+      this.rmdPayload = rmdPayload;
+      this.rmdVersionId = rmdVersionId;
       this.consumer = writer -> {
-        if (replicationMetadataPayload != null) {
-          if (replicationMetadataPayload.remaining() == 0) {
+        if (rmdPayload != null) {
+          if (rmdPayload.remaining() == 0) {
             throw new VeniceException("Found empty replication metadata");
           }
           if (valueBytes == null) {
-            DeleteMetadata deleteMetadata =
-                new DeleteMetadata(valueSchemaId, replicationMetadataVersionId, replicationMetadataPayload);
+            DeleteMetadata deleteMetadata = new DeleteMetadata(valueSchemaId, rmdVersionId, rmdPayload);
             writer.delete(keyBytes, callback, deleteMetadata);
           } else {
-            PutMetadata putMetadata = (new PutMetadata(replicationMetadataVersionId, replicationMetadataPayload));
+            PutMetadata putMetadata = (new PutMetadata(rmdVersionId, rmdPayload));
             writer.put(keyBytes, valueBytes, valueSchemaId, callback, putMetadata);
           }
         } else if (enableWriteCompute && derivedValueSchemaId > 0) {
@@ -128,12 +127,12 @@ public class VeniceReducer extends AbstractMapReduceTask
       return consumer;
     }
 
-    public ByteBuffer getReplicationMetadataPayload() {
-      return replicationMetadataPayload;
+    public ByteBuffer getRmdPayload() {
+      return rmdPayload;
     }
 
-    public int getReplicationMetadataVersionId() {
-      return replicationMetadataVersionId;
+    public int getRmdVersionId() {
+      return rmdVersionId;
     }
 
     public byte[] getKeyBytes() {

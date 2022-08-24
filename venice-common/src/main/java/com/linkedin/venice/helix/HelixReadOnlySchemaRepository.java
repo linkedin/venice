@@ -10,7 +10,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -411,18 +411,18 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   }
 
   @Override
-  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(
+  public RmdSchemaEntry getReplicationMetadataSchema(
       String storeName,
       int valueSchemaId,
       int replicationMetadataVersionId) {
-    return (ReplicationMetadataSchemaEntry) doSchemaOperation(
+    return (RmdSchemaEntry) doSchemaOperation(
         storeName,
         ((schemaData) -> schemaData.getReplicationMetadataSchema(valueSchemaId, replicationMetadataVersionId)));
   }
 
   @Override
-  public Collection<ReplicationMetadataSchemaEntry> getReplicationMetadataSchemas(String storeName) {
-    return (Collection<ReplicationMetadataSchemaEntry>) doSchemaOperation(
+  public Collection<RmdSchemaEntry> getReplicationMetadataSchemas(String storeName) {
+    return (Collection<RmdSchemaEntry>) doSchemaOperation(
         storeName,
         ((schemaData) -> schemaData.getReplicationMetadataSchemas()));
   }

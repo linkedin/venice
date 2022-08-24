@@ -12,23 +12,23 @@ import org.apache.kafka.clients.producer.Callback;
  * filling up all the fields of this object.
  */
 public class PutMetadata {
-  private final int replicationMetadataVersionId;
-  private final ByteBuffer replicationMetadataPayload;
+  private final int rmdVersionId;
+  private final ByteBuffer rmdPayload;
 
-  public PutMetadata(int replicationMetadataVersionId, ByteBuffer replicationMetadataPayload) {
-    this.replicationMetadataVersionId = replicationMetadataVersionId;
-    this.replicationMetadataPayload = replicationMetadataPayload;
+  public PutMetadata(int rmdVersionId, ByteBuffer rmdPayload) {
+    this.rmdVersionId = rmdVersionId;
+    this.rmdPayload = rmdPayload;
   }
 
-  public int getReplicationMetadataVersionId() {
-    return replicationMetadataVersionId;
+  public int getRmdVersionId() {
+    return rmdVersionId;
   }
 
-  public ByteBuffer getReplicationMetadataPayload() {
-    return replicationMetadataPayload;
+  public ByteBuffer getRmdPayload() {
+    return rmdPayload;
   }
 
   public int getSerializedSize() {
-    return ByteUtils.SIZE_OF_INT + replicationMetadataPayload.remaining();
+    return ByteUtils.SIZE_OF_INT + rmdPayload.remaining();
   }
 }

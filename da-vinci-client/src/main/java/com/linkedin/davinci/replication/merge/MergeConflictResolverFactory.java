@@ -20,21 +20,21 @@ public class MergeConflictResolverFactory {
 
   public MergeConflictResolver createMergeConflictResolver(
       ReadOnlySchemaRepository schemaRepository,
-      ReplicationMetadataSerDe rmdSerDe,
+      RmdSerDe rmdSerDe,
       String storeName) {
     return createMergeConflictResolver(schemaRepository, rmdSerDe, storeName, false);
   }
 
   public MergeConflictResolver createMergeConflictResolver(
       ReadOnlySchemaRepository schemaRepository,
-      ReplicationMetadataSerDe rmdSerDe,
+      RmdSerDe rmdSerDe,
       String storeName,
       boolean enableHandlingUpdate) {
     MergeRecordHelper mergeRecordHelper = new CollectionTimestampMergeRecordHelper();
     return new MergeConflictResolver(
         schemaRepository,
         storeName,
-        valueSchemaID -> new GenericData.Record(rmdSerDe.getReplicationMetadataSchema(valueSchemaID)),
+        valueSchemaID -> new GenericData.Record(rmdSerDe.getRmdSchema(valueSchemaID)),
         new MergeGenericRecord(new WriteComputeProcessor(mergeRecordHelper), mergeRecordHelper),
         new MergeByteBuffer(),
         new MergeResultValueSchemaResolverImpl(schemaRepository, storeName),

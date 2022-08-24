@@ -2,7 +2,7 @@ package com.linkedin.venice.meta;
 
 import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.Pair;
 import java.util.Collection;
@@ -72,10 +72,7 @@ public interface ReadOnlySchemaRepository extends VeniceResource {
    */
   DerivedSchemaEntry getLatestDerivedSchema(String storeName, int valueSchemaId);
 
-  ReplicationMetadataSchemaEntry getReplicationMetadataSchema(
-      String storeName,
-      int valueSchemaId,
-      int replicationMetadataVersionId);
+  RmdSchemaEntry getReplicationMetadataSchema(String storeName, int valueSchemaId, int replicationMetadataVersionId);
 
-  Collection<ReplicationMetadataSchemaEntry> getReplicationMetadataSchemas(String storeName);
+  Collection<RmdSchemaEntry> getReplicationMetadataSchemas(String storeName);
 }

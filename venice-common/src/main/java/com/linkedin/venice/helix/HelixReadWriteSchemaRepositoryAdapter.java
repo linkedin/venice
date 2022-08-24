@@ -5,7 +5,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.Pair;
 import java.util.Collection;
@@ -260,7 +260,7 @@ public class HelixReadWriteSchemaRepositoryAdapter implements ReadWriteSchemaRep
   }
 
   @Override
-  public ReplicationMetadataSchemaEntry addReplicationMetadataSchema(
+  public RmdSchemaEntry addReplicationMetadataSchema(
       String storeName,
       int valueSchemaId,
       String replicationMetadataSchemaStr,
@@ -278,7 +278,7 @@ public class HelixReadWriteSchemaRepositoryAdapter implements ReadWriteSchemaRep
   }
 
   @Override
-  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(
+  public RmdSchemaEntry getReplicationMetadataSchema(
       String storeName,
       int valueSchemaId,
       int replicationMetadataVersionId) {
@@ -294,7 +294,7 @@ public class HelixReadWriteSchemaRepositoryAdapter implements ReadWriteSchemaRep
   }
 
   @Override
-  public Collection<ReplicationMetadataSchemaEntry> getReplicationMetadataSchemas(String storeName) {
+  public Collection<RmdSchemaEntry> getReplicationMetadataSchemas(String storeName) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (HelixReadOnlyStoreRepositoryAdapter.forwardToRegularRepository(systemStoreType)) {
       return readWriteRegularStoreSchemaRepository.getReplicationMetadataSchemas(storeName);

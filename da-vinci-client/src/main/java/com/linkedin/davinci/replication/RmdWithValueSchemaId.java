@@ -9,23 +9,20 @@ import org.apache.avro.generic.GenericRecord;
  *    2. RMD protocol version ID.
  *    3. Value schema ID used to generate the RMD schema.
  */
-public class ReplicationMetadataWithValueSchemaId {
+public class RmdWithValueSchemaId {
   private final int valueSchemaID;
   private final int rmdProtocolVersionID; // Note that it is NOT RMD schema ID which should have the format
                                           // "<valueSchemaId>-<rmdProtocolVersionID>"
-  private final GenericRecord replicationMetadataRecord;
+  private final GenericRecord rmdRecord;
 
-  public ReplicationMetadataWithValueSchemaId(
-      int valueSchemaID,
-      int rmdProtocolVersionID,
-      GenericRecord replicationMetadataRecord) {
+  public RmdWithValueSchemaId(int valueSchemaID, int rmdProtocolVersionID, GenericRecord rmdRecord) {
     this.valueSchemaID = valueSchemaID;
-    this.replicationMetadataRecord = replicationMetadataRecord;
+    this.rmdRecord = rmdRecord;
     this.rmdProtocolVersionID = rmdProtocolVersionID;
   }
 
-  public GenericRecord getReplicationMetadataRecord() {
-    return replicationMetadataRecord;
+  public GenericRecord getRmdRecord() {
+    return rmdRecord;
   }
 
   public int getValueSchemaId() {

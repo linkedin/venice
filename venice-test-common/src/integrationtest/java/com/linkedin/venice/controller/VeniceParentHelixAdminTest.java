@@ -194,7 +194,7 @@ public class VeniceParentHelixAdminTest {
         assertTrue(
             versionFromParent.isPresent()
                 && versionFromParent.get().getHybridStoreConfig().getRewindTimeInSeconds() == 1000);
-        assertEquals(versionFromParent.get().getReplicationMetadataVersionId(), 1);
+        assertEquals(versionFromParent.get().getRmdVersionId(), 1);
 
         // Validate version-level config in child
         waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
@@ -203,7 +203,7 @@ public class VeniceParentHelixAdminTest {
           assertTrue(
               versionFromChild.isPresent()
                   && versionFromChild.get().getHybridStoreConfig().getRewindTimeInSeconds() == 1000);
-          assertEquals(versionFromChild.get().getReplicationMetadataVersionId(), 1);
+          assertEquals(versionFromChild.get().getRmdVersionId(), 1);
         });
 
         // Check store level config

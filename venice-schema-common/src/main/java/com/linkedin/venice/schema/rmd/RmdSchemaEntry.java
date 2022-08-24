@@ -7,18 +7,18 @@ import org.apache.avro.Schema;
 /**
  * This holds the schema to perform conflict resolution on records when samza produces data in
  * active active replication mode.
- * More information can be found here {@link ReplicationMetadataSchemaGenerator} about the structure of the schema.
+ * More information can be found here {@link RmdSchemaGenerator} about the structure of the schema.
  */
-public class ReplicationMetadataSchemaEntry extends GeneratedSchemaEntry {
-  public ReplicationMetadataSchemaEntry(int valueSchemaId, int protocolVersion, String schemaStr) {
+public class RmdSchemaEntry extends GeneratedSchemaEntry {
+  public RmdSchemaEntry(int valueSchemaId, int protocolVersion, String schemaStr) {
     super(valueSchemaId, protocolVersion, schemaStr);
   }
 
-  public ReplicationMetadataSchemaEntry(int valueSchemaId, int protocolVersion, Schema schema) {
+  public RmdSchemaEntry(int valueSchemaId, int protocolVersion, Schema schema) {
     super(valueSchemaId, protocolVersion, schema);
   }
 
-  public ReplicationMetadataSchemaEntry(int valueSchemaId, int protocolVersion, byte[] bytes) {
+  public RmdSchemaEntry(int valueSchemaId, int protocolVersion, byte[] bytes) {
     super(valueSchemaId, protocolVersion, bytes);
   }
 
@@ -30,7 +30,7 @@ public class ReplicationMetadataSchemaEntry extends GeneratedSchemaEntry {
       return false;
     if (getClass() != obj.getClass())
       return false;
-    ReplicationMetadataSchemaEntry other = (ReplicationMetadataSchemaEntry) obj;
+    RmdSchemaEntry other = (RmdSchemaEntry) obj;
     if (this.valueSchemaID != other.valueSchemaID) {
       return false;
     }

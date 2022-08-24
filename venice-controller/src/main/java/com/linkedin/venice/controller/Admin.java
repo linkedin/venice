@@ -30,7 +30,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
@@ -328,7 +328,7 @@ public interface Admin extends AutoCloseable, Closeable {
       int derivedSchemaId,
       String derivedSchemaStr);
 
-  Collection<ReplicationMetadataSchemaEntry> getReplicationMetadataSchemas(String clusterName, String storeName);
+  Collection<RmdSchemaEntry> getReplicationMetadataSchemas(String clusterName, String storeName);
 
   Optional<Schema> getReplicationMetadataSchema(
       String clusterName,
@@ -336,7 +336,7 @@ public interface Admin extends AutoCloseable, Closeable {
       int valueSchemaID,
       int rmdVersionID);
 
-  ReplicationMetadataSchemaEntry addReplicationMetadataSchema(
+  RmdSchemaEntry addReplicationMetadataSchema(
       String clusterName,
       String storeName,
       int valueSchemaId,

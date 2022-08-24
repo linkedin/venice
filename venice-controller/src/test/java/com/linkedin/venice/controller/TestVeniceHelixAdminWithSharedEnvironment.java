@@ -43,8 +43,8 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.PushMonitor;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
+import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
 import com.linkedin.venice.utils.Pair;
@@ -1958,8 +1958,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     String storeName = Utils.getUniqueString("aa_store");
     String recordSchemaStr = TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
     int replicationMetadataVersionId = multiClusterConfig.getCommonConfig().getReplicationMetadataVersionId();
-    Schema metadataSchema =
-        ReplicationMetadataSchemaGenerator.generateMetadataSchema(recordSchemaStr, replicationMetadataVersionId);
+    Schema metadataSchema = RmdSchemaGenerator.generateMetadataSchema(recordSchemaStr, replicationMetadataVersionId);
 
     veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, recordSchemaStr);
     veniceAdmin.addReplicationMetadataSchema(
@@ -1968,8 +1967,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         1,
         replicationMetadataVersionId,
         metadataSchema.toString());
-    Collection<ReplicationMetadataSchemaEntry> metadataSchemas =
-        veniceAdmin.getReplicationMetadataSchemas(clusterName, storeName);
+    Collection<RmdSchemaEntry> metadataSchemas = veniceAdmin.getReplicationMetadataSchemas(clusterName, storeName);
     Assert.assertEquals(metadataSchemas.size(), 1);
     Assert.assertEquals(metadataSchemas.iterator().next().getSchema(), metadataSchema);
   }

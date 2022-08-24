@@ -220,13 +220,12 @@ public class TestStoreMigration {
 
         // Test replication metadata version id in src cluster is updated
         storeResponse = srcParentControllerClient.getStore(storeName);
-        int replicationMetadataVersionId =
-            storeResponse.getStore().getVersions().get(1).getReplicationMetadataVersionId();
+        int replicationMetadataVersionId = storeResponse.getStore().getVersions().get(1).getRmdVersionId();
         Assert.assertEquals(replicationMetadataVersionId, 1);
 
         // Test replication metadata version id in dest cluster is updated
         storeResponse = destParentControllerClient.getStore(storeName);
-        replicationMetadataVersionId = storeResponse.getStore().getVersions().get(1).getReplicationMetadataVersionId();
+        replicationMetadataVersionId = storeResponse.getStore().getVersions().get(1).getRmdVersionId();
         Assert.assertEquals(replicationMetadataVersionId, 1);
       });
     }

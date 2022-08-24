@@ -126,8 +126,8 @@ import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
+import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.security.SSLFactory;
@@ -1598,7 +1598,7 @@ public class VeniceParentHelixAdmin implements Admin {
       // Default value, unused for non hybrid store
       addVersion.rewindTimeInSecondsOverride = -1;
     }
-    addVersion.timestampMetadataVersionId = version.getReplicationMetadataVersionId();
+    addVersion.timestampMetadataVersionId = version.getRmdVersionId();
     addVersion.versionSwapDeferred = version.isVersionSwapDeferred();
     return addVersion;
   }
@@ -2937,9 +2937,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * @see VeniceHelixAdmin#getReplicationMetadataSchemas(String, String)
    */
   @Override
-  public Collection<ReplicationMetadataSchemaEntry> getReplicationMetadataSchemas(
-      String clusterName,
-      String storeName) {
+  public Collection<RmdSchemaEntry> getReplicationMetadataSchemas(String clusterName, String storeName) {
     return getVeniceHelixAdmin().getReplicationMetadataSchemas(clusterName, storeName);
   }
 
@@ -2960,7 +2958,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * repository by sending {@link AdminMessageType#REPLICATION_METADATA_SCHEMA_CREATION REPLICATION_METADATA_SCHEMA_CREATION} admin message.
    */
   @Override
-  public ReplicationMetadataSchemaEntry addReplicationMetadataSchema(
+  public RmdSchemaEntry addReplicationMetadataSchema(
       String clusterName,
       String storeName,
       int valueSchemaId,
@@ -2968,16 +2966,16 @@ public class VeniceParentHelixAdmin implements Admin {
       String replicationMetadataSchemaStr) {
     acquireAdminMessageLock(clusterName, storeName);
     try {
-      ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry =
-          new ReplicationMetadataSchemaEntry(valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
+      RmdSchemaEntry rmdSchemaEntry =
+          new RmdSchemaEntry(valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
       final boolean replicationMetadataSchemaAlreadyPresent = getVeniceHelixAdmin()
-          .checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, valueSchemaId, replicationMetadataSchemaEntry);
+          .checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, valueSchemaId, rmdSchemaEntry);
       if (replicationMetadataSchemaAlreadyPresent) {
         logger.info(
             "Replication metadata schema already exists for store:" + storeName + " in cluster:" + clusterName
                 + " metadataSchema:" + replicationMetadataSchemaStr + " replicationMetadataVersionId:"
                 + replicationMetadataVersionId + " valueSchemaId:" + valueSchemaId);
-        return replicationMetadataSchemaEntry;
+        return rmdSchemaEntry;
       }
 
       logger.info(
@@ -3012,10 +3010,7 @@ public class VeniceParentHelixAdmin implements Admin {
           valueSchemaId,
           replicationMetadataVersionId,
           expectedRmdSchema);
-      return new ReplicationMetadataSchemaEntry(
-          valueSchemaId,
-          replicationMetadataVersionId,
-          replicationMetadataSchemaStr);
+      return new RmdSchemaEntry(valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
     } catch (Exception e) {
       logger.error(
           "Error when adding replication metadata schema for " + storeName + ", value schema id " + valueSchemaId,
@@ -3095,7 +3090,7 @@ public class VeniceParentHelixAdmin implements Admin {
       return;
     }
     String replicationMetadataSchemaStr =
-        ReplicationMetadataSchemaGenerator.generateMetadataSchema(valueSchema, rmdVersionId).toString();
+        RmdSchemaGenerator.generateMetadataSchema(valueSchema, rmdVersionId).toString();
     addReplicationMetadataSchema(clusterName, storeName, valueSchemaId, rmdVersionId, replicationMetadataSchemaStr);
   }
 

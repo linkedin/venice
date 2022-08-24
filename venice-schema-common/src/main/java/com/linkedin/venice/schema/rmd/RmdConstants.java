@@ -4,8 +4,8 @@ package com.linkedin.venice.schema.rmd;
  * This is an util class that contains constants related to replication metadata. For example, field names in
  * a replication metadata record.
  */
-public class ReplicationMetadataConstants {
-  private ReplicationMetadataConstants() {
+public class RmdConstants {
+  private RmdConstants() {
     // Utility class
   }
 

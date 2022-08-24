@@ -17,8 +17,8 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
+import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Pair;
@@ -123,14 +123,14 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
     testStoreEngine = storageService.openStoreForNewPartition(storeConfig, PARTITION_ID);
     createStoreForTest();
     String stringSchema = "\"string\"";
-    Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(stringSchema, 1);
+    Schema aaSchema = RmdSchemaGenerator.generateMetadataSchema(stringSchema, 1);
     ReadOnlySchemaRepository schemaRepository = mock(ReadOnlySchemaRepository.class);
 
-    ReplicationMetadataSchemaEntry rmdSchemaEntry = new ReplicationMetadataSchemaEntry(1, 1, aaSchema);
+    RmdSchemaEntry rmdSchemaEntry = new RmdSchemaEntry(1, 1, aaSchema);
     doReturn(rmdSchemaEntry).when(schemaRepository).getReplicationMetadataSchema(anyString(), anyInt(), anyInt());
 
     SchemaEntry valueSchemaEntry = new SchemaEntry(1, stringSchema);
-    ReplicationMetadataSchemaEntry rmdSchemaEnry = new ReplicationMetadataSchemaEntry(1, 1, aaSchema);
+    RmdSchemaEntry rmdSchemaEnry = new RmdSchemaEntry(1, 1, aaSchema);
     doReturn(valueSchemaEntry).when(schemaRepository).getSupersetOrLatestValueSchema(anyString());
     doReturn(rmdSchemaEnry).when(schemaRepository).getReplicationMetadataSchema(anyString(), anyInt(), anyInt());
   }
