@@ -1,9 +1,9 @@
 package com.linkedin.davinci.replication.merge;
 
-import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
+import static com.linkedin.venice.schema.rmd.RmdConstants.*;
 import static org.mockito.Mockito.*;
 
-import com.linkedin.davinci.replication.ReplicationMetadataWithValueSchemaId;
+import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -23,7 +23,7 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
             mock(ReadOnlySchemaRepository.class),
-            new ReplicationMetadataSerDe(schemaRepository, storeName, RMD_VERSION_ID),
+            new RmdSerDe(schemaRepository, storeName, RMD_VERSION_ID),
             storeName);
 
     Map<String, Long> fieldNameToTimestampMap = new HashMap<>();
@@ -36,7 +36,7 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
 
     MergeConflictResult mergeResult = mergeConflictResolver.delete(
         Lazy.of(() -> null),
-        Optional.of(new ReplicationMetadataWithValueSchemaId(oldValueSchemaID, RMD_VERSION_ID, rmdRecord)),
+        Optional.of(new RmdWithValueSchemaId(oldValueSchemaID, RMD_VERSION_ID, rmdRecord)),
         deleteOperationTimestamp,
         1L, // Same as the old value schema ID.
         0,
@@ -52,8 +52,8 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
     fieldNameToTimestampMap.put("name", 20L);
     fieldNameToTimestampMap.put("age", 30L);
     GenericRecord oldRmdRecord = createRmdWithFieldLevelTimestamp(rmdSchemaV1, fieldNameToTimestampMap);
-    ReplicationMetadataWithValueSchemaId oldRmdWithValueSchemaID =
-        new ReplicationMetadataWithValueSchemaId(valueSchemaID, RMD_VERSION_ID, oldRmdRecord);
+    RmdWithValueSchemaId oldRmdWithValueSchemaID =
+        new RmdWithValueSchemaId(valueSchemaID, RMD_VERSION_ID, oldRmdRecord);
     GenericRecord oldValueRecord = new GenericData.Record(valueRecordSchemaV1);
     oldValueRecord.put("id", "123");
     oldValueRecord.put("name", "James");
@@ -65,7 +65,7 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
             schemaRepository,
-            new ReplicationMetadataSerDe(schemaRepository, storeName, RMD_VERSION_ID),
+            new RmdSerDe(schemaRepository, storeName, RMD_VERSION_ID),
             storeName);
 
     // Case 1: Delete one field with the same delete timestamp.
@@ -73,7 +73,7 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
     MergeConflictResult result = mergeConflictResolver
         .delete(Lazy.of(() -> oldValueBytes), Optional.of(oldRmdWithValueSchemaID), deleteOperationTimestamp, 1L, 0, 0);
     Assert.assertFalse(result.isUpdateIgnored());
-    GenericRecord updatedRmd = result.getReplicationMetadataRecord();
+    GenericRecord updatedRmd = result.getRmdRecord();
     GenericRecord updatedPerFieldTimestampRecord = (GenericRecord) updatedRmd.get(TIMESTAMP_FIELD_NAME);
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("id"), 10L); // Not updated
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("name"), 20L); // Not updated
@@ -92,7 +92,7 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
     result = mergeConflictResolver
         .delete(Lazy.of(() -> oldValueBytes), Optional.of(oldRmdWithValueSchemaID), deleteOperationTimestamp, 1L, 0, 0);
     Assert.assertFalse(result.isUpdateIgnored());
-    updatedRmd = result.getReplicationMetadataRecord();
+    updatedRmd = result.getRmdRecord();
     updatedPerFieldTimestampRecord = (GenericRecord) updatedRmd.get(TIMESTAMP_FIELD_NAME);
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("id"), deleteOperationTimestamp); // Updated
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("name"), deleteOperationTimestamp); // Not updated
@@ -111,7 +111,7 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
     result = mergeConflictResolver
         .delete(Lazy.of(() -> oldValueBytes), Optional.of(oldRmdWithValueSchemaID), deleteOperationTimestamp, 1L, 0, 0);
     Assert.assertFalse(result.isUpdateIgnored());
-    updatedRmd = result.getReplicationMetadataRecord();
+    updatedRmd = result.getRmdRecord();
     Object timestampObj = updatedRmd.get(TIMESTAMP_FIELD_NAME);
     // Because all fields are deleted. Timestamp should be converted to be a value-level timestamp.
     Assert.assertTrue(timestampObj instanceof Long);

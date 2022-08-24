@@ -2,7 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
+import static com.linkedin.venice.schema.rmd.RmdConstants.*;
 import static com.linkedin.venice.utils.TestUtils.*;
 import static com.linkedin.venice.utils.Time.*;
 import static org.mockito.Mockito.*;
@@ -67,8 +67,8 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.UserPartitionAwarePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
+import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -247,8 +247,7 @@ public class StoreIngestionTaskTest {
   private static final byte[] deleteKeyFoo = getRandomKey(PARTITION_FOO);
 
   private static final int REPLICATION_METADATA_VERSION_ID = 1;
-  private static final Schema REPLICATION_METADATA_SCHEMA =
-      ReplicationMetadataSchemaGenerator.generateMetadataSchema(STRING_SCHEMA, 1);
+  private static final Schema REPLICATION_METADATA_SCHEMA = RmdSchemaGenerator.generateMetadataSchema(STRING_SCHEMA, 1);
   private static final RecordSerializer REPLICATION_METADATA_SERIALIZER =
       FastSerializerDeserializerFactory.getFastAvroGenericSerializer(REPLICATION_METADATA_SCHEMA);
 
@@ -388,15 +387,9 @@ public class StoreIngestionTaskTest {
     doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
     doReturn(false).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, NON_EXISTING_SCHEMA_ID);
 
-    doReturn(
-        new ReplicationMetadataSchemaEntry(
-            EXISTING_SCHEMA_ID,
-            REPLICATION_METADATA_VERSION_ID,
-            REPLICATION_METADATA_SCHEMA)).when(mockSchemaRepo)
-                .getReplicationMetadataSchema(
-                    storeNameWithoutVersionInfo,
-                    EXISTING_SCHEMA_ID,
-                    REPLICATION_METADATA_VERSION_ID);
+    doReturn(new RmdSchemaEntry(EXISTING_SCHEMA_ID, REPLICATION_METADATA_VERSION_ID, REPLICATION_METADATA_SCHEMA))
+        .when(mockSchemaRepo)
+        .getReplicationMetadataSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID, REPLICATION_METADATA_VERSION_ID);
 
     storeVersionStateSupplier = getStoreVersionStateSupplierDefault();
   }
@@ -645,7 +638,7 @@ public class StoreIngestionTaskTest {
 
     version.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled);
     doReturn(isActiveActiveReplicationEnabled).when(mockStore).isActiveActiveReplicationEnabled();
-    version.setReplicationMetadataVersionId(REPLICATION_METADATA_VERSION_ID);
+    version.setRmdVersionId(REPLICATION_METADATA_VERSION_ID);
 
     doReturn(Optional.of(version)).when(mockStore).getVersion(anyInt());
     doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);

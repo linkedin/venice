@@ -507,11 +507,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     byte[] serializedKey = keySerializer.serialize(topicName, key);
     isChunkingFlagInvoked = true;
 
-    int replicationMetadataPayloadSize = deleteMetadata.isPresent() ? deleteMetadata.get().getSerializedSize() : 0;
-    if (serializedKey.length + replicationMetadataPayloadSize > maxSizeForUserPayloadPerMessageInBytes) {
+    int rmdPayloadSize = deleteMetadata.isPresent() ? deleteMetadata.get().getSerializedSize() : 0;
+    if (serializedKey.length + rmdPayloadSize > maxSizeForUserPayloadPerMessageInBytes) {
       throw new RecordTooLargeException(
-          "This record exceeds the maximum size. "
-              + getSizeReport(serializedKey.length, 0, replicationMetadataPayloadSize));
+          "This record exceeds the maximum size. " + getSizeReport(serializedKey.length, 0, rmdPayloadSize));
     }
 
     if (isChunkingEnabled) {
@@ -529,8 +528,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     Delete delete = new Delete();
     if (deleteMetadata.isPresent()) {
       delete.schemaId = deleteMetadata.get().getValueSchemaId();
-      delete.replicationMetadataVersionId = deleteMetadata.get().getReplicationMetadataVersionId();
-      delete.replicationMetadataPayload = deleteMetadata.get().getReplicationMetadataPayload();
+      delete.replicationMetadataVersionId = deleteMetadata.get().getRmdVersionId();
+      delete.replicationMetadataPayload = deleteMetadata.get().getRmdPayload();
     } else {
       delete.schemaId = VENICE_DEFAULT_VALUE_SCHEMA_ID;
       delete.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
@@ -685,8 +684,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     putPayload.schemaId = valueSchemaId;
 
     if (putMetadata.isPresent()) {
-      putPayload.replicationMetadataVersionId = putMetadata.get().getReplicationMetadataVersionId();
-      putPayload.replicationMetadataPayload = putMetadata.get().getReplicationMetadataPayload();
+      putPayload.replicationMetadataVersionId = putMetadata.get().getRmdVersionId();
+      putPayload.replicationMetadataPayload = putMetadata.get().getRmdPayload();
     } else {
       putPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
       putPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
@@ -1252,8 +1251,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
 
     if (putMetadata.isPresent()) {
-      putPayload.replicationMetadataVersionId = putMetadata.get().getReplicationMetadataVersionId();
-      putPayload.replicationMetadataPayload = putMetadata.get().getReplicationMetadataPayload();
+      putPayload.replicationMetadataVersionId = putMetadata.get().getRmdVersionId();
+      putPayload.replicationMetadataPayload = putMetadata.get().getRmdPayload();
     } else {
       putPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
       putPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;

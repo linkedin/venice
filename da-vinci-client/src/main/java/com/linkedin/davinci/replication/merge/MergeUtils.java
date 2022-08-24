@@ -1,6 +1,6 @@
 package com.linkedin.davinci.replication.merge;
 
-import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
+import static com.linkedin.venice.schema.rmd.RmdConstants.*;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -21,7 +21,7 @@ public class MergeUtils {
    * @param tsObject
    * @return
    */
-  public static RmdTimestampType getReplicationMetadataType(Object tsObject) {
+  public static RmdTimestampType getRmdTimestampType(Object tsObject) {
     if (tsObject instanceof Long) {
       return RmdTimestampType.VALUE_LEVEL_TIMESTAMP;
     } else if (tsObject instanceof GenericRecord) {
@@ -70,7 +70,7 @@ public class MergeUtils {
       return Collections.singletonList(0L);
     }
     Object timestampObject = replicationMetadataRecord.get(TIMESTAMP_FIELD_NAME);
-    RmdTimestampType rmdTimestampType = MergeUtils.getReplicationMetadataType(timestampObject);
+    RmdTimestampType rmdTimestampType = MergeUtils.getRmdTimestampType(timestampObject);
 
     if (rmdTimestampType == RmdTimestampType.VALUE_LEVEL_TIMESTAMP) {
       return Collections.singletonList((long) timestampObject);

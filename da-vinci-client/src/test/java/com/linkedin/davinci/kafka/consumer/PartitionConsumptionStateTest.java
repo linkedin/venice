@@ -4,7 +4,7 @@ import static org.mockito.Mockito.*;
 
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
+import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -33,7 +33,7 @@ public class PartitionConsumptionStateTest {
     byte[] value2 = new byte[] { 97, 98, 99, 100 };
 
     String schema = "\"string\"";
-    Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(schema, 1);
+    Schema aaSchema = RmdSchemaGenerator.generateMetadataSchema(schema, 1);
     GenericRecord record = new GenericData.Record(aaSchema);
     // Test removal succeeds if the key is specified with same kafkaConsumedOffset
     pcs.setTransientRecord(-1, 1, key1, 5, record);

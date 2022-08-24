@@ -137,7 +137,7 @@ import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -1261,7 +1261,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               // Migrated stores should bootstrap by consuming the version topics in its local fabric.
               null,
               version.getHybridStoreConfig() == null ? -1 : version.getHybridStoreConfig().getRewindTimeInSeconds(),
-              version.getReplicationMetadataVersionId());
+              version.getRmdVersionId());
         } catch (Exception e) {
           throw new VeniceException(
               "An exception was thrown when attempting to add version and start ingestion for store "
@@ -1801,7 +1801,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
          */
         handleRewindTimeOverride(store, version, rewindTimeInSecondsOverride);
 
-        version.setReplicationMetadataVersionId(replicationMetadataVersionId);
+        version.setRmdVersionId(replicationMetadataVersionId);
 
         repository.updateStore(store);
         logger.info("Add version: " + version.getNumber() + " for store: " + storeName);
@@ -2148,7 +2148,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           handleRewindTimeOverride(store, version, rewindTimeInSecondsOverride);
           store.setPersistenceType(PersistenceType.ROCKS_DB);
 
-          version.setReplicationMetadataVersionId(replicationMetadataVersionId);
+          version.setRmdVersionId(replicationMetadataVersionId);
 
           version.setVersionSwapDeferred(versionSwapDeferred);
 
@@ -4698,9 +4698,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @return a collection of <code>ReplicationMetadataSchemaEntry</code> object for the given store and cluster.
    */
   @Override
-  public Collection<ReplicationMetadataSchemaEntry> getReplicationMetadataSchemas(
-      String clusterName,
-      String storeName) {
+  public Collection<RmdSchemaEntry> getReplicationMetadataSchemas(String clusterName, String storeName) {
     checkControllerLeadershipFor(clusterName);
     ReadWriteSchemaRepository schemaRepo = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
     return schemaRepo.getReplicationMetadataSchemas(storeName);
@@ -4712,9 +4710,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       final int valueSchemaID,
       final int replicationMetadataVersionId) {
     checkControllerLeadershipFor(clusterName);
-    Collection<ReplicationMetadataSchemaEntry> schemaEntries =
+    Collection<RmdSchemaEntry> schemaEntries =
         getHelixVeniceClusterResources(clusterName).getSchemaRepository().getReplicationMetadataSchemas(storeName);
-    for (ReplicationMetadataSchemaEntry rmdSchemaEntry: schemaEntries) {
+    for (RmdSchemaEntry rmdSchemaEntry: schemaEntries) {
       if (rmdSchemaEntry.getValueSchemaID() == valueSchemaID
           && rmdSchemaEntry.getId() == replicationMetadataVersionId) {
         return true;
@@ -4727,13 +4725,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String clusterName,
       String storeName,
       int valueSchemaId,
-      ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry) {
+      RmdSchemaEntry rmdSchemaEntry) {
     checkControllerLeadershipFor(clusterName);
     try {
-      Collection<ReplicationMetadataSchemaEntry> schemaEntries =
+      Collection<RmdSchemaEntry> schemaEntries =
           getHelixVeniceClusterResources(clusterName).getSchemaRepository().getReplicationMetadataSchemas(storeName);
-      for (ReplicationMetadataSchemaEntry schemaEntry: schemaEntries) {
-        if (schemaEntry.equals(replicationMetadataSchemaEntry)) {
+      for (RmdSchemaEntry schemaEntry: schemaEntries) {
+        if (schemaEntry.equals(rmdSchemaEntry)) {
           return true;
         }
       }
@@ -4749,7 +4747,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @return <code>ReplicationMetadataSchemaEntry</code> object reference.
    */
   @Override
-  public ReplicationMetadataSchemaEntry addReplicationMetadataSchema(
+  public RmdSchemaEntry addReplicationMetadataSchema(
       String clusterName,
       String storeName,
       int valueSchemaId,
@@ -4757,14 +4755,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String replicationMetadataSchemaStr) {
     checkControllerLeadershipFor(clusterName);
 
-    ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry =
-        new ReplicationMetadataSchemaEntry(valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
-    if (checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, valueSchemaId, replicationMetadataSchemaEntry)) {
+    RmdSchemaEntry rmdSchemaEntry =
+        new RmdSchemaEntry(valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
+    if (checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, valueSchemaId, rmdSchemaEntry)) {
       logger.info(
           "Timestamp metadata schema Already present: for store:" + storeName + " in cluster:" + clusterName
               + " metadataSchema:" + replicationMetadataSchemaStr + " replicationMetadataVersionId:"
               + replicationMetadataVersionId + " valueSchemaId:" + valueSchemaId);
-      return replicationMetadataSchemaEntry;
+      return rmdSchemaEntry;
     }
 
     return getHelixVeniceClusterResources(clusterName).getSchemaRepository()

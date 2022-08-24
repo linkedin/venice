@@ -1,14 +1,14 @@
 package com.linkedin.venice.schema.writecompute;
 
-import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
+import static com.linkedin.venice.schema.rmd.RmdConstants.*;
 
 import com.linkedin.venice.schema.SchemaUtils;
 import com.linkedin.venice.schema.merge.AvroCollectionElementComparator;
 import com.linkedin.venice.schema.merge.CollectionFieldOperationHandler;
 import com.linkedin.venice.schema.merge.MergeRecordHelper;
 import com.linkedin.venice.schema.merge.SortBasedCollectionFieldOpHandler;
-import com.linkedin.venice.schema.merge.ValueAndReplicationMetadata;
-import com.linkedin.venice.schema.rmd.v1.CollectionReplicationMetadata;
+import com.linkedin.venice.schema.merge.ValueAndRmd;
+import com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp;
 import com.linkedin.venice.utils.IndexedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,9 +36,9 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
   /**
    * Handle partial update request on a value record that has associated replication metadata.
    */
-  public ValueAndReplicationMetadata<GenericRecord> updateRecordWithRmd(
+  public ValueAndRmd<GenericRecord> updateRecordWithRmd(
       @Nonnull Schema currValueSchema,
-      @Nonnull ValueAndReplicationMetadata<GenericRecord> currRecordAndRmd,
+      @Nonnull ValueAndRmd<GenericRecord> currRecordAndRmd,
       @Nonnull GenericRecord writeComputeRecord,
       final long updateOperationTimestamp,
       final int coloID) {
@@ -53,13 +53,13 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
 
     // TODO: RMD could be null or not have per-field timestamp. Caller of this method will handle these cases and ensure
     // that RMD here does have per-field timestamp.
-    Object timestampObject = currRecordAndRmd.getReplicationMetadata().get(TIMESTAMP_FIELD_NAME);
+    Object timestampObject = currRecordAndRmd.getRmd().get(TIMESTAMP_FIELD_NAME);
     if (!(timestampObject instanceof GenericRecord)) {
       throw new IllegalStateException(
           String.format(
               "Expect the %s field to have a generic record. Got replication metadata: %s",
               TIMESTAMP_FIELD_NAME,
-              currRecordAndRmd.getReplicationMetadata()));
+              currRecordAndRmd.getRmd()));
     }
 
     final GenericRecord timestampRecord = (GenericRecord) timestampObject;
@@ -123,7 +123,7 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
 
       collectionFieldOperationHandler.handleModifyList(
           modifyTimestamp,
-          new CollectionReplicationMetadata(fieldTimestampRecord),
+          new CollectionRmdTimestamp(fieldTimestampRecord),
           currValueRecord,
           fieldName,
           (List<Object>) fieldWriteComputeRecord.get(WriteComputeConstants.SET_UNION),
@@ -137,7 +137,7 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
 
       collectionFieldOperationHandler.handleModifyMap(
           modifyTimestamp,
-          new CollectionReplicationMetadata(fieldTimestampRecord),
+          new CollectionRmdTimestamp(fieldTimestampRecord),
           currValueRecord,
           fieldName,
           (Map<String, Object>) fieldWriteComputeRecord.get(WriteComputeConstants.MAP_UNION),

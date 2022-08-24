@@ -1,15 +1,15 @@
 package com.linkedin.davinci.replication.merge;
 
-import static com.linkedin.venice.schema.rmd.v1.CollectionReplicationMetadata.*;
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.*;
 import static org.mockito.Mockito.*;
 
-import com.linkedin.davinci.replication.ReplicationMetadataWithValueSchemaId;
+import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.serialization.avro.MapOrderingPreservingSerDeFactory;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaUtils;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataConstants;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdConstants;
+import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -42,8 +42,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
         MapOrderingPreservingSerDeFactory.getSerializer(writeComputeSchema).serialize(updateFieldWriteComputeRecord));
     final long valueLevelTimestamp = 10L;
     GenericRecord rmdRecord = createRmdWithValueLevelTimestamp(personRmdSchemaV1, valueLevelTimestamp);
-    ReplicationMetadataWithValueSchemaId rmdWithValueSchemaId =
-        new ReplicationMetadataWithValueSchemaId(oldValueSchemaId, RMD_VERSION_ID, rmdRecord);
+    RmdWithValueSchemaId rmdWithValueSchemaId = new RmdWithValueSchemaId(oldValueSchemaId, RMD_VERSION_ID, rmdRecord);
     ReadOnlySchemaRepository readOnlySchemaRepository = mock(ReadOnlySchemaRepository.class);
     doReturn(new DerivedSchemaEntry(incomingValueSchemaId, 1, writeComputeSchema)).when(readOnlySchemaRepository)
         .getDerivedSchema(storeName, incomingValueSchemaId, incomingWriteComputeSchemaId);
@@ -54,7 +53,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
             readOnlySchemaRepository,
-            new ReplicationMetadataSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
+            new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
             storeName);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> null),
@@ -68,7 +67,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
         1);
     Assert.assertEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
     Assert.assertTrue(
-        ((List<?>) rmdRecord.get(ReplicationMetadataConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD)).isEmpty(),
+        ((List<?>) rmdRecord.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD)).isEmpty(),
         "When the Update request is ignored, replication_checkpoint_vector should stay the same (empty).");
   }
 
@@ -96,8 +95,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
         MapOrderingPreservingSerDeFactory.getSerializer(writeComputeSchema).serialize(updateFieldWriteComputeRecord));
     final long valueLevelTimestamp = 10L;
     GenericRecord rmdRecord = createRmdWithValueLevelTimestamp(personRmdSchemaV1, valueLevelTimestamp);
-    ReplicationMetadataWithValueSchemaId rmdWithValueSchemaId =
-        new ReplicationMetadataWithValueSchemaId(oldValueSchemaId, RMD_VERSION_ID, rmdRecord);
+    RmdWithValueSchemaId rmdWithValueSchemaId = new RmdWithValueSchemaId(oldValueSchemaId, RMD_VERSION_ID, rmdRecord);
     ReadOnlySchemaRepository readOnlySchemaRepository = mock(ReadOnlySchemaRepository.class);
     doReturn(new DerivedSchemaEntry(incomingValueSchemaId, 1, writeComputeSchema)).when(readOnlySchemaRepository)
         .getDerivedSchema(storeName, incomingValueSchemaId, incomingWriteComputeSchemaId);
@@ -108,7 +106,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
             readOnlySchemaRepository,
-            new ReplicationMetadataSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
+            new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
             storeName);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> null),
@@ -122,7 +120,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
         1);
     Assert.assertEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
     Assert.assertTrue(
-        ((List<?>) rmdRecord.get(ReplicationMetadataConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD)).isEmpty(),
+        ((List<?>) rmdRecord.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD)).isEmpty(),
         "When the Update request is ignored, replication_checkpoint_vector should stay the same (empty).");
   }
 
@@ -160,8 +158,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
     // Set up current replication metadata.
     final long valueLevelTimestamp = 10L;
     GenericRecord rmdRecord = createRmdWithValueLevelTimestamp(personRmdSchemaV1, valueLevelTimestamp);
-    ReplicationMetadataWithValueSchemaId rmdWithValueSchemaId =
-        new ReplicationMetadataWithValueSchemaId(oldValueSchemaId, RMD_VERSION_ID, rmdRecord);
+    RmdWithValueSchemaId rmdWithValueSchemaId = new RmdWithValueSchemaId(oldValueSchemaId, RMD_VERSION_ID, rmdRecord);
     ReadOnlySchemaRepository readOnlySchemaRepository = mock(ReadOnlySchemaRepository.class);
     doReturn(new DerivedSchemaEntry(incomingValueSchemaId, 1, writeComputeSchema)).when(readOnlySchemaRepository)
         .getDerivedSchema(storeName, incomingValueSchemaId, incomingWriteComputeSchemaId);
@@ -172,7 +169,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
             readOnlySchemaRepository,
-            new ReplicationMetadataSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
+            new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
             storeName);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> oldValueBytes),
@@ -187,12 +184,12 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
 
     // Validate updated replication metadata.
     Assert.assertNotEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
-    GenericRecord updatedRmd = mergeConflictResult.getReplicationMetadataRecord();
+    GenericRecord updatedRmd = mergeConflictResult.getRmdRecord();
     Assert.assertEquals(
-        (List<?>) updatedRmd.get(ReplicationMetadataConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD),
+        (List<?>) updatedRmd.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD),
         Arrays.asList(0L, 1L));
 
-    GenericRecord rmdTimestamp = (GenericRecord) updatedRmd.get(ReplicationMetadataConstants.TIMESTAMP_FIELD_NAME);
+    GenericRecord rmdTimestamp = (GenericRecord) updatedRmd.get(RmdConstants.TIMESTAMP_FIELD_NAME);
     Assert.assertEquals(rmdTimestamp.get("age"), 11L);
     Assert.assertEquals(rmdTimestamp.get("name"), 11L);
     GenericRecord collectionFieldTimestampRecord = (GenericRecord) rmdTimestamp.get("intArray");
@@ -271,8 +268,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
     // Set up current replication metadata.
     final long valueLevelTimestamp = 10L;
     GenericRecord rmdRecord = createRmdWithValueLevelTimestamp(personRmdSchemaV1, valueLevelTimestamp);
-    ReplicationMetadataWithValueSchemaId rmdWithValueSchemaId =
-        new ReplicationMetadataWithValueSchemaId(oldValueSchemaId, RMD_VERSION_ID, rmdRecord);
+    RmdWithValueSchemaId rmdWithValueSchemaId = new RmdWithValueSchemaId(oldValueSchemaId, RMD_VERSION_ID, rmdRecord);
     ReadOnlySchemaRepository readOnlySchemaRepository = mock(ReadOnlySchemaRepository.class);
     doReturn(new DerivedSchemaEntry(incomingValueSchemaId, 1, writeComputeSchema)).when(readOnlySchemaRepository)
         .getDerivedSchema(storeName, incomingValueSchemaId, incomingWriteComputeSchemaId);
@@ -283,7 +279,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
             readOnlySchemaRepository,
-            new ReplicationMetadataSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
+            new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
             storeName);
 
     final int newColoID = 3;
@@ -300,12 +296,12 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
 
     // Validate updated replication metadata.
     Assert.assertNotEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
-    GenericRecord updatedRmd = mergeConflictResult.getReplicationMetadataRecord();
+    GenericRecord updatedRmd = mergeConflictResult.getRmdRecord();
     Assert.assertEquals(
-        (List<?>) updatedRmd.get(ReplicationMetadataConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD),
+        (List<?>) updatedRmd.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD),
         Arrays.asList(0L, 1L));
 
-    GenericRecord rmdTimestamp = (GenericRecord) updatedRmd.get(ReplicationMetadataConstants.TIMESTAMP_FIELD_NAME);
+    GenericRecord rmdTimestamp = (GenericRecord) updatedRmd.get(RmdConstants.TIMESTAMP_FIELD_NAME);
     Assert.assertEquals(rmdTimestamp.get("age"), 11L);
     Assert.assertEquals(rmdTimestamp.get("name"), 11L);
     GenericRecord collectionFieldTimestampRecord = (GenericRecord) rmdTimestamp.get("intArray");
@@ -390,8 +386,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
     // Set up current replication metadata.
     final long valueLevelTimestamp = 10L;
     GenericRecord rmdRecord = createRmdWithValueLevelTimestamp(personRmdSchemaV1, valueLevelTimestamp);
-    ReplicationMetadataWithValueSchemaId rmdWithValueSchemaId =
-        new ReplicationMetadataWithValueSchemaId(oldValueSchemaId, RMD_VERSION_ID, rmdRecord);
+    RmdWithValueSchemaId rmdWithValueSchemaId = new RmdWithValueSchemaId(oldValueSchemaId, RMD_VERSION_ID, rmdRecord);
     ReadOnlySchemaRepository readOnlySchemaRepository = mock(ReadOnlySchemaRepository.class);
     doReturn(new DerivedSchemaEntry(incomingValueSchemaId, 1, writeComputeSchema)).when(readOnlySchemaRepository)
         .getDerivedSchema(storeName, incomingValueSchemaId, incomingWriteComputeSchemaId);
@@ -403,13 +398,12 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
         .getValueSchema(storeName, supersetValueSchemaId);
     doReturn(Optional.of(new SchemaEntry(supersetValueSchemaId, personSchemaV3))).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
-    doReturn(new ReplicationMetadataSchemaEntry(oldValueSchemaId, RMD_VERSION_ID, personRmdSchemaV1))
-        .when(readOnlySchemaRepository)
+    doReturn(new RmdSchemaEntry(oldValueSchemaId, RMD_VERSION_ID, personRmdSchemaV1)).when(readOnlySchemaRepository)
         .getReplicationMetadataSchema(storeName, oldValueSchemaId, RMD_VERSION_ID);
-    doReturn(new ReplicationMetadataSchemaEntry(incomingValueSchemaId, RMD_VERSION_ID, personRmdSchemaV2))
+    doReturn(new RmdSchemaEntry(incomingValueSchemaId, RMD_VERSION_ID, personRmdSchemaV2))
         .when(readOnlySchemaRepository)
         .getReplicationMetadataSchema(storeName, incomingValueSchemaId, RMD_VERSION_ID);
-    doReturn(new ReplicationMetadataSchemaEntry(supersetValueSchemaId, RMD_VERSION_ID, personRmdSchemaV3))
+    doReturn(new RmdSchemaEntry(supersetValueSchemaId, RMD_VERSION_ID, personRmdSchemaV3))
         .when(readOnlySchemaRepository)
         .getReplicationMetadataSchema(storeName, supersetValueSchemaId, RMD_VERSION_ID);
 
@@ -417,7 +411,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
             readOnlySchemaRepository,
-            new ReplicationMetadataSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
+            new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
             storeName);
     final int newValueColoID = 3;
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
@@ -433,12 +427,12 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
 
     // Validate updated replication metadata.
     Assert.assertNotEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
-    GenericRecord updatedRmd = mergeConflictResult.getReplicationMetadataRecord();
+    GenericRecord updatedRmd = mergeConflictResult.getRmdRecord();
     Assert.assertEquals(
-        (List<?>) updatedRmd.get(ReplicationMetadataConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD),
+        (List<?>) updatedRmd.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD),
         Arrays.asList(0L, 1L));
 
-    GenericRecord rmdTimestamp = (GenericRecord) updatedRmd.get(ReplicationMetadataConstants.TIMESTAMP_FIELD_NAME);
+    GenericRecord rmdTimestamp = (GenericRecord) updatedRmd.get(RmdConstants.TIMESTAMP_FIELD_NAME);
     Assert.assertEquals(rmdTimestamp.get("age"), 11L);
     Assert.assertEquals(rmdTimestamp.get("name"), 11L);
     Assert.assertEquals(rmdTimestamp.get("favoritePet"), 11L);
@@ -546,8 +540,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
     // Set up current replication metadata.
     final long valueLevelTimestamp = 10L;
     GenericRecord rmdRecord = createRmdWithValueLevelTimestamp(personRmdSchemaV1, valueLevelTimestamp);
-    ReplicationMetadataWithValueSchemaId rmdWithValueSchemaId =
-        new ReplicationMetadataWithValueSchemaId(oldValueSchemaId, RMD_VERSION_ID, rmdRecord);
+    RmdWithValueSchemaId rmdWithValueSchemaId = new RmdWithValueSchemaId(oldValueSchemaId, RMD_VERSION_ID, rmdRecord);
     ReadOnlySchemaRepository readOnlySchemaRepository = mock(ReadOnlySchemaRepository.class);
     doReturn(new DerivedSchemaEntry(incomingValueSchemaId, 1, writeComputeSchema)).when(readOnlySchemaRepository)
         .getDerivedSchema(storeName, incomingValueSchemaId, incomingWriteComputeSchemaId);
@@ -559,13 +552,12 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
         .getValueSchema(storeName, supersetValueSchemaId);
     doReturn(Optional.of(new SchemaEntry(supersetValueSchemaId, personSchemaV3))).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
-    doReturn(new ReplicationMetadataSchemaEntry(oldValueSchemaId, RMD_VERSION_ID, personRmdSchemaV1))
-        .when(readOnlySchemaRepository)
+    doReturn(new RmdSchemaEntry(oldValueSchemaId, RMD_VERSION_ID, personRmdSchemaV1)).when(readOnlySchemaRepository)
         .getReplicationMetadataSchema(storeName, oldValueSchemaId, RMD_VERSION_ID);
-    doReturn(new ReplicationMetadataSchemaEntry(incomingValueSchemaId, RMD_VERSION_ID, personRmdSchemaV2))
+    doReturn(new RmdSchemaEntry(incomingValueSchemaId, RMD_VERSION_ID, personRmdSchemaV2))
         .when(readOnlySchemaRepository)
         .getReplicationMetadataSchema(storeName, incomingValueSchemaId, RMD_VERSION_ID);
-    doReturn(new ReplicationMetadataSchemaEntry(supersetValueSchemaId, RMD_VERSION_ID, personRmdSchemaV3))
+    doReturn(new RmdSchemaEntry(supersetValueSchemaId, RMD_VERSION_ID, personRmdSchemaV3))
         .when(readOnlySchemaRepository)
         .getReplicationMetadataSchema(storeName, supersetValueSchemaId, RMD_VERSION_ID);
 
@@ -573,7 +565,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
             readOnlySchemaRepository,
-            new ReplicationMetadataSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
+            new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
             storeName);
     final int newValueColoID = 3;
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
@@ -589,12 +581,12 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
 
     // Validate updated replication metadata.
     Assert.assertNotEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
-    GenericRecord updatedRmd = mergeConflictResult.getReplicationMetadataRecord();
+    GenericRecord updatedRmd = mergeConflictResult.getRmdRecord();
     Assert.assertEquals(
-        (List<?>) updatedRmd.get(ReplicationMetadataConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD),
+        (List<?>) updatedRmd.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD),
         Arrays.asList(0L, 1L));
 
-    GenericRecord rmdTimestamp = (GenericRecord) updatedRmd.get(ReplicationMetadataConstants.TIMESTAMP_FIELD_NAME);
+    GenericRecord rmdTimestamp = (GenericRecord) updatedRmd.get(RmdConstants.TIMESTAMP_FIELD_NAME);
     Assert.assertEquals(rmdTimestamp.get("age"), 10L);
     Assert.assertEquals(rmdTimestamp.get("name"), 10L);
     Assert.assertEquals(rmdTimestamp.get("favoritePet"), 0L);

@@ -1,11 +1,11 @@
 package com.linkedin.davinci.replication.merge;
 
-import com.linkedin.davinci.replication.ReplicationMetadataWithValueSchemaId;
+import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.serialization.avro.MapOrderingPreservingSerDeFactory;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -27,14 +27,14 @@ import org.apache.commons.lang3.Validate;
  *  3. Get RMD schema given its value schema ID.
  */
 @Threadsafe
-public class ReplicationMetadataSerDe {
+public class RmdSerDe {
   private final String storeName;
   private final ReadOnlySchemaRepository schemaRepository;
   private final int rmdVersionId;
   private final Map<Integer, Schema> valueSchemaIdToRmdSchemaMap;
   private final Map<WriterReaderSchemaIDs, RecordDeserializer<GenericRecord>> schemaIdToDeserializerMap;
 
-  public ReplicationMetadataSerDe(ReadOnlySchemaRepository schemaRepository, String storeName, int rmdVersionId) {
+  public RmdSerDe(ReadOnlySchemaRepository schemaRepository, String storeName, int rmdVersionId) {
     this.schemaRepository = schemaRepository;
     this.storeName = storeName;
     this.rmdVersionId = rmdVersionId;
@@ -44,11 +44,10 @@ public class ReplicationMetadataSerDe {
 
   /**
    * @param valueSchemaIdPrependedBytes The raw bytes with value schema ID prepended.
-   * @return A {@link ReplicationMetadataWithValueSchemaId} object composed by extracting the value schema ID from the
+   * @return A {@link RmdWithValueSchemaId} object composed by extracting the value schema ID from the
    *    * header of the replication metadata.
    */
-  public ReplicationMetadataWithValueSchemaId deserializeValueSchemaIdPrependedRmdBytes(
-      byte[] valueSchemaIdPrependedBytes) {
+  public RmdWithValueSchemaId deserializeValueSchemaIdPrependedRmdBytes(byte[] valueSchemaIdPrependedBytes) {
     Validate.notNull(valueSchemaIdPrependedBytes);
     ByteBuffer rmdWithValueSchemaID = ByteBuffer.wrap(valueSchemaIdPrependedBytes);
     final int valueSchemaId = rmdWithValueSchemaID.getInt();
@@ -58,7 +57,7 @@ public class ReplicationMetadataSerDe {
             rmdWithValueSchemaID.position(),
             rmdWithValueSchemaID.remaining());
     GenericRecord rmdRecord = getRmdDeserializer(valueSchemaId, valueSchemaId).deserialize(binaryDecoder);
-    return new ReplicationMetadataWithValueSchemaId(valueSchemaId, rmdVersionId, rmdRecord);
+    return new RmdWithValueSchemaId(valueSchemaId, rmdVersionId, rmdRecord);
   }
 
   /**
@@ -70,34 +69,33 @@ public class ReplicationMetadataSerDe {
     return getRmdDeserializer(writerSchemaID, readerSchemaID).deserialize(rmdBytes);
   }
 
-  public ByteBuffer serializeRmdRecord(final int valueSchemaId, GenericRecord replicationMetadataRecord) {
-    byte[] replicationMetadataBytes =
-        getRmdSerializer(valueSchemaId).serialize(replicationMetadataRecord, AvroSerializer.REUSE.get());
-    return ByteBuffer.wrap(replicationMetadataBytes);
+  public ByteBuffer serializeRmdRecord(final int valueSchemaId, GenericRecord rmdRecord) {
+    byte[] rmdBytes = getRmdSerializer(valueSchemaId).serialize(rmdRecord, AvroSerializer.REUSE.get());
+    return ByteBuffer.wrap(rmdBytes);
   }
 
-  public Schema getReplicationMetadataSchema(final int valueSchemaId) {
+  public Schema getRmdSchema(final int valueSchemaId) {
     return valueSchemaIdToRmdSchemaMap.computeIfAbsent(valueSchemaId, id -> {
-      ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry =
+      RmdSchemaEntry rmdSchemaEntry =
           schemaRepository.getReplicationMetadataSchema(storeName, valueSchemaId, rmdVersionId);
-      if (replicationMetadataSchemaEntry == null) {
+      if (rmdSchemaEntry == null) {
         throw new VeniceException("Unable to fetch replication metadata schema from schema repository");
       }
-      return replicationMetadataSchemaEntry.getSchema();
+      return rmdSchemaEntry.getSchema();
     });
   }
 
   private RecordDeserializer<GenericRecord> getRmdDeserializer(final int writerSchemaID, final int readerSchemaID) {
     final WriterReaderSchemaIDs writerReaderSchemaIDs = new WriterReaderSchemaIDs(writerSchemaID, readerSchemaID);
     return schemaIdToDeserializerMap.computeIfAbsent(writerReaderSchemaIDs, schemaIDs -> {
-      Schema rmdWriterSchema = getReplicationMetadataSchema(schemaIDs.getWriterSchemaID());
-      Schema rmdReaderSchema = getReplicationMetadataSchema(schemaIDs.getReaderSchemaID());
+      Schema rmdWriterSchema = getRmdSchema(schemaIDs.getWriterSchemaID());
+      Schema rmdReaderSchema = getRmdSchema(schemaIDs.getReaderSchemaID());
       return MapOrderingPreservingSerDeFactory.getDeserializer(rmdWriterSchema, rmdReaderSchema);
     });
   }
 
   private RecordSerializer<GenericRecord> getRmdSerializer(int valueSchemaId) {
-    Schema replicationMetadataSchema = getReplicationMetadataSchema(valueSchemaId);
+    Schema replicationMetadataSchema = getRmdSchema(valueSchemaId);
     return MapOrderingPreservingSerDeFactory.getSerializer(replicationMetadataSchema);
   }
 

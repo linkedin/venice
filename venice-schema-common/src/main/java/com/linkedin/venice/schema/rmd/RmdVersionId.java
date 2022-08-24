@@ -1,10 +1,10 @@
 package com.linkedin.venice.schema.rmd;
 
-public class ReplicationMetadataVersionId {
+public class RmdVersionId {
   private final int valueSchemaID;
   private final int replicationMetadataProtocolVersion;
 
-  public ReplicationMetadataVersionId(int valueSchemaID, int replicationMetadataProtocolVersion) {
+  public RmdVersionId(int valueSchemaID, int replicationMetadataProtocolVersion) {
     this.valueSchemaID = valueSchemaID;
     this.replicationMetadataProtocolVersion = replicationMetadataProtocolVersion;
   }
@@ -33,7 +33,7 @@ public class ReplicationMetadataVersionId {
     if (o == null || getClass() != o.getClass())
       return false;
 
-    ReplicationMetadataVersionId that = (ReplicationMetadataVersionId) o;
+    RmdVersionId that = (RmdVersionId) o;
 
     if (valueSchemaID != that.valueSchemaID)
       return false;

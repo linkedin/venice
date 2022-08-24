@@ -1,6 +1,6 @@
 package com.linkedin.venice.schema.merge;
 
-import com.linkedin.venice.schema.rmd.v1.CollectionReplicationMetadata;
+import com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp;
 import com.linkedin.venice.utils.IndexedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,7 +25,7 @@ public abstract class CollectionFieldOperationHandler {
       final long putTimestamp,
       final int coloID,
       List<Object> newList,
-      CollectionReplicationMetadata<Object> collectionFieldRmd,
+      CollectionRmdTimestamp<Object> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName);
 
@@ -33,27 +33,27 @@ public abstract class CollectionFieldOperationHandler {
       final long putTimestamp,
       final int coloID,
       IndexedHashMap<String, Object> newMap,
-      CollectionReplicationMetadata<String> collectionFieldRmd,
+      CollectionRmdTimestamp<String> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName);
 
   public abstract UpdateResultStatus handleDeleteList(
       final long deleteTimestamp,
       final int coloID,
-      CollectionReplicationMetadata<Object> collectionFieldRmd,
+      CollectionRmdTimestamp<Object> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName);
 
   public abstract UpdateResultStatus handleDeleteMap(
       final long deleteTimestamp,
       final int coloID,
-      CollectionReplicationMetadata<String> collectionFieldRmd,
+      CollectionRmdTimestamp<String> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName);
 
   public abstract UpdateResultStatus handleModifyList(
       final long modifyTimestamp,
-      CollectionReplicationMetadata<Object> collectionFieldRmd,
+      CollectionRmdTimestamp<Object> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName,
       List<Object> newEntries,
@@ -61,7 +61,7 @@ public abstract class CollectionFieldOperationHandler {
 
   public abstract UpdateResultStatus handleModifyMap(
       final long modifyTimestamp,
-      CollectionReplicationMetadata<String> collectionFieldRmd,
+      CollectionRmdTimestamp<String> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName,
       Map<String, Object> newEntries,

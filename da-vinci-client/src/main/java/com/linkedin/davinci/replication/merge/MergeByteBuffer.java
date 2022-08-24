@@ -1,8 +1,8 @@
 package com.linkedin.davinci.replication.merge;
 
-import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
+import static com.linkedin.venice.schema.rmd.RmdConstants.*;
 
-import com.linkedin.venice.schema.merge.ValueAndReplicationMetadata;
+import com.linkedin.venice.schema.merge.ValueAndRmd;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import org.apache.avro.Schema;
@@ -15,21 +15,21 @@ import org.apache.avro.generic.GenericRecord;
  */
 public class MergeByteBuffer extends AbstractMerge<ByteBuffer> {
   @Override
-  public ValueAndReplicationMetadata<ByteBuffer> put(
-      ValueAndReplicationMetadata<ByteBuffer> oldValueAndReplicationMetadata,
+  public ValueAndRmd<ByteBuffer> put(
+      ValueAndRmd<ByteBuffer> oldValueAndRmd,
       ByteBuffer newValue,
       long putOperationTimestamp,
       int writeOperationColoID,
       long sourceOffsetOfNewValue,
       int newValueSourceBrokerID) {
-    final GenericRecord oldReplicationMetadata = oldValueAndReplicationMetadata.getReplicationMetadata();
+    final GenericRecord oldReplicationMetadata = oldValueAndRmd.getRmd();
     final Object tsObject = oldReplicationMetadata.get(TIMESTAMP_FIELD_NAME);
-    RmdTimestampType rmdTimestampType = MergeUtils.getReplicationMetadataType(tsObject);
+    RmdTimestampType rmdTimestampType = MergeUtils.getRmdTimestampType(tsObject);
 
     if (rmdTimestampType == RmdTimestampType.VALUE_LEVEL_TIMESTAMP) {
       return putWithRecordLevelTimestamp(
           (long) tsObject,
-          oldValueAndReplicationMetadata,
+          oldValueAndRmd,
           putOperationTimestamp,
           sourceOffsetOfNewValue,
           newValueSourceBrokerID,
@@ -40,30 +40,30 @@ public class MergeByteBuffer extends AbstractMerge<ByteBuffer> {
   }
 
   @Override
-  public ValueAndReplicationMetadata<ByteBuffer> delete(
-      ValueAndReplicationMetadata<ByteBuffer> oldValueAndReplicationMetadata,
+  public ValueAndRmd<ByteBuffer> delete(
+      ValueAndRmd<ByteBuffer> oldValueAndRmd,
       long deleteOperationTimestamp,
       int deleteOperationColoID,
       long newValueSourceOffset,
       int newValueSourceBrokerID) {
-    final GenericRecord oldReplicationMetadata = oldValueAndReplicationMetadata.getReplicationMetadata();
+    final GenericRecord oldReplicationMetadata = oldValueAndRmd.getRmd();
     final Object tsObject = oldReplicationMetadata.get(TIMESTAMP_FIELD_NAME);
-    RmdTimestampType rmdTimestampType = MergeUtils.getReplicationMetadataType(tsObject);
+    RmdTimestampType rmdTimestampType = MergeUtils.getRmdTimestampType(tsObject);
     if (rmdTimestampType == RmdTimestampType.VALUE_LEVEL_TIMESTAMP) {
       return deleteWithValueLevelTimestamp(
           (long) tsObject,
           deleteOperationTimestamp,
           newValueSourceOffset,
           newValueSourceBrokerID,
-          oldValueAndReplicationMetadata);
+          oldValueAndRmd);
     } else {
       throw new IllegalArgumentException("Only handle record-level timestamp. Got: " + rmdTimestampType);
     }
   }
 
   @Override
-  public ValueAndReplicationMetadata<ByteBuffer> update(
-      ValueAndReplicationMetadata<ByteBuffer> oldValueAndReplicationMetadata,
+  public ValueAndRmd<ByteBuffer> update(
+      ValueAndRmd<ByteBuffer> oldValueAndRmd,
       Lazy<GenericRecord> writeOperation,
       Schema currValueSchema,
       long updateOperationTimestamp,

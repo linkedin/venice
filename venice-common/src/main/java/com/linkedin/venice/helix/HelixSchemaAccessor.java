@@ -3,7 +3,7 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.meta.VeniceSerializer;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PathResourceRegistry;
@@ -40,7 +40,7 @@ public class HelixSchemaAccessor {
 
   private final ZkBaseDataAccessor<SchemaEntry> schemaAccessor;
   private final ZkBaseDataAccessor<DerivedSchemaEntry> derivedSchemaAccessor;
-  private final ZkBaseDataAccessor<ReplicationMetadataSchemaEntry> replicationMetadataSchemaAccessor;
+  private final ZkBaseDataAccessor<RmdSchemaEntry> replicationMetadataSchemaAccessor;
 
   // Venice cluster name
   private final String clusterName;
@@ -222,16 +222,14 @@ public class HelixSchemaAccessor {
     return getDerivedSchemaParentPath(storeName) + "/" + derivedSchemaIdPair;
   }
 
-  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(
-      String storeName,
-      String replicationMetadataVersionIdPair) {
+  public RmdSchemaEntry getReplicationMetadataSchema(String storeName, String replicationMetadataVersionIdPair) {
     return replicationMetadataSchemaAccessor.get(
         getReplicationMetadataSchemaPath(storeName, replicationMetadataVersionIdPair),
         null,
         AccessOption.PERSISTENT);
   }
 
-  public List<ReplicationMetadataSchemaEntry> getAllReplicationMetadataSchemas(String storeName) {
+  public List<RmdSchemaEntry> getAllReplicationMetadataSchemas(String storeName) {
     return HelixUtils.getChildren(
         replicationMetadataSchemaAccessor,
         getReplicationMetadataSchemaParentPath(storeName),
@@ -239,17 +237,15 @@ public class HelixSchemaAccessor {
         refreshIntervalForZkReconnectInMs);
   }
 
-  public void addReplicationMetadataSchema(
-      String storeName,
-      ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry) {
+  public void addReplicationMetadataSchema(String storeName, RmdSchemaEntry rmdSchemaEntry) {
     HelixUtils.create(
         replicationMetadataSchemaAccessor,
         getReplicationMetadataSchemaPath(
             storeName,
-            String.valueOf(replicationMetadataSchemaEntry.getValueSchemaID()),
-            String.valueOf(replicationMetadataSchemaEntry.getId())),
-        replicationMetadataSchemaEntry);
-    logger.info("Added replication metadata schema: " + replicationMetadataSchemaEntry + " for store: " + storeName);
+            String.valueOf(rmdSchemaEntry.getValueSchemaID()),
+            String.valueOf(rmdSchemaEntry.getId())),
+        rmdSchemaEntry);
+    logger.info("Added replication metadata schema: " + rmdSchemaEntry + " for store: " + storeName);
   }
 
   public void subscribeReplicationMetadataSchemaCreationChange(String storeName, IZkChildListener childListener) {

@@ -525,12 +525,12 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
-    public int getReplicationMetadataVersionId() {
-      return this.delegate.getReplicationMetadataVersionId();
+    public int getRmdVersionId() {
+      return this.delegate.getRmdVersionId();
     }
 
     @Override
-    public void setReplicationMetadataVersionId(int replicationMetadataVersionId) {
+    public void setRmdVersionId(int replicationMetadataVersionId) {
       throw new UnsupportedOperationException();
     }
 

@@ -1,6 +1,6 @@
 package com.linkedin.davinci.writecompute;
 
-import static com.linkedin.venice.schema.rmd.v1.CollectionReplicationMetadata.*;
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.*;
 
 import com.linkedin.venice.schema.SchemaUtils;
 import java.util.List;

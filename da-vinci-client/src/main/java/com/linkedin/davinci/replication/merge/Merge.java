@@ -1,7 +1,7 @@
 package com.linkedin.davinci.replication.merge;
 
 import com.linkedin.venice.annotation.Threadsafe;
-import com.linkedin.venice.schema.merge.ValueAndReplicationMetadata;
+import com.linkedin.venice.schema.merge.ValueAndRmd;
 import com.linkedin.venice.utils.lazy.Lazy;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -34,14 +34,14 @@ import org.apache.avro.generic.GenericRecord;
  * 3. In case of equal timestamps, the value of the field or of the element is compared to that of the old field
  *    or element in order to deterministically decide which one wins the conflict resolution.
  *
- * Note: all implementation must return the reference of the same {@link ValueAndReplicationMetadata} instance that was
- * passed in. The input {@link ValueAndReplicationMetadata} object may be mutated or replaced its inner variables. As such,
+ * Note: all implementation must return the reference of the same {@link ValueAndRmd} instance that was
+ * passed in. The input {@link ValueAndRmd} object may be mutated or replaced its inner variables. As such,
  * a caller of this function should not expect the passed in parameter to remain unchanged.
  */
 @Threadsafe
 public interface Merge<T> {
   /**
-   * @param oldValueAndReplicationMetadata the old value and replication metadata which are persisted in the server prior
+   * @param oldValueAndRmd the old value and replication metadata which are persisted in the server prior
    *                                       to the write operation. Note that some implementation(s) may require the old
    *                                       value to be non-null. Please refer to the Javadoc of specific implementation.
    * @param newValue a record with all fields populated and with one of the registered value schemas
@@ -52,12 +52,12 @@ public interface Merge<T> {
    * @param newValueSourceBrokerID The ID of the broker from which the new value originates.  ID's should correspond
    *                                 to the kafkaClusterUrlIdMap configured in the LeaderFollowerIngestionTask.  Used to build
    *                                 the ReplicationMetadata for the newly inserted record.
-   * @return the resulting {@link ValueAndReplicationMetadata} after merging the old one with the incoming write operation.
+   * @return the resulting {@link ValueAndRmd} after merging the old one with the incoming write operation.
    *         The returned object is guaranteed to be "==" to the input oldValueAndReplicationMetadata object and the internal
    *         members of the object are possibly mutated.
    */
-  ValueAndReplicationMetadata<T> put(
-      ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata,
+  ValueAndRmd<T> put(
+      ValueAndRmd<T> oldValueAndRmd,
       T newValue,
       long putOperationTimestamp,
       int putOperationColoID,
@@ -65,26 +65,26 @@ public interface Merge<T> {
       int newValueSourceBrokerID);
 
   /**
-   * @param oldValueAndReplicationMetadata the old value and replication metadata which are persisted in the server prior to the write operation
+   * @param oldValueAndRmd the old value and replication metadata which are persisted in the server prior to the write operation
    * @param newValueSourceOffset The offset from which the new value originates in the realtime stream.  Used to build
    *                               the ReplicationMetadata for the newly inserted record.
    * @param deleteOperationColoID ID of the colo/fabric where this DELETE request was originally received.
    * @param newValueSourceBrokerID The ID of the broker from which the new value originates.  ID's should correspond
    *                                 to the kafkaClusterUrlIdMap configured in the LeaderFollowerIngestionTask.  Used to build
    *                                 the ReplicationMetadata for the newly inserted record.
-   * @return the resulting {@link ValueAndReplicationMetadata} after merging the old one with the incoming delete operation.
+   * @return the resulting {@link ValueAndRmd} after merging the old one with the incoming delete operation.
    *         The returned object is guaranteed to be "==" to the input oldValueAndReplicationMetadata object and the internal
    *         members of the object are possibly mutated.
    */
-  ValueAndReplicationMetadata<T> delete(
-      ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata,
+  ValueAndRmd<T> delete(
+      ValueAndRmd<T> oldValueAndRmd,
       long deleteOperationTimestamp,
       int deleteOperationColoID,
       long newValueSourceOffset,
       int newValueSourceBrokerID);
 
   /**
-   * @param oldValueAndReplicationMetadata the old value and replication metadata which are persisted in the server prior to the write operation
+   * @param oldValueAndRmd the old value and replication metadata which are persisted in the server prior to the write operation
    * @param writeOperation a record with a write compute schema
    * @param currValueSchema Schema of the current value that is to-be-updated here.
    * @param writeComputeSchema Schema used to generate the write compute record. This schema could be a union and that is
@@ -96,12 +96,12 @@ public interface Merge<T> {
    * @param newValueSourceBrokerID The ID of the broker from which the new value originates.  ID's should correspond
    *                                 to the kafkaClusterUrlIdMap configured in the LeaderFollowerIngestionTask.  Used to build
    *                                 the ReplicationMetadata for the newly inserted record.
-   * @return the resulting {@link ValueAndReplicationMetadata} after merging the old one with the incoming write operation.
+   * @return the resulting {@link ValueAndRmd} after merging the old one with the incoming write operation.
    *         The returned object is guaranteed to be "==" to the input oldValueAndReplicationMetadata object and the internal
    *         members of the object are possibly mutated.
    */
-  ValueAndReplicationMetadata<T> update(
-      ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata,
+  ValueAndRmd<T> update(
+      ValueAndRmd<T> oldValueAndRmd,
       Lazy<GenericRecord> writeOperation,
       Schema currValueSchema,
       long updateOperationTimestamp,

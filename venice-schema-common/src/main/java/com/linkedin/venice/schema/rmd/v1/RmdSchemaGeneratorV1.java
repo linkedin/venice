@@ -1,6 +1,6 @@
 package com.linkedin.venice.schema.rmd.v1;
 
-import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
+import static com.linkedin.venice.schema.rmd.RmdConstants.*;
 import static org.apache.avro.Schema.Type.*;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -28,13 +28,13 @@ import org.apache.avro.Schema;
  * Currently nested fields are not supported.
  */
 
-public class ReplicationMetadataSchemaGeneratorV1 {
+public class RmdSchemaGeneratorV1 {
   protected static final String METADATA_RECORD_SUFFIX = "MetadataRecord";
   protected static final String NAME_SPACE = "com.linkedin.venice";
   public static final Schema LONG_TYPE_TIMESTAMP_SCHEMA = Schema.create(LONG);
   protected static final Schema OFFSET_VECTOR_SCHEMA = Schema.createArray(Schema.create(LONG));
 
-  public ReplicationMetadataSchemaGeneratorV1() {
+  public RmdSchemaGeneratorV1() {
   }
 
   public Schema generateMetadataSchema(String valueSchemaStr) {

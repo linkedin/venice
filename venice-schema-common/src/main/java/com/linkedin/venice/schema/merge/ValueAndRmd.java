@@ -9,16 +9,16 @@ import org.apache.commons.lang.Validate;
 /**
  * This class holds a value of type {@param T} and its corresponding replication metadata.
  */
-public class ValueAndReplicationMetadata<T> {
+public class ValueAndRmd<T> {
   private Lazy<T> value;
-  private GenericRecord replicationMetadata;
+  private GenericRecord rmd;
   private boolean updateIgnored; // Whether we should skip the incoming message since it could be a stale message.
   private int valueSchemaID;
 
-  public ValueAndReplicationMetadata(Lazy<T> value, @Nonnull GenericRecord replicationMetadata) {
-    Validate.notNull(replicationMetadata);
+  public ValueAndRmd(Lazy<T> value, @Nonnull GenericRecord rmd) {
+    Validate.notNull(rmd);
     this.value = value;
-    this.replicationMetadata = replicationMetadata;
+    this.rmd = rmd;
     this.valueSchemaID = -1;
   }
 
@@ -30,12 +30,12 @@ public class ValueAndReplicationMetadata<T> {
     this.value = Lazy.of(() -> value);
   }
 
-  public GenericRecord getReplicationMetadata() {
-    return replicationMetadata;
+  public GenericRecord getRmd() {
+    return rmd;
   }
 
-  public void setReplicationMetadata(GenericRecord replicationMetadata) {
-    this.replicationMetadata = replicationMetadata;
+  public void setRmd(GenericRecord rmd) {
+    this.rmd = rmd;
   }
 
   public void setUpdateIgnored(boolean updateIgnored) {

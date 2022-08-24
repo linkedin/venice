@@ -1,6 +1,6 @@
 package com.linkedin.venice.schema.rmd.v1;
 
-import static com.linkedin.venice.schema.rmd.v1.ReplicationMetadataSchemaGeneratorV1.*;
+import static com.linkedin.venice.schema.rmd.v1.RmdSchemaGeneratorV1.*;
 import static org.apache.avro.Schema.Type.*;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -107,7 +107,7 @@ class RecordMetadataSchemaBuilder {
   private Schema generateSchemaForMapField(Schema.Field mapField, String namespace) {
     return normalizedSchemaToMetadataSchemaMap.computeIfAbsent(
         SchemaNormalization.toParsingForm(mapField.schema()),
-        k -> CollectionReplicationMetadata.createCollectionTimeStampSchema(
+        k -> CollectionRmdTimestamp.createCollectionTimeStampSchema(
             constructCollectionMetadataFieldSchemaName(mapField),
             namespace,
             Schema.create(STRING) // Map key type is always STRING in Avro
@@ -117,7 +117,7 @@ class RecordMetadataSchemaBuilder {
   private Schema generateSchemaForArrayField(Schema.Field arrayField, String namespace) {
     return normalizedSchemaToMetadataSchemaMap.computeIfAbsent(
         SchemaNormalization.toParsingForm(arrayField.schema()),
-        k -> CollectionReplicationMetadata.createCollectionTimeStampSchema(
+        k -> CollectionRmdTimestamp.createCollectionTimeStampSchema(
             constructCollectionMetadataFieldSchemaName(arrayField),
             namespace,
             arrayField.schema().getElementType()));
