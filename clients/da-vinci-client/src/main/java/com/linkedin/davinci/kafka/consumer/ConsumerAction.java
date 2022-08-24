@@ -116,6 +116,10 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
 
   @Override
   public boolean equals(Object obj) {
+    if (this == obj) {
+      return true;
+    }
+
     if (obj == null || !(obj instanceof ConsumerAction)) {
       return false;
     }
