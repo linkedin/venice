@@ -361,7 +361,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       this.metaSystemStoreReplicaStatusNotifier = null;
     }
 
-    this.ingestionStats = new AggStoreIngestionStats(metricsRepository, serverConfig);
+    this.ingestionStats = new AggStoreIngestionStats(metricsRepository, serverConfig, topicNameToIngestionTaskMap);
     AggVersionedDIVStats versionedDIVStats = new AggVersionedDIVStats(metricsRepository, metadataRepo);
     this.versionedStorageIngestionStats =
         new AggVersionedStorageIngestionStats(metricsRepository, metadataRepo, serverConfig);
