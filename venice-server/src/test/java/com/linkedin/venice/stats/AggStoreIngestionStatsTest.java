@@ -10,6 +10,7 @@ import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
+import java.util.Collections;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterTest;
@@ -34,7 +35,7 @@ public class AggStoreIngestionStatsTest {
     metricsRepository.addReporter(reporter);
     VeniceServerConfig mockVeniceServerConfig = Mockito.mock(VeniceServerConfig.class);
     doReturn(Int2ObjectMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterIdToAliasMap();
-    aggStats = new AggStoreIngestionStats(metricsRepository, mockVeniceServerConfig);
+    aggStats = new AggStoreIngestionStats(metricsRepository, mockVeniceServerConfig, Collections.emptyMap());
     fooStats = aggStats.getStoreStats(STORE_FOO);
     barStats = aggStats.getStoreStats(STORE_BAR);
 

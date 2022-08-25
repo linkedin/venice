@@ -545,6 +545,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.purgeTransientRecordBuffer = purgeTransientRecordBuffer;
   }
 
+  public AbstractStorageEngine getStorageEngine() {
+    return storageEngine;
+  }
+
   public boolean isFutureVersion() {
     return versionedStorageIngestionStats.isFutureVersion(storeName, versionNumber);
   }

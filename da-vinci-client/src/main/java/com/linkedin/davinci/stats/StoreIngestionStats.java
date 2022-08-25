@@ -20,6 +20,8 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 
@@ -188,7 +190,8 @@ public class StoreIngestionStats extends AbstractVeniceStats {
       MetricsRepository metricsRepository,
       VeniceServerConfig serverConfig,
       String storeName,
-      StoreIngestionStats totalStats) {
+      StoreIngestionStats totalStats,
+      Map<String, StoreIngestionTask> ingestionTaskMap) {
     super(metricsRepository, storeName);
     // Stats which are total only:
 
@@ -290,6 +293,12 @@ public class StoreIngestionStats extends AbstractVeniceStats {
 
     this.diskQuotaSensor =
         registerSensor("global_store_disk_quota_allowed", new Gauge(() -> diskQuotaAllowedGauge), new Max());
+
+    registerSensor("disk_usage_in_bytes", new Gauge(() ->
+        ingestionTaskMap.values().stream().mapToLong(task -> task.getStorageEngine().getStoreSizeInBytes()).sum()));
+
+    registerSensor("rmd_disk_usage_in_bytes", new Gauge(() ->
+        ingestionTaskMap.values().stream().mapToLong(task -> task.getStorageEngine().getRMDSizeInBytes()).sum()));
 
     String keySizeSensorName = "record_key_size_in_bytes";
     this.keySizeSensor = registerSensor(
