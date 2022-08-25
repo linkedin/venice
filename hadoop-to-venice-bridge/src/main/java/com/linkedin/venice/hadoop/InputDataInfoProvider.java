@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop;
 
 import java.io.Closeable;
+import java.io.IOException;
 import org.apache.avro.Schema;
 
 
@@ -15,8 +16,13 @@ public interface InputDataInfoProvider extends Closeable {
     private final VenicePushJob.SchemaInfo schemaInfo;
     private final long inputFileDataSizeInBytes;
     private final boolean hasRecords;
+    private final long inputModificationTime;
 
-    InputDataInfo(VenicePushJob.SchemaInfo schemaInfo, long inputFileDataSizeInBytes, boolean hasRecords) {
+    InputDataInfo(
+        VenicePushJob.SchemaInfo schemaInfo,
+        long inputFileDataSizeInBytes,
+        boolean hasRecords,
+        long inputModificationTime) {
       if (inputFileDataSizeInBytes <= 0) {
         throw new IllegalArgumentException(
             "The input data file size is expected to be positive. Got: " + inputFileDataSizeInBytes);
@@ -24,6 +30,7 @@ public interface InputDataInfoProvider extends Closeable {
       this.schemaInfo = schemaInfo;
       this.inputFileDataSizeInBytes = inputFileDataSizeInBytes;
       this.hasRecords = hasRecords;
+      this.inputModificationTime = inputModificationTime;
     }
 
     public VenicePushJob.SchemaInfo getSchemaInfo() {
@@ -37,6 +44,10 @@ public interface InputDataInfoProvider extends Closeable {
     public boolean hasRecords() {
       return hasRecords;
     }
+
+    public long getInputModificationTime() {
+      return inputModificationTime;
+    }
   }
 
   InputDataInfo validateInputAndGetInfo(String inputUri) throws Exception;
@@ -48,4 +59,6 @@ public interface InputDataInfoProvider extends Closeable {
   byte[] getZstdDictTrainSamples();
 
   Schema extractAvroSubSchema(Schema origin, String fieldName);
+
+  long getInputLastModificationTime(String inputUri) throws IOException;
 }

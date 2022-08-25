@@ -344,6 +344,7 @@ public class VenicePushJob implements AutoCloseable {
   private long inputFileDataSize;
   private String inputDirectory;
   private boolean inputFileHasRecords;
+  private long inputModificationTime;
   private long jobStartTimeMs;
   private Properties veniceWriterProperties;
   private JobClientWrapper jobClientWrapper;
@@ -462,7 +463,7 @@ public class VenicePushJob implements AutoCloseable {
     INITIALIZE_PUSH_JOB(0), NEW_VERSION_CREATED(1), START_MAP_REDUCE_JOB(2), MAP_REDUCE_JOB_COMPLETED(3),
     START_JOB_STATUS_POLLING(4), JOB_STATUS_POLLING_COMPLETED(5), QUOTA_EXCEEDED(-1), WRITE_ACL_FAILED(-2),
     DUP_KEY_WITH_DIFF_VALUE(-3), FILE_SCHEMA_VALIDATION_FAILED(-4), EXTENDED_FILE_SCHEMA_VALIDATION_FAILED(-5),
-    RECORD_TOO_LARGE_FAILED(-6), CONCURRENT_BATCH_PUSH(-7);
+    RECORD_TOO_LARGE_FAILED(-6), CONCURRENT_BATCH_PUSH(-7), DATASET_CHANGED(-8);
 
     private final int value;
 
@@ -925,6 +926,7 @@ public class VenicePushJob implements AutoCloseable {
         }
         inputFileDataSize = inputInfo.getInputFileDataSizeInBytes();
         inputFileHasRecords = inputInfo.hasRecords();
+        inputModificationTime = inputInfo.getInputModificationTime();
         validateKeySchema(controllerClient, pushJobSetting, schemaInfo);
         validateValueSchema(
             controllerClient,
@@ -1189,7 +1191,20 @@ public class VenicePushJob implements AutoCloseable {
 
   private void runJobAndUpdateStatus() throws IOException {
     updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_MAP_REDUCE_JOB);
-    runningJob = runJobWithConfig(jobConf);
+    try {
+      runningJob = runJobWithConfig(jobConf);
+    } catch (Exception e) {
+      if (!pushJobSetting.isSourceKafka) {
+        long lastModificationTime = getInputDataInfoProvider().getInputLastModificationTime(inputDirectory);
+        if (lastModificationTime > inputModificationTime) {
+          logger.error(
+              "Dataset changed during the push job. Please check above logs to see if the change caused the MapReduce"
+                  + " failure and rerun the job without dataset change.");
+          updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.DATASET_CHANGED);
+        }
+      }
+      throw e;
+    }
     validateCountersAfterPush();
     Optional<ErrorMessage> errorMessage = updatePushJobDetailsWithMRDetails();
     if (errorMessage.isPresent()) {

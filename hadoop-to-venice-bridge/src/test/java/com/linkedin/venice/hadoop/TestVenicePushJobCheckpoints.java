@@ -33,7 +33,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class TestVenicePushJobWithReporterCounters {
+public class TestVenicePushJobCheckpoints {
   private static final int PARTITION_COUNT = 10;
   private static final String SCHEMA_STR = "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   "
       + "  \"name\": \"User\",     " + "  \"fields\": [           "
@@ -116,7 +116,7 @@ public class TestVenicePushJobWithReporterCounters {
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.DUP_KEY_WITH_DIFF_VALUE),
+            VenicePushJob.PushJobCheckpoints.START_MAP_REDUCE_JOB),
         10L // Non-empty input data file
     );
   }
@@ -138,7 +138,10 @@ public class TestVenicePushJobWithReporterCounters {
             new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 0) // No reducers at all
                                                                                                // closed
         ),
-        Collections.emptyList(),
+        Arrays.asList(
+            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
+            VenicePushJob.PushJobCheckpoints.START_MAP_REDUCE_JOB),
         10L, // Non-empty input data file
         true);
   }
@@ -170,11 +173,11 @@ public class TestVenicePushJobWithReporterCounters {
   public void testInitInputDataInfoWithIllegalArguments() {
     VenicePushJob.SchemaInfo schemaInfo = new VenicePushJob.SchemaInfo();
     // Input file size cannot be zero.
-    new InputDataInfoProvider.InputDataInfo(schemaInfo, 0, false);
+    new InputDataInfoProvider.InputDataInfo(schemaInfo, 0, false, System.currentTimeMillis());
   }
 
   @Test(expectedExceptions = { VeniceException.class })
-  public void testHandleInsufficientClosedReducersFailure() throws Exception { // Successful workflow
+  public void testHandleInsufficientClosedReducersFailure() throws Exception {
     testHandleErrorsInCounter(
         Arrays.asList(
             new MockCounterInfo(MRJobCounterHelper.MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT_NAME, 1), // Spray all
@@ -197,8 +200,7 @@ public class TestVenicePushJobWithReporterCounters {
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
-            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED));
+            VenicePushJob.PushJobCheckpoints.START_MAP_REDUCE_JOB));
   }
 
   @Test
@@ -250,6 +252,23 @@ public class TestVenicePushJobWithReporterCounters {
             VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED));
   }
 
+  @Test(expectedExceptions = { VeniceException.class })
+  public void testHandleMRFailureAndDatasetChange() throws Exception {
+    JobClientWrapper jobClientWrapper = mock(JobClientWrapper.class);
+    when(jobClientWrapper.runJobWithConfig(any())).thenThrow(new IOException("Job failed!"));
+
+    InputDataInfoProvider inputDataInfoProvider = getInputDataInfoProviderMock(10L, true);
+    when(inputDataInfoProvider.getInputLastModificationTime(anyString())).thenReturn(System.currentTimeMillis() + 10L);
+
+    runJobAndAssertCheckpoints(
+        jobClientWrapper,
+        inputDataInfoProvider,
+        Arrays.asList(
+            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
+            VenicePushJob.PushJobCheckpoints.DATASET_CHANGED));
+  }
+
   private void testHandleErrorsInCounter(
       List<MockCounterInfo> mockCounterInfos,
       List<VenicePushJob.PushJobCheckpoints> expectedReportedCheckpoints) throws Exception {
@@ -272,32 +291,45 @@ public class TestVenicePushJobWithReporterCounters {
       List<VenicePushJob.PushJobCheckpoints> expectedReportedCheckpoints,
       long inputFileDataSizeInBytes,
       boolean inputFileHasRecords) throws Exception {
+    runJobAndAssertCheckpoints(
+        createJobClientWrapperMock(mockCounterInfos),
+        getInputDataInfoProviderMock(inputFileDataSizeInBytes, inputFileHasRecords),
+        expectedReportedCheckpoints);
+  }
+
+  private void runJobAndAssertCheckpoints(
+      JobClientWrapper jobClientWrapper,
+      InputDataInfoProvider inputDataInfoProvider,
+      List<VenicePushJob.PushJobCheckpoints> expectedReportedCheckpoints) {
     VenicePushJob venicePushJob = new VenicePushJob(
         "job-id",
         getH2VProps(),
         createControllerClientMock(),
         createClusterDiscoverControllerClient());
+
     venicePushJob.setSystemKMEStoreControllerClient(createControllerClientMock());
-
-    venicePushJob.setJobClientWrapper(createJobClientWrapperMock(mockCounterInfos));
+    venicePushJob.setJobClientWrapper(jobClientWrapper);
     venicePushJob.setClusterDiscoveryControllerClient(createClusterDiscoveryControllerClientMock());
-    venicePushJob.setInputDataInfoProvider(getInputDataInfoProviderMock(inputFileDataSizeInBytes, inputFileHasRecords));
+    venicePushJob.setInputDataInfoProvider(inputDataInfoProvider);
     venicePushJob.setVeniceWriter(createVeniceWriterMock());
-
     SentPushJobDetailsTrackerImpl pushJobDetailsTracker = new SentPushJobDetailsTrackerImpl();
     venicePushJob.setSentPushJobDetailsTracker(pushJobDetailsTracker);
-    venicePushJob.run();
-    List<Integer> actualReportedCheckpointValues =
-        new ArrayList<>(pushJobDetailsTracker.getRecordedPushJobDetails().size());
 
-    for (PushJobDetails pushJobDetails: pushJobDetailsTracker.getRecordedPushJobDetails()) {
-      actualReportedCheckpointValues.add(pushJobDetails.pushJobLatestCheckpoint);
+    try {
+      venicePushJob.run();
+    } finally {
+      List<Integer> actualReportedCheckpointValues =
+          new ArrayList<>(pushJobDetailsTracker.getRecordedPushJobDetails().size());
+
+      for (PushJobDetails pushJobDetails: pushJobDetailsTracker.getRecordedPushJobDetails()) {
+        actualReportedCheckpointValues.add(pushJobDetails.pushJobLatestCheckpoint);
+      }
+      List<Integer> expectedCheckpointValues = expectedReportedCheckpoints.stream()
+          .map(VenicePushJob.PushJobCheckpoints::getValue)
+          .collect(Collectors.toList());
+
+      Assert.assertEquals(actualReportedCheckpointValues, expectedCheckpointValues);
     }
-    List<Integer> expectedCheckpointValues = expectedReportedCheckpoints.stream()
-        .map(VenicePushJob.PushJobCheckpoints::getValue)
-        .collect(Collectors.toList());
-
-    Assert.assertEquals(actualReportedCheckpointValues, expectedCheckpointValues);
   }
 
   private Properties getH2VProps() {
@@ -327,8 +359,11 @@ public class TestVenicePushJobWithReporterCounters {
     schemaInfo.keyField = "key-field";
     schemaInfo.valueField = "value-field";
     schemaInfo.fileSchemaString = SIMPLE_FILE_SCHEMA_STR;
-    InputDataInfoProvider.InputDataInfo inputDataInfo =
-        new InputDataInfoProvider.InputDataInfo(schemaInfo, inputFileDataSizeInBytes, inputFileHasRecords);
+    InputDataInfoProvider.InputDataInfo inputDataInfo = new InputDataInfoProvider.InputDataInfo(
+        schemaInfo,
+        inputFileDataSizeInBytes,
+        inputFileHasRecords,
+        System.currentTimeMillis());
     when(inputDataInfoProvider.validateInputAndGetInfo(anyString())).thenReturn(inputDataInfo);
     return inputDataInfoProvider;
   }

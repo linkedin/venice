@@ -11,6 +11,8 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -87,8 +89,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
    */
   @Override
   public InputDataInfo validateInputAndGetInfo(String inputUri) throws Exception {
-    Configuration conf = new Configuration();
-    FileSystem fs = FileSystem.get(conf);
+    long inputModificationTime = getInputLastModificationTime(inputUri);
+    FileSystem fs = FileSystem.get(new Configuration());
     Path srcPath = new Path(inputUri);
     FileStatus[] fileStatuses = fs.listStatus(srcPath, PATH_FILTER);
 
@@ -155,7 +157,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     return new InputDataInfo(
         schemaInfo,
         inputFileDataSize.get() * INPUT_DATA_SIZE_FACTOR,
-        hasRecords(schemaInfo.isAvro, fs, fileStatuses));
+        hasRecords(schemaInfo.isAvro, fs, fileStatuses),
+        inputModificationTime);
   }
 
   private boolean hasRecords(boolean isAvroFile, FileSystem fs, FileStatus[] fileStatusList) {
@@ -335,6 +338,17 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     }
 
     return field.schema();
+  }
+
+  @Override
+  public long getInputLastModificationTime(String inputUri) throws IOException {
+    FileSystem fs = FileSystem.get(new Configuration());
+    Path srcPath = new Path(inputUri);
+    try {
+      return fs.getFileStatus(srcPath).getModificationTime();
+    } catch (FileNotFoundException e) {
+      throw new RuntimeException("No data found at source path: " + srcPath);
+    }
   }
 
   // Avro-based file composes key and value schema as a whole
