@@ -24,14 +24,13 @@ import org.apache.commons.lang.Validate;
 @NotThreadSafe
 public class CollectionRmdTimestamp<DELETED_ELEMENT_TYPE> {
   // Constants that are used to construct collection field's timestamp RECORD
-  public static final String COLLECTION_TOP_LEVEL_TS_FIELD_NAME = "topLevelFieldTimestamp";
-  public static final String COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME = "topLevelColoID";
-  public static final String COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME = "putOnlyPartLength";
-  public static final String COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME = "activeElementsTimestamps"; // Client readable
-                                                                                                // elements that haven't
-                                                                                                // been deleted yet.
-  public static final String COLLECTION_DELETED_ELEM_FIELD_NAME = "deletedElementsIdentities";
-  public static final String COLLECTION_DELETED_ELEM_TS_FIELD_NAME = "deletedElementsTimestamps";
+  public static final String TOP_LEVEL_TS_FIELD_NAME = "topLevelFieldTimestamp";
+  public static final String TOP_LEVEL_COLO_ID_FIELD_NAME = "topLevelColoID";
+  public static final String PUT_ONLY_PART_LENGTH_FIELD_NAME = "putOnlyPartLength";
+  public static final String ACTIVE_ELEM_TS_FIELD_NAME = "activeElementsTimestamps"; // Client readable elements that
+                                                                                     // haven't been deleted yet.
+  public static final String DELETED_ELEM_FIELD_NAME = "deletedElementsIdentities";
+  public static final String DELETED_ELEM_TS_FIELD_NAME = "deletedElementsTimestamps";
   public static final Schema COLLECTION_TS_ARRAY_SCHEMA = Schema.createArray(Schema.create(LONG));
 
   private final GenericRecord collectionRmdRecord;
@@ -63,51 +62,50 @@ public class CollectionRmdTimestamp<DELETED_ELEMENT_TYPE> {
 
   private static void validateCollectionReplicationMetadataRecord(GenericRecord collectionReplicationMetadata) {
     Validate.notNull(collectionReplicationMetadata);
-    if (!(collectionReplicationMetadata.get(COLLECTION_TOP_LEVEL_TS_FIELD_NAME) instanceof Long)) {
+    if (!(collectionReplicationMetadata.get(TOP_LEVEL_TS_FIELD_NAME) instanceof Long)) {
       throw new IllegalArgumentException(
           String.format(
               "Expect %s field to be Long type. Got record: %s",
-              COLLECTION_TOP_LEVEL_TS_FIELD_NAME,
+              TOP_LEVEL_TS_FIELD_NAME,
               collectionReplicationMetadata));
     }
-    if (!(collectionReplicationMetadata.get(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME) instanceof Integer)) {
+    if (!(collectionReplicationMetadata.get(PUT_ONLY_PART_LENGTH_FIELD_NAME) instanceof Integer)) {
       throw new IllegalArgumentException(
           String.format(
               "Expect %s field to be Long type. Got record: %s",
-              COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME,
+              PUT_ONLY_PART_LENGTH_FIELD_NAME,
               collectionReplicationMetadata));
     }
-    if (!(collectionReplicationMetadata.get(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME) instanceof Integer)) {
+    if (!(collectionReplicationMetadata.get(TOP_LEVEL_COLO_ID_FIELD_NAME) instanceof Integer)) {
       throw new IllegalArgumentException(
           String.format(
               "Expect %s field to be Long type. Got record: %s",
-              COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME,
+              TOP_LEVEL_COLO_ID_FIELD_NAME,
               collectionReplicationMetadata));
     }
-    if (!(collectionReplicationMetadata.get(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME) instanceof List)) {
+    if (!(collectionReplicationMetadata.get(ACTIVE_ELEM_TS_FIELD_NAME) instanceof List)) {
       throw new IllegalArgumentException(
           String.format(
               "Expect %s field to be List type. Got record: %s",
-              COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME,
+              ACTIVE_ELEM_TS_FIELD_NAME,
               collectionReplicationMetadata));
     }
-    if (!(collectionReplicationMetadata.get(COLLECTION_DELETED_ELEM_FIELD_NAME) instanceof List)) {
+    if (!(collectionReplicationMetadata.get(DELETED_ELEM_FIELD_NAME) instanceof List)) {
       throw new IllegalArgumentException(
           String.format(
               "Expect %s field to be List type. Got record: %s",
-              COLLECTION_DELETED_ELEM_FIELD_NAME,
+              DELETED_ELEM_FIELD_NAME,
               collectionReplicationMetadata));
     }
-    if (!(collectionReplicationMetadata.get(COLLECTION_DELETED_ELEM_TS_FIELD_NAME) instanceof List)) {
+    if (!(collectionReplicationMetadata.get(DELETED_ELEM_TS_FIELD_NAME) instanceof List)) {
       throw new IllegalArgumentException(
           String.format(
               "Expect %s field to be List type. Got record: %s",
-              COLLECTION_DELETED_ELEM_TS_FIELD_NAME,
+              DELETED_ELEM_TS_FIELD_NAME,
               collectionReplicationMetadata));
     }
-    List<?> deletedElements = (List<?>) collectionReplicationMetadata.get(COLLECTION_DELETED_ELEM_FIELD_NAME);
-    List<Long> deletedElementTimestamps =
-        (List<Long>) collectionReplicationMetadata.get(COLLECTION_DELETED_ELEM_TS_FIELD_NAME);
+    List<?> deletedElements = (List<?>) collectionReplicationMetadata.get(DELETED_ELEM_FIELD_NAME);
+    List<Long> deletedElementTimestamps = (List<Long>) collectionReplicationMetadata.get(DELETED_ELEM_TS_FIELD_NAME);
 
     if (deletedElements.size() != deletedElementTimestamps.size()) {
       throw new IllegalArgumentException(
@@ -117,15 +115,15 @@ public class CollectionRmdTimestamp<DELETED_ELEMENT_TYPE> {
   }
 
   public long getTopLevelFieldTimestamp() {
-    return (long) collectionRmdRecord.get(COLLECTION_TOP_LEVEL_TS_FIELD_NAME);
+    return (long) collectionRmdRecord.get(TOP_LEVEL_TS_FIELD_NAME);
   }
 
   public int getTopLevelColoID() {
-    return (int) collectionRmdRecord.get(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME);
+    return (int) collectionRmdRecord.get(TOP_LEVEL_COLO_ID_FIELD_NAME);
   }
 
   public int getPutOnlyPartLength() {
-    return (int) collectionRmdRecord.get(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME);
+    return (int) collectionRmdRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME);
   }
 
   public boolean isInPutOnlyState() {
@@ -133,7 +131,7 @@ public class CollectionRmdTimestamp<DELETED_ELEMENT_TYPE> {
   }
 
   public List<Long> getActiveElementTimestamps() {
-    return (List<Long>) collectionRmdRecord.get(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME);
+    return (List<Long>) collectionRmdRecord.get(ACTIVE_ELEM_TS_FIELD_NAME);
   }
 
   /**
@@ -182,28 +180,28 @@ public class CollectionRmdTimestamp<DELETED_ELEMENT_TYPE> {
   }
 
   public List<Long> getDeletedElementTimestamps() {
-    return (List<Long>) collectionRmdRecord.get(COLLECTION_DELETED_ELEM_TS_FIELD_NAME);
+    return (List<Long>) collectionRmdRecord.get(DELETED_ELEM_TS_FIELD_NAME);
   }
 
   public List<DELETED_ELEMENT_TYPE> getDeletedElements() {
-    return (List<DELETED_ELEMENT_TYPE>) collectionRmdRecord.get(COLLECTION_DELETED_ELEM_FIELD_NAME);
+    return (List<DELETED_ELEMENT_TYPE>) collectionRmdRecord.get(DELETED_ELEM_FIELD_NAME);
   }
 
   // Setters
   public void setTopLevelFieldTimestamp(long topLevelFieldTimestamp) {
-    collectionRmdRecord.put(COLLECTION_TOP_LEVEL_TS_FIELD_NAME, topLevelFieldTimestamp);
+    collectionRmdRecord.put(TOP_LEVEL_TS_FIELD_NAME, topLevelFieldTimestamp);
   }
 
   public void setTopLevelColoID(int topLevelColoID) {
-    collectionRmdRecord.put(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME, topLevelColoID);
+    collectionRmdRecord.put(TOP_LEVEL_COLO_ID_FIELD_NAME, topLevelColoID);
   }
 
   public void setPutOnlyPartLength(int putOnlyPartLength) {
-    collectionRmdRecord.put(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME, putOnlyPartLength);
+    collectionRmdRecord.put(PUT_ONLY_PART_LENGTH_FIELD_NAME, putOnlyPartLength);
   }
 
   public void setActiveElementTimestamps(List<Long> collectionActiveTimestamps) {
-    collectionRmdRecord.put(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME, collectionActiveTimestamps);
+    collectionRmdRecord.put(ACTIVE_ELEM_TS_FIELD_NAME, collectionActiveTimestamps);
   }
 
   public void setDeletedElementsAndTimestamps(
@@ -214,8 +212,8 @@ public class CollectionRmdTimestamp<DELETED_ELEMENT_TYPE> {
           "There must be the same number of deleted elements as deleted timestamps. " + "Got: " + deletedElements.size()
               + " deleted element(s) and deleted timestamps are: " + Arrays.toString(deletedElements.toArray()));
     }
-    collectionRmdRecord.put(COLLECTION_DELETED_ELEM_TS_FIELD_NAME, deletedTimestamps);
-    collectionRmdRecord.put(COLLECTION_DELETED_ELEM_FIELD_NAME, deletedElements);
+    collectionRmdRecord.put(DELETED_ELEM_TS_FIELD_NAME, deletedTimestamps);
+    collectionRmdRecord.put(DELETED_ELEM_FIELD_NAME, deletedElements);
     populateDeletedElementSet();
   }
 
@@ -248,14 +246,14 @@ public class CollectionRmdTimestamp<DELETED_ELEMENT_TYPE> {
 
   /**
    * Create a RECORD that keeps track of collection field's update metadata. There are 4 sub-fields here.
-   * {@link #COLLECTION_TOP_LEVEL_TS_FIELD_NAME} The top level timestamp. This field is updated when the whole
+   * {@link #TOP_LEVEL_TS_FIELD_NAME} The top level timestamp. This field is updated when the whole
    * collections is replaced/removed (via partial update)
-   * {@link #COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME} A timestamp array that holds the timestamps for each
+   * {@link #ACTIVE_ELEM_TS_FIELD_NAME} A timestamp array that holds the timestamps for each
    * elements in the collection.
-   * {@link #COLLECTION_DELETED_ELEM_FIELD_NAME} A tombstone array that holds deleted elements. If this collection is
+   * {@link #DELETED_ELEM_FIELD_NAME} A tombstone array that holds deleted elements. If this collection is
    * an ARRAY, the array will hold elements the same type as the original array. If this collection is a MAP, the
    * array will hold string elements (keys in the original map).
-   * {@link #COLLECTION_DELETED_ELEM_TS_FIELD_NAME} A timestamp array that holds the timestamps for each deleted element
+   * {@link #DELETED_ELEM_TS_FIELD_NAME} A timestamp array that holds the timestamps for each deleted element
    * in the tombstone array
    *
    * <pre>
@@ -325,7 +323,7 @@ public class CollectionRmdTimestamp<DELETED_ELEMENT_TYPE> {
    */
   public static Schema createCollectionTimeStampSchema(String metadataRecordName, String namespace, Schema elemSchema) {
     Schema.Field topLevelTSField = AvroCompatibilityHelper.newField(null)
-        .setName(COLLECTION_TOP_LEVEL_TS_FIELD_NAME)
+        .setName(TOP_LEVEL_TS_FIELD_NAME)
         .setSchema(RmdSchemaGeneratorV1.LONG_TYPE_TIMESTAMP_SCHEMA)
         .setDoc("Timestamp of the last partial update attempting to set every element of this collection.")
         .setDefault(0)
@@ -333,7 +331,7 @@ public class CollectionRmdTimestamp<DELETED_ELEMENT_TYPE> {
         .build();
 
     Schema.Field topLevelColoIdField = AvroCompatibilityHelper.newField(null)
-        .setName(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME)
+        .setName(TOP_LEVEL_COLO_ID_FIELD_NAME)
         .setSchema(Schema.create(INT))
         .setDoc("ID of the colo from which the last successfully applied partial update was sent.")
         .setDefault(-1)
@@ -341,7 +339,7 @@ public class CollectionRmdTimestamp<DELETED_ELEMENT_TYPE> {
         .build();
 
     Schema.Field putOnlyPartLengthField = AvroCompatibilityHelper.newField(null)
-        .setName(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME)
+        .setName(PUT_ONLY_PART_LENGTH_FIELD_NAME)
         .setSchema(Schema.create(INT))
         .setDoc("Length of the put-only part of the collection which starts from index 0.")
         .setDefault(0)
@@ -349,7 +347,7 @@ public class CollectionRmdTimestamp<DELETED_ELEMENT_TYPE> {
         .build();
 
     Schema.Field activeElemTSField = AvroCompatibilityHelper.newField(null)
-        .setName(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME)
+        .setName(ACTIVE_ELEM_TS_FIELD_NAME)
         .setSchema(COLLECTION_TS_ARRAY_SCHEMA)
         .setDoc(
             "Timestamps of each active element in the user's collection. This is a parallel array with the user's collection.")
@@ -358,7 +356,7 @@ public class CollectionRmdTimestamp<DELETED_ELEMENT_TYPE> {
         .build();
 
     Schema.Field deletedElemField = AvroCompatibilityHelper.newField(null)
-        .setName(COLLECTION_DELETED_ELEM_FIELD_NAME)
+        .setName(DELETED_ELEM_FIELD_NAME)
         .setSchema(Schema.createArray(elemSchema))
         .setDoc("The tombstone array of deleted elements. This is a parallel array with deletedElementsTimestamps")
         .setDefault(Collections.emptyList())
@@ -366,7 +364,7 @@ public class CollectionRmdTimestamp<DELETED_ELEMENT_TYPE> {
         .build();
 
     Schema.Field deletedElemTSField = AvroCompatibilityHelper.newField(null)
-        .setName(COLLECTION_DELETED_ELEM_TS_FIELD_NAME)
+        .setName(DELETED_ELEM_TS_FIELD_NAME)
         .setSchema(COLLECTION_TS_ARRAY_SCHEMA)
         .setDoc("Timestamps of each deleted element. This is a parallel array with deletedElementsIdentity.")
         .setDefault(Collections.emptyList())

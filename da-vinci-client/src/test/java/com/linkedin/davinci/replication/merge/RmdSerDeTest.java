@@ -107,16 +107,13 @@ public class RmdSerDeTest {
       List<Object> deletedElements,
       List<Long> deletedElementsTimestamps) {
     GenericRecord collectionFieldMetadataRecord = new GenericData.Record(collectionFieldMetadataSchema);
-    collectionFieldMetadataRecord.put(CollectionRmdTimestamp.COLLECTION_TOP_LEVEL_TS_FIELD_NAME, topLevelTimestamp);
-    collectionFieldMetadataRecord.put(CollectionRmdTimestamp.COLLECTION_TOP_LEVEL_TS_FIELD_NAME, topLevelTimestamp);
-    collectionFieldMetadataRecord.put(CollectionRmdTimestamp.COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME, topLevelColoID);
-    collectionFieldMetadataRecord
-        .put(CollectionRmdTimestamp.COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME, putOnlyPartLen);
-    collectionFieldMetadataRecord
-        .put(CollectionRmdTimestamp.COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME, activeElementsTimestamps);
-    collectionFieldMetadataRecord.put(CollectionRmdTimestamp.COLLECTION_DELETED_ELEM_FIELD_NAME, deletedElements);
-    collectionFieldMetadataRecord
-        .put(CollectionRmdTimestamp.COLLECTION_DELETED_ELEM_TS_FIELD_NAME, deletedElementsTimestamps);
+    collectionFieldMetadataRecord.put(CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME, topLevelTimestamp);
+    collectionFieldMetadataRecord.put(CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME, topLevelTimestamp);
+    collectionFieldMetadataRecord.put(CollectionRmdTimestamp.TOP_LEVEL_COLO_ID_FIELD_NAME, topLevelColoID);
+    collectionFieldMetadataRecord.put(CollectionRmdTimestamp.PUT_ONLY_PART_LENGTH_FIELD_NAME, putOnlyPartLen);
+    collectionFieldMetadataRecord.put(CollectionRmdTimestamp.ACTIVE_ELEM_TS_FIELD_NAME, activeElementsTimestamps);
+    collectionFieldMetadataRecord.put(CollectionRmdTimestamp.DELETED_ELEM_FIELD_NAME, deletedElements);
+    collectionFieldMetadataRecord.put(CollectionRmdTimestamp.DELETED_ELEM_TS_FIELD_NAME, deletedElementsTimestamps);
     return collectionFieldMetadataRecord;
   }
 }

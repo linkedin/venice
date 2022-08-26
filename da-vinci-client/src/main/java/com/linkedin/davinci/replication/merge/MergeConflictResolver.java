@@ -343,7 +343,7 @@ public class MergeConflictResolver {
     if (fieldTimestampObj instanceof Long) {
       oldFieldTimestamp = (Long) fieldTimestampObj;
     } else if (fieldTimestampObj instanceof GenericRecord) {
-      oldFieldTimestamp = (Long) ((GenericRecord) fieldTimestampObj).get(COLLECTION_TOP_LEVEL_TS_FIELD_NAME);
+      oldFieldTimestamp = (Long) ((GenericRecord) fieldTimestampObj).get(TOP_LEVEL_TS_FIELD_NAME);
     } else {
       throw new VeniceException(
           "Replication metadata field timestamp is expected to be either a long or a GenericRecord. " + "Got: "
@@ -637,11 +637,11 @@ public class MergeConflictResolver {
         case RECORD:
           GenericRecord collectionFieldTimestampRecord = SchemaUtils.createGenericRecord(field.schema());
           // Only need to set the top-level field timestamp on collection timestamp record.
-          collectionFieldTimestampRecord.put(COLLECTION_TOP_LEVEL_TS_FIELD_NAME, fieldTimestamp);
+          collectionFieldTimestampRecord.put(TOP_LEVEL_TS_FIELD_NAME, fieldTimestamp);
           // When a collection field metadata is created, its top-level colo ID is always -1.
-          collectionFieldTimestampRecord.put(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME, -1);
+          collectionFieldTimestampRecord.put(TOP_LEVEL_COLO_ID_FIELD_NAME, -1);
           collectionFieldTimestampRecord
-              .put(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME, getCollectionFieldLen(oldValueRecord, field.name()));
+              .put(PUT_ONLY_PART_LENGTH_FIELD_NAME, getCollectionFieldLen(oldValueRecord, field.name()));
           perFieldTimestampRecord.put(field.name(), collectionFieldTimestampRecord);
           continue;
 

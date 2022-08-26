@@ -204,31 +204,25 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     Assert.assertEquals(rmdTimestamp.get("age"), 11L);
     Assert.assertEquals(rmdTimestamp.get("name"), 11L);
     GenericRecord collectionFieldTimestampRecord = (GenericRecord) rmdTimestamp.get("intArray");
-    Assert.assertEquals((long) collectionFieldTimestampRecord.get(COLLECTION_TOP_LEVEL_TS_FIELD_NAME), 11L);
-    Assert.assertEquals((int) collectionFieldTimestampRecord.get(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME), 3);
-    Assert.assertEquals((int) collectionFieldTimestampRecord.get(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME), 1);
+    Assert.assertEquals((long) collectionFieldTimestampRecord.get(TOP_LEVEL_TS_FIELD_NAME), 11L);
+    Assert.assertEquals((int) collectionFieldTimestampRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME), 3);
+    Assert.assertEquals((int) collectionFieldTimestampRecord.get(TOP_LEVEL_COLO_ID_FIELD_NAME), 1);
+    Assert
+        .assertEquals((List<?>) collectionFieldTimestampRecord.get(ACTIVE_ELEM_TS_FIELD_NAME), Collections.emptyList());
+    Assert.assertEquals((List<?>) collectionFieldTimestampRecord.get(DELETED_ELEM_FIELD_NAME), Collections.emptyList());
     Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME),
-        Collections.emptyList());
-    Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_DELETED_ELEM_FIELD_NAME),
-        Collections.emptyList());
-    Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_DELETED_ELEM_TS_FIELD_NAME),
+        (List<?>) collectionFieldTimestampRecord.get(DELETED_ELEM_TS_FIELD_NAME),
         Collections.emptyList());
 
     collectionFieldTimestampRecord = (GenericRecord) rmdTimestamp.get("stringMap");
-    Assert.assertEquals((long) collectionFieldTimestampRecord.get(COLLECTION_TOP_LEVEL_TS_FIELD_NAME), 11L);
-    Assert.assertEquals((int) collectionFieldTimestampRecord.get(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME), 2);
-    Assert.assertEquals((int) collectionFieldTimestampRecord.get(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME), 1);
+    Assert.assertEquals((long) collectionFieldTimestampRecord.get(TOP_LEVEL_TS_FIELD_NAME), 11L);
+    Assert.assertEquals((int) collectionFieldTimestampRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME), 2);
+    Assert.assertEquals((int) collectionFieldTimestampRecord.get(TOP_LEVEL_COLO_ID_FIELD_NAME), 1);
+    Assert
+        .assertEquals((List<?>) collectionFieldTimestampRecord.get(ACTIVE_ELEM_TS_FIELD_NAME), Collections.emptyList());
+    Assert.assertEquals((List<?>) collectionFieldTimestampRecord.get(DELETED_ELEM_FIELD_NAME), Collections.emptyList());
     Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME),
-        Collections.emptyList());
-    Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_DELETED_ELEM_FIELD_NAME),
-        Collections.emptyList());
-    Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_DELETED_ELEM_TS_FIELD_NAME),
+        (List<?>) collectionFieldTimestampRecord.get(DELETED_ELEM_TS_FIELD_NAME),
         Collections.emptyList());
 
     // Validate updated value.
@@ -321,36 +315,31 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     Assert.assertEquals(rmdTimestamp.get("name"), 11L);
     GenericRecord collectionFieldTimestampRecord = (GenericRecord) rmdTimestamp.get("intArray");
     Assert.assertEquals(
-        (long) collectionFieldTimestampRecord.get(COLLECTION_TOP_LEVEL_TS_FIELD_NAME),
+        (long) collectionFieldTimestampRecord.get(TOP_LEVEL_TS_FIELD_NAME),
         10L,
         "Collection top-level timestamp does not change because collection merge does not affect top-level timestamp");
-    Assert.assertEquals((int) collectionFieldTimestampRecord.get(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME), 3);
+    Assert.assertEquals((int) collectionFieldTimestampRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME), 3);
     Assert.assertEquals(
-        (int) collectionFieldTimestampRecord.get(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME),
+        (int) collectionFieldTimestampRecord.get(TOP_LEVEL_COLO_ID_FIELD_NAME),
         -1,
         "Collection top-level should NOT be changed by collection merge");
     Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME),
+        (List<?>) collectionFieldTimestampRecord.get(ACTIVE_ELEM_TS_FIELD_NAME),
         Arrays.asList(11L, 11L, 11L));
+    Assert.assertEquals((List<?>) collectionFieldTimestampRecord.get(DELETED_ELEM_FIELD_NAME), Collections.emptyList());
     Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_DELETED_ELEM_FIELD_NAME),
-        Collections.emptyList());
-    Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_DELETED_ELEM_TS_FIELD_NAME),
+        (List<?>) collectionFieldTimestampRecord.get(DELETED_ELEM_TS_FIELD_NAME),
         Collections.emptyList());
 
     collectionFieldTimestampRecord = (GenericRecord) rmdTimestamp.get("stringMap");
-    Assert.assertEquals((long) collectionFieldTimestampRecord.get(COLLECTION_TOP_LEVEL_TS_FIELD_NAME), 10L);
-    Assert.assertEquals((int) collectionFieldTimestampRecord.get(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME), 2);
-    Assert.assertEquals((int) collectionFieldTimestampRecord.get(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME), -1);
+    Assert.assertEquals((long) collectionFieldTimestampRecord.get(TOP_LEVEL_TS_FIELD_NAME), 10L);
+    Assert.assertEquals((int) collectionFieldTimestampRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME), 2);
+    Assert.assertEquals((int) collectionFieldTimestampRecord.get(TOP_LEVEL_COLO_ID_FIELD_NAME), -1);
+    Assert
+        .assertEquals((List<?>) collectionFieldTimestampRecord.get(ACTIVE_ELEM_TS_FIELD_NAME), Collections.emptyList());
+    Assert.assertEquals((List<?>) collectionFieldTimestampRecord.get(DELETED_ELEM_FIELD_NAME), Collections.emptyList());
     Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME),
-        Collections.emptyList());
-    Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_DELETED_ELEM_FIELD_NAME),
-        Collections.emptyList());
-    Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_DELETED_ELEM_TS_FIELD_NAME),
+        (List<?>) collectionFieldTimestampRecord.get(DELETED_ELEM_TS_FIELD_NAME),
         Collections.emptyList());
 
     // Validate updated value.
@@ -458,57 +447,46 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     Assert.assertEquals(rmdTimestamp.get("name"), 11L);
     Assert.assertEquals(rmdTimestamp.get("favoritePet"), 11L);
     GenericRecord collectionFieldTimestampRecord = (GenericRecord) rmdTimestamp.get("intArray");
-    Assert.assertEquals((long) collectionFieldTimestampRecord.get(COLLECTION_TOP_LEVEL_TS_FIELD_NAME), 10L);
-    Assert.assertEquals((int) collectionFieldTimestampRecord.get(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME), 3);
-    Assert.assertEquals((int) collectionFieldTimestampRecord.get(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME), -1);
+    Assert.assertEquals((long) collectionFieldTimestampRecord.get(TOP_LEVEL_TS_FIELD_NAME), 10L);
+    Assert.assertEquals((int) collectionFieldTimestampRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME), 3);
+    Assert.assertEquals((int) collectionFieldTimestampRecord.get(TOP_LEVEL_COLO_ID_FIELD_NAME), -1);
+    Assert
+        .assertEquals((List<?>) collectionFieldTimestampRecord.get(ACTIVE_ELEM_TS_FIELD_NAME), Collections.emptyList());
+    Assert.assertEquals((List<?>) collectionFieldTimestampRecord.get(DELETED_ELEM_FIELD_NAME), Collections.emptyList());
     Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME),
-        Collections.emptyList());
-    Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_DELETED_ELEM_FIELD_NAME),
-        Collections.emptyList());
-    Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_DELETED_ELEM_TS_FIELD_NAME),
+        (List<?>) collectionFieldTimestampRecord.get(DELETED_ELEM_TS_FIELD_NAME),
         Collections.emptyList());
 
     collectionFieldTimestampRecord = (GenericRecord) rmdTimestamp.get("stringMap");
     Assert.assertEquals(
-        (long) collectionFieldTimestampRecord.get(COLLECTION_TOP_LEVEL_TS_FIELD_NAME),
+        (long) collectionFieldTimestampRecord.get(TOP_LEVEL_TS_FIELD_NAME),
         10L,
         "This field exists in the original value so that even though the map is empty, the expanded per-field "
             + "timestamp of this field should be equal to the original whole-value level timestamp.");
     Assert.assertEquals(
-        (int) collectionFieldTimestampRecord.get(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME),
+        (int) collectionFieldTimestampRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME),
         0,
         "The map in this field is empty. So this field in the collection field metadata should be 0.");
-    Assert.assertEquals((int) collectionFieldTimestampRecord.get(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME), -1);
+    Assert.assertEquals((int) collectionFieldTimestampRecord.get(TOP_LEVEL_COLO_ID_FIELD_NAME), -1);
+    Assert
+        .assertEquals((List<?>) collectionFieldTimestampRecord.get(ACTIVE_ELEM_TS_FIELD_NAME), Collections.emptyList());
+    Assert.assertEquals((List<?>) collectionFieldTimestampRecord.get(DELETED_ELEM_FIELD_NAME), Collections.emptyList());
     Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME),
-        Collections.emptyList());
-    Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_DELETED_ELEM_FIELD_NAME),
-        Collections.emptyList());
-    Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_DELETED_ELEM_TS_FIELD_NAME),
+        (List<?>) collectionFieldTimestampRecord.get(DELETED_ELEM_TS_FIELD_NAME),
         Collections.emptyList());
 
     collectionFieldTimestampRecord = (GenericRecord) rmdTimestamp.get("stringArray");
     Assert.assertEquals(
-        (long) collectionFieldTimestampRecord.get(COLLECTION_TOP_LEVEL_TS_FIELD_NAME),
+        (long) collectionFieldTimestampRecord.get(TOP_LEVEL_TS_FIELD_NAME),
         11L,
         "This field should be added by the Update request.");
-    Assert.assertEquals((int) collectionFieldTimestampRecord.get(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME), 3);
+    Assert.assertEquals((int) collectionFieldTimestampRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME), 3);
+    Assert.assertEquals((int) collectionFieldTimestampRecord.get(TOP_LEVEL_COLO_ID_FIELD_NAME), newValueColoID);
+    Assert
+        .assertEquals((List<?>) collectionFieldTimestampRecord.get(ACTIVE_ELEM_TS_FIELD_NAME), Collections.emptyList());
+    Assert.assertEquals((List<?>) collectionFieldTimestampRecord.get(DELETED_ELEM_FIELD_NAME), Collections.emptyList());
     Assert.assertEquals(
-        (int) collectionFieldTimestampRecord.get(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME),
-        newValueColoID);
-    Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME),
-        Collections.emptyList());
-    Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_DELETED_ELEM_FIELD_NAME),
-        Collections.emptyList());
-    Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_DELETED_ELEM_TS_FIELD_NAME),
+        (List<?>) collectionFieldTimestampRecord.get(DELETED_ELEM_TS_FIELD_NAME),
         Collections.emptyList());
 
     // Validate updated value.
@@ -615,62 +593,56 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     Assert.assertEquals(rmdTimestamp.get("name"), 10L);
     Assert.assertEquals(rmdTimestamp.get("favoritePet"), 0L);
     GenericRecord collectionFieldTimestampRecord = (GenericRecord) rmdTimestamp.get("intArray");
-    Assert.assertEquals((long) collectionFieldTimestampRecord.get(COLLECTION_TOP_LEVEL_TS_FIELD_NAME), 10L);
-    Assert.assertEquals((int) collectionFieldTimestampRecord.get(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME), 3);
-    Assert.assertEquals((int) collectionFieldTimestampRecord.get(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME), -1);
+    Assert.assertEquals((long) collectionFieldTimestampRecord.get(TOP_LEVEL_TS_FIELD_NAME), 10L);
+    Assert.assertEquals((int) collectionFieldTimestampRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME), 3);
+    Assert.assertEquals((int) collectionFieldTimestampRecord.get(TOP_LEVEL_COLO_ID_FIELD_NAME), -1);
+    Assert
+        .assertEquals((List<?>) collectionFieldTimestampRecord.get(ACTIVE_ELEM_TS_FIELD_NAME), Collections.emptyList());
+    Assert.assertEquals((List<?>) collectionFieldTimestampRecord.get(DELETED_ELEM_FIELD_NAME), Collections.emptyList());
     Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME),
-        Collections.emptyList());
-    Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_DELETED_ELEM_FIELD_NAME),
-        Collections.emptyList());
-    Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_DELETED_ELEM_TS_FIELD_NAME),
+        (List<?>) collectionFieldTimestampRecord.get(DELETED_ELEM_TS_FIELD_NAME),
         Collections.emptyList());
 
     collectionFieldTimestampRecord = (GenericRecord) rmdTimestamp.get("stringMap");
     Assert.assertEquals(
-        (long) collectionFieldTimestampRecord.get(COLLECTION_TOP_LEVEL_TS_FIELD_NAME),
+        (long) collectionFieldTimestampRecord.get(TOP_LEVEL_TS_FIELD_NAME),
         10L,
         "This field exists in the original value so that even though the map is empty, the expanded per-field "
             + "timestamp of this field should be equal to the original whole-value level timestamp.");
     Assert.assertEquals(
-        (int) collectionFieldTimestampRecord.get(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME),
+        (int) collectionFieldTimestampRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME),
         0,
         "The map in this field does not a put-only part.");
-    Assert.assertEquals((int) collectionFieldTimestampRecord.get(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME), -1);
+    Assert.assertEquals((int) collectionFieldTimestampRecord.get(TOP_LEVEL_COLO_ID_FIELD_NAME), -1);
+    Assert
+        .assertEquals((List<?>) collectionFieldTimestampRecord.get(ACTIVE_ELEM_TS_FIELD_NAME), Collections.emptyList());
+    Assert.assertEquals((List<?>) collectionFieldTimestampRecord.get(DELETED_ELEM_FIELD_NAME), Collections.emptyList());
     Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME),
-        Collections.emptyList());
-    Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_DELETED_ELEM_FIELD_NAME),
-        Collections.emptyList());
-    Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_DELETED_ELEM_TS_FIELD_NAME),
+        (List<?>) collectionFieldTimestampRecord.get(DELETED_ELEM_TS_FIELD_NAME),
         Collections.emptyList());
 
     collectionFieldTimestampRecord = (GenericRecord) rmdTimestamp.get("stringArray");
     Assert.assertEquals(
-        (long) collectionFieldTimestampRecord.get(COLLECTION_TOP_LEVEL_TS_FIELD_NAME),
+        (long) collectionFieldTimestampRecord.get(TOP_LEVEL_TS_FIELD_NAME),
         0L,
         "Doing collection merge on this field does not affect the top-level timestamp.");
     Assert.assertEquals(
-        (int) collectionFieldTimestampRecord.get(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME),
+        (int) collectionFieldTimestampRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME),
         0,
         "This list field does not have a put-only part because all elements are added by collection merge.");
     Assert.assertEquals(
-        (int) collectionFieldTimestampRecord.get(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME),
+        (int) collectionFieldTimestampRecord.get(TOP_LEVEL_COLO_ID_FIELD_NAME),
         -1,
         "Doing collection merge on this field does not affect the its collection field colo-ID.");
     Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME),
+        (List<?>) collectionFieldTimestampRecord.get(ACTIVE_ELEM_TS_FIELD_NAME),
         Arrays.asList(11L, 11L, 11L));
     Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_DELETED_ELEM_TS_FIELD_NAME),
+        (List<?>) collectionFieldTimestampRecord.get(DELETED_ELEM_TS_FIELD_NAME),
         Arrays.asList(11L, 11L, 11L));
 
     Assert.assertEquals(
-        (List<?>) collectionFieldTimestampRecord.get(COLLECTION_DELETED_ELEM_FIELD_NAME),
+        (List<?>) collectionFieldTimestampRecord.get(DELETED_ELEM_FIELD_NAME),
         Arrays.asList(toUtf8("five"), toUtf8("four"), toUtf8("six")) // Sorted lexicographically
     );
 
