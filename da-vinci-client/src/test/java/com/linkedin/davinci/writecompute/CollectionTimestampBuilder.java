@@ -104,23 +104,23 @@ public class CollectionTimestampBuilder {
     }
 
     GenericRecord itemFieldTimestampRecord = SchemaUtils.createGenericRecord(collectionTimestampSchema);
-    itemFieldTimestampRecord.put(COLLECTION_TOP_LEVEL_TS_FIELD_NAME, topLevelFieldTimestamp);
-    itemFieldTimestampRecord.put(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME, topLevelColoID);
-    itemFieldTimestampRecord.put(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME, putOnlyPartLength);
-    itemFieldTimestampRecord.put(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME, activeElementTimestamps);
-    itemFieldTimestampRecord.put(COLLECTION_DELETED_ELEM_FIELD_NAME, deletedElements);
-    itemFieldTimestampRecord.put(COLLECTION_DELETED_ELEM_TS_FIELD_NAME, deletedTimestamps);
+    itemFieldTimestampRecord.put(TOP_LEVEL_TS_FIELD_NAME, topLevelFieldTimestamp);
+    itemFieldTimestampRecord.put(TOP_LEVEL_COLO_ID_FIELD_NAME, topLevelColoID);
+    itemFieldTimestampRecord.put(PUT_ONLY_PART_LENGTH_FIELD_NAME, putOnlyPartLength);
+    itemFieldTimestampRecord.put(ACTIVE_ELEM_TS_FIELD_NAME, activeElementTimestamps);
+    itemFieldTimestampRecord.put(DELETED_ELEM_FIELD_NAME, deletedElements);
+    itemFieldTimestampRecord.put(DELETED_ELEM_TS_FIELD_NAME, deletedTimestamps);
     return itemFieldTimestampRecord;
   }
 
   private void validateCollectionTsRecord(Schema collectionTimestampSchema) {
     Validate.notNull(collectionTimestampSchema);
-    validateFieldExists(COLLECTION_TOP_LEVEL_TS_FIELD_NAME, collectionTimestampSchema);
-    validateFieldExists(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME, collectionTimestampSchema);
-    validateFieldExists(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME, collectionTimestampSchema);
-    validateFieldExists(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME, collectionTimestampSchema);
-    validateFieldExists(COLLECTION_DELETED_ELEM_TS_FIELD_NAME, collectionTimestampSchema);
-    validateFieldExists(COLLECTION_DELETED_ELEM_FIELD_NAME, collectionTimestampSchema);
+    validateFieldExists(TOP_LEVEL_TS_FIELD_NAME, collectionTimestampSchema);
+    validateFieldExists(TOP_LEVEL_COLO_ID_FIELD_NAME, collectionTimestampSchema);
+    validateFieldExists(PUT_ONLY_PART_LENGTH_FIELD_NAME, collectionTimestampSchema);
+    validateFieldExists(ACTIVE_ELEM_TS_FIELD_NAME, collectionTimestampSchema);
+    validateFieldExists(DELETED_ELEM_TS_FIELD_NAME, collectionTimestampSchema);
+    validateFieldExists(DELETED_ELEM_FIELD_NAME, collectionTimestampSchema);
   }
 
   private void validateFieldExists(String fieldName, Schema collectionTimestampSchema) {
