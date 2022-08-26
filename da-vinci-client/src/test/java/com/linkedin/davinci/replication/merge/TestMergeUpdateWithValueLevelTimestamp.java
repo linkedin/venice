@@ -13,6 +13,8 @@ import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.writer.update.UpdateBuilder;
+import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collections;
@@ -27,15 +29,15 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
-  @Test(enabled = false)
+public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictResolver {
+  @Test
   public void testUpdateIgnoredFieldUpdate() {
     final int incomingValueSchemaId = 3;
     final int incomingWriteComputeSchemaId = 3;
     final int oldValueSchemaId = 3;
     // Set up
     Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(personSchemaV1);
-    GenericRecord updateFieldWriteComputeRecord = SchemaUtils.createGenericRecord(writeComputeSchema.getTypes().get(0));
+    GenericRecord updateFieldWriteComputeRecord = SchemaUtils.createGenericRecord(writeComputeSchema);
     updateFieldWriteComputeRecord.put("age", 66);
     updateFieldWriteComputeRecord.put("name", "Venice");
     ByteBuffer writeComputeBytes = ByteBuffer.wrap(
@@ -48,13 +50,16 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
         .getDerivedSchema(storeName, incomingValueSchemaId, incomingWriteComputeSchemaId);
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV1)).when(readOnlySchemaRepository)
         .getValueSchema(storeName, oldValueSchemaId);
+    doReturn(Optional.of(new SchemaEntry(oldValueSchemaId, personSchemaV1))).when(readOnlySchemaRepository)
+        .getSupersetSchema(storeName);
 
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
             readOnlySchemaRepository,
             new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
-            storeName);
+            storeName,
+            true);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> null),
         Optional.of(rmdWithValueSchemaId),
@@ -71,7 +76,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
         "When the Update request is ignored, replication_checkpoint_vector should stay the same (empty).");
   }
 
-  @Test(enabled = false)
+  @Test
   public void testUpdateIgnoredFieldUpdateWithEvolvedSchema() {
     /**
      * When the Write Compute request is generated from an evolved value schema, as long as it does not try to update
@@ -88,7 +93,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
                                                                                                                         // schema
                                                                                                                         // is
                                                                                                                         // used.
-    GenericRecord updateFieldWriteComputeRecord = SchemaUtils.createGenericRecord(writeComputeSchema.getTypes().get(0));
+    GenericRecord updateFieldWriteComputeRecord = SchemaUtils.createGenericRecord(writeComputeSchema);
     updateFieldWriteComputeRecord.put("age", 66);
     updateFieldWriteComputeRecord.put("name", "Venice");
     ByteBuffer writeComputeBytes = ByteBuffer.wrap(
@@ -101,13 +106,16 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
         .getDerivedSchema(storeName, incomingValueSchemaId, incomingWriteComputeSchemaId);
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV1)).when(readOnlySchemaRepository)
         .getValueSchema(storeName, oldValueSchemaId);
+    doReturn(Optional.of(new SchemaEntry(incomingValueSchemaId, personSchemaV2))).when(readOnlySchemaRepository)
+        .getSupersetSchema(storeName);
 
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
             readOnlySchemaRepository,
             new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
-            storeName);
+            storeName,
+            true);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> null),
         Optional.of(rmdWithValueSchemaId),
@@ -124,7 +132,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
         "When the Update request is ignored, replication_checkpoint_vector should stay the same (empty).");
   }
 
-  @Test(enabled = false)
+  @Test
   public void testWholeFieldUpdate() {
     final int incomingValueSchemaId = 3;
     final int incomingWriteComputeSchemaId = 3;
@@ -144,7 +152,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
 
     // Set up Write Compute request.
     Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(personSchemaV1);
-    GenericRecord updateFieldWriteComputeRecord = SchemaUtils.createGenericRecord(writeComputeSchema.getTypes().get(0));
+    GenericRecord updateFieldWriteComputeRecord = SchemaUtils.createGenericRecord(writeComputeSchema);
     updateFieldWriteComputeRecord.put("age", 66);
     updateFieldWriteComputeRecord.put("name", "Venice");
     updateFieldWriteComputeRecord.put("intArray", Arrays.asList(6, 7, 8));
@@ -164,13 +172,16 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
         .getDerivedSchema(storeName, incomingValueSchemaId, incomingWriteComputeSchemaId);
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV1)).when(readOnlySchemaRepository)
         .getValueSchema(storeName, oldValueSchemaId);
+    doReturn(Optional.of(new SchemaEntry(oldValueSchemaId, personSchemaV1))).when(readOnlySchemaRepository)
+        .getSupersetSchema(storeName);
 
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
             readOnlySchemaRepository,
             new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
-            storeName);
+            storeName,
+            true);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> oldValueBytes),
         Optional.of(rmdWithValueSchemaId),
@@ -235,7 +246,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
     Assert.assertEquals(updatedMapField.get(toUtf8("5")), toUtf8("five"));
   }
 
-  @Test(enabled = false)
+  @Test
   public void testCollectionMerge() {
     final int incomingValueSchemaId = 3;
     final int incomingWriteComputeSchemaId = 3;
@@ -255,15 +266,15 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
 
     // Set up Write Compute request.
     Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(personSchemaV1);
-    GenericRecord updateFieldWriteComputeRecord = SchemaUtils.createGenericRecord(writeComputeSchema.getTypes().get(0));
-    updateFieldWriteComputeRecord.put("age", 99);
-    updateFieldWriteComputeRecord.put("name", "Francisco");
+    UpdateBuilder updateBuilder = new UpdateBuilderImpl(writeComputeSchema);
+    updateBuilder.setNewFieldValue("age", 99);
+    updateBuilder.setNewFieldValue("name", "Francisco");
     // Try to merge/add 3 numbers to the intArray list field.
-    GenericRecord listMerge =
-        createListMergeRecord("intArray", Arrays.asList(6, 7, 8), Collections.emptyList(), writeComputeSchema);
-    updateFieldWriteComputeRecord.put("intArray", listMerge);
-    ByteBuffer writeComputeBytes = ByteBuffer.wrap(
-        MapOrderingPreservingSerDeFactory.getSerializer(writeComputeSchema).serialize(updateFieldWriteComputeRecord));
+    updateBuilder.setElementsToAddToListField("intArray", Arrays.asList(6, 7, 8));
+    GenericRecord updateFieldRecord = updateBuilder.build();
+
+    ByteBuffer writeComputeBytes = ByteBuffer
+        .wrap(MapOrderingPreservingSerDeFactory.getSerializer(writeComputeSchema).serialize(updateFieldRecord));
 
     // Set up current replication metadata.
     final long valueLevelTimestamp = 10L;
@@ -275,12 +286,16 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV1)).when(readOnlySchemaRepository)
         .getValueSchema(storeName, oldValueSchemaId);
 
+    doReturn(Optional.of(new SchemaEntry(oldValueSchemaId, personSchemaV1))).when(readOnlySchemaRepository)
+        .getSupersetSchema(storeName);
+
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
             readOnlySchemaRepository,
             new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
-            storeName);
+            storeName,
+            true);
 
     final int newColoID = 3;
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
@@ -356,7 +371,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
     Assert.assertEquals(updatedMapField.get(toUtf8("2")), toUtf8("two"));
   }
 
-  @Test(enabled = false)
+  @Test
   public void testWholeFieldUpdateWithEvolvedSchema() {
     // In this case, the Write Compute request is generated from a value schema that is different from the schema used
     // by the current value. We expect the superset schema to be used in this case.
@@ -375,7 +390,9 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
 
     // Set up Write Compute request.
     Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(personSchemaV2);
-    GenericRecord updateFieldWriteComputeRecord = SchemaUtils.createGenericRecord(writeComputeSchema.getTypes().get(0));
+    Schema supersetWriteComputeSchema =
+        WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(personSchemaV3);
+    GenericRecord updateFieldWriteComputeRecord = SchemaUtils.createGenericRecord(writeComputeSchema);
     updateFieldWriteComputeRecord.put("age", 66);
     updateFieldWriteComputeRecord.put("name", "Venice");
     updateFieldWriteComputeRecord.put("favoritePet", "a random stray cat");
@@ -390,6 +407,9 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
     ReadOnlySchemaRepository readOnlySchemaRepository = mock(ReadOnlySchemaRepository.class);
     doReturn(new DerivedSchemaEntry(incomingValueSchemaId, 1, writeComputeSchema)).when(readOnlySchemaRepository)
         .getDerivedSchema(storeName, incomingValueSchemaId, incomingWriteComputeSchemaId);
+    doReturn(new DerivedSchemaEntry(supersetValueSchemaId, 1, supersetWriteComputeSchema))
+        .when(readOnlySchemaRepository)
+        .getDerivedSchema(storeName, supersetValueSchemaId, incomingWriteComputeSchemaId);
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV1)).when(readOnlySchemaRepository)
         .getValueSchema(storeName, oldValueSchemaId);
     doReturn(new SchemaEntry(incomingValueSchemaId, personSchemaV2)).when(readOnlySchemaRepository)
@@ -412,7 +432,8 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
         .createMergeConflictResolver(
             readOnlySchemaRepository,
             new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
-            storeName);
+            storeName,
+            true);
     final int newValueColoID = 3;
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> oldValueBytes),
@@ -507,7 +528,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
     Assert.assertTrue(updatedMapField.isEmpty());
   }
 
-  @Test(enabled = false)
+  @Test
   public void testCollectionMergeWithEvolvedSchema() {
     // Test the situation where the Write Compute request tries to do collection merge on a field that does not exist
     // in the current/old value. We expect the superset schema to be used in the result.
@@ -526,16 +547,15 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
 
     // Set up Write Compute request.
     Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(personSchemaV2);
-    GenericRecord updateFieldWriteComputeRecord = SchemaUtils.createGenericRecord(writeComputeSchema.getTypes().get(0));
+    Schema supersetWriteComputeSchema =
+        WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(personSchemaV3);
+    UpdateBuilder updateBuilder = new UpdateBuilderImpl(writeComputeSchema);
+    updateBuilder.setElementsToAddToListField("stringArray", Arrays.asList("one", "two", "three"));
+    updateBuilder.setElementsToRemoveFromListField("stringArray", Arrays.asList("four", "five", "six"));
+    GenericRecord updateFieldRecord = updateBuilder.build();
 
-    GenericRecord listMerge = createListMergeRecord(
-        "stringArray",
-        Arrays.asList("one", "two", "three"),
-        Arrays.asList("four", "five", "six"),
-        writeComputeSchema);
-    updateFieldWriteComputeRecord.put("stringArray", listMerge);
-    ByteBuffer writeComputeBytes = ByteBuffer.wrap(
-        MapOrderingPreservingSerDeFactory.getSerializer(writeComputeSchema).serialize(updateFieldWriteComputeRecord));
+    ByteBuffer writeComputeBytes = ByteBuffer
+        .wrap(MapOrderingPreservingSerDeFactory.getSerializer(writeComputeSchema).serialize(updateFieldRecord));
 
     // Set up current replication metadata.
     final long valueLevelTimestamp = 10L;
@@ -544,6 +564,9 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
     ReadOnlySchemaRepository readOnlySchemaRepository = mock(ReadOnlySchemaRepository.class);
     doReturn(new DerivedSchemaEntry(incomingValueSchemaId, 1, writeComputeSchema)).when(readOnlySchemaRepository)
         .getDerivedSchema(storeName, incomingValueSchemaId, incomingWriteComputeSchemaId);
+    doReturn(new DerivedSchemaEntry(supersetValueSchemaId, 1, supersetWriteComputeSchema))
+        .when(readOnlySchemaRepository)
+        .getDerivedSchema(storeName, supersetValueSchemaId, incomingWriteComputeSchemaId);
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV1)).when(readOnlySchemaRepository)
         .getValueSchema(storeName, oldValueSchemaId);
     doReturn(new SchemaEntry(incomingValueSchemaId, personSchemaV2)).when(readOnlySchemaRepository)
@@ -566,7 +589,8 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeUpdate {
         .createMergeConflictResolver(
             readOnlySchemaRepository,
             new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
-            storeName);
+            storeName,
+            true);
     final int newValueColoID = 3;
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> oldValueBytes),
