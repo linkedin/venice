@@ -21,6 +21,7 @@ import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.util.Utf8;
 import org.testng.annotations.BeforeClass;
 
 
@@ -106,5 +107,9 @@ public class TestMergeConflictResolver {
 
   protected RecordDeserializer<GenericRecord> getDeserializer(Schema writerSchema, Schema readerSchema) {
     return MapOrderingPreservingSerDeFactory.getDeserializer(writerSchema, readerSchema);
+  }
+
+  protected Utf8 toUtf8(String str) {
+    return new Utf8(str);
   }
 }
