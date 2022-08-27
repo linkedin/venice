@@ -1233,7 +1233,7 @@ public class AdminTool {
     }
 
     boolean logMetadataOnly = cmd.hasOption(Arg.LOG_METADATA.toString());
-    KafkaTopicDumper kafkaTopicDumper = new KafkaTopicDumper(
+    try (KafkaTopicDumper ktd = new KafkaTopicDumper(
         controllerClient,
         consumerProps,
         kafkaTopic,
@@ -1242,11 +1242,11 @@ public class AdminTool {
         messageCount,
         parentDir,
         maxConsumeAttempts,
-        logMetadataOnly).fetch();
-    if (logMetadataOnly) {
-      kafkaTopicDumper.logMetadata();
-    } else {
-      kafkaTopicDumper.dumpToFile();
+        logMetadataOnly)) {
+      ktd.fetchAndProcess();
+    } catch (Exception e) {
+      System.err.println("Something went wrong during topic dump");
+      e.printStackTrace();
     }
   }
 
