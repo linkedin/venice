@@ -153,7 +153,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     // If writing to offset metadata partition METADATA_PARTITION_ID enable WAL write to sync up offset on server
     // restart,
     Options options = getStoreOptions(storagePartitionConfig, false);
-    // If writing to offset metadata partition METADATA_PARTITION_ID enable WAL write to sync up offset on server restart,
+    // If writing to offset metadata partition METADATA_PARTITION_ID enable WAL write to sync up offset on server
+    // restart,
     // if WAL is disabled then all ingestion progress made would be lost in case of non-graceful shutdown of server.
     this.writeOptions = new WriteOptions().setDisableWAL(this.partitionId != METADATA_PARTITION_ID);
 
@@ -199,7 +200,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
        * may be applied if we are sure replicationMetadata column family is smaller in size.
        */
       ColumnFamilyOptions columnFamilyOptions;
-      for (byte[] name : columnFamilyNameList) {
+      for (byte[] name: columnFamilyNameList) {
         if (name == REPLICATION_METADATA_COLUMN_FAMILY && !rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
           columnFamilyOptions = new ColumnFamilyOptions(getStoreOptions(storagePartitionConfig, true));
         } else {
@@ -650,19 +651,14 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     if (isClosed) {
       return;
     }
+    long startTimeInMs = System.currentTimeMillis();
     /**
      * The following operations are used to free up memory.
      */
     deRegisterDBStats();
     readCloseRWLock.writeLock().lock();
     try {
-      long startTimeInMs = System.currentTimeMillis();
       rocksDB.close();
-      LOGGER.info(
-          "RocksDB close for store: {}, partition {} took {} ms.",
-          storeName,
-          partitionId,
-          LatencyUtils.getElapsedTimeInMs(startTimeInMs));
     } finally {
       isClosed = true;
       readCloseRWLock.writeLock().unlock();
@@ -677,7 +673,11 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     if (null != writeOptions) {
       writeOptions.close();
     }
-    LOGGER.info("RocksDB for store: " + storeName + ", partition: " + partitionId + " was closed");
+    LOGGER.info(
+        "RocksDB close for store: {}, partition {} took {} ms.",
+        storeName,
+        partitionId,
+        LatencyUtils.getElapsedTimeInMs(startTimeInMs));
   }
 
   /**

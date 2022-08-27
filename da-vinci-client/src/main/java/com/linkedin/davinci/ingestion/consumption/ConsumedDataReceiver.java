@@ -20,4 +20,14 @@ public interface ConsumedDataReceiver<MESSAGE> {
    * @param consumedData Consumed data.
    */
   void write(MESSAGE consumedData) throws Exception;
+
+  /**
+   * N.B.: Used for defensive coding. Today, this is exclusively used to return the version-topic name. If this is to
+   * be expanded to other usages in the future, we should consider carefully if it needs refactoring.
+   *
+   * @return an identifier of where the data is going.
+   */
+  String destinationIdentifier();
+
+  void notifyOfTopicDeletion(String topicName);
 }

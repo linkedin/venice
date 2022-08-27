@@ -5,10 +5,8 @@ import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -134,26 +132,6 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
     return offsets.containsKey(new TopicPartition(topic, partition));
   }
 
-  @Override
-  public Map<TopicPartition, Long> beginningOffsets(List<TopicPartition> topicPartitions) {
-    return delegate.beginningOffsets(topicPartitions);
-  }
-
-  @Override
-  public Map<TopicPartition, Long> endOffsets(List<TopicPartition> topicPartitions) {
-    return delegate.endOffsets(topicPartitions);
-  }
-
-  @Override
-  public void assign(Collection<TopicPartition> topicPartitions) {
-    delegate.assign(topicPartitions);
-  }
-
-  @Override
-  public void seek(TopicPartition topicPartition, long nextOffset) {
-    delegate.seek(topicPartition, nextOffset);
-  }
-
   public Map<TopicPartition, Long> getOffsets() {
     return offsets;
   }
@@ -171,11 +149,6 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
       pausedTopicPartitions.remove(topicPartitionToResume);
     }
     delegate.resume(topic, partition);
-  }
-
-  @Override
-  public Set<TopicPartition> paused() {
-    return delegate.paused();
   }
 
   @Override

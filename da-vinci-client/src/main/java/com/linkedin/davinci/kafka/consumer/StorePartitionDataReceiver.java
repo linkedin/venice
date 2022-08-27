@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.avroutil1.compatibility.shaded.org.apache.commons.lang3.Validate;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -77,6 +78,16 @@ public class StorePartitionDataReceiver
     }
   }
 
+  @Override
+  public String destinationIdentifier() {
+    return storeIngestionTask.getVersionTopic();
+  }
+
+  @Override
+  public void notifyOfTopicDeletion(String topicName) {
+    storeIngestionTask.setLastConsumerException(new VeniceException("Topic " + topicName + " got deleted."));
+  }
+
   private void handleDataReceiverException(Exception e) throws Exception {
     if (ExceptionUtils.recursiveClassEquals(e, InterruptedException.class)) {
       // We sometimes wrap InterruptedExceptions, so not taking any chances...
@@ -114,5 +125,11 @@ public class StorePartitionDataReceiver
    */
   public long receivedRecordsCount() {
     return receivedRecordsCount;
+  }
+
+  @Override
+  public String toString() {
+    return this.getClass().getSimpleName() + "{" + "VT=" + storeIngestionTask.getVersionTopic() + ", topicPartition="
+        + topicPartition + '}';
   }
 }

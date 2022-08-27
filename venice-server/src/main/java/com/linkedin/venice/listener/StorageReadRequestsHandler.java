@@ -25,6 +25,7 @@ import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
@@ -234,6 +235,11 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
                       new HttpShortcutResponse(
                           earlyTerminationException.getMessage(),
                           earlyTerminationException.getHttpResponseStatus()));
+                } else if (e instanceof VeniceNoStoreException) {
+                  context.writeAndFlush(
+                      new HttpShortcutResponse(
+                          "No storage exists for: " + ((VeniceNoStoreException) e).getStoreName(),
+                          HttpResponseStatus.BAD_REQUEST));
                 } else {
                   logger.error("Exception thrown in parallel batch get for " + request.getResourceName(), e);
                   context.writeAndFlush(
@@ -275,6 +281,9 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
             response.setStreamingResponse();
           }
           context.writeAndFlush(response);
+        } catch (VeniceNoStoreException e) {
+          context.writeAndFlush(
+              new HttpShortcutResponse("No storage exists for: " + e.getStoreName(), HttpResponseStatus.BAD_REQUEST));
         } catch (VeniceRequestEarlyTerminationException e) {
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), e.getHttpResponseStatus()));
         } catch (Exception e) {
@@ -370,7 +379,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     byte[] key = request.getKeyBytes();
     boolean isChunked = metadataRetriever.isStoreVersionChunked(topic);
 
-    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(topic);
+    AbstractStorageEngine storageEngine = getStorageEngine(topic);
     StorageResponseObject response = new StorageResponseObject();
     response.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
     response.setDatabaseLookupLatency(0);
@@ -391,7 +400,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       int parallelChunkSize) {
     String topic = request.getResourceName();
     Iterable<MultiGetRouterRequestKeyV1> keys = request.getKeys();
-    AbstractStorageEngine store = storageEngineRepository.getLocalStorageEngine(topic);
+    AbstractStorageEngine store = getStorageEngine(topic);
 
     MultiGetResponseWrapper responseWrapper = new MultiGetResponseWrapper(request.getKeyCount());
     responseWrapper.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
@@ -476,7 +485,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     String topic = request.getResourceName();
     Iterable<MultiGetRouterRequestKeyV1> keys = request.getKeys();
     PartitionerConfig partitionerConfig = getPartitionerConfig(request.getResourceName());
-    AbstractStorageEngine store = storageEngineRepository.getLocalStorageEngine(topic);
+    AbstractStorageEngine store = getStorageEngine(topic);
 
     MultiGetResponseWrapper responseWrapper = new MultiGetResponseWrapper(request.getKeyCount());
     responseWrapper.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
@@ -514,7 +523,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     String topic = request.getResourceName();
     String storeName = request.getStoreName();
     Iterable<ComputeRouterRequestKeyV1> keys = request.getKeys();
-    AbstractStorageEngine store = storageEngineRepository.getLocalStorageEngine(topic);
+    AbstractStorageEngine store = getStorageEngine(topic);
     PartitionerConfig partitionerConfig = getPartitionerConfig(request.getResourceName());
 
     Schema valueSchema;
@@ -774,5 +783,13 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
         response.incrementCountOperatorCount();
         break;
     }
+  }
+
+  private AbstractStorageEngine getStorageEngine(String storeVersionName) {
+    AbstractStorageEngine engine = storageEngineRepository.getLocalStorageEngine(storeVersionName);
+    if (engine == null) {
+      throw new VeniceNoStoreException(storeVersionName);
+    }
+    return engine;
   }
 }

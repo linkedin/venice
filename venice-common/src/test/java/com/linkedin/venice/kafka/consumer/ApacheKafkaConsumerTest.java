@@ -73,7 +73,7 @@ public class ApacheKafkaConsumerTest {
 
     String topic = "topic";
     int partition = 1;
-    consumer.assign(Collections.singletonList(new TopicPartition(topic, partition)));
+    consumer.subscribe(topic, partition, 0);
     assertConsumerHasSpecificNumberOfAssignmedPartitions(consumer, 1);
     consumer.pause(topic, partition);
     assertConsumerHasSpecificNumberOfAssignmedPartitions(consumer, 1);

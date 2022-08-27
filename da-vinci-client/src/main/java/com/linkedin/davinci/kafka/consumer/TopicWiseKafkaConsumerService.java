@@ -1,16 +1,18 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.throttle.EventThrottler;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -31,7 +33,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
   private final Map<SharedKafkaConsumer, Set<String>> consumerToStoresMap = new VeniceConcurrentHashMap<>();
   private final Logger logger;
 
-  public TopicWiseKafkaConsumerService(
+  TopicWiseKafkaConsumerService(
       final KafkaClientFactory consumerFactory,
       final Properties consumerProperties,
       final long readCycleDelayMs,
@@ -43,7 +45,9 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
       final String kafkaClusterAlias,
       final long sharedConsumerNonExistingTopicCleanupDelayMS,
       final TopicExistenceChecker topicExistenceChecker,
-      final boolean liveConfigBasedKafkaThrottlingEnabled) {
+      final boolean liveConfigBasedKafkaThrottlingEnabled,
+      final Time time,
+      final KafkaConsumerServiceStats stats) {
     super(
         consumerFactory,
         consumerProperties,
@@ -56,25 +60,10 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
         kafkaClusterAlias,
         sharedConsumerNonExistingTopicCleanupDelayMS,
         topicExistenceChecker,
-        liveConfigBasedKafkaThrottlingEnabled);
+        liveConfigBasedKafkaThrottlingEnabled,
+        time,
+        stats);
     logger = LogManager.getLogger(TopicWiseKafkaConsumerService.class + " [" + kafkaUrl + "]");
-  }
-
-  @Override
-  public SharedKafkaConsumer createSharedKafkaConsumer(
-      final KafkaConsumerWrapper kafkaConsumerWrapper,
-      final long nonExistingTopicCleanupDelayMS,
-      TopicExistenceChecker topicExistenceChecker) {
-    return new TopicWiseSharedKafkaConsumer(
-        kafkaConsumerWrapper,
-        this,
-        nonExistingTopicCleanupDelayMS,
-        topicExistenceChecker);
-  }
-
-  @Override
-  public KafkaConsumerWrapper getConsumerAssignedToVersionTopic(String versionTopic) {
-    return versionTopicToConsumerMap.get(versionTopic);
   }
 
   /**
@@ -85,96 +74,83 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
    * This function will also try to avoid assigning the same consumer to the version topics, which are belonging to
    * the same store since for Hybrid store, the ingestion tasks for different store versions will subscribe the same
    * Real-time topic, which won't work if they are using the same shared consumer.
-   * @param ingestionTask
-   * @return
    */
   @Override
-  public synchronized KafkaConsumerWrapper assignConsumerFor(StoreIngestionTask ingestionTask) {
-    String versionTopic = ingestionTask.getVersionTopic();
+  protected synchronized SharedKafkaConsumer pickConsumerForPartition(
+      String versionTopic,
+      TopicPartition topicPartition) {
     // Check whether this version topic has been subscribed before or not.
-    SharedKafkaConsumer chosenConsumer = null;
-    chosenConsumer = versionTopicToConsumerMap.get(versionTopic);
+    SharedKafkaConsumer chosenConsumer = versionTopicToConsumerMap.get(versionTopic);
     if (null != chosenConsumer) {
       logger.info(
-          "The version topic: " + versionTopic + " has been subscribed previously,"
-              + " so this function will return the previously assigned shared consumer directly");
-      return chosenConsumer;
-    }
+          "The version topic: {} has been subscribed previously, so this function will return the previously assigned shared consumer directly",
+          versionTopic);
+    } else {
 
-    int minAssignmentPerConsumer = Integer.MAX_VALUE;
-    for (SharedKafkaConsumer consumer: readOnlyConsumersList) {
-      /**
-       * A Venice server host may consume from 2 version topics that belongs to the same store because each store has 2
-       * versions. We need to make sure multiple store versions won't share the same consumer. Because for Hybrid stores,
-       * both the store versions will consume the same RT topic with different offset.
-       * To simplify the logic here, we ensure that one consumer consumes from only one version topic of a specific store.
-       */
-      if (checkWhetherConsumerHasSubscribedSameStore(consumer, versionTopic)) {
-        logger.info(
-            "Current consumer has already subscribed the same store as the new topic: " + versionTopic + ", "
-                + "will skip it and try next consumer in consumer pool");
-        continue;
-      }
-      /**
-       * Find the zero loaded consumer by topics. There is a delay between {@link SharedKafkaConsumer#attach(String, StoreIngestionTask)}
-       * and {@link SharedKafkaConsumer#assign(List)} partitions, so we should guarantee every {@link SharedKafkaConsumer}
-       * is assigned with {@linkStoreIngestionTask} first.
-       */
-      if (!isConsumerAssignedTopic(consumer)) {
-        chosenConsumer = consumer;
-        assignVersionTopicToConsumer(versionTopic, chosenConsumer);
-        logger.info(
-            "Assigned a shared consumer with index of " + readOnlyConsumersList.indexOf(chosenConsumer)
-                + " without any assigned topic for topic: " + versionTopic);
-        return chosenConsumer;
-      }
+      boolean freshConsumer = false;
+      int minAssignmentPerConsumer = Integer.MAX_VALUE;
+      for (SharedKafkaConsumer consumer: consumerToConsumptionTask.keySet()) {
+        /**
+         * A Venice server host may consume from 2 version topics that belongs to the same store because each store has 2
+         * versions. We need to make sure multiple store versions won't share the same consumer. Because for Hybrid stores,
+         * both the store versions will consume the same RT topic with different offset.
+         * To simplify the logic here, we ensure that one consumer consumes from only one version topic of a specific store.
+         */
+        if (checkWhetherConsumerHasSubscribedSameStore(consumer, versionTopic)) {
+          logger.info(
+              "Current consumer has already subscribed the same store as the new topic: {}, will skip it and try next consumer in consumer pool",
+              versionTopic);
+          continue;
+        }
+        /** If any consumer is idle, choose it. */
+        if (!isConsumerAssignedTopic(consumer)) {
+          chosenConsumer = consumer;
+          freshConsumer = true;
+          break;
+        }
 
-      // Find the least loaded consumer by partitions
-      final int assignedPartitions = consumer.getAssignmentSize();
-      if (assignedPartitions < minAssignmentPerConsumer) {
-        minAssignmentPerConsumer = assignedPartitions;
-        chosenConsumer = consumer;
+        // Find the least loaded consumer by partitions
+        final int assignedPartitions = consumer.getAssignmentSize();
+        if (assignedPartitions < minAssignmentPerConsumer) {
+          minAssignmentPerConsumer = assignedPartitions;
+          chosenConsumer = consumer;
+        }
       }
-    }
-    if (null == chosenConsumer) {
-      stats.recordConsumerSelectionForTopicError();
-      throw new VeniceException(
-          "Failed to find consumer for topic: " + versionTopic + ", and it might be caused by that all"
-              + " the existing consumers have subscribed the same store, and that might be caused by a bug or resource leaking");
+      if (null == chosenConsumer) {
+        stats.recordConsumerSelectionForTopicError();
+        throw new VeniceException(
+            "Failed to find consumer for topic: " + versionTopic + ", and it might be caused by that all"
+                + " the existing consumers have subscribed the same store, and that might be caused by a bug or resource leaking");
+      }
+      if (freshConsumer) {
+        logger.info(
+            "Assigned a shared consumer with index of {} for topic: {} with least # of partitions assigned ({})"
+                + " and subscribed it to {}",
+            consumerToConsumptionTask.indexOf(chosenConsumer),
+            versionTopic,
+            minAssignmentPerConsumer,
+            topicPartition);
+      } else {
+        logger.info(
+            "Assigned a shared consumer with index of {} for topic: {} without any partitions assigned"
+                + " and subscribed it to {}",
+            consumerToConsumptionTask.indexOf(chosenConsumer),
+            versionTopic,
+            topicPartition);
+      }
     }
     assignVersionTopicToConsumer(versionTopic, chosenConsumer);
-    logger.info(
-        "Assigned a shared consumer with index of " + readOnlyConsumersList.indexOf(chosenConsumer) + " for topic: "
-            + versionTopic + " with least # of partitions assigned: " + minAssignmentPerConsumer);
     return chosenConsumer;
   }
 
   /**
    * This function is used to check whether the passed {@param consumer} has already subscribed the topics
    * belonging to the same store, which owns the passed {@param versionTopic} or not.
-   * @param consumer
-   * @param versionTopic
-   * @return
    */
   private boolean checkWhetherConsumerHasSubscribedSameStore(SharedKafkaConsumer consumer, String versionTopic) {
     String storeName = Version.parseStoreFromKafkaTopicName(versionTopic);
     Set<String> stores = consumerToStoresMap.get(consumer);
     return stores != null && stores.contains(storeName);
-  }
-
-  /**
-   * Attach the messages belonging to {@param topic} to the passed {@param ingestionTask}
-   */
-  @Override
-  public void attach(KafkaConsumerWrapper consumer, String topic, StoreIngestionTask ingestionTask) {
-    if (!(consumer instanceof SharedKafkaConsumer)) {
-      throw new VeniceException("The `consumer` passed must be a `SharedKafkaConsumer`");
-    }
-    SharedKafkaConsumer sharedConsumer = (SharedKafkaConsumer) consumer;
-    if (!readOnlyConsumersList.contains(sharedConsumer)) {
-      throw new VeniceException("Unknown shared consumer passed");
-    }
-    sharedConsumer.attach(topic, ingestionTask);
   }
 
   /**
@@ -188,13 +164,13 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
       return;
     }
     removeTopicFromConsumer(versionTopic, sharedKafkaConsumer);
-    sharedKafkaConsumer.unsubscribeAll(versionTopic);
+    super.unsubscribeAll(versionTopic);
   }
 
   /**
    * This function will check a consumer is assigned topic or not. Since we may not have too many consumers and this
-   * function will be only called when {@link KafkaConsumerService#assignConsumerFor(StoreIngestionTask)} called at the
-   * first time.
+   * function will be only called when {@link #pickConsumerForPartition(String, TopicPartition)} is called the first
+   * time.
    */
   private boolean isConsumerAssignedTopic(SharedKafkaConsumer consumer) {
     return consumerToStoresMap.containsKey(consumer);

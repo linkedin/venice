@@ -226,13 +226,16 @@ public abstract class TestRestartServerDuringIngestion {
           return allPartitionsReady;
         });
         restartAllRouters();
-        // Verify all the key/value pairs
-        for (Map.Entry<byte[], byte[]> entry: unsortedInputRecords.entrySet()) {
-          String key = deserializer.deserialize(entry.getKey()).toString();
-          CharSequence expectedValue = (CharSequence) deserializer.deserialize(entry.getValue());
-          CharSequence returnedValue = storeClient.get(key).get();
-          Assert.assertEquals(returnedValue, expectedValue);
-        }
+        waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          // Verify all the key/value pairs
+          for (Map.Entry<byte[], byte[]> entry: unsortedInputRecords.entrySet()) {
+            String key = deserializer.deserialize(entry.getKey()).toString();
+            CharSequence expectedValue = (CharSequence) deserializer.deserialize(entry.getValue());
+            CharSequence returnedValue = storeClient.get(key).get();
+            Assert.assertNotNull(returnedValue);
+            Assert.assertEquals(returnedValue, expectedValue);
+          }
+        });
       }
     }
   }

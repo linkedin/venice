@@ -996,10 +996,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumedRecord,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
-      String kafkaUrl, long beforeProcessingRecordTimestamp) throws InterruptedException {
+      String kafkaUrl,
+      long beforeProcessingRecordTimestamp) throws InterruptedException {
     long queuePutStartTimeInNS = System.nanoTime();
     storeBufferService.putConsumerRecord(
-        consumedRecord, this, leaderProducedRecordContext, subPartition, kafkaUrl, beforeProcessingRecordTimestamp); // blocking call
+        consumedRecord,
+        this,
+        leaderProducedRecordContext,
+        subPartition,
+        kafkaUrl,
+        beforeProcessingRecordTimestamp); // blocking call
 
     storeIngestionStats.recordProduceToDrainQueueRecordNum(1);
     if (emitMetrics.get()) {
@@ -1203,13 +1209,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long kafkaProduceStartTimeInNS = System.nanoTime();
       // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
       // this call.
-      DelegateConsumerRecordResult delegateConsumerRecordResult = delegateConsumerRecord(record, subPartition, kafkaUrl,
-          kafkaClusterId, beforeProcessingRecordTimestamp);
+      DelegateConsumerRecordResult delegateConsumerRecordResult =
+          delegateConsumerRecord(record, subPartition, kafkaUrl, kafkaClusterId, beforeProcessingRecordTimestamp);
       switch (delegateConsumerRecordResult) {
         case QUEUED_TO_DRAINER:
           long queuePutStartTimeInNS = System.nanoTime();
-          storeBufferService.putConsumerRecord(record, this, null, subPartition,
-              kafkaUrl, beforeProcessingRecordTimestamp); // blocking call
+          storeBufferService
+              .putConsumerRecord(record, this, null, subPartition, kafkaUrl, beforeProcessingRecordTimestamp); // blocking
+                                                                                                               // call
           elapsedTimeForPuttingIntoQueue += LatencyUtils.getLatencyInMS(queuePutStartTimeInNS);
           ++recordQueuedToDrainer;
           break;
@@ -1539,7 +1546,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       }
     } catch (VeniceIngestionTaskKilledException e) {
-      logger.info(consumerTaskId + " has been killed.", e);
+      logger.info(consumerTaskId + " has been killed.");
       statusReportAdapter.reportKilled(partitionConsumptionStateMap.values(), e);
       doFlush = false;
     } catch (org.apache.kafka.common.errors.InterruptException | InterruptedException e) {
@@ -1710,7 +1717,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   private void internalClose(boolean doFlush) {
-    // Only reset Offset Messages are important, subscribe/unSubscribe will be handled
+    // Only reset Offset Messages are important, subscribe/unsubscribe will be handled
     // on the restart by Helix Controller notifications on the new StoreIngestionTask.
     try {
       this.storeRepository.unregisterStoreDataChangedListener(this.storageUtilizationManager);
@@ -2801,7 +2808,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         sizeOfPersistedData =
             processKafkaDataMessage(consumerRecord, partitionConsumptionState, leaderProducedRecordContext);
       }
-      versionedStorageIngestionStats.recordConsumedRecordEndToEndProcessingLatency(storeName, versionNumber,
+      versionedStorageIngestionStats.recordConsumedRecordEndToEndProcessingLatency(
+          storeName,
+          versionNumber,
           LatencyUtils.getLatencyInMS(beforeProcessingRecordTimestamp));
     } catch (DuplicateDataException e) {
       divErrorMetricCallback.execute(e);
@@ -3041,7 +3050,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public boolean consumerHasAnySubscription() {
     if (serverConfig.isSharedConsumerPoolEnabled()) {
-      return aggKafkaConsumerService.hasAnyConsumerAssignedFor(getVersionTopic(), everSubscribedTopics);
+      return aggKafkaConsumerService.hasAnyConsumerAssignedForVersionTopic(getVersionTopic());
     } else {
       return kafkaUrlToDedicatedConsumerMap.values()
           .stream()
@@ -3074,8 +3083,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       aggKafkaConsumerService.unsubscribeConsumerFor(getVersionTopic(), topic, partitionId);
     } else {
       Instant startTime = Instant.now();
-      kafkaUrlToDedicatedConsumerMap.forEach((kafkaURL, consumer) -> {
-        consumer.unSubscribe(topic, partitionConsumptionState.getSourceTopicPartition(topic));
+      kafkaUrlToDedicatedConsumerMap.forEach((kafkaURL, dedicatedConsumer) -> {
+        dedicatedConsumer.unSubscribe(topic, partitionConsumptionState.getSourceTopicPartition(topic));
         logger.info(
             String.format(
                 "Consumer unsubscribed topic %s partition %d at %s. Took %d ms",

@@ -989,6 +989,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           "The current version of store " + storeName + " does not have the expected value of '" + versionId + "'.");
     });
     refreshAllRouterMetaData();
+    logger.info("Finished waiting for version {} of store {} to become available.", versionId, storeName);
   }
 
   /**

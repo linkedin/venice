@@ -82,6 +82,7 @@ import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
@@ -460,7 +461,10 @@ public class TestHybrid {
       throws ExecutionException, InterruptedException {
     String key = Integer.toString(index);
     String value = client.get(key).get().toString();
-    assertEquals(value.length(), STREAMING_RECORD_SIZE);
+    assertEquals(
+        value.length(),
+        STREAMING_RECORD_SIZE,
+        "Expected a large record for key '" + key + "' but instead got: '" + value + "'.");
 
     String expectedChar = Integer.toString(index).substring(0, 1);
     for (int i = 0; i < value.length(); i++) {
@@ -469,7 +473,7 @@ public class TestHybrid {
   }
 
   /**
-   * A comprehensive integration test for GF job. We set up RF to be 2 in the cluster and spin up 3 SNs nodes here.
+   * A comprehensive integration test for RP job. We set up RF to be 2 in the cluster and spin up 3 SNs nodes here.
    * 2 RF is required to be the correctness for both leader and follower's behavior. A spare SN is also added for
    * testing whether the flow can work while the original leader dies.
    *
@@ -1467,8 +1471,7 @@ public class TestHybrid {
     final int replicationFactor = 2;
     final int amplificationFactor = 5;
     final boolean leaderFollowerEnabled = true;
-    // VeniceClusterWrapper cluster = enableIngestionIsolation ? ingestionIsolationEnabledSharedVenice : sharedVenice;
-    VeniceClusterWrapper cluster = ingestionIsolationEnabledSharedVenice;
+    VeniceClusterWrapper cluster = enableIngestionIsolation ? ingestionIsolationEnabledSharedVenice : sharedVenice;
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(partitionCount)
         .setReplicationFactor(replicationFactor)
         .setAmplificationFactor(amplificationFactor)
@@ -1535,9 +1538,11 @@ public class TestHybrid {
           TestPushUtils.sendCustomSizeStreamingRecord(producer, storeName, i, STREAMING_RECORD_SIZE);
         }
         producer.stop();
+        AtomicInteger watermarkOfSuccessfullyVerifiedKeys = new AtomicInteger(0);
         TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
-          for (int i = 0; i < keyCount; i++) {
+          for (int i = watermarkOfSuccessfullyVerifiedKeys.get(); i < keyCount; i++) {
             checkLargeRecord(client, i);
+            watermarkOfSuccessfullyVerifiedKeys.set(i);
           }
         });
         params = new UpdateStoreQueryParams().setAmplificationFactor(5);
@@ -1549,9 +1554,11 @@ public class TestHybrid {
             STRING_SCHEMA,
             IntStream.range(0, keyCount)
                 .mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))));
+        watermarkOfSuccessfullyVerifiedKeys.set(0);
         TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
-          for (int i = 0; i < keyCount; i++) {
+          for (int i = watermarkOfSuccessfullyVerifiedKeys.get(); i < keyCount; i++) {
             checkLargeRecord(client, i);
+            watermarkOfSuccessfullyVerifiedKeys.set(i);
           }
         });
       }

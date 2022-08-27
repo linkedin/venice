@@ -1108,7 +1108,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       throw new VeniceException(
           "Unexpected: received some " + ControlMessageType.TOPIC_SWITCH.name()
               + " control message in a topic where we have not yet received a "
-              + ControlMessageType.START_OF_PUSH.name() + " control message.");
+              + ControlMessageType.START_OF_PUSH.name() + " control message, for partition " + partitionConsumptionState
+              + " and upstreamStartOffsetByKafkaURL: " + upstreamStartOffsetByKafkaURL);
     }
   }
 
@@ -1412,8 +1413,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         versionedStorageIngestionStats,
         storeIngestionStats,
         System.nanoTime(),
-        beforeProcessingRecordTimestamp
-    );
+        beforeProcessingRecordTimestamp);
     partitionConsumptionState.setLastLeaderPersistFuture(leaderProducedRecordContext.getPersistedToDBFuture());
     produceFunction.apply(callback, leaderMetadataWrapper);
   }
@@ -2705,8 +2705,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String kafkaUrl,
       int kafkaClusterId,
       PartitionConsumptionState partitionConsumptionState,
-      long beforeProcessingRecordTimestamp
-      ) {
+      long beforeProcessingRecordTimestamp) {
 
     final int subPartition = partitionConsumptionState.getPartition();
     final int readerValueSchemaId;

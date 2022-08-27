@@ -15,23 +15,19 @@ import java.util.function.LongSupplier;
 public class KafkaConsumerServiceStats extends AbstractVeniceStats {
   private final Sensor pollRequestSensor;
   private final Sensor pollRequestLatencySensor;
-  private final Sensor maxElapsedTimeSinceLastSuccessfulPollSensor;
   private final Sensor pollResultNumSensor;
   private final Sensor pollRequestError;
   private final Sensor consumerRecordsProducingToWriterBufferLatencySensor;
   private final Sensor detectedDeletedTopicNumSensor;
   private final Sensor detectedNoRunningIngestionTopicPartitionNumSensor;
-  private final Sensor detectedNoRunningIngestionTopicNumSensor;
   private final Sensor delegateSubscribeLatencySensor;
   private final Sensor updateCurrentAssignmentLatencySensor;
   private final Sensor consumerSelectionForTopicError;
   private final Sensor maxPartitionsPerConsumer;
   private final Sensor minPartitionsPerConsumer;
   private final Sensor avgPartitionsPerConsumer;
-  private final Sensor getOffsetLagSensor;
   private final Sensor getOffsetLagIsAbsentSensor;
   private final Sensor getOffsetLagIsPresentSensor;
-  private final Sensor getLatestOffsetSensor;
   private final Sensor getLatestOffsetIsAbsentSensor;
   private final Sensor getLatestOffsetIsPresentSensor;
 
@@ -47,9 +43,9 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
     /**
      * "max_elapsed_time_since_last_successful_poll" is a Gauge metric which calls a function inside KafkaConsumerService,
      *  this metric will still be reported per minute with the latest result from the function even if consumer task
-     *  threads are stuck.
+     *  threads are stuck. No need to keep a class property for it since we never call record on it.
      */
-    maxElapsedTimeSinceLastSuccessfulPollSensor = registerSensor(
+    registerSensor(
         "max_elapsed_time_since_last_successful_poll",
         new Gauge(getMaxElapsedTimeSinceLastPollInConsumerPool.getAsLong()));
     // consumer record number per second returned by Kafka consumer poll.
@@ -59,7 +55,6 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
     consumerRecordsProducingToWriterBufferLatencySensor =
         registerSensor("consumer_records_producing_to_write_buffer_latency", new Avg(), new Max());
     detectedDeletedTopicNumSensor = registerSensor("detected_deleted_topic_num", new Total());
-    detectedNoRunningIngestionTopicNumSensor = registerSensor("detected_no_running_ingestion_topic_num", new Total());
     detectedNoRunningIngestionTopicPartitionNumSensor =
         registerSensor("detected_no_running_ingestion_topic_partition_num", new Total());
     delegateSubscribeLatencySensor = registerSensor("delegate_subscribe_latency", new Avg(), new Max());
@@ -72,14 +67,14 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
     maxPartitionsPerConsumer = registerSensor("max_partitions_per_consumer", new Gauge());
     avgPartitionsPerConsumer = registerSensor("avg_partitions_per_consumer", new Gauge());
 
-    this.getOffsetLagSensor = registerSensor("getOffsetLag", new OccurrenceRate());
+    Sensor getOffsetLagSensor = registerSensor("getOffsetLag", new OccurrenceRate());
     Sensor[] offsetLagParent = new Sensor[] { getOffsetLagSensor };
     this.getOffsetLagIsAbsentSensor =
         registerSensor("getOffsetLagIsAbsent", null, offsetLagParent, new OccurrenceRate());
     this.getOffsetLagIsPresentSensor =
         registerSensor("getOffsetLagIsPresent", null, offsetLagParent, new OccurrenceRate());
 
-    this.getLatestOffsetSensor = registerSensor("getLatestOffset", new OccurrenceRate());
+    Sensor getLatestOffsetSensor = registerSensor("getLatestOffset", new OccurrenceRate());
     Sensor[] latestOffsetParent = new Sensor[] { getLatestOffsetSensor };
     this.getLatestOffsetIsAbsentSensor =
         registerSensor("getLatestOffsetIsAbsent", null, latestOffsetParent, new OccurrenceRate());
@@ -107,10 +102,6 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
 
   public void recordDetectedDeletedTopicNum(int count) {
     detectedDeletedTopicNumSensor.record(count);
-  }
-
-  public void recordDetectedNoRunningIngestionTopicNum(int count) {
-    detectedNoRunningIngestionTopicNumSensor.record(count);
   }
 
   public void recordDetectedNoRunningIngestionTopicPartitionNum(int count) {

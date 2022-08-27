@@ -75,14 +75,14 @@ public class MockTime extends org.apache.kafka.common.utils.MockTime implements 
   @Override
   public long milliseconds() {
     long time = getMilliseconds();
-    LOGGER.info("Kafka asked for milliseconds. Returned: " + time);
+    LOGGER.debug("Kafka asked for milliseconds. Returned: {}", time);
     return time;
   }
 
   @Override
   public long hiResClockMs() {
     long time = TimeUnit.NANOSECONDS.toMillis(getNanoseconds());
-    LOGGER.info("Kafka asked for high resolution milliseconds. Returned: " + time);
+    LOGGER.debug("Kafka asked for high resolution milliseconds. Returned: {}", time);
     return time;
   }
 
@@ -92,7 +92,7 @@ public class MockTime extends org.apache.kafka.common.utils.MockTime implements 
   @Override
   public long nanoseconds() {
     long time = getNanoseconds();
-    LOGGER.info("Kafka asked for nanoseconds. Returned: " + time);
+    LOGGER.debug("Kafka asked for nanoseconds. Returned: {}", time);
     return time;
   }
 }
