@@ -1,5 +1,13 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.schema.rmd.RmdConstants.*;
+import static com.linkedin.venice.utils.TestUtils.*;
+import static com.linkedin.venice.utils.Time.*;
+import static org.mockito.Mockito.*;
+import static org.testng.Assert.*;
+
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -149,21 +157,13 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.schema.rmd.RmdConstants.*;
-import static com.linkedin.venice.utils.TestUtils.*;
-import static com.linkedin.venice.utils.Time.*;
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
-
 
 /**
  * Beware that most of the test cases in this suite depend on {@link StoreIngestionTaskTest#TEST_TIMEOUT_MS}
  * Adjust it based on environment if timeout failure occurs.
  */
 @Test(singleThreaded = true)
-public class StoreIngestionTaskTest {
+public abstract class StoreIngestionTaskTest {
   private static final Logger logger = LogManager.getLogger(StoreIngestionTaskTest.class);
 
   private static final long READ_CYCLE_DELAY_MS = 5;
@@ -690,8 +690,6 @@ public class StoreIngestionTaskTest {
       }
     }
     offsetManager = new DeepCopyStorageMetadataService(mockStorageMetadataService);
-    Queue<VeniceNotifier> onlineOfflineNotifiers =
-        new ConcurrentLinkedQueue<>(Arrays.asList(mockLogNotifier, mockPartitionStatusNotifier));
     Queue<VeniceNotifier> leaderFollowerNotifiers = new ConcurrentLinkedQueue<>(
         Arrays.asList(mockLogNotifier, mockPartitionStatusNotifier, mockLeaderFollowerStateModelNotifier));
     DiskUsage diskUsage;
@@ -714,7 +712,7 @@ public class StoreIngestionTaskTest {
     Properties localKafkaProps = new Properties();
     localKafkaProps
         .put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
-    localKafkaConsumerService = new TopicWiseKafkaConsumerService(
+    localKafkaConsumerService = getConsumerAssignmentStrategy().constructor.construct(
         mockFactory,
         localKafkaProps,
         10,
@@ -726,14 +724,15 @@ public class StoreIngestionTaskTest {
         inMemoryLocalKafkaBroker.getKafkaBootstrapServer(),
         1000,
         mock(TopicExistenceChecker.class),
-        isLiveConfigEnabled);
-    localKafkaConsumerService.setStats(kafkaConsumerServiceStats);
+        isLiveConfigEnabled,
+        SystemTime.INSTANCE,
+        kafkaConsumerServiceStats);
     localKafkaConsumerService.start();
 
     Properties remoteKafkaProps = new Properties();
     remoteKafkaProps
         .put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
-    remoteKafkaConsumerService = new TopicWiseKafkaConsumerService(
+    remoteKafkaConsumerService = getConsumerAssignmentStrategy().constructor.construct(
         mockFactory,
         remoteKafkaProps,
         10,
@@ -745,8 +744,9 @@ public class StoreIngestionTaskTest {
         inMemoryLocalKafkaBroker.getKafkaBootstrapServer(),
         1000,
         mock(TopicExistenceChecker.class),
-        isLiveConfigEnabled);
-    remoteKafkaConsumerService.setStats(kafkaConsumerServiceStats);
+        isLiveConfigEnabled,
+        SystemTime.INSTANCE,
+        kafkaConsumerServiceStats);
     remoteKafkaConsumerService.start();
 
     doReturn(100L).when(mockBandwidthThrottler).getMaxRatePerSecond();
@@ -779,15 +779,9 @@ public class StoreIngestionTaskTest {
         .setPartitionStateSerializer(partitionStateSerializer);
   }
 
-  private void prepareAggKafkaConsumerServiceMock() {
-    doAnswer(invocation -> {
-      String kafkaUrl = invocation.getArgument(0, String.class);
-      if (kafkaUrl.equals(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer())) {
-        return inMemoryRemoteKafkaConsumer;
-      }
-      return inMemoryLocalKafkaConsumer;
-    }).when(aggKafkaConsumerService).assignConsumerFor(any(), any());
+  abstract KafkaConsumerService.ConsumerAssignmentStrategy getConsumerAssignmentStrategy();
 
+  private void prepareAggKafkaConsumerServiceMock() {
     doAnswer(invocation -> {
       String kafkaUrl = invocation.getArgument(0, String.class);
       StoreIngestionTask storeIngestionTask = invocation.getArgument(1, StoreIngestionTask.class);
@@ -795,30 +789,34 @@ public class StoreIngestionTaskTest {
       int partition = invocation.getArgument(3, Integer.class);
       long offset = invocation.getArgument(4, Long.class);
       TopicPartition topicPartition = new TopicPartition(topic, partition);
-      if (kafkaUrl.equals(inMemoryLocalKafkaBroker.getKafkaBootstrapServer())) {
-        KafkaConsumerWrapper topicWiseKafkaConsumer = localKafkaConsumerService.assignConsumerFor(storeIngestionTask);
-        localKafkaConsumerService.attach(topicWiseKafkaConsumer, topic, storeIngestionTask);
-        localConsumedDataReceiver = (StorePartitionDataReceiver) localKafkaConsumerService.setDataReceiver(
-            topicPartition,
-            new StorePartitionDataReceiver(storeIngestionTask, topicPartition, kafkaUrl, 0));
-        topicWiseKafkaConsumer.subscribe(topic, partition, offset);
-      } else if (kafkaUrl.equals(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer())) {
-        KafkaConsumerWrapper topicWiseKafkaConsumer = remoteKafkaConsumerService.assignConsumerFor(storeIngestionTask);
-        remoteKafkaConsumerService.attach(topicWiseKafkaConsumer, topic, storeIngestionTask);
-        remoteConsumedDataReceiver = (StorePartitionDataReceiver) remoteKafkaConsumerService.setDataReceiver(
-            topicPartition,
-            new StorePartitionDataReceiver(storeIngestionTask, topicPartition, kafkaUrl, 1));
-        topicWiseKafkaConsumer.subscribe(topic, partition, offset);
+      KafkaConsumerService kafkaConsumerService;
+      int kafkaClusterId;
+      boolean local = kafkaUrl.equals(inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+      if (local) {
+        kafkaConsumerService = localKafkaConsumerService;
+        kafkaClusterId = 0;
+      } else {
+        kafkaConsumerService = remoteKafkaConsumerService;
+        kafkaClusterId = 1;
+      }
+      StorePartitionDataReceiver dataReceiver =
+          new StorePartitionDataReceiver(storeIngestionTask, topicPartition, kafkaUrl, kafkaClusterId);
+      kafkaConsumerService.startConsumptionIntoDataReceiver(topicPartition, offset, dataReceiver);
+
+      if (local) {
+        localConsumedDataReceiver = dataReceiver;
+      } else {
+        remoteConsumedDataReceiver = dataReceiver;
       }
 
       return null;
-    }).when(aggKafkaConsumerService).subscribeConsumerFor(any(), any(), any(), anyInt(), anyLong());
+    }).when(aggKafkaConsumerService).subscribeConsumerFor(anyString(), any(), anyString(), anyInt(), anyLong());
 
     doAnswer(invocation -> {
-      Set<String> topics = invocation.getArgument(1, Set.class);
-      return inMemoryLocalKafkaConsumer.hasSubscribedAnyTopic(topics)
-          || inMemoryRemoteKafkaConsumer.hasSubscribedAnyTopic(topics);
-    }).when(aggKafkaConsumerService).hasAnyConsumerAssignedFor(anyString(), anySet());
+      String versionTopic = invocation.getArgument(0, String.class);
+      return localKafkaConsumerService.hasAnySubscriptionFor(versionTopic)
+          || remoteKafkaConsumerService.hasAnySubscriptionFor(versionTopic);
+    }).when(aggKafkaConsumerService).hasAnyConsumerAssignedForVersionTopic(anyString());
 
     doAnswer(invocation -> {
       String topic = invocation.getArgument(1, String.class);
@@ -882,8 +880,7 @@ public class StoreIngestionTaskTest {
 
     doAnswer(invocation -> {
       String versionTopic = invocation.getArgument(0, String.class);
-      KafkaConsumerWrapper localConsumer = localKafkaConsumerService.getConsumerAssignedToVersionTopic(versionTopic);
-      if (localConsumer != null) {
+      if (localKafkaConsumerService.hasAnySubscriptionFor(versionTopic)) {
         return Collections.singleton(inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
       }
       return Collections.emptySet();
@@ -1680,13 +1677,9 @@ public class StoreIngestionTaskTest {
           .getVersion(1);
       doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
       doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
-    }, () -> {
-      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).completed(topic, PARTITION_FOO, offset);
-      waitForNonDeterministicCompletion(
-          TEST_TIMEOUT_MS,
-          TimeUnit.MILLISECONDS,
-          () -> !storeIngestionTaskUnderTest.isRunning());
-    }, isActiveActiveReplicationEnabled);
+    },
+        () -> verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).completed(topic, PARTITION_FOO, offset),
+        isActiveActiveReplicationEnabled);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -1698,10 +1691,7 @@ public class StoreIngestionTaskTest {
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).started(topic, PARTITION_FOO);
       // Start of push has already been consumed. Stop consumption
       storeIngestionTaskUnderTest.unSubscribePartition(topic, PARTITION_FOO);
-      waitForNonDeterministicCompletion(
-          TEST_TIMEOUT_MS,
-          TimeUnit.MILLISECONDS,
-          () -> storeIngestionTaskUnderTest.isRunning() == false);
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).stopped(anyString(), anyInt(), anyLong());
     }, isActiveActiveReplicationEnabled);
   }
 
@@ -2107,7 +2097,7 @@ public class StoreIngestionTaskTest {
         new RandomPollStrategy(),
         Utils.setOf(PARTITION_FOO),
         () -> {},
-        () -> waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        () -> waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
           // If the partition already got EndOfPushReceived, then all errors will be suppressed and not reported.
           // The speed for a partition to get EOP is non-deterministic, adds the if check here to make this test not
           // flaky.
@@ -2120,6 +2110,8 @@ public class StoreIngestionTaskTest {
             Assert.assertTrue(
                 errorMessages.contains("Disk is full"),
                 "Expecting disk full error, found following error messages instead: " + errorMessages);
+          } else {
+            logger.info("EOP was received, and therefore this test cannot perform its assertions.");
           }
         }),
         Optional.empty(),
@@ -2519,7 +2511,7 @@ public class StoreIngestionTaskTest {
     VeniceWriter remoteRtWriter =
         getVeniceWriter(rtTopic, () -> new MockInMemoryProducer(inMemoryRemoteKafkaBroker), 1);
 
-    Long recordsNum = 5L;
+    long recordsNum = 5L;
     for (int i = 0; i < recordsNum; i++) {
       localRtWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, putKeyFooTimestamp, null).get();
     }
@@ -2528,9 +2520,9 @@ public class StoreIngestionTaskTest {
       remoteRtWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, putKeyFooTimestamp, null).get();
     }
 
-    waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Assert.assertTrue(localConsumedDataReceiver.receivedRecordsCount() == recordsNum);
-      Assert.assertTrue(remoteConsumedDataReceiver.receivedRecordsCount() == recordsNum);
+    waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      Assert.assertEquals(localConsumedDataReceiver.receivedRecordsCount(), recordsNum);
+      Assert.assertEquals(remoteConsumedDataReceiver.receivedRecordsCount(), recordsNum);
     });
 
     // Pause remote kafka consumption

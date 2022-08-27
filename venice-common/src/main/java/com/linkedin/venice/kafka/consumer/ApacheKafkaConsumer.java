@@ -9,11 +9,9 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
@@ -221,31 +219,6 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   @Override
   public Set<TopicPartition> getAssignment() {
     return kafkaConsumer.assignment();
-  }
-
-  @Override
-  public Set<TopicPartition> paused() {
-    return kafkaConsumer.paused();
-  }
-
-  @Override
-  public Map<TopicPartition, Long> beginningOffsets(List<TopicPartition> topicPartitions) {
-    return kafkaConsumer.beginningOffsets(topicPartitions);
-  }
-
-  @Override
-  public Map<TopicPartition, Long> endOffsets(List<TopicPartition> topicPartitions) {
-    return kafkaConsumer.endOffsets(topicPartitions);
-  }
-
-  @Override
-  public void assign(Collection<TopicPartition> topicPartitions) {
-    kafkaConsumer.assign(topicPartitions);
-  }
-
-  @Override
-  public void seek(TopicPartition topicPartition, long nextOffset) {
-    kafkaConsumer.seek(topicPartition, nextOffset);
   }
 
   @Override

@@ -10,13 +10,10 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import java.nio.ByteBuffer;
-import java.util.Collections;
-import java.util.List;
 import java.util.Properties;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -48,10 +45,8 @@ public class DictionaryUtils {
    * Start Of Push message.
    */
   public static ByteBuffer readDictionaryFromKafka(String topicName, KafkaConsumerWrapper kafkaConsumerWrapper) {
-    List<TopicPartition> partitions = Collections.singletonList(new TopicPartition(topicName, 0));
     LOGGER.info("Consuming from topic: " + topicName + " till StartOfPush");
-    kafkaConsumerWrapper.assign(partitions);
-    kafkaConsumerWrapper.seek(partitions.get(0), 0);
+    kafkaConsumerWrapper.subscribe(topicName, 0, 0);
     boolean startOfPushReceived = false;
     ByteBuffer compressionDictionary = null;
     while (!startOfPushReceived) {

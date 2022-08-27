@@ -48,14 +48,15 @@ public class RouterSslVerificationHandler extends SimpleChannelInboundHandler<Ht
       sslHandler = ctx.channel().parent().pipeline().get(SslHandler.class);
     }
     if (null == sslHandler) {
-      // Log that we got an unexpected non-ssl request
-      String remote = ctx.channel().remoteAddress().toString(); // ip and port
-      String method = req.method().name();
-      String errLine = remote + " requested " + method + " " + req.uri();
-      logger.warn("[requireSsl=" + this.requireSsl + "] Got an unexpected non-ssl request: " + errLine);
       stats.recordNonSslRequest();
-
       if (requireSsl) {
+        // Log that we got an unexpected non-ssl request only if SSL is required
+        logger.warn(
+            "[requireSsl={}] Got an unexpected non-ssl request: {} requested {} {}",
+            this.requireSsl,
+            ctx.channel().remoteAddress(),
+            req.method().name(),
+            req.uri());
         NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
         ctx.close();
         return;

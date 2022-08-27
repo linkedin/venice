@@ -47,13 +47,16 @@ public class LeaderFollowerPartitionStateModelDualPoolFactory extends LeaderFoll
 
   @Override
   public void shutDownExecutor() {
-    executorService.shutdown();
-    futureVersionExecutorService.shutdown();
+    executorService.shutdownNow();
+    futureVersionExecutorService.shutdownNow();
   }
 
   @Override
   public void waitExecutorTermination(long timeout, TimeUnit unit) throws InterruptedException {
+    long startTime = System.currentTimeMillis();
     executorService.awaitTermination(timeout, unit);
-    futureVersionExecutorService.awaitTermination(timeout, unit);
+    long elapsedTime = System.currentTimeMillis() - startTime;
+    long remainingTime = unit.toMillis(timeout) - elapsedTime;
+    futureVersionExecutorService.awaitTermination(remainingTime, TimeUnit.MILLISECONDS);
   }
 }

@@ -1,5 +1,9 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static java.util.Collections.reverseOrder;
+import static java.util.Comparator.*;
+import static java.util.stream.Collectors.*;
+
 import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -22,10 +26,6 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static java.util.Collections.reverseOrder;
-import static java.util.Comparator.*;
-import static java.util.stream.Collectors.*;
 
 
 /**
@@ -99,6 +99,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     public long getBeforeProcessingRecordTimestamp() {
       return this.beforeProcessingRecordTimestamp;
     }
+
     /**
      * This function is being used by {@link BlockingQueue#contains(Object)}.
      * The goal is to find out whether the buffered queue still has any records belonging to the specified topic+partition.
@@ -173,10 +174,13 @@ public class StoreBufferService extends AbstractStoreBufferService {
           recordPersistedFuture = node.getQueuedRecordPersistedFuture();
           beforeProcessingRecordTimestamp = node.getBeforeProcessingRecordTimestamp();
 
-
           long startTime = System.currentTimeMillis();
 
-          ingestionTask.processConsumerRecord(consumerRecord, leaderProducedRecordContext, node.getKafkaUrl(), beforeProcessingRecordTimestamp);
+          ingestionTask.processConsumerRecord(
+              consumerRecord,
+              leaderProducedRecordContext,
+              node.getKafkaUrl(),
+              beforeProcessingRecordTimestamp);
 
           // complete the leaderProducedRecordContext future as processing for this leaderProducedRecordContext is done
           // here.
@@ -199,19 +203,22 @@ public class StoreBufferService extends AbstractStoreBufferService {
             LOGGER.error("Drainer " + drainerIndex + " received InterruptedException, will exit");
             break;
           }
-          LOGGER.error("Drainer " + drainerIndex + " received throwable in drainer thread:  ", e);
-          if (consumerRecord != null) {
+          StringBuilder logBuilder = new StringBuilder().append("Drainer ").append(drainerIndex);
+          if (consumerRecord == null) {
+            logBuilder.append(" received throwable: ");
+          } else {
             String consumerRecordString = consumerRecord.toString();
             if (consumerRecordString.length() > 1024) {
               // Careful not to flood the logs with too much content...
-              LOGGER.error(
-                  "Got exception during processing consumer record (truncated at 1024 characters) : "
-                      + consumerRecordString.substring(0, 1024),
-                  e);
+              consumerRecordString = consumerRecordString.substring(0, 1024);
+              logBuilder
+                  .append(" received throwable while processing consumer record (truncated at 1024 characters): ");
             } else {
-              LOGGER.error("Got exception during processing consumer record: " + consumerRecord, e);
+              logBuilder.append(" received throwable while processing consumer record: ");
             }
+            logBuilder.append(consumerRecordString);
           }
+          LOGGER.error(logBuilder.toString(), e);
 
           /**
            * Catch all the thrown exception and store it in {@link StoreIngestionTask#lastWorkerException}.
@@ -292,7 +299,14 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
 
     blockingQueueArr.get(drainerIndex)
-        .put(new QueueNode(consumerRecord, ingestionTask, leaderProducedRecordContext, recordFuture, kafkaUrl, beforeProcessingRecordTimestamp));
+        .put(
+            new QueueNode(
+                consumerRecord,
+                ingestionTask,
+                leaderProducedRecordContext,
+                recordFuture,
+                kafkaUrl,
+                beforeProcessingRecordTimestamp));
     // Setup the last queued record's future
     Optional<PartitionConsumptionState> partitionConsumptionState =
         ingestionTask.getPartitionConsumptionState(consumerRecord.partition());

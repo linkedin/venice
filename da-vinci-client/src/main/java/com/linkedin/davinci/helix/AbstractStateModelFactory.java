@@ -91,7 +91,7 @@ public abstract class AbstractStateModelFactory extends StateModelFactory<StateM
   }
 
   public void shutDownExecutor() {
-    executorService.shutdown();
+    executorService.shutdownNow();
   }
 
   public void waitExecutorTermination(long timeout, TimeUnit unit) throws InterruptedException {
