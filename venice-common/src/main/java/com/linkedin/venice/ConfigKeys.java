@@ -1856,4 +1856,9 @@ public class ConfigKeys {
   public static final String SERVER_OPTIMIZE_DATABASE_SERVICE_SCHEDULE_INTERNAL_SECONDS =
       "server.optimize.database.service.schedule.internal.seconds";
 
+  /**
+   * A config that determines whether to unregister per store metrics when a store is deleted. Default is false.
+   */
+  public static final String UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED =
+      "unregister.metric.for.deleted.store.enabled";
 }
