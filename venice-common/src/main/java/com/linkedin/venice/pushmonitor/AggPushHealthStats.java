@@ -1,12 +1,22 @@
 package com.linkedin.venice.pushmonitor;
 
-import com.linkedin.venice.stats.AbstractVeniceAggStats;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.stats.AbstractVeniceAggStoreStats;
 import io.tehuti.metrics.MetricsRepository;
 
 
-public class AggPushHealthStats extends AbstractVeniceAggStats<PushHealthStats> {
-  public AggPushHealthStats(String clusterName, MetricsRepository metricsRepository) {
-    super(clusterName, metricsRepository, PushHealthStats::new);
+public class AggPushHealthStats extends AbstractVeniceAggStoreStats<PushHealthStats> {
+  public AggPushHealthStats(
+      String clusterName,
+      MetricsRepository metricsRepository,
+      ReadOnlyStoreRepository metadataRepository,
+      boolean isUnregisterMetricForDeletedStoreEnabled) {
+    super(
+        clusterName,
+        metricsRepository,
+        PushHealthStats::new,
+        metadataRepository,
+        isUnregisterMetricForDeletedStoreEnabled);
   }
 
   public void recordFailedPush(String storeName, long durationInSec) {

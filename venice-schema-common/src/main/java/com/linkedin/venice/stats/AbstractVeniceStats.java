@@ -103,6 +103,13 @@ public class AbstractVeniceStats {
     });
   }
 
+  protected void unregisterAllSensors() {
+    for (Sensor sensor: sensors.values()) {
+      metricsRepository.removeSensor(sensor.name());
+    }
+    sensors.clear();
+  }
+
   protected Sensor registerSensorWithAggregate(String sensorName, Supplier<MeasurableStat[]> stats) {
     return registerSensorWithAggregate(sensorName, null, stats);
   }

@@ -91,7 +91,7 @@ ext.libraries = [
     samzaApi: 'com.linkedin.samza-li:samza-api:311.1050.0.66', // Equivalent to Samza-1.5
     spark: 'com.sparkjava:spark-core:2.9.4',
     spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
-    tehuti: 'io.tehuti:tehuti:0.8.8',
+    tehuti: 'io.tehuti:tehuti:0.9.1',
     testng: 'org.testng:testng:6.14.3',
     // Resolves java.lang.UnsupportedOperationException:  setXIncludeAware is not supported on this JAXP implementation or earlier: class org.apache.xerces.jaxp.DocumentBuilderFactoryImpl
     xalan: 'xalan:xalan:2.7.1',

@@ -1,12 +1,22 @@
 package com.linkedin.venice.pushmonitor;
 
-import com.linkedin.venice.stats.AbstractVeniceAggStats;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.stats.AbstractVeniceAggStoreStats;
 import io.tehuti.metrics.MetricsRepository;
 
 
-public class AggPushStatusCleanUpStats extends AbstractVeniceAggStats<PushStatusCleanUpStats> {
-  public AggPushStatusCleanUpStats(String clusterName, MetricsRepository metricsRepository) {
-    super(clusterName, metricsRepository, PushStatusCleanUpStats::new);
+public class AggPushStatusCleanUpStats extends AbstractVeniceAggStoreStats<PushStatusCleanUpStats> {
+  public AggPushStatusCleanUpStats(
+      String clusterName,
+      MetricsRepository metricsRepository,
+      ReadOnlyStoreRepository metadataRepository,
+      boolean isUnregisterMetricForDeletedStoreEnabled) {
+    super(
+        clusterName,
+        metricsRepository,
+        PushStatusCleanUpStats::new,
+        metadataRepository,
+        isUnregisterMetricForDeletedStoreEnabled);
   }
 
   public void recordSuccessfulLeakedPushStatusCleanUpCount(String storeName, int count) {

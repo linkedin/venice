@@ -79,9 +79,11 @@ import org.testng.annotations.Test;
  * If it's hard to set cluster back, please move the tests to {@link TestVeniceHelixAdminWithIsolatedEnvironment}
  */
 public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVeniceHelixAdmin {
+  private final MetricsRepository metricsRepository = new MetricsRepository();
+
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
-    setupCluster();
+    setupCluster(true, metricsRepository);
     verifyParticipantMessageStoreSetup();
   }
 
@@ -1092,6 +1094,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         veniceAdmin.getTopicManager()
             .containsTopicAndAllPartitionsAreOnline(Version.composeKafkaTopic(storeName, version.getNumber())),
         "Kafka topic should be created.");
+    Assert.assertNotNull(metricsRepository.getMetric("." + storeName + "--successful_push_duration_sec_gauge.Gauge"));
 
     // Store has not been disabled.
     Assert.assertThrows(
@@ -1110,6 +1113,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         TOTAL_TIMEOUT_FOR_LONG_TEST_MS,
         TimeUnit.MILLISECONDS,
         () -> veniceAdmin.isTopicTruncated(Version.composeKafkaTopic(storeName, version.getNumber())));
+    Assert.assertNull(metricsRepository.getMetric("." + storeName + "--successful_push_duration_sec_gauge.Gauge"));
   }
 
   @Test

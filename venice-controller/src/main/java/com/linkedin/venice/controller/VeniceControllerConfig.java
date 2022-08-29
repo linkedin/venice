@@ -162,6 +162,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private boolean usePushStatusStoreForIncrementalPush;
 
+  private boolean unregisterMetricForDeletedStoreEnabled;
+
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
     this.adminPort = props.getInt(ADMIN_PORT);
@@ -349,6 +351,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         props.getBoolean(CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED, true);
     this.concurrentInitRoutinesEnabled = props.getBoolean(CONCURRENT_INIT_ROUTINES_ENABLED, false);
     this.controllerInAzureFabric = props.getBoolean(CONTROLLER_IN_AZURE_FABRIC, false);
+    this.unregisterMetricForDeletedStoreEnabled = props.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
   }
 
   private void validateActiveActiveConfigs() {
@@ -699,6 +702,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean usePushStatusStoreForIncrementalPush() {
     return usePushStatusStoreForIncrementalPush;
+  }
+
+  public boolean isUnregisterMetricForDeletedStoreEnabled() {
+    return unregisterMetricForDeletedStoreEnabled;
   }
 
   /**

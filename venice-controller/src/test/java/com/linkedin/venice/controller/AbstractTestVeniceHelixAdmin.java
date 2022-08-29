@@ -72,10 +72,14 @@ class AbstractTestVeniceHelixAdmin {
   VeniceControllerMultiClusterConfig multiClusterConfig;
 
   public void setupCluster() throws Exception {
-    setupCluster(true);
+    setupCluster(true, new MetricsRepository());
   }
 
   public void setupCluster(boolean createParticipantStore) throws Exception {
+    setupCluster(createParticipantStore, new MetricsRepository());
+  }
+
+  public void setupCluster(boolean createParticipantStore, MetricsRepository metricsRepository) throws Exception {
     Utils.thisIsLocalhost();
     zkServerWrapper = ServiceFactory.getZkServer();
     zkAddress = zkServerWrapper.getAddress();
@@ -88,12 +92,13 @@ class AbstractTestVeniceHelixAdmin {
       properties.put(PARTICIPANT_MESSAGE_STORE_ENABLED, false);
       properties.put(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, true);
     }
+    properties.put(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, true);
     controllerProps = new VeniceProperties(properties);
     helixMessageChannelStats = new HelixMessageChannelStats(new MetricsRepository(), clusterName);
     controllerConfig = new VeniceControllerConfig(controllerProps);
     multiClusterConfig = TestUtils.getMultiClusterConfigFromOneCluster(controllerConfig);
     veniceAdmin =
-        new VeniceHelixAdmin(multiClusterConfig, new MetricsRepository(), D2TestUtils.getAndStartD2Client(zkAddress));
+        new VeniceHelixAdmin(multiClusterConfig, metricsRepository, D2TestUtils.getAndStartD2Client(zkAddress));
     veniceAdmin.initStorageCluster(clusterName);
     startParticipant();
     waitUntilIsLeader(veniceAdmin, clusterName, LEADER_CHANGE_TIMEOUT_MS);
