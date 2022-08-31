@@ -19,7 +19,7 @@ import java.util.function.IntConsumer;
 
 public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVStats, DIVStatsReporter> {
   public AggVersionedDIVStats(MetricsRepository metricsRepository, ReadOnlyStoreRepository metadataRepository) {
-    super(metricsRepository, metadataRepository, () -> new DIVStats(), (mr, name) -> new DIVStatsReporter(mr, name));
+    super(metricsRepository, metadataRepository, DIVStats::new, DIVStatsReporter::new);
   }
 
   public void recordException(String storeName, int version, DataValidationException e) {
@@ -50,7 +50,7 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
 
   public void recordCurrentIdleTime(String storeName, int version) {
     // we don't record current idle time for total stats
-    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordCurrentIdleTime());
+    Utils.computeIfNotNull(getStats(storeName, version), DIVStats::recordCurrentIdleTime);
   }
 
   public void recordOverallIdleTime(String storeName, int version) {
@@ -59,7 +59,7 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
 
   public void resetCurrentIdleTime(String storeName, int version) {
     // we don't record current idle time for total stats
-    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.resetCurrentIdleTime());
+    Utils.computeIfNotNull(getStats(storeName, version), DIVStats::resetCurrentIdleTime);
   }
 
   public void recordLatencies(
@@ -105,6 +105,10 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordDataValidationLatencyMs(value));
   }
 
+  public void recordLeaderProducerCompletionTime(String storeName, int version, double value) {
+    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordLeaderProducerCompletionLatencyMs(value));
+  }
+
   public void recordBenignLeaderOffsetRewind(String storeName, int version) {
     recordVersionedAndTotalStat(storeName, version, DIVStats::recordBenignLeaderOffsetRewind);
   }
@@ -121,10 +125,6 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
     recordVersionedAndTotalStat(storeName, version, DIVStats::recordBenignLeaderProducerFailure);
   }
 
-  public void recordLeaderProducerCompletionTime(String storeName, int version, double value) {
-    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordLeaderProducerCompletionLatencyMs(value));
-  }
-
   @Override
   protected void updateTotalStats(String storeName) {
     IntSet existingVersions = new IntOpenHashSet(3);
@@ -137,44 +137,32 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
     resetTotalStats(
         storeName,
         existingVersions,
-        stat -> stat.getLeaderProducerFailure(),
-        (stat, count) -> stat.setLeaderProducerFailure(count));
+        DIVStats::getLeaderProducerFailure,
+        DIVStats::setLeaderProducerFailure);
     // Update total benign leader producer failure count
     resetTotalStats(
         storeName,
         existingVersions,
-        stat -> stat.getBenignLeaderProducerFailure(),
-        (stat, count) -> stat.setBenignLeaderProducerFailure(count));
+        DIVStats::getBenignLeaderProducerFailure,
+        DIVStats::setBenignLeaderProducerFailure);
     // Update total benign leader offset rewind count
     resetTotalStats(
         storeName,
         existingVersions,
-        stat -> stat.getBenignLeaderOffsetRewindCount(),
-        (stat, count) -> stat.setBenignLeaderOffsetRewindCount(count));
+        DIVStats::getBenignLeaderOffsetRewindCount,
+        DIVStats::setBenignLeaderOffsetRewindCount);
     // Update total potentially lossy leader offset rewind count
     resetTotalStats(
         storeName,
         existingVersions,
-        stat -> stat.getPotentiallyLossyLeaderOffsetRewindCount(),
-        (stat, count) -> stat.setPotentiallyLossyLeaderOffsetRewindCount(count));
+        DIVStats::getPotentiallyLossyLeaderOffsetRewindCount,
+        DIVStats::setPotentiallyLossyLeaderOffsetRewindCount);
     // Update total duplicated msg count
-    resetTotalStats(
-        storeName,
-        existingVersions,
-        stat -> stat.getDuplicateMsg(),
-        (stat, count) -> stat.setDuplicateMsg(count));
+    resetTotalStats(storeName, existingVersions, DIVStats::getDuplicateMsg, DIVStats::setDuplicateMsg);
     // Update total missing msg count
-    resetTotalStats(
-        storeName,
-        existingVersions,
-        stat -> stat.getMissingMsg(),
-        (stat, count) -> stat.setMissingMsg(count));
+    resetTotalStats(storeName, existingVersions, DIVStats::getMissingMsg, DIVStats::setMissingMsg);
     // Update total corrupt msg count
-    resetTotalStats(
-        storeName,
-        existingVersions,
-        stat -> stat.getCorruptedMsg(),
-        (stat, count) -> stat.setCorruptedMsg(count));
+    resetTotalStats(storeName, existingVersions, DIVStats::getCorruptedMsg, DIVStats::setCorruptedMsg);
   }
 
   private void resetTotalStats(

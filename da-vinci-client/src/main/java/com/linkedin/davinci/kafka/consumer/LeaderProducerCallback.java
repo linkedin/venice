@@ -120,10 +120,12 @@ class LeaderProducerCallback implements ChunkAwareCallback {
       // record just the time it took for this callback to be invoked before we do further processing here such as
       // queuing to drainer.
       // this indicates how much time kafka took to deliver the message to broker.
-      versionedDIVStats.recordLeaderProducerCompletionTime(
-          ingestionTask.getStoreName(),
-          ingestionTask.versionNumber,
-          LatencyUtils.getLatencyInMS(produceTimeNs));
+      if (!ingestionTask.isUserSystemStore()) {
+        versionedDIVStats.recordLeaderProducerCompletionTime(
+            ingestionTask.getStoreName(),
+            ingestionTask.versionNumber,
+            LatencyUtils.getLatencyInMS(produceTimeNs));
+      }
 
       int producedRecordNum = 0;
       int producedRecordSize = 0;
@@ -140,8 +142,12 @@ class LeaderProducerCallback implements ChunkAwareCallback {
             leaderProducedRecordContext.setKeyBytes(key);
           }
           leaderProducedRecordContext.setProducedOffset(recordMetadata.offset());
-          ingestionTask.produceToStoreBufferService(sourceConsumerRecord, leaderProducedRecordContext, subPartition,
-              kafkaUrl, beforeProcessingRecordTimestamp);
+          ingestionTask.produceToStoreBufferService(
+              sourceConsumerRecord,
+              leaderProducedRecordContext,
+              subPartition,
+              kafkaUrl,
+              beforeProcessingRecordTimestamp);
 
           producedRecordNum++;
           producedRecordSize =
@@ -160,8 +166,12 @@ class LeaderProducerCallback implements ChunkAwareCallback {
                 LeaderProducedRecordContext.newPutRecord(-1, -1, ByteUtils.extractByteArray(chunkKey), chunkPut);
             producedRecordForChunk.setProducedOffset(-1);
 
-            ingestionTask.produceToStoreBufferService(sourceConsumerRecord, producedRecordForChunk, subPartition,
-                kafkaUrl, beforeProcessingRecordTimestamp);
+            ingestionTask.produceToStoreBufferService(
+                sourceConsumerRecord,
+                producedRecordForChunk,
+                subPartition,
+                kafkaUrl,
+                beforeProcessingRecordTimestamp);
             producedRecordNum++;
             producedRecordSize += chunkKey.remaining() + chunkValue.remaining();
           }
@@ -188,7 +198,11 @@ class LeaderProducerCallback implements ChunkAwareCallback {
               manifestPut,
               leaderProducedRecordContext.getPersistedToDBFuture());
           producedRecordForManifest.setProducedOffset(recordMetadata.offset());
-          ingestionTask.produceToStoreBufferService(sourceConsumerRecord, producedRecordForManifest, subPartition, kafkaUrl,
+          ingestionTask.produceToStoreBufferService(
+              sourceConsumerRecord,
+              producedRecordForManifest,
+              subPartition,
+              kafkaUrl,
               beforeProcessingRecordTimestamp);
           producedRecordNum++;
           producedRecordSize += key.length + manifest.remaining();
