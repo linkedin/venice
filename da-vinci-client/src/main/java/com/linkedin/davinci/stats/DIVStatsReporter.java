@@ -1,15 +1,20 @@
 package com.linkedin.davinci.stats;
 
-import static com.linkedin.venice.stats.StatsErrorCode.NULL_DIV_STATS;
+import static com.linkedin.venice.stats.StatsErrorCode.*;
 
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.stats.Gauge;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.function.DoubleSupplier;
+import java.util.function.Function;
 
 
 public class DIVStatsReporter extends AbstractVeniceStatsReporter<DIVStats> {
+  private final String storeName;
+
   public DIVStatsReporter(MetricsRepository metricsRepository, String storeName) {
     super(metricsRepository, storeName);
+    this.storeName = storeName;
   }
 
   @Override
@@ -20,99 +25,6 @@ public class DIVStatsReporter extends AbstractVeniceStatsReporter<DIVStats> {
     registerSensor("success_msg", new DIVStatsCounter(this, () -> (double) getStats().getSuccessMsg()));
     registerSensor("current_idle_time", new DIVStatsCounter(this, () -> (double) getStats().getCurrentIdleTime()));
     registerSensor("overall_idle_time", new DIVStatsCounter(this, () -> (double) getStats().getOverallIdleTime()));
-    registerSensor(
-        "producer_to_broker_latency_avg_ms",
-        new DIVStatsCounter(this, () -> getStats().getProducerBrokerLatencyAvgMs()));
-    registerSensor(
-        "producer_to_broker_latency_min_ms",
-        new DIVStatsCounter(this, () -> getStats().getProducerBrokerLatencyMinMs()));
-    registerSensor(
-        "producer_to_broker_latency_max_ms",
-        new DIVStatsCounter(this, () -> getStats().getProducerBrokerLatencyMaxMs()));
-    registerSensor(
-        "broker_to_consumer_latency_avg_ms",
-        new DIVStatsCounter(this, () -> getStats().getBrokerConsumerLatencyAvgMs()));
-    registerSensor(
-        "broker_to_consumer_latency_min_ms",
-        new DIVStatsCounter(this, () -> getStats().getBrokerConsumerLatencyMinMs()));
-    registerSensor(
-        "broker_to_consumer_latency_max_ms",
-        new DIVStatsCounter(this, () -> getStats().getBrokerConsumerLatencyMaxMs()));
-    registerSensor(
-        "producer_to_consumer_latency_avg_ms",
-        new DIVStatsCounter(this, () -> getStats().getProducerConsumerLatencyAvgMs()));
-    registerSensor(
-        "producer_to_consumer_latency_min_ms",
-        new DIVStatsCounter(this, () -> getStats().getProducerConsumerLatencyMinMs()));
-    registerSensor(
-        "producer_to_consumer_latency_max_ms",
-        new DIVStatsCounter(this, () -> getStats().getProducerConsumerLatencyMaxMs()));
-    registerSensor(
-        "producer_to_source_broker_latency_avg_ms",
-        new DIVStatsCounter(this, () -> getStats().getProducerSourceBrokerLatencyAvgMs()));
-    registerSensor(
-        "producer_to_source_broker_latency_min_ms",
-        new DIVStatsCounter(this, () -> getStats().getProducerSourceBrokerLatencyMinMs()));
-    registerSensor(
-        "producer_to_source_broker_latency_max_ms",
-        new DIVStatsCounter(this, () -> getStats().getProducerSourceBrokerLatencyMaxMs()));
-    registerSensor(
-        "source_broker_to_leader_consumer_latency_avg_ms",
-        new DIVStatsCounter(this, () -> getStats().getSourceBrokerLeaderConsumerLatencyAvgMs()));
-    registerSensor(
-        "source_broker_to_leader_consumer_latency_min_ms",
-        new DIVStatsCounter(this, () -> getStats().getSourceBrokerLeaderConsumerLatencyMinMs()));
-    registerSensor(
-        "source_broker_to_leader_consumer_latency_max_ms",
-        new DIVStatsCounter(this, () -> getStats().getSourceBrokerLeaderConsumerLatencyMaxMs()));
-    registerSensor(
-        "producer_to_leader_consumer_latency_avg_ms",
-        new DIVStatsCounter(this, () -> getStats().getProducerLeaderConsumerLatencyAvgMs()));
-    registerSensor(
-        "producer_to_leader_consumer_latency_min_ms",
-        new DIVStatsCounter(this, () -> getStats().getProducerLeaderConsumerLatencyMinMs()));
-    registerSensor(
-        "producer_to_leader_consumer_latency_max_ms",
-        new DIVStatsCounter(this, () -> getStats().getProducerLeaderConsumerLatencyMaxMs()));
-    registerSensor(
-        "producer_to_local_broker_latency_avg_ms",
-        new DIVStatsCounter(this, () -> getStats().getProducerLocalBrokerLatencyAvgMs()));
-    registerSensor(
-        "producer_to_local_broker_latency_min_ms",
-        new DIVStatsCounter(this, () -> getStats().getProducerLocalBrokerLatencyMinMs()));
-    registerSensor(
-        "producer_to_local_broker_latency_max_ms",
-        new DIVStatsCounter(this, () -> getStats().getProducerLocalBrokerLatencyMaxMs()));
-    registerSensor(
-        "local_broker_to_follower_consumer_latency_avg_ms",
-        new DIVStatsCounter(this, () -> getStats().getLocalBrokerFollowerConsumerLatencyAvgMs()));
-    registerSensor(
-        "local_broker_to_follower_consumer_latency_min_ms",
-        new DIVStatsCounter(this, () -> getStats().getLocalBrokerFollowerConsumerLatencyMinMs()));
-    registerSensor(
-        "local_broker_to_follower_consumer_latency_max_ms",
-        new DIVStatsCounter(this, () -> getStats().getLocalBrokerFollowerConsumerLatencyMaxMs()));
-    registerSensor(
-        "producer_to_follower_consumer_latency_avg_ms",
-        new DIVStatsCounter(this, () -> getStats().getProducerFollowerConsumerLatencyAvgMs()));
-    registerSensor(
-        "producer_to_follower_consumer_latency_min_ms",
-        new DIVStatsCounter(this, () -> getStats().getProducerFollowerConsumerLatencyMinMs()));
-    registerSensor(
-        "producer_to_follower_consumer_latency_max_ms",
-        new DIVStatsCounter(this, () -> getStats().getProducerFollowerConsumerLatencyMaxMs()));
-    registerSensor(
-        "data_validation_avg_ms",
-        new DIVStatsCounter(this, () -> getStats().getDataValidationLatencyAvgMs()));
-    registerSensor(
-        "data_validation_max_ms",
-        new DIVStatsCounter(this, () -> getStats().getDataValidationLatencyMaxMs()));
-    registerSensor(
-        "leader_producer_completion_latency_avg_ms",
-        new DIVStatsCounter(this, () -> getStats().getLeaderProducerCompletionLatencyAvgMs()));
-    registerSensor(
-        "leader_producer_completion_latency_max_ms",
-        new DIVStatsCounter(this, () -> getStats().getLeaderProducerCompletionLatencyMaxMs()));
     registerSensor(
         "benign_leader_offset_rewind_count",
         new DIVStatsCounter(this, () -> (double) getStats().getBenignLeaderOffsetRewindCount()));
@@ -126,11 +38,37 @@ public class DIVStatsReporter extends AbstractVeniceStatsReporter<DIVStats> {
         "benign_leader_producer_failure_count",
         new DIVStatsCounter(this, () -> (double) getStats().getBenignLeaderProducerFailure()));
 
+    // This prevents user store system store to register latency related DIV metric sensors.
+    if (!VeniceSystemStoreUtils.isUserSystemStore(storeName)) {
+      registerLatencySensor("producer_to_broker", DIVStats::getProducerBrokerLatencySensor);
+      registerLatencySensor("broker_to_consumer", DIVStats::getBrokerConsumerLatencySensor);
+      registerLatencySensor("producer_to_consumer", DIVStats::getProducerConsumerLatencySensor);
+      registerLatencySensor("producer_to_source_broker", DIVStats::getProducerSourceBrokerLatencySensor);
+      registerLatencySensor("source_broker_to_leader_consumer", DIVStats::getSourceBrokerLeaderConsumerLatencySensor);
+      registerLatencySensor("producer_to_leader_consumer", DIVStats::getProducerLeaderConsumerLatencySensor);
+      registerLatencySensor("producer_to_local_broker", DIVStats::getProducerLocalBrokerLatencySensor);
+      registerLatencySensor("local_broker_to_follower_consumer", DIVStats::getLocalBrokerFollowerConsumerLatencySensor);
+      registerLatencySensor("producer_to_follower_consumer", DIVStats::getProducerFollowerConsumerLatencySensor);
+      registerLatencySensor("data_validation", DIVStats::getDataValidationLatencySensor);
+      registerLatencySensor("leader_producer_completion", DIVStats::getLeaderProducerCompletionLatencySensor);
+    }
+  }
+
+  protected void registerLatencySensor(
+      String sensorBaseName,
+      Function<DIVStats, WritePathLatencySensor> sensorFunction) {
+    registerSensor(
+        sensorBaseName + "_latency_avg_ms",
+        new DIVStatsCounter(this, () -> sensorFunction.apply(getStats()).getAvg()));
+    registerSensor(
+        sensorBaseName + "_latency_max_ms",
+        new DIVStatsCounter(this, () -> sensorFunction.apply(getStats()).getMax()));
   }
 
   private static class DIVStatsCounter extends Gauge {
-    DIVStatsCounter(AbstractVeniceStatsReporter reporter, DoubleSupplier supplier) {
-      super(() -> reporter.getStats() == null ? NULL_DIV_STATS.code : supplier.getAsDouble());
+    DIVStatsCounter(DIVStatsReporter reporter, DoubleSupplier supplier) {
+      super(() -> (reporter.getStats() == null) ? NULL_DIV_STATS.code : supplier.getAsDouble());
     }
   }
+
 }

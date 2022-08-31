@@ -1703,6 +1703,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       long brokerConsumerLatencyMs,
       long producerConsumerLatencyMs,
       PartitionConsumptionState partitionConsumptionState) {
+    if (isUserSystemStore()) {
+      return;
+    }
     if (isNativeReplicationEnabled) {
       // Emit latency metrics separately for leaders and followers
       boolean isLeader = partitionConsumptionState.getLeaderFollowerState().equals(LEADER);

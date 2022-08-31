@@ -20,6 +20,7 @@ import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
@@ -164,6 +165,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final String kafkaVersionTopic;
   protected final String realTimeTopic;
   protected final String storeName;
+  private final boolean isUserSystemStore;
   protected final int versionNumber;
   protected final ReadOnlySchemaRepository schemaRepository;
   protected final ReadOnlyStoreRepository storeRepository;
@@ -399,6 +401,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.schemaRepository = builder.getSchemaRepo();
     this.kafkaVersionTopic = storeConfig.getStoreVersionName();
     this.storeName = Version.parseStoreFromKafkaTopicName(kafkaVersionTopic);
+    this.isUserSystemStore = VeniceSystemStoreUtils.isUserSystemStore(storeName);
     this.realTimeTopic = Version.composeRealTimeTopic(storeName);
     this.versionNumber = Version.parseVersionFromKafkaTopicName(kafkaVersionTopic);
     this.availableSchemaIds = new IntOpenHashSet();
@@ -628,6 +631,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public String getStoreName() {
     return storeName;
+  }
+
+  public boolean isUserSystemStore() {
+    return isUserSystemStore;
   }
 
   public abstract void promoteToLeader(
@@ -2866,12 +2873,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long brokerConsumerLatencyMs,
       long producerConsumerLatencyMs,
       PartitionConsumptionState partitionConsumptionState) {
-    versionedDIVStats.recordLatencies(
-        storeName,
-        versionNumber,
-        producerBrokerLatencyMs,
-        brokerConsumerLatencyMs,
-        producerConsumerLatencyMs);
+    if (!isUserSystemStore) {
+      versionedDIVStats.recordLatencies(
+          storeName,
+          versionNumber,
+          producerBrokerLatencyMs,
+          brokerConsumerLatencyMs,
+          producerConsumerLatencyMs);
+    }
   }
 
   /**
@@ -2930,10 +2939,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         validator.validateMessage(consumerRecord, endOfPushReceived, true);
       }
     } finally {
-      versionedDIVStats.recordDataValidationLatencyMs(
-          storeName,
-          versionNumber,
-          LatencyUtils.getLatencyInMS(startTimeForMessageValidationInNS));
+      if (!isUserSystemStore) {
+        versionedDIVStats.recordDataValidationLatencyMs(
+            storeName,
+            versionNumber,
+            LatencyUtils.getLatencyInMS(startTimeForMessageValidationInNS));
+      }
     }
   }
 

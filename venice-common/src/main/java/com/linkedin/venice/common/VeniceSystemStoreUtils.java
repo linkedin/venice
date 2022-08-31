@@ -47,4 +47,9 @@ public class VeniceSystemStoreUtils {
   public static String getMetaStoreName(String storeName) {
     return VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
   }
+
+  public static boolean isUserSystemStore(String storeName) {
+    VeniceSystemStoreType veniceSystemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+    return veniceSystemStoreType != null && veniceSystemStoreType.isStoreZkShared();
+  }
 }

@@ -137,9 +137,6 @@ public class AggVersionedDIVStatsTest {
         reporter.query("." + storeName + "_future--producer_to_consumer_latency_avg_ms.DIVStatsCounter").value(),
         v1ProducerConsumerLatencyMs);
     Assert.assertEquals(
-        reporter.query("." + storeName + "_future--producer_to_consumer_latency_min_ms.DIVStatsCounter").value(),
-        v1ProducerConsumerLatencyMs);
-    Assert.assertEquals(
         reporter.query("." + storeName + "_future--producer_to_consumer_latency_max_ms.DIVStatsCounter").value(),
         v1ProducerConsumerLatencyMs);
 
@@ -156,9 +153,6 @@ public class AggVersionedDIVStatsTest {
         reporter.query("." + storeName + "_future--producer_to_leader_consumer_latency_avg_ms.DIVStatsCounter").value(),
         v1ProducerToLeaderConsumerLatencyMs);
     Assert.assertEquals(
-        reporter.query("." + storeName + "_future--producer_to_leader_consumer_latency_min_ms.DIVStatsCounter").value(),
-        v1ProducerToLeaderConsumerLatencyMs);
-    Assert.assertEquals(
         reporter.query("." + storeName + "_future--producer_to_leader_consumer_latency_max_ms.DIVStatsCounter").value(),
         v1ProducerToLeaderConsumerLatencyMs);
 
@@ -173,10 +167,6 @@ public class AggVersionedDIVStatsTest {
         v1ProducerToFollowerConsumerLatencyMs);
     Assert.assertEquals(
         reporter.query("." + storeName + "_future--producer_to_follower_consumer_latency_avg_ms.DIVStatsCounter")
-            .value(),
-        v1ProducerToFollowerConsumerLatencyMs);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_future--producer_to_follower_consumer_latency_min_ms.DIVStatsCounter")
             .value(),
         v1ProducerToFollowerConsumerLatencyMs);
     Assert.assertEquals(
@@ -212,16 +202,10 @@ public class AggVersionedDIVStatsTest {
         reporter.query("." + storeName + "_current--producer_to_broker_latency_avg_ms.DIVStatsCounter").value(),
         v1ProducerBrokerLatencyMs);
     Assert.assertEquals(
-        reporter.query("." + storeName + "_current--producer_to_broker_latency_min_ms.DIVStatsCounter").value(),
-        v1ProducerBrokerLatencyMs);
-    Assert.assertEquals(
         reporter.query("." + storeName + "_current--producer_to_broker_latency_max_ms.DIVStatsCounter").value(),
         v1ProducerBrokerLatencyMs);
     Assert.assertEquals(
         reporter.query("." + storeName + "_future--broker_to_consumer_latency_avg_ms.DIVStatsCounter").value(),
-        v2BrokerConsumerLatencyMs);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_future--broker_to_consumer_latency_min_ms.DIVStatsCounter").value(),
         v2BrokerConsumerLatencyMs);
     Assert.assertEquals(
         reporter.query("." + storeName + "_future--broker_to_consumer_latency_max_ms.DIVStatsCounter").value(),
@@ -241,17 +225,10 @@ public class AggVersionedDIVStatsTest {
         reporter.query("." + storeName + "_current--producer_to_source_broker_latency_avg_ms.DIVStatsCounter").value(),
         v1ProducerToSourceBrokerLatencyMs);
     Assert.assertEquals(
-        reporter.query("." + storeName + "_current--producer_to_source_broker_latency_min_ms.DIVStatsCounter").value(),
-        v1ProducerToSourceBrokerLatencyMs);
-    Assert.assertEquals(
         reporter.query("." + storeName + "_current--producer_to_source_broker_latency_max_ms.DIVStatsCounter").value(),
         v1ProducerToSourceBrokerLatencyMs);
     Assert.assertEquals(
         reporter.query("." + storeName + "_future--source_broker_to_leader_consumer_latency_avg_ms.DIVStatsCounter")
-            .value(),
-        v2SourceBrokerToLeaderConsumerLatencyMs);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_future--source_broker_to_leader_consumer_latency_min_ms.DIVStatsCounter")
             .value(),
         v2SourceBrokerToLeaderConsumerLatencyMs);
     Assert.assertEquals(
@@ -273,17 +250,10 @@ public class AggVersionedDIVStatsTest {
         reporter.query("." + storeName + "_current--producer_to_local_broker_latency_avg_ms.DIVStatsCounter").value(),
         v1ProducerToLocalBrokerLatencyMs);
     Assert.assertEquals(
-        reporter.query("." + storeName + "_current--producer_to_local_broker_latency_min_ms.DIVStatsCounter").value(),
-        v1ProducerToLocalBrokerLatencyMs);
-    Assert.assertEquals(
         reporter.query("." + storeName + "_current--producer_to_local_broker_latency_max_ms.DIVStatsCounter").value(),
         v1ProducerToLocalBrokerLatencyMs);
     Assert.assertEquals(
         reporter.query("." + storeName + "_future--local_broker_to_follower_consumer_latency_avg_ms.DIVStatsCounter")
-            .value(),
-        v2LocalBrokerToFollowerConsumerLatencyMs);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_future--local_broker_to_follower_consumer_latency_min_ms.DIVStatsCounter")
             .value(),
         v2LocalBrokerToFollowerConsumerLatencyMs);
     Assert.assertEquals(
@@ -312,16 +282,10 @@ public class AggVersionedDIVStatsTest {
         reporter.query("." + storeName + "_current--broker_to_consumer_latency_avg_ms.DIVStatsCounter").value(),
         v2BrokerConsumerLatencyMs);
     Assert.assertEquals(
-        reporter.query("." + storeName + "_current--broker_to_consumer_latency_min_ms.DIVStatsCounter").value(),
-        v2BrokerConsumerLatencyMs);
-    Assert.assertEquals(
         reporter.query("." + storeName + "_current--broker_to_consumer_latency_max_ms.DIVStatsCounter").value(),
         v2BrokerConsumerLatencyMs);
     Assert.assertEquals(
         reporter.query("." + storeName + "_backup--producer_to_broker_latency_avg_ms.DIVStatsCounter").value(),
-        v1ProducerBrokerLatencyMs);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_backup--producer_to_broker_latency_min_ms.DIVStatsCounter").value(),
         v1ProducerBrokerLatencyMs);
     Assert.assertEquals(
         reporter.query("." + storeName + "_backup--producer_to_broker_latency_max_ms.DIVStatsCounter").value(),
