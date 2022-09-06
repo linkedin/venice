@@ -11,9 +11,9 @@ import com.linkedin.davinci.kafka.consumer.AggKafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.KafkaClusterBasedRecordThrottler;
 import com.linkedin.davinci.kafka.consumer.StoreBufferService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTaskFactory;
-import com.linkedin.davinci.stats.AggStoreIngestionStats;
+import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
-import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -852,9 +852,9 @@ public class TestUtils {
         .setMetadataRepository(mockReadOnlyStoreRepository)
         .setTopicManagerRepository(mock(TopicManagerRepository.class))
         .setTopicManagerRepositoryJavaBased(mock(TopicManagerRepository.class))
-        .setStoreIngestionStats(mock(AggStoreIngestionStats.class))
+        .setHostLevelIngestionStats(mock(AggHostLevelIngestionStats.class))
         .setVersionedDIVStats(mock(AggVersionedDIVStats.class))
-        .setVersionedStorageIngestionStats(mock(AggVersionedStorageIngestionStats.class))
+        .setVersionedIngestionStats(mock(AggVersionedIngestionStats.class))
         .setStoreBufferService(mock(StoreBufferService.class))
         .setDiskUsage(mock(DiskUsage.class))
         .setRocksDBMemoryStats(mock(RocksDBMemoryStats.class))

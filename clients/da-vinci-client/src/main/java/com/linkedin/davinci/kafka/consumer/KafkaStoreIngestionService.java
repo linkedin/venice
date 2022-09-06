@@ -14,10 +14,10 @@ import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.notifier.LogNotifier;
 import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggLagStats;
-import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
-import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.ParticipantStoreConsumptionStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.stats.StoreBufferServiceStats;
@@ -116,9 +116,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final ReadOnlyStoreRepository metadataRepo;
 
-  private final AggStoreIngestionStats ingestionStats;
+  private final AggHostLevelIngestionStats hostLevelIngestionStats;
 
-  private final AggVersionedStorageIngestionStats versionedStorageIngestionStats;
+  private final AggVersionedIngestionStats versionedIngestionStats;
 
   private final AggLagStats aggLagStats;
 
@@ -361,10 +361,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       this.metaSystemStoreReplicaStatusNotifier = null;
     }
 
-    this.ingestionStats = new AggStoreIngestionStats(metricsRepository, serverConfig, topicNameToIngestionTaskMap);
+    this.hostLevelIngestionStats =
+        new AggHostLevelIngestionStats(metricsRepository, serverConfig, topicNameToIngestionTaskMap);
     AggVersionedDIVStats versionedDIVStats = new AggVersionedDIVStats(metricsRepository, metadataRepo);
-    this.versionedStorageIngestionStats =
-        new AggVersionedStorageIngestionStats(metricsRepository, metadataRepo, serverConfig);
+    this.versionedIngestionStats = new AggVersionedIngestionStats(metricsRepository, metadataRepo, serverConfig);
     if (serverConfig.isDedicatedDrainerQueueEnabled()) {
       this.storeBufferService = new SeparatedStoreBufferService(serverConfig);
     } else {
@@ -463,9 +463,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setMetadataRepository(metadataRepo)
         .setTopicManagerRepository(topicManagerRepository)
         .setTopicManagerRepositoryJavaBased(topicManagerRepositoryJavaBased)
-        .setStoreIngestionStats(ingestionStats)
+        .setHostLevelIngestionStats(hostLevelIngestionStats)
         .setVersionedDIVStats(versionedDIVStats)
-        .setVersionedStorageIngestionStats(versionedStorageIngestionStats)
+        .setVersionedIngestionStats(versionedIngestionStats)
         .setStoreBufferService(storeBufferService)
         .setServerConfig(serverConfig)
         .setDiskUsage(diskUsage)
@@ -640,7 +640,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       if (consumerTask == null || !consumerTask.isRunning()) {
         consumerTask = createConsumerTask(veniceStore, partitionId);
         topicNameToIngestionTaskMap.put(topic, consumerTask);
-        versionedStorageIngestionStats.setIngestionTask(topic, consumerTask);
+        versionedIngestionStats.setIngestionTask(topic, consumerTask);
         if (!isRunning()) {
           logger.info(
               "Ignoring Start consumption message as service is stopping. Topic " + topic + " Partition "
@@ -958,12 +958,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   public void recordIngestionFailure(String storeName) {
-    ingestionStats.getStoreStats(storeName).recordIngestionFailure();
+    hostLevelIngestionStats.getStoreStats(storeName).recordIngestionFailure();
   }
 
   @Override
-  public AggVersionedStorageIngestionStats getAggVersionedStorageIngestionStats() {
-    return versionedStorageIngestionStats;
+  public AggVersionedIngestionStats getAggVersionedIngestionStats() {
+    return versionedIngestionStats;
   }
 
   /**

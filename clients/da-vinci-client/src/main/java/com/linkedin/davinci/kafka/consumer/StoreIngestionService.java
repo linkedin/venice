@@ -5,7 +5,7 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
-import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.storage.MetadataRetriever;
 import java.util.Optional;
 import java.util.Set;
@@ -119,9 +119,9 @@ public interface StoreIngestionService extends MetadataRetriever {
 
   /**
    * Get AggVersionedStorageIngestionStats
-   * @return an instance of {@link AggVersionedStorageIngestionStats}
+   * @return an instance of {@link AggVersionedIngestionStats}
    */
-  AggVersionedStorageIngestionStats getAggVersionedStorageIngestionStats();
+  AggVersionedIngestionStats getAggVersionedIngestionStats();
 
   StoreIngestionTask getStoreIngestionTask(String topic);
 

@@ -9,6 +9,11 @@ import java.util.function.DoubleSupplier;
 import java.util.function.Function;
 
 
+/**
+ * This class is the reporting class for stats class {@link DIVStats}.
+ * Metrics reporting logics are registered into {@link MetricsRepository} here and send out to external metrics
+ * collection/visualization system.
+ */
 public class DIVStatsReporter extends AbstractVeniceStatsReporter<DIVStats> {
   private final String storeName;
 

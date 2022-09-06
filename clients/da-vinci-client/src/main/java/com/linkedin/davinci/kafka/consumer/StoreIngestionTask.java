@@ -9,9 +9,9 @@ import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
-import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.davinci.stats.AggVersionedIngestionStats;
+import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
-import com.linkedin.davinci.stats.StoreIngestionStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -210,9 +210,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * flushed to the metadata partition of the storage engine regularly in {@link #syncOffset(String, PartitionConsumptionState)}
    */
   private final KafkaDataIntegrityValidator kafkaDataIntegrityValidator;
-  protected final StoreIngestionStats storeIngestionStats;
+  protected final HostLevelIngestionStats hostLevelIngestionStats;
   protected final AggVersionedDIVStats versionedDIVStats;
-  protected final AggVersionedStorageIngestionStats versionedStorageIngestionStats;
+  protected final AggVersionedIngestionStats versionedIngestionStats;
   protected final BooleanSupplier isCurrentVersion;
   protected final Optional<HybridStoreConfig> hybridStoreConfig;
   protected final ProducerTracker.DIVErrorMetricCallback divErrorMetricCallback;
@@ -421,9 +421,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.topicManagerRepositoryJavaBased = builder.getTopicManagerRepositoryJavaBased();
     this.cachedKafkaMetadataGetter = new CachedKafkaMetadataGetter(storeConfig.getTopicOffsetCheckIntervalMs());
 
-    this.storeIngestionStats = builder.getIngestionStats().getStoreStats(storeName);
+    this.hostLevelIngestionStats = builder.getIngestionStats().getStoreStats(storeName);
     this.versionedDIVStats = builder.getVersionedDIVStats();
-    this.versionedStorageIngestionStats = builder.getVersionedStorageIngestionStats();
+    this.versionedIngestionStats = builder.getVersionedStorageIngestionStats();
     this.isRunning = new AtomicBoolean(true);
     this.emitMetrics = new AtomicBoolean(true);
 
@@ -553,7 +553,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public boolean isFutureVersion() {
-    return versionedStorageIngestionStats.isFutureVersion(storeName, versionNumber);
+    return versionedIngestionStats.isFutureVersion(storeName, versionNumber);
   }
 
   protected void throwIfNotRunning() {
@@ -1014,9 +1014,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         kafkaUrl,
         beforeProcessingRecordTimestamp); // blocking call
 
-    storeIngestionStats.recordProduceToDrainQueueRecordNum(1);
+    hostLevelIngestionStats.recordProduceToDrainQueueRecordNum(1);
     if (emitMetrics.get()) {
-      storeIngestionStats.recordConsumerRecordsQueuePutLatency(LatencyUtils.getLatencyInMS(queuePutStartTimeInNS));
+      hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(LatencyUtils.getLatencyInMS(queuePutStartTimeInNS));
     }
   }
 
@@ -1252,9 +1252,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         partitionConsumptionState.setLatestMessageConsumptionTimestampInMs(System.currentTimeMillis());
       }
     }
-    storeIngestionStats.recordProduceToDrainQueueRecordNum(recordQueuedToDrainer);
+    hostLevelIngestionStats.recordProduceToDrainQueueRecordNum(recordQueuedToDrainer);
     if (recordProducedToKafka > 0) {
-      storeIngestionStats.recordProduceToKafkaRecordNum(recordProducedToKafka);
+      hostLevelIngestionStats.recordProduceToKafkaRecordNum(recordProducedToKafka);
     }
 
     long quotaEnforcementStartTimeInNS = System.nanoTime();
@@ -1264,20 +1264,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     storageUtilizationManager.enforcePartitionQuota(topicPartition.partition(), totalBytesRead);
 
     if (emitMetrics.get()) {
-      storeIngestionStats.recordQuotaEnforcementLatency(LatencyUtils.getLatencyInMS(quotaEnforcementStartTimeInNS));
+      hostLevelIngestionStats.recordQuotaEnforcementLatency(LatencyUtils.getLatencyInMS(quotaEnforcementStartTimeInNS));
       if (totalBytesRead > 0) {
-        storeIngestionStats.recordTotalBytesReadFromKafkaAsUncompressedSize(totalBytesRead);
+        hostLevelIngestionStats.recordTotalBytesReadFromKafkaAsUncompressedSize(totalBytesRead);
       }
       long afterPutTimestamp = System.currentTimeMillis();
-      storeIngestionStats.recordConsumerToQueueLatency(afterPutTimestamp - beforeProcessingTimestamp);
+      hostLevelIngestionStats.recordConsumerToQueueLatency(afterPutTimestamp - beforeProcessingTimestamp);
       if (elapsedTimeForPuttingIntoQueue > 0) {
-        storeIngestionStats.recordConsumerRecordsQueuePutLatency(elapsedTimeForPuttingIntoQueue);
+        hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(elapsedTimeForPuttingIntoQueue);
       }
       if (elapsedTimeForProducingToKafka > 0) {
-        storeIngestionStats.recordProduceToKafkaLatency(elapsedTimeForProducingToKafka);
+        hostLevelIngestionStats.recordProduceToKafkaLatency(elapsedTimeForProducingToKafka);
       }
 
-      storeIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
+      hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
     }
 
     if (whetherToApplyThrottling) {
@@ -1449,7 +1449,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private void recordDiskQuotaAllowedForStore(Store store) {
     if (emitMetrics.get()) {
       long currentQuota = store.getStorageQuotaInByte();
-      storeIngestionStats.recordDiskQuotaAllowed(currentQuota);
+      hostLevelIngestionStats.recordDiskQuotaAllowed(currentQuota);
     }
   }
 
@@ -1478,8 +1478,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     if (emitMetrics.get()) {
-      storeIngestionStats.recordPollRequestLatency(afterPollingTimestamp - beforePollingTimestamp);
-      storeIngestionStats.recordPollResultNum(recordCount);
+      hostLevelIngestionStats.recordPollRequestLatency(afterPollingTimestamp - beforePollingTimestamp);
+      hostLevelIngestionStats.recordPollResultNum(recordCount);
     }
 
     if (recordCount == 0) {
@@ -1517,7 +1517,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // Update thread name to include topic to make it easy debugging
       Thread.currentThread().setName("venice-SIT-" + kafkaVersionTopic);
       logger.info("Running " + consumerTaskId);
-      versionedStorageIngestionStats.resetIngestionTaskPushTimeoutGauge(storeName, versionNumber);
+      versionedIngestionStats.resetIngestionTaskPushTimeoutGauge(storeName, versionNumber);
 
       while (isRunning()) {
         Store store = storeRepository.getStoreOrThrow(storeName);
@@ -1563,7 +1563,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         logger.error(consumerTaskId + " has failed.", e);
         statusReportAdapter
             .reportError(partitionConsumptionStateMap.values(), "Caught InterruptException during ingestion.", e);
-        storeIngestionStats.recordIngestionFailure();
+        hostLevelIngestionStats.recordIngestionFailure();
       }
     } catch (Throwable t) {
       // After reporting error to controller, controller will ignore the message from this replica if job is aborted.
@@ -1593,7 +1593,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        */
       for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
         if (pcs.isComplete()) {
-          versionedStorageIngestionStats.recordStalePartitionsWithoutIngestionTask(storeName, versionNumber);
+          versionedIngestionStats.recordStalePartitionsWithoutIngestionTask(storeName, versionNumber);
         }
       }
       if (t instanceof Exception) {
@@ -1603,7 +1603,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             "Caught Exception during ingestion.",
             (Exception) t);
         if (t instanceof VeniceTimeoutException) {
-          versionedStorageIngestionStats.setIngestionTaskPushTimeoutGauge(storeName, versionNumber);
+          versionedIngestionStats.setIngestionTaskPushTimeoutGauge(storeName, versionNumber);
         }
       } else {
         reportError(
@@ -1612,7 +1612,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             "Caught non-exception Throwable during ingestion.",
             new VeniceException(t));
       }
-      storeIngestionStats.recordIngestionFailure();
+      hostLevelIngestionStats.recordIngestionFailure();
     } finally {
       internalClose(doFlush);
     }
@@ -1806,7 +1806,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
     }
     if (emitMetrics.get()) {
-      storeIngestionStats.recordProcessConsumerActionLatency(Duration.between(startTime, Instant.now()).toMillis());
+      hostLevelIngestionStats.recordProcessConsumerActionLatency(Duration.between(startTime, Instant.now()).toMillis());
     }
   }
 
@@ -1918,7 +1918,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         defaultReadyToServeChecker.apply(newPartitionConsumptionState);
       }
     } catch (VeniceInconsistentStoreMetadataException e) {
-      storeIngestionStats.recordInconsistentStoreMetadata();
+      hostLevelIngestionStats.recordInconsistentStoreMetadata();
       // clear the local store metadata and the replica will be rebuilt from scratch upon retry as part of
       // processConsumerActions.
       storageMetadataService.clearOffset(kafkaVersionTopic, partition);
@@ -1965,7 +1965,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         long consumptionStatePrepTimeStart = System.currentTimeMillis();
         checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
         reportIfCatchUpVersionTopicOffset(newPartitionConsumptionState);
-        versionedStorageIngestionStats.recordSubscribePrepLatency(
+        versionedIngestionStats.recordSubscribePrepLatency(
             storeName,
             versionNumber,
             LatencyUtils.getElapsedTimeInMs(consumptionStatePrepTimeStart));
@@ -2148,7 +2148,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       // emit metric for unexpected messages
       if (emitMetrics.get()) {
-        storeIngestionStats.recordUnexpectedMessage();
+        hostLevelIngestionStats.recordUnexpectedMessage();
       }
 
       // Report such kind of message once per minute to reduce logging volume
@@ -2307,15 +2307,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /*
      * Report ingestion throughput metric based on the store version
      */
-    versionedStorageIngestionStats.recordBytesConsumed(storeName, versionNumber, recordSize);
-    versionedStorageIngestionStats.recordRecordsConsumed(storeName, versionNumber);
+    versionedIngestionStats.recordBytesConsumed(storeName, versionNumber, recordSize);
+    versionedIngestionStats.recordRecordsConsumed(storeName, versionNumber);
 
     /*
      * Meanwhile, contribute to the host-level ingestion throughput rate, which aggregates the consumption rate across
      * all store versions.
      */
-    storeIngestionStats.recordTotalBytesConsumed(recordSize);
-    storeIngestionStats.recordTotalRecordsConsumed();
+    hostLevelIngestionStats.recordTotalBytesConsumed(recordSize);
+    hostLevelIngestionStats.recordTotalRecordsConsumed();
 
     /*
      * Also update this stats separately for Leader and Follower.
@@ -2479,7 +2479,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public void recordChecksumVerificationFailure() {
-    storeIngestionStats.recordChecksumVerificationFailure();
+    hostLevelIngestionStats.recordChecksumVerificationFailure();
   }
 
   public abstract long getBatchReplicationLag();
@@ -2818,7 +2818,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         sizeOfPersistedData =
             processKafkaDataMessage(consumerRecord, partitionConsumptionState, leaderProducedRecordContext);
       }
-      versionedStorageIngestionStats.recordConsumedRecordEndToEndProcessingLatency(
+      versionedIngestionStats.recordConsumedRecordEndToEndProcessingLatency(
           storeName,
           versionNumber,
           LatencyUtils.getLatencyInMS(beforeProcessingRecordTimestamp));
@@ -3004,7 +3004,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               + (System.nanoTime() - putStartTimeNs) + " ns at " + System.currentTimeMillis());
     }
     if (emitMetrics.get()) {
-      storeIngestionStats.recordStorageEnginePutLatency(LatencyUtils.getLatencyInMS(putStartTimeNs));
+      hostLevelIngestionStats.recordStorageEnginePutLatency(LatencyUtils.getLatencyInMS(putStartTimeNs));
     }
   }
 
@@ -3326,8 +3326,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     if (emitMetrics.get()) {
-      storeIngestionStats.recordKeySize(keyLen);
-      storeIngestionStats.recordValueSize(valueLen);
+      hostLevelIngestionStats.recordKeySize(keyLen);
+      hostLevelIngestionStats.recordValueSize(valueLen);
     }
 
     return keyLen + valueLen;

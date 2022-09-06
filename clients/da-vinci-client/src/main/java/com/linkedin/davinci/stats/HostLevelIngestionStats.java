@@ -24,21 +24,23 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 
-public class StoreIngestionStats extends AbstractVeniceStats {
-  /**
-   * DO NOT REMOVE the aggregated consumption rate metrics
-   * It's needed for Venice-health dashboard.
-   */
+/**
+ * This class contains stats for stats on the storage node host level.
+ * Stats inside this class can either:
+ * (1) Total only: The stat indicate total number of all the stores on this host.
+ * (2) Per store only: The stat is registered for each store on this host.
+ * (3) Per store and total: The stat is registered for each store on this host and the total number for this host.
+ */
+public class HostLevelIngestionStats extends AbstractVeniceStats {
   // The aggregated bytes ingested rate for the entire host
   private final Sensor totalBytesConsumedSensor;
   // The aggregated records ingested rate for the entire host
   private final Sensor totalRecordsConsumedSensor;
-
   /*
    * Bytes read from Kafka by store ingestion task as a total. This metric includes bytes read for all store versions
    * allocated in a storage node reported with its uncompressed data size.
    */
-  private final Sensor bytesReadFromKafkaAsUncompressedSizeSensor;
+  private final Sensor totalBytesReadFromKafkaAsUncompressedSizeSensor;
   private final Sensor storageQuotaUsedSensor;
   // disk quota allowed for a store without replication. It should be as a straight line unless we bumps the disk quota
   // allowed.
@@ -52,35 +54,28 @@ public class StoreIngestionStats extends AbstractVeniceStats {
   private final Sensor consumerRecordsQueuePutLatencySensor;
   private final Sensor keySizeSensor;
   private final Sensor valueSizeSensor;
-
   private final Sensor unexpectedMessageSensor;
   private final Sensor inconsistentStoreMetadataSensor;
-
   private final Sensor ingestionFailureSensor;
-
   /**
    * Sensors for emitting if/when we detect DCR violations (such as a backwards timestamp or receding offset vector)
    */
-  private final Sensor timestampRegressionDCRErrorRate;
-  private final Sensor offsetRegressionDCRErrorRate;
-
+  private final Sensor totalTimestampRegressionDCRErrorRate;
+  private final Sensor totalOffsetRegressionDCRErrorRate;
   /**
    * A gauge reporting the total the percentage of hybrid quota used.
    */
   private double hybridQuotaUsageGauge;
-
   /**
    * A gauge reporting the disk capacity allowed for a store
    */
   private long diskQuotaAllowedGauge;
-
   // Measure the avg/max time we need to spend on waiting for the leader producer
   private final Sensor leaderProducerSynchronizeLatencySensor;
   // Measure the avg/max latency for data lookup and deserialization
   private final Sensor leaderWriteComputeLookUpLatencySensor;
   // Measure the avg/max latency for the actual write computation
   private final Sensor leaderWriteComputeUpdateLatencySensor;
-
   // Measure the latency in processing consumer actions
   private final Sensor processConsumerActionLatencySensor;
   // Measure the latency in checking long running task states, like leader promotion, TopicSwitch
@@ -91,10 +86,8 @@ public class StoreIngestionStats extends AbstractVeniceStats {
   private final Sensor consumerToQueueLatencySensor;
   // Measure the latency in putting data into storage engine
   private final Sensor storageEnginePutLatencySensor;
-
   /**
    * Measure the call count of {@literal StoreIngestionTask#produceToStoreBufferServiceOrKafka}.
-   *
    */
   private final Sensor produceToDrainerQueueCallCountSensor;
   /**
@@ -106,7 +99,6 @@ public class StoreIngestionStats extends AbstractVeniceStats {
    * Measure the number of record produced to kafka {@literal StoreIngestionTask#produceToStoreBufferServiceOrKafka}.
    */
   private final Sensor produceToKafkaRecordNumSensor;
-
   /**
    * This measures the latency of producing message to local kafka VT. This will be recorded only in Leader SN for a
    * partition. It reports a sum of latency after processing a batch of messages, so this metric doesn't indicate the
@@ -115,7 +107,6 @@ public class StoreIngestionStats extends AbstractVeniceStats {
    * @see StoreIngestionTask#produceToStoreBufferServiceOrKafka
    */
   private final Sensor produceToKafkaLatencySensor;
-
   /**
    * Measure the number of times a record was found in {@link PartitionConsumptionState#transientRecordMap} during UPDATE
    * message processing.
@@ -156,18 +147,18 @@ public class StoreIngestionStats extends AbstractVeniceStats {
   /**
    * Measure the count of ignored updates due to conflict resolution
    */
-  private final Sensor updateIgnoredDCRSensor;
+  private final Sensor totalUpdateIgnoredDCRSensor;
 
   /**
    * Measure the count of tombstones created
    */
-  private final Sensor tombstoneCreationDCRSensor;
+  private final Sensor totalTombstoneCreationDCRSensor;
 
-  private final Sensor leaderDelegateRealTimeRecordLatencySensor;
+  private final Sensor totalLeaderDelegateRealTimeRecordLatencySensor;
 
   private Sensor registerPerStoreAndTotal(
       String sensorName,
-      StoreIngestionStats totalStats,
+      HostLevelIngestionStats totalStats,
       Supplier<Sensor> totalSensor,
       MeasurableStat... stats) {
     Sensor[] parent = totalStats == null ? null : new Sensor[] { totalSensor.get() };
@@ -176,7 +167,7 @@ public class StoreIngestionStats extends AbstractVeniceStats {
 
   private Sensor registerOnlyTotal(
       String sensorName,
-      StoreIngestionStats totalStats,
+      HostLevelIngestionStats totalStats,
       Supplier<Sensor> totalSensor,
       MeasurableStat... stats) {
     return totalStats == null ? registerSensor(sensorName, stats) : totalSensor.get();
@@ -185,11 +176,11 @@ public class StoreIngestionStats extends AbstractVeniceStats {
   /**
    * @param totalStats the total stats singleton instance, or null if we are constructing the total stats
    */
-  public StoreIngestionStats(
+  public HostLevelIngestionStats(
       MetricsRepository metricsRepository,
       VeniceServerConfig serverConfig,
       String storeName,
-      StoreIngestionStats totalStats,
+      HostLevelIngestionStats totalStats,
       Map<String, StoreIngestionTask> ingestionTaskMap) {
     super(metricsRepository, storeName);
     // Stats which are total only:
@@ -200,10 +191,10 @@ public class StoreIngestionStats extends AbstractVeniceStats {
     this.totalRecordsConsumedSensor =
         registerOnlyTotal("records_consumed", totalStats, () -> totalStats.totalRecordsConsumedSensor, new Rate());
 
-    this.bytesReadFromKafkaAsUncompressedSizeSensor = registerOnlyTotal(
+    this.totalBytesReadFromKafkaAsUncompressedSizeSensor = registerOnlyTotal(
         "bytes_read_from_kafka_as_uncompressed_size",
         totalStats,
-        () -> totalStats.bytesReadFromKafkaAsUncompressedSizeSensor,
+        () -> totalStats.totalBytesReadFromKafkaAsUncompressedSizeSensor,
         new Rate(),
         new Total());
 
@@ -243,31 +234,31 @@ public class StoreIngestionStats extends AbstractVeniceStats {
         () -> totalStats.totalLeaderRecordsProducedSensor,
         new Rate());
 
-    this.updateIgnoredDCRSensor =
-        registerOnlyTotal("update_ignored_dcr", totalStats, () -> totalStats.updateIgnoredDCRSensor, new Rate());
+    this.totalUpdateIgnoredDCRSensor =
+        registerOnlyTotal("update_ignored_dcr", totalStats, () -> totalStats.totalUpdateIgnoredDCRSensor, new Rate());
 
-    this.tombstoneCreationDCRSensor = registerOnlyTotal(
+    this.totalTombstoneCreationDCRSensor = registerOnlyTotal(
         "tombstone_creation_dcr",
         totalStats,
-        () -> totalStats.tombstoneCreationDCRSensor,
+        () -> totalStats.totalTombstoneCreationDCRSensor,
         new Rate());
 
-    this.timestampRegressionDCRErrorRate = registerOnlyTotal(
+    this.totalTimestampRegressionDCRErrorRate = registerOnlyTotal(
         "timestamp_regression_dcr_error",
         totalStats,
-        () -> totalStats.timestampRegressionDCRErrorRate,
+        () -> totalStats.totalTimestampRegressionDCRErrorRate,
         new Rate());
 
-    this.offsetRegressionDCRErrorRate = registerOnlyTotal(
+    this.totalOffsetRegressionDCRErrorRate = registerOnlyTotal(
         "offset_regression_dcr_error",
         totalStats,
-        () -> totalStats.offsetRegressionDCRErrorRate,
+        () -> totalStats.totalOffsetRegressionDCRErrorRate,
         new Rate());
 
-    this.leaderDelegateRealTimeRecordLatencySensor = registerOnlyTotal(
+    this.totalLeaderDelegateRealTimeRecordLatencySensor = registerOnlyTotal(
         "leader_delegate_real_time_record_latency",
         totalStats,
-        () -> totalStats.leaderDelegateRealTimeRecordLatencySensor,
+        () -> totalStats.totalLeaderDelegateRealTimeRecordLatencySensor,
         newAvgAndMax());
 
     Int2ObjectMap<String> kafkaClusterIdToAliasMap = serverConfig.getKafkaClusterIdToAliasMap();
@@ -490,7 +481,7 @@ public class StoreIngestionStats extends AbstractVeniceStats {
   }
 
   public void recordTotalBytesReadFromKafkaAsUncompressedSize(long bytes) {
-    bytesReadFromKafkaAsUncompressedSizeSensor.record(bytes);
+    totalBytesReadFromKafkaAsUncompressedSizeSensor.record(bytes);
   }
 
   public void recordStorageQuotaUsed(double quotaUsed) {
@@ -602,11 +593,11 @@ public class StoreIngestionStats extends AbstractVeniceStats {
   }
 
   public void recordUpdateIgnoredDCR() {
-    updateIgnoredDCRSensor.record();
+    totalUpdateIgnoredDCRSensor.record();
   }
 
   public void recordTombstoneCreatedDCR() {
-    tombstoneCreationDCRSensor.record();
+    totalTombstoneCreationDCRSensor.record();
   }
 
   public void recordTotalLeaderBytesConsumed(long bytes) {
@@ -650,15 +641,15 @@ public class StoreIngestionStats extends AbstractVeniceStats {
   }
 
   public void recordTimestampRegressionDCRError() {
-    timestampRegressionDCRErrorRate.record();
+    totalTimestampRegressionDCRErrorRate.record();
   }
 
   public void recordOffsetRegressionDCRError() {
-    offsetRegressionDCRErrorRate.record();
+    totalOffsetRegressionDCRErrorRate.record();
   }
 
   public void recordLeaderDelegateRealTimeRecordLatency(double latency) {
-    leaderDelegateRealTimeRecordLatencySensor.record(latency);
+    totalLeaderDelegateRealTimeRecordLatencySensor.record(latency);
   }
 
   private MeasurableStat[] newAvgAndMax() {

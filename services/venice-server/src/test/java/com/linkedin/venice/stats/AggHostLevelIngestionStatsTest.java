@@ -4,8 +4,8 @@ import static org.mockito.Mockito.*;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
-import com.linkedin.davinci.stats.AggStoreIngestionStats;
-import com.linkedin.davinci.stats.StoreIngestionStats;
+import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
+import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
@@ -18,10 +18,10 @@ import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
 
-public class AggStoreIngestionStatsTest {
-  private AggStoreIngestionStats aggStats;
-  private StoreIngestionStats fooStats;
-  private StoreIngestionStats barStats;
+public class AggHostLevelIngestionStatsTest {
+  private AggHostLevelIngestionStats aggStats;
+  private HostLevelIngestionStats fooStats;
+  private HostLevelIngestionStats barStats;
   private MetricsRepository metricsRepository;
   private MockTehutiReporter reporter;
 
@@ -35,7 +35,7 @@ public class AggStoreIngestionStatsTest {
     metricsRepository.addReporter(reporter);
     VeniceServerConfig mockVeniceServerConfig = Mockito.mock(VeniceServerConfig.class);
     doReturn(Int2ObjectMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterIdToAliasMap();
-    aggStats = new AggStoreIngestionStats(metricsRepository, mockVeniceServerConfig, Collections.emptyMap());
+    aggStats = new AggHostLevelIngestionStats(metricsRepository, mockVeniceServerConfig, Collections.emptyMap());
     fooStats = aggStats.getStoreStats(STORE_FOO);
     barStats = aggStats.getStoreStats(STORE_BAR);
 

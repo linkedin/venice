@@ -24,7 +24,7 @@ public class VersionedDIVStatsReporterTest {
 
     String storeName = Utils.getUniqueString("store");
     VeniceVersionedStatsReporter<DIVStats, DIVStatsReporter> statsReporter =
-        new VeniceVersionedStatsReporter<>(metricsRepository, storeName, (mr, name) -> new DIVStatsReporter(mr, name));
+        new VeniceVersionedStatsReporter<>(metricsRepository, storeName, DIVStatsReporter::new);
     DIVStats stats = new DIVStats();
 
     stats.recordCurrentIdleTime();

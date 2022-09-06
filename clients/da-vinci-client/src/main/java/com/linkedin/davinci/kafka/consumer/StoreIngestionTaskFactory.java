@@ -4,9 +4,9 @@ import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.notifier.VeniceNotifier;
-import com.linkedin.davinci.stats.AggStoreIngestionStats;
+import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
-import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -110,9 +110,9 @@ public class StoreIngestionTaskFactory {
     private ReadOnlyStoreRepository metadataRepo;
     private TopicManagerRepository topicManagerRepository;
     private TopicManagerRepository topicManagerRepositoryJavaBased;
-    private AggStoreIngestionStats ingestionStats;
+    private AggHostLevelIngestionStats ingestionStats;
     private AggVersionedDIVStats versionedDIVStats;
-    private AggVersionedStorageIngestionStats versionedStorageIngestionStats;
+    private AggVersionedIngestionStats versionedStorageIngestionStats;
     private AbstractStoreBufferService storeBufferService;
     private VeniceServerConfig serverConfig;
     private DiskUsage diskUsage;
@@ -271,11 +271,11 @@ public class StoreIngestionTaskFactory {
       return set(() -> this.topicManagerRepositoryJavaBased = topicManagerRepositoryJavaBased);
     }
 
-    public AggStoreIngestionStats getIngestionStats() {
+    public AggHostLevelIngestionStats getIngestionStats() {
       return ingestionStats;
     }
 
-    public Builder setStoreIngestionStats(AggStoreIngestionStats storeIngestionStats) {
+    public Builder setHostLevelIngestionStats(AggHostLevelIngestionStats storeIngestionStats) {
       return set(() -> this.ingestionStats = storeIngestionStats);
     }
 
@@ -287,11 +287,11 @@ public class StoreIngestionTaskFactory {
       return set(() -> this.versionedDIVStats = versionedDIVStats);
     }
 
-    public AggVersionedStorageIngestionStats getVersionedStorageIngestionStats() {
+    public AggVersionedIngestionStats getVersionedStorageIngestionStats() {
       return versionedStorageIngestionStats;
     }
 
-    public Builder setVersionedStorageIngestionStats(AggVersionedStorageIngestionStats versionedStorageIngestionStats) {
+    public Builder setVersionedIngestionStats(AggVersionedIngestionStats versionedStorageIngestionStats) {
       return set(() -> this.versionedStorageIngestionStats = versionedStorageIngestionStats);
     }
 

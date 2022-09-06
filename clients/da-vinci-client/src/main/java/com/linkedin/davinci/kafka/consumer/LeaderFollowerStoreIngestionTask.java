@@ -591,7 +591,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
     }
     if (emitMetrics.get()) {
-      storeIngestionStats.recordCheckLongRunningTasksLatency(LatencyUtils.getLatencyInMS(checkStartTimeInNS));
+      hostLevelIngestionStats.recordCheckLongRunningTasksLatency(LatencyUtils.getLatencyInMS(checkStartTimeInNS));
     }
 
     if (pushTimeout) {
@@ -1410,8 +1410,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         kafkaUrl,
         versionedDIVStats,
         leaderProducedRecordContext,
-        versionedStorageIngestionStats,
-        storeIngestionStats,
+        versionedIngestionStats,
+        hostLevelIngestionStats,
         System.nanoTime(),
         beforeProcessingRecordTimestamp);
     partitionConsumptionState.setLastLeaderPersistFuture(leaderProducedRecordContext.getPersistedToDBFuture());
@@ -1738,21 +1738,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PartitionConsumptionState partitionConsumptionState,
       int processedRecordSize) {
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
-      versionedStorageIngestionStats.recordLeaderConsumed(storeName, versionNumber, processedRecordSize);
-      storeIngestionStats.recordTotalLeaderBytesConsumed(processedRecordSize);
-      storeIngestionStats.recordTotalLeaderRecordsConsumed();
+      versionedIngestionStats.recordLeaderConsumed(storeName, versionNumber, processedRecordSize);
+      hostLevelIngestionStats.recordTotalLeaderBytesConsumed(processedRecordSize);
+      hostLevelIngestionStats.recordTotalLeaderRecordsConsumed();
     } else {
-      versionedStorageIngestionStats.recordFollowerConsumed(storeName, versionNumber, processedRecordSize);
-      storeIngestionStats.recordTotalFollowerBytesConsumed(processedRecordSize);
-      storeIngestionStats.recordTotalFollowerRecordsConsumed();
+      versionedIngestionStats.recordFollowerConsumed(storeName, versionNumber, processedRecordSize);
+      hostLevelIngestionStats.recordTotalFollowerBytesConsumed(processedRecordSize);
+      hostLevelIngestionStats.recordTotalFollowerRecordsConsumed();
     }
   }
 
   private void recordFabricHybridConsumptionStats(int kafkaClusterId, int producedRecordSize, long upstreamOffset) {
     if (kafkaClusterId >= 0) {
-      versionedStorageIngestionStats
+      versionedIngestionStats
           .recordRegionHybridConsumption(storeName, versionNumber, kafkaClusterId, producedRecordSize, upstreamOffset);
-      storeIngestionStats.recordTotalRegionHybridBytesConsumed(kafkaClusterId, producedRecordSize);
+      hostLevelIngestionStats.recordTotalRegionHybridBytesConsumed(kafkaClusterId, producedRecordSize);
     }
   }
 
@@ -2115,7 +2115,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         if (lastFuture != null) {
           long synchronizeStartTimeInNS = System.nanoTime();
           lastFuture.get(WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED, MILLISECONDS);
-          storeIngestionStats
+          hostLevelIngestionStats
               .recordLeaderProducerSynchronizeLatency(LatencyUtils.getLatencyInMS(synchronizeStartTimeInNS));
         }
       } catch (InterruptedException e) {
@@ -2748,7 +2748,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                   update.updateValue,
                   update.updateSchemaId,
                   readerUpdateProtocolVersion));
-      storeIngestionStats.recordWriteComputeUpdateLatency(LatencyUtils.getLatencyInMS(writeComputeStartTimeInNS));
+      hostLevelIngestionStats.recordWriteComputeUpdateLatency(LatencyUtils.getLatencyInMS(writeComputeStartTimeInNS));
     } catch (Exception e) {
       writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code;
       throw new RuntimeException(e);
@@ -2839,13 +2839,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             storeName,
             compressorFactory,
             false);
-        storeIngestionStats.recordWriteComputeLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
+        hostLevelIngestionStats.recordWriteComputeLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
       } catch (Exception e) {
         writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
         throw e;
       }
     } else {
-      storeIngestionStats.recordWriteComputeCacheHitCount();
+      hostLevelIngestionStats.recordWriteComputeCacheHitCount();
       // construct currValue from this transient record only if it's not null.
       if (transientRecord.getValue() != null) {
         try {
