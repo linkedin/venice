@@ -1,9 +1,0 @@
-evaluationDependsOn(':venice-test-common')
-
-dependencies {
-  implementation project (':venice-common')
-  implementation libraries.kafkaClients
-  implementation libraries.conscrypt
-  testImplementation project (':venice-thin-client')
-  testImplementation project (':venice-test-common').sourceSets.integrationTest.output
-}

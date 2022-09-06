@@ -1,0 +1,25 @@
+dependencies {
+  // For helix-based metadata impl, and this will be removed before onboarding any customers.
+  implementation project(':internal:venice-common')
+
+  implementation (libraries.helix) {
+    // Helix pulls in an ancient version of the zkclient, which lacks some APIs and clashes with Kafka's dependency
+    exclude group: 'com.github.sgroschupf'
+    // Helix use zk 3.6.9, which introduce netty 3.10 and will fail our test.
+    exclude module: 'zookeeper'
+  }
+
+  implementation project(':clients:da-vinci-client')
+  implementation project(':services:venice-router')
+  implementation project(':internal:venice-client-common')
+  implementation project(':clients:venice-thin-client')
+
+  implementation libraries.ddsStorageCommonBase
+  implementation libraries.r2
+  implementation libraries.r2Client
+  implementation libraries.routerApi
+
+  testImplementation project(':internal:venice-common')
+  testImplementation project(':internal:venice-test-common')
+  testImplementation libraries.kafkaClients
+}

@@ -1,0 +1,106 @@
+import io.netifi.flatbuffers.plugin.tasks.FlatBuffers
+
+plugins {
+  id 'io.netifi.flatbuffers'
+}
+
+configurations {
+  all {
+    resolutionStrategy {
+      force libraries.kafka
+      force libraries.javax
+    }
+  }
+  implementation {
+    exclude group: 'org.apache.kafka'
+    exclude group: 'org.mortbay.jetty', module: 'servlet-api'
+  }
+  jmhImplementation.extendsFrom testImplementation
+  integrationTestImplementation.extendsFrom testImplementation
+}
+
+sourceSets {
+  jmh {
+    java.srcDirs = ['src/jmh/java']
+  }
+
+  integrationTest {
+    java.srcDirs = ['src/integrationtest/java']
+    resources.srcDirs = ['src/integrationtest/resources']
+  }
+}
+
+dependencies {
+  implementation (libraries.d2) {
+    exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependencies, doesn't exist in repo
+    // this will introduce another different mockito-all version
+    exclude group: 'org.mockito', module: 'mockito-all'
+  }
+
+  implementation project(':clients:da-vinci-client')
+  implementation project(':clients:hadoop-to-venice-bridge')
+  implementation project(':internal:venice-common')
+  implementation project(':services:venice-controller')
+  implementation project(':services:venice-router')
+  implementation project(':clients:venice-samza')
+  implementation project(':internal:venice-client-common')
+  implementation project(':services:venice-server')
+  implementation project(':clients:venice-thin-client')
+
+  implementation libraries.avroUtilCompatHelper
+  implementation libraries.avroUtilFastserde
+  implementation libraries.conscrypt
+  implementation libraries.hadoopCommon
+  implementation libraries.helix
+  implementation libraries.javax
+  implementation libraries.kafka
+  implementation libraries.kafkaClients
+  implementation libraries.kafkaClientsTest
+  implementation libraries.mockito
+  implementation libraries.netty4Lnkd
+  implementation libraries.rocksdbjni
+  implementation libraries.routerApi
+  implementation libraries.routerLnkd
+  implementation libraries.samzaApi
+  implementation libraries.spark
+  implementation libraries.testng
+
+  compileOnly libraries.flatBuffersJava // FlatBuffersPlugin implicitly adds output to main source set
+
+  testImplementation (libraries.mapreduceClientJobClient) {
+    exclude group: 'org.apache.avro'
+    exclude group: 'javax.servlet'
+  }
+  testImplementation project(':clients:venice-admin-tool')
+
+  jmhAnnotationProcessor libraries.jmhGenerator
+  jmhImplementation libraries.jmhCore
+  jmhImplementation libraries.flatBuffersJava
+}
+
+task compileJmhFlatBuffers(type: FlatBuffers) {
+  language = 'java'
+  inputDir = file('src/jmh/flatbuffers')
+  outputDir = file("$buildDir/generated/sources/flatbuffers/java/jmh")
+  outputs.cacheIf { true }
+}
+sourceSets.jmh.java.srcDir(compileJmhFlatBuffers)
+
+task jmh(type: JavaExec, dependsOn: jmhClasses) {
+  main = 'org.openjdk.jmh.Main'
+  classpath = sourceSets.jmh.runtimeClasspath
+}
+
+task integrationTest(type: Test) {
+  mustRunAfter test
+  classpath = sourceSets.integrationTest.runtimeClasspath
+  testClassesDirs = sourceSets.integrationTest.output.classesDirs
+  forkEvery = Integer.parseInt(project.properties.get('integrationTest.forkEvery', "$forkEvery"))
+  maxParallelForks = Integer.parseInt(project.properties.get('integrationTest.maxParallelForks', "$maxParallelForks"))
+}
+check.dependsOn(integrationTest)
+
+flakyTest {
+  classpath += sourceSets.integrationTest.runtimeClasspath
+  testClassesDirs += sourceSets.integrationTest.output.classesDirs
+}

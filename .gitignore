@@ -13,5 +13,6 @@
 .shelf/
 out/
 build/
-venice-test-common/tmp/
-venice-test-common/dump.complete.hprof
+internal/venice-test-common/tmp/
+internal/venice-test-common/dump.complete.hprof
+internal/venice-test-common/src/jmh/generated
