@@ -11,7 +11,7 @@ import com.linkedin.davinci.replication.merge.MergeConflictResolverFactory;
 import com.linkedin.davinci.replication.merge.MergeConflictResult;
 import com.linkedin.davinci.replication.merge.MergeUtils;
 import com.linkedin.davinci.replication.merge.RmdSerDe;
-import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
@@ -69,7 +69,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   private final MergeConflictResolver mergeConflictResolver;
   private final RmdSerDe rmdSerDe;
   private final Lazy<KeyLevelLocksManager> keyLevelLocksManager;
-  private final AggVersionedStorageIngestionStats aggVersionedStorageIngestionStats;
+  private final AggVersionedIngestionStats aggVersionedIngestionStats;
   private final RemoteIngestionRepairService remoteIngestionRepairService;
 
   public ActiveActiveStoreIngestionTask(
@@ -96,7 +96,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         compressorFactory);
 
     this.rmdProtocolVersionID = version.getRmdVersionId();
-    this.aggVersionedStorageIngestionStats = versionedStorageIngestionStats;
+    this.aggVersionedIngestionStats = versionedIngestionStats;
     int knownKafkaClusterNumber = serverConfig.getKafkaClusterIdToUrlMap().size();
     int consumerPoolSizePerKafkaCluster = serverConfig.getConsumerPoolSizePerKafkaCluster();
     int initialPoolSize = knownKafkaClusterNumber + 1;
@@ -156,7 +156,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       } finally {
         keyLevelLock.unlock();
         this.keyLevelLocksManager.get().releaseLock(byteArrayKey);
-        storeIngestionStats.recordLeaderDelegateRealTimeRecordLatency(
+        hostLevelIngestionStats.recordLeaderDelegateRealTimeRecordLatency(
             LatencyUtils.getLatencyInMS(delegateRealTimeTopicRecordStartTimeInNs));
       }
     }
@@ -242,7 +242,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       int subPartition) {
     PartitionConsumptionState.TransientRecord cachedRecord = partitionConsumptionState.getTransientRecord(key);
     if (cachedRecord != null) {
-      storeIngestionStats.recordIngestionReplicationMetadataCacheHitCount();
+      hostLevelIngestionStats.recordIngestionReplicationMetadataCacheHitCount();
       return Optional.of(
           new RmdWithValueSchemaId(
               cachedRecord.getValueSchemaId(),
@@ -252,7 +252,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     final long lookupStartTimeInNS = System.nanoTime();
     byte[] replicationMetadataWithValueSchemaBytes = storageEngine.getReplicationMetadata(subPartition, key);
-    storeIngestionStats
+    hostLevelIngestionStats
         .recordIngestionReplicationMetadataLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
     if (replicationMetadataWithValueSchemaBytes == null) {
       return Optional.empty(); // No RMD for this key
@@ -335,7 +335,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     long sourceOffset = consumerRecord.offset();
     final MergeConflictResult mergeConflictResult;
 
-    aggVersionedStorageIngestionStats.recordTotalDCR(storeName, versionNumber);
+    aggVersionedIngestionStats.recordTotalDCR(storeName, versionNumber);
 
     switch (msgType) {
       case PUT:
@@ -381,9 +381,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
 
     if (mergeConflictResult.isUpdateIgnored()) {
-      storeIngestionStats.recordUpdateIgnoredDCR();
-      aggVersionedStorageIngestionStats.recordUpdateIgnoredDCR(storeName, versionNumber);
-      aggVersionedStorageIngestionStats.recordConsumedRecordEndToEndProcessingLatency(
+      hostLevelIngestionStats.recordUpdateIgnoredDCR();
+      aggVersionedIngestionStats.recordUpdateIgnoredDCR(storeName, versionNumber);
+      aggVersionedIngestionStats.recordConsumedRecordEndToEndProcessingLatency(
           storeName,
           versionNumber,
           LatencyUtils.getLatencyInMS(beforeProcessingRecordTimestamp));
@@ -424,8 +424,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     GenericRecord rmdRecord = mergeConflictResult.getRmdRecord();
     if (offsetSumPreOperation > MergeUtils.extractOffsetVectorSumFromRmd(rmdRecord)) {
       // offsets went backwards, raise an alert!
-      storeIngestionStats.recordOffsetRegressionDCRError();
-      aggVersionedStorageIngestionStats.recordOffsetRegressionDCRError(storeName, versionNumber);
+      hostLevelIngestionStats.recordOffsetRegressionDCRError();
+      aggVersionedIngestionStats.recordOffsetRegressionDCRError(storeName, versionNumber);
       logger.error(
           String.format(
               "Offset vector found to have gone backwards!! New invalid replication metadata result:%s",
@@ -440,8 +440,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     for (int i = 0; i < timestampsPreOperation.size(); i++) {
       if (timestampsPreOperation.get(i) > timestampsPostOperation.get(i)) {
         // timestamps went backwards, raise an alert!
-        storeIngestionStats.recordTimestampRegressionDCRError();
-        aggVersionedStorageIngestionStats.recordTimestampRegressionDCRError(storeName, versionNumber);
+        hostLevelIngestionStats.recordTimestampRegressionDCRError();
+        aggVersionedIngestionStats.recordTimestampRegressionDCRError(storeName, versionNumber);
         logger.error(
             String.format(
                 "Timestamp found to have gone backwards!! Invalid replication metadata result:%s",
@@ -486,9 +486,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           storeName,
           compressorFactory,
           false);
-      storeIngestionStats.recordIngestionValueBytesLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
+      hostLevelIngestionStats.recordIngestionValueBytesLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
     } else {
-      storeIngestionStats.recordIngestionValueBytesCacheHitCount();
+      hostLevelIngestionStats.recordIngestionValueBytesCacheHitCount();
       // construct originalValue from this transient record only if it's not null.
       if (transientRecord.getValue() != null) {
         originalValue = ByteBuffer
@@ -535,8 +535,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     // finally produce and update the transient record map.
     if (updatedValueBytes == null) {
-      storeIngestionStats.recordTombstoneCreatedDCR();
-      aggVersionedStorageIngestionStats.recordTombStoneCreationDCR(storeName, versionNumber);
+      hostLevelIngestionStats.recordTombstoneCreatedDCR();
+      aggVersionedIngestionStats.recordTombStoneCreationDCR(storeName, versionNumber);
       partitionConsumptionState
           .setTransientRecord(kafkaClusterId, consumerRecord.offset(), key, valueSchemaId, rmdRecord);
       Delete deletePayload = new Delete();
@@ -757,7 +757,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                     newSourceTopicName,
                     sourceTopicPartition,
                     upstreamStartOffset));
-            storeIngestionStats.recordIngestionFailure();
+            hostLevelIngestionStats.recordIngestionFailure();
 
             // Add to repair queue
             if (remoteIngestionRepairService != null) {

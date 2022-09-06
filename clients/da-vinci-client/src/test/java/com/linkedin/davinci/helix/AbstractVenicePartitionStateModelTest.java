@@ -3,8 +3,8 @@ package com.linkedin.davinci.helix;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
-import com.linkedin.davinci.stats.AggStoreIngestionStats;
-import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
+import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
@@ -40,8 +40,8 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
   protected String resourceName;
   protected String instanceName;
 
-  protected AggStoreIngestionStats mockAggStoreIngestionStats;
-  protected AggVersionedStorageIngestionStats mockAggVersionedStorageIngestionStats;
+  protected AggHostLevelIngestionStats mockAggStoreIngestionStats;
+  protected AggVersionedIngestionStats mockAggVersionedIngestionStats;
   protected SafeHelixManager mockManager;
   protected HelixManager mockHelixManager;
   protected HelixPartitionStatusAccessor mockPushStatusAccessor;
@@ -75,8 +75,7 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
         .thenReturn(mockStore);
     Mockito.when(mockStore.getBootstrapToOnlineTimeoutInHours()).thenReturn(Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
 
-    Mockito.when(mockStoreIngestionService.getAggVersionedStorageIngestionStats())
-        .thenReturn(mockAggVersionedStorageIngestionStats);
+    Mockito.when(mockStoreIngestionService.getAggVersionedIngestionStats()).thenReturn(mockAggVersionedIngestionStats);
 
     Mockito.when(mockManager.getOriginalManager()).thenReturn(mockHelixManager);
     Mockito.when(mockManager.getInstanceName()).thenReturn(instanceName);

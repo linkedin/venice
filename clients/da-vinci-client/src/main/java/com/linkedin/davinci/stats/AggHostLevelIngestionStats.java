@@ -9,35 +9,39 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 
 
-//TODO: once we've migrated this stats to multi-version. We might want to consider merge it with DIVStats
-public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestionStats> {
-  public AggStoreIngestionStats(
+/**
+ * This class provides aggregate initialization support for host level ingestion stats class {@link HostLevelIngestionStats}
+ */
+public class AggHostLevelIngestionStats extends AbstractVeniceAggStats<HostLevelIngestionStats> {
+  public AggHostLevelIngestionStats(
       MetricsRepository metricsRepository,
       VeniceServerConfig serverConfig,
       Map<String, StoreIngestionTask> ingestionTaskMap) {
-    super(metricsRepository, new StoreIngestionStatsSupplier(serverConfig, ingestionTaskMap));
+    super(metricsRepository, new HostLevelStoreIngestionStatsSupplier(serverConfig, ingestionTaskMap));
   }
 
-  static class StoreIngestionStatsSupplier implements StatsSupplier<StoreIngestionStats> {
+  static class HostLevelStoreIngestionStatsSupplier implements StatsSupplier<HostLevelIngestionStats> {
     private final VeniceServerConfig serverConfig;
     private final Map<String, StoreIngestionTask> ingestionTaskMap;
 
-    StoreIngestionStatsSupplier(VeniceServerConfig serverConfig, Map<String, StoreIngestionTask> ingestionTaskMap) {
+    HostLevelStoreIngestionStatsSupplier(
+        VeniceServerConfig serverConfig,
+        Map<String, StoreIngestionTask> ingestionTaskMap) {
       this.serverConfig = serverConfig;
       this.ingestionTaskMap = ingestionTaskMap;
     }
 
     @Override
-    public StoreIngestionStats get(MetricsRepository metricsRepository, String storeName) {
+    public HostLevelIngestionStats get(MetricsRepository metricsRepository, String storeName) {
       throw new VeniceException("Should not be called.");
     }
 
     @Override
-    public StoreIngestionStats get(
+    public HostLevelIngestionStats get(
         MetricsRepository metricsRepository,
         String storeName,
-        StoreIngestionStats totalStats) {
-      return new StoreIngestionStats(metricsRepository, serverConfig, storeName, totalStats, ingestionTaskMap);
+        HostLevelIngestionStats totalStats) {
+      return new HostLevelIngestionStats(metricsRepository, serverConfig, storeName, totalStats, ingestionTaskMap);
     }
   }
 }

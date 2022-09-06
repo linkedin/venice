@@ -16,11 +16,11 @@ import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.notifier.LogNotifier;
 import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
-import com.linkedin.davinci.stats.AggStoreIngestionStats;
+import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
-import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.davinci.stats.AggVersionedIngestionStats;
+import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
-import com.linkedin.davinci.stats.StoreIngestionStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -201,10 +201,10 @@ public abstract class StoreIngestionTaskTest {
   private KafkaConsumerWrapper mockRemoteKafkaConsumer;
   private TopicManager mockTopicManager;
   private TopicManagerRepository mockTopicManagerRepository;
-  private AggStoreIngestionStats mockAggStoreIngestionStats;
-  private StoreIngestionStats mockStoreIngestionStats;
+  private AggHostLevelIngestionStats mockAggStoreIngestionStats;
+  private HostLevelIngestionStats mockStoreIngestionStats;
   private AggVersionedDIVStats mockVersionedDIVStats;
-  private AggVersionedStorageIngestionStats mockVersionedStorageIngestionStats;
+  private AggVersionedIngestionStats mockVersionedStorageIngestionStats;
   private StoreIngestionTask storeIngestionTaskUnderTest;
   private ExecutorService taskPollingService;
   private StoreBufferService storeBufferService;
@@ -374,12 +374,12 @@ public abstract class StoreIngestionTaskTest {
     mockTopicManagerRepository = mock(TopicManagerRepository.class);
     doReturn(mockTopicManager).when(mockTopicManagerRepository).getTopicManager();
 
-    mockAggStoreIngestionStats = mock(AggStoreIngestionStats.class);
-    mockStoreIngestionStats = mock(StoreIngestionStats.class);
+    mockAggStoreIngestionStats = mock(AggHostLevelIngestionStats.class);
+    mockStoreIngestionStats = mock(HostLevelIngestionStats.class);
     doReturn(mockStoreIngestionStats).when(mockAggStoreIngestionStats).getStoreStats(anyString());
 
     mockVersionedDIVStats = mock(AggVersionedDIVStats.class);
-    mockVersionedStorageIngestionStats = mock(AggVersionedStorageIngestionStats.class);
+    mockVersionedStorageIngestionStats = mock(AggVersionedIngestionStats.class);
 
     isCurrentVersion = () -> false;
     hybridStoreConfig = Optional.empty();
@@ -768,9 +768,9 @@ public abstract class StoreIngestionTaskTest {
         .setSchemaRepository(mockSchemaRepo)
         .setMetadataRepository(mockMetadataRepo)
         .setTopicManagerRepository(mockTopicManagerRepository)
-        .setStoreIngestionStats(mockAggStoreIngestionStats)
+        .setHostLevelIngestionStats(mockAggStoreIngestionStats)
         .setVersionedDIVStats(mockVersionedDIVStats)
-        .setVersionedStorageIngestionStats(mockVersionedStorageIngestionStats)
+        .setVersionedIngestionStats(mockVersionedStorageIngestionStats)
         .setStoreBufferService(storeBufferService)
         .setServerConfig(veniceServerConfig)
         .setDiskUsage(diskUsage)

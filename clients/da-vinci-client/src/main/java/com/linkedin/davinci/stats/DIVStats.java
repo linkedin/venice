@@ -5,7 +5,9 @@ import io.tehuti.metrics.MetricsRepository;
 
 
 /**
- * This class contains all stats for DIV purpose. It does not contain reporting logic as reporting is done by the {@link DIVStatsReporter}.
+ * This class contains stats for DIV. The stat class is used in {@link VeniceVersionedStats} to serve for
+ * a single store version or total of all store versions.
+ * This class does not contain reporting logic as reporting is done by the {@link DIVStatsReporter}.
  */
 public class DIVStats {
   private final MetricConfig metricConfig = new MetricConfig();

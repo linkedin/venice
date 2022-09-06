@@ -3,8 +3,8 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
 
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
-import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
-import com.linkedin.davinci.stats.StoreIngestionStats;
+import com.linkedin.davinci.stats.AggVersionedIngestionStats;
+import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -40,8 +40,8 @@ class LeaderProducerCallback implements ChunkAwareCallback {
   private final String kafkaUrl;
   private final AggVersionedDIVStats versionedDIVStats;
   private final LeaderProducedRecordContext leaderProducedRecordContext;
-  private final AggVersionedStorageIngestionStats versionedStorageIngestionStats;
-  private final StoreIngestionStats storeIngestionStats;
+  private final AggVersionedIngestionStats versionedStorageIngestionStats;
+  private final HostLevelIngestionStats hostLevelIngestionStats;
   private final long produceTimeNs;
   private final long beforeProcessingRecordTimestamp;
 
@@ -65,8 +65,8 @@ class LeaderProducerCallback implements ChunkAwareCallback {
       String kafkaUrl,
       AggVersionedDIVStats versionedDIVStats,
       LeaderProducedRecordContext leaderProducedRecordContext,
-      AggVersionedStorageIngestionStats versionedStorageIngestionStats,
-      StoreIngestionStats storeIngestionStats,
+      AggVersionedIngestionStats versionedStorageIngestionStats,
+      HostLevelIngestionStats hostLevelIngestionStats,
       long produceTimeNs,
       long beforeProcessingRecordTimestamp) {
     this.ingestionTask = ingestionTask;
@@ -81,7 +81,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
     this.leaderProducedRecordContext = leaderProducedRecordContext;
     this.produceTimeNs = produceTimeNs;
     this.versionedStorageIngestionStats = versionedStorageIngestionStats;
-    this.storeIngestionStats = storeIngestionStats;
+    this.hostLevelIngestionStats = hostLevelIngestionStats;
     this.beforeProcessingRecordTimestamp = beforeProcessingRecordTimestamp;
   }
 
@@ -245,7 +245,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
         ingestionTask.versionNumber,
         producedRecordSize,
         producedRecordNum);
-    storeIngestionStats.recordTotalLeaderBytesProduced(producedRecordSize);
-    storeIngestionStats.recordTotalLeaderRecordsProduced(producedRecordNum);
+    hostLevelIngestionStats.recordTotalLeaderBytesProduced(producedRecordSize);
+    hostLevelIngestionStats.recordTotalLeaderRecordsProduced(producedRecordNum);
   }
 }
