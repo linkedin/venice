@@ -1,0 +1,25 @@
+dependencies {
+  api (libraries.avro) {
+    exclude group: 'org.jboss.netty' // older version of netty3 causes transitive conflicts with the router
+    exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
+    exclude group: 'org.slf4j'        // Avro pulls in slf4j 1.5 which is API incompatible with 1.6
+  }
+
+  implementation (libraries.commonsIo) {
+    exclude group: 'org.apapche.zookeeper'
+  }
+
+  implementation libraries.httpAsyncClient
+  implementation libraries.jacksonCore
+  implementation libraries.jacksonDatabind
+  implementation libraries.zookeeper
+
+  // Schema related dependencies
+  implementation project(':internal:venice-client-common')
+
+  testImplementation project(':internal:venice-common')
+  testImplementation project(':internal:venice-test-common')
+  testImplementation libraries.kafkaClientsTest
+  testImplementation libraries.kafkaClients
+  testImplementation libraries.netty
+}

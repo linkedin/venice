@@ -1,0 +1,41 @@
+dependencies {
+  // Let's try to keep it clean! (i.e.: alphabetical)
+
+  // Avro, for better and for worse, is part of our API, so it should leak through to our users as a transitive dependency
+  api (libraries.avro) {
+    exclude group: 'org.jboss.netty' // older version of netty3 causes transitive conflicts with the router
+    exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
+    exclude group: 'org.slf4j'        // Avro pulls in slf4j 1.5 which is API incompatible with 1.6
+  }
+
+  api (libraries.d2Client) {
+    exclude group: 'com.oracle', module: 'ojdbc14' /* unused transitive dependencies, doesn't exist in repo */
+    exclude group: 'org.mockito', module: 'mockito-all'
+    exclude group: 'xerces', module: 'xerces'
+    exclude group: 'com.fasterxml.jackson'
+    exclude module: 'httpcore'
+    exclude module: 'httpclient'
+    exclude group: 'kafka'
+  }
+
+  api libraries.avroUtilCompatHelper
+  api libraries.commonsIo
+  api libraries.commonsLang
+  api libraries.httpClient //d2Client brings in an old version of httpClient
+  api libraries.httpClient5
+  api libraries.httpCore5
+  api libraries.httpCore5H2
+  api libraries.httpCore  //d2Client brings in an old version of httpCore
+  api libraries.jacksonDatabind
+  api libraries.jacksonAnnotations
+  api libraries.tehuti
+  api libraries.xerces // d2Client brings in an old version of xerces
+
+  implementation libraries.avroUtilFastserde
+  implementation libraries.classgraph
+  implementation libraries.failsafe
+  implementation libraries.zstd
+
+  testImplementation project(':internal:venice-test-common')
+  testImplementation project(':clients:venice-thin-client')
+}

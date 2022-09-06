@@ -1,0 +1,29 @@
+plugins {
+  id 'com.github.johnrengelman.shadow'
+}
+
+dependencies {
+  implementation (libraries.avro) {
+    exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
+  }
+
+  implementation project(':internal:venice-common')
+  implementation project(':services:venice-controller')
+  implementation project(':clients:venice-thin-client')
+
+  implementation libraries.kafka
+}
+
+artifacts {
+  archives shadowJar
+}
+
+jar {
+  manifest {
+    attributes = [
+        'Implementation-Title': 'Venice Admin Tool',
+        'Implementation-Version': project.version,
+        'Main-Class': 'com.linkedin.venice.AdminTool'
+    ]
+  }
+}
