@@ -308,8 +308,6 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(DELETE_ACL.getPath(), createStoreRoute.deleteAclForStore(admin));
     httpService.get(GET_DELETABLE_STORE_TOPICS.getPath(), storesRoutes.getDeletableStoreTopics(admin));
     httpService
-        .post(CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER.getPath(), storesRoutes.configureIncrementalPushForCluster(admin));
-    httpService
         .get(GET_ONGOING_INCREMENTAL_PUSH_VERSIONS.getPath(), jobRoutes.getOngoingIncrementalPushVersions(admin));
     httpService.get(GET_REPUSH_INFO.getPath(), storesRoutes.getRepushInfo(admin));
     httpService.get(COMPARE_STORE.getPath(), storesRoutes.compareStore(admin));

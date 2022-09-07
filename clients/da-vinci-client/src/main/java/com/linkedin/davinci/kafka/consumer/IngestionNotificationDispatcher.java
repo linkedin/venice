@@ -16,7 +16,7 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * Class to wrap all of the interaction with {@link com.linkedin.davinci.notifier.VeniceNotifier}
+ * Class to wrap all the interactions with {@link com.linkedin.davinci.notifier.VeniceNotifier}
  */
 class IngestionNotificationDispatcher {
   public static long PROGRESS_REPORT_INTERVAL = TimeUnit.MILLISECONDS.convert(10, TimeUnit.MINUTES);

@@ -223,12 +223,12 @@ public class VersionImpl implements Version {
 
   @Override
   public IncrementalPushPolicy getIncrementalPushPolicy() {
-    return IncrementalPushPolicy.valueOf(this.storeVersion.incrementalPushPolicy);
+    return IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME;
   }
 
   @Override
   public void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
-    this.storeVersion.incrementalPushPolicy = incrementalPushPolicy.getValue();
+    this.storeVersion.incrementalPushPolicy = IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME.getValue();
   }
 
   @Override
@@ -403,7 +403,7 @@ public class VersionImpl implements Version {
     clonedVersion.setPushType(getPushType());
     clonedVersion.setNativeReplicationEnabled(isNativeReplicationEnabled());
     clonedVersion.setPushStreamSourceAddress(getPushStreamSourceAddress());
-    clonedVersion.setIncrementalPushPolicy(getIncrementalPushPolicy());
+    clonedVersion.setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
     clonedVersion.setReplicationFactor(getReplicationFactor());
     clonedVersion.setNativeReplicationSourceFabric(getNativeReplicationSourceFabric());
     clonedVersion.setIncrementalPushEnabled(isIncrementalPushEnabled());

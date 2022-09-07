@@ -3,7 +3,6 @@ package com.linkedin.venice.controllerapi;
 public class ControllerApiConstants {
   public static final String HOSTNAME = "hostname";
   public static final String CLUSTER = "cluster_name";
-  public static final String CLUSTER_SRC = "cluster_name_src";
   public static final String CLUSTER_DEST = "cluster_name_dest";
   public static final String SOURCE_GRID_FABRIC = "source_grid_fabric";
   public static final String BATCH_JOB_HEARTBEAT_ENABLED = "batch_job_heartbeat_enabled";
@@ -60,8 +59,6 @@ public class ControllerApiConstants {
   public static final String NUM_VERSIONS_TO_PRESERVE = "num_versions_to_preserve";
   public static final String DISABLE_META_STORE = "disable_meta_store";
   public static final String DISABLE_DAVINCI_PUSH_STATUS_STORE = "disable_davinci_push_status_store";
-  public static final String MESSAGE = "message";
-
   public static final String PUSH_TYPE = "push_type";
   public static final String PUSH_JOB_ID = "push_job_id";
   public static final String SEND_START_OF_PUSH = "start_of_push";
@@ -108,10 +105,6 @@ public class ControllerApiConstants {
   public static final String STORE_TYPE = "store_type";
 
   public static final String IS_SYSTEM_STORE = "is_system_store";
-
-  public static final String INCREMENTAL_PUSH_POLICY = "incremental_push_policy";
-
-  public static final String INCREMENTAL_PUSH_POLICY_TO_FILTER = "incremental_push_policy_to_filter";
 
   public static final String TOPIC_COMPACTION_POLICY = "topic_compaction_policy";
 

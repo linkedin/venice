@@ -37,7 +37,6 @@ public class StoreInfo {
     }
     storeInfo.setHybridStoreDiskQuotaEnabled(store.isHybridStoreDiskQuotaEnabled());
     storeInfo.setIncrementalPushEnabled(store.isIncrementalPushEnabled());
-    storeInfo.setIncrementalPushPolicy(store.getIncrementalPushPolicy());
     storeInfo.setLargestUsedVersionNumber(store.getLargestUsedVersionNumber());
     storeInfo.setLatestSuperSetValueSchemaId(store.getLatestSuperSetValueSchemaId());
     storeInfo.setLeaderFollowerModelEnabled(store.isLeaderFollowerModelEnabled());
@@ -259,11 +258,6 @@ public class StoreInfo {
   private long backupVersionRetentionMs;
 
   private int replicationFactor;
-
-  /**
-   * Incremental Push Policy to reconcile with real time pushes.
-   */
-  private IncrementalPushPolicy incrementalPushPolicy;
 
   /**
    * Whether or not the store is a duplicate store in the process of migration.
@@ -669,14 +663,6 @@ public class StoreInfo {
 
   public void setBackupVersionRetentionMs(long backupVersionRetentionMs) {
     this.backupVersionRetentionMs = backupVersionRetentionMs;
-  }
-
-  public IncrementalPushPolicy getIncrementalPushPolicy() {
-    return incrementalPushPolicy;
-  }
-
-  public void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
-    this.incrementalPushPolicy = incrementalPushPolicy;
   }
 
   public int getReplicationFactor() {

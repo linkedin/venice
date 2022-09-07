@@ -11,7 +11,6 @@ import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureActiveActiveReplicationForCluster;
-import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureIncrementalPushForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureNativeReplicationForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.CreateStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
@@ -237,9 +236,6 @@ public class AdminExecutionTask implements Callable<Void> {
         case REPLICATION_METADATA_SCHEMA_CREATION:
           handleReplicationMetadataSchemaCreation((MetadataSchemaCreation) adminOperation.payloadUnion);
           break;
-        case CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER:
-          handleConfigureIncrementalPushForCluster((ConfigureIncrementalPushForCluster) adminOperation.payloadUnion);
-          break;
         case META_SYSTEM_STORE_AUTO_CREATION_VALIDATION:
           handleMetaSystemStoreCreationValidation((MetaSystemStoreAutoCreationValidation) adminOperation.payloadUnion);
           break;
@@ -437,6 +433,16 @@ public class AdminExecutionTask implements Callable<Void> {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
 
+    // safeguard to prevent setting any other policy than the INCREMENTAL_PUSH_SAME_AS_REAL_TIME during controller
+    // upgrades.
+    if (message.incrementalPushEnabled
+        && message.incrementalPushPolicy != IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME.getValue()) {
+      throw new VeniceException(
+          "UpdateStore failed for store:" + storeName + " due to the use of an unsupported incremental push policy:{}. "
+              + IncrementalPushPolicy.valueOf(message.incrementalPushPolicy)
+              + "The only supported policy for incremental pushes is INCREMENTAL_PUSH_SAME_AS_REAL_TIME.");
+    }
+
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setOwner(message.owner.toString())
         .setEnableReads(message.enableReads)
         .setEnableWrites(message.enableWrites)
@@ -494,7 +500,6 @@ public class AdminExecutionTask implements Callable<Void> {
     params.setNativeReplicationEnabled(message.nativeReplicationEnabled)
         .setPushStreamSourceAddress(
             message.pushStreamSourceAddress == null ? null : message.pushStreamSourceAddress.toString())
-        .setIncrementalPushPolicy(IncrementalPushPolicy.valueOf(message.incrementalPushPolicy))
         .setBackupVersionRetentionMs(message.backupVersionRetentionMs);
 
     params.setNativeReplicationSourceFabric(
@@ -664,23 +669,6 @@ public class AdminExecutionTask implements Callable<Void> {
         storeType,
         Optional.empty(),
         enableActiveActiveReplication,
-        regionsFilter);
-  }
-
-  private void handleConfigureIncrementalPushForCluster(ConfigureIncrementalPushForCluster message) {
-    String clusterName = message.clusterName.toString();
-    IncrementalPushPolicy incrementalPushPolicyToApply =
-        IncrementalPushPolicy.valueOf(message.incrementalPushPolicyToApply);
-    Optional<IncrementalPushPolicy> incrementalPushPolicyToFilter = message.incrementalPushPolicyToFilter >= 0
-        ? Optional.of(IncrementalPushPolicy.valueOf(message.incrementalPushPolicyToFilter))
-        : Optional.empty();
-    Optional<String> regionsFilter =
-        (message.regionsFilter == null) ? Optional.empty() : Optional.of(message.regionsFilter.toString());
-    admin.configureIncrementalPushForCluster(
-        clusterName,
-        Optional.of(storeName),
-        incrementalPushPolicyToApply,
-        incrementalPushPolicyToFilter,
         regionsFilter);
   }
 

@@ -33,7 +33,6 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VeniceUserStoreType;
@@ -683,7 +682,6 @@ public class TestPushJobWithNativeReplication {
                     .updateStore(
                         storeName,
                         new UpdateStoreQueryParams().setIncrementalPushEnabled(true)
-                            .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)
                             .setHybridOffsetLagThreshold(1)
                             .setHybridRewindSeconds(Time.SECONDS_PER_DAY))
                     .isError());
@@ -695,7 +693,6 @@ public class TestPushJobWithNativeReplication {
                 multiColoMultiClusterWrapper.getParentKafkaBrokerWrapper().getAddress());
             props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
             props.setProperty(VeniceWriter.ENABLE_CHUNKING, "false");
-            props.setProperty(ALLOW_KIF_REPUSH_FOR_INC_PUSH_FROM_VT_TO_VT, "true");
             props.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
 
             try (VenicePushJob rePushJob = new VenicePushJob("Test re-push job re-push", props)) {

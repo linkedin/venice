@@ -2,21 +2,21 @@ package com.linkedin.venice.hadoop;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
-import static org.mockito.Mockito.*;
 
+import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
-import com.linkedin.venice.hadoop.input.kafka.KafkaInputOffsetTracker;
 import com.linkedin.venice.hadoop.partitioner.BuggyOffsettingMapReduceShufflePartitioner;
 import com.linkedin.venice.hadoop.partitioner.BuggySprayingMapReduceShufflePartitioner;
 import com.linkedin.venice.hadoop.partitioner.NonDeterministicVenicePartitioner;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -529,8 +529,8 @@ public class TestVenicePushJob {
     // No need for asserts, because we are expecting an exception to be thrown!
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testKIFRepushForIncrementalPushStores(boolean offsetChangesDuringKifRepush) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT, description = "KIF repush should copy all data including recent incPush2RT to new VT")
+  public void testKIFRepushForIncrementalPushStores() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
     // Setup job properties
@@ -543,47 +543,63 @@ public class TestVenicePushJob {
             new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
                 .setPartitionCount(2)
                 .setIncrementalPushEnabled(true)
-                .setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC)
                 .setLeaderFollowerModel(true)));
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
 
     // create a batch version.
     TestPushUtils.runPushJob("Test push job", props);
+    TestUtils.waitForNonDeterministicAssertion(
+        30,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 1));
+
+    writeSimpleAvroFileWithUserSchema2(inputDir);
+    props.setProperty(INCREMENTAL_PUSH, "true");
+    TestPushUtils.runPushJob("Test push job", props);
+    TestUtils.waitForNonDeterministicAssertion(
+        30,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 1));
+    props.setProperty(INCREMENTAL_PUSH, "false");
+
+    try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+      // data from full push
+      for (int i = 1; i <= 50; i++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+      }
+      // data updated and added by inc-push
+      for (int i = 51; i <= 150; i++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + (i * 2));
+      }
+    }
 
     // setup repush job settings
     props.setProperty(SOURCE_KAFKA, "true");
     props.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
     props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+    // This repush should succeed
+    TestPushUtils.runPushJob("Test push job", props);
+    TestUtils.waitForNonDeterministicAssertion(
+        30,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2));
 
-    // Run the repush job, this should fail.
-    Exception e = Assert.expectThrows(VeniceException.class, () -> TestPushUtils.runPushJob("Test push job", props));
-    Assert.assertTrue(e.getMessage().contains("has same Incremental Push to VT policy for source and new version"));
-
-    // convert to RT policy
-    TestUtils.assertCommand(
-        veniceCluster.updateStore(
-            storeName,
-            new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1)
-                .setHybridRewindSeconds(0)
-                .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)));
-
-    if (!offsetChangesDuringKifRepush) {
-      // This repush should succeed
-      TestPushUtils.runPushJob("Test push job", props);
-    } else {
-      // This repush should fail since this is simulating a scenario where a end offsets changes for the source VT
-      // topic.
-      KafkaInputOffsetTracker kafkaInputOffsetTracker = mock(KafkaInputOffsetTracker.class);
-      when(kafkaInputOffsetTracker.compareOffsetsAtBeginningAndEnd()).thenReturn(false);
-      e = Assert.expectThrows(
-          VeniceException.class,
-          () -> TestPushUtils
-              .runPushJob("Test push job", props, job -> job.setKafkaInputOffsetTracker(kafkaInputOffsetTracker)));
-      Assert.assertTrue(e.getMessage().contains("topic offsets does not match before and after the push job"));
+    try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+      // data from full push
+      for (int i = 1; i <= 50; i++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+      }
+      // data updated and added by inc-push
+      for (int i = 51; i <= 150; i++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + (i * 2));
+      }
     }
   }
 
+  // TODO: KIF-repush breaks when chunking is enabled. Enable data verification once VENG-9948 has been fixed.
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testKIFRepushFetch(boolean chunkingEnabled) throws Exception {
     File inputDir = getTempDataDirectory();
@@ -598,12 +614,17 @@ public class TestVenicePushJob {
             new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
                 .setPartitionCount(2)
                 .setIncrementalPushEnabled(true)
-                .setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC)
                 .setLeaderFollowerModel(true)));
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
 
     // create a batch version.
     TestPushUtils.runPushJob("Test push job", props);
+    try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+      for (int i = 1; i <= 100; i++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+      }
+    }
 
     // setup repush job settings, without any broker url or topic name
     props.setProperty(SOURCE_KAFKA, "true");
@@ -615,9 +636,15 @@ public class TestVenicePushJob {
             storeName,
             new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1)
                 .setHybridRewindSeconds(0)
-                .setChunkingEnabled(chunkingEnabled)
-                .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)));
+                .setChunkingEnabled(chunkingEnabled)));
     // Run the repush job, it should still pass
     TestPushUtils.runPushJob("Test push job", props);
+
+    // try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
+    // ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+    // for (int i = 1; i <= 100; i++) {
+    // Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+    // }
+    // }
   }
 }

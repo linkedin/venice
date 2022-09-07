@@ -11,7 +11,6 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
@@ -219,9 +218,7 @@ public class TestAdminSparkWithMocks {
       optionalemergencySourceRegion = Optional.of(emergencySourceRegion);
     }
 
-    // Setting up a version that doesn't have the incremental policy set as INCREMENTAL_PUSH_SAME_AS_REAL_TIME
     Version version = new VersionImpl(storeName, 1, pushJobId1);
-    version.setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
 
     // build request
     List<NameValuePair> params = new ArrayList<>();

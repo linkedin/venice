@@ -82,9 +82,6 @@ public enum Arg {
   ),
   INCREMENTAL_PUSH_ENABLED(
       "incremental-push-enabled", "ipe", true, "a flag to see if the store supports incremental push or not"
-  ),
-  INCREMENTAL_PUSH_POLICY(
-      "incremental-push-policy", "ipp", true, "policy used to determine the semantics of incremental pushes"
   ), BATCH_GET_LIMIT("batch-get-limit", "bgl", true, "Key number limit inside one batch-get request"),
   NUM_VERSIONS_TO_PRESERVE("num-versions-to-preserve", "nvp", true, "Number of version that store should preserve."),
   KAFKA_BOOTSTRAP_SERVERS("kafka-bootstrap-servers", "kbs", true, "Kafka bootstrap server URL(s)"),
@@ -203,14 +200,6 @@ public enum Arg {
   SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND(
       ConfigKeys.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, "kfq", true,
       "The quota of records to fetch from Kafka for the specified fabric."
-  ),
-  INCREMENTAL_PUSH_POLICY_TO_FILTER(
-      "incremental-push-policy-to-filter", "ippf", true,
-      "If the batch update command is trying to configure existing incremental push store type, their incremental push policy should also match this filter before the batch update command applies any change to them"
-  ),
-  INCREMENTAL_PUSH_POLICY_TO_APPLY(
-      "incremental-push-policy-to-apply", "ippa", true,
-      "This field will determine what incremental push policy will be applied to the selected stores."
   ),
   STORE_CONFIG_NAME_FILTER(
       "store-config-name-filter", "scnf", true,

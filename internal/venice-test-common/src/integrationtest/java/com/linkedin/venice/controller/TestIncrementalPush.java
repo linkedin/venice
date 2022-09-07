@@ -4,7 +4,6 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -52,10 +51,7 @@ public class TestIncrementalPush {
     int dataSize = partitionCount * partitionSize;
     cluster.getNewStore(storeName);
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
-    params.setIncrementalPushEnabled(true)
-        .setHybridRewindSeconds(1)
-        .setHybridOffsetLagThreshold(1)
-        .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
+    params.setIncrementalPushEnabled(true).setHybridRewindSeconds(1).setHybridOffsetLagThreshold(1);
     cluster.updateStore(storeName, params);
 
     VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);

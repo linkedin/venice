@@ -58,7 +58,6 @@ import com.linkedin.venice.kafka.validation.KafkaDataIntegrityValidator;
 import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -232,8 +231,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /** A quick check point to see if incremental push is supported.
    * It helps fast {@link #isReadyToServe(PartitionConsumptionState)}*/
   protected final boolean isIncrementalPushEnabled;
-  protected final IncrementalPushPolicy incrementalPushPolicy;
-
   protected final boolean readOnlyForBatchOnlyStoreEnabled;
   protected final VeniceServerConfig serverConfig;
 
@@ -434,7 +431,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.isIncrementalPushEnabled = version.isUseVersionLevelIncrementalPushEnabled()
         ? version.isIncrementalPushEnabled()
         : store.isIncrementalPushEnabled();
-    this.incrementalPushPolicy = version.getIncrementalPushPolicy();
 
     this.divErrorMetricCallback = e -> versionedDIVStats.recordException(storeName, versionNumber, e);
 
@@ -504,8 +500,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.amplificationFactorAdapter = new AmplificationFactorAdapter(amplificationFactor, partitionConsumptionStateMap);
     this.statusReportAdapter = new StatusReportAdapter(
         new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion),
-        amplificationFactorAdapter,
-        incrementalPushPolicy);
+        amplificationFactorAdapter);
 
     this.cacheBackend = cacheBackend;
     this.localKafkaServer = this.kafkaProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
@@ -1960,8 +1955,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             amplificationFactor,
             offsetRecord,
             hybridStoreConfig.isPresent(),
-            isIncrementalPushEnabled,
-            incrementalPushPolicy);
+            isIncrementalPushEnabled);
 
         newPartitionConsumptionState.setLeaderFollowerState(leaderState);
 
@@ -2079,8 +2073,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                   amplificationFactor,
                   new OffsetRecord(partitionStateSerializer),
                   hybridStoreConfig.isPresent(),
-                  isIncrementalPushEnabled,
-                  incrementalPushPolicy));
+                  isIncrementalPushEnabled));
           storageUtilizationManager.initPartition(partition);
         } else {
           logger.info(
@@ -2179,8 +2172,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return false;
     }
 
-    if (isIncrementalPushEnabled
-        && incrementalPushPolicy.equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
+    if (isIncrementalPushEnabled) {
       KafkaMessageEnvelope value = record.value();
       /*
        * For inc push to RT, filter out the messages if the target version embedded in the message doesn't match the version

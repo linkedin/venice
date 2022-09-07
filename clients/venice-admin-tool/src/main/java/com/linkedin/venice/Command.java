@@ -105,7 +105,7 @@ public enum Command {
           READ_COMPUTATION_ENABLED, LEADER_FOLLOWER_MODEL_ENABLED, BACKUP_STRATEGY,
           AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, INCREMENTAL_PUSH_ENABLED, BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR,
           HYBRID_STORE_DISK_QUOTA_ENABLED, REGULAR_VERSION_ETL_ENABLED, FUTURE_VERSION_ETL_ENABLED,
-          ETLED_PROXY_USER_ACCOUNT, NATIVE_REPLICATION_ENABLED, PUSH_STREAM_SOURCE_ADDRESS, INCREMENTAL_PUSH_POLICY,
+          ETLED_PROXY_USER_ACCOUNT, NATIVE_REPLICATION_ENABLED, PUSH_STREAM_SOURCE_ADDRESS,
           BACKUP_VERSION_RETENTION_DAY, REPLICATION_FACTOR, NATIVE_REPLICATION_SOURCE_FABRIC, REPLICATE_ALL_CONFIGS,
           ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER, APPLY_TARGET_VERSION_FILTER_FOR_INC_PUSH,
           DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE, STORAGE_PERSONA }
@@ -258,12 +258,6 @@ public enum Command {
       "get-deletable-store-topics",
       "Get a list of deletable store topics in the fabric that belongs to the controller handling the request",
       new Arg[] { URL, CLUSTER }
-  ),
-  CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER(
-      "configure-incremental-push-for-cluster",
-      "Configure all stores in a cluster which match a specific store type to a configurable incremental push type",
-      new Arg[] { URL, CLUSTER, INCREMENTAL_PUSH_POLICY_TO_APPLY },
-      new Arg[] { INCREMENTAL_PUSH_POLICY_TO_FILTER, REGIONS_FILTER }
   ),
   WIPE_CLUSTER(
       "wipe-cluster", "Delete data and metadata of a cluster/store/version in a child fabric",

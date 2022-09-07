@@ -3,7 +3,6 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.venice.pushmonitor.SubPartitionStatus.*;
 
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.pushmonitor.SubPartitionStatus;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
@@ -27,18 +26,15 @@ import org.apache.logging.log4j.Logger;
  */
 public class StatusReportAdapter {
   private static final Logger logger = LogManager.getLogger();
-  private final IncrementalPushPolicy incrementalPushPolicy;
   private final AmplificationFactorAdapter amplificationFactorAdapter;
   private final IngestionNotificationDispatcher dispatcher;
   private final Map<Integer, PartitionReportStatus> partitionReportStatus = new VeniceConcurrentHashMap<>();
 
   public StatusReportAdapter(
       IngestionNotificationDispatcher notificationDispatcher,
-      AmplificationFactorAdapter amplificationFactorAdapter,
-      IncrementalPushPolicy incrementalPushPolicy) {
+      AmplificationFactorAdapter amplificationFactorAdapter) {
     this.dispatcher = notificationDispatcher;
     this.amplificationFactorAdapter = amplificationFactorAdapter;
-    this.incrementalPushPolicy = incrementalPushPolicy;
   }
 
   /**
@@ -200,8 +196,7 @@ public class StatusReportAdapter {
        * detailed subPartition status for every subPartition of the same user partition so that the below report logic
        * can be triggered.
        */
-      if ((status.equals(START_OF_INCREMENTAL_PUSH_RECEIVED) || (status.equals(END_OF_INCREMENTAL_PUSH_RECEIVED)))
-          && incrementalPushPolicy.equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
+      if (status.equals(START_OF_INCREMENTAL_PUSH_RECEIVED) || status.equals(END_OF_INCREMENTAL_PUSH_RECEIVED)) {
         amplificationFactorAdapter
             .executePartitionConsumptionState(userPartition, pcs -> pcs.recordSubPartitionStatus(versionAwareStatus));
         updatedCount = counter.addAndGet(amplificationFactor);

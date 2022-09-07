@@ -35,8 +35,7 @@ import org.apache.avro.util.Utf8;
  * So the steps will become the following when you want to add a new field to Store Metadata:
  * 1. Evolve the value schema of metadata system schema mentioned by the above section, and always have a default for the
  *    newly added fields.
- * 2. Regenerate the specific records by running `regenerate_avro.sh`.
- * 3. Add getter/setter methods to {@link Store}.
+ * 2. Add getter/setter methods to {@link Store}.
  *
  *
  * When you want to add a simple field to Store metadata, you just need to create getter/setter for the new field.
@@ -134,6 +133,9 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     this.storeProperties.etlConfig = new ETLStoreConfigImpl().dataModel();
     this.storeProperties.latestVersionPromoteToCurrentTimestamp = System.currentTimeMillis();
 
+    // hardcode the policy
+    this.storeProperties.incrementalPushPolicy = IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME.getValue();
+
     setupVersionSupplier(new StoreVersionSupplier() {
       @Override
       public List<StoreVersion> getForUpdate() {
@@ -208,7 +210,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setHybridStoreDiskQuotaEnabled(store.isHybridStoreDiskQuotaEnabled());
     setEtlStoreConfig(store.getEtlStoreConfig());
     setStoreMetadataSystemStoreEnabled(store.isStoreMetadataSystemStoreEnabled());
-    setIncrementalPushPolicy(store.getIncrementalPushPolicy());
+    setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME); // to be cleand up in phase-II
     setLatestVersionPromoteToCurrentTimestamp(store.getLatestVersionPromoteToCurrentTimestamp());
     setBackupVersionRetentionMs(store.getBackupVersionRetentionMs());
     setReplicationFactor(store.getReplicationFactor());
@@ -686,12 +688,12 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
 
   @Override
   public IncrementalPushPolicy getIncrementalPushPolicy() {
-    return IncrementalPushPolicy.valueOf(this.storeProperties.incrementalPushPolicy);
+    return IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME;
   }
 
   @Override
   public void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
-    this.storeProperties.incrementalPushPolicy = incrementalPushPolicy.ordinal();
+    this.storeProperties.incrementalPushPolicy = IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME.getValue();
   }
 
   @Override
