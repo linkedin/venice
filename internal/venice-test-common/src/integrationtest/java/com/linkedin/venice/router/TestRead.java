@@ -325,6 +325,9 @@ public abstract class TestRead {
         getAggregateRouterMetricValue(".total--retry_count.LambdaStat") > 0,
         "After " + rounds + " reads, there should be some single-get retry requests");
     Assert.assertTrue(
+        getAggregateRouterMetricValue(".total--retry_delay.Avg") > 0,
+        "After " + rounds + " reads, there should be some single-get retry requests");
+    Assert.assertTrue(
         getAggregateRouterMetricValue(".total--multiget_streaming_retry_count.LambdaStat") > 0,
         "After " + rounds + " reads, there should be some batch-get retry requests");
 

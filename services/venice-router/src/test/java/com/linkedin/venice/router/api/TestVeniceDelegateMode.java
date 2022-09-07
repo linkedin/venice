@@ -338,8 +338,10 @@ public class TestVeniceDelegateMode {
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
     doReturn(LEAST_LOADED_ROUTING).when(config).getMultiKeyRoutingStrategy();
 
-    VeniceDelegateMode scatterMode =
-        new VeniceDelegateMode(config, mock(RouterStats.class), mock(RouteHttpRequestStats.class));
+    VeniceDelegateMode scatterMode = new VeniceDelegateMode(
+        config,
+        new RouterStats<>(requestType -> new AggRouterHttpRequestStats(new MetricsRepository(), requestType)),
+        mock(RouteHttpRequestStats.class));
     scatterMode.initReadRequestThrottler(throttler);
 
     Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode.scatter(

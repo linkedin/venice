@@ -171,6 +171,13 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     }
     VenicePath venicePath = (VenicePath) path;
     String storeName = venicePath.getStoreName();
+    if (venicePath.isRetryRequest()) {
+      /**
+       * The following logic is to measure the actual retry delay.
+       */
+      long retryDelay = System.currentTimeMillis() - venicePath.getOriginalRequestStartTs();
+      routerStats.getStatsByType(venicePath.getRequestType()).recordRetryDelay(storeName, retryDelay);
+    }
 
     // Check whether retry request is too late or not
     if (venicePath.isRetryRequestTooLate()) {
