@@ -126,6 +126,7 @@ public class VeniceRouterConfig {
   private int http2HeaderTableSize;
   private int http2MaxHeaderListSize;
   private boolean metaStoreShadowReadEnabled;
+  private boolean unregisterMetricForDeletedStoreEnabled;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -344,6 +345,7 @@ public class VeniceRouterConfig {
     http2MaxHeaderListSize = props.getInt(ROUTER_HTTP2_MAX_HEADER_LIST_SIZE, 8192);
 
     metaStoreShadowReadEnabled = props.getBoolean(ROUTER_META_STORE_SHADOW_READ_ENABLED, false);
+    unregisterMetricForDeletedStoreEnabled = props.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
   }
 
   public String getClusterName() {
@@ -824,5 +826,9 @@ public class VeniceRouterConfig {
 
   public boolean isMetaStoreShadowReadEnabled() {
     return metaStoreShadowReadEnabled;
+  }
+
+  public boolean isUnregisterMetricForDeletedStoreEnabled() {
+    return unregisterMetricForDeletedStoreEnabled;
   }
 }

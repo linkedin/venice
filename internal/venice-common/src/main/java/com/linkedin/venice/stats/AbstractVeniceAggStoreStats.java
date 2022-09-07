@@ -23,9 +23,16 @@ public class AbstractVeniceAggStoreStats<T extends AbstractVeniceStats> extends 
       boolean isUnregisterMetricForDeletedStoreEnabled) {
     super(clusterName, metricsRepository, statsSupplier);
     this.isUnregisterMetricForDeletedStoreEnabled = isUnregisterMetricForDeletedStoreEnabled;
-    if (isUnregisterMetricForDeletedStoreEnabled) {
-      metadataRepository.registerStoreDataChangedListener(this);
-    }
+    registerStoreDataChangedListenerIfRequired(metadataRepository);
+  }
+
+  public AbstractVeniceAggStoreStats(
+      MetricsRepository metricsRepository,
+      ReadOnlyStoreRepository metadataRepository,
+      boolean isUnregisterMetricForDeletedStoreEnabled) {
+    super(metricsRepository);
+    this.isUnregisterMetricForDeletedStoreEnabled = isUnregisterMetricForDeletedStoreEnabled;
+    registerStoreDataChangedListenerIfRequired(metadataRepository);
   }
 
   public T getStoreStats(String storeName) {
@@ -35,7 +42,16 @@ public class AbstractVeniceAggStoreStats<T extends AbstractVeniceStats> extends 
   @Override
   public void handleStoreDeleted(String storeName) {
     if (isUnregisterMetricForDeletedStoreEnabled) {
-      super.getStoreStats(storeName).unregisterAllSensors();
+      T stats = super.storeStats.get(storeName);
+      if (stats != null) {
+        stats.unregisterAllSensors();
+      }
+    }
+  }
+
+  private void registerStoreDataChangedListenerIfRequired(ReadOnlyStoreRepository metadataRepository) {
+    if (isUnregisterMetricForDeletedStoreEnabled) {
+      metadataRepository.registerStoreDataChangedListener(this);
     }
   }
 }
