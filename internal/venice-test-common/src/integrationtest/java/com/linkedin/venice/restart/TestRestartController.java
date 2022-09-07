@@ -87,7 +87,7 @@ public class TestRestartController {
     // restart controller
     cluster.restartVeniceController(port);
 
-    TestUtils.waitForNonDeterministicAssertion(OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS, false, true, () -> {
       VeniceHelixAdmin admin = cluster.getLeaderVeniceController().getVeniceHelixAdmin();
       int liveRoutersCount = admin.getHelixVeniceClusterResources(cluster.getClusterName())
           .getRoutersClusterManager()
