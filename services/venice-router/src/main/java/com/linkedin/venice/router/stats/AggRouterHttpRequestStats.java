@@ -296,4 +296,9 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
     totalStats.recordErrorRetryAttemptTriggeredByPendingRequestCheck();
     getStoreStats(storeName).recordErrorRetryAttemptTriggeredByPendingRequestCheck();
   }
+
+  public void recordRetryDelay(String storeName, double delay) {
+    totalStats.recordRetryDelay(delay);
+    getStoreStats(storeName).recordRetryDelay(delay);
+  }
 }
