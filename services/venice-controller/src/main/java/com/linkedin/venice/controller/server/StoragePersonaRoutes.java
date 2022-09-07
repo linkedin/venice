@@ -24,6 +24,9 @@ public class StoragePersonaRoutes extends AbstractRoute {
     super(sslEnabled, accessController);
   }
 
+  /**
+   * @see Admin#createStoragePersona(String, String, long, Set, Set)
+   */
   public Route createStoragePersona(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
@@ -51,6 +54,9 @@ public class StoragePersonaRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#getStoragePersona(String, String)
+   */
   public Route getStoragePersona(Admin admin) {
     return new VeniceRouteHandler<StoragePersonaResponse>(StoragePersonaResponse.class) {
       @Override
@@ -70,6 +76,9 @@ public class StoragePersonaRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#deleteStoragePersona(String, String)
+   */
   public Route deleteStoragePersona(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
@@ -91,6 +100,9 @@ public class StoragePersonaRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#updateStoragePersona(String, String, UpdateStoragePersonaQueryParams)
+   */
   public Route updateStoragePersona(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
@@ -110,6 +122,9 @@ public class StoragePersonaRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#getPersonaAssociatedWithStore(String, String)
+   */
   public Route getPersonaAssociatedWithStore(Admin admin) {
     return new VeniceRouteHandler<StoragePersonaResponse>(StoragePersonaResponse.class) {
       @Override
@@ -129,6 +144,9 @@ public class StoragePersonaRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#getClusterStoragePersonas(String)
+   */
   public Route getClusterStoragePersonas(Admin admin) {
     return new VeniceRouteHandler<MultiStoragePersonaResponse>(MultiStoragePersonaResponse.class) {
       @Override

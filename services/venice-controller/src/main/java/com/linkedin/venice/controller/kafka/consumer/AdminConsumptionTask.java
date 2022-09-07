@@ -189,16 +189,16 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   /**
    * The local offset value in ZK during initialization phase; the value will not be updated during admin topic consumption.
    *
-   * Currently there are two potential offset: local offset and upstream offset, and we only update and
-   * maintain one of the them. While persisting the offset to ZK, we would like to keep the original value
+   * Currently, there are two potential offset: local offset and upstream offset, and we only update and
+   * maintain one of them. While persisting the offset to ZK, we would like to keep the original value
    * for the other one, so that rollback/roll-forward of the remote consumption feature can be faster.
    */
   private long localOffsetCheckpointAtStartTime = UNASSIGNED_VALUE;
   /**
    * The upstream offset value in ZK during initialization phase; the value will not be updated during admin topic consumption.
    *
-   * Currently there are two potential offset: local offset and upstream offset, and we only update and
-   * maintain one of the them. While persisting the offset to ZK, we would like to keep the original value
+   * Currently, there are two potential offset: local offset and upstream offset, and we only update and
+   * maintain one of them. While persisting the offset to ZK, we would like to keep the original value
    * for the other one, so that rollback/roll-forward of the remote consumption feature can be faster.
    */
   private long upstreamOffsetCheckpointAtStartTime = UNASSIGNED_VALUE;
@@ -215,7 +215,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   /**
    * During roll-out/roll-back phase of the remote consumption feature for admin topic, child controllers will consume
-   * messages that have already been processed before. In order to not to flood the log with duplicate message logging,
+   * messages that have already been processed before. In order to not flood the log with duplicate message logging,
    * keep track of consecutive duplicate messages and stop logging after {@link AdminConsumptionTask#MAX_DUPLICATE_MESSAGE_LOGS}
    * consecutive duplicates.
    */
@@ -809,7 +809,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     stats.setAdminConsumptionCheckpointOffset(lastPersistedOffset);
   }
 
-  public void skipMessageWithOffset(long offset) {
+  void skipMessageWithOffset(long offset) {
     if (offset == failingOffset) {
       offsetToSkip = offset;
     } else {

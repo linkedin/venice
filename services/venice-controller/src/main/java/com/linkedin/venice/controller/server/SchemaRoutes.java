@@ -33,7 +33,10 @@ public class SchemaRoutes extends AbstractRoute {
     super(sslEnabled, accessController);
   }
 
-  // Route to handle retrieving key schema request
+  /**
+   * Route to handle retrieving key schema request.
+   * @see Admin#getKeySchema(String, String)
+   */
   public Route getKeySchema(Admin admin) {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
@@ -57,7 +60,10 @@ public class SchemaRoutes extends AbstractRoute {
     };
   }
 
-  // Route to handle adding value schema request
+  /**
+   * Route to handle adding value schema request.
+   * @see Admin#addValueSchema(String, String, String, int, boolean)
+   */
   public Route addValueSchema(Admin admin) {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
@@ -101,6 +107,9 @@ public class SchemaRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#addDerivedSchema(String, String, int, int, String)
+   */
   public Route addDerivedSchema(Admin admin) {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
@@ -154,7 +163,10 @@ public class SchemaRoutes extends AbstractRoute {
     };
   }
 
-  // Route to handle retrieving value schema by id
+  /**
+   * Route to handle retrieving value schema by id.
+   * @see Admin#getValueSchema(String, String, int)
+   */
   public Route getValueSchema(Admin admin) {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
@@ -183,7 +195,10 @@ public class SchemaRoutes extends AbstractRoute {
     };
   }
 
-  // Route to handle retrieving schema id by schema
+  /**
+   * Route to handle retrieving schema id by schema.
+   * @see Admin#getValueSchemaId(String, String, String)
+   */
   public Route getValueSchemaID(Admin admin) {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
@@ -216,6 +231,9 @@ public class SchemaRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#getValueSchemaId(String, String, String)
+   */
   public Route getDerivedSchemaID(Admin admin) {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
@@ -254,7 +272,10 @@ public class SchemaRoutes extends AbstractRoute {
     };
   }
 
-  // Route to handle retrieving all value schema for a given store
+  /**
+   * Route to handle retrieving all value schema for a given store.
+   * @see Admin#getValueSchemas(String, String)
+   */
   public Route getAllValueSchema(Admin admin) {
     return (request, response) -> {
       MultiSchemaResponse responseObject = new MultiSchemaResponse();
@@ -290,6 +311,10 @@ public class SchemaRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#getValueSchemas(String, String)
+   * @see Admin#getDerivedSchemas(String, String)
+   */
   public Route getAllValueAndDerivedSchema(Admin admin) {
     return (request, response) -> {
       MultiSchemaResponse responseObject = new MultiSchemaResponse();
@@ -331,6 +356,9 @@ public class SchemaRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#removeDerivedSchema(String, String, int, int)
+   */
   public Route removeDerivedSchema(Admin admin) {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
@@ -372,6 +400,9 @@ public class SchemaRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#getReplicationMetadataSchemas(String, String)
+   */
   public Route getAllReplicationMetadataSchemas(Admin admin) {
     return (request, response) -> {
       MultiSchemaResponse responseObject = new MultiSchemaResponse();

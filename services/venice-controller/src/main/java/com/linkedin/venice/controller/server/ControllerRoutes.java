@@ -25,6 +25,7 @@ public class ControllerRoutes extends AbstractRoute {
 
   /**
    * No ACL check; any user is allowed to check leader controller.
+   * @see Admin#getLeaderController(String)
    */
   public Route getLeaderController(Admin admin) {
     return (request, response) -> {
@@ -43,6 +44,11 @@ public class ControllerRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#getChildDataCenterControllerUrlMap(String)
+   * @see Admin#getChildDataCenterControllerD2Map(String)
+   * @see Admin#getChildControllerD2ServiceName(String)
+   */
   public Route getChildControllers(Admin admin) {
     return new VeniceRouteHandler<ChildAwareResponse>(ChildAwareResponse.class) {
       @Override
@@ -61,6 +67,9 @@ public class ControllerRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see TopicManager#updateTopicCompactionPolicy(String, boolean)
+   */
   public Route updateKafkaTopicLogCompaction(Admin admin) {
     return updateKafkaTopicConfig(admin, adminRequest -> {
       AdminSparkServer.validateParams(adminRequest, UPDATE_KAFKA_TOPIC_LOG_COMPACTION.getParams(), admin);
@@ -74,6 +83,9 @@ public class ControllerRoutes extends AbstractRoute {
     });
   }
 
+  /**
+   * @see TopicManager#updateTopicRetention(String, long)
+   */
   public Route updateKafkaTopicRetention(Admin admin) {
     return updateKafkaTopicConfig(admin, adminRequest -> {
       AdminSparkServer.validateParams(adminRequest, UPDATE_KAFKA_TOPIC_RETENTION.getParams(), admin);

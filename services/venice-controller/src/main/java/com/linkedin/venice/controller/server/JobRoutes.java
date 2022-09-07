@@ -37,6 +37,9 @@ public class JobRoutes extends AbstractRoute {
     super(sslEnabled, accessController);
   }
 
+  /**
+   * @see Admin#getOffLinePushStatus(String, String)
+   */
   public Route jobStatus(Admin admin) {
     return (request, response) -> {
       JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
@@ -62,7 +65,7 @@ public class JobRoutes extends AbstractRoute {
     };
   }
 
-  protected JobStatusQueryResponse populateJobStatus(
+  JobStatusQueryResponse populateJobStatus(
       String cluster,
       String store,
       int versionNumber,
@@ -101,6 +104,9 @@ public class JobRoutes extends AbstractRoute {
     return responseObject;
   }
 
+  /**
+   * @see Admin#killOfflinePush(String, String, boolean)
+   */
   public Route killOfflinePushJob(Admin admin) {
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
@@ -137,6 +143,9 @@ public class JobRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#sendPushJobDetails(PushJobStatusRecordKey, PushJobDetails)
+   */
   public Route sendPushJobDetails(Admin admin) {
     return ((request, response) -> {
       ControllerResponse controllerResponse = new ControllerResponse();

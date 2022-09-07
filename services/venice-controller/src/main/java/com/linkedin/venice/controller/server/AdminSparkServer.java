@@ -360,7 +360,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.stop();
   }
 
-  public int getPort() {
+  int getPort() {
     return port;
   }
 

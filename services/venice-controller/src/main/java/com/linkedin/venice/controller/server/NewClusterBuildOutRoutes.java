@@ -17,6 +17,9 @@ public class NewClusterBuildOutRoutes extends AbstractRoute {
     super(sslEnabled, accessController);
   }
 
+  /**
+   * @see Admin#copyOverStoreSchemasAndConfigs(String, String, String, String)
+   */
   public Route copyOverStoreSchemasAndConfigs(Admin admin) {
     return new VeniceRouteHandler<StoreResponse>(StoreResponse.class) {
       @Override

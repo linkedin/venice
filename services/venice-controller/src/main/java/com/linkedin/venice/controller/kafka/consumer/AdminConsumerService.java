@@ -116,6 +116,9 @@ public class AdminConsumerService extends AbstractVeniceService {
         config.getAdminConsumptionMaxWorkerThreadPoolSize());
   }
 
+  /**
+   * Skip admin message with specified offset for the given cluster.
+   */
   public void setOffsetToSkip(String clusterName, long offset, boolean skipDIV) {
     if (clusterName.equals(config.getClusterName())) {
       if (skipDIV) {
@@ -130,6 +133,11 @@ public class AdminConsumerService extends AbstractVeniceService {
     }
   }
 
+  /**
+   * Get the last succeeded execution id for the given cluster.
+   * @param clusterName name of the Venice cluster.
+   * @return last succeeded execution id for the given cluster.
+   */
   public Long getLastSucceededExecutionIdInCluster(String clusterName) {
     if (clusterName.equals(config.getClusterName())) {
       return consumerTask.getLastSucceededExecutionId();
@@ -140,18 +148,34 @@ public class AdminConsumerService extends AbstractVeniceService {
     }
   }
 
+  /**
+   * Get the last succeeded execution id for the given store.
+   * @param storeName name of the store.
+   * @return last succeeded execution id for the given store.
+   */
   public Long getLastSucceededExecutionId(String storeName) {
     return consumerTask == null ? null : consumerTask.getLastSucceededExecutionId(storeName);
   }
 
+  /**
+   * Get the encountered exception during admin message consumption for the given store.
+   * @param storeName name of the store.
+   * @return last encountered exception.
+   */
   public Exception getLastExceptionForStore(String storeName) {
     return consumerTask == null ? null : consumerTask.getLastExceptionForStore(storeName);
   }
 
+  /**
+   * @return The first or the smallest failing offset.
+   */
   public long getFailingOffset() {
     return consumerTask.getFailingOffset();
   }
 
+  /**
+   * @return cluster-level execution id, offset, and upstream offset in a child colo.
+   */
   public Map<String, Long> getAdminTopicMetadata(String clusterName) {
     if (clusterName.equals(config.getClusterName())) {
       return adminTopicMetadataAccessor.getMetadata(clusterName);
@@ -162,6 +186,9 @@ public class AdminConsumerService extends AbstractVeniceService {
     }
   }
 
+  /**
+   * Update cluster-level execution id, offset, and upstream offset in a child colo.
+   */
   public void updateAdminTopicMetadata(String clusterName, long executionId, long offset, long upstreamOffset) {
     if (clusterName.equals(config.getClusterName())) {
       Map<String, Long> metadata = AdminTopicMetadataAccessor.generateMetadataMap(offset, upstreamOffset, executionId);
@@ -198,10 +225,5 @@ public class AdminConsumerService extends AbstractVeniceService {
           .put(InternalAvroSpecificSerializer.VENICE_SCHEMA_READER_CONFIG, kafkaMessageEnvelopeSchemaReader.get());
     }
     return consumerFactory.getConsumer(kafkaConsumerProperties);
-  }
-
-  // for test purpose
-  public MetricsRepository getMetricsRepository() {
-    return metricsRepository;
   }
 }

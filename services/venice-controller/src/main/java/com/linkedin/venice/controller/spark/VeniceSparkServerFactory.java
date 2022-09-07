@@ -49,9 +49,4 @@ public class VeniceSparkServerFactory implements EmbeddedServerFactory {
     this.threadPool = threadPool;
     return this;
   }
-
-  public VeniceSparkServerFactory withHttpOnly(boolean httpOnly) {
-    this.httpOnly = httpOnly;
-    return this;
-  }
 }

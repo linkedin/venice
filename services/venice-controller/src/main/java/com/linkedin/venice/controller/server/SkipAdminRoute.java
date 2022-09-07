@@ -19,6 +19,9 @@ public class SkipAdminRoute extends AbstractRoute {
     super(sslEnabled, accessController);
   }
 
+  /**
+   * @see Admin#skipAdminMessage(String, long, boolean)
+   */
   public Route skipAdminMessage(Admin admin) {
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
