@@ -1756,6 +1756,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     } catch (Exception e) {
       logger.error("Error while closing venice writers", e);
     }
+    /**
+     * Detach from the shared consumer.
+     * Once dedicated consumer code is removed, we only need to call {@link AggKafkaConsumerService#unsubscribeAll}
+     * and remove the above {@link #consumerUnSubscribeAllTopics}, which has logic to handle both shared consumer and
+     * dedicated consumer.
+      */
+    if (null != aggKafkaConsumerService) {
+      aggKafkaConsumerService.unsubscribeAll(kafkaVersionTopic);
+      logger.info("Detached Kafka consumer(s) for version topic: {}", kafkaVersionTopic);
+    }
 
     close();
     logger.info("Store ingestion task for store: " + kafkaVersionTopic + " is closed");
@@ -3090,9 +3100,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public void consumerUnSubscribe(String topic, PartitionConsumptionState partitionConsumptionState) {
-
     int partitionId = partitionConsumptionState.getPartition();
-
     if (serverConfig.isSharedConsumerPoolEnabled()) {
       aggKafkaConsumerService.unsubscribeConsumerFor(getVersionTopic(), topic, partitionId);
     } else {

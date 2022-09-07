@@ -111,6 +111,9 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
           logger.error("Exception thrown while running " + getClass().getSimpleName() + " thread", e);
         }
         stats.recordKillPushJobFailedConsumption();
+      } catch (Throwable t) {
+        logger.error("Throwable thrown while running " + getClass().getSimpleName() + " thread", t);
+        break;
       }
     }
 

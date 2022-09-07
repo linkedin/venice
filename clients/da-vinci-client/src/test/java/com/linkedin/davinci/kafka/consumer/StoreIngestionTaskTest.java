@@ -955,6 +955,8 @@ public abstract class StoreIngestionTaskTest {
           .recordConsumedRecordEndToEndProcessingLatency(any(), eq(1), anyDouble());
     }, isActiveActiveReplicationEnabled);
 
+    // verify the shared consumer should be detached when the ingestion task is closed.
+    verify(aggKafkaConsumerService).unsubscribeAll(topic);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)

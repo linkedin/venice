@@ -217,6 +217,14 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
     if (consumer != null) {
       consumer.unSubscribe(topic, partition);
       consumerToConsumptionTask.get(consumer).removeDataReceiver(topicPartition);
+      versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
+        if (topicPartitionToConsumerMap != null) {
+          topicPartitionToConsumerMap.remove(topicPartition);
+          return topicPartitionToConsumerMap.isEmpty() ? null : topicPartitionToConsumerMap;
+        } else {
+          return null;
+        }
+      });
     }
   }
 
@@ -227,6 +235,14 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       if (consumer != null) {
         consumer.unSubscribe(topicPartition.topic(), topicPartition.partition());
         consumerToConsumptionTask.get(consumer).removeDataReceiver(topicPartition);
+        versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
+          if (topicPartitionToConsumerMap != null) {
+            topicPartitionToConsumerMap.remove(topicPartition);
+            return topicPartitionToConsumerMap.isEmpty() ? null : topicPartitionToConsumerMap;
+          } else {
+            return null;
+          }
+        });
       }
     }
   }
