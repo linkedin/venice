@@ -1,26 +1,34 @@
 package com.linkedin.venice.router.stats;
 
 import com.linkedin.ddsstorage.router.monitoring.ScatterGatherStats;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
+import com.linkedin.venice.stats.AbstractVeniceAggStoreStats;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.function.Function;
 
 
-public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttpRequestStats> {
+public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<RouterHttpRequestStats> {
   private final Map<String, ScatterGatherStats> scatterGatherStatsMap = new VeniceConcurrentHashMap<>();
 
-  public AggRouterHttpRequestStats(MetricsRepository metricsRepository, RequestType requestType) {
-    this(metricsRepository, requestType, false);
+  public AggRouterHttpRequestStats(
+      MetricsRepository metricsRepository,
+      RequestType requestType,
+      ReadOnlyStoreRepository metadataRepository,
+      boolean isUnregisterMetricForDeletedStoreEnabled) {
+    this(metricsRepository, requestType, false, metadataRepository, isUnregisterMetricForDeletedStoreEnabled);
   }
 
   public AggRouterHttpRequestStats(
       MetricsRepository metricsRepository,
       RequestType requestType,
-      boolean isKeyValueProfilingEnabled) {
-    super(metricsRepository);
+      boolean isKeyValueProfilingEnabled,
+      ReadOnlyStoreRepository metadataRepository,
+      boolean isUnregisterMetricForDeletedStoreEnabled) {
+    super(metricsRepository, metadataRepository, isUnregisterMetricForDeletedStoreEnabled);
     /**
      * Use a setter function to bypass the restriction that the supertype constructor could not
      * touch member fields of current object.

@@ -127,7 +127,6 @@ public class RouterServer extends AbstractVeniceService {
   // Immutable state
   private final List<D2Server> d2ServerList;
   private final MetricsRepository metricsRepository;
-  private final RouterStats<AggRouterHttpRequestStats> routerStats;
   private final Optional<SSLEngineComponentFactory> sslFactory;
   private final Optional<DynamicAccessController> accessController;
 
@@ -142,6 +141,7 @@ public class RouterServer extends AbstractVeniceService {
   private HelixBaseRoutingRepository routingDataRepository;
   private Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository;
   private ReadOnlyStoreRepository metadataRepository;
+  private RouterStats<AggRouterHttpRequestStats> routerStats;
   private HelixReadOnlyStoreConfigRepository storeConfigRepository;
   private HelixLiveInstanceMonitor liveInstanceMonitor;
   private PartitionStatusOnlineInstanceFinder partitionStatusOnlineInstanceFinder;
@@ -271,6 +271,13 @@ public class RouterServer extends AbstractVeniceService {
         readOnlyZKSharedSystemStoreRepository,
         readOnlyStoreRepository,
         config.getClusterName());
+    this.routerStats = new RouterStats<>(
+        requestType -> new AggRouterHttpRequestStats(
+            metricsRepository,
+            requestType,
+            config.isKeyValueProfilingEnabled(),
+            metadataRepository,
+            config.isUnregisterMetricForDeletedStoreEnabled()));
     this.schemaRepository = new HelixReadOnlySchemaRepositoryAdapter(
         new HelixReadOnlyZKSharedSchemaRepository(
             readOnlyZKSharedSystemStoreRepository,
@@ -325,11 +332,6 @@ public class RouterServer extends AbstractVeniceService {
     }
     this.metaStoreShadowReader = Optional.empty();
     this.metricsRepository = metricsRepository;
-    this.routerStats = new RouterStats<>(
-        requestType -> new AggRouterHttpRequestStats(
-            metricsRepository,
-            requestType,
-            config.isKeyValueProfilingEnabled()));
 
     this.aggHostHealthStats = new AggHostHealthStats(metricsRepository);
 
@@ -359,6 +361,13 @@ public class RouterServer extends AbstractVeniceService {
     this.routingDataRepository = routingDataRepository;
     this.hybridStoreQuotaRepository = hybridStoreQuotaRepository;
     this.metadataRepository = metadataRepository;
+    this.routerStats = new RouterStats<>(
+        requestType -> new AggRouterHttpRequestStats(
+            metricsRepository,
+            requestType,
+            config.isKeyValueProfilingEnabled(),
+            metadataRepository,
+            config.isUnregisterMetricForDeletedStoreEnabled()));
     this.schemaRepository = schemaRepository;
     this.storeConfigRepository = storeConfigRepository;
     this.liveInstanceMonitor = liveInstanceMonitor;

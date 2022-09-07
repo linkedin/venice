@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.router.RouterThrottleHandler;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
@@ -33,7 +34,12 @@ public class TestVeniceMultiGetPath {
   @BeforeClass
   public void setUp() {
     RouterExceptionAndTrackingUtils.setRouterStats(
-        new RouterStats<>(requestType -> new AggRouterHttpRequestStats(new MetricsRepository(), requestType)));
+        new RouterStats<>(
+            requestType -> new AggRouterHttpRequestStats(
+                new MetricsRepository(),
+                requestType,
+                mock(ReadOnlyStoreRepository.class),
+                true)));
   }
 
   @AfterClass

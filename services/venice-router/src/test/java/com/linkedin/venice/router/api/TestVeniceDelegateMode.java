@@ -15,6 +15,7 @@ import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VenicePath;
@@ -195,7 +196,12 @@ public class TestVeniceDelegateMode {
   @BeforeClass
   public void setUp() {
     RouterExceptionAndTrackingUtils.setRouterStats(
-        new RouterStats<>(requestType -> new AggRouterHttpRequestStats(new MetricsRepository(), requestType)));
+        new RouterStats<>(
+            requestType -> new AggRouterHttpRequestStats(
+                new MetricsRepository(),
+                requestType,
+                mock(ReadOnlyStoreRepository.class),
+                true)));
   }
 
   @AfterClass
@@ -340,7 +346,12 @@ public class TestVeniceDelegateMode {
 
     VeniceDelegateMode scatterMode = new VeniceDelegateMode(
         config,
-        new RouterStats<>(requestType -> new AggRouterHttpRequestStats(new MetricsRepository(), requestType)),
+        new RouterStats<>(
+            requestType -> new AggRouterHttpRequestStats(
+                new MetricsRepository(),
+                requestType,
+                mock(ReadOnlyStoreRepository.class),
+                true)),
         mock(RouteHttpRequestStats.class));
     scatterMode.initReadRequestThrottler(throttler);
 

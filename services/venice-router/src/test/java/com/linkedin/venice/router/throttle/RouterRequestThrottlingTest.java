@@ -93,7 +93,8 @@ public class RouterRequestThrottlingTest {
     delegateMode.initReadRequestThrottler(throttler);
 
     RouterExceptionAndTrackingUtils.setRouterStats(
-        new RouterStats<>(requestType -> new AggRouterHttpRequestStats(metricsRepository, requestType)));
+        new RouterStats<>(
+            requestType -> new AggRouterHttpRequestStats(metricsRepository, requestType, storeRepository, true)));
 
     VenicePath path = mock(VenicePath.class);
     doReturn(storeName).when(path).getStoreName();

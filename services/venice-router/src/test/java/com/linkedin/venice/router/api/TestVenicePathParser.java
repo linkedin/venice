@@ -80,7 +80,12 @@ public class TestVenicePathParser {
   @BeforeClass
   public void setUp() {
     RouterExceptionAndTrackingUtils.setRouterStats(
-        new RouterStats<>(requestType -> new AggRouterHttpRequestStats(new MetricsRepository(), requestType)));
+        new RouterStats<>(
+            requestType -> new AggRouterHttpRequestStats(
+                new MetricsRepository(),
+                requestType,
+                mock(ReadOnlyStoreRepository.class),
+                true)));
     doReturn(10).when(mockRouterConfig).getRouterMultiGetDecompressionThreads();
   }
 
