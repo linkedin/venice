@@ -21,6 +21,7 @@ public class MigrationRoutes extends AbstractRoute {
 
   /**
    * No ACL check; any user is allowed to check migration strategy.
+   * @see Admin#getAllStorePushStrategyForMigration()
    */
   public Route getAllMigrationPushStrategies(Admin admin) {
     return (request, response) -> {
@@ -35,6 +36,9 @@ public class MigrationRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#setStorePushStrategyForMigration(String, String)
+   */
   public Route setMigrationPushStrategy(Admin admin) {
     return (request, response) -> {
       ControllerResponse updateResponse = new ControllerResponse();

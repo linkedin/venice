@@ -31,6 +31,7 @@ import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
+import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.Store;
@@ -60,6 +61,7 @@ public class StoresRoutes extends AbstractRoute {
   /**
    * No ACL check; any user can try to list stores. If we get abused in future, we should only allow Venice admins
    * to run this command.
+   * @see Admin#getAllStores(String)
    */
   public Route getAllStores(Admin admin) {
     return new VeniceRouteHandler<MultiStoreResponse>(MultiStoreResponse.class) {
@@ -183,6 +185,7 @@ public class StoresRoutes extends AbstractRoute {
 
   /**
    * No ACL check; any user can try to list store statuses.
+   * @see Admin#getAllStoreStatuses(String)
    */
   public Route getAllStoresStatuses(Admin admin) {
     return new VeniceRouteHandler<MultiStoreStatusResponse>(MultiStoreStatusResponse.class) {
@@ -197,6 +200,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#getRepushInfo(String, String, Optional)
+   */
   public Route getRepushInfo(Admin admin) {
     return new VeniceRouteHandler<RepushInfoResponse>(RepushInfoResponse.class) {
       @Override
@@ -216,6 +222,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#getStore(String, String)
+   */
   public Route getStore(Admin admin) {
     return new VeniceRouteHandler<StoreResponse>(StoreResponse.class) {
       @Override
@@ -244,6 +253,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#getFutureVersion(String, String)
+   */
   public Route getFutureVersion(Admin admin) {
     return new VeniceRouteHandler<MultiStoreStatusResponse>(MultiStoreStatusResponse.class) {
       @Override
@@ -263,6 +275,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#migrateStore(String, String, String)
+   */
   public Route migrateStore(Admin admin) {
     return new VeniceRouteHandler<StoreMigrationResponse>(StoreMigrationResponse.class) {
       @Override
@@ -299,6 +314,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#completeMigration(String, String, String)
+   */
   public Route completeMigration(Admin admin) {
     return new VeniceRouteHandler<StoreMigrationResponse>(StoreMigrationResponse.class) {
       @Override
@@ -335,6 +353,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#abortMigration(String, String, String)
+   */
   public Route abortMigration(Admin admin) {
     return new VeniceRouteHandler<StoreMigrationResponse>(StoreMigrationResponse.class) {
       @Override
@@ -365,6 +386,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#deleteStore(String, String, int, boolean)
+   */
   public Route deleteStore(Admin admin) {
     return new VeniceRouteHandler<TrackableControllerResponse>(TrackableControllerResponse.class) {
       @Override
@@ -397,6 +421,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#updateStore(String, String, UpdateStoreQueryParams)
+   */
   public Route updateStore(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
@@ -426,6 +453,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#setStoreOwner(String, String, String)
+   */
   public Route setOwner(Admin admin) {
     return new VeniceRouteHandler<OwnerResponse>(OwnerResponse.class) {
       @Override
@@ -457,6 +487,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#setStoreCurrentVersion(String, String, int)
+   */
   public Route setCurrentVersion(Admin admin) {
     return new VeniceRouteHandler<VersionResponse>(VersionResponse.class) {
       @Override
@@ -511,6 +544,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#deleteAllVersionsInStore(String, String)
+   */
   public Route deleteAllVersions(Admin admin) {
     return new VeniceRouteHandler<MultiVersionResponse>(MultiVersionResponse.class) {
       @Override
@@ -548,6 +584,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#deleteOldVersionInStore(String, String, int)
+   */
   public Route deleteOldVersions(Admin admin) {
     return new VeniceRouteHandler<VersionResponse>(VersionResponse.class) {
       @Override
@@ -568,6 +607,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#getStorageEngineOverheadRatio(String)
+   */
   public Route getStorageEngineOverheadRatio(Admin admin) {
     return new VeniceRouteHandler<StorageEngineOverheadRatioResponse>(StorageEngineOverheadRatioResponse.class) {
       @Override
@@ -582,7 +624,7 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
-  /*
+  /**
    * No ACL check; any user can try to list stores.
    */
   public Route getLFModelStores(Admin admin) {
@@ -606,6 +648,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#enableLeaderFollowerModelLocally(String, String, boolean)
+   */
   public Route enableLFModelForStores(Admin admin) {
     return new VeniceRouteHandler<MultiStoreResponse>(MultiStoreResponse.class) {
       @Override
@@ -669,6 +714,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#configureNativeReplication(String, VeniceUserStoreType, Optional, boolean, Optional, Optional)
+   */
   public Route enableNativeReplicationForCluster(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
@@ -700,6 +748,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#configureActiveActiveReplication(String, VeniceUserStoreType, Optional, boolean, Optional)
+   */
   public Route enableActiveActiveReplicationForCluster(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
@@ -730,6 +781,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#configureIncrementalPushForCluster(String, Optional, IncrementalPushPolicy, Optional, Optional)
+   */
   public Route configureIncrementalPushForCluster(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
@@ -762,6 +816,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see TopicManager#updateTopicCompactionPolicy(String, boolean)
+   */
   public Route setTopicCompaction(Admin admin) {
     return new VeniceRouteHandler<StoreResponse>(StoreResponse.class) {
       @Override
@@ -784,6 +841,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see TopicCleanupService#extractVersionTopicsToCleanup(Admin, Map, int, int)
+   */
   public Route getDeletableStoreTopics(Admin admin) {
     return new VeniceRouteHandler<MultiStoreTopicsResponse>(MultiStoreTopicsResponse.class) {
       @Override
@@ -816,6 +876,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#compareStore(String, String, String, String)
+   */
   public Route compareStore(Admin admin) {
     return new VeniceRouteHandler<StoreComparisonResponse>(StoreComparisonResponse.class) {
       @Override
@@ -839,6 +902,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#getClusterStaleStores(String)
+   */
   public Route getStaleStoresInCluster(Admin admin) {
     return new VeniceRouteHandler<ClusterStaleDataAuditResponse>(ClusterStaleDataAuditResponse.class) {
       @Override
@@ -852,6 +918,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#getClusterStores(String)
+   */
   public Route getStoresInCluster(Admin admin) {
     return new VeniceRouteHandler<MultiStoreInfoResponse>(MultiStoreInfoResponse.class) {
       @Override
@@ -865,6 +934,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#getStoreLargestUsedVersion(String, String)
+   */
   public Route getStoreLargestUsedVersion(Admin admin) {
     return new VeniceRouteHandler<VersionResponse>(VersionResponse.class) {
       @Override
@@ -877,6 +949,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#listStorePushInfo(String, String)
+   */
   public Route listStorePushInfo(Admin admin) {
     return new VeniceRouteHandler<StoreHealthAuditResponse>(StoreHealthAuditResponse.class) {
       @Override
@@ -893,6 +968,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#getRegionPushDetails(String, String)
+   */
   public Route getRegionPushDetails(Admin admin) {
     return new VeniceRouteHandler<RegionPushDetailsResponse>(RegionPushDetailsResponse.class) {
       @Override
@@ -906,6 +984,9 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#truncateKafkaTopic(String)
+   */
   public Route deleteKafkaTopic(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override

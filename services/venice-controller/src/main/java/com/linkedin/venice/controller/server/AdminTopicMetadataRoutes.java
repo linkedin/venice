@@ -23,6 +23,9 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
     super(sslEnabled, accessController);
   }
 
+  /**
+   * @see Admin#getAdminTopicMetadata(String, Optional)
+   */
   public Route getAdminTopicMetadata(Admin admin) {
     return (request, response) -> {
       AdminTopicMetadataResponse responseObject = new AdminTopicMetadataResponse();
@@ -52,6 +55,9 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#updateAdminTopicMetadata(String, long, Optional, Optional, Optional)
+   */
   public Route updateAdminTopicMetadata(Admin admin) {
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();

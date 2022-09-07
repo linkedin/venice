@@ -21,6 +21,9 @@ public class ClusterRoutes extends AbstractRoute {
     super(sslEnabled, accessController);
   }
 
+  /**
+   * @see Admin#updateClusterConfig(String, UpdateClusterConfigQueryParams)
+   */
   public Route updateClusterConfig(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
@@ -49,6 +52,7 @@ public class ClusterRoutes extends AbstractRoute {
 
   /**
    * No ACL check; any user is allowed to check whether store migration is allowed for a specific cluster.
+   * @see Admin#isStoreMigrationAllowed(String)
    */
   public Route isStoreMigrationAllowed(Admin admin) {
     return new VeniceRouteHandler<StoreMigrationResponse>(StoreMigrationResponse.class) {
@@ -62,6 +66,9 @@ public class ClusterRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#wipeCluster(String, String, Optional, Optional)
+   */
   public Route wipeCluster(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
@@ -85,6 +92,7 @@ public class ClusterRoutes extends AbstractRoute {
   /**
    * Endpoint intended to be called via the admin tool manually to trigger cleanup for any lingering ZNodes produced
    * from bugs/errors for instance level customized states.
+   * @see Admin#cleanupInstanceCustomizedStates(String)
    */
   public Route cleanupInstanceCustomizedStates(Admin admin) {
     return new VeniceRouteHandler<MultiStoreTopicsResponse>(MultiStoreTopicsResponse.class) {

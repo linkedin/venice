@@ -13,9 +13,6 @@ public class IdentityParserImpl implements IdentityParser {
   /**
    * Firstly, it tries to parse the principal from the given certificate. If it works, use the principal's toString as
    * the return identity information. Otherwise, use the certificate's toString as the return identity information.
-   *
-   * @param certificate
-   * @return
    */
   @Override
   public String parseIdentityFromCert(X509Certificate certificate) {

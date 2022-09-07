@@ -56,10 +56,7 @@ public class CreateVersion extends AbstractRoute {
   /**
    * Instead of asking Venice to create a version, pushes should ask venice which topic to write into.
    * The logic below includes the ability to respond with an existing topic for the same push, allowing requests
-   * to be idempotent
-   *
-   * @param admin
-   * @return
+   * to be idempotent.
    */
   public Route requestTopicForPushing(Admin admin) {
     return (request, response) -> {
@@ -471,6 +468,7 @@ public class CreateVersion extends AbstractRoute {
 
   /**
    * This function is only being used by store migration parent controllers, which write add version admin message.
+   * @see Admin#addVersionAndStartIngestion(String, String, String, int, int, PushType, String, long, int, boolean)
    */
   public Route addVersionAndStartIngestion(Admin admin) {
     return (request, response) -> {
@@ -572,6 +570,9 @@ public class CreateVersion extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#writeEndOfPush(String, String, int, boolean)
+   */
   public Route writeEndOfPush(Admin admin) {
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();

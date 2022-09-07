@@ -19,6 +19,9 @@ public class CreateStore extends AbstractRoute {
     super(sslEnabled, accessController);
   }
 
+  /**
+   * @see Admin#createStore(String, String, String, String, String, boolean, Optional)
+   */
   public Route createStore(Admin admin) {
     return new VeniceRouteHandler<NewStoreResponse>(NewStoreResponse.class) {
       @Override
@@ -50,6 +53,9 @@ public class CreateStore extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#updateAclForStore(String, String, String)
+   */
   public Route updateAclForStore(Admin admin) {
     return (request, response) -> {
       AclResponse responseObject = new AclResponse();
@@ -71,6 +77,9 @@ public class CreateStore extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#getAclForStore(String, String)
+   */
   public Route getAclForStore(Admin admin) {
     return (request, response) -> {
       AclResponse responseObject = new AclResponse();
@@ -93,6 +102,9 @@ public class CreateStore extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#deleteAclForStore(String, String)
+   */
   public Route deleteAclForStore(Admin admin) {
     return (request, response) -> {
       AclResponse responseObject = new AclResponse();
@@ -113,6 +125,9 @@ public class CreateStore extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#checkResourceCleanupBeforeStoreCreation(String, String)
+   */
   public Route checkResourceCleanupForStoreCreation(Admin admin) {
     return (request, response) -> {
       ControllerResponse controllerResponse = new ControllerResponse();

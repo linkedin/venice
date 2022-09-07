@@ -18,6 +18,9 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
     super(sslEnabled, accessController);
   }
 
+  /**
+   * Enable throttling by updating the cluster level for all routers.
+   */
   public Route enableThrottling(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
@@ -40,6 +43,9 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * Enable max capacity protection by updating the cluster level for all routers.
+   */
   public Route enableMaxCapacityProtection(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
@@ -62,6 +68,9 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * Enable quota rebalanced by updating the cluster level for all routers.
+   */
   public Route enableQuotaRebalanced(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override

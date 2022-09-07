@@ -18,6 +18,7 @@ public class VersionRoute extends AbstractRoute {
 
   /**
    * No ACL check; any user is allowed to check bootstrapping versions.
+   * @see Admin#findAllBootstrappingVersions(String)
    */
   public Route listBootstrappingVersions(Admin admin) {
     return new VeniceRouteHandler<MultiVersionStatusResponse>(MultiVersionStatusResponse.class) {

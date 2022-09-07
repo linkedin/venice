@@ -21,7 +21,8 @@ public class AdminCommandExecutionRoutes extends AbstractRoute {
   }
 
   /**
-   * No ACL check; any user is allowed to check admin command execution status
+   * No ACL check; any user is allowed to check admin command execution status.
+   * @see Admin#getAdminCommandExecutionTracker(String)
    */
   public Route getExecution(Admin admin) {
     return (request, response) -> {
@@ -53,6 +54,7 @@ public class AdminCommandExecutionRoutes extends AbstractRoute {
 
   /**
    * No ACL check; any user is allowed to check last succeeded execution Id.
+   * @see Admin#getLastSucceedExecutionId(String)
    */
   public Route getLastSucceedExecutionId(Admin admin) {
     return (request, response) -> {

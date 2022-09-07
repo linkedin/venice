@@ -38,8 +38,6 @@ public class MigrationPushStrategyZKAccessor {
    *
    * It is definitely possible to support 'not-exist' case: such as updating ControllerClient to be aware of '404',
    * but right now I choose to return the push strategy for all the stores, and let client decide.
-   *
-   * @return
    */
   public Map<String, String> getAllPushStrategies() {
     if (!zkAccessor.exists(MIGRATION_PUSH_STRATEGY_PATH, AccessOption.PERSISTENT)) {
@@ -49,7 +47,7 @@ public class MigrationPushStrategyZKAccessor {
   }
 
   public void setPushStrategy(String voldemortStoreName, String pushStrategyStr) {
-    // Check whether push strategy is valid or not
+    // Check whether push strategy is valid or not.
     try {
       MigrationPushStrategy.valueOf(pushStrategyStr);
     } catch (IllegalArgumentException iae) {

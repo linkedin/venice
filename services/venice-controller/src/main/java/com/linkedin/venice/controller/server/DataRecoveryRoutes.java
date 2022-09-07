@@ -26,6 +26,9 @@ public class DataRecoveryRoutes extends AbstractRoute {
     super(sslEnabled, accessController);
   }
 
+  /**
+   * @see Admin#initiateDataRecovery(String, String, int, String, String, boolean, Optional)
+   */
   public Route dataRecovery(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
@@ -66,6 +69,9 @@ public class DataRecoveryRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#prepareDataRecovery(String, String, int, String, String, Optional)
+   */
   public Route prepareDataRecovery(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
@@ -94,6 +100,9 @@ public class DataRecoveryRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#isStoreVersionReadyForDataRecovery(String, String, int, String, String, Optional)
+   */
   public Route isStoreVersionReadyForDataRecovery(Admin admin) {
     return new VeniceRouteHandler<ReadyForDataRecoveryResponse>(ReadyForDataRecoveryResponse.class) {
       @Override

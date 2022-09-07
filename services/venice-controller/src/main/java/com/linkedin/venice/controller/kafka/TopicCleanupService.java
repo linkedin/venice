@@ -93,11 +93,11 @@ public class TopicCleanupService extends AbstractVeniceService {
     cleanupThread.interrupt();
   }
 
-  public TopicManager getTopicManager() {
+  TopicManager getTopicManager() {
     return admin.getTopicManager();
   }
 
-  public TopicManager getTopicManager(Pair<String, String> kafkaBootstrapServersAndZkAddress) {
+  TopicManager getTopicManager(Pair<String, String> kafkaBootstrapServersAndZkAddress) {
     return admin.getTopicManager(kafkaBootstrapServersAndZkAddress);
   }
 
@@ -138,7 +138,7 @@ public class TopicCleanupService extends AbstractVeniceService {
     }
   }
 
-  protected Admin getAdmin() {
+  Admin getAdmin() {
     return admin;
   }
 
@@ -146,7 +146,7 @@ public class TopicCleanupService extends AbstractVeniceService {
    * The following will delete topics based on their priority. Real-time topics are given higher priority than version topics.
    * If version topic deletion takes more than certain time it refreshes the entire topic list and start deleting from RT topics again.
     */
-  protected void cleanupVeniceTopics() {
+  void cleanupVeniceTopics() {
     PriorityQueue<String> allTopics = new PriorityQueue<>((s1, s2) -> Version.isRealTimeTopic(s1) ? -1 : 0);
     populateDeprecatedTopicQueue(allTopics);
     long refreshTime = System.currentTimeMillis();
@@ -211,6 +211,9 @@ public class TopicCleanupService extends AbstractVeniceService {
     });
   }
 
+  /**
+   * @return a map object that maps from the store name to the Kafka topic name and its configured Kafka retention time.
+   */
   public static Map<String, Map<String, Long>> getAllVeniceStoreTopicsRetentions(TopicManager topicManager) {
     Map<String, Long> topicsWithRetention = topicManager.getAllTopicRetentions();
     Map<String, Map<String, Long>> allStoreTopics = new HashMap<>();
@@ -234,6 +237,18 @@ public class TopicCleanupService extends AbstractVeniceService {
     return allStoreTopics;
   }
 
+  /**
+   * Filter Venice version topics so that the returned topics satisfying the following conditions:
+   * <ol>
+   *  <li> topic is truncated based on retention time. </li>
+   *  <li> topic version is in the deletion range. </li>
+   *  <li> current controller is the parent controller or Helix resource for this topic is already removed in child controller. </li>
+   *  <li> topic is a real time topic;
+   *     <p>
+   *       or topic is a version topic and passes delay countdown condition. </li>
+   * </ol>
+   * @return a list that contains topics satisfying all the above conditions.
+   */
   public static List<String> extractVersionTopicsToCleanup(
       Admin admin,
       Map<String, Long> topicRetentions,
@@ -269,7 +284,6 @@ public class TopicCleanupService extends AbstractVeniceService {
          *
          * The reason to filter out still-alive resource is to avoid triggering the non-existing topic issue
          * of Kafka consumer happening in Storage Node.
-         *
          */
         .filter(t -> admin.isParent() || !admin.isResourceStillAlive(t))
         .filter(t -> {
@@ -278,7 +292,7 @@ public class TopicCleanupService extends AbstractVeniceService {
           }
           // delay VT topic deletion as there could be a race condition where the resource is already deleted by venice
           // but kafka still holding on to the deleted topic message in producer buffer which might cause infinite hang
-          // in kakfa
+          // in kafka.
           int remainingFactor = storeToCountdownForDeletion.merge(t, delayFactor, (oldVal, givenVal) -> oldVal - 1);
           if (remainingFactor > 0) {
             return false;

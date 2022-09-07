@@ -45,6 +45,7 @@ public class NodesAndReplicas extends AbstractRoute {
 
   /**
    * No ACL check; any user is allowed to list all nodes.
+   * @see Admin#getStorageNodes(String)
    */
   public Route listAllNodes(Admin admin) {
     return (request, response) -> {
@@ -69,6 +70,7 @@ public class NodesAndReplicas extends AbstractRoute {
 
   /**
    * No ACL check; any user is allowed to list all node status.
+   * @see Admin#getStorageNodesStatus(String)
    */
   public Route listAllNodesStatus(Admin admin) {
     return (request, response) -> {
@@ -89,6 +91,7 @@ public class NodesAndReplicas extends AbstractRoute {
 
   /**
    * No ACL check; any user is allowed to list replicas for a store.
+   * @see Admin#getReplicas(String, String)
    */
   public Route listReplicasForStore(Admin admin) {
     return (request, response) -> {
@@ -115,6 +118,7 @@ public class NodesAndReplicas extends AbstractRoute {
 
   /**
    * No ACL check; any user is allowed to list replicas in a node.
+   * @see Admin#getReplicasOfStorageNode(String, String)
    */
   public Route listReplicasForStorageNode(Admin admin) {
     return (request, response) -> {
@@ -140,6 +144,7 @@ public class NodesAndReplicas extends AbstractRoute {
 
   /**
    * No ACL check; any user is allowed to check whether a node is removable.
+   * @see Admin#isInstanceRemovable(String, String, List, boolean)
    */
   public Route isNodeRemovable(Admin admin) {
     return (request, response) -> {
@@ -188,6 +193,9 @@ public class NodesAndReplicas extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#removeStorageNode(String, String)
+   */
   public Route removeNodeFromCluster(Admin admin) {
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
@@ -213,6 +221,9 @@ public class NodesAndReplicas extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#addInstanceToAllowlist(String, String)
+   */
   public Route addNodeIntoAllowList(Admin admin) {
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
@@ -238,6 +249,9 @@ public class NodesAndReplicas extends AbstractRoute {
     };
   }
 
+  /**
+   * @see Admin#removeInstanceFromAllowList(String, String)
+   */
   public Route removeNodeFromAllowList(Admin admin) {
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
@@ -265,6 +279,7 @@ public class NodesAndReplicas extends AbstractRoute {
 
   /**
    * No ACL check; any user is allowed to check replicas readiness.
+   * @see Admin#nodeReplicaReadiness(String, String)
    */
   public Route nodeReplicasReadiness(Admin admin) {
     return (request, response) -> {
