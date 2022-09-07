@@ -19,7 +19,6 @@ import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.StorageResponseObject;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -300,8 +299,7 @@ public class StorageReadRequestsHandlerTest {
         1,
         new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer()),
         false,
-        false,
-        IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC);
+        false);
     expectedAdminResponse.addPartitionConsumptionState(state);
 
     MetadataRetriever mockMetadataRetriever = mock(MetadataRetriever.class);

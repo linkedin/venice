@@ -96,7 +96,6 @@ public class TestSystemStore {
     assertFalse(systemStore.getEtlStoreConfig().isRegularVersionETLEnabled());
     assertFalse(systemStore.getEtlStoreConfig().isFutureVersionETLEnabled());
     assertFalse(systemStore.isStoreMetadataSystemStoreEnabled());
-    assertEquals(systemStore.getIncrementalPushPolicy(), IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC);
     assertEquals(systemStore.getLatestVersionPromoteToCurrentTimestamp(), -1);
     assertEquals(systemStore.getBackupVersionRetentionMs(), -1);
     assertEquals(systemStore.getRetentionTime(), 432000000);
@@ -132,7 +131,6 @@ public class TestSystemStore {
     assertThrows(() -> systemStore.setHybridStoreDiskQuotaEnabled(true));
     assertThrows(() -> systemStore.setEtlStoreConfig(null));
     assertThrows(() -> systemStore.setStoreMetadataSystemStoreEnabled(true));
-    assertThrows(() -> systemStore.setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC));
     assertThrows(() -> systemStore.setBackupVersionRetentionMs(11));
     assertThrows(() -> systemStore.setReplicationFactor(1));
     assertThrows(() -> systemStore.setMigrationDuplicateStore(true));

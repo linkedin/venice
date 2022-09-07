@@ -4,7 +4,6 @@ import static org.mockito.Mockito.*;
 
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -43,10 +42,7 @@ public class StatusReportAdapterTest {
         generateMockedPcsMap(amplificationFactor);
     AmplificationFactorAdapter amplificationFactorAdapter = mock(AmplificationFactorAdapter.class);
     when(amplificationFactorAdapter.getAmplificationFactor()).thenReturn(amplificationFactor);
-    StatusReportAdapter statusReportAdapter = new StatusReportAdapter(
-        dispatcher,
-        amplificationFactorAdapter,
-        IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
+    StatusReportAdapter statusReportAdapter = new StatusReportAdapter(dispatcher, amplificationFactorAdapter);
     statusReportAdapter.initializePartitionReportStatus(0);
 
     ExecutorService executorService = Executors.newFixedThreadPool(amplificationFactor);

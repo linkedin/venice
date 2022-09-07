@@ -10,11 +10,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
@@ -34,6 +32,7 @@ import java.util.Optional;
 import javax.security.auth.x500.X500Principal;
 import javax.servlet.http.HttpServletRequest;
 import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 import spark.QueryParamsMap;
 import spark.Request;
@@ -42,56 +41,72 @@ import spark.Route;
 
 
 public class CreateVersionTest {
-  private static ObjectMapper mapper = ObjectMapperFactory.getInstance();
+  private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testCreateVersionWithACL(boolean checkReadMethod) {
-    String storeName = "test_store";
-    String user = "test_user";
+  private static final String CLUSTER_NAME = "test_cluster";
+  private static final String STORE_NAME = "test_store";
+  private static final String USER = "test_user";
+  private static final String IP = "0.0.0.0";
+  private static final String JOB_ID = "push_1";
 
-    // Mock an Admin
-    Admin admin = mock(Admin.class);
+  private Admin admin;
+  private X509Certificate certificate;
+  private Request request;
+  private Response response;
+  private DynamicAccessController accessClient;
 
-    // Mock a certificate
-    X509Certificate certificate = mock(X509Certificate.class);
+  @BeforeMethod
+  public void setUp() {
+    admin = mock(Admin.class);
+    request = mock(Request.class);
+    response = mock(Response.class);
+    accessClient = mock(DynamicAccessController.class);
+    certificate = mock(X509Certificate.class);
+    HttpServletRequest httpServletRequest = mock(HttpServletRequest.class);
+
     X509Certificate[] certificateArray = new X509Certificate[1];
     certificateArray[0] = certificate;
-    X500Principal principal = new X500Principal("CN=" + user);
+    X500Principal principal = new X500Principal("CN=" + USER);
+
+    // Setting query params
+    Map<String, String[]> queryMap = new HashMap<>();
+    queryMap.put(CLUSTER, new String[] { CLUSTER_NAME });
+    queryMap.put(NAME, new String[] { STORE_NAME });
+    queryMap.put(STORE_SIZE, new String[] { "0" });
+    queryMap.put(PUSH_TYPE, new String[] { Version.PushType.INCREMENTAL.name() });
+    queryMap.put(PUSH_JOB_ID, new String[] { JOB_ID });
+    queryMap.put(HOSTNAME, new String[] { "localhost" });
+
+    QueryParamsMap queryParamsMap = new QueryParamsMap(httpServletRequest);
+
     doReturn(principal).when(certificate).getSubjectX500Principal();
+    doReturn(httpServletRequest).when(request).raw();
+    doReturn(queryParamsMap).when(request).queryMap();
+    doReturn(REQUEST_TOPIC.getPath()).when(request).pathInfo();
+    for (Map.Entry<String, String[]> queryParam: queryMap.entrySet()) {
+      doReturn(queryParam.getValue()[0]).when(request).queryParams(queryParam.getKey());
+    }
+    doReturn(queryMap).when(httpServletRequest).getParameterMap();
+    doReturn(certificateArray).when(httpServletRequest).getAttribute(CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME);
+    doReturn(true).when(admin).isLeaderControllerFor(CLUSTER_NAME);
+  }
 
-    // Mock a spark request
-    Request request = mock(Request.class);
-    doReturn("localhost").when(request).host();
-    doReturn("0.0.0.0").when(request).ip();
-    HttpServletRequest rawRequest = mock(HttpServletRequest.class);
-    doReturn(rawRequest).when(request).raw();
-    doReturn(certificateArray).when(rawRequest).getAttribute(CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME);
-    doReturn(storeName).when(request).queryParams(NAME);
-
-    // Mock a spark response
-    Response response = mock(Response.class);
-
-    // Mock a AccessClient
-    DynamicAccessController accessClient = mock(DynamicAccessController.class);
-
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testCreateVersionWithACL(boolean checkReadMethod) throws Exception {
     /**
      * Build a CreateVersion route.
      */
     CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), checkReadMethod, false);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
-    // Not a allowlist user.
-    doReturn(false).when(accessClient).isAllowlistUsers(certificate, storeName, HTTP_GET);
+    // Not an allowlist user.
+    doReturn(false).when(accessClient).isAllowlistUsers(certificate, STORE_NAME, HTTP_GET);
 
     /**
      * Create version should fail if user doesn't have "Write" method access to the topic
      */
-    try {
-      doReturn(false).when(accessClient).hasAccessToTopic(certificate, storeName, "Write");
-      createVersionRoute.handle(request, response);
-    } catch (Exception e) {
-      throw new VeniceException(e);
-    }
+    doReturn(false).when(accessClient).hasAccessToTopic(certificate, STORE_NAME, "Write");
+    createVersionRoute.handle(request, response);
 
     /**
      * Response should be 403 if user doesn't have "Write" method access
@@ -99,116 +114,41 @@ public class CreateVersionTest {
     verify(response).status(org.apache.http.HttpStatus.SC_FORBIDDEN);
 
     if (checkReadMethod) {
-      // Mock another response
-      Response response2 = mock(Response.class);
+      response = mock(Response.class);
       /**
        * Create version should fail if user has "Write" method access but not "Read" method access to topics.
        */
-      try {
-        doReturn(true).when(accessClient).hasAccessToTopic(certificate, storeName, "Write");
-        doReturn(false).when(accessClient).hasAccessToTopic(certificate, storeName, "Read");
-        createVersionRoute.handle(request, response2);
-      } catch (Exception e) {
-        throw new VeniceException(e);
-      }
-
-      verify(response2).status(org.apache.http.HttpStatus.SC_FORBIDDEN);
+      doReturn(true).when(accessClient).hasAccessToTopic(certificate, STORE_NAME, "Write");
+      doReturn(false).when(accessClient).hasAccessToTopic(certificate, STORE_NAME, "Read");
+      createVersionRoute.handle(request, response);
+      verify(response).status(org.apache.http.HttpStatus.SC_FORBIDDEN);
     }
   }
 
   @Test
   public void testCreateVersionWithAmplificationFactorAndLeaderFollowerNotEnabled() throws Exception {
-    String clusterName = "test_cluster";
-    String storeName = "test_store";
-    String pushJobId = "push_1";
-    String hostname = "localhost";
-
-    // Setting query params
-    Map<String, String[]> queryMap = new HashMap<>();
-    queryMap.put("store_name", new String[] { storeName });
-    queryMap.put("store_size", new String[] { "0" });
-    queryMap.put("push_type", new String[] { Version.PushType.INCREMENTAL.name() });
-    queryMap.put("push_job_id", new String[] { pushJobId });
-    queryMap.put("hostname", new String[] { hostname });
-
-    // Mock an Admin
-    Admin admin = mock(Admin.class);
-    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
     Store store = mock(Store.class);
-    when(store.isLeaderFollowerModelEnabled()).thenReturn(false);
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
     partitionerConfig.setAmplificationFactor(2);
+
+    when(store.isLeaderFollowerModelEnabled()).thenReturn(false);
     when(store.getPartitionerConfig()).thenReturn(partitionerConfig);
     when(admin.getStore(any(), any())).thenReturn(store);
+
     CreateVersion createVersion = new CreateVersion(false, Optional.empty(), false, false);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
-
-    Request request = mock(Request.class);
-    doReturn(clusterName).when(request).queryParams(CLUSTER);
-    doReturn(REQUEST_TOPIC.getPath()).when(request).pathInfo();
-    for (Map.Entry<String, String[]> queryParam: queryMap.entrySet()) {
-      doReturn(queryParam.getValue()[0]).when(request).queryParams(queryParam.getKey());
-    }
-    HttpServletRequest httpServletRequest = mock(HttpServletRequest.class);
-    doReturn(new QueryParamsMap(httpServletRequest)).when(request).queryMap();
-
-    Response response = mock(Response.class);
     createVersionRoute.handle(request, response);
     verify(response).status(org.apache.http.HttpStatus.SC_BAD_REQUEST);
   }
 
-  @Test
-  public void testCreateVersionReturnsVersionTopicIfIncrementalPushMadeWithHybridStoreWithoutMakingFullPush()
-      throws Exception {
-    String storeName = "test_store";
-    String user = "test_user";
-    String clusterName = "test_cluster";
-    String pushJobId1 = "push_1";
-    String hostname = "localhost";
-
-    // Mock an Admin
-    Admin admin = mock(Admin.class);
-    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
-    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(storeName);
-
-    // Mock a certificate
-    X509Certificate certificate = mock(X509Certificate.class);
-    X509Certificate[] certificateArray = new X509Certificate[1];
-    certificateArray[0] = certificate;
-    X500Principal principal = new X500Principal("CN=" + user);
-    doReturn(principal).when(certificate).getSubjectX500Principal();
-
-    // Setting query params
-    Map<String, String[]> queryMap = new HashMap<>();
-    queryMap.put("store_name", new String[] { storeName });
-    queryMap.put("store_size", new String[] { "0" });
-    queryMap.put("push_type", new String[] { Version.PushType.INCREMENTAL.name() });
-    queryMap.put("push_job_id", new String[] { pushJobId1 });
-    queryMap.put("hostname", new String[] { hostname });
-
-    HttpServletRequest httpServletRequest = mock(HttpServletRequest.class);
-    doReturn(queryMap).when(httpServletRequest).getParameterMap();
-    doReturn(certificateArray).when(httpServletRequest).getAttribute(CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME);
-    QueryParamsMap queryParamsMap = new QueryParamsMap(httpServletRequest);
-
-    // Mock a spark request
-    Request request = mock(Request.class);
-    doReturn(httpServletRequest).when(request).raw();
-    doReturn(queryParamsMap).when(request).queryMap();
-
-    doReturn(hostname).when(request).host();
-    doReturn("0.0.0.0").when(request).ip();
-    doReturn(clusterName).when(request).queryParams(CLUSTER);
-    doReturn(REQUEST_TOPIC.getPath()).when(request).pathInfo();
-
-    for (Map.Entry<String, String[]> queryParam: queryMap.entrySet()) {
-      doReturn(queryParam.getValue()[0]).when(request).queryParams(queryParam.getKey());
-    }
+  @Test(description = "requestTopicForPushing should return an RT topic when store is hybrid and inc-push is enabled")
+  public void testRequestTopicForIncPushReturnsRTTopicWhenStoreIsHybridAndIncPushIsEnabled() throws Exception {
+    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(STORE_NAME);
     doCallRealMethod().when(request).queryParamOrDefault(any(), any());
-    // Setting up a store with hybrid and incremental enabled and incremental policy =
-    // INCREMENTAL_PUSH_SAME_AS_REAL_TIME
+    doReturn(true).when(accessClient).isAllowlistUsers(certificate, STORE_NAME, HTTP_GET);
+
     Store store = new ZKStore(
-        storeName,
+        STORE_NAME,
         "abc@linkedin.com",
         10,
         PersistenceType.ROCKS_DB,
@@ -217,7 +157,6 @@ public class CreateVersionTest {
         OfflinePushStrategy.WAIT_ALL_REPLICAS,
         1);
     store.setIncrementalPushEnabled(true);
-    store.setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
     store.setHybridStoreConfig(
         new HybridStoreConfigImpl(
             0,
@@ -225,17 +164,14 @@ public class CreateVersionTest {
             HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
             DataReplicationPolicy.NON_AGGREGATE,
             BufferReplayPolicy.REWIND_FROM_EOP));
+    doReturn(store).when(admin).getStore(CLUSTER_NAME, STORE_NAME);
 
-    doReturn(store).when(admin).getStore(clusterName, storeName);
-
-    // Setting up a version that doesn't have the incremental policy set as INCREMENTAL_PUSH_SAME_AS_REAL_TIME
-    Version version = new VersionImpl(storeName, 1, pushJobId1);
-    version.setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC);
+    Version version = new VersionImpl(STORE_NAME, 1, JOB_ID);
     doReturn(version).when(admin)
         .incrementVersionIdempotent(
-            clusterName,
-            storeName,
-            pushJobId1,
+            CLUSTER_NAME,
+            STORE_NAME,
+            JOB_ID,
             0,
             0,
             Version.PushType.INCREMENTAL,
@@ -248,32 +184,70 @@ public class CreateVersionTest {
             Optional.empty(),
             false);
 
-    // Mock a spark response
-    Response response = mock(Response.class);
+    Assert.assertTrue(store.isHybrid());
+    Assert.assertTrue(store.isIncrementalPushEnabled());
 
-    // Mock a AccessClient
-    DynamicAccessController accessClient = mock(DynamicAccessController.class);
-
-    /**
-     * Build a CreateVersion route.
-     */
+    // Build a CreateVersion route.
     CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
-    doReturn(true).when(accessClient).isAllowlistUsers(certificate, storeName, HTTP_GET);
+    Object result = createVersionRoute.handle(request, response);
+    Assert.assertNotNull(result);
+    VersionCreationResponse versionCreateResponse = mapper.readValue(result.toString(), VersionCreationResponse.class);
+    Assert.assertEquals(versionCreateResponse.getKafkaTopic(), "test_store_rt");
+  }
 
-    /**
-     * Create version should return version topic if the store is hybrid and incremental but the current version's
-     * incremental push policy is not "INCREMENTAL_PUSH_SAME_AS_REAL_TIME".
-     */
-    Object result;
-    try {
-      result = createVersionRoute.handle(request, response);
-    } catch (Exception e) {
-      throw new VeniceException(e);
-    }
-    VersionCreationResponse versionCreationResponse =
-        mapper.readValue(result.toString(), VersionCreationResponse.class);
-    Assert.assertEquals(versionCreationResponse.getKafkaTopic(), "test_store_v1");
+  // A store should never end up in the state where inc-push is enabled but hybrid configs are not set, nevertheless
+  // if it happens an ERROR should be returned on requestTopicForPushing with inc-push job type.
+  @Test(description = "requestTopicForPushing should an ERROR when store is not in hybrid but inc-push is enabled")
+  public void testRequestTopicForIncPushReturnsErrorWhenStoreIsNotHybridAndIncPushIsEnabled() throws Exception {
+    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(STORE_NAME);
+    doCallRealMethod().when(request).queryParamOrDefault(any(), any());
+    doReturn(true).when(accessClient).isAllowlistUsers(certificate, STORE_NAME, HTTP_GET);
+
+    Store store = new ZKStore(
+        STORE_NAME,
+        "abc@linkedin.com",
+        10,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        1);
+    store.setIncrementalPushEnabled(true);
+    doReturn(store).when(admin).getStore(CLUSTER_NAME, STORE_NAME);
+
+    Version version = new VersionImpl(STORE_NAME, 1, JOB_ID);
+    doReturn(version).when(admin)
+        .incrementVersionIdempotent(
+            CLUSTER_NAME,
+            STORE_NAME,
+            JOB_ID,
+            0,
+            0,
+            Version.PushType.INCREMENTAL,
+            false,
+            false,
+            null,
+            Optional.empty(),
+            Optional.of(certificate),
+            -1,
+            Optional.empty(),
+            false);
+
+    Assert.assertFalse(store.isHybrid());
+    Assert.assertTrue(store.isIncrementalPushEnabled());
+
+    // Build a CreateVersion route.
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+    Route createVersionRoute = createVersion.requestTopicForPushing(admin);
+
+    Object result = createVersionRoute.handle(request, response);
+    Assert.assertNotNull(result);
+    verify(response).status(org.apache.http.HttpStatus.SC_BAD_REQUEST);
+    VersionCreationResponse versionCreateResponse = mapper.readValue(result.toString(), VersionCreationResponse.class);
+    Assert.assertTrue(versionCreateResponse.isError());
+    Assert.assertTrue(versionCreateResponse.getError().contains("which does not have hybrid mode enabled"));
+    Assert.assertNull(versionCreateResponse.getKafkaTopic());
   }
 }

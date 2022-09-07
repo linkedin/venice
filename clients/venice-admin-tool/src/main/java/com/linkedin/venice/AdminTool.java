@@ -63,7 +63,6 @@ import com.linkedin.venice.kafka.consumer.KafkaConsumerFactoryImpl;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
@@ -420,9 +419,6 @@ public class AdminTool {
           break;
         case GET_DELETABLE_STORE_TOPICS:
           getDeletableStoreTopics(cmd);
-          break;
-        case CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER:
-          configureIncrementalPushForCluster(cmd);
           break;
         case WIPE_CLUSTER:
           wipeCluster(cmd);
@@ -877,12 +873,6 @@ public class AdminTool {
     integerParam(cmd, Arg.BATCH_GET_LIMIT, p -> params.setBatchGetLimit(p), argSet);
     integerParam(cmd, Arg.NUM_VERSIONS_TO_PRESERVE, p -> params.setNumVersionsToPreserve(p), argSet);
     booleanParam(cmd, Arg.INCREMENTAL_PUSH_ENABLED, p -> params.setIncrementalPushEnabled(p), argSet);
-    genericParam(
-        cmd,
-        Arg.INCREMENTAL_PUSH_POLICY,
-        s -> IncrementalPushPolicy.valueOf(s),
-        p -> params.setIncrementalPushPolicy(p),
-        argSet);
     booleanParam(cmd, Arg.WRITE_COMPUTATION_ENABLED, p -> params.setWriteComputationEnabled(p), argSet);
     booleanParam(cmd, Arg.READ_COMPUTATION_ENABLED, p -> params.setReadComputationEnabled(p), argSet);
     integerParam(
@@ -2157,26 +2147,6 @@ public class AdminTool {
 
   private static void getDeletableStoreTopics(CommandLine cmd) {
     MultiStoreTopicsResponse response = controllerClient.getDeletableStoreTopics();
-    printObject(response);
-  }
-
-  private static void configureIncrementalPushForCluster(CommandLine cmd) {
-    String incrementalPushPolicyToApplyParam = getRequiredArgument(cmd, Arg.INCREMENTAL_PUSH_POLICY_TO_APPLY);
-    IncrementalPushPolicy incrementalPushPolicyToApply =
-        IncrementalPushPolicy.valueOf(incrementalPushPolicyToApplyParam);
-
-    String incrementalPushPolicyToFilterParam = getOptionalArgument(cmd, Arg.INCREMENTAL_PUSH_POLICY_TO_FILTER);
-    Optional<IncrementalPushPolicy> incrementalPushPolicyToFilter =
-        StringUtils.isEmpty(incrementalPushPolicyToFilterParam)
-            ? Optional.empty()
-            : Optional.of(IncrementalPushPolicy.valueOf(incrementalPushPolicyToFilterParam));
-
-    String regionsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
-    Optional<String> regionsFilter =
-        StringUtils.isEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
-
-    ControllerResponse response = controllerClient
-        .configureIncrementalPushForCluster(incrementalPushPolicyToApply, incrementalPushPolicyToFilter, regionsFilter);
     printObject(response);
   }
 

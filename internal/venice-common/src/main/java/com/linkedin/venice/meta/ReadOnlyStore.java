@@ -423,7 +423,7 @@ public class ReadOnlyStore implements Store {
 
     @Override
     public IncrementalPushPolicy getIncrementalPushPolicy() {
-      return this.delegate.getIncrementalPushPolicy();
+      return IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME;
     }
 
     @Override
@@ -1051,7 +1051,7 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public IncrementalPushPolicy getIncrementalPushPolicy() {
-    return this.delegate.getIncrementalPushPolicy();
+    return IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME;
   }
 
   @Override

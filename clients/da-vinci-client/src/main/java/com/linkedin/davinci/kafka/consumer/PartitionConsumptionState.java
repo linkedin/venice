@@ -7,7 +7,6 @@ import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -31,7 +30,6 @@ public class PartitionConsumptionState {
   private final int userPartition;
   private final boolean hybrid;
   private final boolean isIncrementalPushEnabled;
-  private final IncrementalPushPolicy incrementalPushPolicy;
   private final OffsetRecord offsetRecord;
   /** whether the ingestion of current partition is deferred-write. */
   private boolean deferredWrite;
@@ -160,14 +158,12 @@ public class PartitionConsumptionState {
       int amplificationFactor,
       OffsetRecord offsetRecord,
       boolean hybrid,
-      boolean isIncrementalPushEnabled,
-      IncrementalPushPolicy incrementalPushPolicy) {
+      boolean isIncrementalPushEnabled) {
     this.partition = partition;
     this.amplificationFactor = amplificationFactor;
     this.userPartition = PartitionUtils.getUserPartition(partition, amplificationFactor);
     this.hybrid = hybrid;
     this.isIncrementalPushEnabled = isIncrementalPushEnabled;
-    this.incrementalPushPolicy = incrementalPushPolicy;
     this.offsetRecord = offsetRecord;
     this.errorReported = false;
     this.lagCaughtUp = false;
@@ -325,8 +321,6 @@ public class PartitionConsumptionState {
         .append(leaderFollowerState)
         .append(", isIncrementalPushEnabled=")
         .append(isIncrementalPushEnabled)
-        .append(", incrementalPushPolicy=")
-        .append(incrementalPushPolicy)
         .append("}")
         .toString();
   }
@@ -345,10 +339,6 @@ public class PartitionConsumptionState {
 
   public boolean isIncrementalPushEnabled() {
     return isIncrementalPushEnabled;
-  }
-
-  public IncrementalPushPolicy getIncrementalPushPolicy() {
-    return incrementalPushPolicy;
   }
 
   public void setLeaderFollowerState(LeaderFollowerStateType state) {

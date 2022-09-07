@@ -91,7 +91,6 @@ import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.ETLStoreConfigImpl;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.LiveClusterConfig;
@@ -2117,8 +2116,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
             if (isParent() && ((store.isHybrid()
                 && store.getHybridStoreConfig().getDataReplicationPolicy() == DataReplicationPolicy.AGGREGATE)
-                || (store.isIncrementalPushEnabled() && store.getIncrementalPushPolicy()
-                    .equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)))) {
+                || store.isIncrementalPushEnabled())) {
               // Create rt topic in parent colo if the store is aggregate mode hybrid store
               String realTimeTopic = Version.composeRealTimeTopic(storeName);
               if (!getTopicManager().containsTopic(realTimeTopic)) {
@@ -2549,12 +2547,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + version.getNumber() + " Store:" + storeName);
       }
 
-      String kafkaTopic;
-      if (version.getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
-        kafkaTopic = Version.composeRealTimeTopic(storeName);
-      } else {
-        kafkaTopic = Version.composeKafkaTopic(storeName, version.getNumber());
-      }
+      String kafkaTopic = Version.composeRealTimeTopic(storeName);
 
       if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(kafkaTopic) || isTopicTruncated(kafkaTopic)) {
         resources.getVeniceAdminStats().recordUnexpectedTopicAbsenceCount();
@@ -3374,11 +3367,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   void setIncrementalPushEnabled(String clusterName, String storeName, boolean incrementalPushEnabled) {
     storeMetadataUpdate(clusterName, storeName, store -> {
-      IncrementalPushPolicy incrementalPushPolicy = store.getIncrementalPushPolicy();
-      if (incrementalPushEnabled && store.isHybrid()
-          && incrementalPushPolicy.equals(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC)) {
-        throw new VeniceException("hybrid store doesn't support incremental push with policy " + incrementalPushPolicy);
-      }
       VeniceControllerClusterConfig config = getHelixVeniceClusterResources(clusterName).getConfig();
       if (incrementalPushEnabled) {
         // Enabling incremental push
@@ -3530,16 +3518,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     });
   }
 
-  private void setIncrementalPushPolicy(
-      String clusterName,
-      String storeName,
-      IncrementalPushPolicy incrementalPushPolicy) {
-    storeMetadataUpdate(clusterName, storeName, store -> {
-      store.setIncrementalPushPolicy(incrementalPushPolicy);
-      return store;
-    });
-  }
-
   private void setBackupVersionRetentionMs(String clusterName, String storeName, long backupVersionRetentionMs) {
     storeMetadataUpdate(clusterName, storeName, store -> {
       store.setBackupVersionRetentionMs(backupVersionRetentionMs);
@@ -3592,43 +3570,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       store.setDaVinciPushStatusStoreEnabled(false);
       return store;
     });
-  }
-
-  /**
-   * This function will check whether the store update will cause the case that a store can not have the specified
-   * hybrid store and incremental push configs.
-   *
-   * @param store The store object whose configs are being updated
-   * @param newIncrementalPushEnabled The new incremental push enabled config that will be set for the store
-   * @param newIncrementalPushPolicy The new incremental push policy that will be set for the store
-   * @param newHybridStoreConfig The new hybrid store config that will be set for the store
-   */
-  void checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(
-      Store store,
-      Optional<Boolean> newIncrementalPushEnabled,
-      Optional<IncrementalPushPolicy> newIncrementalPushPolicy,
-      Optional<HybridStoreConfig> newHybridStoreConfig) {
-    String storeName = store.getName();
-
-    boolean finalIncrementalPushEnabled = newIncrementalPushEnabled.orElse(store.isIncrementalPushEnabled());
-    IncrementalPushPolicy finalIncrementalPushPolicy = newIncrementalPushPolicy.orElse(
-        store.isIncrementalPushEnabled()
-            ? store.getIncrementalPushPolicy()
-            : IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
-    HybridStoreConfig finalHybridStoreConfig = newHybridStoreConfig.orElse(store.getHybridStoreConfig());
-    boolean finalHybridEnabled = isHybrid(finalHybridStoreConfig);
-
-    if (finalIncrementalPushEnabled && finalHybridEnabled
-        && !finalIncrementalPushPolicy.isCompatibleWithHybridStores()) {
-      throw new VeniceException(
-          "Hybrid and incremental push cannot be enabled simultaneously for store: " + storeName
-              + " since it has incremental push policy: " + finalIncrementalPushPolicy.name());
-    } else if (finalIncrementalPushEnabled && !finalHybridEnabled
-        && !finalIncrementalPushPolicy.isCompatibleWithNonHybridStores()) {
-      logger.info(
-          "Enabling incremental push with incremental push policy " + finalIncrementalPushPolicy.name()
-              + " for a batch-only store " + storeName + "; a default hybrid config will be set");
-    }
   }
 
   /**
@@ -3744,7 +3685,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<String> etledUserProxyAccount = params.getETLedProxyUserAccount();
     Optional<Boolean> nativeReplicationEnabled = params.getNativeReplicationEnabled();
     Optional<String> pushStreamSourceAddress = params.getPushStreamSourceAddress();
-    Optional<IncrementalPushPolicy> incrementalPushPolicy = params.getIncrementalPushPolicy();
     Optional<Long> backupVersionRetentionMs = params.getBackupVersionRetentionMs();
     Optional<Integer> replicationFactor = params.getReplicationFactor();
     Optional<Boolean> migrationDuplicateStore = params.getMigrationDuplicateStore();
@@ -3768,11 +3708,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       newHybridStoreConfig = Optional.empty();
     }
 
-    checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(
-        originalStore,
-        incrementalPushEnabled,
-        incrementalPushPolicy,
-        newHybridStoreConfig);
+    if (incrementalPushEnabled.orElse(originalStore.isIncrementalPushEnabled())
+        && !isHybrid(newHybridStoreConfig.orElse(originalStore.getHybridStoreConfig()))) {
+      logger.info(
+          "Enabling incremental push for a batch store:{} will convert it to a hybrid store with default configs.",
+          storeName);
+    }
 
     try {
       if (owner.isPresent()) {
@@ -3942,24 +3883,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         setNumVersionsToPreserve(clusterName, storeName, numVersionsToPreserve.get());
       }
 
-      if (incrementalPushPolicy.isPresent()) {
-        setIncrementalPushPolicy(clusterName, storeName, incrementalPushPolicy.get());
-
-        if (incrementalPushPolicy.get() == IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME) {
-          setUpIncrementalPushAsRealTimePolicyForTheFirstTime(clusterName, storeName);
-        }
-      }
-
       if (incrementalPushEnabled.isPresent()) {
-        if (incrementalPushEnabled.get() && (!incrementalPushPolicy.isPresent()
-            || incrementalPushPolicy.get().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME))) {
-          /**
-           * For new incremental push stores, default incremental push policy will be {@link IncrementalPushPolicy#INCREMENTAL_PUSH_SAME_AS_REAL_TIME}
-           * TODO: when upgrading {@link com.linkedin.venice.systemstore.schemas.StoreMetaValue} schema next time, change
-           *       default value of incrementalPushPolicy to 1.
-           */
-          setIncrementalPushPolicy(clusterName, storeName, IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
-          setUpIncrementalPushAsRealTimePolicyForTheFirstTime(clusterName, storeName);
+        if (incrementalPushEnabled.get()) {
+          enableHybridModeOrUpdateSettings(clusterName, storeName);
         }
         setIncrementalPushEnabled(clusterName, storeName, incrementalPushEnabled.get());
       }
@@ -4098,7 +4024,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private void setUpIncrementalPushAsRealTimePolicyForTheFirstTime(String clusterName, String storeName) {
+  private void enableHybridModeOrUpdateSettings(String clusterName, String storeName) {
     storeMetadataUpdate(clusterName, storeName, store -> {
       HybridStoreConfig hybridStoreConfig = store.getHybridStoreConfig();
       if (hybridStoreConfig == null) {
@@ -6667,149 +6593,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       ret.getVersions().add(v.getNumber());
     ret.setCurrentVersion(s.getCurrentVersion());
     return ret;
-  }
-
-  /**
-   * @see Admin#configureIncrementalPushForCluster(String, Optional, IncrementalPushPolicy, Optional, Optional)
-   */
-  @Override
-  public void configureIncrementalPushForCluster(
-      String clusterName,
-      Optional<String> storeName,
-      IncrementalPushPolicy incrementalPushPolicyToApply,
-      Optional<IncrementalPushPolicy> incrementalPushPolicyToFilter,
-      Optional<String> regionsFilter) {
-    /**
-     * Check whether the command affects this fabric.
-     */
-    if (regionsFilter.isPresent()) {
-      Set<String> fabrics = parseRegionsFilterList(regionsFilter.get());
-      if (!fabrics.contains(multiClusterConfigs.getRegionName())) {
-        logger.info(
-            "EnableNativeReplicationForCluster command will be skipped for cluster " + clusterName
-                + ", because the fabrics filter is " + fabrics.toString() + " which doesn't include the "
-                + "current fabric: " + multiClusterConfigs.getRegionName());
-        return;
-      }
-    }
-
-    VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
-    if (storeName.isPresent()) {
-      /**
-       * Legacy stores venice_system_store_davinci_push_status_store_<cluster_name> still exist.
-       * But {@link com.linkedin.venice.helix.HelixReadOnlyStoreRepositoryAdapter#getStore(String)} cannot find
-       * them by store names. Skip davinci push status stores until legacy znodes are cleaned up.
-       */
-      VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName.get());
-      if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE)) {
-        logger.info("Will not enable incremental push for davinci push status store " + storeName.get());
-        return;
-      }
-
-      /**
-       * The function is invoked by {@link com.linkedin.venice.controller.kafka.consumer.AdminExecutionTask} if the
-       * storeName is present.
-       */
-      Store originalStore = getStore(clusterName, storeName.get());
-      if (null == originalStore) {
-        throw new VeniceException(
-            "The store '" + storeName.get() + "' in cluster '" + clusterName
-                + "' does not exist, and thus cannot be updated.");
-      }
-      boolean shouldUpdateIncrementalPushPolicy =
-          originalStore.isIncrementalPushEnabled() && !originalStore.isSystemStore();
-
-      if (incrementalPushPolicyToFilter.isPresent()) {
-        shouldUpdateIncrementalPushPolicy &=
-            incrementalPushPolicyToFilter.get().equals(originalStore.getIncrementalPushPolicy());
-      }
-
-      if (shouldUpdateIncrementalPushPolicy) {
-        if (!originalStore.isHybrid()
-            && incrementalPushPolicyToApply.equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
-          // Incremental push to RT policy should have hybrid config enabled
-          storeMetadataUpdate(clusterName, storeName.get(), store -> {
-            store.setHybridStoreConfig(
-                new HybridStoreConfigImpl(
-                    0L,
-                    DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD,
-                    DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-                    DataReplicationPolicy.NONE,
-                    BufferReplayPolicy.REWIND_FROM_SOP));
-            return store;
-          });
-        } else if (originalStore.isHybrid()
-            && originalStore.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.NONE)
-            && incrementalPushPolicyToApply.equals(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC)) {
-          /**
-           * When migrating to incremental push to VT policy, if the store doesn't have any Samza job
-           * (by checking the DataReplicationPolicy), remove the hybrid config and delete the real-time topic.
-           */
-          storeMetadataUpdate(clusterName, storeName.get(), store -> {
-            store.setHybridStoreConfig(null);
-            String realTimeTopic = Version.composeRealTimeTopic(store.getName());
-            truncateKafkaTopic(realTimeTopic);
-            return store;
-          });
-        }
-        setIncrementalPushPolicy(clusterName, storeName.get(), incrementalPushPolicyToApply);
-        logger.info(
-            "Updated incremental push policy for store " + storeName.get() + " to "
-                + incrementalPushPolicyToApply.name());
-      } else {
-        logger.info("Will not update incremental push policy for store " + storeName.get());
-      }
-    } else {
-      /**
-       * The batch update command hits child controller directly; all stores in the cluster will be updated
-       */
-      List<Store> storesToBeConfigured = getAllStores(clusterName).stream()
-          .filter(s -> (s.isIncrementalPushEnabled() && !s.isSystemStore()))
-          .collect(Collectors.toList());
-
-      storesToBeConfigured.forEach(store -> {
-        boolean shouldUpdateIncrementalPushPolicy = true;
-        if (incrementalPushPolicyToFilter.isPresent()) {
-          shouldUpdateIncrementalPushPolicy &=
-              incrementalPushPolicyToFilter.get().equals(store.getIncrementalPushPolicy());
-        }
-        if (shouldUpdateIncrementalPushPolicy) {
-          if (!store.isHybrid()
-              && incrementalPushPolicyToApply.equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
-            // Incremental push to RT policy should have hybrid config enabled
-            storeMetadataUpdate(clusterName, store.getName(), s -> {
-              s.setHybridStoreConfig(
-                  new HybridStoreConfigImpl(
-                      0L,
-                      DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD,
-                      DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-                      DataReplicationPolicy.NONE,
-                      BufferReplayPolicy.REWIND_FROM_SOP));
-              return s;
-            });
-          } else if (store.isHybrid()
-              && store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.NONE)
-              && incrementalPushPolicyToApply.equals(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC)) {
-            /**
-             * When migrating to incremental push to VT policy, if the store doesn't have any Samza job
-             * (by checking the DataReplicationPolicy), remove the hybrid config and delete the real-time topic.
-             */
-            storeMetadataUpdate(clusterName, store.getName(), s -> {
-              s.setHybridStoreConfig(null);
-              String realTimeTopic = Version.composeRealTimeTopic(s.getName());
-              truncateKafkaTopic(realTimeTopic);
-              return s;
-            });
-          }
-          setIncrementalPushPolicy(clusterName, store.getName(), incrementalPushPolicyToApply);
-          logger.info(
-              "Updated incremental push policy for store " + store.getName() + " to "
-                  + incrementalPushPolicyToApply.name());
-        } else {
-          logger.info("Will not update incremental push policy for store " + store.getName());
-        }
-      });
-    }
   }
 
   /**

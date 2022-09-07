@@ -32,7 +32,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataAudit;
@@ -774,41 +773,6 @@ public class StoresRoutes extends AbstractRoute {
             storeType,
             Optional.empty(),
             enableActiveActiveReplicationForCluster,
-            (null == regionsFilterParams) ? Optional.empty() : Optional.of(regionsFilterParams));
-
-        veniceResponse.setCluster(cluster);
-      }
-    };
-  }
-
-  /**
-   * @see Admin#configureIncrementalPushForCluster(String, Optional, IncrementalPushPolicy, Optional, Optional)
-   */
-  public Route configureIncrementalPushForCluster(Admin admin) {
-    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
-      @Override
-      public void internalHandle(Request request, ControllerResponse veniceResponse) {
-        // Only allow allowlist users to run this command
-        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
-          return;
-        }
-
-        AdminSparkServer.validateParams(request, CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER.getParams(), admin);
-
-        String cluster = request.queryParams(CLUSTER);
-        IncrementalPushPolicy incrementalPushPolicyToApply =
-            IncrementalPushPolicy.valueOf(request.queryParams(INCREMENTAL_PUSH_POLICY));
-        Optional<IncrementalPushPolicy> incrementalPushPolicyToFilter =
-            request.queryParamOrDefault(INCREMENTAL_PUSH_POLICY_TO_FILTER, null) != null
-                ? Optional.of(IncrementalPushPolicy.valueOf(request.queryParams(INCREMENTAL_PUSH_POLICY_TO_FILTER)))
-                : Optional.empty();
-        String regionsFilterParams = request.queryParamOrDefault(REGIONS_FILTER, null);
-
-        admin.configureIncrementalPushForCluster(
-            cluster,
-            Optional.empty(),
-            incrementalPushPolicyToApply,
-            incrementalPushPolicyToFilter,
             (null == regionsFilterParams) ? Optional.empty() : Optional.of(regionsFilterParams));
 
         veniceResponse.setCluster(cluster);

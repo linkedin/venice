@@ -9,7 +9,6 @@ import com.linkedin.venice.kafka.TopicException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
@@ -232,9 +231,7 @@ public class RealTimeTopicSwitcher {
   }
 
   private static boolean isIncrementalPush(Version version) {
-    return version.isIncrementalPushEnabled() &&
-    // TODO: Remove this check since we only want to support "same as RT" going forward.
-        version.getIncrementalPushPolicy() == IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME;
+    return version.isIncrementalPushEnabled();
   }
 
   /**

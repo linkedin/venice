@@ -19,7 +19,6 @@ import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.DataReplicationPolicy;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -250,8 +249,7 @@ public class CreateVersion extends AbstractRoute {
              * Before trying to get the version, create the RT topic in parent kafka since it's needed anyway in following cases.
              * Otherwise topic existence check fails internally.
              */
-            if (pushType.isIncremental() && (isWriteComputeEnabled
-                || store.getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME))) {
+            if (pushType.isIncremental() && isWriteComputeEnabled) {
               admin.getRealTimeTopic(clusterName, storeName);
               if (store.isApplyTargetVersionFilterForIncPush()) {
                 int targetVersion;
@@ -311,8 +309,7 @@ public class CreateVersion extends AbstractRoute {
             boolean isTopicRT = false;
             if (pushType.isStreamReprocessing()) {
               responseTopic = Version.composeStreamReprocessingTopic(storeName, version.getNumber());
-            } else if (pushType.isIncremental() && version.getIncrementalPushPolicy()
-                .equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
+            } else if (pushType.isIncremental()) {
               isTopicRT = true;
               responseTopic = Version.composeRealTimeTopic(storeName);
               // disable amplificationFactor logic on real-time topic
@@ -353,9 +350,7 @@ public class CreateVersion extends AbstractRoute {
              * At this point parent corp cluster is already set in the responseObject.setKafkaBootstrapServers().
              * So we only need to override for 1 and 2.
              */
-            if (pushType.isIncremental()
-                && version.getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)
-                && admin.isParent()) {
+            if (pushType.isIncremental() && admin.isParent()) {
               if (isActiveActiveReplicationEnabledInAllRegion.get()) {
                 Optional<String> overRideSourceRegion =
                     emergencySourceRegion.isPresent() ? emergencySourceRegion : Optional.empty();
@@ -457,12 +452,20 @@ public class CreateVersion extends AbstractRoute {
               + store.getHybridStoreConfig().getDataReplicationPolicy(),
           ErrorType.BAD_REQUEST);
     }
-    if (pushType.isIncremental() && !store.isIncrementalPushEnabled()) {
-      throw new VeniceHttpException(
-          HttpStatus.SC_BAD_REQUEST,
-          "requesting topic for incremental push to store " + store.getName()
-              + " which does not have incremental push enabled.",
-          ErrorType.BAD_REQUEST);
+    if (pushType.isIncremental()) {
+      if (!store.isIncrementalPushEnabled()) {
+        throw new VeniceHttpException(
+            HttpStatus.SC_BAD_REQUEST,
+            "requesting topic for incremental push to store: " + store.getName()
+                + " which does not have incremental push enabled.",
+            ErrorType.BAD_REQUEST);
+      } else if (!store.isHybrid()) {
+        throw new VeniceHttpException(
+            HttpStatus.SC_BAD_REQUEST,
+            "requesting topic for incremental push to store: " + store.getName()
+                + " which does not have hybrid mode enabled.",
+            ErrorType.BAD_REQUEST);
+      }
     }
   }
 

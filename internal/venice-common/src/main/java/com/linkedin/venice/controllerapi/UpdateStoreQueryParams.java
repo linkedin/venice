@@ -11,7 +11,6 @@ import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.utils.ObjectMapperFactory;
@@ -59,7 +58,6 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setEnableWrites(srcStore.isEnableStoreWrites())
             .setHybridStoreDiskQuotaEnabled(srcStore.isHybridStoreDiskQuotaEnabled())
             .setIncrementalPushEnabled(srcStore.isIncrementalPushEnabled())
-            .setIncrementalPushPolicy(srcStore.getIncrementalPushPolicy())
             .setLargestUsedVersionNumber(srcStore.getLargestUsedVersionNumber())
             .setLeaderFollowerModel(srcStore.isLeaderFollowerModelEnabled())
             .setNativeReplicationEnabled(srcStore.isNativeReplicationEnabled())
@@ -448,15 +446,6 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<String> getPushStreamSourceAddress() {
     return getString(PUSH_STREAM_SOURCE_ADDRESS);
-  }
-
-  public UpdateStoreQueryParams setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
-    params.put(INCREMENTAL_PUSH_POLICY, incrementalPushPolicy.name());
-    return this;
-  }
-
-  public Optional<IncrementalPushPolicy> getIncrementalPushPolicy() {
-    return Optional.ofNullable(params.get(INCREMENTAL_PUSH_POLICY)).map(IncrementalPushPolicy::valueOf);
   }
 
   public UpdateStoreQueryParams setBackupVersionRetentionMs(long backupVersionRetentionMs) {

@@ -37,7 +37,6 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.kafka.validation.KafkaDataIntegrityValidator;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -886,8 +885,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   /**
    * If leader is consuming remote VT or SR, once EOP is received, switch back to local VT to consume TOPIC_SWITCH,
    * unless there are more data to be consumed in remote topic in the following case:
-   * Incremental push is enabled, the policy is PUSH_TO_VERSION_TOPIC, write compute is disabled. OR the version is
-   * hybrid or incremental push enabled and data recovery is in progress.
+   * The version is hybrid or incremental push enabled and data recovery is in progress.
    */
   private boolean shouldLeaderSwitchToLocalConsumption(PartitionConsumptionState partitionConsumptionState) {
     /**
@@ -902,10 +900,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     return partitionConsumptionState.consumeRemotely() && partitionConsumptionState.isEndOfPushReceived()
         && Version.isVersionTopicOrStreamReprocessingTopic(partitionConsumptionState.getOffsetRecord().getLeaderTopic())
-        && (!isDataRecovery || partitionConsumptionState.isDataRecoveryCompleted())
-        && !(partitionConsumptionState.isIncrementalPushEnabled()
-            && partitionConsumptionState.getIncrementalPushPolicy().equals(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC)
-            && !isWriteComputationEnabled);
+        && (!isDataRecovery || partitionConsumptionState.isDataRecoveryCompleted());
   }
 
   private void checkAndUpdateDataRecoveryStatusOfHybridStore(PartitionConsumptionState partitionConsumptionState) {
@@ -1583,13 +1578,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     switch (partitionConsumptionState.getLeaderFollowerState()) {
       case LEADER:
-        if (partitionConsumptionState.consumeRemotely()
-            && Version
-                .isVersionTopicOrStreamReprocessingTopic(partitionConsumptionState.getOffsetRecord().getLeaderTopic())
-            && !(partitionConsumptionState.isIncrementalPushEnabled()
-                && partitionConsumptionState.getIncrementalPushPolicy()
-                    .equals(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC)
-                && !isWriteComputationEnabled)) {
+        if (partitionConsumptionState.consumeRemotely() && Version
+            .isVersionTopicOrStreamReprocessingTopic(partitionConsumptionState.getOffsetRecord().getLeaderTopic())) {
           if (partitionConsumptionState.skipKafkaMessage()) {
             String msg = "Skipping messages after EOP in remote version topic. Topic: " + kafkaVersionTopic
                 + " Partition Id: " + subPartition;

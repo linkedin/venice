@@ -41,8 +41,8 @@ public enum ControllerRoute {
       WRITE_COMPUTATION_ENABLED, REPLICATION_METADATA_PROTOCOL_VERSION_ID, READ_COMPUTATION_ENABLED,
       LEADER_FOLLOWER_MODEL_ENABLED, BACKUP_STRATEGY, AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED,
       INCREMENTAL_PUSH_ENABLED, BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS, HYBRID_STORE_DISK_QUOTA_ENABLED,
-      REGULAR_VERSION_ETL_ENABLED, FUTURE_VERSION_ETL_ENABLED, ETLED_PROXY_USER_ACCOUNT, INCREMENTAL_PUSH_POLICY,
-      DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE, PERSONA_NAME
+      REGULAR_VERSION_ETL_ENABLED, FUTURE_VERSION_ETL_ENABLED, ETLED_PROXY_USER_ACCOUNT, DISABLE_META_STORE,
+      DISABLE_DAVINCI_PUSH_STATUS_STORE, PERSONA_NAME
   ), SET_VERSION("/set_version", HttpMethod.POST, Arrays.asList(NAME, VERSION)),
   ENABLE_STORE("/enable_store", HttpMethod.POST, Arrays.asList(NAME, OPERATION, STATUS)), // status "true" or "false",
                                                                                           // operation "read" or "write"
@@ -143,9 +143,6 @@ public enum ControllerRoute {
   ), GET_DELETABLE_STORE_TOPICS("/get_deletable_store_topics", HttpMethod.GET, Collections.emptyList()),
   GET_ALL_REPLICATION_METADATA_SCHEMAS(
       "/get_all_replication_metadata_schemas", HttpMethod.GET, Collections.singletonList(NAME)
-  ),
-  CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER(
-      "/configure_incremental_push_for_cluster", HttpMethod.POST, Arrays.asList(CLUSTER, INCREMENTAL_PUSH_POLICY)
   ),
   GET_ONGOING_INCREMENTAL_PUSH_VERSIONS(
       "/get_ongoing_incremental_push_versions", HttpMethod.GET, Collections.singletonList(TOPIC)

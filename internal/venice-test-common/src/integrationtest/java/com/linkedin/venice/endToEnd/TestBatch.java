@@ -20,7 +20,6 @@ import com.linkedin.venice.hadoop.PushJobSchemaInfo;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.read.RequestType;
@@ -456,7 +455,6 @@ public abstract class TestBatch {
         getSimpleFileWithUserSchemaValidatorForZstd(),
         new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT)
             .setIncrementalPushEnabled(true)
-            .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)
             .setHybridOffsetLagThreshold(10)
             .setHybridRewindSeconds(0));
 
@@ -501,8 +499,7 @@ public abstract class TestBatch {
               .setLeaderFollowerModel(true)
               .setChunkingEnabled(true)
               .setHybridOffsetLagThreshold(10)
-              .setHybridRewindSeconds(0)
-              .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME));
+              .setHybridRewindSeconds(0));
 
       testBatchStore(inputDir -> {
         Schema recordSchema = writeSimpleAvroFileWithUserSchema2(inputDir);

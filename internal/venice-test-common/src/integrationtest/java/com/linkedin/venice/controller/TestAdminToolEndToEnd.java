@@ -5,11 +5,9 @@ import static com.linkedin.venice.ConfigKeys.*;
 import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.Arg;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
-import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -18,7 +16,6 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -96,55 +93,6 @@ public class TestAdminToolEndToEnd {
       Assert.fail("Store migration should be denied");
     } catch (VeniceException e) {
       Assert.assertTrue(e.getMessage().contains("does not allow store migration"));
-    }
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testIncrementalPushBatchMigrationCommand() throws Exception {
-    try (ControllerClient controllerClient =
-        new ControllerClient(clusterName, venice.getLeaderVeniceController().getControllerUrl())) {
-      // Create 2 inc push stores with Incremental Push to VT policy
-      String testStoreName1 = Utils.getUniqueString("test-store");
-      NewStoreResponse newStoreResponse =
-          controllerClient.createNewStore(testStoreName1, "test", "\"string\"", "\"string\"");
-      Assert.assertFalse(newStoreResponse.isError());
-      ControllerResponse updateStoreResponse = controllerClient.updateStore(
-          testStoreName1,
-          new UpdateStoreQueryParams().setIncrementalPushEnabled(true)
-              .setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC));
-      Assert.assertFalse(updateStoreResponse.isError());
-
-      String testStoreName2 = Utils.getUniqueString("test-store");
-      newStoreResponse = controllerClient.createNewStore(testStoreName2, "test", "\"string\"", "\"string\"");
-      Assert.assertFalse(newStoreResponse.isError());
-      updateStoreResponse = controllerClient.updateStore(
-          testStoreName2,
-          new UpdateStoreQueryParams().setIncrementalPushEnabled(true)
-              .setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC));
-      Assert.assertFalse(updateStoreResponse.isError());
-
-      // Migrate all of them to Incremental Push to RT policy
-      String[] adminToolArgs =
-          { "--configure-incremental-push-for-cluster", "--url", venice.getLeaderVeniceController().getControllerUrl(),
-              "--cluster", clusterName, "--incremental-push-policy-to-filter", "PUSH_TO_VERSION_TOPIC",
-              "--incremental-push-policy-to-apply", "INCREMENTAL_PUSH_SAME_AS_REAL_TIME" };
-      AdminTool.main(adminToolArgs);
-
-      // Wait and check whether all incremental push stores have been migrate to the right incremental push policy
-      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        StoreResponse storeResponse = controllerClient.getStore(testStoreName1);
-        Assert.assertFalse(storeResponse.isError());
-        Assert.assertEquals(
-            storeResponse.getStore().getIncrementalPushPolicy(),
-            IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
-        Assert.assertNotNull(storeResponse.getStore().getHybridStoreConfig());
-        storeResponse = controllerClient.getStore(testStoreName2);
-        Assert.assertFalse(storeResponse.isError());
-        Assert.assertEquals(
-            storeResponse.getStore().getIncrementalPushPolicy(),
-            IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
-        Assert.assertNotNull(storeResponse.getStore().getHybridStoreConfig());
-      });
     }
   }
 

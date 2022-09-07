@@ -14,7 +14,6 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestPushUtils;
@@ -161,8 +160,7 @@ public class TestActiveActiveReplicationForIncPush {
               .setIncrementalPushEnabled(true)
               .setLeaderFollowerModel(true)
               .setNativeReplicationEnabled(true)
-              .setNativeReplicationSourceFabric("dc-2")
-              .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
+              .setNativeReplicationSourceFabric("dc-2");
       createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, propsBatch, updateStoreParams).close();
 
       UpdateStoreQueryParams enableAARepl = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true);

@@ -501,7 +501,7 @@ public class SystemStore extends AbstractStore {
 
   @Override
   public IncrementalPushPolicy getIncrementalPushPolicy() {
-    return zkSharedStore.getIncrementalPushPolicy();
+    return IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME;
   }
 
   @Override

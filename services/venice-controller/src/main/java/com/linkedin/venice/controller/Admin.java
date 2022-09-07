@@ -16,7 +16,6 @@ import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.RoutersClusterConfig;
@@ -745,19 +744,6 @@ public interface Admin extends AutoCloseable, Closeable {
    * Returns default backup version retention time.
    */
   long getBackupVersionDefaultRetentionMs();
-
-  /**
-   * Move all the incremental push stores in a cluster to the specified incremental push policy (incrementalPushPolicyToApply).
-   * @param storeName if storeName is present, only change that specific store, instead of all the stores in the cluster.
-   * @param incrementalPushPolicyToFilter if incrementalPushPolicyToFilter is present, the selected stores' current
-   *                                      incremental push policy must also match the filter
-   */
-  void configureIncrementalPushForCluster(
-      String cluster,
-      Optional<String> storeName,
-      IncrementalPushPolicy incrementalPushPolicyToApply,
-      Optional<IncrementalPushPolicy> incrementalPushPolicyToFilter,
-      Optional<String> regionsFilter);
 
   void wipeCluster(String clusterName, String fabric, Optional<String> storeName, Optional<Integer> versionNum);
 

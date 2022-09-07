@@ -147,10 +147,6 @@ public class TestAdminSparkServerWithMultiServers {
     Assert.assertTrue(hybridStoresSet.contains(hybridAggregateStore));
     Assert.assertTrue(hybridStoresSet.contains(hybridNonAggregateStore));
     Assert.assertFalse(hybridStoresSet.contains(nativeReplicationEnabledStore));
-    /**
-     * Default incremental push policy is {@link com.linkedin.venice.meta.IncrementalPushPolicy#INCREMENTAL_PUSH_SAME_AS_REAL_TIME}
-     * now, which are hybrid stores.
-     */
     Assert.assertTrue(hybridStoresSet.contains(incrementalPushEnabledStore));
 
     // List hybrid stores that are on non-aggregate mode
@@ -162,10 +158,6 @@ public class TestAdminSparkServerWithMultiServers {
     Assert.assertFalse(nonAggHybridStoresSet.contains(hybridAggregateStore));
     Assert.assertTrue(nonAggHybridStoresSet.contains(hybridNonAggregateStore));
     Assert.assertFalse(nonAggHybridStoresSet.contains(nativeReplicationEnabledStore));
-    /**
-     * Default incremental push policy is {@link com.linkedin.venice.meta.IncrementalPushPolicy#INCREMENTAL_PUSH_SAME_AS_REAL_TIME}
-     * now, which are hybrid stores.
-     */
     Assert.assertTrue(nonAggHybridStoresSet.contains(incrementalPushEnabledStore));
 
     // List hybrid stores that are on aggregate mode
