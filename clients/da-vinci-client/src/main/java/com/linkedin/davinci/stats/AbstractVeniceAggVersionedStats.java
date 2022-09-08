@@ -105,7 +105,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
     versionedDIVStats.getAllVersionNumbers()
         .stream()
         .filter(versionNum -> !existingVersionNumbers.contains(versionNum) && versionNum != NON_EXISTING_VERSION)
-        .forEach(versionNum -> versionedDIVStats.removeVersion(versionNum));
+        .forEach(versionedDIVStats::removeVersion);
 
     int futureVersion = NON_EXISTING_VERSION;
     int backupVersion = NON_EXISTING_VERSION;

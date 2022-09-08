@@ -2,6 +2,7 @@ package com.linkedin.davinci.stats;
 
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.stats.StatsSupplier;
@@ -12,7 +13,7 @@ import java.util.function.DoubleSupplier;
 
 public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends AbstractVeniceStatsReporter<STATS>>
     extends AbstractVeniceStats {
-  private static AtomicBoolean isVersionStatsSetup = new AtomicBoolean(false);
+  private static final AtomicBoolean isVersionStatsSetup = new AtomicBoolean(false);
 
   private int currentVersion = NON_EXISTING_VERSION;
   private int futureVersion = NON_EXISTING_VERSION;
@@ -22,12 +23,15 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
   private final STATS_REPORTER futureStatsReporter;
   private final STATS_REPORTER backupStatsReporter;
   private final STATS_REPORTER totalStatsReporter;
+  private final boolean isSystemStore;
 
   public VeniceVersionedStatsReporter(
       MetricsRepository metricsRepository,
       String storeName,
       StatsSupplier<STATS_REPORTER> statsSupplier) {
     super(metricsRepository, storeName);
+
+    this.isSystemStore = VeniceSystemStoreUtils.isSystemStore(storeName);
 
     /**
      * All stats which are aware of version should line up with Helix listener. It's duplicate
@@ -40,21 +44,31 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
      */
     if (isVersionStatsSetup.compareAndSet(false, true)) {
       registerSensor("current_version", new VersionStat(() -> (double) currentVersion));
-      registerSensor("future_version", new VersionStat(() -> (double) futureVersion));
-      registerSensor("backup_version", new VersionStat(() -> (double) backupVersion));
+      if (!isSystemStore) {
+        registerSensor("future_version", new VersionStat(() -> (double) futureVersion));
+        registerSensor("backup_version", new VersionStat(() -> (double) backupVersion));
+      }
     }
 
     this.currentStatsReporter = statsSupplier.get(metricsRepository, storeName + "_current");
-    this.futureStatsReporter = statsSupplier.get(metricsRepository, storeName + "_future");
-    this.backupStatsReporter = statsSupplier.get(metricsRepository, storeName + "_backup");
-    this.totalStatsReporter = statsSupplier.get(metricsRepository, storeName + "_total");
+    if (!isSystemStore) {
+      this.futureStatsReporter = statsSupplier.get(metricsRepository, storeName + "_future");
+      this.backupStatsReporter = statsSupplier.get(metricsRepository, storeName + "_backup");
+      this.totalStatsReporter = statsSupplier.get(metricsRepository, storeName + "_total");
+    } else {
+      this.futureStatsReporter = null;
+      this.backupStatsReporter = null;
+      this.totalStatsReporter = null;
+    }
   }
 
   public void registerConditionalStats() {
     this.currentStatsReporter.registerConditionalStats();
-    this.futureStatsReporter.registerConditionalStats();
-    this.backupStatsReporter.registerConditionalStats();
-    this.totalStatsReporter.registerConditionalStats();
+    if (!isSystemStore) {
+      this.futureStatsReporter.registerConditionalStats();
+      this.backupStatsReporter.registerConditionalStats();
+      this.totalStatsReporter.registerConditionalStats();
+    }
   }
 
   public int getCurrentVersion() {
@@ -70,46 +84,28 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
   }
 
   public void setCurrentStats(int version, STATS stats) {
-    setCurrentVersion(version);
-    getCurrentStatsReporter().setStats(stats);
+    currentVersion = version;
+    linkStatsWithReporter(currentStatsReporter, stats);
   }
 
   public void setFutureStats(int version, STATS stats) {
-    setFutureVersion(version);
-    getFutureStatsReporter().setStats(stats);
+    futureVersion = version;
+    linkStatsWithReporter(futureStatsReporter, stats);
   }
 
   public void setBackupStats(int version, STATS stats) {
-    setBackupVersion(version);
-    getBackupStatsReporter().setStats(stats);
-  }
-
-  protected void setCurrentVersion(int currentVersion) {
-    this.currentVersion = currentVersion;
-  }
-
-  protected void setFutureVersion(int futureVersion) {
-    this.futureVersion = futureVersion;
-  }
-
-  protected void setBackupVersion(int backupVersion) {
-    this.backupVersion = backupVersion;
-  }
-
-  public STATS_REPORTER getCurrentStatsReporter() {
-    return currentStatsReporter;
-  }
-
-  public STATS_REPORTER getFutureStatsReporter() {
-    return futureStatsReporter;
-  }
-
-  public STATS_REPORTER getBackupStatsReporter() {
-    return backupStatsReporter;
+    backupVersion = version;
+    linkStatsWithReporter(backupStatsReporter, stats);
   }
 
   public void setTotalStats(STATS totalStats) {
-    totalStatsReporter.setStats(totalStats);
+    linkStatsWithReporter(totalStatsReporter, totalStats);
+  }
+
+  private void linkStatsWithReporter(STATS_REPORTER reporter, STATS stats) {
+    if (reporter != null) {
+      reporter.setStats(stats);
+    }
   }
 
   /**
@@ -119,7 +115,7 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
    */
   private static class VersionStat extends Gauge {
     VersionStat(DoubleSupplier supplier) {
-      super(() -> supplier.getAsDouble());
+      super(supplier::getAsDouble);
     }
   }
 
