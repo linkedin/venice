@@ -23,8 +23,7 @@ public class AbstractVeniceStats {
   public AbstractVeniceStats(MetricsRepository metricsRepository, String name) {
     this.metricsRepository = metricsRepository;
     // N.B. colons are illegal characters in mbeans and Tehuti splits the metric name by dot character to get sensor
-    // name
-    // and attribute name, so they cause issues if we let them slip in...
+    // name and attribute name, so they cause issues if we let them slip in...
     this.name = name.replace(':', '_').replace(".", "_");
     this.sensors = new VeniceConcurrentHashMap<>();
   }
