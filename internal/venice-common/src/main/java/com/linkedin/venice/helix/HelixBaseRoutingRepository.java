@@ -138,14 +138,14 @@ public abstract class HelixBaseRoutingRepository
   }
 
   /**
-   * Get instances from local memory. All of instances are in {@link HelixState#ONLINE} state.
+   * Get instances from local memory. All instances are in {@link HelixState#ONLINE} state.
    */
   public List<Instance> getReadyToServeInstances(String kafkaTopic, int partitionId) {
     return getReadyToServeInstances(resourceAssignment.getPartitionAssignment(kafkaTopic), partitionId);
   }
 
   /**
-   * Get ready to serve instances from local memory. All of instances are in {@link ExecutionStatus#COMPLETED} or
+   * Get ready to serve instances from local memory. All instances are in {@link ExecutionStatus#COMPLETED} or
    * {@link HelixState#ONLINE} state.
    */
   @Override
@@ -160,7 +160,7 @@ public abstract class HelixBaseRoutingRepository
 
   /**
    * This function is mainly used in VeniceVersionFinder#anyOfflinePartitions() when there is no online replica for
-   * a specific partition and it calls this function to get the partition assignment info for error msg. It's valid
+   * a specific partition, and it calls this function to get the partition assignment info for error msg. It's valid
    * case that there is no partition assignment for a specific partition and we return EMPTY_MAP.
    *
    * If the expectation for this function is more than just logging error message, we should invoke
@@ -175,23 +175,16 @@ public abstract class HelixBaseRoutingRepository
   public abstract List<ReplicaState> getReplicaStates(String kafkaTopic, int partitionId);
 
   /**
-   * Get Partitions from local memory.
-   *
-   * @param resourceName
-   *
-   * @return
+   * @param resourceName Name of the resource.
+   * @return {@link PartitionAssignment} of the resource from local memory.
    */
-
   public PartitionAssignment getPartitionAssignments(@Nonnull String resourceName) {
     return resourceAssignment.getPartitionAssignment(resourceName);
   }
 
   /**
-   * Get number of partition from local memory cache.
-   *
-   * @param resourceName
-   *
-   * @return
+   * @param resourceName Name of the resource.
+   * @return The number of partition of the resource from local memory cache.
    */
   public int getNumberOfPartitions(@Nonnull String resourceName) {
     return resourceAssignment.getPartitionAssignment(resourceName).getExpectedNumberOfPartitions();
@@ -265,11 +258,7 @@ public abstract class HelixBaseRoutingRepository
     PropertyKey key = keyBuilder.idealStates(resource);
     // Try to get the helix property for the given resource, if result is null means the resource does not exist in
     // ideal states.
-    if (manager.getHelixDataAccessor().getProperty(key) == null) {
-      return false;
-    } else {
-      return true;
-    }
+    return manager.getHelixDataAccessor().getProperty(key) != null;
   }
 
   protected Map<String, Instance> convertLiveInstances(Collection<LiveInstance> helixLiveInstances) {
@@ -341,10 +330,5 @@ public abstract class HelixBaseRoutingRepository
       return null;
     }
     return p.getLeaderInstance();
-  }
-
-  @Override
-  public boolean hasResource(String resourceName) {
-    return containsKafkaTopic(resourceName);
   }
 }

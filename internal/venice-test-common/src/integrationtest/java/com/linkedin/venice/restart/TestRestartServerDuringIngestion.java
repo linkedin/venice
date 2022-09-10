@@ -14,9 +14,8 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
-import com.linkedin.venice.meta.Partition;
-import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
@@ -47,10 +46,6 @@ import org.testng.annotations.Test;
 public abstract class TestRestartServerDuringIngestion {
   private VeniceClusterWrapper cluster;
   private VeniceServerWrapper serverWrapper;
-  private int replicaFactor = 1;
-  private int partitionSize = 1000;
-  private final String keyPrefix = "key_";
-  private final String valuePrefix = "value_";
 
   protected abstract PersistenceType getPersistenceType();
 
@@ -70,7 +65,8 @@ public abstract class TestRestartServerDuringIngestion {
   public void setUp() {
     int numberOfController = 1;
     int numberOfRouter = 1;
-
+    int replicaFactor = 1;
+    int partitionSize = 1000;
     cluster = ServiceFactory
         .getVeniceCluster(numberOfController, 0, numberOfRouter, replicaFactor, partitionSize, false, false);
     serverWrapper = cluster.addVeniceServer(new Properties(), getVeniceServerProperties());
@@ -82,7 +78,7 @@ public abstract class TestRestartServerDuringIngestion {
   }
 
   @Test(timeOut = 90 * Time.MS_PER_SECOND)
-  public void ingestionRecovery() throws ExecutionException, InterruptedException {
+  public void testIngestionRecovery() throws ExecutionException, InterruptedException {
     // Create a store
     String stringSchemaStr = "\"string\"";
     AvroSerializer serializer = new AvroSerializer(AvroCompatibilityHelper.parse(stringSchemaStr));
@@ -126,7 +122,7 @@ public abstract class TestRestartServerDuringIngestion {
        * Restart storage node during batch ingestion.
        */
       Map<byte[], byte[]> sortedInputRecords = generateInput(1000, true, 0, serializer);
-      Set<Integer> restartPointSetForSortedInput = new HashSet();
+      Set<Integer> restartPointSetForSortedInput = new HashSet<>();
       restartPointSetForSortedInput.add(134);
       restartPointSetForSortedInput.add(346);
       restartPointSetForSortedInput.add(678);
@@ -136,11 +132,8 @@ public abstract class TestRestartServerDuringIngestion {
         if (restartPointSetForSortedInput.contains(++cur)) {
           // Restart server
           cluster.stopVeniceServer(serverWrapper.getPort());
-          TestUtils.waitForNonDeterministicCompletion(20, TimeUnit.SECONDS, () -> {
-            PartitionAssignment partitionAssignment =
-                cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topic);
-            // Ensure all of server are shutdown, no partition assigned.
-            return partitionAssignment.getAssignedNumberOfPartitions() == 0;
+          TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, true, () -> {
+            Assert.assertFalse(cluster.getRandomVeniceRouter().getRoutingDataRepository().containsKafkaTopic(topic));
           });
           cluster.restartVeniceServer(serverWrapper.getPort());
         }
@@ -179,15 +172,11 @@ public abstract class TestRestartServerDuringIngestion {
           Assert.assertEquals(returnedValue, expectedValue);
         }
 
-        // With L/F model the rest of the test does not succeed. TODO: need to debug to find the reason.
-        // if (true) {
-        // return;
-        // }
         /**
          * Restart storage node during streaming ingestion.
          */
         Map<byte[], byte[]> unsortedInputRecords = generateInput(1000, false, 5000, serializer);
-        Set<Integer> restartPointSetForUnsortedInput = new HashSet();
+        Set<Integer> restartPointSetForUnsortedInput = new HashSet<>();
         restartPointSetForUnsortedInput.add(134);
         restartPointSetForUnsortedInput.add(346);
         restartPointSetForUnsortedInput.add(678);
@@ -200,11 +189,10 @@ public abstract class TestRestartServerDuringIngestion {
             if (restartPointSetForUnsortedInput.contains(++cur)) {
               // Restart server
               cluster.stopVeniceServer(serverWrapper.getPort());
-              TestUtils.waitForNonDeterministicCompletion(20, TimeUnit.SECONDS, () -> {
-                PartitionAssignment partitionAssignment =
-                    cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topic);
-                // Ensure all of server are shutdown, no partition assigned.
-                return partitionAssignment.getAssignedNumberOfPartitions() == 0;
+              // Ensure all of server are shutdown, no partition assigned.
+              TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, true, () -> {
+                Assert
+                    .assertFalse(cluster.getRandomVeniceRouter().getRoutingDataRepository().containsKafkaTopic(topic));
               });
               cluster.restartVeniceServer(serverWrapper.getPort());
             }
@@ -213,20 +201,16 @@ public abstract class TestRestartServerDuringIngestion {
         }
 
         // Wait until all partitions have ready-to-serve instances
-        TestUtils.waitForNonDeterministicCompletion(20, TimeUnit.SECONDS, () -> {
-          PartitionAssignment partitionAssignment =
-              cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topic);
-          boolean allPartitionsReady = true;
-          for (Partition partition: partitionAssignment.getAllPartitions()) {
-            if (partition.getWorkingInstances().size() == 0) {
-              allPartitionsReady = false;
-              break;
-            }
+        TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
+          RoutingDataRepository routingDataRepository = cluster.getRandomVeniceRouter().getRoutingDataRepository();
+          Assert.assertTrue(routingDataRepository.containsKafkaTopic(topic));
+          int partitionCount = routingDataRepository.getPartitionAssignments(topic).getAllPartitions().size();
+          for (int partition = 0; partition < partitionCount; partition++) {
+            Assert.assertTrue(routingDataRepository.getReadyToServeInstances(topic, partition).size() > 0);
           }
-          return allPartitionsReady;
         });
         restartAllRouters();
-        waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
           // Verify all the key/value pairs
           for (Map.Entry<byte[], byte[]> entry: unsortedInputRecords.entrySet()) {
             String key = deserializer.deserialize(entry.getKey()).toString();
@@ -241,7 +225,7 @@ public abstract class TestRestartServerDuringIngestion {
   }
 
   @Test(timeOut = 120 * Time.MS_PER_SECOND)
-  public void testIngestionDrainer() throws Exception {
+  public void testIngestionDrainer() {
     // Create a store
     String stringSchemaStr = "\"string\"";
     AvroSerializer serializer = new AvroSerializer(AvroCompatibilityHelper.parse(stringSchemaStr));
@@ -256,7 +240,7 @@ public abstract class TestRestartServerDuringIngestion {
     TestPushUtils.makeStoreHybrid(cluster, storeName, 3600, 10);
 
     // Create a new version
-    VersionCreationResponse versionCreationResponse = null;
+    VersionCreationResponse versionCreationResponse;
     try (ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), veniceUrl)) {
       versionCreationResponse = TestUtils.assertCommand(
           controllerClient.requestTopicForWrites(

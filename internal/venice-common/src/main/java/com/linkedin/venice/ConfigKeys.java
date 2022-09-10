@@ -1545,10 +1545,6 @@ public class ConfigKeys {
   public static final String KAFKA_READ_ONLY_ADMIN_CLASS = "kafka.read.only.admin.class";
 
   /**
-   * A config that determines whether to use Helix customized view for offline push partition status
-   */
-  public static final String HELIX_OFFLINE_PUSH_ENABLED = "helix.offline.push.enabled";
-  /**
    * A config that determines whether to use Helix customized view for hybrid store quota
    */
   public static final String HELIX_HYBRID_STORE_QUOTA_ENABLED = "helix.hybrid.store.quota.enabled";

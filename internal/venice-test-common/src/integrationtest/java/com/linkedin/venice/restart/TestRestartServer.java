@@ -4,7 +4,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
-import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -78,33 +78,22 @@ public class TestRestartServer {
       cluster.stopVeniceServer(failedServer.getPort());
     }
 
-    TestUtils.waitForNonDeterministicCompletion(20, TimeUnit.SECONDS, () -> {
-      PartitionAssignment partitionAssignment =
-          cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-      // Ensure all of server are shutdown, not partition assigned.
-      return partitionAssignment.getAssignedNumberOfPartitions() == 0;
+    // After all server are shutdown, not partition assigned.
+    TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, true, () -> {
+      Assert.assertFalse(cluster.getRandomVeniceRouter().getRoutingDataRepository().containsKafkaTopic(topicName));
     });
 
     for (VeniceServerWrapper restartServer: cluster.getVeniceServers()) {
       cluster.restartVeniceServer(restartServer.getPort());
     }
 
-    // After restart, all of replica become ONLINE again.
-    TestUtils.waitForNonDeterministicCompletion(20, TimeUnit.SECONDS, () -> {
-      PartitionAssignment partitionAssignment =
-          cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-      if (partitionAssignment.getAssignedNumberOfPartitions() != partitionCount) {
-        return false;
-      }
+    // After restart, all replicas become ready to serve again.
+    TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
+      RoutingDataRepository routingDataRepository = cluster.getRandomVeniceRouter().getRoutingDataRepository();
+      Assert.assertTrue(routingDataRepository.containsKafkaTopic(topicName));
       for (int i = 0; i < partitionCount; i++) {
-        if (partitionAssignment.getPartition(i).getLeaderInstance() == null) {
-          return false;
-        }
-        if (partitionAssignment.getPartition(i).getWorkingInstances().size() != replicaFactor) {
-          return false;
-        }
+        Assert.assertEquals(routingDataRepository.getReadyToServeInstances(topicName, i).size(), replicaFactor);
       }
-      return true;
     });
   }
 }

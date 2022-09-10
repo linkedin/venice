@@ -8,9 +8,9 @@ import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreIsMigratedException;
+import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
@@ -38,19 +38,19 @@ public class VeniceVersionFinder {
   private final Map<String, String> clusterToD2Map;
   private final String clusterName;
   private final ConcurrentMap<String, Integer> lastCurrentVersionMap = new ConcurrentHashMap<>();
-  private final OnlineInstanceFinder onlineInstanceFinder;
+  private final HelixBaseRoutingRepository routingDataRepository;
   private final CompressorFactory compressorFactory;
 
   public VeniceVersionFinder(
       ReadOnlyStoreRepository metadataRepository,
-      OnlineInstanceFinder onlineInstanceFinder,
+      HelixBaseRoutingRepository routingDataRepository,
       StaleVersionStats stats,
       HelixReadOnlyStoreConfigRepository storeConfigRepo,
       Map<String, String> clusterToD2Map,
       String clusterName,
       CompressorFactory compressorFactory) {
     this.metadataRepository = metadataRepository;
-    this.onlineInstanceFinder = onlineInstanceFinder;
+    this.routingDataRepository = routingDataRepository;
     this.stats = stats;
     this.storeConfigRepo = storeConfigRepo;
     this.clusterToD2Map = clusterToD2Map;
@@ -160,17 +160,16 @@ public class VeniceVersionFinder {
   }
 
   private boolean isPartitionResourcesReady(String kafkaTopic) {
-    logger.info("DEBUGGING: " + onlineInstanceFinder.hasResource(kafkaTopic));
-    if (!onlineInstanceFinder.hasResource(kafkaTopic)) {
+    if (!routingDataRepository.containsKafkaTopic(kafkaTopic)) {
       return false;
     }
-    int partitionCount = onlineInstanceFinder.getNumberOfPartitions(kafkaTopic);
+    int partitionCount = routingDataRepository.getNumberOfPartitions(kafkaTopic);
     for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
-      List<Instance> partitionHosts = onlineInstanceFinder.getReadyToServeInstances(kafkaTopic, partitionId);
+      List<Instance> partitionHosts = routingDataRepository.getReadyToServeInstances(kafkaTopic, partitionId);
       if (partitionHosts.isEmpty()) {
         String partitionAssignment;
         try {
-          partitionAssignment = onlineInstanceFinder.getAllInstances(kafkaTopic, partitionId).toString();
+          partitionAssignment = routingDataRepository.getAllInstances(kafkaTopic, partitionId).toString();
         } catch (Exception e) {
           logger.warn("Failed to get partition assignment for logging purposes for resource: " + kafkaTopic, e);
           partitionAssignment = "unknown";

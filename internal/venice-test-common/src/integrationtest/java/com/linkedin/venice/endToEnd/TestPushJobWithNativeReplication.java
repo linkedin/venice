@@ -25,7 +25,7 @@ import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
-import com.linkedin.venice.helix.HelixBaseRoutingRepository;
+import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -231,8 +231,11 @@ public class TestPushJobWithNativeReplication {
               VeniceClusterWrapper veniceClusterWrapper =
                   childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1).getClusters().get(clusterName);
               String topic = Version.composeKafkaTopic(storeName, 1);
-              HelixBaseRoutingRepository routingDataRepo =
-                  veniceClusterWrapper.getRandomVeniceRouter().getRoutingDataRepository();
+              // Get Leadership information from External View repo in controller.
+              HelixExternalViewRepository routingDataRepo = veniceClusterWrapper.getLeaderVeniceController()
+                  .getVeniceHelixAdmin()
+                  .getHelixVeniceClusterResources(clusterName)
+                  .getRoutingDataRepository();
               Assert.assertTrue(routingDataRepo.containsKafkaTopic(topic));
 
               Instance leaderNode = routingDataRepo.getLeaderInstance(topic, 0);

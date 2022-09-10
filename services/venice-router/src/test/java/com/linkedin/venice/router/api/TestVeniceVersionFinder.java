@@ -3,22 +3,19 @@ package com.linkedin.venice.router.api;
 import static org.mockito.Mockito.*;
 
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
-import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreIsMigratedException;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
-import com.linkedin.venice.meta.OnlineInstanceFinder;
-import com.linkedin.venice.meta.OnlineInstanceFinderDelegator;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ReadStrategy;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
@@ -26,7 +23,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
-import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
 import com.linkedin.venice.router.stats.StaleVersionStats;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -67,7 +63,7 @@ public class TestVeniceVersionFinder {
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(
         mockRepo,
-        getDefaultInstanceFinder(),
+        getCVBasedMockedRoutingRepo(),
         stats,
         storeConfigRepo,
         clusterToD2Map,
@@ -106,7 +102,7 @@ public class TestVeniceVersionFinder {
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(
         mockRepo,
-        getDefaultInstanceFinder(),
+        getCVBasedMockedRoutingRepo(),
         stats,
         storeConfigRepo,
         clusterToD2Map,
@@ -126,7 +122,7 @@ public class TestVeniceVersionFinder {
   }
 
   @Test
-  public void returnNonExistingVersionOnceStoreIsDisabled() throws RouterException {
+  public void returnNonExistingVersionOnceStoreIsDisabled() {
     ReadOnlyStoreRepository mockRepo = Mockito.mock(ReadOnlyStoreRepository.class);
     String storeName = "TestVeniceVersionFinder";
     int currentVersion = 10;
@@ -140,7 +136,7 @@ public class TestVeniceVersionFinder {
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(
         mockRepo,
-        getDefaultInstanceFinder(),
+        getCVBasedMockedRoutingRepo(),
         stats,
         storeConfigRepo,
         clusterToD2Map,
@@ -177,16 +173,10 @@ public class TestVeniceVersionFinder {
 
     List<Instance> instances = new LinkedList<>();
 
-    RoutingDataRepository routingData = mock(RoutingDataRepository.class);
-    doReturn(instances).when(routingData).getReadyToServeInstances(anyString(), anyInt());
-    doReturn(3).when(routingData).getNumberOfPartitions(anyString());
-    doReturn(true).when(routingData).containsKafkaTopic(anyString());
-
-    PartitionStatusOnlineInstanceFinder partitionStatusOnlineInstanceFinder =
-        mock(PartitionStatusOnlineInstanceFinder.class);
-    doReturn(instances).when(partitionStatusOnlineInstanceFinder).getReadyToServeInstances(anyString(), anyInt());
-    doReturn(3).when(partitionStatusOnlineInstanceFinder).getNumberOfPartitions(anyString());
-    doReturn(true).when(partitionStatusOnlineInstanceFinder).hasResource(anyString());
+    HelixCustomizedViewOfflinePushRepository routingDataRepo = mock(HelixCustomizedViewOfflinePushRepository.class);
+    doReturn(instances).when(routingDataRepo).getReadyToServeInstances(anyString(), anyInt());
+    doReturn(3).when(routingDataRepo).getNumberOfPartitions(anyString());
+    doReturn(true).when(routingDataRepo).containsKafkaTopic(anyString());
 
     StaleVersionStats stats = mock(StaleVersionStats.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
@@ -196,7 +186,7 @@ public class TestVeniceVersionFinder {
     // Object under test
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(
         storeRepository,
-        new OnlineInstanceFinderDelegator(storeRepository, routingData, partitionStatusOnlineInstanceFinder),
+        routingDataRepo,
         stats,
         storeConfigRepo,
         clusterToD2Map,
@@ -258,9 +248,9 @@ public class TestVeniceVersionFinder {
     StaleVersionStats stats = mock(StaleVersionStats.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
 
-    OnlineInstanceFinderDelegator onlineInstanceFinder = mock(OnlineInstanceFinderDelegator.class);
-    doReturn(3).when(onlineInstanceFinder).getNumberOfPartitions(anyString());
-    doReturn(instances).when(onlineInstanceFinder).getReadyToServeInstances(anyString(), anyInt());
+    HelixCustomizedViewOfflinePushRepository routingDataRepo = mock(HelixCustomizedViewOfflinePushRepository.class);
+    doReturn(3).when(routingDataRepo).getNumberOfPartitions(anyString());
+    doReturn(instances).when(routingDataRepo).getReadyToServeInstances(anyString(), anyInt());
 
     try (CompressorFactory compressorFactory = new CompressorFactory()) {
       compressorFactory.createVersionSpecificCompressorIfNotExist(
@@ -270,7 +260,7 @@ public class TestVeniceVersionFinder {
       // Object under test
       VeniceVersionFinder versionFinder = new VeniceVersionFinder(
           storeRepository,
-          onlineInstanceFinder,
+          routingDataRepo,
           stats,
           storeConfigRepo,
           clusterToD2Map,
@@ -309,16 +299,16 @@ public class TestVeniceVersionFinder {
     StaleVersionStats stats = mock(StaleVersionStats.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
 
-    OnlineInstanceFinderDelegator onlineInstanceFinder = mock(OnlineInstanceFinderDelegator.class);
-    doReturn(3).when(onlineInstanceFinder).getNumberOfPartitions(anyString());
-    doReturn(instances).when(onlineInstanceFinder).getReadyToServeInstances(anyString(), anyInt());
+    HelixCustomizedViewOfflinePushRepository routingDataRepo = mock(HelixCustomizedViewOfflinePushRepository.class);
+    doReturn(3).when(routingDataRepo).getNumberOfPartitions(anyString());
+    doReturn(instances).when(routingDataRepo).getReadyToServeInstances(anyString(), anyInt());
 
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
 
     // Object under test
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(
         storeRepository,
-        onlineInstanceFinder,
+        routingDataRepo,
         stats,
         storeConfigRepo,
         clusterToD2Map,
@@ -352,17 +342,17 @@ public class TestVeniceVersionFinder {
     StaleVersionStats stats = mock(StaleVersionStats.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
 
-    OnlineInstanceFinderDelegator onlineInstanceFinder = mock(OnlineInstanceFinderDelegator.class);
-    doReturn(3).when(onlineInstanceFinder).getNumberOfPartitions(anyString());
-    doReturn(instances).when(onlineInstanceFinder).getReadyToServeInstances(anyString(), anyInt());
-    doReturn(true).when(onlineInstanceFinder).hasResource(anyString());
+    HelixCustomizedViewOfflinePushRepository routingDataRepo = mock(HelixCustomizedViewOfflinePushRepository.class);
+    doReturn(3).when(routingDataRepo).getNumberOfPartitions(anyString());
+    doReturn(instances).when(routingDataRepo).getReadyToServeInstances(anyString(), anyInt());
+    doReturn(true).when(routingDataRepo).containsKafkaTopic(anyString());
 
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
 
     // Object under test
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(
         storeRepository,
-        onlineInstanceFinder,
+        routingDataRepo,
         stats,
         storeConfigRepo,
         clusterToD2Map,
@@ -408,16 +398,16 @@ public class TestVeniceVersionFinder {
     StaleVersionStats stats = mock(StaleVersionStats.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
 
-    OnlineInstanceFinderDelegator onlineInstanceFinder = mock(OnlineInstanceFinderDelegator.class);
-    doReturn(3).when(onlineInstanceFinder).getNumberOfPartitions(anyString());
-    doReturn(instances).when(onlineInstanceFinder).getReadyToServeInstances(anyString(), anyInt());
-    doReturn(true).when(onlineInstanceFinder).hasResource(anyString());
+    HelixCustomizedViewOfflinePushRepository routingDataRepo = mock(HelixCustomizedViewOfflinePushRepository.class);
+    doReturn(3).when(routingDataRepo).getNumberOfPartitions(anyString());
+    doReturn(instances).when(routingDataRepo).getReadyToServeInstances(anyString(), anyInt());
+    doReturn(true).when(routingDataRepo).containsKafkaTopic(anyString());
 
     try (CompressorFactory compressorFactory = new CompressorFactory()) {
       // Object under test
       VeniceVersionFinder versionFinder = new VeniceVersionFinder(
           storeRepository,
-          onlineInstanceFinder,
+          routingDataRepo,
           stats,
           storeConfigRepo,
           clusterToD2Map,
@@ -446,14 +436,15 @@ public class TestVeniceVersionFinder {
     }
   }
 
-  public static OnlineInstanceFinder getDefaultInstanceFinder() {
+  public static HelixCustomizedViewOfflinePushRepository getCVBasedMockedRoutingRepo() {
     List<Instance> instances = new LinkedList<>();
     instances.add(new Instance("id1", "host", 1234));
 
-    RoutingDataRepository routingData = mock(RoutingDataRepository.class);
+    HelixCustomizedViewOfflinePushRepository routingData = mock(HelixCustomizedViewOfflinePushRepository.class);
     doReturn(instances).when(routingData).getReadyToServeInstances(anyString(), anyInt());
     doReturn(3).when(routingData).getNumberOfPartitions(anyString());
 
     return routingData;
   }
+
 }

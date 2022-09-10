@@ -38,7 +38,7 @@ import org.testng.annotations.Test;
 /**
  * Test case for {@link HelixCustomizedViewOfflinePushRepository} and {@link HelixHybridStoreQuotaRepository}
  */
-public class TestHelixCustomizedViewRepository {
+public class TestHelixCustomizedViewOfflinePushRepository {
   // Test behavior configuration
   private static final int WAIT_TIME = 1000; // FIXME: Non-deterministic. Will lead to flaky tests.
 

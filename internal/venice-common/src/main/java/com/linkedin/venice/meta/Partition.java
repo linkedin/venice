@@ -15,7 +15,7 @@ import org.apache.logging.log4j.Logger;
 /**
  * Class defines the partition in Venice.
  * <p>
- * Partition is a logic unit to distributed the data in Venice cluster. Each resource(Store+version) will be assigned to
+ * Partition is a logic unit to distribute the data in Venice cluster. Each resource(Store Version) will be assigned to
  * a set of partition so that data in this resource will be distributed averagely in ideal. Each partition contains 1 or
  * multiple replica which hold the same data in ideal.
  * <p>
@@ -25,7 +25,7 @@ import org.apache.logging.log4j.Logger;
 public class Partition {
   private static final Logger logger = LogManager.getLogger(Partition.class);
   /**
-   * Id of partition. One of the number between [0 ~ total number of partition)
+   * ID of partition. One of the number between [0 ~ total number of partition)
    */
   private final int id;
 
@@ -144,8 +144,7 @@ public class Partition {
         newStateToInstancesMap.put(entry.getKey(), newInstances);
       }
     }
-    Partition newPartition = new Partition(id, newStateToInstancesMap);
-    return newPartition;
+    return new Partition(id, newStateToInstancesMap);
   }
 
   public int getId() {

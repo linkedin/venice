@@ -19,8 +19,6 @@ import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.StoreJSONSerializer;
 import com.linkedin.venice.helix.SystemStoreJSONSerializer;
-import com.linkedin.venice.meta.OnlineInstanceFinder;
-import com.linkedin.venice.meta.OnlineInstanceFinderDelegator;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -30,7 +28,6 @@ import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.SystemStore;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
-import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.routerapi.HybridStoreQuotaStatusResponse;
 import com.linkedin.venice.routerapi.PushStatusResponse;
@@ -82,11 +79,10 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private static final SystemStoreJSONSerializer systemStoreSerializer = new SystemStoreJSONSerializer();
   private static final RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
 
-  private final RoutingDataRepository routing;
+  private final RoutingDataRepository routingDataRepository;
   private final ReadOnlySchemaRepository schemaRepo;
   private final ReadOnlyStoreConfigRepository storeConfigRepo;
   private final Map<String, String> clusterToD2Map;
-  private final OnlineInstanceFinderDelegator onlineInstanceFinder;
   private final Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository;
   private final ReadOnlyStoreRepository storeRepository;
   private final String clusterName;
@@ -95,11 +91,10 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private final String kafkaBootstrapServers;
 
   public MetaDataHandler(
-      RoutingDataRepository routing,
+      RoutingDataRepository routingDataRepository,
       ReadOnlySchemaRepository schemaRepo,
       ReadOnlyStoreConfigRepository storeConfigRepo,
       Map<String, String> clusterToD2Map,
-      OnlineInstanceFinderDelegator onlineInstanceFinder,
       ReadOnlyStoreRepository storeRepository,
       Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository,
       String clusterName,
@@ -107,11 +102,10 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       String kafkaZkAddress,
       String kafkaBootstrapServers) {
     super();
-    this.routing = routing;
+    this.routingDataRepository = routingDataRepository;
     this.schemaRepo = schemaRepo;
     this.storeConfigRepo = storeConfigRepo;
     this.clusterToD2Map = clusterToD2Map;
-    this.onlineInstanceFinder = onlineInstanceFinder;
     this.hybridStoreQuotaRepository = hybridStoreQuotaRepository;
     this.storeRepository = storeRepository;
     this.clusterName = clusterName;
@@ -168,10 +162,10 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private void handleControllerLookup(ChannelHandlerContext ctx) throws IOException {
     LeaderControllerResponse responseObject = new LeaderControllerResponse();
     responseObject.setCluster(clusterName);
-    responseObject.setUrl(routing.getLeaderController().getUrl());
+    responseObject.setUrl(routingDataRepository.getLeaderController().getUrl());
     logger.info(
         "For cluster " + responseObject.getCluster() + ", the leader controller url is " + responseObject.getUrl()
-            + ", last refreshed at " + routing.getLeaderControllerChangeTimeMs());
+            + ", last refreshed at " + routingDataRepository.getLeaderControllerChangeTimeMs());
     setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
   }
 
@@ -340,9 +334,9 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     List<ReplicaState> replicaStates = new ArrayList<>();
     List<ReplicaState> partitionReplicaStates;
     List<Integer> unretrievablePartitions = new ArrayList<>();
-    for (int p = 0; p < onlineInstanceFinder.getNumberOfPartitions(resourceName); p++) {
+    for (int p = 0; p < routingDataRepository.getNumberOfPartitions(resourceName); p++) {
       try {
-        partitionReplicaStates = onlineInstanceFinder.getReplicaStates(resourceName, p);
+        partitionReplicaStates = routingDataRepository.getReplicaStates(resourceName, p);
         if (partitionReplicaStates.isEmpty()) {
           unretrievablePartitions.add(p);
           continue;
@@ -374,7 +368,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   }
 
   /**
-   * Get push status from {@link PartitionStatusOnlineInstanceFinder} for stores running in L/F mode.
+   * Get push status for STREAM_REPROCESSING job via router.
    */
   private void handlePushStatusLookUp(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
     String resourceName = helper.getResourceName();
@@ -386,19 +380,11 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
       return;
     }
-
+    // TODO: Add push status look up support in HelixCustomizedViewOfflinePushRepository.
     PushStatusResponse pushStatusResponse = new PushStatusResponse();
     pushStatusResponse.setName(resourceName);
-    OnlineInstanceFinder instanceFinder = onlineInstanceFinder.getInstanceFinder(resourceName);
-    if (!(instanceFinder instanceof PartitionStatusOnlineInstanceFinder)) {
-      pushStatusResponse.setError("Only support getting push status for stores running in Leader/Follower mode");
-      setupResponseAndFlush(BAD_REQUEST, mapper.writeValueAsBytes(pushStatusResponse), true, ctx);
-      return;
-    }
-
-    PartitionStatusOnlineInstanceFinder onlineInstanceFinder = (PartitionStatusOnlineInstanceFinder) instanceFinder;
-    pushStatusResponse.setExecutionStatus(onlineInstanceFinder.getPushJobStatus(resourceName));
-    setupResponseAndFlush(OK, mapper.writeValueAsBytes(pushStatusResponse), true, ctx);
+    pushStatusResponse.setError("Only support getting push status for stores running in Leader/Follower mode");
+    setupResponseAndFlush(BAD_REQUEST, mapper.writeValueAsBytes(pushStatusResponse), true, ctx);
   }
 
   /**

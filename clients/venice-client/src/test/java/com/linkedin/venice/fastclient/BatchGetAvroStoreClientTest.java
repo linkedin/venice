@@ -416,7 +416,7 @@ public class BatchGetAvroStoreClientTest {
     RouterBasedStoreMetadata storeMetadata = new RouterBasedStoreMetadata(
         routerWrapper.getMetaDataRepository(),
         routerWrapper.getSchemaRepository(),
-        routerWrapper.getOnlineInstanceFinder(),
+        routerWrapper.getRoutingDataRepository(),
         storeName,
         clientConfig);
 

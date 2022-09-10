@@ -14,12 +14,6 @@ public class VeniceNoHelixResourceException extends VeniceRouterException {
     this.version = getVersionFromResourceName(resource);
   }
 
-  public VeniceNoHelixResourceException(String resource, Throwable t) {
-    super(getMessageFromResourceName(resource), t);
-    this.resource = resource;
-    this.version = getVersionFromResourceName(resource);
-  }
-
   public String getResource() {
     return resource;
   }

@@ -3,7 +3,6 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.venice.router.api.VenicePathParser.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -82,7 +81,6 @@ public class TestHelixCustomizedView {
     admin = new ZKHelixAdmin(veniceCluster.getZk().getAddress());
 
     Properties routerProperties = new Properties();
-    routerProperties.put(ConfigKeys.HELIX_OFFLINE_PUSH_ENABLED, true);
     veniceCluster.addVeniceRouter(routerProperties);
 
     Properties serverProperties = new Properties();

@@ -1,10 +1,11 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -23,7 +24,7 @@ public class TestDelayedRebalance {
   int partitionSize = 1000;
   int replicaFactor = 2;
   int numberOfServer = 3;
-  long testTimeOutMS = 5 * Time.MS_PER_SECOND;
+  long testTimeOutMS = 10 * Time.MS_PER_SECOND;
   // Ensure delayed rebalance time out is larger than test timeout to avoid doing rebalance due to
   // waitForNonDeterministicCompletion
   long delayRebalanceMS = testTimeOutMS * 2;
@@ -57,78 +58,58 @@ public class TestDelayedRebalance {
   public void testFailOneServerWithDelayedRebalance() throws InterruptedException {
     // Test the case that fail one server with enable delayed rebalance. Helix will not move the partition to other
     // server.
-    // After restart the failed server, replica would be recoverd correctly.
+    // After restart the failed server, replica would be recovered correctly.
     String topicName = createVersionAndPushData();
     int failServerPort = stopAServer(topicName);
     // Wait one server disconnected, helix just set replica to OFFLINE but shouldn't rebalance
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
-      PartitionAssignment assignment =
-          cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-      return assignment.getPartition(0).getWorkingInstances().size() == 1;
+    TestUtils.waitForNonDeterministicAssertion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+      RoutingDataRepository routingDataRepository = cluster.getRandomVeniceRouter().getRoutingDataRepository();
+      Assert.assertTrue(routingDataRepository.containsKafkaTopic(topicName));
+      Assert.assertEquals(routingDataRepository.getReadyToServeInstances(topicName, 0).size(), 1);
     });
     // restart failed server
     cluster.restartVeniceServer(failServerPort);
     // OFFLINE replica become ONLINE again and is on the restarted server.
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
-      PartitionAssignment assignment =
-          cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-      if (assignment.getPartition(0).getWorkingInstances().size() == 2) {
-        String instanceStatus =
-            assignment.getPartition(0).getInstanceStatusById(Utils.getHelixNodeIdentifier(failServerPort));
-        return HelixState.STANDBY_STATE.equals(instanceStatus) || HelixState.LEADER_STATE.equals(instanceStatus);
-      } else {
-        return false;
-      }
+    TestUtils.waitForNonDeterministicAssertion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+      RoutingDataRepository routingDataRepository = cluster.getRandomVeniceRouter().getRoutingDataRepository();
+      Assert.assertTrue(routingDataRepository.containsKafkaTopic(topicName));
+      Assert.assertEquals(routingDataRepository.getReadyToServeInstances(topicName, 0).size(), 2);
     });
   }
 
+  /**
+   * Fail one server with enabling delayed rebalance, but do not restart server before timeout. Helix should move the
+   * partition to other server.
+   */
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
-  public void tesFailOneServerWithDelayedRebalanceTimeout() throws InterruptedException {
-    // Test the cases that fail one server with enabling delayed rebalance. But do not restart server before timeout. So
-    // helix would move the partition to other server.
+  public void testFailOneServerWithDelayedRebalanceTimeout() throws InterruptedException {
     String topicName = createVersionAndPushData();
     int failServerPort = stopAServer(topicName);
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
       cluster.refreshAllRouterMetaData();
-      PartitionAssignment partitionAssignment =
-          cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-      int readyToServeInstances = partitionAssignment.getPartition(0).getWorkingInstances().size();
-      Assert.assertTrue(
-          readyToServeInstances > 0,
+      RoutingDataRepository routingDataRepository = cluster.getRandomVeniceRouter().getRoutingDataRepository();
+      Assert.assertTrue(routingDataRepository.containsKafkaTopic(topicName));
+      int readyToServeInstances = routingDataRepository.getReadyToServeInstances(topicName, 0).size();
+      Assert.assertEquals(
+          readyToServeInstances,
+          1,
           "Right after taking down a server, the number of live instances should not have dropped to 0");
-      if (readyToServeInstances == 1) {
-        return true;
-      } else {
-        boolean serverStillAlive = partitionAssignment.getPartition(0)
-            .getWorkingInstances()
-            .stream()
-            .anyMatch(i -> i.getPort() == failServerPort);
-        Assert.assertFalse(
-            serverStillAlive,
-            "Right after taking down a server, the number of live instances should have dropped to 1.");
-        // The server is not completely stopped yet since it's still a part of the ready to server instances.
-        return false;
-      }
     });
     Thread.sleep(delayRebalanceMS / 2);
-
-    PartitionAssignment partitionAssignment =
-        cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
     Assert.assertEquals(
-        partitionAssignment.getPartition(0).getWorkingInstances().size(),
+        cluster.getRandomVeniceRouter().getRoutingDataRepository().getReadyToServeInstances(topicName, 0).size(),
         1,
-        "With delayed reblance, helix should not move the partition to other machine during the delayed reblance time.");
+        "With delayed rebalance, helix should not move the partition to other machine during the delayed rebalance time.");
 
     Thread.sleep(delayRebalanceMS / 2);
     // Wait rebalance happen due to timeout.
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
-      PartitionAssignment assignment =
-          cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-      return assignment.getPartition(0).getWorkingInstances().size() == 2;
+    TestUtils.waitForNonDeterministicAssertion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+      RoutingDataRepository routingDataRepository = cluster.getRandomVeniceRouter().getRoutingDataRepository();
+      Assert.assertEquals(routingDataRepository.getReadyToServeInstances(topicName, 0).size(), 2);
     });
-    partitionAssignment = cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-
     // nothing left for the failed instance
+    PartitionAssignment partitionAssignment =
+        cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
     Assert.assertNull(
         partitionAssignment.getPartition(0).getInstanceStatusById(Utils.getHelixNodeIdentifier(failServerPort)));
   }
@@ -147,17 +128,17 @@ public class TestDelayedRebalance {
         testTimeOutMS / 2);
     stopAServer(topicName);
 
-    // Helix do not do the relanace immediately
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
-      PartitionAssignment assignment =
-          cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-      return assignment.getPartition(0).getWorkingInstances().size() == 1;
+    // Helix do not do the rebalance immediately
+    TestUtils.waitForNonDeterministicAssertion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+      RoutingDataRepository routingDataRepository = cluster.getRandomVeniceRouter().getRoutingDataRepository();
+      Assert.assertTrue(routingDataRepository.containsKafkaTopic(topicName));
+      Assert.assertEquals(routingDataRepository.getReadyToServeInstances(topicName, 0).size(), 1);
     });
     // Before test time out, helix do the rebalance.
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
-      PartitionAssignment assignment =
-          cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-      return assignment.getPartition(0).getWorkingInstances().size() == 2;
+    TestUtils.waitForNonDeterministicAssertion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+      RoutingDataRepository routingDataRepository = cluster.getRandomVeniceRouter().getRoutingDataRepository();
+      Assert.assertTrue(routingDataRepository.containsKafkaTopic(topicName));
+      Assert.assertEquals(routingDataRepository.getReadyToServeInstances(topicName, 0).size(), 2);
     });
   }
 
@@ -176,11 +157,13 @@ public class TestDelayedRebalance {
     Thread.sleep(testTimeOutMS);
     int failServerPort = stopAServer(topicName);
     // Wait rebalance happen immediately and all replica become ONLINE again. Ensure the replica moved to other server.
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
-      PartitionAssignment assignment =
-          cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-      return assignment.getPartition(0).getWorkingInstances().size() == 2
-          && assignment.getPartition(0).getInstanceStatusById(Utils.getHelixNodeIdentifier(failServerPort)) == null;
+    TestUtils.waitForNonDeterministicAssertion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+      RoutingDataRepository routingDataRepository = cluster.getRandomVeniceRouter().getRoutingDataRepository();
+      Assert.assertTrue(routingDataRepository.containsKafkaTopic(topicName));
+      Assert.assertEquals(routingDataRepository.getReadyToServeInstances(topicName, 0).size(), 2);
+      String instanceId = Utils.getHelixNodeIdentifier(failServerPort);
+      Assert.assertNull(
+          routingDataRepository.getPartitionAssignments(topicName).getPartition(0).getInstanceStatusById(instanceId));
     });
   }
 
@@ -204,37 +187,30 @@ public class TestDelayedRebalance {
 
     // Wait one server disconnected, helix just set replica to OFFLINE but do not do the rebalance
     TestUtils.waitForNonDeterministicAssertion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
-      PartitionAssignment assignment =
-          cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-      Assert.assertTrue(
-          assignment.getPartition(0).getWorkingInstances().size() == 1
-              && assignment.getPartition(0).getBootstrapInstances().size() == 0);
+      RoutingDataRepository routingDataRepository = cluster.getRandomVeniceRouter().getRoutingDataRepository();
+      Assert.assertTrue(routingDataRepository.containsKafkaTopic(topicName));
+      Assert.assertEquals(routingDataRepository.getReadyToServeInstances(topicName, 0).size(), 1);
     });
     // restart failed server
     cluster.restartVeniceServer(failServerPort);
     // OFFLINE replica become ONLINE again.
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
-      PartitionAssignment assignment =
-          cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-      return assignment.getPartition(0).getWorkingInstances().size() == 2;
+    TestUtils.waitForNonDeterministicAssertion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+      RoutingDataRepository routingDataRepository = cluster.getRandomVeniceRouter().getRoutingDataRepository();
+      Assert.assertTrue(routingDataRepository.containsKafkaTopic(topicName));
+      Assert.assertEquals(routingDataRepository.getReadyToServeInstances(topicName, 0).size(), 2);
     });
 
     PartitionAssignment partitionAssignment =
         cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
     // The restart server get the original replica and become ONLINE again.
-    Assert.assertTrue(
-        partitionAssignment.getPartition(0)
-            .getInstanceStatusById(Utils.getHelixNodeIdentifier(failServerPort))
-            .equals(HelixState.STANDBY_STATE)
-            || partitionAssignment.getPartition(0)
-                .getInstanceStatusById(Utils.getHelixNodeIdentifier(failServerPort))
-                .equals(HelixState.LEADER_STATE));
+    Assert.assertEquals(
+        partitionAssignment.getPartition(0).getInstanceStatusById(Utils.getHelixNodeIdentifier(failServerPort)),
+        ExecutionStatus.COMPLETED.name());
   }
 
   private int stopAServer(String topicName) {
-    PartitionAssignment partitionAssignment =
-        cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-    int failServerPort = partitionAssignment.getPartition(0).getWorkingInstances().get(0).getPort();
+    RoutingDataRepository routingDataRepository = cluster.getRandomVeniceRouter().getRoutingDataRepository();
+    int failServerPort = routingDataRepository.getReadyToServeInstances(topicName, 0).get(0).getPort();
     cluster.stopVeniceServer(failServerPort);
     return failServerPort;
   }
@@ -255,11 +231,11 @@ public class TestDelayedRebalance {
       veniceWriter.broadcastEndOfPush(new HashMap<>());
     }
 
-    // Wait push completed and all replica become ONLINE
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
-      PartitionAssignment assignment =
-          cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-      return assignment.getPartition(0).getWorkingInstances().size() == 2;
+    // Wait push completed and all replica become ready to serve.
+    TestUtils.waitForNonDeterministicAssertion(testTimeOutMS, TimeUnit.MILLISECONDS, true, true, () -> {
+      RoutingDataRepository routingDataRepository = cluster.getRandomVeniceRouter().getRoutingDataRepository();
+      Assert.assertTrue(routingDataRepository.containsKafkaTopic(topicName));
+      Assert.assertEquals(routingDataRepository.getReadyToServeInstances(topicName, 0).size(), 2);
     });
 
     return topicName;

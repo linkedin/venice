@@ -41,14 +41,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
 public class ParticipantStoreTest {
-  private static final Logger logger = LogManager.getLogger(ParticipantStoreTest.class);
+  private static final Logger logger = LogManager.getLogger();
 
   private VeniceClusterWrapper venice;
   private VeniceControllerWrapper parentController;
@@ -231,13 +230,12 @@ public class ParticipantStoreTest {
 
     venice.stopVeniceServer(veniceServerWrapper.getPort());
     // Ensure the partition assignment is 0 before restarting the server
-    TestUtils.waitForNonDeterministicCompletion(
-        30,
-        TimeUnit.SECONDS,
-        () -> venice.getRandomVeniceRouter()
-            .getRoutingDataRepository()
-            .getPartitionAssignments(topicNameForOnlineVersion)
-            .getAssignedNumberOfPartitions() == 0);
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+      VeniceRouterWrapper routerWrapper = venice.getRandomVeniceRouter();
+      assertFalse(routerWrapper.getRoutingDataRepository().containsKafkaTopic(topicNameForOnlineVersion));
+
+    });
+
     venice.restartVeniceServer(veniceServerWrapper.getPort());
     int expectedOnlineReplicaCount = versionCreationResponseForOnlineVersion.getReplicas();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
@@ -255,7 +253,7 @@ public class ParticipantStoreTest {
     // Now, try to delete the version and the corresponding kill message should be present even for an ONLINE version
     // Push a new version so the ONLINE version can be deleted to mimic retiring an old version.
     VersionCreationResponse newVersionResponse = getNewStoreVersion(parentControllerClient, storeName, false);
-    Assert.assertFalse(newVersionResponse.isError(), "Controller error: " + newVersionResponse.getError());
+    assertFalse(newVersionResponse.isError(), "Controller error: " + newVersionResponse.getError());
     parentControllerClient.writeEndOfPush(storeName, newVersionResponse.getVersion());
     TestUtils.waitForNonDeterministicPushCompletion(
         newVersionResponse.getKafkaTopic(),
@@ -308,15 +306,15 @@ public class ParticipantStoreTest {
       int expectedDeletionCount,
       String details) {
     TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
-      Assert.assertEquals(
+      assertEquals(
           testListener.getCreationCount(),
           expectedCreationCount,
           "Listener's creation count should be " + expectedCreationCount + " following: " + details);
-      Assert.assertEquals(
+      assertEquals(
           testListener.getChangeCount(),
           expectedChangeCount,
           "Listener's change count should be " + expectedChangeCount + " following: " + details);
-      Assert.assertEquals(
+      assertEquals(
           testListener.getDeletionCount(),
           expectedDeletionCount,
           "Listener's deletion count should be " + expectedDeletionCount + " following: " + details);

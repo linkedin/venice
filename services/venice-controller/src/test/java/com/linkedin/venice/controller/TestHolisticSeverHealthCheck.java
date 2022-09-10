@@ -2,12 +2,10 @@ package com.linkedin.venice.controller;
 
 import static org.mockito.Mockito.*;
 
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -41,7 +39,6 @@ public class TestHolisticSeverHealthCheck {
     cluster = ServiceFactory.getVeniceCluster(numOfController, 2, 1, replicaFactor, partitionSize, false, false);
 
     Properties routerProperties = new Properties();
-    routerProperties.put(ConfigKeys.HELIX_OFFLINE_PUSH_ENABLED, true);
     cluster.addVeniceRouter(routerProperties);
 
     controllerClient =
@@ -53,7 +50,7 @@ public class TestHolisticSeverHealthCheck {
     cluster.close();
   }
 
-  private boolean VerifyNodeReplicasState(String nodeId, NodeReplicasReadinessState state) {
+  private boolean verifyNodeReplicasState(String nodeId, NodeReplicasReadinessState state) {
     NodeReplicasReadinessResponse response = controllerClient.nodeReplicasReadiness(nodeId);
     return !response.isError() && response.getNodeState() == state;
   }
@@ -67,7 +64,7 @@ public class TestHolisticSeverHealthCheck {
     String wrongNodeId = "incorrect_node_id";
     for (VeniceServerWrapper server: cluster.getVeniceServers()) {
       String nodeId = Utils.getHelixNodeIdentifier(server.getPort());
-      Assert.assertTrue(VerifyNodeReplicasState(nodeId, NodeReplicasReadinessState.READY));
+      Assert.assertTrue(verifyNodeReplicasState(nodeId, NodeReplicasReadinessState.READY));
       Assert.assertTrue(VerifyNodeIsError(wrongNodeId));
     }
   }
@@ -75,7 +72,7 @@ public class TestHolisticSeverHealthCheck {
   private void verifyNodesAreInExpectedState(NodeReplicasReadinessState state) {
     for (VeniceServerWrapper server: cluster.getVeniceServers()) {
       String nodeId = Utils.getHelixNodeIdentifier(server.getPort());
-      Assert.assertTrue(VerifyNodeReplicasState(nodeId, state));
+      Assert.assertTrue(verifyNodeReplicasState(nodeId, state));
     }
   }
 
@@ -143,17 +140,8 @@ public class TestHolisticSeverHealthCheck {
     }
 
     // Wait until the server is shutdown completely from the router's point of view.
-    TestUtils.waitForNonDeterministicCompletion(120, TimeUnit.SECONDS, () -> {
-      PartitionAssignment partitionAssignment;
-      try {
-        partitionAssignment =
-            cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-      } catch (VeniceNoHelixResourceException e) {
-        // topic is not updated in the router.
-        return false;
-      }
-      // Ensure all of server are shutdown, not partition assigned.
-      return partitionAssignment.getAssignedNumberOfPartitions() == 0;
+    TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, true, () -> {
+      Assert.assertFalse(cluster.getRandomVeniceRouter().getRoutingDataRepository().containsKafkaTopic(topicName));
     });
 
     // Verify that both servers are in the inanimate state.
@@ -170,7 +158,7 @@ public class TestHolisticSeverHealthCheck {
       TestUtils.waitForNonDeterministicCompletion(
           120,
           TimeUnit.SECONDS,
-          () -> VerifyNodeReplicasState(nodeId, NodeReplicasReadinessState.READY));
+          () -> verifyNodeReplicasState(nodeId, NodeReplicasReadinessState.READY));
     }
 
     // Mock CustomizedView so that getReadyToServeInstances returns an empty list.
