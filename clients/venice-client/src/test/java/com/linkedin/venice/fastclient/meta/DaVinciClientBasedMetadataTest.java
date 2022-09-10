@@ -117,10 +117,10 @@ public class DaVinciClientBasedMetadataTest {
   }
 
   @Test(timeOut = TIME_OUT)
-  public void testMetadata() throws Exception {
+  public void testMetadata() {
     VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
     ReadOnlyStoreRepository storeRepository = routerWrapper.getMetaDataRepository();
-    OnlineInstanceFinder onlineInstanceFinder = routerWrapper.getOnlineInstanceFinder();
+    OnlineInstanceFinder onlineInstanceFinder = routerWrapper.getRoutingDataRepository();
     assertEquals(
         daVinciClientBasedMetadata.getCurrentStoreVersion(),
         storeRepository.getStore(storeName).getCurrentVersion());

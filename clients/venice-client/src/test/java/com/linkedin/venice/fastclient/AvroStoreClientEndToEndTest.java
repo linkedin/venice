@@ -316,7 +316,7 @@ public class AvroStoreClientEndToEndTest {
     RouterBasedStoreMetadata storeMetadata = new RouterBasedStoreMetadata(
         routerWrapper.getMetaDataRepository(),
         routerWrapper.getSchemaRepository(),
-        routerWrapper.getOnlineInstanceFinder(),
+        routerWrapper.getRoutingDataRepository(),
         storeName,
         clientConfig);
 
@@ -340,7 +340,7 @@ public class AvroStoreClientEndToEndTest {
     RouterBasedStoreMetadata storeMetadata = new RouterBasedStoreMetadata(
         routerWrapper.getMetaDataRepository(),
         routerWrapper.getSchemaRepository(),
-        routerWrapper.getOnlineInstanceFinder(),
+        routerWrapper.getRoutingDataRepository(),
         storeName,
         clientConfig);
 
@@ -368,7 +368,7 @@ public class AvroStoreClientEndToEndTest {
     RouterBasedStoreMetadata storeMetadata = new RouterBasedStoreMetadata(
         routerWrapper.getMetaDataRepository(),
         routerWrapper.getSchemaRepository(),
-        routerWrapper.getOnlineInstanceFinder(),
+        routerWrapper.getRoutingDataRepository(),
         storeName,
         clientConfig);
 
@@ -395,7 +395,7 @@ public class AvroStoreClientEndToEndTest {
     RouterBasedStoreMetadata storeMetadata = new RouterBasedStoreMetadata(
         routerWrapper.getMetaDataRepository(),
         routerWrapper.getSchemaRepository(),
-        routerWrapper.getOnlineInstanceFinder(),
+        routerWrapper.getRoutingDataRepository(),
         storeName,
         clientConfig);
     runTest(clientConfigBuilder, Optional.of(storeMetadata), useDaVinciClientBasedMetadata, false);
@@ -424,7 +424,7 @@ public class AvroStoreClientEndToEndTest {
     RouterBasedStoreMetadata storeMetadata = new RouterBasedStoreMetadata(
         routerWrapper.getMetaDataRepository(),
         routerWrapper.getSchemaRepository(),
-        routerWrapper.getOnlineInstanceFinder(),
+        routerWrapper.getRoutingDataRepository(),
         storeName,
         clientConfig);
     runTest(clientConfigBuilder, Optional.of(storeMetadata), true, true);

@@ -71,7 +71,7 @@ public class RouterBasedPushMonitor implements Closeable {
   }
 
   private static class PushMonitorTask implements Runnable, Closeable {
-    private static ObjectMapper mapper = ObjectMapperFactory.getInstance();
+    private static final ObjectMapper MAPPER = ObjectMapperFactory.getInstance();
 
     private final AtomicBoolean isRunning;
     private final String topicName;
@@ -106,7 +106,7 @@ public class RouterBasedPushMonitor implements Closeable {
           // Get push status
           CompletableFuture<TransportClientResponse> responseFuture = transportClient.get(requestPath);
           TransportClientResponse response = responseFuture.get(POLL_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-          PushStatusResponse pushStatusResponse = mapper.readValue(response.getBody(), PushStatusResponse.class);
+          PushStatusResponse pushStatusResponse = MAPPER.readValue(response.getBody(), PushStatusResponse.class);
           if (pushStatusResponse.isError()) {
             logger.error("Router was not able to get push status: " + pushStatusResponse.getError());
             continue;

@@ -55,6 +55,7 @@ public class TestHybridQuota {
 
     Properties routerProperties = new Properties();
     routerProperties.put(HELIX_HYBRID_STORE_QUOTA_ENABLED, true);
+
     sharedVenice.addVeniceRouter(routerProperties);
     // Added a server with shared consumer enabled.
     Properties serverPropertiesWithSharedConsumer = new Properties();
@@ -79,8 +80,13 @@ public class TestHybridQuota {
    */
   @DataProvider(name = "testHybridQuotaPermutations", parallel = false)
   public static Object[][] testHybridQuotaPermutations() {
-    return new Object[][] { { false, false, true }, { false, true, true }, { true, true, true }, { true, false, true },
-        { false, false, false }, { false, true, false }, { false, false, false }, { true, true, false },
+    return new Object[][] { { false, false, true },
+        // { false, true, true },
+        // { true, true, true },
+        { true, false, true }, { false, false, false },
+        // { false, true, false },
+        { false, false, false },
+        // { true, true, false },
         { true, false, false } };
   }
 
@@ -108,7 +114,7 @@ public class TestHybridQuota {
         TopicManager topicManager = new TopicManager(
             DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
             100,
-            0l,
+            0L,
             TestUtils.getVeniceConsumerFactory(sharedVenice.getKafka()))) {
 
       // Setting the hybrid store quota here will cause the H2V push failed.

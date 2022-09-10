@@ -157,7 +157,7 @@ public class TestHybrid {
         TopicManager topicManager = new TopicManager(
             DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
             100,
-            0l,
+            0L,
             TestUtils.getVeniceConsumerFactory(venice.getKafka()))) {
       long streamingRewindSeconds = 25L;
       long streamingMessageLag = 2L;
@@ -478,7 +478,7 @@ public class TestHybrid {
    * testing whether the flow can work while the original leader dies.
    *
    */
-  @Test(timeOut = 180 * Time.MS_PER_SECOND)
+  @Test(timeOut = 180 * Time.MS_PER_SECOND, enabled = false)
   public void testSamzaBatchLoad() throws Exception {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
@@ -649,7 +649,7 @@ public class TestHybrid {
     }
   }
 
-  @Test(timeOut = 180 * Time.MS_PER_SECOND)
+  @Test(timeOut = 180 * Time.MS_PER_SECOND, enabled = false)
   public void testMultiStreamReprocessingSystemProducers() {
     SystemProducer veniceBatchProducer1 = null, veniceBatchProducer2 = null;
     try {
@@ -919,8 +919,10 @@ public class TestHybrid {
         veniceClusterWrapper.restartVeniceServer(serverWrapper.getPort());
 
         String resourceName = Version.composeKafkaTopic(storeName, 1);
-        HelixBaseRoutingRepository routingDataRepo =
-            veniceClusterWrapper.getRandomVeniceRouter().getRoutingDataRepository();
+        HelixBaseRoutingRepository routingDataRepo = veniceClusterWrapper.getLeaderVeniceController()
+            .getVeniceHelixAdmin()
+            .getHelixVeniceClusterResources(clusterName)
+            .getRoutingDataRepository();
         TestUtils.waitForNonDeterministicAssertion(
             60,
             TimeUnit.SECONDS,
@@ -1743,8 +1745,6 @@ public class TestHybrid {
 
     // Add Venice Router
     Properties routerProperties = new Properties();
-    // TODO: Enable this config to be true globally as it has been rolled out fully in production.
-    // routerProperties.put(ConfigKeys.HELIX_OFFLINE_PUSH_ENABLED, true);
     cluster.addVeniceRouter(routerProperties);
 
     // Add Venice Server

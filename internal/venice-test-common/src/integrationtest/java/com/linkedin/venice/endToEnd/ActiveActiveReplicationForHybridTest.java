@@ -736,7 +736,8 @@ public class ActiveActiveReplicationForHybridTest {
       JobStatusQueryResponse jobStatusQueryResponse = (JobStatusQueryResponse) response;
       kafkaTopic = Version.composeKafkaTopic(storeName, jobStatusQueryResponse.getVersion());
       // Verify that version 1 is already created in dc-0 region, and there are less than 3 ready-to-serve instances
-      OnlineInstanceFinder onlineInstanceFinder = clusterForDC0Region.getRandomVeniceRouter().getOnlineInstanceFinder();
+      OnlineInstanceFinder onlineInstanceFinder =
+          clusterForDC0Region.getRandomVeniceRouter().getRoutingDataRepository();
       waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         StoreResponse storeResponse = assertCommand(dc0Client.getStore(storeName));
         assertEquals(storeResponse.getStore().getCurrentVersion(), 1);
@@ -755,7 +756,7 @@ public class ActiveActiveReplicationForHybridTest {
         helixAdminForDC0Region.setResourceIdealState(clusterName, kafkaTopic, idealState);
         // Expect to have 3 ready-to-serve instances
         OnlineInstanceFinder onlineInstanceFinder2 =
-            clusterForDC0Region.getRandomVeniceRouter().getOnlineInstanceFinder();
+            clusterForDC0Region.getRandomVeniceRouter().getRoutingDataRepository();
         waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
           List<Instance> instances = onlineInstanceFinder2.getReadyToServeInstances(kafkaTopic, 0);
           assertEquals(instances.size(), 3);

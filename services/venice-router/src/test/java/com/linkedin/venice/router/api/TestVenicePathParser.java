@@ -63,7 +63,7 @@ public class TestVenicePathParser {
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
     return new VeniceVersionFinder(
         mockMetadataRepository,
-        TestVeniceVersionFinder.getDefaultInstanceFinder(),
+        TestVeniceVersionFinder.getCVBasedMockedRoutingRepo(),
         stats,
         storeConfigRepo,
         clusterToD2Map,

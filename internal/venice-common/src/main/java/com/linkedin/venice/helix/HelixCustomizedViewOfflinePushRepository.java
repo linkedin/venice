@@ -1,7 +1,7 @@
 package com.linkedin.venice.helix;
 
 import static com.linkedin.venice.helix.ResourceAssignment.*;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
@@ -33,7 +33,7 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * Extend HelixBaseRoutingRepository to leverage customized view data for offline push.
+ * Extend {@link HelixBaseRoutingRepository} to leverage customized view data for offline push.
  */
 public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRepository {
   private static final Logger logger = LogManager.getLogger(HelixCustomizedViewOfflinePushRepository.class);

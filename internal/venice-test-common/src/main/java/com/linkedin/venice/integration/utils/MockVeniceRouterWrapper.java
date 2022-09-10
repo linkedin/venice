@@ -6,7 +6,7 @@ import static org.mockito.Mockito.doReturn;
 
 import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.helix.HelixExternalViewRepository;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
@@ -83,7 +83,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
     HelixReadOnlySchemaRepository mockSchemaRepository = Mockito.mock(HelixReadOnlySchemaRepository.class);
     doReturn(new SchemaEntry(1, "\"string\"")).when(mockSchemaRepository).getKeySchema(Mockito.anyString());
 
-    HelixExternalViewRepository mockRepo = Mockito.mock(HelixExternalViewRepository.class);
+    HelixCustomizedViewOfflinePushRepository mockRepo = Mockito.mock(HelixCustomizedViewOfflinePushRepository.class);
     doReturn(1).when(mockRepo).getNumberOfPartitions(ArgumentMatchers.anyString());
 
     Optional<HelixHybridStoreQuotaRepository> mockHybridStoreQuotaRepository =

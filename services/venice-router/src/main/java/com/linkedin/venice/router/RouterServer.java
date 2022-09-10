@@ -19,7 +19,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
-import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
@@ -31,13 +30,9 @@ import com.linkedin.venice.helix.HelixReadOnlyStoreRepositoryAdapter;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
-import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
-import com.linkedin.venice.meta.OnlineInstanceFinder;
-import com.linkedin.venice.meta.OnlineInstanceFinderDelegator;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.DictionaryRetrievalService;
 import com.linkedin.venice.router.api.MetaStoreShadowReader;
@@ -138,15 +133,13 @@ public class RouterServer extends AbstractVeniceService {
   private SafeHelixManager manager;
   private ReadOnlySchemaRepository schemaRepository;
   private Optional<MetaStoreShadowReader> metaStoreShadowReader;
-  private HelixBaseRoutingRepository routingDataRepository;
+  private HelixCustomizedViewOfflinePushRepository routingDataRepository;
   private Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository;
   private ReadOnlyStoreRepository metadataRepository;
   private RouterStats<AggRouterHttpRequestStats> routerStats;
   private HelixReadOnlyStoreConfigRepository storeConfigRepository;
   private HelixLiveInstanceMonitor liveInstanceMonitor;
-  private PartitionStatusOnlineInstanceFinder partitionStatusOnlineInstanceFinder;
   private HelixInstanceConfigRepository instanceConfigRepository;
-  private OnlineInstanceFinderDelegator onlineInstanceFinder;
   private HelixGroupSelector helixGroupSelector;
   private VeniceResponseAggregator responseAggregator;
   private TimeoutProcessor timeoutProcessor;
@@ -175,7 +168,7 @@ public class RouterServer extends AbstractVeniceService {
   private EventThrottler routerEarlyThrottler;
 
   // A map of optional ChannelHandlers that retains insertion order to be added at the end of the router pipeline
-  private Map<String, ChannelHandler> optionalChannelHandlers = new LinkedHashMap<>();
+  private final Map<String, ChannelHandler> optionalChannelHandlers = new LinkedHashMap<>();
 
   private final static String ROUTER_SERVICE_NAME = "venice-router";
 
@@ -296,9 +289,7 @@ public class RouterServer extends AbstractVeniceService {
     this.metaStoreShadowReader = config.isMetaStoreShadowReadEnabled()
         ? Optional.of(new MetaStoreShadowReader(this.schemaRepository))
         : Optional.empty();
-    this.routingDataRepository = config.isHelixOfflinePushEnabled()
-        ? new HelixCustomizedViewOfflinePushRepository(manager)
-        : new HelixExternalViewRepository(manager);
+    this.routingDataRepository = new HelixCustomizedViewOfflinePushRepository(manager);
     this.hybridStoreQuotaRepository = config.isHelixHybridStoreQuotaEnabled()
         ? Optional.of(new HelixHybridStoreQuotaRepository(manager))
         : Optional.empty();
@@ -349,7 +340,7 @@ public class RouterServer extends AbstractVeniceService {
    */
   public RouterServer(
       VeniceProperties properties,
-      HelixExternalViewRepository routingDataRepository,
+      HelixCustomizedViewOfflinePushRepository routingDataRepository,
       Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository,
       HelixReadOnlyStoreRepository metadataRepository,
       HelixReadOnlySchemaRepository schemaRepository,
@@ -383,7 +374,7 @@ public class RouterServer extends AbstractVeniceService {
      * we would like to execute Router owned shutdown logic first to avoid race condition.
      */
     ResourceRegistry.setGlobalShutdownDelayMillis(
-        TimeUnit.SECONDS.toMillis(config.getRouterNettyGracefulShutdownPeriodSeconds() * 2));
+        TimeUnit.SECONDS.toMillis(config.getRouterNettyGracefulShutdownPeriodSeconds() * 2L));
 
     jvmStats = new VeniceJVMStats(metricsRepository, "VeniceJVMStats");
 
@@ -474,23 +465,11 @@ public class RouterServer extends AbstractVeniceService {
      * so there is no way to distinguish compute request from multi-get; all read compute metrics in host finder will
      * be recorded as multi-get metrics; affected metric is "find_unhealthy_host_request"
      */
-    if (!config.isHelixOfflinePushEnabled()) {
-      partitionStatusOnlineInstanceFinder = new PartitionStatusOnlineInstanceFinder(
-          metadataRepository,
-          new VeniceOfflinePushMonitorAccessor(config.getClusterName(), zkClient, adapter),
-          routingDataRepository);
-    }
-
-    onlineInstanceFinder = new OnlineInstanceFinderDelegator(
-        metadataRepository,
-        routingDataRepository,
-        partitionStatusOnlineInstanceFinder,
-        config.isHelixOfflinePushEnabled());
 
     CompressorFactory compressorFactory = new CompressorFactory();
 
     dictionaryRetrievalService = new DictionaryRetrievalService(
-        onlineInstanceFinder,
+        routingDataRepository,
         config,
         sslFactoryForRequests,
         metadataRepository,
@@ -502,7 +481,6 @@ public class RouterServer extends AbstractVeniceService {
         schemaRepository,
         storeConfigRepository,
         config.getClusterToD2Map(),
-        onlineInstanceFinder,
         metadataRepository,
         hybridStoreQuotaRepository,
         config.getClusterName(),
@@ -510,11 +488,11 @@ public class RouterServer extends AbstractVeniceService {
         config.getKafkaZkAddress(),
         config.getKafkaBootstrapServers());
 
-    VeniceHostFinder hostFinder = new VeniceHostFinder(onlineInstanceFinder, routerStats, healthMonitor);
+    VeniceHostFinder hostFinder = new VeniceHostFinder(routingDataRepository, routerStats, healthMonitor);
 
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(
         metadataRepository,
-        onlineInstanceFinder,
+        routingDataRepository,
         new StaleVersionStats(metricsRepository, "stale_version"),
         storeConfigRepository,
         config.getClusterToD2Map(),
@@ -533,9 +511,9 @@ public class RouterServer extends AbstractVeniceService {
 
     // Fixed retry future
     AsyncFuture<LongSupplier> singleGetRetryFuture =
-        new SuccessAsyncFuture<>(() -> config.getLongTailRetryForSingleGetThresholdMs());
+        new SuccessAsyncFuture<>(config::getLongTailRetryForSingleGetThresholdMs);
     LongTailRetrySupplier retrySupplier = new LongTailRetrySupplier<VenicePath, RouterKey>() {
-      private TreeMap<Integer, Integer> longTailRetryConfigForBatchGet =
+      private final TreeMap<Integer, Integer> longTailRetryConfigForBatchGet =
           config.getLongTailRetryForBatchGetThresholdMs();
 
       @Nonnull
@@ -825,9 +803,6 @@ public class RouterServer extends AbstractVeniceService {
     storeConfigRepository.clear();
     hybridStoreQuotaRepository.ifPresent(repo -> repo.clear());
     liveInstanceMonitor.clear();
-    if (partitionStatusOnlineInstanceFinder != null) {
-      partitionStatusOnlineInstanceFinder.clear();
-    }
     timeoutProcessor.shutdownNow();
     dictionaryRetrievalService.stop();
     if (instanceConfigRepository != null) {
@@ -850,10 +825,6 @@ public class RouterServer extends AbstractVeniceService {
 
   public ReadOnlyStoreRepository getMetadataRepository() {
     return metadataRepository;
-  }
-
-  public OnlineInstanceFinder getOnlineInstanceFinder() {
-    return onlineInstanceFinder;
   }
 
   public ReadOnlySchemaRepository getSchemaRepository() {
@@ -1021,11 +992,6 @@ public class RouterServer extends AbstractVeniceService {
     metadataRepository.refresh();
     schemaRepository.refresh();
     routingDataRepository.refresh();
-    if (hybridStoreQuotaRepository.isPresent()) {
-      hybridStoreQuotaRepository.get().refresh();
-    }
-    if (partitionStatusOnlineInstanceFinder != null) {
-      partitionStatusOnlineInstanceFinder.refresh();
-    }
+    hybridStoreQuotaRepository.ifPresent(HelixHybridStoreQuotaRepository::refresh);
   }
 }

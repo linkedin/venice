@@ -97,7 +97,6 @@ public class VeniceRouterConfig {
   private boolean earlyThrottleEnabled;
   private long routerQuotaCheckWindow;
   private long maxRouterReadCapacityCu;
-  private boolean helixOfflinePushEnabled;
   private boolean helixHybridStoreQuotaEnabled;
   private int ioThreadCountInPoolMode;
   private boolean useGroupFieldInHelixDomain;
@@ -274,7 +273,6 @@ public class VeniceRouterConfig {
     maxRouterReadCapacityCu = props.getLong(ROUTER_MAX_READ_CAPACITY, 6000);
     routerQuotaCheckWindow = props.getLong(ROUTER_QUOTA_CHECK_WINDOW, 30000);
     earlyThrottleEnabled = props.getBoolean(ROUTER_EARLY_THROTTLE_ENABLED, false);
-    helixOfflinePushEnabled = props.getBoolean(HELIX_OFFLINE_PUSH_ENABLED, false);
     helixHybridStoreQuotaEnabled = props.getBoolean(HELIX_HYBRID_STORE_QUOTA_ENABLED, false);
     ioThreadCountInPoolMode =
         props.getInt(ROUTER_HTTPASYNCCLIENT_CLIENT_POOL_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
@@ -638,10 +636,6 @@ public class VeniceRouterConfig {
 
   public void setEarlyThrottleEnabled(boolean earlyThrottleEnabled) {
     this.earlyThrottleEnabled = earlyThrottleEnabled;
-  }
-
-  public boolean isHelixOfflinePushEnabled() {
-    return helixOfflinePushEnabled;
   }
 
   public boolean isHelixHybridStoreQuotaEnabled() {

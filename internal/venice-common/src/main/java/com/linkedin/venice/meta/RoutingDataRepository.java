@@ -46,7 +46,7 @@ public interface RoutingDataRepository extends VeniceResource, OnlineInstanceFin
 
   /**
    * In case any delays for routing data updates, we sometimes refresh the data from zk
-   * to get latest resource statuses.
+   * to get the latest resource statuses.
    * @param kafkaTopic
    */
   void refreshRoutingDataForResource(String kafkaTopic);

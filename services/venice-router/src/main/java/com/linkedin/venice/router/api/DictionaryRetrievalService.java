@@ -164,7 +164,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     // This thread is the consumer and it waits for an item to be put in the "dictionaryDownloadCandidates" queue.
     Runnable runnable = () -> {
       while (true) {
-        String kafkaTopic = null;
+        String kafkaTopic;
         try {
           /**
            * In order to avoid retry storm; back off before querying server again.

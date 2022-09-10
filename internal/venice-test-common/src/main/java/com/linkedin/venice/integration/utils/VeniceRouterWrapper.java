@@ -6,7 +6,6 @@ import static com.linkedin.venice.VeniceConstants.*;
 import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
-import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.router.RouterServer;
@@ -164,10 +163,6 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
 
   public ZkRoutersClusterManager getRoutersClusterManager() {
     return service.getRoutersClusterManager();
-  }
-
-  public OnlineInstanceFinder getOnlineInstanceFinder() {
-    return service.getOnlineInstanceFinder();
   }
 
   @Override

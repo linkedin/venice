@@ -44,13 +44,11 @@ public class TestRocksDBOffsetStore {
     StorageMetadataService storageMetadataService = serverWrapper.getVeniceServer().getStorageMetadataService();
     Assert.assertTrue(storageMetadataService.getLastOffset(storeTopicName, 0).getLocalVersionTopicOffset() != -1);
     veniceCluster.stopVeniceServer(serverWrapper.getPort());
-    TestUtils.waitForNonDeterministicCompletion(
+    TestUtils.waitForNonDeterministicAssertion(
         30,
         TimeUnit.SECONDS,
-        () -> veniceCluster.getRandomVeniceRouter()
-            .getRoutingDataRepository()
-            .getPartitionAssignments(storeTopicName)
-            .getAssignedNumberOfPartitions() == 0);
+        () -> Assert.assertFalse(
+            veniceCluster.getRandomVeniceRouter().getRoutingDataRepository().containsKafkaTopic(storeTopicName)));
     veniceCluster.restartVeniceServer(serverWrapper.getPort());
     storageMetadataService = veniceCluster.getVeniceServers().get(0).getVeniceServer().getStorageMetadataService();
     Assert.assertTrue(storageMetadataService.getLastOffset(storeTopicName, 0).getLocalVersionTopicOffset() != -1);
