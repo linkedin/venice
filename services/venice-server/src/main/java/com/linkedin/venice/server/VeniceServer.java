@@ -71,9 +71,9 @@ import org.apache.logging.log4j.Logger;
 
 // TODO curate all comments later
 public class VeniceServer {
-  private static final Logger logger = LogManager.getLogger(VeniceServer.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceServer.class);
 
-  public final static String SERVER_SERVICE_NAME = "venice-server";
+  private final static String SERVER_SERVICE_NAME = "venice-server";
 
   private final VeniceConfigLoader veniceConfigLoader;
   private final Optional<SSLEngineComponentFactory> sslFactory;
@@ -244,7 +244,7 @@ public class VeniceServer {
           metadataRepo,
           false,
           false);
-      logger.info("Create " + MainIngestionStorageMetadataService.class.getName() + " for ingestion isolation.");
+      LOGGER.info("Create " + MainIngestionStorageMetadataService.class.getName() + " for ingestion isolation.");
       MainIngestionStorageMetadataService ingestionStorageMetadataService = new MainIngestionStorageMetadataService(
           veniceConfigLoader.getVeniceServerConfig().getIngestionServicePort(),
           partitionStateSerializer,
@@ -486,7 +486,7 @@ public class VeniceServer {
      */
     List<AbstractVeniceService> veniceServiceList = this.services.get();
     // TODO - Efficient way to lock java heap
-    logger.info("Starting " + veniceServiceList.size() + " services.");
+    LOGGER.info("Starting " + veniceServiceList.size() + " services.");
     long start = System.currentTimeMillis();
 
     /**
@@ -505,7 +505,7 @@ public class VeniceServer {
     }
 
     long end = System.currentTimeMillis();
-    logger.info("Startup completed in " + (end - start) + " ms.");
+    LOGGER.info("Startup completed in " + (end - start) + " ms.");
   }
 
   /**
@@ -515,27 +515,27 @@ public class VeniceServer {
    * */
   public void shutdown() throws VeniceException {
     List<Exception> exceptions = new ArrayList<>();
-    logger.info("Stopping all services ");
+    LOGGER.info("Stopping all services ");
 
     /* Stop in reverse order */
 
     // TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
     synchronized (this) {
       if (!isStarted()) {
-        logger.info("The server is already stopped, ignoring duplicate attempt.");
+        LOGGER.info("The server is already stopped, ignoring duplicate attempt.");
         return;
       }
       for (AbstractVeniceService service: CollectionUtils.reversed(services.get())) {
         try {
-          logger.info("Stopping service: " + service.getName());
+          LOGGER.info("Stopping service: " + service.getName());
           service.stop();
-          logger.info("Service: " + service.getName() + " stopped.");
+          LOGGER.info("Service: " + service.getName() + " stopped.");
         } catch (Exception e) {
           exceptions.add(e);
-          logger.error("Exception in stopping service: " + service.getName(), e);
+          LOGGER.error("Exception in stopping service: " + service.getName(), e);
         }
       }
-      logger.info("All services stopped");
+      LOGGER.info("All services stopped");
 
       compressorFactory.close();
 
@@ -543,14 +543,14 @@ public class VeniceServer {
         metricsRepository.close();
       } catch (Exception e) {
         exceptions.add(e);
-        logger.error("Exception in closing: " + metricsRepository.getClass().getSimpleName(), e);
+        LOGGER.error("Exception in closing: " + metricsRepository.getClass().getSimpleName(), e);
       }
 
       try {
         zkClient.close();
       } catch (Exception e) {
         exceptions.add(e);
-        logger.error("Exception in closing: " + zkClient.getClass().getSimpleName(), e);
+        LOGGER.error("Exception in closing: " + zkClient.getClass().getSimpleName(), e);
       }
 
       if (exceptions.size() > 0) {
@@ -568,7 +568,7 @@ public class VeniceServer {
       int listenPort,
       boolean enableServerAllowlist) {
     if (!enableServerAllowlist) {
-      logger.info("Check allowlist is disable, continue to start participant.");
+      LOGGER.info("Check allowlist is disable, continue to start participant.");
       return true;
     }
     try (AllowlistAccessor accessor = new ZkAllowlistAccessor(zkAddress)) {
@@ -576,15 +576,15 @@ public class VeniceServer {
       // start up again, it will automatically join the cluster because it already exists in the allowlist.
       String participantName = Utils.getHelixNodeIdentifier(listenPort);
       if (!accessor.isInstanceInAllowlist(clusterName, participantName)) {
-        logger.info(participantName + " is not in the allowlist of " + clusterName + ", stop starting venice server");
+        LOGGER.info(participantName + " is not in the allowlist of " + clusterName + ", stop starting venice server");
         return false;
       } else {
-        logger.info(participantName + " has been added into allowlist, continue to start participant.");
+        LOGGER.info(participantName + " has been added into allowlist, continue to start participant.");
         return true;
       }
     } catch (Exception e) {
       String errorMsg = "Met error during checking allowlist.";
-      logger.error(errorMsg, e);
+      LOGGER.error(errorMsg, e);
       throw new VeniceException(errorMsg, e);
     }
   }
@@ -638,7 +638,7 @@ public class VeniceServer {
         Utils.exit("USAGE: java " + VeniceServer.class.getName() + " [venice_config_dir] ");
       }
     } catch (Exception e) {
-      logger.error("Error starting Venice Server ", e);
+      LOGGER.error("Error starting Venice Server ", e);
       Utils.exit("Error while loading configuration: " + e.getMessage());
     }
 
@@ -655,7 +655,7 @@ public class VeniceServer {
     try {
       Thread.currentThread().join();
     } catch (InterruptedException e) {
-      logger.error("Unable to join thread in shutdown hook. ", e);
+      LOGGER.error("Unable to join thread in shutdown hook. ", e);
     }
   }
 }
