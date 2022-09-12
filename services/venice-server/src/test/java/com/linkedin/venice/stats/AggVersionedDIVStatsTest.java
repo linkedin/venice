@@ -49,7 +49,7 @@ public class AggVersionedDIVStatsTest {
     storeList = new ArrayList<>();
     storeList.add(mockStore);
 
-    stats = new AggVersionedDIVStats(metricsRepository, mockMetaRepository);
+    stats = new AggVersionedDIVStats(metricsRepository, mockMetaRepository, true);
   }
 
   @Test(timeOut = TEST_TIME)
@@ -301,6 +301,14 @@ public class AggVersionedDIVStatsTest {
 
     // expect to see v1 stats being removed from reporters
     Assert.assertEquals(reporter.query("." + storeName + "_backup--missing_msg.DIVStatsCounter").value(), 1d);
+  }
+
+  @Test(dependsOnMethods = { "testStatsCanLoadAllStoresInTime" })
+  public void testStatsCanDeleteStore() {
+    String storeName = "store0";
+    Assert.assertNotNull(metricsRepository.getMetric("." + storeName + "_future--success_msg.DIVStatsCounter"));
+    stats.handleStoreDeleted(storeName);
+    Assert.assertNull(metricsRepository.getMetric("." + storeName + "_future--success_msg.DIVStatsCounter"));
   }
 
   private Store createStore(String nameStore) {

@@ -208,6 +208,13 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
     });
   }
 
+  public void unregisterStore(String storeName, boolean unregisterMetric) {
+    MemoryInfo memoryInfo = storeMemoryInfos.remove(storeName);
+    if (unregisterMetric && memoryInfo != null && memoryInfo.getLimit() != 0) {
+      unregisterSensor(storeName + ROCKSDB_MEMORY_USAGE_SUFFIX);
+    }
+  }
+
   public boolean isMemoryFull(String storeName, long bytesWritten) {
     MemoryInfo memoryInfo = storeMemoryInfos.get(storeName);
     // store not registered

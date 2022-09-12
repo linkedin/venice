@@ -31,18 +31,21 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
   private final MetricsRepository metricsRepository;
 
   private final Map<String, VeniceVersionedStats<STATS, STATS_REPORTER>> aggStats;
+  private final boolean unregisterMetricForDeletedStoreEnabled;
 
   public AbstractVeniceAggVersionedStats(
       MetricsRepository metricsRepository,
       ReadOnlyStoreRepository metadataRepository,
       Supplier<STATS> statsInitiator,
-      StatsSupplier<STATS_REPORTER> reporterSupplier) {
+      StatsSupplier<STATS_REPORTER> reporterSupplier,
+      boolean unregisterMetricForDeletedStoreEnabled) {
     this.metadataRepository = metadataRepository;
     this.metricsRepository = metricsRepository;
     this.statsInitiator = statsInitiator;
     this.reporterSupplier = reporterSupplier;
 
     this.aggStats = new VeniceConcurrentHashMap<>();
+    this.unregisterMetricForDeletedStoreEnabled = unregisterMetricForDeletedStoreEnabled;
     metadataRepository.registerStoreDataChangedListener(this);
     loadAllStats();
   }
@@ -159,8 +162,11 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
 
   @Override
   public void handleStoreDeleted(String storeName) {
-    if (aggStats.remove(storeName) == null) {
+    VeniceVersionedStats<STATS, STATS_REPORTER> stats = aggStats.remove(storeName);
+    if (stats == null) {
       logger.debug("Trying to delete stats but store '{}' is not in the metric list.", storeName);
+    } else if (unregisterMetricForDeletedStoreEnabled) {
+      stats.unregisterStats();
     }
   }
 

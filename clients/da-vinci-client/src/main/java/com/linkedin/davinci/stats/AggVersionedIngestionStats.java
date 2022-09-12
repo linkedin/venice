@@ -21,7 +21,12 @@ public class AggVersionedIngestionStats
       MetricsRepository metricsRepository,
       ReadOnlyStoreRepository storeRepository,
       VeniceServerConfig serverConfig) {
-    super(metricsRepository, storeRepository, () -> new IngestionStats(serverConfig), IngestionStatsReporter::new);
+    super(
+        metricsRepository,
+        storeRepository,
+        () -> new IngestionStats(serverConfig),
+        IngestionStatsReporter::new,
+        serverConfig.isUnregisterMetricForDeletedStoreEnabled());
   }
 
   public void setIngestionTask(String storeVersionTopic, StoreIngestionTask ingestionTask) {

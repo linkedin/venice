@@ -17,8 +17,14 @@ public class AggVersionedStorageEngineStats extends
 
   public AggVersionedStorageEngineStats(
       MetricsRepository metricsRepository,
-      ReadOnlyStoreRepository metadataRepository) {
-    super(metricsRepository, metadataRepository, StorageEngineStats::new, StorageEngineStatsReporter::new);
+      ReadOnlyStoreRepository metadataRepository,
+      boolean unregisterMetricForDeletedStoreEnabled) {
+    super(
+        metricsRepository,
+        metadataRepository,
+        StorageEngineStats::new,
+        StorageEngineStatsReporter::new,
+        unregisterMetricForDeletedStoreEnabled);
   }
 
   public void setStorageEngine(String topicName, AbstractStorageEngine storageEngine) {

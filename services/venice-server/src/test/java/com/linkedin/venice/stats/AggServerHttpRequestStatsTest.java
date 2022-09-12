@@ -1,9 +1,11 @@
 package com.linkedin.venice.stats;
 
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.Percentiles;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeTest;
@@ -27,8 +29,16 @@ public class AggServerHttpRequestStatsTest {
     Assert.assertEquals(metricsRepository.metrics().size(), 0);
     this.reporter = new MockTehutiReporter();
     this.metricsRepository.addReporter(reporter);
-    this.singleGetStats = new AggServerHttpRequestStats(metricsRepository, RequestType.SINGLE_GET);
-    this.batchGetStats = new AggServerHttpRequestStats(metricsRepository, RequestType.MULTI_GET);
+    this.singleGetStats = new AggServerHttpRequestStats(
+        metricsRepository,
+        RequestType.SINGLE_GET,
+        Mockito.mock(ReadOnlyStoreRepository.class),
+        true);
+    this.batchGetStats = new AggServerHttpRequestStats(
+        metricsRepository,
+        RequestType.MULTI_GET,
+        Mockito.mock(ReadOnlyStoreRepository.class),
+        true);
   }
 
   @AfterTest
@@ -54,6 +64,9 @@ public class AggServerHttpRequestStatsTest {
     Assert.assertTrue(
         reporter.query(".total--success_request_ratio.RatioStat").value() > 0,
         "success_request_ratio should be positive");
+
+    singleGetStats.handleStoreDeleted(STORE_FOO);
+    Assert.assertNull(metricsRepository.getMetric("." + STORE_FOO + "--success_request.OccurrenceRate"));
   }
 
   @Test

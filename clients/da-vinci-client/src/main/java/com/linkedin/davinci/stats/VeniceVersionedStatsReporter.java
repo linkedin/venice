@@ -71,6 +71,16 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
     }
   }
 
+  public void unregisterStats() {
+    this.currentStatsReporter.unregisterStats();
+    if (!isSystemStore) {
+      this.futureStatsReporter.unregisterStats();
+      this.backupStatsReporter.unregisterStats();
+      this.totalStatsReporter.unregisterStats();
+    }
+    super.unregisterAllSensors();
+  }
+
   public int getCurrentVersion() {
     return currentVersion;
   }

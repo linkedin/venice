@@ -18,8 +18,16 @@ import java.util.function.IntConsumer;
 
 
 public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVStats, DIVStatsReporter> {
-  public AggVersionedDIVStats(MetricsRepository metricsRepository, ReadOnlyStoreRepository metadataRepository) {
-    super(metricsRepository, metadataRepository, DIVStats::new, DIVStatsReporter::new);
+  public AggVersionedDIVStats(
+      MetricsRepository metricsRepository,
+      ReadOnlyStoreRepository metadataRepository,
+      boolean unregisterMetricForDeletedStoreEnabled) {
+    super(
+        metricsRepository,
+        metadataRepository,
+        DIVStats::new,
+        DIVStatsReporter::new,
+        unregisterMetricForDeletedStoreEnabled);
   }
 
   public void recordException(String storeName, int version, DataValidationException e) {

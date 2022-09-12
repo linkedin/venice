@@ -133,8 +133,10 @@ public class DaVinciBackend implements Closeable {
           AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
       storeVersionStateSerializer.setSchemaReader(versionStateSchemaReader);
 
-      AggVersionedStorageEngineStats storageEngineStats =
-          new AggVersionedStorageEngineStats(metricsRepository, storeRepository);
+      AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(
+          metricsRepository,
+          storeRepository,
+          backendConfig.isUnregisterMetricForDeletedStoreEnabled());
       rocksDBMemoryStats = backendConfig.isDatabaseMemoryStatsEnabled()
           ? new RocksDBMemoryStats(
               metricsRepository,
@@ -485,6 +487,10 @@ public class DaVinciBackend implements Closeable {
     StoreBackend storeBackend = storeByNameMap.remove(storeName);
     if (storeBackend != null) {
       storeBackend.delete();
+    }
+    if (rocksDBMemoryStats != null) {
+      rocksDBMemoryStats
+          .unregisterStore(storeName, configLoader.getVeniceServerConfig().isUnregisterMetricForDeletedStoreEnabled());
     }
   }
 

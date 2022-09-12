@@ -1,25 +1,36 @@
 package com.linkedin.venice.stats;
 
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
 import io.tehuti.metrics.MetricsRepository;
 
 
-public class AggServerHttpRequestStats extends AbstractVeniceAggStats<ServerHttpRequestStats> {
-  public AggServerHttpRequestStats(MetricsRepository metricsRepository, RequestType requestType) {
+public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<ServerHttpRequestStats> {
+  public AggServerHttpRequestStats(
+      MetricsRepository metricsRepository,
+      RequestType requestType,
+      ReadOnlyStoreRepository metadataRepository,
+      boolean unregisterMetricForDeletedStoreEnabled) {
     super(
         metricsRepository,
-        (metricsRepo, storeName) -> new ServerHttpRequestStats(metricsRepo, storeName, requestType));
+        (metricsRepo, storeName) -> new ServerHttpRequestStats(metricsRepo, storeName, requestType),
+        metadataRepository,
+        unregisterMetricForDeletedStoreEnabled);
   }
 
   public AggServerHttpRequestStats(
       MetricsRepository metricsRepository,
       RequestType requestType,
-      boolean isKeyValueProfilingEnabled) {
+      boolean isKeyValueProfilingEnabled,
+      ReadOnlyStoreRepository metadataRepository,
+      boolean unregisterMetricForDeletedStoreEnabled) {
     super(
         metricsRepository,
         (
             metricsRepo,
-            storeName) -> new ServerHttpRequestStats(metricsRepo, storeName, requestType, isKeyValueProfilingEnabled));
+            storeName) -> new ServerHttpRequestStats(metricsRepo, storeName, requestType, isKeyValueProfilingEnabled),
+        metadataRepository,
+        unregisterMetricForDeletedStoreEnabled);
   }
 
   public void recordSuccessRequest(String storeName) {

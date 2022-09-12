@@ -3,7 +3,8 @@ package com.linkedin.davinci.stats;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.stats.AbstractVeniceAggStats;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.stats.AbstractVeniceAggStoreStats;
 import com.linkedin.venice.stats.StatsSupplier;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
@@ -12,12 +13,18 @@ import java.util.Map;
 /**
  * This class provides aggregate initialization support for host level ingestion stats class {@link HostLevelIngestionStats}
  */
-public class AggHostLevelIngestionStats extends AbstractVeniceAggStats<HostLevelIngestionStats> {
+public class AggHostLevelIngestionStats extends AbstractVeniceAggStoreStats<HostLevelIngestionStats> {
   public AggHostLevelIngestionStats(
       MetricsRepository metricsRepository,
       VeniceServerConfig serverConfig,
-      Map<String, StoreIngestionTask> ingestionTaskMap) {
-    super(metricsRepository, new HostLevelStoreIngestionStatsSupplier(serverConfig, ingestionTaskMap));
+      Map<String, StoreIngestionTask> ingestionTaskMap,
+      ReadOnlyStoreRepository metadataRepository,
+      boolean unregisterMetricForDeletedStoreEnabled) {
+    super(
+        metricsRepository,
+        new HostLevelStoreIngestionStatsSupplier(serverConfig, ingestionTaskMap),
+        metadataRepository,
+        unregisterMetricForDeletedStoreEnabled);
   }
 
   static class HostLevelStoreIngestionStatsSupplier implements StatsSupplier<HostLevelIngestionStats> {

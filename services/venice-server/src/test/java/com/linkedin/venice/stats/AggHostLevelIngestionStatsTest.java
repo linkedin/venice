@@ -6,6 +6,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
@@ -35,7 +36,12 @@ public class AggHostLevelIngestionStatsTest {
     metricsRepository.addReporter(reporter);
     VeniceServerConfig mockVeniceServerConfig = Mockito.mock(VeniceServerConfig.class);
     doReturn(Int2ObjectMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterIdToAliasMap();
-    aggStats = new AggHostLevelIngestionStats(metricsRepository, mockVeniceServerConfig, Collections.emptyMap());
+    aggStats = new AggHostLevelIngestionStats(
+        metricsRepository,
+        mockVeniceServerConfig,
+        Collections.emptyMap(),
+        mock(ReadOnlyStoreRepository.class),
+        true);
     fooStats = aggStats.getStoreStats(STORE_FOO);
     barStats = aggStats.getStoreStats(STORE_BAR);
 
@@ -66,5 +72,8 @@ public class AggHostLevelIngestionStatsTest {
     Assert.assertEquals(reporter.query("." + STORE_FOO + "--storage_quota_used.Avg").value(), 0.8);
     Assert.assertEquals(reporter.query(".total--bytes_read_from_kafka_as_uncompressed_size.Total").value(), 300d);
     Assert.assertEquals(reporter.query("." + STORE_FOO + "--global_store_disk_quota_allowed.Max").value(), 200d);
+
+    aggStats.handleStoreDeleted(STORE_FOO);
+    Assert.assertNull(metricsRepository.getMetric("." + STORE_FOO + "--kafka_poll_result_num.Total"));
   }
 }
