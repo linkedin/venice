@@ -834,6 +834,9 @@ public class StoreIngestionTaskTest {
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS))
           .put(topic, PARTITION_FOO, expectedOffsetRecordForDeleteMessage);
     }, isActiveActiveReplicationEnabled);
+
+    // verify the shared consumer should be detached when the ingestion task is closed.
+    verify(aggKafkaConsumerService).unsubscribeAll(topic);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
