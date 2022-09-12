@@ -60,13 +60,26 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     this.requestHandler = requestHandler;
 
     boolean isKeyValueProfilingEnabled = serverConfig.isKeyValueProfilingEnabled();
+    boolean isUnregisterMetricForDeletedStoreEnabled = serverConfig.isUnregisterMetricForDeletedStoreEnabled();
 
-    this.singleGetStats =
-        new AggServerHttpRequestStats(metricsRepository, RequestType.SINGLE_GET, isKeyValueProfilingEnabled);
-    this.multiGetStats =
-        new AggServerHttpRequestStats(metricsRepository, RequestType.MULTI_GET, isKeyValueProfilingEnabled);
-    this.computeStats =
-        new AggServerHttpRequestStats(metricsRepository, RequestType.COMPUTE, isKeyValueProfilingEnabled);
+    this.singleGetStats = new AggServerHttpRequestStats(
+        metricsRepository,
+        RequestType.SINGLE_GET,
+        isKeyValueProfilingEnabled,
+        storeMetadataRepository,
+        isUnregisterMetricForDeletedStoreEnabled);
+    this.multiGetStats = new AggServerHttpRequestStats(
+        metricsRepository,
+        RequestType.MULTI_GET,
+        isKeyValueProfilingEnabled,
+        storeMetadataRepository,
+        isUnregisterMetricForDeletedStoreEnabled);
+    this.computeStats = new AggServerHttpRequestStats(
+        metricsRepository,
+        RequestType.COMPUTE,
+        isKeyValueProfilingEnabled,
+        storeMetadataRepository,
+        isUnregisterMetricForDeletedStoreEnabled);
 
     if (serverConfig.isComputeFastAvroEnabled()) {
       LOGGER.info("Fast avro for compute is enabled");
@@ -84,9 +97,9 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
         ? Optional.of(new ServerAclHandler(routerAccessController.get(), aclHandlerFailOnAccessRejection))
         : Optional.empty();
 
-    String nodeId = Utils.getHelixNodeIdentifier(serverConfig.getListenerPort());
-    this.quotaUsageStats = new AggServerQuotaUsageStats(metricsRepository);
     if (serverConfig.isQuotaEnforcementEnabled()) {
+      String nodeId = Utils.getHelixNodeIdentifier(serverConfig.getListenerPort());
+      this.quotaUsageStats = new AggServerQuotaUsageStats(metricsRepository);
       this.quotaEnforcer = new ReadQuotaEnforcementHandler(
           serverConfig.getNodeCapacityInRcu(),
           storeMetadataRepository,

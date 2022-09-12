@@ -18,6 +18,10 @@ public abstract class AbstractVeniceStatsReporter<STATS> extends AbstractVeniceS
     // default implementation is no-op
   }
 
+  protected void unregisterStats() {
+    super.unregisterAllSensors();
+  }
+
   public void setStats(STATS stats) {
     this.stats = stats;
   }

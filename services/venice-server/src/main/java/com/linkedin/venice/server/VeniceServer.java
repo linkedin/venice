@@ -219,8 +219,10 @@ public class VeniceServer {
 
     // TODO: It would be cleaner to come up with a storage engine metric abstraction so we're not passing around so
     // many objects in constructors
-    AggVersionedStorageEngineStats storageEngineStats =
-        new AggVersionedStorageEngineStats(metricsRepository, metadataRepo);
+    AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(
+        metricsRepository,
+        metadataRepo,
+        serverConfig.isUnregisterMetricForDeletedStoreEnabled());
     boolean plainTableEnabled =
         veniceConfigLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled();
     RocksDBMemoryStats rocksDBMemoryStats = veniceConfigLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled()

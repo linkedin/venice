@@ -278,6 +278,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean optimizeDatabaseForBackupVersionEnabled;
   private final long optimizeDatabaseForBackupVersionNoReadThresholdMS;
   private final long optimizeDatabaseServiceScheduleIntervalSeconds;
+  private final boolean unregisterMetricForDeletedStoreEnabled;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -532,6 +533,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     optimizeDatabaseServiceScheduleIntervalSeconds = serverProperties
         .getLong(SERVER_OPTIMIZE_DATABASE_SERVICE_SCHEDULE_INTERNAL_SECONDS, TimeUnit.MINUTES.toSeconds(1)); // default
                                                                                                              // 1 min
+    unregisterMetricForDeletedStoreEnabled =
+        serverProperties.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
   }
 
   public int getListenerPort() {
@@ -947,5 +950,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getOptimizeDatabaseServiceScheduleIntervalSeconds() {
     return optimizeDatabaseServiceScheduleIntervalSeconds;
+  }
+
+  public boolean isUnregisterMetricForDeletedStoreEnabled() {
+    return unregisterMetricForDeletedStoreEnabled;
   }
 }

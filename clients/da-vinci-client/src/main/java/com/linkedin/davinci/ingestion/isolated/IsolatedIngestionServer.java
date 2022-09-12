@@ -590,8 +590,10 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     }
 
     // Create StorageService
-    AggVersionedStorageEngineStats storageEngineStats =
-        new AggVersionedStorageEngineStats(metricsRepository, storeRepository);
+    AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(
+        metricsRepository,
+        storeRepository,
+        configLoader.getVeniceServerConfig().isUnregisterMetricForDeletedStoreEnabled());
     /**
      * The reason of not to restore the data partitions during initialization of storage service is:
      * 1. During first fresh start up with no data on disk, we don't need to restore anything
