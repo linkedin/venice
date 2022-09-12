@@ -43,4 +43,9 @@ public interface OnlineInstanceFinder {
    * Query number of partition in given kafka topic.
    */
   int getNumberOfPartitions(String kafkaTopic);
+
+  /**
+   * Check whether the underlying {@link RoutingDataRepository} contains certain resource.
+   */
+  boolean hasResource(String resourceName);
 }

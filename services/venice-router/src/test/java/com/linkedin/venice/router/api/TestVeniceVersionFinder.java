@@ -180,11 +180,13 @@ public class TestVeniceVersionFinder {
     RoutingDataRepository routingData = mock(RoutingDataRepository.class);
     doReturn(instances).when(routingData).getReadyToServeInstances(anyString(), anyInt());
     doReturn(3).when(routingData).getNumberOfPartitions(anyString());
+    doReturn(true).when(routingData).containsKafkaTopic(anyString());
 
     PartitionStatusOnlineInstanceFinder partitionStatusOnlineInstanceFinder =
         mock(PartitionStatusOnlineInstanceFinder.class);
     doReturn(instances).when(partitionStatusOnlineInstanceFinder).getReadyToServeInstances(anyString(), anyInt());
     doReturn(3).when(partitionStatusOnlineInstanceFinder).getNumberOfPartitions(anyString());
+    doReturn(true).when(partitionStatusOnlineInstanceFinder).hasResource(anyString());
 
     StaleVersionStats stats = mock(StaleVersionStats.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
@@ -353,6 +355,7 @@ public class TestVeniceVersionFinder {
     OnlineInstanceFinderDelegator onlineInstanceFinder = mock(OnlineInstanceFinderDelegator.class);
     doReturn(3).when(onlineInstanceFinder).getNumberOfPartitions(anyString());
     doReturn(instances).when(onlineInstanceFinder).getReadyToServeInstances(anyString(), anyInt());
+    doReturn(true).when(onlineInstanceFinder).hasResource(anyString());
 
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
 
@@ -408,6 +411,7 @@ public class TestVeniceVersionFinder {
     OnlineInstanceFinderDelegator onlineInstanceFinder = mock(OnlineInstanceFinderDelegator.class);
     doReturn(3).when(onlineInstanceFinder).getNumberOfPartitions(anyString());
     doReturn(instances).when(onlineInstanceFinder).getReadyToServeInstances(anyString(), anyInt());
+    doReturn(true).when(onlineInstanceFinder).hasResource(anyString());
 
     try (CompressorFactory compressorFactory = new CompressorFactory()) {
       // Object under test

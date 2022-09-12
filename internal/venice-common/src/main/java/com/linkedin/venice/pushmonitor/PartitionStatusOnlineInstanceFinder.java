@@ -256,6 +256,11 @@ public class PartitionStatusOnlineInstanceFinder
   }
 
   @Override
+  public boolean hasResource(String resourceName) {
+    return routingDataRepository.hasResource(resourceName);
+  }
+
+  @Override
   public synchronized void clear() {
     offlinePushAccessor.unsubscribePushStatusCreationChange(this);
     topicToResourceStatus.clear();
