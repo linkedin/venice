@@ -63,6 +63,11 @@ public class OnlineInstanceFinderDelegator implements OnlineInstanceFinder {
     return getInstanceFinder(kafkaTopic).getNumberOfPartitions(kafkaTopic);
   }
 
+  @Override
+  public boolean hasResource(String resourceName) {
+    return getInstanceFinder(resourceName).hasResource(resourceName);
+  }
+
   public OnlineInstanceFinder getInstanceFinder(String kafkaTopic) {
     // If HelixCustomizedView is enabled, always use routingDataOnlineInstanceFinder, which is initialized as
     // CustomizedViewRepository.

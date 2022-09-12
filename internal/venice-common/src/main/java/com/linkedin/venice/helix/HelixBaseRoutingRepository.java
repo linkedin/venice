@@ -342,4 +342,9 @@ public abstract class HelixBaseRoutingRepository
     }
     return p.getLeaderInstance();
   }
+
+  @Override
+  public boolean hasResource(String resourceName) {
+    return containsKafkaTopic(resourceName);
+  }
 }
