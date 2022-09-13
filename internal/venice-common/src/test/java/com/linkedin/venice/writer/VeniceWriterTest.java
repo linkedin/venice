@@ -154,7 +154,6 @@ public class VeniceWriterTest {
         new DefaultVenicePartitioner(),
         SystemTime.INSTANCE,
         Optional.empty(),
-        Optional.empty(),
         () -> mockedProducer);
     for (int i = 0; i < 1000; i++) {
       writer.put(Integer.toString(i), Integer.toString(i), 1, null);
@@ -194,7 +193,6 @@ public class VeniceWriterTest {
         serializer,
         new DefaultVenicePartitioner(),
         SystemTime.INSTANCE,
-        Optional.empty(),
         Optional.empty(),
         () -> mockedProducer);
 

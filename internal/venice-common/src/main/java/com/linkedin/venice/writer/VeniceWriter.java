@@ -236,8 +236,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private volatile boolean isChunkingSet;
   private volatile boolean isChunkingFlagInvoked;
 
-  private final Optional<Integer> targetStoreVersionForIncPush;
-
   protected VeniceWriter(
       VeniceProperties props,
       String topicName,
@@ -247,7 +245,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       VenicePartitioner partitioner,
       Time time,
       Optional<Integer> topicPartitionCount,
-      Optional<Integer> targetStoreVersionForIncPush,
       Supplier<KafkaProducerWrapper> producerWrapperSupplier) {
     super(topicName);
 
@@ -256,7 +253,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.writeComputeSerializer = writeComputeSerializer;
     this.time = time;
     this.partitioner = partitioner;
-    this.targetStoreVersionForIncPush = targetStoreVersionForIncPush;
     this.closeTimeOut = props.getInt(CLOSE_TIMEOUT_MS, DEFAULT_CLOSE_TIMEOUT_MS);
     this.checkSumType = CheckSumType.valueOf(props.getString(CHECK_SUM_TYPE, DEFAULT_CHECK_SUM_TYPE));
     this.isChunkingEnabled = props.getBoolean(ENABLE_CHUNKING, false);
@@ -1544,9 +1540,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       producerMetadata.logicalTimestamp = VENICE_DEFAULT_LOGICAL_TS;
     }
     kafkaValue.producerMetadata = producerMetadata;
-
-    kafkaValue.targetVersion = targetStoreVersionForIncPush.orElse(DEFAULT_TARGET_VERSION);
-
     kafkaValue.leaderMetadataFooter = new LeaderMetadata();
     kafkaValue.leaderMetadataFooter.hostName = writerId;
     kafkaValue.leaderMetadataFooter.upstreamOffset = leaderMetadataWrapper.getUpstreamOffset();

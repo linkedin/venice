@@ -46,7 +46,6 @@ import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
-import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Instance;
@@ -521,14 +520,6 @@ public class TestUtils {
     if (endOfPushOffset.isPresent()) {
       offsetRecord.endOfPushReceived(endOfPushOffset.get());
     }
-    return offsetRecord;
-  }
-
-  public static OffsetRecord getOffsetRecord(long currentOffset, boolean complete, String incrementalPushVersion) {
-    OffsetRecord offsetRecord = getOffsetRecord(currentOffset, complete);
-    IncrementalPush incrementalPush = new IncrementalPush();
-    incrementalPush.version = incrementalPushVersion;
-    offsetRecord.setIncrementalPush(incrementalPush);
     return offsetRecord;
   }
 

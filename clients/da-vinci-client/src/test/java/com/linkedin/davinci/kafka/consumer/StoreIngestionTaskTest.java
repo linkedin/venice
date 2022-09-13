@@ -2138,9 +2138,9 @@ public abstract class StoreIngestionTaskTest {
             .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooOffset + 1, true)));
         // sync the offset when receiving StartOfIncrementalPush and EndOfIncrementalPush
         verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS).atLeastOnce())
-            .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooNewOffset - 1, true, version)));
+            .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooNewOffset - 1, true)));
         verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS).atLeastOnce())
-            .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooNewOffset + 1, true, version)));
+            .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooNewOffset + 1, true)));
 
         verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
 
@@ -2325,7 +2325,6 @@ public abstract class StoreIngestionTaskTest {
           updateSerializer,
           partitioner,
           time,
-          Optional.empty(),
           Optional.empty(),
           supplier);
     }
@@ -2986,8 +2985,7 @@ public abstract class StoreIngestionTaskTest {
 
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn("testStore_v1").when(offsetRecord).getLeaderTopic();
-    PartitionConsumptionState partitionConsumptionState =
-        new PartitionConsumptionState(0, 1, offsetRecord, false, false);
+    PartitionConsumptionState partitionConsumptionState = new PartitionConsumptionState(0, 1, offsetRecord, false);
 
     long localVersionTopicOffset = 100L;
     long remoteVersionTopicOffset = 200L;

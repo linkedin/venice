@@ -245,7 +245,6 @@ public class ConsumerIntegrationTest {
           partitioner,
           time,
           Optional.empty(),
-          Optional.empty(),
           producerWrapperSupplier);
     }
 

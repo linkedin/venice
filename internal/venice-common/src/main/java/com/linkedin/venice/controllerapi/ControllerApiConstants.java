@@ -134,8 +134,6 @@ public class ControllerApiConstants {
 
   public static final String REPLICATION_METADATA_VERSION_ID = "replication_metadata_version_id";
 
-  public static final String APPLY_TARGET_VERSION_FILTER_FOR_INC_PUSH = "apply_target_version_filter_for_inc_push";
-
   /**
    * How many records that one server could consume from Kafka at most in one second from the specified regions.
    * If the consume rate reached this quota, the consumption thread will be blocked until there is the available quota.

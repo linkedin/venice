@@ -506,7 +506,6 @@ public class AdminExecutionTask implements Callable<Void> {
         message.nativeReplicationSourceFabric == null ? null : message.nativeReplicationSourceFabric.toString());
     params.setActiveActiveReplicationEnabled(message.activeActiveReplicationEnabled);
     params.setRegionsFilter(message.regionsFilter == null ? null : message.regionsFilter.toString());
-    params.setApplyTargetVersionFilterForIncPush(message.applyTargetVersionFilterForIncPush);
 
     if (message.disableMetaStore) {
       params.setDisableMetaStore();

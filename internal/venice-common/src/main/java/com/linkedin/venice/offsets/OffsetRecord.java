@@ -5,7 +5,6 @@ import static com.linkedin.venice.writer.VeniceWriter.*;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.GUID;
-import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -165,10 +164,6 @@ public class OffsetRecord {
       this.partitionState.databaseInfo.forEach((k, v) -> databaseInfo.put(k.toString(), v.toString()));
     }
     return databaseInfo;
-  }
-
-  public void setIncrementalPush(IncrementalPush ip) {
-    this.partitionState.incrementalPushInfo = ip;
   }
 
   public void setLeaderTopic(String leaderTopic) {

@@ -19,7 +19,6 @@ public class StoreInfo {
     // Sort the properties alphabetically
     storeInfo.setAccessControlled(store.isAccessControlled());
     storeInfo.setActiveActiveReplicationEnabled(store.isActiveActiveReplicationEnabled());
-    storeInfo.setApplyTargetVersionFilterForIncPush(store.isApplyTargetVersionFilterForIncPush());
     storeInfo.setBackupStrategy(store.getBackupStrategy());
     storeInfo.setBackupVersionRetentionMs(store.getBackupVersionRetentionMs());
     storeInfo.setBatchGetLimit(store.getBatchGetLimit());
@@ -288,11 +287,6 @@ public class StoreInfo {
    * Whether or not active/active replication is currently enabled for this store.
    */
   private boolean activeActiveReplicationEnabled;
-
-  /**
-   * Whether or not to apply target version filter for incremental pushes
-   */
-  private boolean applyTargetVersionFilterForIncPush;
 
   private String kafkaBrokerUrl;
 
@@ -719,13 +713,5 @@ public class StoreInfo {
 
   public void setActiveActiveReplicationEnabled(boolean activeActiveReplicationEnabled) {
     this.activeActiveReplicationEnabled = activeActiveReplicationEnabled;
-  }
-
-  public boolean isApplyTargetVersionFilterForIncPush() {
-    return applyTargetVersionFilterForIncPush;
-  }
-
-  public void setApplyTargetVersionFilterForIncPush(boolean applyTargetVersionFilterForIncPush) {
-    this.applyTargetVersionFilterForIncPush = applyTargetVersionFilterForIncPush;
   }
 }

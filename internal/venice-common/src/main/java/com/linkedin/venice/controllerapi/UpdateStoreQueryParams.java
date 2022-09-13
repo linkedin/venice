@@ -46,7 +46,6 @@ public class UpdateStoreQueryParams extends QueryParams {
     UpdateStoreQueryParams updateStoreQueryParams =
         new UpdateStoreQueryParams().setAccessControlled(srcStore.isAccessControlled())
             .setActiveActiveReplicationEnabled(srcStore.isActiveActiveReplicationEnabled())
-            .setApplyTargetVersionFilterForIncPush(srcStore.isApplyTargetVersionFilterForIncPush())
             .setBackupStrategy(srcStore.getBackupStrategy())
             .setBackupVersionRetentionMs(srcStore.getBackupVersionRetentionMs())
             .setBatchGetLimit(srcStore.getBatchGetLimit())
@@ -504,14 +503,6 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Boolean> getActiveActiveReplicationEnabled() {
     return getBoolean(ACTIVE_ACTIVE_REPLICATION_ENABLED);
-  }
-
-  public UpdateStoreQueryParams setApplyTargetVersionFilterForIncPush(boolean applyTargetVersionFilterForIncPush) {
-    return putBoolean(APPLY_TARGET_VERSION_FILTER_FOR_INC_PUSH, applyTargetVersionFilterForIncPush);
-  }
-
-  public Optional<Boolean> applyTargetVersionFilterForIncPush() {
-    return getBoolean(APPLY_TARGET_VERSION_FILTER_FOR_INC_PUSH);
   }
 
   public void cloneConfig(String configKey, UpdateStoreQueryParams sourceParams) {

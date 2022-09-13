@@ -3545,16 +3545,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     });
   }
 
-  private void setApplyTargetVersionFilterForIncPush(
-      String clusterName,
-      String storeName,
-      boolean applyTargetVersionFilterForIncPush) {
-    storeMetadataUpdate(clusterName, storeName, store -> {
-      store.setApplyTargetVersionFilterForIncPush(applyTargetVersionFilterForIncPush);
-      return store;
-    });
-  }
-
   private void disableMetaSystemStore(String clusterName, String storeName) {
     logger.info("Disabling meta system store for store:{} of cluster:{}", storeName, clusterName);
     storeMetadataUpdate(clusterName, storeName, store -> {
@@ -3690,7 +3680,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Boolean> migrationDuplicateStore = params.getMigrationDuplicateStore();
     Optional<String> nativeReplicationSourceFabric = params.getNativeReplicationSourceFabric();
     Optional<Boolean> activeActiveReplicationEnabled = params.getActiveActiveReplicationEnabled();
-    Optional<Boolean> applyTargetVersionFilterForIncPush = params.applyTargetVersionFilterForIncPush();
     Optional<String> personaName = params.getStoragePersona();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
@@ -3983,10 +3972,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       if (nativeReplicationSourceFabric.isPresent()) {
         setNativeReplicationSourceFabric(clusterName, storeName, nativeReplicationSourceFabric.get());
-      }
-
-      if (applyTargetVersionFilterForIncPush.isPresent()) {
-        setApplyTargetVersionFilterForIncPush(clusterName, storeName, applyTargetVersionFilterForIncPush.get());
       }
 
       if (params.disableMetaStore().isPresent() && params.disableMetaStore().get()) {

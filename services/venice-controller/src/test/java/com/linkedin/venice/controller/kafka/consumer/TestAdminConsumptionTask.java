@@ -1387,7 +1387,6 @@ public class TestAdminConsumptionTask {
           partitioner,
           time,
           Optional.empty(),
-          Optional.empty(),
           supplier);
     }
   }

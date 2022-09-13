@@ -46,7 +46,6 @@ public class AdminResponse {
     ConsumptionStateSnapshot snapshot = new ConsumptionStateSnapshot();
     snapshot.partitionId = state.getPartition();
     snapshot.hybrid = state.isHybrid();
-    snapshot.isIncrementalPushEnabled = state.isIncrementalPushEnabled();
     snapshot.offsetRecord = state.getOffsetRecord().toJsonString();
     snapshot.deferredWrite = state.isDeferredWrite();
     snapshot.errorReported = state.isErrorReported();

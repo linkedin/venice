@@ -27,8 +27,6 @@ public class VersionCreationResponse extends VersionResponse {
 
   private boolean daVinciPushStatusStoreEnabled = false;
 
-  private int targetVersionForIncPush = -1;
-
   public void setPartitions(int partitions) {
     this.partitions = partitions;
   }
@@ -109,21 +107,13 @@ public class VersionCreationResponse extends VersionResponse {
     return this.daVinciPushStatusStoreEnabled;
   }
 
-  public void setTargetVersionForIncPush(int targetVersionForIncPush) {
-    this.targetVersionForIncPush = targetVersionForIncPush;
-  }
-
-  public int getTargetVersionForIncPush() {
-    return this.targetVersionForIncPush;
-  }
-
   @JsonIgnore
   public String toString() {
     return VersionCreationResponse.class.getSimpleName() + "(partitions: " + partitions + ", replicas: " + replicas
         + ", kafkaTopic: " + kafkaTopic + ", kafkaBootstrapServers: " + kafkaBootstrapServers + ", enableSSL: "
         + enableSSL + ", compressionStrategy: " + compressionStrategy.toString() + ", partitionerClass: "
         + partitionerClass + ", partitionerParams: " + partitionerParams + ", amplificationFactor: "
-        + amplificationFactor + ", daVinciPushStatusStoreEnabled: " + daVinciPushStatusStoreEnabled
-        + ", targetVersionForIncPush: " + targetVersionForIncPush + ", super: " + super.toString() + ")";
+        + amplificationFactor + ", daVinciPushStatusStoreEnabled: " + daVinciPushStatusStoreEnabled + ", super: "
+        + super.toString() + ")";
   }
 }
