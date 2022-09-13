@@ -23,7 +23,7 @@ The GitHub issue should contain the detailed problem statement.
 6. The PR title should usually be of the form `[component1]...[componentN]: Concise commit message`.
    * Valid component tags are: `[da-vinci]`, `[server]`, `[controller]`,
       `[router]`, `[samza]`, `[vpj]`, `[fast-client]`, `[thin-client]`,
-      `[admin-tool]`, `[test]`, `[build]`, `[doc]`
+      `[admin-tool]`, `[test]`, `[build]`, `[doc]`, `[script]`
 7. If the pull request is still a work in progress, and so is not ready to be merged, but needs to be pushed to GitHub to facilitate review,
     then create the PR as a [draft](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/about-pull-requests#draft-pull-requests) PR
    * If the PR cannot be created as a [draft](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/about-pull-requests#draft-pull-requests) PR,

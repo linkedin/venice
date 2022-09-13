@@ -1,7 +1,6 @@
 '''
 A script that scans the Venice ZK metadata to get the distributions of znodes
 in different Venice clusters.
-Currently, it scans all Prod clusters (0-11, venice-p).
 
 prerequisite for Mac: "pip install click" and "pip install kazoo"
 
@@ -12,11 +11,11 @@ prerequisite for Linux(CentOS/RHEL):
 4. sudo pip install click
 5. sudo pip install kazoo
 
-Before running the script, do SSH tunnel to the Venice ZK cluster
+Before running the script, create a SSH tunnel to the Venice ZK cluster
 Assuming ${VENICE_ZK_URL} is the ZK url of Venice ZK cluster, ${VENICE_ZK_PORT}
-is the Venice ZK port number, and ${PROD_HOSTNAME} is the host that
-locates at the same fabric of the above ZK cluster, run this command first:
-ssh -nNT -L 2299:${VENICE_ZK_URL}:${VENICE_ZK_PORT} ${PROD_HOSTNAME}
+is the Venice ZK port number, and ${HOSTNAME} is the host that can access the
+above ZK cluster and one that your local machine has access to, run this command first:
+ssh -nNT -L 2299:${VENICE_ZK_URL}:${VENICE_ZK_PORT} ${HOSTNAME}
 '''
 
 import click
@@ -25,27 +24,30 @@ from kazoo.client import KazooClient
 from kazoo.exceptions import NoNodeError
 import logging
 
-zk_host = 'localhost:2299'
-
-#a list of Venice cluster in Prod from venice-0 to venice-11. venice-p is excluded.
-venice_clusters = ['venice-0','venice-1','venice-2','venice-3','venice-4','venice-5','venice-6','venice-7','venice-8','venice-9','venice-10','venice-11','venice-p']
-#venice_clusters = ['venice-3','venice-11']
-common_zk_path = ['AdminTopicOffsetRecord','CONFIGS','CONTROLLER','EXTERNALVIEW','IDEALSTATES','INSTANCES','LIVEINSTANCES','OfflineJobs','OfflinePushes','PROPERTYSTORE','StoreGraveyard','Stores','adminTopicMetadata','executionids','routers']
+# a list of Venice clusters
+common_zk_path = ['AdminTopicOffsetRecord', 'CONFIGS', 'CONTROLLER', 'EXTERNALVIEW', 'IDEALSTATES', 'INSTANCES',
+                  'LIVEINSTANCES', 'OfflineJobs', 'OfflinePushes', 'PROPERTYSTORE', 'StoreGraveyard', 'Stores',
+                  'adminTopicMetadata', 'executionids', 'routers']
 
 
-#unused
-#click is a handy helper library to read params from commandline
-#e.g. python store.py --host=localhost:2299 --cluster=venice-0
+# click is a handy helper library to read params from commandline
+# python zk_summary.py --host "localhost:2299" --cluster "cluster-0" --cluster "cluster-1" --zk-path-prefix "/venice"
 @click.command()
-@click.option("--cluster")
-@click.option("--host")
-def readConfig(cluster, host):
-    return cluster, host
+@click.option('--cluster', '-c', multiple=True)
+@click.option('--host', '-H')
+@click.option('--zk-path-prefix')
+def read_config(cluster, host, zk_path_prefix):
+    if host is None:
+        host = 'localhost:2299'
+    if zk_path_prefix is None:
+        zk_path_prefix = '/venice'
+    get_zk_summary(host, cluster, zk_path_prefix)
 
-#A helper function to count all znode within "current_path".
-#"depth" is an extra parameter that can improve the speed of this function;
-#if the function caller knows that max recursion depth of a zk path, a positive
-#max "depth" number can be used to speed up the recursion.
+
+# A helper function to count all znode within "current_path".
+# "depth" is an extra parameter that can improve the speed of this function;
+# if the function caller knows that max recursion depth of a zk path, a positive
+# max "depth" number can be used to speed up the recursion.
 def get_children_zk_count(current_path, zk=None, depth=0):
     logging.basicConfig()
 
@@ -65,6 +67,7 @@ def get_children_zk_count(current_path, zk=None, depth=0):
             last_logged_number = counter
             print("Scanned %d znodes at ZK path %s" % (counter, current_path))
     return counter
+
 
 def get_cluster_detailed_zk_count(cluster, zk=None):
     count_map = {}
@@ -131,8 +134,8 @@ def get_cluster_detailed_zk_count(cluster, zk=None):
     return count_map
 
 
-#iterate the cluster list and scan all the znode under those clusters
-def main():
+# iterate the cluster list and scan all the znode under those clusters
+def get_zk_summary(zk_host, venice_clusters, zk_path_prefix):
     zk = KazooClient(hosts=zk_host, read_only=True)
     zk.start()
 
@@ -143,7 +146,7 @@ def main():
         common_path_znode_distributions[zk_path] = 0
 
     for cluster in venice_clusters:
-        current="/venice/" + cluster
+        current = zk_path_prefix + "/" + cluster
         cluster_map = get_cluster_detailed_zk_count(current, zk)
         print('\n')
         print("ZK distribution for cluster " + cluster)
@@ -162,15 +165,15 @@ def main():
 
     print('[ZK node distribution summary]')
     print('[1] Cluster level distribution:')
-    for k,v in cluster_znode_distributions.items():
+    for k, v in cluster_znode_distributions.items():
         print("%s: %d" % (k, v))
     print('\n[2] Common path distributions among all clusters:')
-    for k,v in common_path_znode_distributions.items():
+    for k, v in common_path_znode_distributions.items():
         print("%s: %d" % (k, v))
     print('\n[3] Detailed znode distributions for cluster with most znode:')
     cluster_with_most_znode = ""
     max_count = 0
-    for k,v in cluster_znode_detailed_distributions.items():
+    for k, v in cluster_znode_detailed_distributions.items():
         if cluster_znode_distributions[k] > max_count:
             max_count = cluster_znode_distributions[k]
             cluster_with_most_znode = k
@@ -181,5 +184,6 @@ def main():
     zk.stop()
     zk.close()
 
+
 if __name__ == '__main__':
-    main()
+    read_config()
