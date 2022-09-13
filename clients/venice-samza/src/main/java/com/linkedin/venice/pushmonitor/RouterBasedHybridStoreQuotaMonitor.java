@@ -9,6 +9,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.routerapi.HybridStoreQuotaStatusResponse;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
@@ -127,14 +128,19 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
 
           Utils.sleep(POLL_CYCLE_DELAY_MS);
         } catch (Exception e) {
-          logger.error("Error when polling push status from router for store version: " + storeName, e);
+          if (isRunning.get() && !ExceptionUtils.recursiveClassEquals(e, InterruptedException.class)) {
+            // Only worth logging if we're actually supposed to be running.
+            logger.error("Error when polling push status from router for store version: " + storeName, e);
+          } else {
+            break;
+          }
         }
       }
     }
 
     @Override
     public void close() {
-      isRunning.getAndSet(false);
+      isRunning.set(false);
     }
   }
 }

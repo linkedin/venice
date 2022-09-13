@@ -389,9 +389,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   @Override
   public synchronized void stop() {
     this.isStarted = false;
-    if (null != veniceWriter) {
-      veniceWriter.close();
-    }
+    Utils.closeQuietlyWithErrorLogged(veniceWriter);
     if (Version.PushType.STREAM_REPROCESSING.equals(pushType) && pushMonitor.isPresent()) {
       String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
       switch (pushMonitor.get().getCurrentStatus()) {
@@ -414,20 +412,15 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
           controllerClient.retryableRequest(3, c -> c.killOfflinePushJob(versionTopic));
           LOGGER.info("Offline push job has been killed, topic: " + versionTopic);
       }
-      pushMonitor.get().close();
+      Utils.closeQuietlyWithErrorLogged(pushMonitor.get());
     }
-    if (null != controllerClient) {
-      controllerClient.close();
-    }
+    Utils.closeQuietlyWithErrorLogged(controllerClient);
+    hybridStoreQuotaMonitor.ifPresent(monitor -> Utils.closeQuietlyWithErrorLogged(monitor));
     D2ClientUtils.shutdownClient(d2Client);
     try {
       FileUtils.deleteDirectory(new File(fsBasePath));
     } catch (IOException e) {
       LOGGER.info("Error in cleaning up: " + fsBasePath);
-    }
-
-    if (hybridStoreQuotaMonitor.isPresent()) {
-      hybridStoreQuotaMonitor.get().close();
     }
   }
 
