@@ -17,7 +17,7 @@ public class PartitionConsumptionStateTest {
    */
   @Test
   public void testTransientRecordMap() {
-    PartitionConsumptionState pcs = new PartitionConsumptionState(0, 1, mock(OffsetRecord.class), false, false);
+    PartitionConsumptionState pcs = new PartitionConsumptionState(0, 1, mock(OffsetRecord.class), false);
 
     byte[] key1 = new byte[] { 65, 66, 67, 68 };
     byte[] key2 = new byte[] { 65, 66, 67, 68 };

@@ -141,7 +141,6 @@ public class VenicePushJob implements AutoCloseable {
   public final static String SEND_CONTROL_MESSAGES_DIRECTLY = "send.control.messages.directly";
   public final static String SOURCE_ETL = "source.etl";
   public final static String ETL_VALUE_SCHEMA_TRANSFORMATION = "etl.value.schema.transformation";
-  public final static String TARGET_VERSION_FOR_INCREMENTAL_PUSH = "target.version.for.incremental.push";
 
   /**
    *  Enabling/Disabling the feature to collect extra metrics wrt compression ratios
@@ -424,7 +423,6 @@ public class VenicePushJob implements AutoCloseable {
     String partitionerClass;
     Map<String, String> partitionerParams;
     int amplificationFactor;
-    int targetStoreVersionForIncPush;
     boolean chunkingEnabled;
   }
 
@@ -2060,7 +2058,6 @@ public class VenicePushJob implements AutoCloseable {
     kafkaTopicInfo.partitionerParams = versionCreationResponse.getPartitionerParams();
     kafkaTopicInfo.amplificationFactor = versionCreationResponse.getAmplificationFactor();
     kafkaTopicInfo.daVinciPushStatusStoreEnabled = versionCreationResponse.isDaVinciPushStatusStoreEnabled();
-    kafkaTopicInfo.targetStoreVersionForIncPush = versionCreationResponse.getTargetVersionForIncPush();
     kafkaTopicInfo.chunkingEnabled = storeSetting.isChunkingEnabled && !Version.isRealTimeTopic(kafkaTopicInfo.topic);
 
     if (pushJobSetting.isSourceKafka) {
@@ -2133,9 +2130,7 @@ public class VenicePushJob implements AutoCloseable {
       VeniceWriter<KafkaKey, byte[], byte[]> newVeniceWriter = veniceWriterFactory.createVeniceWriter(
           versionTopicInfo.topic,
           venicePartitioner,
-          (kafkaTopicInfo.targetStoreVersionForIncPush > 0)
-              ? Optional.of(kafkaTopicInfo.targetStoreVersionForIncPush)
-              : Optional.empty(),
+          Optional.empty(),
           Version.isVersionTopic(versionTopicInfo.topic)
               ? versionTopicInfo.partitionCount * versionTopicInfo.amplificationFactor
               : versionTopicInfo.partitionCount);
@@ -2452,10 +2447,6 @@ public class VenicePushJob implements AutoCloseable {
     conf.setBoolean(VeniceWriter.ENABLE_CHUNKING, kafkaTopicInfo.chunkingEnabled);
 
     conf.set(STORAGE_QUOTA_PROP, Long.toString(storeSetting.storeStorageQuota));
-
-    if (pushJobSetting.isIncrementalPush) {
-      conf.setInt(TARGET_VERSION_FOR_INCREMENTAL_PUSH, kafkaTopicInfo.targetStoreVersionForIncPush);
-    }
 
     /** Allow overriding properties if their names start with {@link HADOOP_PREFIX}.
      *  Allow overriding properties if their names start with {@link VeniceWriter.VENICE_WRITER_CONFIG_PREFIX}

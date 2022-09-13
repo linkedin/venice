@@ -4,7 +4,6 @@ import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
-import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.Version;
@@ -29,7 +28,6 @@ public class PartitionConsumptionState {
   private final int amplificationFactor;
   private final int userPartition;
   private final boolean hybrid;
-  private final boolean isIncrementalPushEnabled;
   private final OffsetRecord offsetRecord;
   /** whether the ingestion of current partition is deferred-write. */
   private boolean deferredWrite;
@@ -153,17 +151,11 @@ public class PartitionConsumptionState {
    */
   private Map<String, Long> latestProcessedUpstreamRTOffsetMap;
 
-  public PartitionConsumptionState(
-      int partition,
-      int amplificationFactor,
-      OffsetRecord offsetRecord,
-      boolean hybrid,
-      boolean isIncrementalPushEnabled) {
+  public PartitionConsumptionState(int partition, int amplificationFactor, OffsetRecord offsetRecord, boolean hybrid) {
     this.partition = partition;
     this.amplificationFactor = amplificationFactor;
     this.userPartition = PartitionUtils.getUserPartition(partition, amplificationFactor);
     this.hybrid = hybrid;
-    this.isIncrementalPushEnabled = isIncrementalPushEnabled;
     this.offsetRecord = offsetRecord;
     this.errorReported = false;
     this.lagCaughtUp = false;
@@ -277,13 +269,8 @@ public class PartitionConsumptionState {
     if (!isEndOfPushReceived()) {
       return false;
     }
-
     // for regular push store, receiving EOP is good to go
-    return (!isIncrementalPushEnabled && !hybrid) || lagCaughtUp;
-  }
-
-  public void setIncrementalPush(IncrementalPush ip) {
-    this.offsetRecord.setIncrementalPush(ip);
+    return !hybrid || lagCaughtUp;
   }
 
   public boolean isHybrid() {
@@ -291,7 +278,7 @@ public class PartitionConsumptionState {
   }
 
   public boolean isBatchOnly() {
-    return !isHybrid() && !isIncrementalPushEnabled();
+    return !isHybrid();
   }
 
   @Override
@@ -319,8 +306,6 @@ public class PartitionConsumptionState {
         .append(processedRecordSizeSinceLastSync)
         .append(", leaderFollowerState=")
         .append(leaderFollowerState)
-        .append(", isIncrementalPushEnabled=")
-        .append(isIncrementalPushEnabled)
         .append("}")
         .toString();
   }
@@ -335,10 +320,6 @@ public class PartitionConsumptionState {
 
   public void resetProcessedRecordSizeSinceLastSync() {
     this.processedRecordSizeSinceLastSync = 0;
-  }
-
-  public boolean isIncrementalPushEnabled() {
-    return isIncrementalPushEnabled;
   }
 
   public void setLeaderFollowerState(LeaderFollowerStateType state) {

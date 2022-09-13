@@ -903,11 +903,6 @@ public class AdminTool {
         argSet);
     booleanParam(cmd, Arg.ACTIVE_ACTIVE_REPLICATION_ENABLED, p -> params.setActiveActiveReplicationEnabled(p), argSet);
     genericParam(cmd, Arg.REGIONS_FILTER, s -> s, p -> params.setRegionsFilter(p), argSet);
-    booleanParam(
-        cmd,
-        Arg.APPLY_TARGET_VERSION_FILTER_FOR_INC_PUSH,
-        p -> params.setApplyTargetVersionFilterForIncPush(p),
-        argSet);
     genericParam(cmd, Arg.STORAGE_PERSONA, s -> s, p -> params.setStoragePersona(p), argSet);
 
     /**

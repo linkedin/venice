@@ -187,6 +187,9 @@ public class VeniceWriterFactory {
         Optional.empty());
   }
 
+  // TODO(sumane): Cleanup targetStoreVersionForIncPush
+  // Changing these APIs seems to break clients (other mps).
+  // Not removing targetStoreVersionForIncPush now as I'm working on refactoring this class to use builder pattern
   public <K, V, U> VeniceWriter<K, V, U> createVeniceWriter(
       String topic,
       VeniceKafkaSerializer<K> keySerializer,
@@ -245,7 +248,6 @@ public class VeniceWriterFactory {
         partitioner,
         time,
         topicPartitionCount,
-        targetStoreVersionForIncPush,
         () -> {
           if (sharedKafkaProducerService.isPresent()) {
             return sharedKafkaProducerService.get().acquireKafkaProducer(topic);

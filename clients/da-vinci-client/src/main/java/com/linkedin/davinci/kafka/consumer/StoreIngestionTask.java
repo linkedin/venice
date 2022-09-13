@@ -50,7 +50,6 @@ import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
-import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.kafka.validation.KafkaDataIntegrityValidator;
@@ -221,10 +220,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final long databaseSyncBytesIntervalForTransactionalMode;
   /** Message bytes consuming interval before persisting offset in offset db for deferred-write database. */
   protected final long databaseSyncBytesIntervalForDeferredWriteMode;
-
-  /** A quick check point to see if incremental push is supported.
-   * It helps fast {@link #isReadyToServe(PartitionConsumptionState)}*/
-  protected final boolean isIncrementalPushEnabled;
   protected final VeniceServerConfig serverConfig;
 
   /** Used for reporting error when the {@link #partitionConsumptionStateMap} is empty */
@@ -409,9 +404,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.isCurrentVersion = isCurrentVersion;
     this.hybridStoreConfig = Optional.ofNullable(
         version.isUseVersionLevelHybridConfig() ? version.getHybridStoreConfig() : store.getHybridStoreConfig());
-    this.isIncrementalPushEnabled = version.isUseVersionLevelIncrementalPushEnabled()
-        ? version.isIncrementalPushEnabled()
-        : store.isIncrementalPushEnabled();
 
     this.divErrorMetricCallback = e -> versionedDIVStats.recordException(storeName, versionNumber, e);
 
@@ -1364,8 +1356,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (versionNumber <= store.getCurrentVersion()) {
       Set<TopicPartition> topicPartitionsToUnsubscribe = new HashSet<>();
       for (PartitionConsumptionState state: partitionConsumptionStateMap.values()) {
-        if (state.isCompletionReported() && !state.isIncrementalPushEnabled()
-            && consumerHasSubscription(kafkaVersionTopic, state)) {
+        if (state.isCompletionReported() && consumerHasSubscription(kafkaVersionTopic, state)) {
           logger.info(
               "Unsubscribing completed partitions " + state.getPartition() + " of store : " + store.getName()
                   + " version : " + versionNumber + " current version: " + store.getCurrentVersion());
@@ -1799,12 +1790,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition);
 
         // First let's try to restore the state retrieved from the OffsetManager
-        PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(
-            partition,
-            amplificationFactor,
-            offsetRecord,
-            hybridStoreConfig.isPresent(),
-            isIncrementalPushEnabled);
+        PartitionConsumptionState newPartitionConsumptionState =
+            new PartitionConsumptionState(partition, amplificationFactor, offsetRecord, hybridStoreConfig.isPresent());
 
         newPartitionConsumptionState.setLeaderFollowerState(leaderState);
 
@@ -1921,8 +1908,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                   partition,
                   amplificationFactor,
                   new OffsetRecord(partitionStateSerializer),
-                  hybridStoreConfig.isPresent(),
-                  isIncrementalPushEnabled));
+                  hybridStoreConfig.isPresent()));
           storageUtilizationManager.initPartition(partition);
         } else {
           logger.info(
@@ -2008,8 +1994,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * TODO: right now, if we update a store to enable hybrid, {@link StoreIngestionTask} for the existing versions
        * won't know it since {@link #hybridStoreConfig} parameter is passed during construction.
        *
-       * Same thing for {@link #isIncrementalPushEnabled}.
-       *
        * So far, to make hybrid store/incremental store work, customer needs to do a new push after enabling hybrid/
        * incremental push feature of the store.
        */
@@ -2019,17 +2003,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         logger.warn(message);
       }
       return false;
-    }
-
-    if (isIncrementalPushEnabled) {
-      KafkaMessageEnvelope value = record.value();
-      /*
-       * For inc push to RT, filter out the messages if the target version embedded in the message doesn't match the version
-       * of this ingestion task.
-       */
-      if (value.targetVersion > 0 && value.targetVersion != this.versionNumber) {
-        return false;
-      }
     }
     return true;
   }
@@ -2497,9 +2470,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       ControlMessage startOfIncrementalPush,
       PartitionConsumptionState partitionConsumptionState) {
     CharSequence startVersion = ((StartOfIncrementalPush) startOfIncrementalPush.controlMessageUnion).version;
-    IncrementalPush newIncrementalPush = new IncrementalPush();
-    newIncrementalPush.version = startVersion;
-    partitionConsumptionState.setIncrementalPush(newIncrementalPush);
     statusReportAdapter.reportStartOfIncrementalPushReceived(partitionConsumptionState, startVersion.toString());
   }
 
@@ -2509,7 +2479,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // TODO: it is possible that we could turn incremental store to be read-only when incremental push is done
     CharSequence endVersion = ((EndOfIncrementalPush) endOfIncrementalPush.controlMessageUnion).version;
     // Reset incremental push version
-    partitionConsumptionState.setIncrementalPush(null);
     statusReportAdapter.reportEndOfIncrementalPushReceived(partitionConsumptionState, endVersion.toString());
   }
 

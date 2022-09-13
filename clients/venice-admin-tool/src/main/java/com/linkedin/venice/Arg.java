@@ -193,10 +193,6 @@ public enum Arg {
       "regions-filter", "regf", true,
       "A list of regions that will be impacted by the command; can be used by UpdateStore command"
   ),
-  APPLY_TARGET_VERSION_FILTER_FOR_INC_PUSH(
-      "apply-target-version-filter-for-inc-push", "atvffip", true,
-      "Enable/disable applying the target version filter for incremental pushes"
-  ),
   SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND(
       ConfigKeys.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, "kfq", true,
       "The quota of records to fetch from Kafka for the specified fabric."

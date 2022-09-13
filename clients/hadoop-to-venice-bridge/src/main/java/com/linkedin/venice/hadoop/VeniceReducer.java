@@ -198,11 +198,6 @@ public class VeniceReducer extends AbstractMapReduceTask
    */
   private final ScheduledExecutorService reducerProgressHeartbeatScheduler = Executors.newScheduledThreadPool(1);
 
-  /**
-   * For incremental push to RT jobs, current version of the store will be embedded into every message from inc push.
-   */
-  private Optional<Integer> targetStoreVersionForIncPush = Optional.empty();
-
   @Override
   public void reduce(
       BytesWritable key,
@@ -401,7 +396,7 @@ public class VeniceReducer extends AbstractMapReduceTask
         SystemTime.INSTANCE,
         partitioner,
         Optional.empty(),
-        this.targetStoreVersionForIncPush);
+        Optional.empty());
   }
 
   private void telemetry() {
@@ -478,9 +473,6 @@ public class VeniceReducer extends AbstractMapReduceTask
     this.enableWriteCompute = (props.containsKey(ENABLE_WRITE_COMPUTE)) && props.getBoolean(ENABLE_WRITE_COMPUTE);
     this.duplicateKeyPrinter = initDuplicateKeyPrinter(job);
     this.telemetryMessageInterval = props.getInt(TELEMETRY_MESSAGE_INTERVAL, 10000);
-    this.targetStoreVersionForIncPush = props.containsKey(TARGET_VERSION_FOR_INCREMENTAL_PUSH)
-        ? Optional.of(props.getInt(TARGET_VERSION_FOR_INCREMENTAL_PUSH))
-        : Optional.empty();
     initStorageQuotaFields(props, job);
     /**
      * A dummy background task that reports progress every 5 minutes.

@@ -210,7 +210,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setHybridStoreDiskQuotaEnabled(store.isHybridStoreDiskQuotaEnabled());
     setEtlStoreConfig(store.getEtlStoreConfig());
     setStoreMetadataSystemStoreEnabled(store.isStoreMetadataSystemStoreEnabled());
-    setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME); // to be cleand up in phase-II
+    setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME); // to be cleaned up in phase-II
     setLatestVersionPromoteToCurrentTimestamp(store.getLatestVersionPromoteToCurrentTimestamp());
     setBackupVersionRetentionMs(store.getBackupVersionRetentionMs());
     setReplicationFactor(store.getReplicationFactor());
@@ -219,7 +219,6 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setDaVinciPushStatusStoreEnabled(store.isDaVinciPushStatusStoreEnabled());
     setStoreMetaSystemStoreEnabled(store.isStoreMetaSystemStoreEnabled());
     setActiveActiveReplicationEnabled(store.isActiveActiveReplicationEnabled());
-    setApplyTargetVersionFilterForIncPush(store.isApplyTargetVersionFilterForIncPush());
     setRmdVersionID(store.getRmdVersionID());
 
     for (Version storeVersion: store.getVersions()) {
@@ -771,16 +770,6 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setActiveActiveReplicationEnabled(boolean activeActiveReplicationEnabled) {
     this.storeProperties.activeActiveReplicationEnabled = activeActiveReplicationEnabled;
-  }
-
-  @Override
-  public boolean isApplyTargetVersionFilterForIncPush() {
-    return this.storeProperties.applyTargetVersionFilterForIncPush;
-  }
-
-  @Override
-  public void setApplyTargetVersionFilterForIncPush(boolean applyTargetVersionFilterForIncPush) {
-    this.storeProperties.applyTargetVersionFilterForIncPush = applyTargetVersionFilterForIncPush;
   }
 
   @Override
