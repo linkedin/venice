@@ -92,3 +92,5 @@ body:
           required: false
         - label: "`Admin Tool`: This is the stand-alone client used for ad-hoc operations on Venice."
           required: false
+        - label: "`Scripts`: These are the various ops scripts in the repo."
+          required: false

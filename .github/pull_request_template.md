@@ -4,7 +4,7 @@ Add a list of affected components in the PR title in the following format:
 
 Valid component tags are: [da-vinci], [server], [controller],
 [router], [samza], [vpj], [fast-client], [thin-client],
-[admin-tool], [test], [build], [doc]
+[admin-tool], [test], [build], [doc], [script]
 
 Example title: [server][da-vinci] Use dedicated thread to persist data to storage engine
 
