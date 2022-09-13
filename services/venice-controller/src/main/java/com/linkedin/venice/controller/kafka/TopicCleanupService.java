@@ -258,11 +258,16 @@ public class TopicCleanupService extends AbstractVeniceService {
       return Collections.emptyList();
     }
     Set<String> veniceTopics = topicRetentions.keySet();
-    int maxVersion = veniceTopics.stream()
+    Optional<Integer> optionalMaxVersion = veniceTopics.stream()
         .filter(Version::isVersionTopic)
         .map(Version::parseVersionFromKafkaTopicName)
-        .max(Integer::compare)
-        .get();
+        .max(Integer::compare);
+
+    if (!optionalMaxVersion.isPresent()) {
+      return Collections.emptyList();
+    }
+
+    int maxVersion = optionalMaxVersion.get();
 
     String storeName = Version.parseStoreFromKafkaTopicName(veniceTopics.iterator().next());
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
