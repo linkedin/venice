@@ -21,6 +21,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.Optional;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.testng.Assert;
@@ -36,7 +37,7 @@ public class TestAdminConsumerService {
     String adminTopicSourceRegion = "parent";
 
     VeniceProperties props = new PropertyBuilder().put(TestUtils.getPropertiesForControllerConfig())
-        .put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(someClusterName))
+        .put(CLUSTER_TO_D2, TestUtils.getClusterToD2String(Collections.singletonMap(someClusterName, "dummy_d2")))
         .put(ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED, true)
         .put(ADMIN_TOPIC_SOURCE_REGION, adminTopicSourceRegion)
         .put(NATIVE_REPLICATION_FABRIC_WHITELIST, adminTopicSourceRegion)

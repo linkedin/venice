@@ -461,8 +461,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     coloLeaderClusterName = commonConfig.getClusterName();
     pushJobStatusStoreClusterName = commonConfig.getPushJobStatusStoreClusterName();
     if (commonConfig.isDaVinciPushStatusStoreEnabled()) {
-      pushStatusStoreReader = Optional
-          .of(new PushStatusStoreReader(d2Client, commonConfig.getPushStatusStoreHeartbeatExpirationTimeInSeconds()));
+      pushStatusStoreReader = Optional.of(
+          new PushStatusStoreReader(
+              d2Client,
+              commonConfig.getClusterDiscoveryD2ServiceName(),
+              commonConfig.getPushStatusStoreHeartbeatExpirationTimeInSeconds()));
       pushStatusStoreWriter = Optional.of(
           new PushStatusStoreWriter(
               veniceWriterFactory,
@@ -491,7 +494,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         new MetaStoreWriter(topicManagerRepository.getTopicManager(), veniceWriterFactory, zkSharedSchemaRepository);
 
     clusterToLiveClusterConfigRepo = new VeniceConcurrentHashMap<>();
-    dataRecoveryManager = new DataRecoveryManager(this, d2Client, icProvider);
+    dataRecoveryManager =
+        new DataRecoveryManager(this, d2Client, commonConfig.getClusterDiscoveryD2ServiceName(), icProvider);
 
     List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
     initRoutines.add(

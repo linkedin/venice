@@ -17,8 +17,8 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * This utility is used to remove the existing Avro jars and prepend avro-1.7 to make sure the Venice Cluster
- * is always using avro-1.7.
+ * This utility is used to remove the existing Avro jars and prepend avro-1.9 to make sure the Venice Cluster
+ * is always using avro-1.9.
  */
 public class ClassPathSupplierForVeniceCluster implements Supplier<String> {
   private static final Logger LOGGER = LogManager.getLogger(ClassPathSupplierForVeniceCluster.class);
@@ -54,7 +54,7 @@ public class ClassPathSupplierForVeniceCluster implements Supplier<String> {
           throw new VeniceException("There should be some existing Avro lib in the class path");
         }
         /**
-         * Append avro-1.7 jar to the classpath, which is the one being used by the backend.
+         * Append avro-1.9 jar to the classpath, which is the one being used by the backend.
          */
         paths.add(extractAvro192JarFileBasedOnExistingAvroJarFile(existingAvroJarFile));
       } catch (Exception e) {

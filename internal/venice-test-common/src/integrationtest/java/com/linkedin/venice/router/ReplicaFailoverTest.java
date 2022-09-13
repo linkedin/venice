@@ -4,7 +4,6 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
@@ -190,7 +189,7 @@ public class ReplicaFailoverTest {
     AtomicLong totalOutlierLatency = new AtomicLong();
 
     ClientConfig config = ClientConfig.defaultGenericClientConfig(storeName)
-        .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+        .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .setVeniceURL(cluster.getZk().getAddress());
 
     try (AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(config)) {

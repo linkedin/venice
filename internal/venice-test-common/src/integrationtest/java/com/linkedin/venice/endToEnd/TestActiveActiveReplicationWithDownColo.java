@@ -12,8 +12,9 @@ import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_PRODUCER_POOL_SIZE_PER
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_KAFKA_PRODUCER_ENABLED;
+import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
-import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.SERVICE_NAME;
+import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
 import static com.linkedin.venice.utils.TestPushUtils.INT_SCHEMA;
 import static com.linkedin.venice.utils.TestPushUtils.STRING_SCHEMA;
 
@@ -103,7 +104,6 @@ public class TestActiveActiveReplicationWithDownColo {
         Optional.of(new VeniceProperties(controllerProps)),
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
-        false,
         false);
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
@@ -170,7 +170,7 @@ public class TestActiveActiveReplicationWithDownColo {
     // Build a system producer that writes nearline to dc-0
     SystemProducer producerInDC0 = new VeniceSystemProducer(
         childDatacenters.get(0).getZkServerWrapper().getAddress(),
-        SERVICE_NAME,
+        D2_SERVICE_NAME,
         storeName,
         Version.PushType.STREAM,
         Utils.getUniqueString("venice-push-id"),
@@ -183,7 +183,7 @@ public class TestActiveActiveReplicationWithDownColo {
 
     SystemProducer producerInDC1 = new VeniceSystemProducer(
         childDatacenters.get(1).getZkServerWrapper().getAddress(),
-        SERVICE_NAME,
+        D2_SERVICE_NAME,
         storeName,
         Version.PushType.STREAM,
         Utils.getUniqueString("venice-push-id"),
@@ -198,7 +198,7 @@ public class TestActiveActiveReplicationWithDownColo {
     // up for it in parent colos, so we'll skip
     SystemProducer batchProducer = new VeniceSystemProducer(
         multiColoMultiClusterWrapper.getZkServerWrapper().getAddress(),
-        "VeniceParentController",
+        PARENT_D2_SERVICE_NAME,
         storeName,
         Version.PushType.BATCH,
         Utils.getUniqueString("venice-push-id"),

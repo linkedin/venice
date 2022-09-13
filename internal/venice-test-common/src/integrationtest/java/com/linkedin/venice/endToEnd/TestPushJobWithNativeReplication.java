@@ -16,11 +16,15 @@ import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_P
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
-import static com.linkedin.venice.samza.VeniceSystemFactory.D2_ZK_HOSTS_PROPERTY;
+import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
+import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
 import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
@@ -162,7 +166,6 @@ public class TestPushJobWithNativeReplication {
         Optional.of(new VeniceProperties(controllerProps)),
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
-        false,
         false);
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
@@ -356,8 +359,10 @@ public class TestPushJobWithNativeReplication {
           samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
           samzaConfig.put(configPrefix + VENICE_STORE, storeName);
           samzaConfig.put(configPrefix + VENICE_AGGREGATE, "true");
-          samzaConfig.put(D2_ZK_HOSTS_PROPERTY, "invalid_child_zk_address");
+          samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, "invalid_child_zk_address");
+          samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
           samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, multiColoMultiClusterWrapper.getZkServerWrapper().getAddress());
+          samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
           samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
           samzaConfig.put(SSL_ENABLED, "false");
           VeniceSystemFactory factory = new VeniceSystemFactory();

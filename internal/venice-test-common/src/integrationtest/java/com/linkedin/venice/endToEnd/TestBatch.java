@@ -1411,7 +1411,7 @@ public abstract class TestBatch {
 
     // Verify the version is online
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      int version = veniceCluster.getRandmonVeniceController()
+      int version = veniceCluster.getRandomVeniceController()
           .getVeniceAdmin()
           .getCurrentVersion(veniceCluster.getClusterName(), storeName);
       Assert.assertEquals(version, 1);
@@ -1433,7 +1433,7 @@ public abstract class TestBatch {
 
     // Verify the previous repush succeeded and new version is online
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      int version = veniceCluster.getRandmonVeniceController()
+      int version = veniceCluster.getRandomVeniceController()
           .getVeniceAdmin()
           .getCurrentVersion(veniceCluster.getClusterName(), storeName);
       Assert.assertEquals(version, 2);

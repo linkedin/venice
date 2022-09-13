@@ -653,7 +653,7 @@ public class TestHybrid {
           long extraWaitTime = TimeUnit.SECONDS
               .toMillis(Long.parseLong(extraProperties.getProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS)));
           long normalTimeForConsuming = TimeUnit.SECONDS.toMillis(3);
-          LOGGER.info("normalTimeForConsuming:" + normalTimeForConsuming + "; extraWaitTime:" + extraWaitTime);
+          LOGGER.info("normalTimeForConsuming: {} ms; extraWaitTime: {} ms", normalTimeForConsuming, extraWaitTime);
           Utils.sleep(normalTimeForConsuming + extraWaitTime);
           TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
             for (int i = 1; i < 20; i++) {
@@ -1756,7 +1756,7 @@ public class TestHybrid {
           () -> controllerClient.getStore((String) vpjProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
               .getStore()
               .getCurrentVersion() == expectedVersionNumber);
-      LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
+      LOGGER.info("**TIME** VPJ #{} takes {} ms", expectedVersionNumber, (System.currentTimeMillis() - vpjStart));
     }
   }
 

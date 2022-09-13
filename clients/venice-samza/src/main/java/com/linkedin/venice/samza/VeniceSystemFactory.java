@@ -8,6 +8,7 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_TYPE;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEY_PASSWORD;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
+import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.VeniceConstants.NATIVE_REPLICATION_DEFAULT_SOURCE_FABRIC;
 import static com.linkedin.venice.VeniceConstants.SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION;
@@ -41,8 +42,6 @@ import org.apache.samza.util.SinglePartitionWithoutOffsetsSystemAdmin;
 public class VeniceSystemFactory implements SystemFactory, Serializable {
   private static final Logger LOGGER = LogManager.getLogger(VeniceSystemFactory.class);
 
-  public static final String D2_ZK_HOSTS_PROPERTY = "__r2d2DefaultClient__.r2d2Client.zkHosts";
-
   public static final String SYSTEMS_PREFIX = "systems.";
   public static final String DOT = ".";
   public static final String DEPLOYMENT_ID = "deployment.id";
@@ -65,20 +64,19 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   public static final String VENICE_AGGREGATE = "aggregate";
 
   /**
+   * D2 ZK hosts for Venice Child Cluster.
+   */
+  public static final String VENICE_CHILD_D2_ZK_HOSTS = "venice.child.d2.zk.hosts";
+
+  /**
    * D2 ZK hosts for Venice Parent Cluster.
    */
   public static final String VENICE_PARENT_D2_ZK_HOSTS = "venice.parent.d2.zk.hosts";
 
-  /**
-   * Specifies a list of partitioners venice supported.
-   * It contains a string of concatenated partitioner class names separated by comma.
-   */
-  public static final String VENICE_PARTITIONERS = "venice.partitioners";
-
   // D2 service name for local cluster
-  public static final String VENICE_LOCAL_D2_SERVICE = "VeniceController";
+  public static final String VENICE_CHILD_CONTROLLER_D2_SERVICE = "venice.child.controller.d2.service";
   // D2 service name for parent cluster
-  public static final String VENICE_PARENT_D2_SERVICE = "VeniceParentController";
+  public static final String VENICE_PARENT_CONTROLLER_D2_SERVICE = "venice.parent.controller.d2.service";
 
   /**
    * A Samza job config to check whether the protocol versions used at runtime are valid in
@@ -215,9 +213,19 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
       throw new SamzaException(
           VENICE_PARENT_D2_ZK_HOSTS + " should not be null, please put this property in your app-def.xml");
     }
-    String localVeniceZKHosts = config.get(D2_ZK_HOSTS_PROPERTY);
+    String localVeniceZKHosts = config.get(VENICE_CHILD_D2_ZK_HOSTS);
     if (isEmpty(localVeniceZKHosts)) {
-      throw new SamzaException(D2_ZK_HOSTS_PROPERTY + " should not be null");
+      throw new SamzaException(VENICE_CHILD_D2_ZK_HOSTS + " should not be null");
+    }
+
+    final String localControllerD2Service = config.get(VENICE_CHILD_CONTROLLER_D2_SERVICE);
+    if (isEmpty(localControllerD2Service)) {
+      throw new SamzaException(VENICE_CHILD_CONTROLLER_D2_SERVICE + " should not be null");
+    }
+
+    final String parentControllerD2Service = config.get(VENICE_PARENT_CONTROLLER_D2_SERVICE);
+    if (isEmpty(parentControllerD2Service)) {
+      throw new SamzaException(VENICE_PARENT_CONTROLLER_D2_SERVICE + " should not be null");
     }
 
     // Build Ssl Factory if Controller SSL is enabled
@@ -236,8 +244,10 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
     LOGGER.info("{}{}: {}", prefix, VENICE_STORE, storeName);
     LOGGER.info("{}{}: {}", prefix, VENICE_AGGREGATE, veniceAggregate);
     LOGGER.info("{}{}: {}", prefix, VENICE_PUSH_TYPE, venicePushType);
-    LOGGER.info("{}{}: {}", prefix, VENICE_PARENT_D2_ZK_HOSTS, veniceParentZKHosts);
-    LOGGER.info("{}: {}", D2_ZK_HOSTS_PROPERTY, localVeniceZKHosts);
+    LOGGER.info("{}: {}", VENICE_PARENT_D2_ZK_HOSTS, veniceParentZKHosts);
+    LOGGER.info("{}: {}", VENICE_CHILD_D2_ZK_HOSTS, localVeniceZKHosts);
+    LOGGER.info("{}: {}", VENICE_PARENT_CONTROLLER_D2_SERVICE, parentControllerD2Service);
+    LOGGER.info("{}: {}", VENICE_CHILD_CONTROLLER_D2_SERVICE, localControllerD2Service);
 
     String runningFabric = config.get(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION);
     LOGGER.info("Running Fabric from config: {}", runningFabric);
@@ -257,10 +267,10 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
     String veniceD2Service;
     if (veniceAggregate) {
       veniceD2ZKHost = veniceParentZKHosts;
-      veniceD2Service = VENICE_PARENT_D2_SERVICE;
+      veniceD2Service = parentControllerD2Service;
     } else {
       veniceD2ZKHost = localVeniceZKHosts;
-      veniceD2Service = VENICE_LOCAL_D2_SERVICE;
+      veniceD2Service = localControllerD2Service;
     }
     LOGGER.info("Will use the following Venice D2 ZK hosts: {}", veniceD2ZKHost);
 

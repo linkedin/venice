@@ -48,7 +48,6 @@ import com.linkedin.venice.helix.HelixInstanceConverter;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
-import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -110,6 +109,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixManagerFactory;
@@ -459,7 +459,7 @@ public class TestUtils {
           assertCommand(controllerClient.queryJobStatus(topicName, Optional.empty()));
       ExecutionStatus executionStatus = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());
       if (executionStatus == ExecutionStatus.ERROR) {
-        throw new VeniceException("Unexpected push failure: " + jobStatusQueryResponse.toString());
+        throw new VeniceException("Unexpected push failure for topic: " + topicName + ": " + jobStatusQueryResponse);
       }
       assertEquals(
           executionStatus,
@@ -555,8 +555,8 @@ public class TestUtils {
     return properties;
   }
 
-  public static String getClusterToDefaultD2String(String cluster) {
-    return cluster + ":" + D2TestUtils.DEFAULT_TEST_SERVICE_NAME;
+  public static String getClusterToD2String(Map<String, String> clusterToD2) {
+    return clusterToD2.entrySet().stream().map(e -> e.getKey() + ":" + e.getValue()).collect(Collectors.joining(","));
   }
 
   public static VeniceWriterFactory getVeniceWriterFactory(String kafkaBootstrapServers) {

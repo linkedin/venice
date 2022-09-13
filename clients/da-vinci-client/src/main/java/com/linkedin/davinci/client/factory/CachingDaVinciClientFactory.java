@@ -27,6 +27,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
 
   protected boolean closed;
   protected final D2Client d2Client;
+  private final String clusterDiscoveryD2ServiceName;
   protected final MetricsRepository metricsRepository;
   protected final VeniceProperties backendConfig;
   protected final Optional<Set<String>> managedClients;
@@ -35,23 +36,64 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
   protected final List<DaVinciClient> isolatedClients = new ArrayList<>();
   protected final Map<String, DaVinciConfig> configs = new HashMap<>();
 
+  @Deprecated
   public CachingDaVinciClientFactory(
       D2Client d2Client,
       MetricsRepository metricsRepository,
       VeniceProperties backendConfig) {
-    this(d2Client, metricsRepository, backendConfig, Optional.empty(), null);
+    this(d2Client, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME, metricsRepository, backendConfig);
   }
 
+  @Deprecated
   public CachingDaVinciClientFactory(
       D2Client d2Client,
       MetricsRepository metricsRepository,
       VeniceProperties backendConfig,
       Optional<Set<String>> managedClients) {
-    this(d2Client, metricsRepository, backendConfig, managedClients, null);
+    this(
+        d2Client,
+        ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        metricsRepository,
+        backendConfig,
+        managedClients);
+  }
+
+  @Deprecated
+  public CachingDaVinciClientFactory(
+      D2Client d2Client,
+      MetricsRepository metricsRepository,
+      VeniceProperties backendConfig,
+      Optional<Set<String>> managedClients,
+      ICProvider icProvider) {
+    this(
+        d2Client,
+        ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        metricsRepository,
+        backendConfig,
+        managedClients,
+        icProvider);
   }
 
   public CachingDaVinciClientFactory(
       D2Client d2Client,
+      String clusterDiscoveryD2ServiceName,
+      MetricsRepository metricsRepository,
+      VeniceProperties backendConfig) {
+    this(d2Client, clusterDiscoveryD2ServiceName, metricsRepository, backendConfig, Optional.empty(), null);
+  }
+
+  public CachingDaVinciClientFactory(
+      D2Client d2Client,
+      String clusterDiscoveryD2ServiceName,
+      MetricsRepository metricsRepository,
+      VeniceProperties backendConfig,
+      Optional<Set<String>> managedClients) {
+    this(d2Client, clusterDiscoveryD2ServiceName, metricsRepository, backendConfig, managedClients, null);
+  }
+
+  public CachingDaVinciClientFactory(
+      D2Client d2Client,
+      String clusterDiscoveryD2ServiceName,
       MetricsRepository metricsRepository,
       VeniceProperties backendConfig,
       Optional<Set<String>> managedClients,
@@ -61,6 +103,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
         managedClients,
         metricsRepository.metrics().keySet());
     this.d2Client = d2Client;
+    this.clusterDiscoveryD2ServiceName = clusterDiscoveryD2ServiceName;
     this.metricsRepository = metricsRepository;
     this.backendConfig = backendConfig;
     this.managedClients = managedClients;
@@ -167,7 +210,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
     }
 
     ClientConfig clientConfig = new ClientConfig(storeName).setD2Client(d2Client)
-        .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
+        .setD2ServiceName(clusterDiscoveryD2ServiceName)
         .setMetricsRepository(metricsRepository)
         .setSpecificValueClass(valueClass);
 

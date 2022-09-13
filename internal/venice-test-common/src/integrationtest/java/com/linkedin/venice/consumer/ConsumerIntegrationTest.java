@@ -128,7 +128,7 @@ public class ConsumerIntegrationTest {
     /**
      * By doing this, we emulate having started a new controller version which knows about the new protocol...
      */
-    ((VeniceHelixAdmin) cluster.getRandmonVeniceController().getVeniceAdmin()).addValueSchema(
+    ((VeniceHelixAdmin) cluster.getRandomVeniceController().getVeniceAdmin()).addValueSchema(
         cluster.getClusterName(),
         systemStoreName,
         NEW_PROTOCOL_SCHEMA.toString(),

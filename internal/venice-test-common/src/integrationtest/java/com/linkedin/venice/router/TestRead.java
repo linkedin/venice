@@ -272,7 +272,7 @@ public abstract class TestRead {
     try (AvroGenericStoreClient<String, GenericRecord> storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setD2Client(d2Client)
-            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME))) {
+            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME))) {
 
       // Run multiple rounds
       int rounds = 100;
@@ -593,9 +593,10 @@ public abstract class TestRead {
       D2ServiceDiscoveryResponse d2ServiceDiscoveryResponse =
           mapper.readValue(responseBody.getBytes(), D2ServiceDiscoveryResponse.class);
       Assert.assertFalse(d2ServiceDiscoveryResponse.isError());
+      Assert.assertEquals(d2ServiceDiscoveryResponse.getCluster(), veniceCluster.getClusterName());
       Assert.assertEquals(
           d2ServiceDiscoveryResponse.getD2Service(),
-          veniceCluster.getRandomVeniceRouter().getD2Service());
+          veniceCluster.getRandomVeniceRouter().getD2ServiceNameForCluster(veniceCluster.getClusterName()));
       Assert.assertEquals(d2ServiceDiscoveryResponse.getCluster(), veniceCluster.getClusterName());
       Assert.assertEquals(d2ServiceDiscoveryResponse.getName(), storeName);
     } catch (Exception e) {

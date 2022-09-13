@@ -2,7 +2,8 @@ package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
-import static com.linkedin.venice.ConfigKeys.D2_CLIENT_ZK_HOSTS_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
+import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICATION_PORT;
@@ -53,7 +54,7 @@ public class DaVinciTestContext<K, V> {
       DaVinciConfig daVinciConfig,
       Map<String, Object> extraBackendProperties) {
     ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName)
-        .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
+        .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .setVeniceURL(zkAddress);
     DaVinciClient<K, V> daVinciClient = null;
     for (int attempt = 1; attempt <= MAX_ATTEMPT; attempt++) {
@@ -97,7 +98,12 @@ public class DaVinciTestContext<K, V> {
         VeniceProperties backendConfig = backendConfigBuilder.build();
         LOGGER.info("Creating Da Vinci factory with backend config: {}", backendConfig);
         // Create Da Vinci factory
-        factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig, managedClients);
+        factory = new CachingDaVinciClientFactory(
+            d2Client,
+            VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+            metricsRepository,
+            backendConfig,
+            managedClients);
         // Get and start Da Vinci client.
         daVinciClient = factory.getGenericAvroClient(storeName, daVinciConfig);
         daVinciClient.start();
@@ -124,6 +130,7 @@ public class DaVinciTestContext<K, V> {
         .put(SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED, true)
         .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-        .put(D2_CLIENT_ZK_HOSTS_ADDRESS, zkAddress);
+        .put(D2_ZK_HOSTS_ADDRESS, zkAddress)
+        .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME);
   }
 }

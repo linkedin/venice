@@ -15,6 +15,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
@@ -58,10 +59,12 @@ public class StoreClientBenchmark {
 
   private D2Client d2Client;
   private AvroGenericStoreClient<String, Object> d2StoreClient;
+  private String d2ServiceName;
 
   @BeforeTest
   public void setUp() throws Exception {
-    routerServer = ServiceFactory.getMockD2Server("Mock-router-server");
+    d2ServiceName = Utils.getUniqueString("VeniceRouter");
+    routerServer = ServiceFactory.getMockD2Server("Mock-router-server", d2ServiceName);
     setupStoreClient();
   }
 
@@ -114,8 +117,7 @@ public class StoreClientBenchmark {
     String clusterDiscoveryPath = "/" + D2ServiceDiscovery.TYPE_D2_SERVICE_DISCOVERY + "/" + storeName;
     routerServer.addResponseForUri(
         clusterDiscoveryPath,
-        StoreClientTestUtils
-            .constructHttpClusterDiscoveryResponse(storeName, "test_cluster", D2TestUtils.DEFAULT_TEST_SERVICE_NAME));
+        StoreClientTestUtils.constructHttpClusterDiscoveryResponse(storeName, "test_cluster", d2ServiceName));
 
     // Push value schemas
     int valueSchemaId = 1;
@@ -143,7 +145,7 @@ public class StoreClientBenchmark {
     MetricsRepository d2ClientMetricsRepository = new MetricsRepository();
     d2StoreClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
-            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+            .setD2ServiceName(d2ServiceName)
             .setD2Client(d2Client)
             .setMetricsRepository(d2ClientMetricsRepository)
             .setUseFastAvro(true));
@@ -158,7 +160,7 @@ public class StoreClientBenchmark {
     MetricsRepository d2ClientMetricsRepository = new MetricsRepository();
     return ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
-            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+            .setD2ServiceName(d2ServiceName)
             .setD2Client(d2Client)
             .setMetricsRepository(d2ClientMetricsRepository)
             .setUseFastAvro(useFastAvro));
@@ -166,13 +168,13 @@ public class StoreClientBenchmark {
 
   @DataProvider(name = "useFastAvroOptionsProvider")
   public Object[][] useFastAvroOptions() {
-    // Benchmark should be ran separately to get consistent result since each test will consume a lot of CPU resources.
+    // Benchmark should be run separately to get consistent result since each test will consume a lot of CPU resources.
     return new Object[][] { { true } };
-    // return new Object[][]{{false}};
+    // return new Object[][] { { false } };
   }
 
   @Test(dataProvider = "useFastAvroOptionsProvider", enabled = false)
-  public void testStoreClientWithMultiThreads(boolean useFastAvro) throws ExecutionException, InterruptedException {
+  public void testStoreClientWithMultiThreads(boolean useFastAvro) {
     d2StoreClient = getD2StoreClient(useFastAvro);
     long startTs = System.currentTimeMillis();
 
