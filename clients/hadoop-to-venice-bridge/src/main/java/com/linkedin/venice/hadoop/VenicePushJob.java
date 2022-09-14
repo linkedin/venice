@@ -312,6 +312,8 @@ public class VenicePushJob implements AutoCloseable {
    * try to override it.
    */
   public static final long DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE = Time.SECONDS_PER_DAY;
+  public static final String REPUSH_TTL_IN_HOURS_OVERRIDE = "repush.ttl.hours.override";
+  public static final String REPUSH_TTL_POLICY = "repush.ttl.policy";
   private static final Logger LOGGER = LogManager.getLogger(VenicePushJob.class);
 
   /**
@@ -411,6 +413,8 @@ public class VenicePushJob implements AutoCloseable {
     boolean compressionMetricCollectionEnabled;
     // temporary flag to host the code to use mapper to validate schema and build dictionary
     boolean useMapperToBuildDict;
+    // specify ttl time to drop stale records. Only works for repush
+    long repushTtlInHours;
   }
 
   protected PushJobSetting pushJobSetting;
@@ -639,6 +643,11 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.kafkaInputCombinerEnabled = props.getBoolean(KAFKA_INPUT_COMBINER_ENABLED, false);
     pushJobSettingToReturn.suppressEndOfPushMessage = props.getBoolean(SUPPRESS_END_OF_PUSH_MESSAGE, false);
     pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
+    pushJobSettingToReturn.repushTtlInHours = props.getLong(REPUSH_TTL_IN_HOURS_OVERRIDE, -1);
+
+    if (pushJobSettingToReturn.repushTtlInHours != -1 && !pushJobSettingToReturn.isSourceKafka) {
+      throw new VeniceException("Repush with TTL is only supported while using Kafka input");
+    }
 
     if (pushJobSettingToReturn.isSourceKafka) {
       /**
@@ -896,6 +905,10 @@ public class VenicePushJob implements AutoCloseable {
       inputDirectory = getInputURI(props);
       storeSetting = getSettingsFromController(controllerClient, pushJobSetting);
       inputStorageQuotaTracker = new InputStorageQuotaTracker(storeSetting.storeStorageQuota);
+
+      if (pushJobSetting.repushTtlInHours != -1 && storeSetting.isChunkingEnabled) {
+        throw new VeniceException("Chunking is not supported when using repush with ttl feature");
+      }
 
       if (pushJobSetting.isSourceETL) {
         MultiSchemaResponse allValueSchemaResponses = controllerClient.getAllValueSchema(pushJobSetting.storeName);
@@ -2514,6 +2527,8 @@ public class VenicePushJob implements AutoCloseable {
        */
       conf.set(KAFKA_INPUT_TOPIC, pushJobSetting.kafkaInputTopic);
       conf.set(KAFKA_INPUT_BROKER_URL, pushJobSetting.kafkaInputBrokerUrl);
+      conf.setLong(REPUSH_TTL_IN_HOURS_OVERRIDE, pushJobSetting.repushTtlInHours);
+      conf.setInt(REPUSH_TTL_POLICY, 0); // only support one policy thus not allow any value passed in.
     } else {
       conf.setInt(VALUE_SCHEMA_ID_PROP, pushJobSchemaInfo.getValueSchemaId());
       conf.setInt(DERIVED_SCHEMA_ID_PROP, pushJobSchemaInfo.getDerivedSchemaId());
