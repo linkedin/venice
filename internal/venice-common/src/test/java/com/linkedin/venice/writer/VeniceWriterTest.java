@@ -145,16 +145,14 @@ public class VeniceWriterTest {
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
     String testTopic = "test";
-    VeniceWriter<Object, Object, Object> writer = new VeniceWriter(
-        new VeniceProperties(writerProperties),
-        testTopic,
-        serializer,
-        serializer,
-        serializer,
-        new DefaultVenicePartitioner(),
-        SystemTime.INSTANCE,
-        Optional.empty(),
-        () -> mockedProducer);
+    VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder(testTopic).setKeySerializer(serializer)
+        .setValueSerializer(serializer)
+        .setWriteComputeSerializer(serializer)
+        .setPartitioner(new DefaultVenicePartitioner())
+        .setTime(SystemTime.INSTANCE)
+        .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, new VeniceProperties(writerProperties), () -> mockedProducer);
     for (int i = 0; i < 1000; i++) {
       writer.put(Integer.toString(i), Integer.toString(i), 1, null);
     }
@@ -185,16 +183,14 @@ public class VeniceWriterTest {
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
     String testTopic = "test";
-    VeniceWriter<Object, Object, Object> writer = new VeniceWriter(
-        new VeniceProperties(writerProperties),
-        testTopic,
-        serializer,
-        serializer,
-        serializer,
-        new DefaultVenicePartitioner(),
-        SystemTime.INSTANCE,
-        Optional.empty(),
-        () -> mockedProducer);
+    VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder(testTopic).setKeySerializer(serializer)
+        .setValueSerializer(serializer)
+        .setWriteComputeSerializer(serializer)
+        .setPartitioner(new DefaultVenicePartitioner())
+        .setTime(SystemTime.INSTANCE)
+        .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, new VeniceProperties(writerProperties), () -> mockedProducer);
 
     // verify the new veniceWriter API's are able to encode the A/A metadat info correctly.
     long ctime = System.currentTimeMillis();

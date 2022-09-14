@@ -33,6 +33,7 @@ import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
@@ -193,14 +194,15 @@ public class ConsumerIntegrationTest {
     VenicePartitioner partitioner = new DefaultVenicePartitioner(props);
     Time time = new SystemTime();
     Supplier<KafkaProducerWrapper> producerWrapperSupplier = () -> new ApacheKafkaProducerWithNewerProtocol(props);
-    try (VeniceWriter veniceWriterWithNewerProtocol = new VeniceWriterWithNewerProtocol(
-        props,
-        topicName,
-        keySerializer,
-        valueSerializer,
-        partitioner,
-        time,
-        producerWrapperSupplier)) {
+
+    VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder(topicName).setKeySerializer(keySerializer)
+        .setValueSerializer(valueSerializer)
+        .setWriteComputeSerializer(new DefaultSerializer())
+        .setTime(time)
+        .setPartitioner(partitioner)
+        .build();
+    try (VeniceWriter veniceWriterWithNewerProtocol =
+        new VeniceWriterWithNewerProtocol(veniceWriterOptions, props, producerWrapperSupplier)) {
       writeAndVerifyRecord(veniceWriterWithNewerProtocol, client, "value2");
     }
   }
@@ -229,23 +231,10 @@ public class ConsumerIntegrationTest {
 
   private static class VeniceWriterWithNewerProtocol extends VeniceWriter<String, String, byte[]> {
     protected VeniceWriterWithNewerProtocol(
+        VeniceWriterOptions veniceWriterOptions,
         VeniceProperties props,
-        String topicName,
-        VeniceKafkaSerializer<String> keySerializer,
-        VeniceKafkaSerializer<String> valueSerializer,
-        VenicePartitioner partitioner,
-        Time time,
         Supplier<KafkaProducerWrapper> producerWrapperSupplier) {
-      super(
-          props,
-          topicName,
-          keySerializer,
-          valueSerializer,
-          new DefaultSerializer(),
-          partitioner,
-          time,
-          Optional.empty(),
-          producerWrapperSupplier);
+      super(veniceWriterOptions, props, producerWrapperSupplier);
     }
 
     @Override

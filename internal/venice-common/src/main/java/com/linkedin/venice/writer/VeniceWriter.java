@@ -185,9 +185,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final LeaderMetadataWrapper DEFAULT_LEADER_METADATA_WRAPPER =
       new LeaderMetadataWrapper(DEFAULT_UPSTREAM_OFFSET, DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID);
 
-  private static final int DEFAULT_TARGET_VERSION =
-      (int) AvroCompatibilityHelper.getSpecificDefaultValue(KafkaMessageEnvelope.SCHEMA$.getField("targetVersion"));
-
   // Immutable state
   private final VeniceKafkaSerializer<K> keySerializer;
   private final VeniceKafkaSerializer<V> valueSerializer;
@@ -237,22 +234,15 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private volatile boolean isChunkingFlagInvoked;
 
   protected VeniceWriter(
+      VeniceWriterOptions params,
       VeniceProperties props,
-      String topicName,
-      VeniceKafkaSerializer<K> keySerializer,
-      VeniceKafkaSerializer<V> valueSerializer,
-      VeniceKafkaSerializer<U> writeComputeSerializer,
-      VenicePartitioner partitioner,
-      Time time,
-      Optional<Integer> topicPartitionCount,
       Supplier<KafkaProducerWrapper> producerWrapperSupplier) {
-    super(topicName);
-
-    this.keySerializer = keySerializer;
-    this.valueSerializer = valueSerializer;
-    this.writeComputeSerializer = writeComputeSerializer;
-    this.time = time;
-    this.partitioner = partitioner;
+    super(params.getTopicName());
+    this.keySerializer = params.getKeySerializer();
+    this.valueSerializer = params.getValueSerializer();
+    this.writeComputeSerializer = params.getWriteComputeSerializer();
+    this.time = params.getTime();
+    this.partitioner = params.getPartitioner();
     this.closeTimeOut = props.getInt(CLOSE_TIMEOUT_MS, DEFAULT_CLOSE_TIMEOUT_MS);
     this.checkSumType = CheckSumType.valueOf(props.getString(CHECK_SUM_TYPE, DEFAULT_CHECK_SUM_TYPE));
     this.isChunkingEnabled = props.getBoolean(ENABLE_CHUNKING, false);
@@ -298,8 +288,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       // Also avoiding a metadata call to kafka here as the partitionsFor() call sometimes may get blocked indefinitely
       // if the
       // kafka broker is overloaded and does not respond in timely manner.
-      if (topicPartitionCount.isPresent()) {
-        this.numberOfPartitions = topicPartitionCount.get();
+      if (params.getPartitionCount().isPresent()) {
+        this.numberOfPartitions = params.getPartitionCount().get();
       } else {
         this.numberOfPartitions = producer.getNumberOfPartitions(topicName, 30, TimeUnit.SECONDS);
       }
@@ -1533,12 +1523,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
     producerMetadata.messageTimestamp = time.getMilliseconds();
     producerMetadata.upstreamOffset = -1; // This field has been deprecated
-
-    if (logicalTs.isPresent()) {
-      producerMetadata.logicalTimestamp = logicalTs.get();
-    } else {
-      producerMetadata.logicalTimestamp = VENICE_DEFAULT_LOGICAL_TS;
-    }
+    producerMetadata.logicalTimestamp = logicalTs.orElse(VENICE_DEFAULT_LOGICAL_TS);
     kafkaValue.producerMetadata = producerMetadata;
     kafkaValue.leaderMetadataFooter = new LeaderMetadata();
     kafkaValue.leaderMetadataFooter.hostName = writerId;
