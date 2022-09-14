@@ -14,6 +14,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 
+/**
+ * {@code ServerHttpRequestStats} contains a list of counters in order to mainly measure the performance of
+ * handling requests from Routers.
+ */
 public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor successRequestSensor;
   private final Sensor errorRequestSensor;

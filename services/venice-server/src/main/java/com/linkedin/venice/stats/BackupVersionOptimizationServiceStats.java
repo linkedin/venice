@@ -1,10 +1,15 @@
 package com.linkedin.venice.stats;
 
+import com.linkedin.venice.cleaner.BackupVersionOptimizationService;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.OccurrenceRate;
 
 
+/**
+ * {@code BackupVersionOptimizationServiceStats} record the statistics for the database optimization done by the
+ * {@link BackupVersionOptimizationService} including both successes and failures.
+ */
 public class BackupVersionOptimizationServiceStats extends AbstractVeniceStats {
   private final Sensor optimizationSensor;
   private final Sensor optimizationErrorSensor;

@@ -4,7 +4,10 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
 import io.tehuti.metrics.MetricsRepository;
 
-
+/**
+ * {@code AggServerHttpRequestStats} is the aggregate statistics for {@code ServerHttpRequestStats} corresponding to
+ * the type of requests defined in {@link RequestType}.
+ */
 public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<ServerHttpRequestStats> {
   public AggServerHttpRequestStats(
       MetricsRepository metricsRepository,
