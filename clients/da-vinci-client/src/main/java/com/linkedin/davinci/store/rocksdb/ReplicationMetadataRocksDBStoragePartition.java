@@ -90,8 +90,14 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
   }
 
   public long getRmdByteUsage() {
-    makeSureRocksDBIsStillOpen();
-    return rocksDB.getColumnFamilyMetaData(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX)).size();
+    readCloseRWLock.readLock().lock();
+    try {
+      makeSureRocksDBIsStillOpen();
+      return rocksDB.getColumnFamilyMetaData(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX))
+          .size();
+    } finally {
+      readCloseRWLock.readLock().unlock();
+    }
   }
 
   /**
