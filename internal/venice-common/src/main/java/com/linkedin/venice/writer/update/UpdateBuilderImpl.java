@@ -1,28 +1,29 @@
 package com.linkedin.venice.writer.update;
 
+import com.linkedin.venice.annotation.Experimental;
+import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.writecompute.WriteComputeConstants;
 import com.linkedin.venice.serializer.AvroSerializer;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang3.Validate;
 
 
+@NotThreadsafe
+@Experimental
 public class UpdateBuilderImpl implements UpdateBuilder {
   private final GenericRecord updateRecord;
-  private final Map<String, List<?>> toAddElementsByFieldName;
-  private final Map<String, List<?>> toRemoveElementsByFieldName;
-  private final Map<String, List<String>> toRemoveKeysByFieldName;
-  private final Map<String, Map<String, ?>> toAddEntriesByFieldName;
   private final AvroSerializer<GenericRecord> serializer;
-  private boolean anyUpdate;
+  private final Set<String> updateFieldNameSet;
+  private final Set<String> collectionMergeFieldNameSet;
 
   /**
    * @param updateSchema Update schema that is derived from the value Record schema.
@@ -31,11 +32,8 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     validateUpdateSchema(updateSchema);
     this.updateRecord = new GenericData.Record(updateSchema);
     this.serializer = new AvroSerializer<>(updateSchema);
-    this.toAddElementsByFieldName = new HashMap<>();
-    this.toRemoveElementsByFieldName = new HashMap<>();
-    this.toRemoveKeysByFieldName = new HashMap<>();
-    this.toAddEntriesByFieldName = new HashMap<>();
-    this.anyUpdate = false;
+    this.updateFieldNameSet = new HashSet<>();
+    this.collectionMergeFieldNameSet = new HashSet<>();
   }
 
   private void validateUpdateSchema(Schema updateSchema) {
@@ -49,7 +47,7 @@ public class UpdateBuilderImpl implements UpdateBuilder {
   public UpdateBuilder setNewFieldValue(String fieldName, Object newFieldValue) {
     validateNoCollectionMergeOnField(fieldName);
     updateRecord.put(fieldName, newFieldValue);
-    anyUpdate = true;
+    updateFieldNameSet.add(fieldName);
     return this;
   }
 
@@ -58,8 +56,8 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     validateFieldType(Validate.notNull(listFieldName), Schema.Type.ARRAY);
     validateFieldNotSet(listFieldName);
     if (!elementsToAdd.isEmpty()) {
-      toAddElementsByFieldName.put(listFieldName, elementsToAdd);
-      anyUpdate = true;
+      getOrCreateListMergeRecord(listFieldName).put(WriteComputeConstants.SET_UNION, elementsToAdd);
+      collectionMergeFieldNameSet.add(listFieldName);
     }
     return this;
   }
@@ -69,8 +67,8 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     validateFieldType(Validate.notNull(listFieldName), Schema.Type.ARRAY);
     validateFieldNotSet(listFieldName);
     if (!elementsToRemove.isEmpty()) {
-      toRemoveElementsByFieldName.put(listFieldName, elementsToRemove);
-      anyUpdate = true;
+      getOrCreateListMergeRecord(listFieldName).put(WriteComputeConstants.SET_DIFF, elementsToRemove);
+      collectionMergeFieldNameSet.add(listFieldName);
     }
     return this;
   }
@@ -80,8 +78,8 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     validateFieldType(Validate.notNull(mapFieldName), Schema.Type.MAP);
     validateFieldNotSet(mapFieldName);
     if (!entriesToAdd.isEmpty()) {
-      toAddEntriesByFieldName.put(mapFieldName, entriesToAdd);
-      anyUpdate = true;
+      getOrCreateMapMergeRecord(mapFieldName).put(WriteComputeConstants.MAP_UNION, entriesToAdd);
+      collectionMergeFieldNameSet.add(mapFieldName);
     }
     return this;
   }
@@ -91,25 +89,26 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     validateFieldType(Validate.notNull(mapFieldName), Schema.Type.MAP);
     validateFieldNotSet(mapFieldName);
     if (!keysToRemove.isEmpty()) {
-      toRemoveKeysByFieldName.put(mapFieldName, keysToRemove);
-      anyUpdate = true;
+      getOrCreateMapMergeRecord(mapFieldName).put(WriteComputeConstants.MAP_DIFF, keysToRemove);
+      collectionMergeFieldNameSet.add(mapFieldName);
     }
     return this;
   }
 
   @Override
   public GenericRecord build() {
-    if (!anyUpdate) {
+    if (updateFieldNameSet.isEmpty() && collectionMergeFieldNameSet.isEmpty()) {
       throw new IllegalStateException(
           "No update has been specified. Please use setter methods to specify how to partially "
               + "update a value record before calling this build method.");
     }
     for (Schema.Field updateField: updateRecord.getSchema().getFields()) {
       final String fieldName = updateField.name();
-      if (updateRecord.get(fieldName) != null) {
-        continue; // This field already has a new value.
+      if (updateFieldNameSet.contains(fieldName) || collectionMergeFieldNameSet.contains(fieldName)) {
+        continue;
       }
-      updateRecord.put(fieldName, createUpdateFieldValue(updateField));
+      // This field has no field set and no collection merge.
+      updateRecord.put(fieldName, createNoOpRecord(updateField));
     }
     Exception serializationException = validateUpdateRecordIsSerializable(updateRecord).orElse(null);
     if (serializationException != null) {
@@ -131,74 +130,22 @@ public class UpdateBuilderImpl implements UpdateBuilder {
   }
 
   /**
-   * Create a {@link GenericRecord} for a given field. The created {@link GenericRecord} represents how to update a field
-   * in a value record, specifically there could be 3 types of field update:
-   *    1. No-op
-   *    2. Add/remove elements to/from a List field.
-   *    3. Add/remove K-V pairs to/from a Map field.
+   * Given a field from the partial update schema and find the type of its corresponding value field.
    *
-   * @param updateField A field from the Write Compute schema. Its field name is the same as the field name in the value
-   *                    schema. It also contains the schema that can be used to specify how to update a value field.
-   */
-  private GenericRecord createUpdateFieldValue(Schema.Field updateField) {
-    Schema.Type valueFieldType = getCorrespondingValueFieldType(updateField);
-    switch (valueFieldType) {
-      case ARRAY:
-        List<?> toAddElements = toAddElementsByFieldName.getOrDefault(updateField.name(), Collections.emptyList());
-        List<?> toRemoveElements =
-            toRemoveElementsByFieldName.getOrDefault(updateField.name(), Collections.emptyList());
-        if (toAddElements.isEmpty() && toRemoveElements.isEmpty()) {
-          return createNoOpRecord(updateField); // No update on this List field.
-        }
-        return createListMergeRecord(updateField, toAddElements, toRemoveElements);
-
-      case MAP:
-        List<String> toRemoveKeys = toRemoveKeysByFieldName.getOrDefault(updateField.name(), Collections.emptyList());
-        Map<String, ?> toAddEntries = toAddEntriesByFieldName.getOrDefault(updateField.name(), Collections.emptyMap());
-        removeSameKeys(toAddEntries, toRemoveKeys);
-        if (toRemoveKeys.isEmpty() && toAddEntries.isEmpty()) {
-          return createNoOpRecord(updateField); // No update on this Map field.
-        }
-        return createMapMergeRecord(updateField, toAddEntries, toRemoveKeys);
-
-      default:
-        return createNoOpRecord(updateField);
-    }
-  }
-
-  /**
-   * If a key is in the to-remove-key list and also in the to-add-entry list, this key is removed from both lists.
-   */
-  private void removeSameKeys(Map<String, ?> toAddEntries, List<String> toRemoveKeys) {
-    List<String> remainingToRemoveKeys = new LinkedList<>();
-    for (String toRemoveKey: toRemoveKeys) {
-      if (toAddEntries.remove(toRemoveKey) == null) {
-        remainingToRemoveKeys.add(toRemoveKey);
-      }
-    }
-    if (remainingToRemoveKeys.size() < toRemoveKeys.size()) {
-      toRemoveKeys.clear();
-      toRemoveKeys.addAll(remainingToRemoveKeys);
-    }
-  }
-
-  /**
-   * Given a field from the Write Compute schema and find the type of its corresponding value field.
-   *
-   * @param updateField A field from the Write Compute schema.
+   * @param updateField A field from the partial update schema.
    * @return Type of its corresponding value field.
    */
   private Schema.Type getCorrespondingValueFieldType(Schema.Field updateField) {
-    // Each field in Write Compute Update schema is a union of multiple schemas.
+    // Each field in partial update schema is a union of multiple schemas.
     List<Schema> updateFieldSchemas = updateField.schema().getTypes();
     // The last schema in the union is the schema of the field in the corresponding value schema.
     return updateFieldSchemas.get(updateFieldSchemas.size() - 1).getType();
   }
 
   private void validateFieldNotSet(String fieldName) {
-    Object existingFieldValue = updateRecord.get(fieldName);
-    if (existingFieldValue != null) {
-      throw new IllegalStateException("Field " + fieldName + " has already been set with value: " + existingFieldValue);
+    if (updateFieldNameSet.contains(fieldName)) {
+      throw new IllegalStateException(
+          "Field " + fieldName + " has already been set with value: " + updateRecord.get(fieldName));
     }
   }
 
@@ -214,43 +161,41 @@ public class UpdateBuilderImpl implements UpdateBuilder {
   }
 
   private void validateNoCollectionMergeOnField(String fieldName) {
-    if (toAddElementsByFieldName.containsKey(fieldName)) {
-      throw new IllegalStateException("Field " + fieldName + " already had to-add element(s).");
-    }
-    if (toRemoveElementsByFieldName.containsKey(fieldName)) {
-      throw new IllegalStateException("Field " + fieldName + " already had to-remove element(s).");
-    }
-    if (toRemoveKeysByFieldName.containsKey(fieldName)) {
-      throw new IllegalStateException("Field " + fieldName + " already had to-remove key(s).");
-    }
-    if (toAddEntriesByFieldName.containsKey(fieldName)) {
-      throw new IllegalStateException("Field " + fieldName + " already had to-add entries.");
+    if (collectionMergeFieldNameSet.contains(fieldName)) {
+      throw new IllegalStateException("Field " + fieldName + " already had collection merge element(s).");
     }
   }
 
   private GenericRecord createNoOpRecord(Schema.Field updateField) {
-    // Because of the way how Write Compute schema is generated, the first entry in the every union write compute field
+    // Because of the way how partial update schema is generated, the first entry in the every union write compute field
     // must be the no-op schema.
     Schema noOpRecordSchema = updateField.schema().getTypes().get(0);
     return new GenericData.Record(noOpRecordSchema);
   }
 
-  private GenericRecord createListMergeRecord(Schema.Field updateField, List<?> toAdd, List<?> toRemove) {
-    Schema listMergeRecordSchema = updateField.schema().getTypes().get(1);
+  // Caller of this method must check the field is a list field and is not set.
+  private GenericRecord getOrCreateListMergeRecord(String listFieldName) {
+    if (updateRecord.get(listFieldName) != null) {
+      return (GenericRecord) updateRecord.get(listFieldName);
+    }
+    Schema listMergeRecordSchema = updateRecord.getSchema().getField(listFieldName).schema().getTypes().get(1);
     GenericRecord listMergeRecord = new GenericData.Record(listMergeRecordSchema);
-    listMergeRecord.put(WriteComputeConstants.SET_UNION, toAdd);
-    listMergeRecord.put(WriteComputeConstants.SET_DIFF, toRemove);
+    listMergeRecord.put(WriteComputeConstants.SET_UNION, Collections.emptyList());
+    listMergeRecord.put(WriteComputeConstants.SET_DIFF, Collections.emptyList());
+    updateRecord.put(listFieldName, listMergeRecord);
     return listMergeRecord;
   }
 
-  private GenericRecord createMapMergeRecord(
-      Schema.Field updateField,
-      Map<String, ?> toAdd,
-      List<String> toRemoveKeys) {
-    Schema mapMergeRecordSchema = updateField.schema().getTypes().get(1);
+  // Caller of this method must check the field is a map field and is not set.
+  private GenericRecord getOrCreateMapMergeRecord(String mapFieldName) {
+    if (updateRecord.get(mapFieldName) != null) {
+      return (GenericRecord) updateRecord.get(mapFieldName);
+    }
+    Schema mapMergeRecordSchema = updateRecord.getSchema().getField(mapFieldName).schema().getTypes().get(1);
     GenericRecord mapMergeRecord = new GenericData.Record(mapMergeRecordSchema);
-    mapMergeRecord.put(WriteComputeConstants.MAP_UNION, toAdd);
-    mapMergeRecord.put(WriteComputeConstants.MAP_DIFF, toRemoveKeys);
+    mapMergeRecord.put(WriteComputeConstants.MAP_UNION, Collections.emptyMap());
+    mapMergeRecord.put(WriteComputeConstants.MAP_DIFF, Collections.emptyList());
+    updateRecord.put(mapFieldName, mapMergeRecord);
     return mapMergeRecord;
   }
 }
