@@ -2,6 +2,7 @@ package com.linkedin.venice.writer.update;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.ddsstorage.io.IOUtils;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -19,7 +20,7 @@ import org.testng.annotations.Test;
 
 
 public class UpdateBuilderImplTest {
-  private static final Logger logger = LogManager.getLogger(UpdateBuilderImplTest.class);
+  private static final Logger LOGGER = LogManager.getLogger();
   private static final Schema VALUE_SCHEMA =
       AvroCompatibilityHelper.parse(loadFileAsString("TestWriteComputeBuilder.avsc"));
   private static final Schema UPDATE_SCHEMA =
@@ -175,7 +176,7 @@ public class UpdateBuilderImplTest {
 
   /**
    * A collection field should be either NO_OP, given a new value, or collection merge value. This test covers the situation
-   * where a collection field is given a collection merge but it is still set to a whole new collection value afterwards.
+   * where a collection field is given a collection merge, but it is still set to a whole new collection value afterwards.
    */
   @Test
   public void testDuplicatedSetCollectionValue() {
@@ -201,6 +202,23 @@ public class UpdateBuilderImplTest {
     Assert.assertThrows(IllegalStateException.class, () -> builder.setNewFieldValue("stringMap", expectedStringMap));
   }
 
+  /**
+   * User of the {@link UpdateBuilder} should be able to set field to null when the field is of type union and has null
+   * in one of the union branches.
+   */
+  @Test
+  public void testSetFieldToNull() {
+    // Allow nullable field to be updated to null.
+    UpdateBuilder builder = new UpdateBuilderImpl(UPDATE_SCHEMA);
+    builder.setNewFieldValue("address", null);
+    GenericRecord partialUpdateRecord = builder.build();
+    Assert.assertNull(partialUpdateRecord.get("address"));
+    // It should throw exception when non-nullable field is set to null.
+    builder = new UpdateBuilderImpl(UPDATE_SCHEMA);
+    builder.setNewFieldValue("name", null);
+    Assert.assertThrows(VeniceException.class, builder::build);
+  }
+
   private GenericRecord createAddressRecord(String street, String city) {
     Schema addressRecordSchema = VALUE_SCHEMA.getField("address").schema().getTypes().get(1);
     GenericRecord addressRecord = new GenericData.Record(addressRecordSchema);
@@ -220,7 +238,7 @@ public class UpdateBuilderImplTest {
           Objects.requireNonNull(Thread.currentThread().getContextClassLoader().getResourceAsStream(fileName)),
           StandardCharsets.UTF_8);
     } catch (Exception e) {
-      logger.error(e);
+      LOGGER.error(e);
       return null;
     }
   }

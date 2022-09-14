@@ -1,5 +1,7 @@
 package com.linkedin.venice.writer.update;
 
+import com.linkedin.venice.annotation.Experimental;
+import com.linkedin.venice.annotation.NotThreadsafe;
 import java.util.List;
 import java.util.Map;
 import org.apache.avro.Schema;
@@ -17,6 +19,8 @@ import org.apache.avro.generic.GenericRecord;
  *      4. Add entries to a Map field.
  *      5. Remove entries by keys from a map field.
  */
+@NotThreadsafe
+@Experimental
 public interface UpdateBuilder {
   /**
    * Set a new value to a field. Note that setting value on the same field multiple times throws an {@link IllegalStateException}.
@@ -30,10 +34,10 @@ public interface UpdateBuilder {
 
   /**
    * Set elements to be added to a List/Array field.
-   * Note that
-   *    1. If a list field already has {@link this#setNewFieldValue} or this method called on it, calling this method (again)
-   *       throws an {@link IllegalStateException}.
-   *    2. Calling this method multiple times with the same listFieldName, only last invocation takes effect.
+   * Note that:
+   *    1. If a list field has already set new list value by invoking {@link this#setNewFieldValue}, calling this
+   *    method on the same list field should throw an {@link IllegalStateException}.
+   *    2. Calling this method multiple times on the same list field, only last invocation takes effect.
    *
    * @param listFieldName name of a list field.
    * @param elementsToAdd Elements that are going to be added to this list field.
@@ -43,9 +47,9 @@ public interface UpdateBuilder {
   /**
    * Set elements to be removed from a List/Array field.
    * Note that:
-   *    1. If a list field already has {@link this#setNewFieldValue} or this method called on it, calling this method (again)
-   *       throws an {@link IllegalStateException}.
-   *    2. Calling this method multiple times with the same listFieldName, only last invocation takes effect.
+   *    1. If a list field has already set new list value by invoking {@link this#setNewFieldValue}, calling this
+   *    method on the same list field should throw an {@link IllegalStateException}.
+   *    2. Calling this method multiple times on the same list field, only last invocation takes effect.
    *
    * @param listFieldName Name of a list field.
    * @param elementsToRemove Elements that are going to be removed from this list field.
@@ -55,9 +59,9 @@ public interface UpdateBuilder {
   /**
    * Set k-v entries to be added to a Map field.
    * Note that:
-   *    1. If a map field already has {@link this#setNewFieldValue} or this method called on it, calling this method (again)
-   *       throws an {@link IllegalStateException}.
-   *    2. Calling this method multiple times with the same listFieldName, only last invocation takes effect.
+   *    1. If a map field has already set new list value by invoking {@link this#setNewFieldValue}, calling this
+   *    method on the same map field should throw an {@link IllegalStateException}.
+   *    2. Calling this method multiple times on the same map field, only last invocation takes effect.
    *
    * @param mapFieldName Name of a map field.
    * @param entriesToAdd Entries that are going to be added to this map field.
@@ -67,9 +71,9 @@ public interface UpdateBuilder {
   /**
    * Set keys to be added to a Map field.
    * Note that:
-   *    1. If a map field already has {@link this#setNewFieldValue} or this method called on it, calling this method (again)
-   *       throws an {@link IllegalStateException}.
-   *    2. Calling this method multiple times with the same listFieldName, only last invocation takes effect.
+   *    1. If a map field has already set new list value by invoking {@link this#setNewFieldValue}, calling this
+   *    method on the same map field should throw an {@link IllegalStateException}.
+   *    2. Calling this method multiple times on the same map field, only last invocation takes effect.
    *
    * @param mapFieldName Name of a map field.
    * @param keysToRemove Keys of k-v entries that are going to be removed from this map field.
