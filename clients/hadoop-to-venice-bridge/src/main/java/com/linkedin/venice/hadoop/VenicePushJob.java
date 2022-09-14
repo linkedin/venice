@@ -63,6 +63,7 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -2127,14 +2128,17 @@ public class VenicePushJob implements AutoCloseable {
           versionTopicInfo.partitionerClass,
           versionTopicInfo.amplificationFactor,
           new VeniceProperties(partitionerProperties));
-      VeniceWriter<KafkaKey, byte[], byte[]> newVeniceWriter = veniceWriterFactory.createVeniceWriter(
-          versionTopicInfo.topic,
-          venicePartitioner,
-          Optional.empty(),
-          Version.isVersionTopic(versionTopicInfo.topic)
-              ? versionTopicInfo.partitionCount * versionTopicInfo.amplificationFactor
-              : versionTopicInfo.partitionCount);
-      logger.info("Created VeniceWriter: " + newVeniceWriter.toString());
+      VeniceWriterOptions vwOptions =
+          new VeniceWriterOptions.Builder(versionTopicInfo.topic).setUseKafkaKeySerializer(true)
+              .setPartitioner(venicePartitioner)
+              .setPartitionCount(
+                  Optional.of(
+                      Version.isVersionTopic(versionTopicInfo.topic)
+                          ? versionTopicInfo.partitionCount * versionTopicInfo.amplificationFactor
+                          : versionTopicInfo.partitionCount))
+              .build();
+      VeniceWriter<KafkaKey, byte[], byte[]> newVeniceWriter = veniceWriterFactory.createVeniceWriter(vwOptions);
+      logger.info("Created VeniceWriter: {}", newVeniceWriter);
       veniceWriter = newVeniceWriter;
     }
     return veniceWriter;

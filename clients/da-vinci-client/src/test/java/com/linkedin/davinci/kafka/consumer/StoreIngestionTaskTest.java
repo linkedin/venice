@@ -70,7 +70,6 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.DefaultSerializer;
-import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
@@ -102,12 +101,12 @@ import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
@@ -399,15 +398,14 @@ public abstract class StoreIngestionTaskTest {
       String topic,
       Supplier<KafkaProducerWrapper> producerSupplier,
       int amplificationFactor) {
-    return new TestVeniceWriter(
-        new VeniceProperties(new Properties()),
-        topic,
-        new DefaultSerializer(),
-        new DefaultSerializer(),
-        new DefaultSerializer(),
-        getVenicePartitioner(amplificationFactor),
-        SystemTime.INSTANCE,
-        producerSupplier);
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(topic).setKeySerializer(new DefaultSerializer())
+            .setValueSerializer(new DefaultSerializer())
+            .setWriteComputeSerializer(new DefaultSerializer())
+            .setPartitioner(getVenicePartitioner(amplificationFactor))
+            .setTime(SystemTime.INSTANCE)
+            .build();
+    return new TestVeniceWriter(veniceWriterOptions, new VeniceProperties(new Properties()), producerSupplier);
   }
 
   private VenicePartitioner getVenicePartitioner(int amplificationFactor) {
@@ -422,15 +420,14 @@ public abstract class StoreIngestionTaskTest {
   }
 
   private VeniceWriter getVeniceWriter(Supplier<KafkaProducerWrapper> producerSupplier) {
-    return new TestVeniceWriter(
-        new VeniceProperties(new Properties()),
-        topic,
-        new DefaultSerializer(),
-        new DefaultSerializer(),
-        new DefaultSerializer(),
-        new SimplePartitioner(),
-        SystemTime.INSTANCE,
-        producerSupplier);
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(topic).setKeySerializer(new DefaultSerializer())
+            .setValueSerializer(new DefaultSerializer())
+            .setWriteComputeSerializer(new DefaultSerializer())
+            .setPartitioner(new SimplePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .build();
+    return new TestVeniceWriter(veniceWriterOptions, new VeniceProperties(new Properties()), producerSupplier);
   }
 
   private VeniceWriter getCorruptedVeniceWriter(byte[] valueToCorrupt, InMemoryKafkaBroker kafkaBroker) {
@@ -2308,25 +2305,8 @@ public abstract class StoreIngestionTaskTest {
   }
 
   private static class TestVeniceWriter<K, V> extends VeniceWriter {
-    protected TestVeniceWriter(
-        VeniceProperties props,
-        String topicName,
-        VeniceKafkaSerializer keySerializer,
-        VeniceKafkaSerializer valueSerializer,
-        VeniceKafkaSerializer updateSerializer,
-        VenicePartitioner partitioner,
-        Time time,
-        Supplier supplier) {
-      super(
-          props,
-          topicName,
-          keySerializer,
-          valueSerializer,
-          updateSerializer,
-          partitioner,
-          time,
-          Optional.empty(),
-          supplier);
+    protected TestVeniceWriter(VeniceWriterOptions veniceWriterOptions, VeniceProperties props, Supplier supplier) {
+      super(veniceWriterOptions, props, supplier);
     }
   }
 

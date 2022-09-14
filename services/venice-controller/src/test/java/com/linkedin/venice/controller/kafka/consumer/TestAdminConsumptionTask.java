@@ -44,9 +44,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.InMemoryOffsetManager;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.DefaultSerializer;
-import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.SimplePartitioner;
@@ -62,11 +60,11 @@ import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -158,14 +156,16 @@ public class TestAdminConsumptionTask {
   private VeniceWriter getVeniceWriter(InMemoryKafkaBroker inMemoryKafkaBroker) {
     Properties props = new Properties();
     props.put(VeniceWriter.CHECK_SUM_TYPE, CheckSumType.NONE.name());
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(topicName).setKeySerializer(new DefaultSerializer())
+            .setValueSerializer(new DefaultSerializer())
+            .setWriteComputeSerializer(new DefaultSerializer())
+            .setPartitioner(new SimplePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .build();
     return new TestVeniceWriter(
+        veniceWriterOptions,
         new VeniceProperties(props),
-        topicName,
-        new DefaultSerializer(),
-        new DefaultSerializer(),
-        new DefaultSerializer(),
-        new SimplePartitioner(),
-        SystemTime.INSTANCE,
         () -> new MockInMemoryProducer(inMemoryKafkaBroker));
   }
 
@@ -1369,25 +1369,8 @@ public class TestAdminConsumptionTask {
    * and create an instance of this sub-class.
    */
   private static class TestVeniceWriter<K, V> extends VeniceWriter {
-    protected TestVeniceWriter(
-        VeniceProperties props,
-        String topicName,
-        VeniceKafkaSerializer keySerializer,
-        VeniceKafkaSerializer valueSerializer,
-        VeniceKafkaSerializer updateSerializer,
-        VenicePartitioner partitioner,
-        Time time,
-        Supplier supplier) {
-      super(
-          props,
-          topicName,
-          keySerializer,
-          valueSerializer,
-          updateSerializer,
-          partitioner,
-          time,
-          Optional.empty(),
-          supplier);
+    protected TestVeniceWriter(VeniceWriterOptions veniceWriterOptions, VeniceProperties props, Supplier supplier) {
+      super(veniceWriterOptions, props, supplier);
     }
   }
 }
