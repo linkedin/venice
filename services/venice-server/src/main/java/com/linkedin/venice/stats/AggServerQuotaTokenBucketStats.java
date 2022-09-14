@@ -6,6 +6,10 @@ import com.linkedin.venice.meta.StoreDataChangedListener;
 import io.tehuti.metrics.MetricsRepository;
 
 
+/**
+ * {@code AggServerQuotaTokenBucketStats} is the aggregate statistics for {@code ServerQuotaTokenBucketStats}.
+ * It recomputes the aggregate metrics when store change event happens.
+ */
 public class AggServerQuotaTokenBucketStats extends AbstractVeniceAggStats<ServerQuotaTokenBucketStats>
     implements StoreDataChangedListener {
   public AggServerQuotaTokenBucketStats(

@@ -36,6 +36,7 @@ import com.linkedin.venice.helix.ZkAllowlistAccessor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.listener.ListenerService;
+import com.linkedin.venice.listener.ServerStoreAclHandler;
 import com.linkedin.venice.listener.StoreValueSchemasCacheService;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
@@ -69,7 +70,12 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-// TODO curate all comments later
+/**
+ * Class that represents the Venice server. It is responsible for maintaining
+ * the lifecycle of multiple internal services including e.g. service start/stop
+ * operations and making sure that it is done in the right order based on their
+ * dependencies.
+ */
 public class VeniceServer {
   private static final Logger LOGGER = LogManager.getLogger(VeniceServer.class);
 
@@ -102,14 +108,23 @@ public class VeniceServer {
   private ICProvider icProvider;
   StorageEngineBackedCompressorFactory compressorFactory;
 
+  /**
+   * @see #VeniceServer(VeniceConfigLoader)
+   */
   public VeniceServer(VeniceConfigLoader veniceConfigLoader) throws VeniceException {
     this(veniceConfigLoader, TehutiUtils.getMetricsRepository(SERVER_SERVICE_NAME));
   }
 
+  /**
+   * @see #VeniceServer(VeniceConfigLoader, MetricsRepository, Optional, Optional, Optional)
+   */
   public VeniceServer(VeniceConfigLoader veniceConfigLoader, MetricsRepository metricsRepository) {
     this(veniceConfigLoader, metricsRepository, Optional.empty(), Optional.empty(), Optional.empty());
   }
 
+  /**
+   * @see #VeniceServer(VeniceConfigLoader, MetricsRepository, Optional, Optional, Optional, Optional, ICProvider)
+   */
   public VeniceServer(
       VeniceConfigLoader veniceConfigLoader,
       MetricsRepository metricsRepository,
@@ -125,6 +140,19 @@ public class VeniceServer {
         clientConfigForConsumer,
         null);
   }
+
+  /**
+   * Allocates a new {@code VeniceServer} object.
+   * @param veniceConfigLoader a config loader to load configs related to cluster and server.
+   * @param metricsRepository a registry for reporting metrics.
+   * @param sslFactory ssl certificate for enabling HTTP2.
+   * @param routerAccessController  validates the accesses/requests from routers.
+   * @param storeAccessController validates the accesses/requests from clients.
+   * @param clientConfigForConsumer kafka client configurations.
+   * @param icProvider Provide IC(invocation-context) to remote calls inside services.
+   * @see VeniceConfigLoader
+   * @see ServerStoreAclHandler
+   */
 
   public VeniceServer(
       VeniceConfigLoader veniceConfigLoader,
@@ -161,12 +189,12 @@ public class VeniceServer {
   /**
    * Instantiate all known services. Most of the services in this method intake:
    * 1. StorageEngineRepository - that maps store to appropriate storage engine instance
-   * 2. VeniceConfig - which contains configs related to this cluster
+   * 2. VeniceConfig - which contains configs related to this cluster.
    * 3. StoreNameToConfigsMap - which contains store specific configs
    * 4. PartitionAssignmentRepository - which contains how partitions for each store are mapped to nodes in the
    *    cluster
    *
-   * @return
+   * @return a list of services initiated by Venice server.
    */
   private List<AbstractVeniceService> createServices() {
     /* Services are created in the order they must be started */
@@ -291,7 +319,7 @@ public class VeniceServer {
     compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
 
     /**
-     * Build Ingestion Repair service
+     * Build Ingestion Repair service.
      */
     RemoteIngestionRepairService remoteIngestionRepairService =
         new RemoteIngestionRepairService(serverConfig.getRemoteIngestionRepairSleepInterval());
@@ -470,8 +498,7 @@ public class VeniceServer {
   }
 
   /**
-   * Method which starts the services instantiate earlier
-   *
+   * Method which starts the services instantiate earlier.
    * @throws Exception
    */
   public void start() throws VeniceException {
@@ -572,8 +599,10 @@ public class VeniceServer {
       return true;
     }
     try (AllowlistAccessor accessor = new ZkAllowlistAccessor(zkAddress)) {
-      // Note: If a server has been added in to the allowlist, then node is failed or shutdown by SRE. once it
-      // start up again, it will automatically join the cluster because it already exists in the allowlist.
+      /**
+       * Note: If a server has been added in to the allowlist, then node is failed or shutdown by SRE. once it
+       * starts up again, it will automatically join the cluster because it already exists in the allowlist.
+       */
       String participantName = Utils.getHelixNodeIdentifier(listenPort);
       if (!accessor.isInstanceInAllowlist(clusterName, participantName)) {
         LOGGER.info(participantName + " is not in the allowlist of " + clusterName + ", stop starting venice server");

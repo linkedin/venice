@@ -106,10 +106,9 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
                 long timestamp = nonExistentStoreToCheckedTimestamp.get(storeName);
                 // If store is reported missing for more than a day by the store repo, delete the resources.
                 if (timestamp + nonExistentStoreCleanupInterval < currentTime) {
-                  logger
-                      .info("Store: " + storeName + " is not hosted by this host, it's resources will be cleaned up.");
+                  logger.info("Store: {} is not hosted by this host, it's resources will be cleaned up.", storeName);
                   storageService.removeStorageEngine(resourceName);
-                  logger.info("Resource: " + resourceName + " has been cleaned up.");
+                  logger.info("Resource: {} has been cleaned up.", resourceName);
                   stats.recordLeakedVersion();
                   nonExistentStoreToCheckedTimestamp.remove(storeName);
                 }
@@ -128,11 +127,13 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
                * for this store.
                */
               logger.warn(
-                  "Found no version for store: " + storeName + ", but a lingering resource: " + resourceName
-                      + ", which is suspicious, so here will skip the cleanup.");
+                  "Found no version for store: {}, but a lingering resource: {}, which is suspicious, so here will skip the cleanup.",
+                  storeName,
+                  resourceName);
               continue;
             }
-            if (!store.getVersion(version).isPresent() && // The version has already been deleted
+            // The version has already been deleted.
+            if (!store.getVersion(version).isPresent() &&
             /**
              * This is to avoid the race condition since Version will be deleted in Controller first and the
              * actual cleanup in storage node is being handled in {@link ParticipantStoreConsumptionTask}.
@@ -142,14 +143,14 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
              */
                 !ingestionService.containsRunningConsumption(resourceName)) {
               logger.info(
-                  "Resource: " + resourceName
-                      + " doesn't have either the corresponding version stored in ZK, or a running ingestion task, so it will be cleaned up.");
+                  "Resource: {} doesn't have either the corresponding version stored in ZK, or a running ingestion task, so it will be cleaned up.",
+                  resourceName);
               storageService.removeStorageEngine(resourceName);
               logger.info("Resource: " + resourceName + " has been cleaned up.");
               stats.recordLeakedVersion();
             }
           } catch (Exception e) {
-            logger.error("Received exception while verifying/cleaning up resource: " + resourceName);
+            logger.error("Received exception while verifying/cleaning up resource: {} error {}", resourceName, e);
           }
         } // ~for
       } // ~while
