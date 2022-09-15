@@ -1,9 +1,7 @@
 package com.linkedin.venice.benchmark;
 
 import static com.linkedin.venice.serializer.FastSerializerDeserializerFactory.*;
-import static java.lang.Float.*;
 
-import com.google.flatbuffers.FlatBufferBuilder;
 import com.linkedin.avro.api.PrimitiveFloatList;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -16,7 +14,6 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
-import java.nio.ByteBuffer;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -189,97 +186,4 @@ public class BenchmarkUtils {
     }
     blackhole.consume(w);
   }
-
-  public static void flatBuffersBenchmark(
-      int array_size,
-      int iteration,
-      boolean serializeOnce,
-      boolean accessData,
-      Blackhole blackhole) {
-    FlatBufferBuilder builder = new FlatBufferBuilder(0);
-    float w = 0f;
-    Monster monster = new Monster();
-
-    // Serialize the FlatBuffer data.
-    builder.clear();
-    builder.startVector(4, array_size, 4);
-    for (int i = array_size - 1; i >= 0; i--) {
-      builder.addFloat(i);
-    }
-    int inv = builder.endVector();
-    Monster.startMonster(builder);
-    Monster.addInventory(builder, inv);
-    int orc = Monster.endMonster(builder);
-    builder.finish(orc); // You could also call `Monster.finishMonsterBuffer(builder, orc);`.
-    ByteBuffer buf = builder.dataBuffer();
-
-    for (int k = 0; k < iteration; k++) {
-      if (!serializeOnce) {
-        // Serialize the FlatBuffer data.
-        builder.clear();
-        builder.startVector(4, array_size, 4);
-        for (int i = array_size - 1; i >= 0; i--) {
-          builder.addFloat(i);
-        }
-        inv = builder.endVector();
-        Monster.startMonster(builder);
-        Monster.addInventory(builder, inv);
-        orc = Monster.endMonster(builder);
-        builder.finish(orc); // You could also call `Monster.finishMonsterBuffer(builder, orc);`.
-        buf = builder.dataBuffer();
-      }
-
-      // Get access to the root:
-      monster = Monster.getRootAsMonster(buf, monster);
-      blackhole.consume(monster);
-
-      if (accessData) {
-        // Get and test the `inventory` FlatBuffer `vector`.
-        int len = monster.inventoryLength();
-        for (int i = 0; i < len; i++) {
-          // assert monster.inventory(i) == (float)i;
-          w += monster.inventory(i);
-        }
-      }
-    }
-    blackhole.consume(w);
-  }
-
-  public static void produceFloatVectorData(FloatVectorImpl.Builder vector, int start, int size) {
-    int nextBase = start;
-    vector.size(size);
-    for (int i = 0; i < size; i++) {
-      vector.set(i, Float.intBitsToFloat(floatToRawIntBits(i)));
-    }
-  }
-
-  public static void floatVectorBenchmark(
-      int array_size,
-      int iteration,
-      boolean serializeOnce,
-      boolean accessData,
-      Blackhole blackhole) {
-    float w = 0f;
-    FloatVectorImpl.Builder vectorBuilder = new FloatVectorImpl.Builder(array_size);
-    produceFloatVectorData(vectorBuilder, 0, array_size);
-    FloatVectorImpl floatVector = new FloatVectorImpl();
-
-    for (int l = 0; l < iteration; l++) {
-      if (!serializeOnce) {
-        produceFloatVectorData(vectorBuilder, 0, array_size);
-      }
-      floatVector.init(vectorBuilder.getByteBuffer(), 0, array_size);
-      blackhole.consume(floatVector);
-
-      if (accessData) {
-        for (int i = 0; i < floatVector.size(); i++) {
-          w += floatVector.getFloat(i);
-        }
-      }
-
-      floatVector.close();
-    }
-    blackhole.consume(w);
-  }
-
 }
