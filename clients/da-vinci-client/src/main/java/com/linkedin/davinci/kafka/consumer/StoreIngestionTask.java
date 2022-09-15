@@ -1,5 +1,8 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.*;
+import static java.util.concurrent.TimeUnit.*;
+
 import com.linkedin.avroutil1.compatibility.shaded.org.apache.commons.lang3.Validate;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -124,9 +127,6 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.*;
-import static java.util.concurrent.TimeUnit.*;
-
 
 /**
  * A runnable Kafka Consumer consuming messages from all the partition assigned to current node for a Kafka Topic.
@@ -225,7 +225,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /** A quick check point to see if incremental push is supported.
    * It helps fast {@link #isReadyToServe(PartitionConsumptionState)}*/
   protected final boolean isIncrementalPushEnabled;
-  protected final boolean readOnlyForBatchOnlyStoreEnabled;
   protected final VeniceServerConfig serverConfig;
 
   /** Used for reporting error when the {@link #partitionConsumptionStateMap} is empty */
@@ -418,8 +417,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.diskUsage = builder.getDiskUsage();
 
     this.storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
-
-    this.readOnlyForBatchOnlyStoreEnabled = storeConfig.isReadOnlyForBatchOnlyStoreEnabled();
 
     this.serverConfig = builder.getServerConfig();
 
@@ -678,7 +675,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // After EOP, we never enable deferred writes.
       // No matter what the sorted config was before the EOP message, it doesn't matter anymore.
       deferredWrites = false;
-      if (partitionConsumptionState.isBatchOnly() && readOnlyForBatchOnlyStoreEnabled) {
+      if (partitionConsumptionState.isBatchOnly()) {
         readOnly = true;
       }
     } else {

@@ -408,12 +408,6 @@ public class ConfigKeys {
       "server.leaked.resource.clean.up.interval.in.minutes";
 
   /**
-   * For batch-only store, enabling read-only could improve the performance greatly.
-   */
-  public static final String SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED =
-      "server.db.read.only.for.batch.only.store.enabled";
-
-  /**
    * Set to true to enable enforcement of quota by the storage node
    */
   public static final String SERVER_QUOTA_ENFORCEMENT_ENABLED = "server.quota.enforcement.enabled";

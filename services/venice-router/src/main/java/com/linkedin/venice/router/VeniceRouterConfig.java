@@ -146,13 +146,11 @@ public class VeniceRouterConfig {
     kafkaZkAddress = props.getString(KAFKA_ZK_ADDRESS);
     kafkaBootstrapServers = props.getString(KAFKA_BOOTSTRAP_SERVERS);
     clientTimeoutMs = props.getInt(CLIENT_TIMEOUT, 10000); // 10s
-    heartbeatTimeoutMs = props.getDouble(HEARTBEAT_TIMEOUT, TimeUnit.MINUTES.toMillis(1)); // 1 minute
-    heartbeatCycleMs = props.getLong(HEARTBEAT_CYCLE, TimeUnit.SECONDS.toMillis(5)); // 5 seconds
-    sslToStorageNodes = props.getBoolean(SSL_TO_STORAGE_NODES, false); // disable ssl on path to stroage node by
-                                                                       // default.
-    maxReadCapacityCu = props.getLong(MAX_READ_CAPACITY, 100000); // 100000 CU
-    longTailRetryForSingleGetThresholdMs = props.getInt(ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 15); // 15
-                                                                                                                 // ms
+    heartbeatTimeoutMs = props.getDouble(HEARTBEAT_TIMEOUT, TimeUnit.MINUTES.toMillis(1));
+    heartbeatCycleMs = props.getLong(HEARTBEAT_CYCLE, TimeUnit.SECONDS.toMillis(5));
+    sslToStorageNodes = props.getBoolean(SSL_TO_STORAGE_NODES, false);
+    maxReadCapacityCu = props.getLong(MAX_READ_CAPACITY, 100000);
+    longTailRetryForSingleGetThresholdMs = props.getInt(ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 15);
     longTailRetryForBatchGetThresholdMs = parseRetryThresholdForBatchGet(
         props.getString(
             ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS,
@@ -173,14 +171,13 @@ public class VeniceRouterConfig {
     refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
     refreshIntervalForZkReconnectInMs =
         props.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, java.util.concurrent.TimeUnit.SECONDS.toMillis(10));
-    routerNettyGracefulShutdownPeriodSeconds = props.getInt(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 30); // 30s
+    routerNettyGracefulShutdownPeriodSeconds = props.getInt(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 30);
     enforceSecureOnly = props.getBoolean(ENFORCE_SECURE_ROUTER, false);
 
     // This only needs to be enabled in some DC, where slow DNS lookup happens.
     dnsCacheEnabled = props.getBoolean(ROUTER_DNS_CACHE_ENABLED, false);
     hostPatternForDnsCache = props.getString(ROUTE_DNS_CACHE_HOST_PATTERN, ".*prod.linkedin.com");
-    dnsCacheRefreshIntervalInMs = props.getLong(ROUTER_DNS_CACHE_REFRESH_INTERVAL_MS, TimeUnit.MINUTES.toMillis(3)); // 3
-                                                                                                                     // mins
+    dnsCacheRefreshIntervalInMs = props.getLong(ROUTER_DNS_CACHE_REFRESH_INTERVAL_MS, TimeUnit.MINUTES.toMillis(3));
 
     singleGetTardyLatencyThresholdMs =
         props.getLong(ROUTER_SINGLEGET_TARDY_LATENCY_MS, TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS));
@@ -193,23 +190,12 @@ public class VeniceRouterConfig {
     maxPendingRequest = props.getLong(ROUTER_MAX_PENDING_REQUEST, 2500L * 12L);
 
     storageNodeClientType = StorageNodeClientType.valueOf(
-        props.getString(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT.name())); // Use
-                                                                                                                  // ApacheHttpAsyncClient
-                                                                                                                  // by
-                                                                                                                  // default
+        props.getString(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT.name()));
     // TODO: what is the best setting? 5*NUMBER_OF_CORES?
-    nettyClientEventLoopThreads = props.getInt(ROUTER_NETTY_CLIENT_EVENT_LOOP_THREADS, 24); // 24 threads by default
-    nettyClientChannelPoolAcquireTimeoutMs = props.getLong(ROUTER_NETTY_CLIENT_CHANNEL_POOL_ACQUIRE_TIMEOUT_MS, 10); // 10ms
-                                                                                                                     // by
-                                                                                                                     // default
-    nettyClientChannelPoolMinConnections = props.getInt(ROUTER_NETTY_CLIENT_CHANNEL_POOL_MIN_CONNECTIONS, 160); // 160
-                                                                                                                // connections
-                                                                                                                // by
-                                                                                                                // default
-    nettyClientChannelPoolMaxConnections = props.getInt(ROUTER_NETTY_CLIENT_CHANNEL_POOL_MAX_CONNECTIONS, 165); // 165
-                                                                                                                // connections
-                                                                                                                // by
-                                                                                                                // default
+    nettyClientEventLoopThreads = props.getInt(ROUTER_NETTY_CLIENT_EVENT_LOOP_THREADS, 24);
+    nettyClientChannelPoolAcquireTimeoutMs = props.getLong(ROUTER_NETTY_CLIENT_CHANNEL_POOL_ACQUIRE_TIMEOUT_MS, 10);
+    nettyClientChannelPoolMinConnections = props.getInt(ROUTER_NETTY_CLIENT_CHANNEL_POOL_MIN_CONNECTIONS, 160);
+    nettyClientChannelPoolMaxConnections = props.getInt(ROUTER_NETTY_CLIENT_CHANNEL_POOL_MAX_CONNECTIONS, 165);
     /**
      * ignore this config by default; only rely on the ROUTER_MAX_PENDING_REQUEST config for pending request throttling
       */
@@ -222,9 +208,7 @@ public class VeniceRouterConfig {
         ROUTER_NETTY_CLIENT_CHANNEL_POOL_HEALTH_CHECK_INTERVAL_MS,
         TimeUnit.MILLISECONDS.convert(5, TimeUnit.MINUTES));
     nettyClientMaxAggregatedObjectLength =
-        props.getInt(ROUTER_NETTY_CLIENT_MAX_AGGREGATED_OBJECT_LENGTH, 1024 * 1024 * 20); // 20MB by default; change it
-                                                                                          // according to the max
-                                                                                          // response size
+        props.getInt(ROUTER_NETTY_CLIENT_MAX_AGGREGATED_OBJECT_LENGTH, 1024 * 1024 * 20);
     decompressOnClient = props.getBoolean(ROUTER_CLIENT_DECOMPRESSION_ENABLED, true);
     computeFastAvroEnabled = props.getBoolean(ROUTER_COMPUTE_FAST_AVRO_ENABLED, false);
 
@@ -249,25 +233,21 @@ public class VeniceRouterConfig {
     idleConnectionToServerCleanupEnabled = props.getBoolean(ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_ENABLED, true);
     idleConnectionToServerCleanupThresholdMins =
         props.getLong(ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_THRESHOLD_MINS, TimeUnit.HOURS.toMinutes(3));
-
-    fullPendingQueueServerOORMs = props.getLong(ROUTER_FULL_PENDING_QUEUE_SERVER_OOR_MS, TimeUnit.SECONDS.toMillis(0)); // No
-                                                                                                                        // OOR
+    fullPendingQueueServerOORMs = props.getLong(ROUTER_FULL_PENDING_QUEUE_SERVER_OOR_MS, TimeUnit.SECONDS.toMillis(0));
     httpasyncclientConnectionWarmingEnabled =
         props.getBoolean(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_ENABLED, false);
     httpasyncclientConnectionWarmingSleepIntervalMs =
         props.getLong(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_SLEEP_INTERVAL_MS, 100); // 100ms
-    dictionaryRetrievalTimeMs = (int) props.getLong(ROUTER_DICTIONARY_RETRIEVAL_TIME_MS, TimeUnit.SECONDS.toMillis(30)); // 30
-                                                                                                                         // seconds
+    dictionaryRetrievalTimeMs = (int) props.getLong(ROUTER_DICTIONARY_RETRIEVAL_TIME_MS, TimeUnit.SECONDS.toMillis(30));
     routerDictionaryProcessingThreads = props.getInt(ROUTER_DICTIONARY_PROCESSING_THREADS, 3);
     httpasyncclientConnectionWarmingLowWaterMark =
         props.getInt(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_LOW_WATER_MARK, 60);
     httpasyncclientConnectionWarmingExecutorThreadNum =
         props.getInt(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_EXECUTOR_THREAD_NUM, 6); // 6 threads
     httpasyncclientConnectionWarmingNewInstanceDelayJoinMs = props
-        .getLong(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_NEW_INSTANCE_DELAY_JOIN_MS, TimeUnit.MINUTES.toMillis(2)); // 2
-                                                                                                                      // mins
+        .getLong(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_NEW_INSTANCE_DELAY_JOIN_MS, TimeUnit.MINUTES.toMillis(2));
     httpasyncclientConnectionWarmingSocketTimeoutMs =
-        props.getInt(ROUTER_HTTPAYSNCCLIENT_CONNECTION_WARMING_SOCKET_TIMEOUT_MS, 5000); // 5 seconds
+        props.getInt(ROUTER_HTTPAYSNCCLIENT_CONNECTION_WARMING_SOCKET_TIMEOUT_MS, 5000);
     asyncStartEnabled = props.getBoolean(ROUTER_ASYNC_START_ENABLED, false);
 
     maxRouterReadCapacityCu = props.getLong(ROUTER_MAX_READ_CAPACITY, 6000);
