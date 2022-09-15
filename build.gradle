@@ -8,7 +8,6 @@ plugins {
   id 'com.dorongold.task-tree' version '2.1.0'
   id 'com.github.johnrengelman.shadow' version '6.1.0' apply false
   id 'com.github.spotbugs' version '4.8.0' apply false
-  id 'io.netifi.flatbuffers' version '1.0.6' apply false
   id 'org.gradle.test-retry' version '1.4.0' apply false
 }
 
@@ -54,7 +53,6 @@ ext.libraries = [
     ddsStorageCommonBase: 'com.linkedin.dds-storage-core:dds-storage-common-base:' + ddsStorageCoreVersion,
     failsafe: 'net.jodah:failsafe:2.4.0',
     fastUtil: 'it.unimi.dsi:fastutil:8.3.0',
-    flatBuffersJava: 'com.google.flatbuffers:flatbuffers-java:1.11.0',
     hadoopCommon: 'org.apache.hadoop:hadoop-common:2.3.0',
     helix: 'org.apache.helix:helix-core:1.0.1.24',
     httpAsyncClient: 'org.apache.httpcomponents:httpasyncclient:4.1.2',

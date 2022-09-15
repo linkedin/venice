@@ -92,24 +92,4 @@ public class SerdeBenchmark {
         numQueries,
         _numThreads);
   }
-
-  @Benchmark
-  @OperationsPerInvocation(numQueries)
-  public void flatbuffersBenchmarkTest(Blackhole bh) {
-    Map<String, Float> metricsDelta = BenchmarkUtils.runWithMetrics(
-        () -> BenchmarkUtils.flatBuffersBenchmark(valueSize, numQueries, serializeOnce, accessData, bh),
-        "flatbuffers_" + testNameSuffix(),
-        numQueries,
-        _numThreads);
-  }
-
-  @Benchmark
-  @OperationsPerInvocation(numQueries)
-  public void floatVectorBenchmarkTest(Blackhole bh) {
-    Map<String, Float> metricsDelta = BenchmarkUtils.runWithMetrics(
-        () -> BenchmarkUtils.floatVectorBenchmark(valueSize, numQueries, serializeOnce, accessData, bh),
-        "floatVectors_" + testNameSuffix(),
-        numQueries,
-        _numThreads);
-  }
 }
