@@ -263,8 +263,8 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
         }
       } catch (Exception e) {
         LOGGER.info(
-            "Caught exception: " + e.getMessage() + " when attempting to get producer metrics. "
-                + "Incomplete metrics might be returned.");
+            "Caught exception: {} when attempting to get producer metrics. " + "Incomplete metrics might be returned.",
+            e.getMessage());
       }
     }
     return extractedMetrics;

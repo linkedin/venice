@@ -678,8 +678,10 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         getKeySerializerWithoutRetry();
       } catch (Exception e) {
         logger.info(
-            "Got error when trying to warm up client during start phase for store: " + getStoreName()
-                + ", and will kick off an async warm-up: " + e.getMessage());
+            "Got error when trying to warm up client during start phase for store: {}, and will kick off an "
+                + "async warm-up:{}",
+            getStoreName(),
+            e.getMessage());
         /**
          * Kick off an async warm-up, and the D2 client could be ready during the async warm-up.
          * If the D2 client isn't retry in the async warm-up phase, it will be delayed to the first query.

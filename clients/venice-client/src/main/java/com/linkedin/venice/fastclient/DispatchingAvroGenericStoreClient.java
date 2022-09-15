@@ -430,7 +430,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       Throwable exception,
       StreamingCallback<K, V> callback) {
     if (exception != null) {
-      LOGGER.error("Exception received from transport" + exception.getMessage());
+      LOGGER.error("Exception received from transport. ExMsg: {}", exception.getMessage());
       requestContext.markCompleteExceptionally(transportClientResponse, exception);
       return;
     }

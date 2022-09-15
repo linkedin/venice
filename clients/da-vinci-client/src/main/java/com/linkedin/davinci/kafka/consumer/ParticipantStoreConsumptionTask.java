@@ -13,6 +13,7 @@ import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
@@ -57,9 +58,9 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
 
   @Override
   public void run() {
-    logger.info("Started running " + getClass().getSimpleName());
+    logger.info("Started running {}", getClass().getSimpleName());
 
-    while (!isClosing.get()) {
+    while (!isClosing.get() && !Thread.currentThread().isInterrupted()) {
       stats.recordHeartbeat();
       try {
         Thread.sleep(participantMessageConsumptionDelayMs);
@@ -69,55 +70,60 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
             ParticipantMessageKey key = new ParticipantMessageKey();
             key.messageType = ParticipantMessageType.KILL_PUSH_JOB.getValue();
             key.resourceName = topic;
-
             String clusterName = clusterInfoProvider.getVeniceCluster(Version.parseStoreFromKafkaTopicName(topic));
-            if (clusterName != null) {
-              ParticipantMessageValue value;
-              if (icProvider != null) {
-                CompletableFuture<ParticipantMessageValue> future = icProvider
-                    .call(this.getClass().getCanonicalName(), () -> getParticipantStoreClient(clusterName).get(key));
-                value = future.get();
-              } else {
-                value = getParticipantStoreClient(clusterName).get(key).get();
-              }
-              if (value != null && value.messageType == ParticipantMessageType.KILL_PUSH_JOB.getValue()) {
-                KillPushJob killPushJobMessage = (KillPushJob) value.messageUnion;
-                if (storeIngestionService.killConsumptionTask(topic)) {
-                  // emit metrics only when a confirmed kill is made
-                  stats.recordKilledPushJobs();
-                  stats
-                      .recordKillPushJobLatency(Long.max(0, System.currentTimeMillis() - killPushJobMessage.timestamp));
-                }
+            if (clusterName == null) {
+              continue;
+            }
+
+            ParticipantMessageValue value;
+            if (icProvider != null) {
+              CompletableFuture<ParticipantMessageValue> future = icProvider
+                  .call(this.getClass().getCanonicalName(), () -> getParticipantStoreClient(clusterName).get(key));
+              value = future.get();
+            } else {
+              value = getParticipantStoreClient(clusterName).get(key).get();
+            }
+
+            if (value != null && value.messageType == ParticipantMessageType.KILL_PUSH_JOB.getValue()) {
+              KillPushJob killPushJobMessage = (KillPushJob) value.messageUnion;
+              if (storeIngestionService.killConsumptionTask(topic)) {
+                // emit metrics only when a confirmed kill is made
+                stats.recordKilledPushJobs();
+                stats.recordKillPushJobLatency(Long.max(0, System.currentTimeMillis() - killPushJobMessage.timestamp));
               }
             }
           } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            logger.info("Got InterruptedException while killing consumption task for topic: " + topic, e);
-            break;
+            logger.info("Got an InterruptedException while killing consumption task for topic: {}", topic, e);
+            throw e;
           } catch (Exception e) {
-            if (!filter.isRedundantException(e.getMessage())) {
-              logger.error("Unexpected exception while trying to check or kill ingestion topic: " + topic, e);
+            String msg = "Unexpected exception while trying to check or kill ingestion topic: " + topic + ". ExMsg: "
+                + e.getMessage();
+            if (!filter.isRedundantException(msg)) {
+              logger.error(msg, e);
             }
             stats.recordKillPushJobFailedConsumption();
           }
         }
       } catch (InterruptedException e) {
-        logger.info("Received InterruptedException, and will exit", e);
+        logger.info("ParticipantStoreConsumptionTask was interrupted and hence exiting now...", e);
         break;
       } catch (Exception e) {
-        // Some expected exception can be thrown during initializing phase of the participant store or if participant
-        // store is disabled.
-        if (!filter.isRedundantException(e.getMessage())) {
-          logger.error("Exception thrown while running " + getClass().getSimpleName() + " thread", e);
+        // Some expected exception can be thrown during initializing phase of the participant store
+        // or if participant store is disabled.
+        String msg = "Exception thrown while running " + getClass().getSimpleName() + " thread. ExMsg: "
+            + ExceptionUtils.compactExceptionDescription(e);
+        if (!filter.isRedundantException(msg)) {
+          logger.error(msg, e);
         }
         stats.recordKillPushJobFailedConsumption();
       } catch (Throwable t) {
-        logger.error("Throwable thrown while running " + getClass().getSimpleName() + " thread", t);
+        logger.error("Throwable thrown while running {} thread", getClass().getSimpleName(), t);
         break;
       }
     }
 
-    logger.info("Stopped running " + getClass().getSimpleName());
+    logger.info("Stopped running {}", getClass().getSimpleName());
   }
 
   private AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue> getParticipantStoreClient(
@@ -132,7 +138,7 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
       });
     } catch (Exception e) {
       stats.recordFailedInitialization();
-      logger.error("Failed to get participant client for cluster: " + clusterName, e);
+      logger.error("Failed to get participant client for cluster: {}", clusterName, e);
     }
     return clientMap.get(clusterName);
   }

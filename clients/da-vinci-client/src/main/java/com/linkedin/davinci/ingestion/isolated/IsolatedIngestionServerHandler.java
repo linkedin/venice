@@ -20,6 +20,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.utils.ExceptionUtils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -110,14 +111,20 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
     } catch (UnsupportedOperationException e) {
       // Here we only handles the bad requests exception. Other errors are handled in exceptionCaught() method.
       logger.error("Caught unrecognized request action:", e);
-      ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.BAD_REQUEST, e.getMessage()));
+      ctx.writeAndFlush(
+          buildHttpResponse(
+              HttpResponseStatus.BAD_REQUEST,
+              ExceptionUtils.compactExceptionDescription(e, "channelRead0")));
     }
   }
 
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-    logger.error("Encounter exception " + cause.getMessage(), cause);
-    ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.INTERNAL_SERVER_ERROR, cause.getMessage()));
+    logger.error("Encounter exception -  message: {}, cause: {}", cause.getMessage(), cause);
+    ctx.writeAndFlush(
+        buildHttpResponse(
+            HttpResponseStatus.INTERNAL_SERVER_ERROR,
+            ExceptionUtils.compactExceptionDescription(cause, "exceptionCaught")));
     ctx.close();
   }
 
@@ -227,7 +234,8 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
     } catch (Exception e) {
       logger.error("Encounter exception while handling ingestion command", e);
       report.isPositive = false;
-      report.message = e.getClass().getSimpleName() + "_" + e.getMessage();
+      report.message = e.getClass().getSimpleName() + "_"
+          + ExceptionUtils.compactExceptionDescription(e, "handleIngestionTaskCommand");
     }
     long executionTimeInMs = System.currentTimeMillis() - startTimeInMs;
     logger.info(
@@ -305,7 +313,8 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
       logger.error("Encounter exception while updating storage metadata", e);
       // Will not retry the message as the VeniceException indicates topic not found in storage engine repository.
       report.isPositive = true;
-      report.message = e.getClass().getSimpleName() + "_" + e.getMessage();
+      report.message = e.getClass().getSimpleName() + "_"
+          + ExceptionUtils.compactExceptionDescription(e, "handleIngestionStorageMetadataUpdate");
     }
     return report;
   }
@@ -329,7 +338,8 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
     } catch (Exception e) {
       logger.error("Encounter exception while shutting down ingestion components in forked process", e);
       report.isPositive = false;
-      report.message = e.getClass().getSimpleName() + "_" + e.getMessage();
+      report.message = e.getClass().getSimpleName() + "_"
+          + ExceptionUtils.compactExceptionDescription(e, "handleProcessShutdownCommand");
     }
     return report;
   }

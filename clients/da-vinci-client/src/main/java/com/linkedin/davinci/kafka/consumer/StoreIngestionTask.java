@@ -2112,8 +2112,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         unSubscribePartition(kafkaVersionTopic, faultyPartition);
       } else {
         logger.warn(
-            errorMessage + ". However, " + kafkaVersionTopic
-                + " is the current version or EOP is already received so consumption will continue." + e.getMessage());
+            "{}. However, {} is the current version or EOP is already received so consumption will continue. {}",
+            errorMessage,
+            kafkaVersionTopic,
+            e.getMessage());
       }
     } catch (VeniceMessageException | UnsupportedOperationException e) {
       throw new VeniceException(
@@ -2615,13 +2617,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (!endOfPushReceived) {
           throw fatalException;
         } else {
-          String errorMessage = String.format(
+          logger.warn(
               "Encountered errors during updating metadata for 2nd round DIV validation "
-                  + "after EOP. topic %s partition %s offset %s, ",
+                  + "after EOP. topic: {} partition: {} offset: {} ExMsg: {}",
               consumerRecord.topic(),
               consumerRecord.partition(),
-              consumerRecord.offset());
-          logger.warn(errorMessage + fatalException.getMessage());
+              consumerRecord.offset(),
+              fatalException.getMessage());
         }
       }
       if (kafkaKey.isControlMessage()) {
@@ -2744,15 +2746,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
 
       FatalDataValidationException warningException = fatalException;
-      String warningMessage = String.format(
-          "Data integrity validation problem with topic %s partition %s offset %s, "
-              + "but consumption will continue since EOP is already received. ",
-          consumerRecord.topic(),
-          consumerRecord.partition(),
-          consumerRecord.offset());
+
       // TODO: remove this condition check after fixing the bug that drainer in leaders is validating RT DIV info
       if (consumerRecord.value().producerMetadata.messageSequenceNumber != 1) {
-        logger.warn(warningMessage + warningException.getMessage());
+        logger.warn(
+            "Data integrity validation problem with topic: {} partition: {} offset: {}, "
+                + "but consumption will continue since EOP is already received. Msg: {}",
+            consumerRecord.topic(),
+            consumerRecord.partition(),
+            consumerRecord.offset(),
+            warningException.getMessage());
       }
 
       if (!(warningException instanceof ImproperlyStartedSegmentException)) {
