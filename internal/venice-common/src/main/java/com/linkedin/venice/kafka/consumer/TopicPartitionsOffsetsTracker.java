@@ -107,8 +107,8 @@ class TopicPartitionsOffsetsTracker {
       return Objects.equals(metricName.name(), "records-lag") && (metric.metricValue() instanceof Double);
     } catch (Exception e) {
       logger.warn(
-          "Caught exception: " + e.getMessage() + " when attempting to get consumer metrics. "
-              + "Incomplete metrics might be returned.");
+          "Caught exception: {} when attempting to get consumer metrics. Incomplete metrics might be returned.",
+          e.getMessage());
       return false;
     }
   }

@@ -461,7 +461,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
         }).max(Integer::compare).get() + 1;
       }
     } catch (SchemaDuplicateException e) {
-      logger.warn(e.getMessage());
+      logger.warn("Exception occurred while fetching next available schemaId. Msg: {}", e.getMessage());
       newValueSchemaId = SchemaData.DUPLICATE_VALUE_SCHEMA_CODE;
     }
 

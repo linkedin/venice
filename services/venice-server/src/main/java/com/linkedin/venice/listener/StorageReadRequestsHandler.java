@@ -301,8 +301,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
                 "Venice storage node hardware is not healthy!",
                 HttpResponseStatus.INTERNAL_SERVER_ERROR));
         logger.error(
-            "Disk is not healthy according to the disk health check service: "
-                + diskHealthCheckService.getErrorMessage());
+            "Disk is not healthy according to the disk health check service: {}",
+            diskHealthCheckService.getErrorMessage());
       }
     } else if (message instanceof DictionaryFetchRequest) {
       BinaryResponse response = handleDictionaryFetchRequest((DictionaryFetchRequest) message);

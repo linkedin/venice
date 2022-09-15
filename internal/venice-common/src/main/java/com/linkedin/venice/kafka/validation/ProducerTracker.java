@@ -552,8 +552,8 @@ public class ProducerTracker {
       if (logCompactionDelayInMs > 0 && LatencyUtils.getElapsedTimeInMs(lastRecordTimestamp) < logCompactionDelayInMs) {
         DataValidationException dataMissingException = DataFaultType.MISSING.getNewException(segment, consumerRecord);
         logger.error(
-            "Encountered missing data message within the log compaction time window. Error msg:\n"
-                + dataMissingException.getMessage());
+            "Encountered missing data message within the log compaction time window. Error msg: {}",
+            dataMissingException.getMessage());
         if (errorMetricCallback.isPresent()) {
           errorMetricCallback.get().execute(dataMissingException);
         }

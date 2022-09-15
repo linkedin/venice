@@ -13,6 +13,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.utils.ExceptionUtils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -110,7 +111,8 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
     ctx.writeAndFlush(
         buildHttpResponse(
             HttpResponseStatus.INTERNAL_SERVER_ERROR,
-            cause.getClass().getSimpleName() + "_" + cause.getMessage()));
+            cause.getClass().getSimpleName() + "_"
+                + ExceptionUtils.compactExceptionDescription(cause, "exceptionCaught")));
     ctx.close();
   }
 

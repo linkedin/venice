@@ -89,4 +89,15 @@ public class ExceptionUtils {
     URL[] urls = ((URLClassLoader) cl).getURLs();
     Arrays.asList(urls).stream().filter(url -> url.getFile().contains(packageName)).forEach(logger::warn);
   }
+
+  public static String compactExceptionDescription(Throwable t) {
+    if (t.getMessage() != null) {
+      return t.getMessage();
+    }
+    return t.toString();
+  }
+
+  public static String compactExceptionDescription(Throwable t, String originatingFunctionName) {
+    return compactExceptionDescription(t) + " Caught in: " + originatingFunctionName;
+  }
 }

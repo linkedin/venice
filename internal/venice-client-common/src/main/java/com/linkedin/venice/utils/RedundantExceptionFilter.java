@@ -53,6 +53,9 @@ public class RedundantExceptionFilter {
   }
 
   public boolean isRedundantException(String exceptionMessage) {
+    if (exceptionMessage == null) {
+      return true;
+    }
     int index = getIndex(exceptionMessage);
     return isRedundant(index);
   }

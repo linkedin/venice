@@ -19,6 +19,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ComplementSet;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
@@ -253,7 +254,7 @@ public class VersionBackend {
           @Override
           public void onCompletion(Optional<Exception> exception) {
             if (exception.isPresent()) {
-              throw new VeniceException(exception.get().getMessage());
+              throw new VeniceException(ExceptionUtils.compactExceptionDescription(exception.get()));
             }
           }
         };
