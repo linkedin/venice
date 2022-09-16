@@ -73,7 +73,7 @@ public class StoresRoutes extends AbstractRoute {
         // Potentially filter out the system stores
         String includeSystemStores = request.queryParams(INCLUDE_SYSTEM_STORES);
         // If the param is not provided, the default is to include them
-        boolean excludeSystemStores = (null != includeSystemStores && !Boolean.parseBoolean(includeSystemStores));
+        boolean excludeSystemStores = (includeSystemStores != null && !Boolean.parseBoolean(includeSystemStores));
         Optional<String> storeConfigNameFilter =
             Optional.ofNullable(request.queryParamOrDefault(STORE_CONFIG_NAME_FILTER, null));
         Optional<String> storeConfigValueFilter =
@@ -235,7 +235,7 @@ public class StoresRoutes extends AbstractRoute {
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);
         Store store = admin.getStore(clusterName, storeName);
-        if (null == store) {
+        if (store == null) {
           throw new VeniceNoStoreException(storeName);
         }
         StoreInfo storeInfo = StoreInfo.fromStore(store);
@@ -739,8 +739,8 @@ public class StoresRoutes extends AbstractRoute {
             storeType,
             Optional.empty(),
             enableNativeReplicationForCluster,
-            (null == sourceRegionParams) ? Optional.empty() : Optional.of(sourceRegionParams),
-            (null == regionsFilterParams) ? Optional.empty() : Optional.of(regionsFilterParams));
+            Optional.ofNullable(sourceRegionParams),
+            Optional.ofNullable(regionsFilterParams));
 
         veniceResponse.setCluster(cluster);
       }
@@ -773,7 +773,7 @@ public class StoresRoutes extends AbstractRoute {
             storeType,
             Optional.empty(),
             enableActiveActiveReplicationForCluster,
-            (null == regionsFilterParams) ? Optional.empty() : Optional.of(regionsFilterParams));
+            Optional.ofNullable(regionsFilterParams));
 
         veniceResponse.setCluster(cluster);
       }

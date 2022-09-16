@@ -167,7 +167,7 @@ public class HttpTransportClient extends TransportClient {
       // If we try to retrieve the header value directly, and the 'getValue' will hang if the header doesn't exist.
       Header schemaIdHeader = result.getFirstHeader(HttpConstants.VENICE_SCHEMA_ID);
       if (HttpStatus.SC_OK == statusCode) {
-        if (null != schemaIdHeader) {
+        if (schemaIdHeader != null) {
           schemaId = Integer.parseInt(schemaIdHeader.getValue());
         }
       }

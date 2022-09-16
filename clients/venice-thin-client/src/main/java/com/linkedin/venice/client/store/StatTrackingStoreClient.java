@@ -190,19 +190,19 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
        * Here is not short-circuiting because the key cnt for each percentile could be same if the total key count
        * is very small.
        */
-      if (1 == currentKeyCnt) {
+      if (currentKeyCnt == 1) {
         stats.recordStreamingResponseTimeToReceiveFirstRecord(LatencyUtils.getLatencyInMS(preRequestTimeInNS));
       }
-      if (keyCntForP50 == currentKeyCnt) {
+      if (currentKeyCnt == keyCntForP50) {
         stats.recordStreamingResponseTimeToReceive50PctRecord(LatencyUtils.getLatencyInMS(preRequestTimeInNS));
       }
-      if (keyCntForP90 == currentKeyCnt) {
+      if (currentKeyCnt == keyCntForP90) {
         stats.recordStreamingResponseTimeToReceive90PctRecord(LatencyUtils.getLatencyInMS(preRequestTimeInNS));
       }
-      if (keyCntForP95 == currentKeyCnt) {
+      if (currentKeyCnt == keyCntForP95) {
         stats.recordStreamingResponseTimeToReceive95PctRecord(LatencyUtils.getLatencyInMS(preRequestTimeInNS));
       }
-      if (keyCntForP99 == currentKeyCnt) {
+      if (currentKeyCnt == keyCntForP99) {
         stats.recordStreamingResponseTimeToReceive99PctRecord(LatencyUtils.getLatencyInMS(preRequestTimeInNS));
       }
     }
@@ -314,7 +314,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
       long startTimeInNS) {
     return (T value, Throwable throwable) -> {
       double latency = LatencyUtils.getLatencyInMS(startTimeInNS);
-      if (null != throwable) {
+      if (throwable != null) {
         clientStats.recordUnhealthyRequest();
         clientStats.recordUnhealthyLatency(latency);
         if (throwable instanceof VeniceClientHttpException) {
@@ -337,7 +337,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   }
 
   public static void handleStoreExceptionInternally(Throwable throwable) {
-    if (null == throwable) {
+    if (throwable == null) {
       return;
     }
     /**

@@ -154,7 +154,7 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
             String instanceName = entry.getKey();
             String instanceState = entry.getValue();
             Instance instance = liveInstanceSnapshot.get(instanceName);
-            if (null != instance) {
+            if (instance != null) {
               ExecutionStatus status;
               try {
                 status = ExecutionStatus.valueOf(instanceState);

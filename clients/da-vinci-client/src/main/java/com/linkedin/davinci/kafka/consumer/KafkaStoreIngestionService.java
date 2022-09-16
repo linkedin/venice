@@ -486,7 +486,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     if (metaSystemStoreReplicaStatusNotifierQueued) {
       throw new VeniceException("MetaSystemStoreReplicaStatusNotifier should NOT be added twice");
     }
-    if (null == this.metaSystemStoreReplicaStatusNotifier) {
+    if (this.metaSystemStoreReplicaStatusNotifier == null) {
       throw new VeniceException("MetaSystemStoreReplicaStatusNotifier wasn't initialized properly");
     }
     addCommonNotifier(this.metaSystemStoreReplicaStatusNotifier);
@@ -511,10 +511,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     topicNameToIngestionTaskMap.values().forEach(ingestionExecutorService::submit);
 
     storeBufferService.start();
-    if (null != aggKafkaConsumerService) {
+    if (aggKafkaConsumerService != null) {
       aggKafkaConsumerService.start();
     }
-    if (null != sharedKafkaProducerService) {
+    if (sharedKafkaProducerService != null) {
       sharedKafkaProducerService.start();
     }
     if (participantStoreConsumptionTask != null) {
@@ -883,7 +883,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       // cleanup the map regardless if the task was running or not to prevent mem leak when failed tasks lingers
       // in the map since isRunning is set to false already.
       topicNameToIngestionTaskMap.remove(topicName);
-      if (null != aggKafkaConsumerService) {
+      if (aggKafkaConsumerService != null) {
         aggKafkaConsumerService.unsubscribeAll(consumerTask.getVersionTopic());
       }
 

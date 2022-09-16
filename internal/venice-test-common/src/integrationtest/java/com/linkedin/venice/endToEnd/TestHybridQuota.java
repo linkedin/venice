@@ -130,7 +130,7 @@ public class TestHybridQuota {
         helixAdmin = new ZKHelixAdmin(sharedVenice.getZk().getAddress());
         helixAdmin.addCluster(sharedVenice.getClusterName());
       } finally {
-        if (null != helixAdmin) {
+        if (helixAdmin != null) {
           helixAdmin.close();
         }
       }
@@ -229,7 +229,7 @@ public class TestHybridQuota {
                 .setStorageQuotaInByte(storageQuotaInByte * 100));
         Utils.sleep(normalTimeForConsuming);
         // Previous venice producer get exception thrown by quota violation. Need to create a new venice producer.
-        if (null != veniceProducer) {
+        if (veniceProducer != null) {
           veniceProducer.stop();
         }
         if (isStreamReprocessing) {
@@ -265,16 +265,16 @@ public class TestHybridQuota {
       }
       // Expected
     } finally {
-      if (null != veniceProducer) {
+      if (veniceProducer != null) {
         veniceProducer.stop();
       }
-      if (null != offlinePushRepository) {
+      if (offlinePushRepository != null) {
         offlinePushRepository.clear();
       }
-      if (null != hybridStoreQuotaOnlyRepository) {
+      if (hybridStoreQuotaOnlyRepository != null) {
         hybridStoreQuotaOnlyRepository.clear();
       }
-      if (null != readManager) {
+      if (readManager != null) {
         readManager.disconnect();
       }
     }

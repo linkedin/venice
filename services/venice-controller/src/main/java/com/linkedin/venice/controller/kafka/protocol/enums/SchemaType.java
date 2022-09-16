@@ -25,7 +25,7 @@ public enum SchemaType {
 
   public static SchemaType valueOf(int value) {
     SchemaType type = SCHEMA_TYPE_MAP.get(value);
-    if (null == type) {
+    if (type == null) {
       throw new VeniceMessageException("Invalid schema type: " + value);
     }
     return type;

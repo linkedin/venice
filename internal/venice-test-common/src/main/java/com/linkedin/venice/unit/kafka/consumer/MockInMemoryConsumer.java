@@ -87,7 +87,7 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
 
   @Override
   public synchronized ConsumerRecords poll(long timeout) {
-    if (null != delegate.poll(timeout)) {
+    if (delegate.poll(timeout) != null) {
       throw new IllegalArgumentException(
           "The MockInMemoryConsumer's delegate can only be used to verify calls, not to return arbitrary instances.");
     }

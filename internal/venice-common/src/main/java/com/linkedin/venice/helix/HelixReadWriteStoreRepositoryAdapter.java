@@ -29,7 +29,7 @@ public class HelixReadWriteStoreRepositoryAdapter extends HelixReadOnlyStoreRepo
      * Since the returned store from {@link HelixReadOnlyStoreRepositoryAdapter#getStore} will be referring to
      * {@link ReadOnlyStore} internally, here will clone the store to make it mutable.
      */
-    if (null != store) {
+    if (store != null) {
       return store.cloneStore();
     }
     return null;

@@ -106,7 +106,7 @@ public class StoreValueSchemasCacheService extends AbstractVeniceService impleme
     StoreValueSchemas storeValueSchemas =
         storeValueSchemasMap.computeIfAbsent(storeName, s -> refreshStoreValueSchemas(storeName));
     SchemaEntry valueSchemaEntry = storeValueSchemas.valueSchemaMap.get(valueSchemaId);
-    if (null == valueSchemaEntry) {
+    if (valueSchemaEntry == null) {
       /**
        * Normally, this shouldn't happen since the refresh thread should take care of the new value schema before it gets used,
        * but it may not be this case in unit tests and integration tests.
@@ -117,7 +117,7 @@ public class StoreValueSchemasCacheService extends AbstractVeniceService impleme
         storeValueSchemas = refreshStoreValueSchemas(storeName);
         storeValueSchemasMap.put(storeName, storeValueSchemas);
         valueSchemaEntry = storeValueSchemas.valueSchemaMap.get(valueSchemaId);
-        if (null == valueSchemaEntry) {
+        if (valueSchemaEntry == null) {
           throw new VeniceException("Unknown value schema id: " + valueSchemaId + " in store: " + storeName);
         }
       }
@@ -145,7 +145,7 @@ public class StoreValueSchemasCacheService extends AbstractVeniceService impleme
     SchemaEntry latestValueSchema = schemaRepository.getSupersetOrLatestValueSchema(storeName);
     Collection<SchemaEntry> valueSchemas = schemaRepository.getValueSchemas(storeName);
     StoreValueSchemas storeValueSchemas = storeValueSchemasMap.get(storeName);
-    if (null == storeValueSchemas) {
+    if (storeValueSchemas == null) {
       storeValueSchemas = new StoreValueSchemas();
     }
     for (SchemaEntry schemaEntry: valueSchemas) {
@@ -159,7 +159,7 @@ public class StoreValueSchemasCacheService extends AbstractVeniceService impleme
     }
     SchemaEntry latestValueSchemaEntryInValueSchemaMap =
         storeValueSchemas.valueSchemaMap.get(latestValueSchema.getId());
-    if (null == latestValueSchemaEntryInValueSchemaMap) {
+    if (latestValueSchemaEntryInValueSchemaMap == null) {
       LOGGER.warn(
           "For store: " + storeName + ", the latest value schema: " + latestValueSchema.getId()
               + " is not part of all the value schemas: " + storeValueSchemas.valueSchemaMap.keySet());

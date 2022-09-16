@@ -400,7 +400,7 @@ public class ReadOnlyStore implements Store {
     @Override
     public PartitionerConfig getPartitionerConfig() {
       PartitionerConfig config = this.delegate.getPartitionerConfig();
-      if (null == config) {
+      if (config == null) {
         return null;
       }
       return new ReadOnlyPartitionerConfig(config);
@@ -479,7 +479,7 @@ public class ReadOnlyStore implements Store {
     @Override
     public HybridStoreConfig getHybridStoreConfig() {
       HybridStoreConfig config = this.delegate.getHybridStoreConfig();
-      if (null == config) {
+      if (config == null) {
         return null;
       }
       return new ReadOnlyHybridStoreConfig(config);
@@ -513,7 +513,7 @@ public class ReadOnlyStore implements Store {
     @Override
     public DataRecoveryVersionConfig getDataRecoveryVersionConfig() {
       DataRecoveryVersionConfig config = this.delegate.getDataRecoveryVersionConfig();
-      if (null == config) {
+      if (config == null) {
         return null;
       }
       return new ReadOnlyDataRecoveryVersionConfig(config);
@@ -765,7 +765,7 @@ public class ReadOnlyStore implements Store {
   @Override
   public PartitionerConfig getPartitionerConfig() {
     PartitionerConfig config = this.delegate.getPartitionerConfig();
-    if (null == config) {
+    if (config == null) {
       return null;
     }
     return new ReadOnlyPartitionerConfig(config);
@@ -809,7 +809,7 @@ public class ReadOnlyStore implements Store {
   @Override
   public HybridStoreConfig getHybridStoreConfig() {
     HybridStoreConfig config = this.delegate.getHybridStoreConfig();
-    if (null == config) {
+    if (config == null) {
       return null;
     }
     return new ReadOnlyHybridStoreConfig(config);
@@ -1018,7 +1018,7 @@ public class ReadOnlyStore implements Store {
   @Override
   public ETLStoreConfig getEtlStoreConfig() {
     ETLStoreConfig config = this.delegate.getEtlStoreConfig();
-    if (null == config) {
+    if (config == null) {
       return null;
     }
     return new ReadOnlyETLStoreConfig(config);

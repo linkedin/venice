@@ -58,7 +58,7 @@ public class MigrationPushStrategyZKAccessor {
     LOGGER.info("Setup push strategy: " + pushStrategyStr + " for Voldemort store: " + voldemortStoreName);
 
     HelixUtils.compareAndUpdate(zkAccessor, MIGRATION_PUSH_STRATEGY_PATH, oldData -> {
-      if (null == oldData) {
+      if (oldData == null) {
         // Doesn't exist
         oldData = new HashMap<>();
       }

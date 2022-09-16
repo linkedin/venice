@@ -1087,7 +1087,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // validate store and version exist
     Store store = getStore(clusterName, storeName);
 
-    if (null == store) {
+    if (store == null) {
       throw new VeniceNoStoreException(storeName);
     }
 
@@ -1597,7 +1597,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       int replicationMetadataVersionId,
       boolean versionSwapDeferred) {
     Store store = getStore(clusterName, storeName);
-    if (null == store) {
+    if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
     }
     if (versionNumber <= store.getLargestUsedVersionNumber()) {
@@ -1760,7 +1760,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
     Store store = repository.getStore(storeName);
-    if (null == store) {
+    if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
     }
     Version version = new VersionImpl(storeName, versionNumber, pushJobId, numberOfPartitions);
@@ -1994,10 +1994,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
            * it will guarantee the rewind will recover the state for both store properties and replica statuses.
            */
           VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
-          if (null != systemStoreType && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
+          if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
             produceSnapshotToMetaStoreRT(clusterName, systemStoreType.extractRegularStoreName(storeName));
           }
-          if (null != systemStoreType && systemStoreType.equals(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE)) {
+          if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE)) {
             setUpDaVinciPushStatusStore(clusterName, systemStoreType.extractRegularStoreName(storeName));
           }
 
@@ -2465,19 +2465,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // config only.
         if (partitionCount == 0) {
           partitionCount = store.getPartitionCount();
-        }
-        if (0 == partitionCount) {
-          // TODO: partitioning is currently decided on first version push, and we need to match that versioning
-          // we should evaluate alternatives such as allowing the RT topic request to initialize the number of
-          // partitions, or setting the number of partitions at store creation time instead of at first version
-          if (!version.isPresent()) {
-            throw new VeniceException("Store: " + storeName + " is not initialized with a version yet");
-          } else {
-            throw new VeniceException("Store: " + storeName + " has partition count set to 0");
+          if (partitionCount == 0) {
+            // TODO: partitioning is currently decided on first version push, and we need to match that versioning
+            // we should evaluate alternatives such as allowing the RT topic request to initialize the number of
+            // partitions, or setting the number of partitions at store creation time instead of at first version
+            if (!version.isPresent()) {
+              throw new VeniceException("Store: " + storeName + " is not initialized with a version yet");
+            } else {
+              throw new VeniceException("Store: " + storeName + " has partition count set to 0");
+            }
           }
         }
-        VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
 
+        VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
         getTopicManager().createTopic(
             realTimeTopic,
             partitionCount,
@@ -3635,7 +3635,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     Store originalStore = getStore(clusterName, storeName);
-    if (null == originalStore) {
+    if (originalStore == null) {
       throw new VeniceException(
           "The store '" + storeName + "' in cluster '" + clusterName + "' does not exist, and thus cannot be updated.");
     }
@@ -5625,7 +5625,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
     int versionId = Version.parseVersionFromKafkaTopicName(topic);
     Store store = getStore(clusterName, storeName);
-    if (null == store) {
+    if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
     }
     return store.getVersion(versionId);
@@ -6094,7 +6094,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     checkControllerLeadershipFor(clusterName);
     ReadWriteStoreRepository repository = getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
     Store store = repository.getStore(storeName);
-    if (null == store) {
+    if (store == null) {
       throw new VeniceNoStoreException(storeName);
     }
     return store;
@@ -6198,10 +6198,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     LiveInstance leader =
         helixManager.getHelixDataAccessor().getProperty(controllerClusterKeyBuilder.controllerLeader());
-    if (null == leader || null == leader.getId()) {
+    if (leader == null || leader.getId() == null) {
       logger.warn(
           "Cannot determine the leader from getProperty(controllerClusterKeyBuilder.controllerLeader(), " + "leader: "
-              + leader + (null == leader ? "" : ", leader.getId(): " + leader.getId()));
+              + leader + (leader == null ? "" : ", leader.getId(): " + leader.getId()));
       return false;
     }
     return leader.getId().equals(this.controllerName);
@@ -6289,7 +6289,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
        * storeName is present.
        */
       Store originalStore = getStore(clusterName, storeName.get());
-      if (null == originalStore) {
+      if (originalStore == null) {
         throw new VeniceException(
             "The store '" + storeName.get() + "' in cluster '" + clusterName
                 + "' does not exist, and thus cannot be updated.");
@@ -6429,7 +6429,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
        * storeName is present.
        */
       Store originalStore = getStore(clusterName, storeName.get());
-      if (null == originalStore) {
+      if (originalStore == null) {
         throw new VeniceException(
             "The store '" + storeName.get() + "' in cluster '" + clusterName
                 + "' does not exist, and thus cannot be updated.");

@@ -112,7 +112,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
 
     return innerFuture.handle((value, throwable) -> {
       double latency = LatencyUtils.getLatencyInMS(startTimeInNS);
-      if (null != throwable) {
+      if (throwable != null) {
         clientStats.recordUnhealthyRequest();
         clientStats.recordUnhealthyLatency(latency);
         if (throwable instanceof VeniceClientException) {

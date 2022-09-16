@@ -98,7 +98,7 @@ public class AvroSpecificStoreClientImplTest {
   @AfterMethod
   public void closeStoreClient() {
     for (AvroSpecificStoreClient<TestKeyRecord, TestValueRecord> storeClient: storeClients.values()) {
-      if (null != storeClient) {
+      if (storeClient != null) {
         storeClient.close();
       }
     }

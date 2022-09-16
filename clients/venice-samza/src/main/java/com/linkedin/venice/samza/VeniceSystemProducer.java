@@ -506,7 +506,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       valueObject = objectWithTimestamp.getObject();
     }
 
-    if (null == valueObject) {
+    if (valueObject == null) {
       if (logicalTimestamp > 0) {
         veniceWriter.delete(key, logicalTimestamp, callback);
       } else {

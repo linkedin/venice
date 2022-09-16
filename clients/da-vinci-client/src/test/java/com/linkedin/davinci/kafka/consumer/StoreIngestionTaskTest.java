@@ -1809,7 +1809,7 @@ public abstract class StoreIngestionTaskTest {
     final AtomicInteger messagesConsumedSoFar = new AtomicInteger(0);
     PollStrategy pollStrategy =
         new BlockingObserverPollStrategy(new RandomPollStrategy(false), topicPartitionOffsetRecordPair -> {
-          if (null == topicPartitionOffsetRecordPair || null == topicPartitionOffsetRecordPair.getSecond()) {
+          if (topicPartitionOffsetRecordPair == null || topicPartitionOffsetRecordPair.getSecond() == null) {
             logger.info("Received null OffsetRecord!");
           } else if (messagesConsumedSoFar.incrementAndGet()
               % (totalNumberOfMessages / totalNumberOfConsumptionRestarts) == 0) {

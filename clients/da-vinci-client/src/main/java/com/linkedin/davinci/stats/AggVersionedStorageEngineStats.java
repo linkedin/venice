@@ -64,14 +64,14 @@ public class AggVersionedStorageEngineStats extends
     }
 
     public long getDiskUsageInBytes() {
-      if (null != storageEngine) {
+      if (storageEngine != null) {
         return storageEngine.getStoreSizeInBytes();
       }
       return 0;
     }
 
     public long getRMDDiskUsageInBytes() {
-      if (null != storageEngine) {
+      if (storageEngine != null) {
         return storageEngine.getRMDSizeInBytes();
       }
       return 0;
@@ -91,7 +91,7 @@ public class AggVersionedStorageEngineStats extends
     protected void registerStats() {
       registerSensor("disk_usage_in_bytes", new Gauge(() -> {
         StorageEngineStats stats = getStats();
-        if (null == stats) {
+        if (stats == null) {
           return StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code;
         } else {
           return stats.getDiskUsageInBytes();
@@ -99,7 +99,7 @@ public class AggVersionedStorageEngineStats extends
       }));
       registerSensor("rmd_disk_usage_in_bytes", new Gauge(() -> {
         StorageEngineStats stats = getStats();
-        if (null == stats) {
+        if (stats == null) {
           return StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code;
         } else {
           return stats.getRMDDiskUsageInBytes();
@@ -107,7 +107,7 @@ public class AggVersionedStorageEngineStats extends
       }));
       registerSensor("rocksdb_open_failure_count", new Gauge(() -> {
         StorageEngineStats stats = getStats();
-        if (null == stats) {
+        if (stats == null) {
           return StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code;
         } else {
           return stats.rocksDBOpenFailureCount.get();

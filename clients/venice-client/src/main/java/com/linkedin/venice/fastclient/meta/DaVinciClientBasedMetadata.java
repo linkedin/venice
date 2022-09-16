@@ -96,7 +96,7 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
 
   public DaVinciClientBasedMetadata(ClientConfig clientConfig) {
     super(clientConfig);
-    if (null == clientConfig.getDaVinciClientForMetaStore()) {
+    if (clientConfig.getDaVinciClientForMetaStore() == null) {
       throw new VeniceClientException(
           "'DaVinciClientForMetaStore' should not be null in 'ClientConfig' when DaVinciClientBasedMetadata is being used.");
     }

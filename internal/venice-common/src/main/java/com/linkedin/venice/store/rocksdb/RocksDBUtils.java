@@ -33,7 +33,7 @@ public class RocksDBUtils {
 
   public static int parsePartitionIdFromPartitionDbName(String partitionDbName) {
     int index = partitionDbName.lastIndexOf(PARTITION_DB_NAME_SEP);
-    if (-1 == index || index == partitionDbName.length() - 1) {
+    if (index == -1 || index == partitionDbName.length() - 1) {
       throw new VeniceException("Invalid partition db name: " + partitionDbName);
     }
     return Integer.parseInt(partitionDbName.substring(index + 1));

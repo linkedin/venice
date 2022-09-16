@@ -102,7 +102,7 @@ public class HelixGroupLeastLoadedStrategy implements HelixGroupSelectionStrateg
     }
     synchronized (this) {
       Pair<Integer, TimeoutProcessor.TimeoutFuture> timeoutFuturePair = requestTimeoutFutureMap.get(requestId);
-      if (null == timeoutFuturePair) {
+      if (timeoutFuturePair == null) {
         /**
          * Request has already timed out or already finished.
          */

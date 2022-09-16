@@ -119,7 +119,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
        */
       fetchStoreSchemaIfNotInCache(storeName);
       SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
-      if (null == schemaData) {
+      if (schemaData == null) {
         throw new VeniceNoStoreException(storeName);
       }
       return operation.apply(schemaData);
@@ -161,7 +161,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
        */
       fetchStoreSchemaIfNotInCache(storeName);
       SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
-      if (null == schemaData) {
+      if (schemaData == null) {
         throw new VeniceNoStoreException(storeName);
       }
       SchemaEntry keySchema = schemaData.getKeySchema();
@@ -198,7 +198,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
        */
       fetchStoreSchemaIfNotInCache(storeName);
       SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
-      if (null == schemaData) {
+      if (schemaData == null) {
         throw new VeniceNoStoreException(storeName);
       }
       return schemaData.getValueSchema(id);
@@ -216,7 +216,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   public boolean hasValueSchema(String storeName, int id) {
     SchemaEntry valueSchema = getValueSchemaInternally(storeName, id);
 
-    return null != valueSchema;
+    return valueSchema != null;
   }
 
   /**
@@ -240,7 +240,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
        */
       fetchStoreSchemaIfNotInCache(storeName);
       SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
-      if (null == schemaData) {
+      if (schemaData == null) {
         throw new VeniceNoStoreException(storeName);
       }
       // Could throw SchemaParseException
@@ -263,7 +263,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
        */
       fetchStoreSchemaIfNotInCache(storeName);
       SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
-      if (null == schemaData) {
+      if (schemaData == null) {
         throw new VeniceNoStoreException(storeName);
       }
       DerivedSchemaEntry derivedSchemaEntry =
@@ -280,7 +280,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     try {
       fetchStoreSchemaIfNotInCache(storeName);
       SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
-      if (null == schemaData) {
+      if (schemaData == null) {
         throw new VeniceNoStoreException(storeName);
       }
 
@@ -310,7 +310,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
        */
       fetchStoreSchemaIfNotInCache(storeName);
       SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
-      if (null == schemaData) {
+      if (schemaData == null) {
         throw new VeniceNoStoreException(storeName);
       }
       return schemaData.getValueSchemas();
@@ -331,7 +331,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
        */
       fetchStoreSchemaIfNotInCache(storeName);
       SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
-      if (null == schemaData) {
+      if (schemaData == null) {
         throw new VeniceNoStoreException(storeName);
       }
       return schemaData.getDerivedSchemas();
@@ -355,7 +355,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
        */
       fetchStoreSchemaIfNotInCache(storeName);
       SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
-      if (null == schemaData) {
+      if (schemaData == null) {
         throw new VeniceNoStoreException(storeName);
       }
       final int latestValueSchemaId;
@@ -376,7 +376,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     try {
       fetchStoreSchemaIfNotInCache(storeName);
       SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
-      if (null == schemaData) {
+      if (schemaData == null) {
         throw new VeniceNoStoreException(storeName);
       }
       Optional<Integer> supersetSchemaID = getSupersetSchemaID(storeName);
@@ -562,7 +562,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     schemaLock.readLock().lock();
     try {
       schemaData = schemaMap.get(getZkStoreName(storeName));
-      if (null == schemaData) { // Should not happen, safety check for rare race condition.
+      if (schemaData == null) { // Should not happen, safety check for rare race condition.
         populateSchemaMap(storeName);
         // schemaData is still null at this point, rerun schemaMap.get
         schemaData = schemaMap.get(getZkStoreName(storeName));
@@ -591,7 +591,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
 
       for (String id: currentChildren) {
-        if (null == schemaData.getValueSchema(Integer.parseInt(id))) {
+        if (schemaData.getValueSchema(Integer.parseInt(id)) == null) {
           schemaData.addValueSchema(accessor.getValueSchema(storeName, id));
         }
       }
@@ -609,7 +609,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
               "unrecognized derivedSchema path format. Store: " + storeName + " path: " + derivedSchemaIdPairStr);
         }
 
-        if (null == schemaData.getDerivedSchema(Integer.parseInt(ids[0]), Integer.parseInt(ids[1]))) {
+        if (schemaData.getDerivedSchema(Integer.parseInt(ids[0]), Integer.parseInt(ids[1])) == null) {
           schemaData.addDerivedSchema(accessor.getDerivedSchema(storeName, derivedSchemaIdPairStr));
         }
       }
@@ -628,7 +628,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
               "unrecognized Schema path format. Store: " + storeName + " path: " + replicationMetadataVersionIdPairStr);
         }
 
-        if (null == schemaData.getReplicationMetadataSchema(Integer.parseInt(ids[0]), Integer.parseInt(ids[1]))) {
+        if (schemaData.getReplicationMetadataSchema(Integer.parseInt(ids[0]), Integer.parseInt(ids[1])) == null) {
           schemaData.addReplicationMetadataSchema(
               accessor.getReplicationMetadataSchema(storeName, replicationMetadataVersionIdPairStr));
         }
@@ -640,12 +640,12 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     @Override
     public void handleChildChange(String parentPath, List<String> currentChildren) {
       String storeName = extractStoreNameFromSchemaPath(parentPath);
-      if (null == storeName) {
+      if (storeName == null) {
         logger.error("Invalid schema path: " + parentPath);
         return;
       }
 
-      if (null == currentChildren) {
+      if (currentChildren == null) {
         logger.info("currentChildren is null, which might be triggered by store deletion");
         return;
       }

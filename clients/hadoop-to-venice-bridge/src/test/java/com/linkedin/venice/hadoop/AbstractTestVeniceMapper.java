@@ -32,7 +32,7 @@ public abstract class AbstractTestVeniceMapper<M extends AbstractVeniceMapper> e
    * a call to write the first real K/V payload. For the tasks ID > 0, only real K/V payloads are written.
    */
   protected int getNumberOfCollectorInvocationForFirstMapInvocation(int numReducers, int taskId) {
-    if (0 == taskId) {
+    if (taskId == 0) {
       return numReducers + 1;
     }
     return 1;

@@ -397,7 +397,7 @@ public enum Command {
         return cmd;
       }
     }
-    if (null == name) {
+    if (name == null) {
       List<String> candidateCommands = Arrays.stream(Command.values())
           .filter(
               command -> Arrays.stream(command.getRequiredArgs()).allMatch(arg -> cmdLine.hasOption(arg.toString())))

@@ -293,7 +293,7 @@ public class StatsHandler extends ChannelDuplexHandler {
   }
 
   private void recordBasicMetrics() {
-    if (null != storeName) {
+    if (storeName != null) {
       if (databaseLookupLatency >= 0) {
         currentStats.recordDatabaseLookupLatency(storeName, databaseLookupLatency, isAssembledMultiChunkLargeValue());
       }

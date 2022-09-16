@@ -176,7 +176,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
                 ? HttpStatus.fromCode(((VeniceClientHttpException) throwable).getHttpStatus())
                 : HttpStatus.S_503_SERVICE_UNAVAILABLE;
             routeRequestFuture.complete(statusCode);
-          } else if (null == response) {
+          } else if (response == null) {
             routeRequestFuture.complete(HttpStatus.S_404_NOT_FOUND);
             if (!receivedSuccessfulResponse.getAndSet(true)) {
               requestContext.requestSubmissionToResponseHandlingTime =
@@ -485,11 +485,11 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
   protected RecordDeserializer<V> getDataRecordDeserializer(int schemaId) throws VeniceClientException {
     Schema readerSchema = metadata.getLatestValueSchema();
-    if (null == readerSchema) {
+    if (readerSchema == null) {
       throw new VeniceClientException("Failed to get latest value schema for store: " + metadata.getStoreName());
     }
     Schema writerSchema = metadata.getValueSchema(schemaId);
-    if (null == writerSchema) {
+    if (writerSchema == null) {
       throw new VeniceClientException(
           "Failed to get writer schema with id: " + schemaId + " from store: " + metadata.getStoreName());
     }

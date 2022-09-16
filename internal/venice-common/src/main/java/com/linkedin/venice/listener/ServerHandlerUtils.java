@@ -11,15 +11,15 @@ public class ServerHandlerUtils {
      * Try to extract ssl handler in current channel, which is mostly for http/1.1 request.
      */
     SslHandler sslHandler = ctx.pipeline().get(SslHandler.class);
-    if (null != sslHandler) {
+    if (sslHandler != null) {
       return Optional.of(sslHandler);
     }
     /**
      * Try to extract ssl handler in parent channel, which is for http/2 request.
      */
-    if (null != ctx.channel().parent()) {
+    if (ctx.channel().parent() != null) {
       sslHandler = ctx.channel().parent().pipeline().get(SslHandler.class);
     }
-    return null == sslHandler ? Optional.empty() : Optional.of(sslHandler);
+    return Optional.ofNullable(sslHandler);
   }
 }

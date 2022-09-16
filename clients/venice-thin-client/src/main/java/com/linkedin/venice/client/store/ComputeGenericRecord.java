@@ -20,7 +20,7 @@ public class ComputeGenericRecord implements GenericRecord {
   private ComputeGenericRecord(GenericRecord record) {
     this.innerRecord = record;
     Object errorMap = record.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME);
-    if (null != errorMap && errorMap instanceof Map && !((Map) errorMap).isEmpty()) {
+    if (errorMap != null && errorMap instanceof Map && !((Map) errorMap).isEmpty()) {
       /**
        * The reason for the following conversion is that the de-serialized Map
        * is actually a Map<Utf8, Utf8>, so {@link #get(String)} could not use it directly.

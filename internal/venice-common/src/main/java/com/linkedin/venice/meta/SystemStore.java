@@ -93,7 +93,7 @@ public class SystemStore extends AbstractStore {
    */
   private synchronized SystemStoreAttributes fetchAndBackfillSystemStoreAttributes(boolean readAccess) {
     SystemStoreAttributes systemStoreAttributes = veniceStore.getSystemStores().get(systemStoreType.getPrefix());
-    if (null == systemStoreAttributes) {
+    if (systemStoreAttributes == null) {
       if (readAccess) {
         return DEFAULT_READ_ONLY_SYSTEM_STORE_ATTRIBUTE;
       }

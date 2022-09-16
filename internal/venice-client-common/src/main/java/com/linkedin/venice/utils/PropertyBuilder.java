@@ -33,7 +33,7 @@ public class PropertyBuilder {
   }
 
   public PropertyBuilder putIfAbsent(String key, Object value) {
-    if (null == props.get(key)) {
+    if (props.get(key) == null) {
       props.put(key, value.toString());
     }
     return this;

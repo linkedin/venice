@@ -76,7 +76,7 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
         HttpShortcutResponse shortcutResponse = (HttpShortcutResponse) msg;
         responseStatus = shortcutResponse.getStatus();
         String message = shortcutResponse.getMessage();
-        if (null == message) {
+        if (message == null) {
           message = "";
         }
         body = Unpooled.wrappedBuffer(message.getBytes(StandardCharsets.UTF_8));
@@ -99,7 +99,7 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
            * If error happens, return error message if any as well as 500 error code
            */
           String errorMessage = adminResponse.getMessage();
-          if (null == errorMessage) {
+          if (errorMessage == null) {
             errorMessage = "Unknown error";
           }
           body = Unpooled.wrappedBuffer(errorMessage.getBytes(StandardCharsets.UTF_8));

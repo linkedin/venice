@@ -91,7 +91,7 @@ public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository
 
   public Store getStoreOrThrow(String storeName) throws VeniceNoStoreException {
     Store store = getStore(storeName);
-    if (null == store) {
+    if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
     }
     return store;

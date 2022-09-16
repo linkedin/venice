@@ -148,7 +148,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   }
 
   private boolean isMetadataMigrationCompleted(Partition someMetadataPartition) {
-    return null != someMetadataPartition.get(METADATA_MIGRATION_KEY, false);
+    return someMetadataPartition.get(METADATA_MIGRATION_KEY, false) != null;
   }
 
   // For testing purpose only.
@@ -475,7 +475,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       throw new IllegalArgumentException("Invalid partition id argument in getPartitionOffset");
     }
     byte[] value = metadataPartition.get(getPartitionMetadataKey(partitionId), false);
-    if (null == value) {
+    if (value == null) {
       return Optional.empty();
     }
     return Optional.of(new OffsetRecord(value, partitionStateSerializer));
@@ -519,7 +519,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
         return Optional.of(versionState);
       }
       byte[] value = metadataPartition.get(VERSION_METADATA_KEY, false);
-      if (null == value) {
+      if (value == null) {
         return Optional.empty();
       }
       versionState = storeVersionStateSerializer.deserialize(storeName, value);
@@ -544,7 +544,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    * @return True/False, does the partition exist on this node
    */
   public synchronized boolean containsPartition(int partitionId) {
-    return null != this.partitionList.get(partitionId);
+    return this.partitionList.get(partitionId) != null;
   }
 
   public synchronized boolean containsPartition(int userPartition, PartitionerConfig partitionerConfig) {
@@ -606,7 +606,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   }
 
   private boolean metadataPartitionCreated() {
-    return null != metadataPartition;
+    return metadataPartition != null;
   }
 
   private void validateStoreName(StoragePartitionConfig storagePartitionConfig) {

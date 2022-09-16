@@ -388,7 +388,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     throwIfNotReady();
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
-      if (null == versionBackend) {
+      if (versionBackend == null) {
         if (isVeniceQueryAllowed()) {
           veniceClient.compute(
               computeRequestWrapper,
@@ -467,7 +467,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     throwIfNotReady();
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
-      if (null == versionBackend) {
+      if (versionBackend == null) {
         storeBackend.getStats().recordBadRequest();
         callback.onCompletion(
             Optional.of(new VeniceClientException("Da Vinci client is not subscribed, storeName=" + getStoreName())));
@@ -551,7 +551,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   private void dropAllCachePartitions() {
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
-      if (null != versionBackend) {
+      if (versionBackend != null) {
         cacheBackend.clearCachedPartitions(versionBackend.getVersion());
       }
     }

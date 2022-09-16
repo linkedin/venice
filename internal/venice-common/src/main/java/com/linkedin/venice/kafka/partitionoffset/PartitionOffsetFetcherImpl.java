@@ -76,7 +76,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
   public Int2LongMap getTopicLatestOffsets(String topic) {
     try (AutoCloseableLock ignore = AutoCloseableLock.of(rawConsumerLock)) {
       List<PartitionInfo> partitionInfoList = kafkaRawBytesConsumer.get().partitionsFor(topic);
-      if (null == partitionInfoList || partitionInfoList.isEmpty()) {
+      if (partitionInfoList == null || partitionInfoList.isEmpty()) {
         logger
             .warn("Unexpected! Topic: " + topic + " has a null partition set, returning empty map for latest offsets");
         return Int2LongMaps.EMPTY_MAP;

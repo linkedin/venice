@@ -41,7 +41,7 @@ public class VsonSequenceFileInputFormat extends SequenceFileInputFormat<BytesWr
     FileSystem fs = filterMemberPath.getFileSystem(inputConf);
     FileStatus[] subFiles = fs.listStatus(filterMemberPath);
 
-    if (null != subFiles) {
+    if (subFiles != null) {
       if (fs.isDirectory(filterMemberPath)) {
         for (FileStatus subFile: subFiles) {
           if (!HadoopUtils.shouldPathBeIgnored(subFile.getPath())) {

@@ -139,7 +139,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       }
     }
 
-    if (1 != part.getHosts().size()) {
+    if (part.getHosts().size() != 1) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
           Optional.of(storeName),
           Optional.of(requestType),

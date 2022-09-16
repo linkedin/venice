@@ -326,7 +326,7 @@ public abstract class HelixBaseRoutingRepository
   @Override
   public Instance getLeaderInstance(String resourceName, int partition) {
     Partition p = resourceAssignment.getPartition(resourceName, partition);
-    if (null == p) {
+    if (p == null) {
       return null;
     }
     return p.getLeaderInstance();

@@ -118,7 +118,7 @@ public class PostBulkLoadAnalysisMapper
   }
 
   private boolean isRunning() {
-    if (null != sendException.get() && failFast) {
+    if (sendException.get() != null && failFast) {
       return false;
     } else if (closeCalled.get()) {
       return queriedRecords.get() < goodRecords.get() + badRecords.get();
@@ -181,12 +181,12 @@ public class PostBulkLoadAnalysisMapper
     }
 
     // Initialize once
-    if (null == this.progress) {
+    if (this.progress == null) {
       this.progress = reporter;
     }
     IndexedRecord datum = record.datum();
     Object keyDatum = datum.get(keyFieldPos);
-    if (null == keyDatum) {
+    if (keyDatum == null) {
       // Invalid data
       // Theoretically it should not happen since all the avro records are sharing the same schema in the same file
       throw new VeniceException("Encountered record with null key");
@@ -233,7 +233,7 @@ public class PostBulkLoadAnalysisMapper
   }
 
   private void maybePropagateCallbackException() {
-    if (null != sendException.get()) {
+    if (sendException.get() != null) {
       throw new VeniceException("Post-Bulkload Analysis Job failed with exception", sendException.get());
     }
   }
@@ -283,8 +283,8 @@ public class PostBulkLoadAnalysisMapper
   }
 
   private static void verify(Data data, PostBulkLoadAnalysisMapper pbnj) {
-    if ((null == data.valueDatumFromHdfs && null == data.valueFromVenice)
-        || (null != data.valueDatumFromHdfs && data.valueDatumFromHdfs.equals(data.valueFromVenice))) {
+    if ((data.valueDatumFromHdfs == null && data.valueFromVenice == null)
+        || (data.valueDatumFromHdfs != null && data.valueDatumFromHdfs.equals(data.valueFromVenice))) {
       // Both null, or both equal
       pbnj.goodRecords.incrementAndGet();
     } else {

@@ -96,11 +96,11 @@ public class AvroComputeRequestBuilderV4<K> extends AvroComputeRequestBuilderV3<
   }
 
   private byte[] extractKeyPrefixBytesFromPredicate(Predicate requiredPrefixFields, Schema keySchema) {
-    if (null == requiredPrefixFields) {
+    if (requiredPrefixFields == null) {
       return null;
     }
 
-    if (null == keySchema) {
+    if (keySchema == null) {
       throw new VeniceClientException("Key schema cannot be null");
     } else if (RECORD != keySchema.getType()) {
       throw new VeniceClientException("Key schema must be of type Record to execute with a filter on key fields");

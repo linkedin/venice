@@ -43,7 +43,7 @@ public class ExpiringSet<T> {
       }
     });
 
-    if (null == expireTime) {
+    if (expireTime == null) {
       return false;
     } else {
       return true;

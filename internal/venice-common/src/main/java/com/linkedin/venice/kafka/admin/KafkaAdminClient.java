@@ -48,7 +48,7 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
 
   @Override
   public void initialize(Properties properties) {
-    if (null == properties) {
+    if (properties == null) {
       throw new IllegalArgumentException("properties cannot be null!");
     }
     this.kafkaAdminClient = AdminClient.create(properties);
@@ -170,7 +170,7 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
       Collection<String> topicNames = Collections.singleton(topic);
       TopicDescription topicDescription = getKafkaAdminClient().describeTopics(topicNames).values().get(topic).get();
 
-      if (null == topicDescription) {
+      if (topicDescription == null) {
         logger.warn(
             "Unexpected: kafkaAdminClient.describeTopics returned null "
                 + "(rather than throwing an InvalidTopicException). Will carry on assuming the topic doesn't exist.");
@@ -196,7 +196,7 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
       Collection<String> topicNames = Collections.singleton(topic);
       TopicDescription topicDescription = getKafkaAdminClient().describeTopics(topicNames).values().get(topic).get();
 
-      if (null == topicDescription) {
+      if (topicDescription == null) {
         logger.warn(
             "Unexpected: kafkaAdminClient.describeTopics returned null "
                 + "(rather than throwing an InvalidTopicException). Will carry on assuming the topic doesn't exist.");
@@ -247,7 +247,7 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
 
   @Override
   public void close() throws IOException {
-    if (null != this.kafkaAdminClient) {
+    if (this.kafkaAdminClient != null) {
       try {
         this.kafkaAdminClient.close(Duration.ofSeconds(60));
       } catch (Exception e) {

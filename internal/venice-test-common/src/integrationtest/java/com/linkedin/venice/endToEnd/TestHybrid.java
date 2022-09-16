@@ -451,7 +451,7 @@ public class TestHybrid {
         });
       }
     } finally {
-      if (null != veniceProducer) {
+      if (veniceProducer != null) {
         veniceProducer.stop();
       }
     }
@@ -642,7 +642,7 @@ public class TestHybrid {
           veniceStreamProducer.stop();
         }
       } finally {
-        if (null != veniceBatchProducer) {
+        if (veniceBatchProducer != null) {
           veniceBatchProducer.stop();
         }
       }
@@ -727,10 +727,10 @@ public class TestHybrid {
         });
       });
     } finally {
-      if (null != veniceBatchProducer1) {
+      if (veniceBatchProducer1 != null) {
         veniceBatchProducer1.stop();
       }
-      if (null != veniceBatchProducer2) {
+      if (veniceBatchProducer2 != null) {
         veniceBatchProducer2.stop();
       }
     }
@@ -944,7 +944,7 @@ public class TestHybrid {
         });
       }
     } finally {
-      if (null != producer) {
+      if (producer != null) {
         producer.stop();
       }
     }
@@ -1129,7 +1129,7 @@ public class TestHybrid {
         }
       }
     } finally {
-      if (null != veniceProducer) {
+      if (veniceProducer != null) {
         veniceProducer.stop();
       }
     }
@@ -1321,7 +1321,7 @@ public class TestHybrid {
         }
       }
     } finally {
-      if (null != veniceProducer) {
+      if (veniceProducer != null) {
         veniceProducer.stop();
       }
     }

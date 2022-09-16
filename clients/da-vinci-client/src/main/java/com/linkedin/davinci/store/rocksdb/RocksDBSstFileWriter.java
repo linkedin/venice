@@ -101,7 +101,7 @@ public class RocksDBSstFileWriter {
   }
 
   public void put(byte[] key, ByteBuffer valueBuffer) throws RocksDBException {
-    if (null == currentSSTFileWriter) {
+    if (currentSSTFileWriter == null) {
       throw new VeniceException(
           "currentSSTFileWriter is null for store: " + storeName + ", partition id: " + partitionId
               + ", 'beginBatchWrite' should be invoked before any write");
@@ -173,7 +173,7 @@ public class RocksDBSstFileWriter {
   }
 
   public void close() {
-    if (null != currentSSTFileWriter) {
+    if (currentSSTFileWriter != null) {
       currentSSTFileWriter.close();
     }
   }
@@ -351,7 +351,7 @@ public class RocksDBSstFileWriter {
 
   public void ingestSSTFiles(RocksDB rocksDB, List<ColumnFamilyHandle> columnFamilyHandleList) {
     List<String> sstFilePaths = getTemporarySSTFilePaths();
-    if (0 == sstFilePaths.size()) {
+    if (sstFilePaths.isEmpty()) {
       LOGGER.info(
           "No valid sst file found, so will skip the sst file ingestion for store: {}, partition: {}",
           storeName,

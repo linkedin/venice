@@ -125,7 +125,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
   }
 
   public void initHelixGroupSelector(HelixGroupSelector helixGroupSelector) {
-    if (null != this.helixGroupSelector) {
+    if (this.helixGroupSelector != null) {
       throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
           Optional.empty(),
           Optional.empty(),
@@ -146,7 +146,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       @Nonnull HostHealthMonitor<H> hostHealthMonitor,
       @Nonnull R roles,
       Metrics metrics) throws RouterException {
-    if (null == readRequestThrottler) {
+    if (readRequestThrottler == null) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
           Optional.empty(),
           Optional.empty(),
@@ -154,7 +154,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
           "Read request throttler has not been setup yet");
     }
     if (multiKeyRoutingStrategy.equals(VeniceMultiKeyRoutingStrategy.HELIX_ASSISTED_ROUTING)
-        && null == helixGroupSelector) {
+        && helixGroupSelector == null) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
           Optional.empty(),
           Optional.empty(),
@@ -243,7 +243,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
 
     for (ScatterGatherRequest<H, K> part: scatter.getOnlineRequests()) {
       int hostCount = part.getHosts().size();
-      if (0 == hostCount) {
+      if (hostCount == 0) {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
             Optional.of(storeName),
             Optional.of(venicePath.getRequestType()),
@@ -505,7 +505,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         } else if (hosts.size() == 1) {
           H host = hosts.get(0);
           KeyPartitionSet<H, K> keyPartitionSet = hostMap.get(host);
-          if (null == keyPartitionSet) {
+          if (keyPartitionSet == null) {
             keyPartitionSet = new KeyPartitionSet<>(Collections.singletonList(host));
             hostMap.put(host, keyPartitionSet);
           }
@@ -569,7 +569,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
          * is faster than {@link HashMap#containsKey(Object)} and {@link HashMap#get}
          */
         KeyPartitionSet<H, K> keyPartitionSet = hostMap.get(selectedHost);
-        if (null == keyPartitionSet) {
+        if (keyPartitionSet == null) {
           keyPartitionSet = new KeyPartitionSet<>(Collections.singletonList(selectedHost));
           hostMap.put(selectedHost, keyPartitionSet);
         }
@@ -675,7 +675,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         }
       }
       KeyPartitionSet<H, K> keyPartitionSet = hostMap.get(selectedHost);
-      if (null == keyPartitionSet) {
+      if (keyPartitionSet == null) {
         keyPartitionSet = new KeyPartitionSet<>(Collections.singletonList(selectedHost));
         hostMap.put(selectedHost, keyPartitionSet);
       }

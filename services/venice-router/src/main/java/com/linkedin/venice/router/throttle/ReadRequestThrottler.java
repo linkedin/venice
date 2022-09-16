@@ -187,7 +187,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
     int routerCount = (zkRoutersManager.isQuotaRebalanceEnabled()
         ? zkRoutersManager.getLiveRoutersCount()
         : zkRoutersManager.getExpectedRoutersCount());
-    if (0 != routerCount) {
+    if (routerCount != 0) {
       totalQuota = storeRepository.getTotalStoreReadQuota() / routerCount;
     }
     if (zkRoutersManager.isMaxCapacityProtectionEnabled()) {

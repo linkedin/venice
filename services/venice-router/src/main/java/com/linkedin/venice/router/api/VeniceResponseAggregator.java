@@ -124,7 +124,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       throw RouterExceptionAndTrackingUtils
           .newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(), BAD_GATEWAY, "Received empty response!");
     }
-    if (null == metrics) {
+    if (metrics == null) {
       throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
           Optional.empty(),
           Optional.empty(),
@@ -132,7 +132,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
           "'metrics' should not be null");
     }
     VenicePath venicePath = metrics.getPath();
-    if (null == venicePath) {
+    if (venicePath == null) {
       /**
        * This is necessary since the exception could be thrown when parsing request path.
        * If it happens, here will just return the response, which contains exception stacktrace.
@@ -304,7 +304,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
   }
 
   private static CompressionStrategy getCompressionStrategy(String compressionHeader) {
-    if (null == compressionHeader) {
+    if (compressionHeader == null) {
       return CompressionStrategy.NO_OP;
     }
     return CompressionStrategy.valueOf(Integer.parseInt(compressionHeader));
@@ -357,7 +357,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       }
       COMPUTE_VALID_HEADER_MAP.forEach((headerName, headerValue) -> {
         String currentValue = response.headers().get(headerName);
-        if (null == currentValue) {
+        if (currentValue == null) {
           throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
               Optional.of(storeName),
               Optional.of(RequestType.COMPUTE),
@@ -425,7 +425,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
        */
       MULTI_GET_VALID_HEADER_MAP.forEach((headerName, headerValue) -> {
         String currentValue = response.headers().get(headerName);
-        if (null == currentValue) {
+        if (currentValue == null) {
           throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
               Optional.of(storeName),
               Optional.of(RequestType.MULTI_GET),

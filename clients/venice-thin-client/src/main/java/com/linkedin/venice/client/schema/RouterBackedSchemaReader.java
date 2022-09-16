@@ -64,15 +64,15 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
   @Override
   public Schema getKeySchema() {
-    if (null != keySchema) {
+    if (keySchema != null) {
       return keySchema;
     }
     synchronized (this) {
-      if (null != keySchema) {
+      if (keySchema != null) {
         return keySchema;
       }
       SchemaEntry keySchemaEntry = fetchKeySchema();
-      if (null == keySchemaEntry) {
+      if (keySchemaEntry == null) {
         throw new VeniceClientException("Key Schema of store: " + this.storeName + " doesn't exist");
       }
       keySchema = keySchemaEntry.getSchema();
@@ -143,16 +143,16 @@ public class RouterBackedSchemaReader implements SchemaReader {
   }
 
   private <T> T ensureLatestValueSchemaIsFetched(Function<SchemaEntry, T> schemaEntryConsumer) {
-    if (null == latestValueSchemaEntry.get()) {
+    if (latestValueSchemaEntry.get() == null) {
       synchronized (this) {
         // Check it again
-        if (null == latestValueSchemaEntry.get()) {
+        if (latestValueSchemaEntry.get() == null) {
           refreshAllValueSchema();
         }
       }
     }
     SchemaEntry latest = latestValueSchemaEntry.get();
-    return null == latest ? null : schemaEntryConsumer.apply(latest);
+    return latest == null ? null : schemaEntryConsumer.apply(latest);
   }
 
   private SchemaEntry fetchSingleSchema(String requestPath, boolean isValueSchema) throws VeniceClientException {
@@ -163,7 +163,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
           3,
           Duration.ofNanos(1),
           Arrays.asList(ExecutionException.class));
-      if (null == response) {
+      if (response == null) {
         logger.info("Requested schema doesn't exist for request path: " + requestPath);
         return null;
       }
@@ -209,7 +209,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
           3,
           Duration.ofNanos(1),
           Arrays.asList(ExecutionException.class));
-      if (null == response) {
+      if (response == null) {
         logger.info("Got null for request path: " + requestPath);
         return;
       }
@@ -237,7 +237,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
           latestValueSchemaEntry.set(new SchemaEntry(latestSchemaId, valueSchemaMap.get(latestSchemaId)));
         } else {
           if (SchemaData.INVALID_VALUE_SCHEMA_ID != latestSchemaId
-              && (null == latestValueSchemaEntry.get() || latestValueSchemaEntry.get().getId() < latestSchemaId)) {
+              && (latestValueSchemaEntry.get() == null || latestValueSchemaEntry.get().getId() < latestSchemaId)) {
             latestValueSchemaEntry.set(new SchemaEntry(latestSchemaId, valueSchemaMap.get(latestSchemaId)));
           }
         }

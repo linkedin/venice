@@ -144,7 +144,7 @@ public class TrieBasedPathResourceRegistry<T> implements PathResourceRegistry<T>
       }
       String currentPath = paths.get(index);
       TrieNode<T> child = children.get(currentPath);
-      if (null == child) {
+      if (child == null) {
         // Add new child
         child = new TrieNode<>(currentPath, this);
         children.put(currentPath, child);
@@ -202,7 +202,7 @@ public class TrieBasedPathResourceRegistry<T> implements PathResourceRegistry<T>
         return;
       }
       TrieNode<T> matchedNode = match(paths, 0, true);
-      if (null == matchedNode) {
+      if (matchedNode == null) {
         // No match
         return;
       }

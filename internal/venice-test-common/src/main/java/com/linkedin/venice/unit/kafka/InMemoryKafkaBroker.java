@@ -70,7 +70,7 @@ public class InMemoryKafkaBroker {
    */
   private InMemoryKafkaTopic getTopic(String topicName) throws IllegalArgumentException {
     InMemoryKafkaTopic topic = topics.get(topicName);
-    if (null == topic) {
+    if (topic == null) {
       throw new IllegalArgumentException(
           "The topic " + topicName + " does not exist in this " + InMemoryKafkaBroker.class.getSimpleName());
     }

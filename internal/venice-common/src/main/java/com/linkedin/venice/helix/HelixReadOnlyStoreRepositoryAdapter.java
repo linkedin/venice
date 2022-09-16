@@ -50,7 +50,7 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
      * This is a regular Venice store or the existing system stores, which hasn't adopted the new repositories yet.
      * Check {@link VeniceSystemStoreType} to find more details.
      */
-    return null == systemStoreType || !systemStoreType.isNewMedataRepositoryAdopted();
+    return systemStoreType == null || !systemStoreType.isNewMedataRepositoryAdopted();
   }
 
   @Override
@@ -62,13 +62,13 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
     // Get the regular store name
     String regularStoreName = systemStoreType.extractRegularStoreName(storeName);
     Store regularStore = regularStoreRepository.getStore(regularStoreName);
-    if (null == regularStore) {
+    if (regularStore == null) {
       return null;
     }
     // Get ZK shared system store name
     String zkSharedStoreName = systemStoreType.getZkSharedStoreName();
     Store zkSharedStore = systemStoreRepository.getStore(zkSharedStoreName);
-    if (null == zkSharedStore) {
+    if (zkSharedStore == null) {
       return null;
     }
 
@@ -78,7 +78,7 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
   @Override
   public Store getStoreOrThrow(String storeName) throws VeniceNoStoreException {
     Store store = getStore(storeName);
-    if (null == store) {
+    if (store == null) {
       throw new VeniceNoStoreException(storeName);
     }
     return store;

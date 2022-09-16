@@ -43,7 +43,7 @@ public class CreateStore extends AbstractRoute {
         }
 
         String accessPerm = request.queryParams(ACCESS_PERMISSION);
-        Optional<String> accessPermissions = (accessPerm == null ? Optional.empty() : Optional.of(accessPerm));
+        Optional<String> accessPermissions = Optional.ofNullable(accessPerm);
 
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);

@@ -53,7 +53,7 @@ public enum MetaStoreDataType implements VeniceEnumValue {
     List<CharSequence> keyStrings = new ArrayList<>();
     for (String requiredKey: requiredKeys) {
       String v = params.get(requiredKey);
-      if (null == v) {
+      if (v == null) {
         throw new VeniceException("keyString field: " + requiredKey + " is required for data type: " + name());
       }
       keyStrings.add(v);

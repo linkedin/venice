@@ -37,7 +37,7 @@ public enum BackupStrategy {
 
   public static BackupStrategy fromInt(int i) {
     BackupStrategy strategy = idMapping.get(i);
-    if (null == strategy) {
+    if (strategy == null) {
       throw new VeniceException("Invalid BackupStrategy id: " + i);
     }
     return strategy;

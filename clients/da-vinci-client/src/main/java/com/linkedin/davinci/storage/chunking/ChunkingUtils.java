@@ -105,9 +105,9 @@ public class ChunkingUtils {
       ReadOnlySchemaRepository schemaRepo,
       String storeName,
       StorageEngineBackedCompressorFactory compressorFactory) {
-    long databaseLookupStartTimeInNS = (null != response) ? System.nanoTime() : 0;
+    long databaseLookupStartTimeInNS = (response != null) ? System.nanoTime() : 0;
     reusedRawValue = store.get(partition, keyBuffer, reusedRawValue, false);
-    if (null == reusedRawValue) {
+    if (reusedRawValue == null) {
       return null;
     }
     return getFromStorage(
@@ -145,14 +145,14 @@ public class ChunkingUtils {
       StorageEngineBackedCompressorFactory compressorFactory,
       StreamingCallback<GenericRecord, GenericRecord> computingCallback) {
 
-    long databaseLookupStartTimeInNS = (null != response) ? System.nanoTime() : 0;
+    long databaseLookupStartTimeInNS = (response != null) ? System.nanoTime() : 0;
 
     BytesStreamingCallback callback = new BytesStreamingCallback() {
       GenericRecord deserializedValueRecord;
 
       @Override
       public void onRecordReceived(byte[] key, byte[] value) {
-        if (null == key || null == value) {
+        if (key == null || value == null) {
           return;
         }
 
@@ -161,7 +161,7 @@ public class ChunkingUtils {
         if (writerSchemaId > 0) {
           // User-defined schema, thus not a chunked value.
 
-          if (null != response) {
+          if (response != null) {
             response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
           }
 
@@ -227,12 +227,12 @@ public class ChunkingUtils {
       String storeName,
       StorageEngineBackedCompressorFactory compressorFactory,
       boolean skipCache) {
-    long databaseLookupStartTimeInNS = (null != response) ? System.nanoTime() : 0;
+    long databaseLookupStartTimeInNS = (response != null) ? System.nanoTime() : 0;
     byte[] value = store.get(partition, keyBuffer, skipCache);
 
     return getFromStorage(
         value,
-        (null == value ? 0 : value.length),
+        (value == null ? 0 : value.length),
         databaseLookupStartTimeInNS,
         adapter,
         store,
@@ -280,7 +280,7 @@ public class ChunkingUtils {
       StorageEngineBackedCompressorFactory compressorFactory,
       boolean skipCache) {
 
-    if (null == value) {
+    if (value == null) {
       return null;
     }
     int writerSchemaId = ValueRecord.parseSchemaId(value);
@@ -288,7 +288,7 @@ public class ChunkingUtils {
     if (writerSchemaId > 0) {
       // User-defined schema, thus not a chunked value. Early termination.
 
-      if (null != response) {
+      if (response != null) {
         response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
       }
 
@@ -325,7 +325,7 @@ public class ChunkingUtils {
       byte[] valueChunk =
           store.get(partition, chunkedValueManifest.keysWithChunkIdSuffix.get(chunkIndex).array(), skipCache);
 
-      if (null == valueChunk) {
+      if (valueChunk == null) {
         throw new VeniceException("Chunk not found in " + getExceptionMessageDetails(store, partition, chunkIndex));
       } else if (ValueRecord.parseSchemaId(valueChunk) != AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()) {
         throw new VeniceException(
@@ -346,7 +346,7 @@ public class ChunkingUtils {
               + getExceptionMessageDetails(store, partition, null));
     }
 
-    if (null != response) {
+    if (response != null) {
       response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
       response.incrementMultiChunkLargeValueCount();
     }

@@ -284,7 +284,7 @@ public class VersionBackend {
       int computeRequestVersion,
       Schema computeResultSchema) {
 
-    if (null == valueRecord) {
+    if (valueRecord == null) {
       return null;
     }
 
@@ -314,13 +314,13 @@ public class VersionBackend {
 
     Schema.Field computationErrorMapField =
         computeResultSchema.getField(VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME);
-    if (null != computationErrorMapField && null == resultRecord.get(computationErrorMapField.pos())) {
+    if (computationErrorMapField != null && resultRecord.get(computationErrorMapField.pos()) == null) {
       resultRecord.put(computationErrorMapField.pos(), computationErrorMap);
     }
 
     // fill empty fields in result schema
     for (Schema.Field field: computeResultSchema.getFields()) {
-      if (null == resultRecord.get(field.pos())) {
+      if (resultRecord.get(field.pos()) == null) {
         resultRecord.put(field.pos(), valueRecord.get(field.name()));
       }
     }

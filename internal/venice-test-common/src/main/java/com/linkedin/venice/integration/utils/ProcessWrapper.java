@@ -184,7 +184,7 @@ public abstract class ProcessWrapper implements Closeable {
       System.out.println(
           getClass().getSimpleName() + " was not closed! Constructed at:\n"
               + ExceptionUtils.stackTraceToString(constructionCallstack));
-    } else if (null != closeThrowable) {
+    } else if (closeThrowable != null) {
       System.err.println(
           context + ": " + getClass().getSimpleName() + " was closed but failed to stop! Constructed at:\n"
               + ExceptionUtils.stackTraceToString(constructionCallstack) + "\n\nClose failure details:\n"

@@ -82,7 +82,7 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
         genericDatumWriter.write(object, encoder);
       }
     } catch (NullPointerException e) {
-      if (object instanceof SpecificRecord && null == specificDatumWriter) {
+      if (object instanceof SpecificRecord && specificDatumWriter == null) {
         /**
          * Defensive code...
          *

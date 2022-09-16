@@ -28,7 +28,7 @@ public class ExceptionUtils {
    * @return true if a the throwableToInspect corresponds to or is caused by any of the throwableClassesToLookFor
    */
   public static boolean recursiveClassEquals(Throwable throwableToInspect, Class... throwableClassesToLookFor) {
-    if (null == throwableToInspect) {
+    if (throwableToInspect == null) {
       return false;
     }
     for (Class clazz: throwableClassesToLookFor) {
@@ -51,11 +51,11 @@ public class ExceptionUtils {
    * @return true if a the throwableToInspect contains the message parameter
    */
   public static boolean recursiveMessageContains(Throwable throwableToInspect, String message) {
-    if (null == throwableToInspect) {
+    if (throwableToInspect == null) {
       return false;
     }
     String throwableToInspectMessage = throwableToInspect.getMessage();
-    if (null == throwableToInspectMessage) {
+    if (throwableToInspectMessage == null) {
       return false;
     }
     if (throwableToInspectMessage.contains(message)) {
@@ -76,7 +76,7 @@ public class ExceptionUtils {
   }
 
   public static String threadToThrowableToString(Thread thread) {
-    if (null == thread) {
+    if (thread == null) {
       return "null";
     }
     Throwable throwable = new Throwable();

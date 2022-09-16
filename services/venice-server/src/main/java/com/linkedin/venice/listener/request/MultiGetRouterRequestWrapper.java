@@ -32,7 +32,7 @@ public class MultiGetRouterRequestWrapper extends MultiKeyRouterRequestWrapper<M
 
     // Validate API version
     String apiVersion = httpRequest.headers().get(HttpConstants.VENICE_API_VERSION);
-    if (null == apiVersion) {
+    if (apiVersion == null) {
       throw new VeniceException("Header: " + HttpConstants.VENICE_API_VERSION + " is missing");
     }
     int expectedApiVersion = ReadAvroProtocolDefinition.MULTI_GET_ROUTER_REQUEST_V1.getProtocolVersion();

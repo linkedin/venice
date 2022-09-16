@@ -378,7 +378,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   public void stopInner() throws Exception {
     // Graceful shutdown
     drainerList.forEach(drainer -> drainer.stop());
-    if (null != this.executorService) {
+    if (this.executorService != null) {
       this.executorService.shutdownNow();
       this.executorService.awaitTermination(10, TimeUnit.SECONDS);
     }

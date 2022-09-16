@@ -115,7 +115,7 @@ public abstract class PushStatusDecider {
       for (PartitionStatus partitionStatus: pushStatus.getPartitionStatuses()) {
         int partitionId = partitionStatus.getPartitionId();
         Partition partition = partitionAssignment.getPartition(partitionId);
-        if (null == partition) {
+        if (partition == null) {
           // Defensive coding. Should never happen if the sanity check above works.
           throw new IllegalStateException("partition " + partitionId + " is null.");
         }

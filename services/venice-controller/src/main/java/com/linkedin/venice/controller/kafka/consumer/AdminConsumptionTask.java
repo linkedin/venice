@@ -328,7 +328,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         // Only poll the kafka channel if there are no more undelegated records due to exceptions.
         if (undelegatedRecords.isEmpty()) {
           ConsumerRecords records = consumer.poll(READ_CYCLE_DELAY_MS);
-          if (null == records || records.isEmpty()) {
+          if (records == null || records.isEmpty()) {
             logger.debug("Received null or no records");
           } else {
             logger

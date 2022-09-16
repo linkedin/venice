@@ -173,7 +173,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     String storeName = helper.getResourceName();
     checkResourceName(storeName, "/" + TYPE_KEY_SCHEMA + "/${storeName}");
     SchemaEntry keySchema = schemaRepo.getKeySchema(storeName);
-    if (null == keySchema) {
+    if (keySchema == null) {
       byte[] errBody = ("Key schema for store: " + storeName + " doesn't exist").getBytes();
       setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
       return;
@@ -192,7 +192,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
         storeName,
         "/" + TYPE_VALUE_SCHEMA + "/${storeName} or /" + TYPE_VALUE_SCHEMA + "/${storeName}/${valueSchemaId}");
     String id = helper.getKey();
-    if (null == id || id.isEmpty()) {
+    if (id == null || id.isEmpty()) {
       // URI: /value_schema/{$storeName}
       // Get all the value schema
       MultiSchemaResponse responseObject = new MultiSchemaResponse();
@@ -221,7 +221,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       responseObject.setCluster(clusterName);
       responseObject.setName(storeName);
       SchemaEntry valueSchema = schemaRepo.getValueSchema(storeName, Integer.parseInt(id));
-      if (null == valueSchema) {
+      if (valueSchema == null) {
         byte[] errBody = ("Value schema doesn't exist for schema id: " + id + " of store: " + storeName).getBytes();
         setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
         return;

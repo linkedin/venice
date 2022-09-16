@@ -32,10 +32,7 @@ public class GzipCompressor extends VeniceCompressor {
 
   @Override
   public ByteBuffer decompress(ByteBuffer data) throws IOException {
-    if (0 == data.remaining()) {
-      return data;
-    }
-    return decompress(data.array(), data.position(), data.remaining());
+    return data.hasRemaining() ? decompress(data.array(), data.position(), data.remaining()) : data;
   }
 
   @Override

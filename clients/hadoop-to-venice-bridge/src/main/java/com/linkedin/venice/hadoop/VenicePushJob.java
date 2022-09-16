@@ -1820,7 +1820,7 @@ public class VenicePushJob implements AutoCloseable {
         ControllerClient.retryableRequest(controllerClient, retries, c -> c.getKeySchema(storeName));
     if (keySchemaResponse.isError()) {
       throw new VeniceException("Got an error in keySchemaResponse: " + keySchemaResponse);
-    } else if (null == keySchemaResponse.getSchemaStr()) {
+    } else if (keySchemaResponse.getSchemaStr() == null) {
       // TODO: Fix the server-side request handling. This should not happen. We should get a 404 instead.
       throw new VeniceException("Got a null schema in keySchemaResponse: " + keySchemaResponse);
     }
@@ -2146,7 +2146,7 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   private synchronized Properties getVeniceWriterProperties(VersionTopicInfo versionTopicInfo) {
-    if (null == veniceWriterProperties) {
+    if (veniceWriterProperties == null) {
       veniceWriterProperties = createVeniceWriterProperties(versionTopicInfo.kafkaUrl, versionTopicInfo.sslToKafka);
     }
     return veniceWriterProperties;
@@ -2318,7 +2318,7 @@ public class VenicePushJob implements AutoCloseable {
     String newOverallDetails = previousOverallDetails;
     String logMessage = "Specific status: ";
     Map<String, String> datacenterSpecificInfo = response.getExtraInfo();
-    if (null != datacenterSpecificInfo && !datacenterSpecificInfo.isEmpty()) {
+    if (datacenterSpecificInfo != null && !datacenterSpecificInfo.isEmpty()) {
       logMessage += datacenterSpecificInfo;
     }
     logger.info(logMessage);
@@ -2349,8 +2349,8 @@ public class VenicePushJob implements AutoCloseable {
    */
   private boolean detailsAreDifferent(String previous, String current) {
     // Criteria for printing the current details:
-    boolean detailsPresentWhenPreviouslyAbsent = (null == previous && null != current);
-    boolean detailsDifferentFromPreviously = (null != previous && !previous.equals(current));
+    boolean detailsPresentWhenPreviouslyAbsent = (previous == null && current != null);
+    boolean detailsDifferentFromPreviously = (previous != null && !previous.equals(current));
     return detailsPresentWhenPreviouslyAbsent || detailsDifferentFromPreviously;
   }
 

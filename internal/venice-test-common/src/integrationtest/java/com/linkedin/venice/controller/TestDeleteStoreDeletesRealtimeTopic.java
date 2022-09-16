@@ -76,7 +76,7 @@ public class TestDeleteStoreDeletesRealtimeTopic {
         sendStreamingRecord(veniceProducer, storeName, i);
       }
     } finally {
-      if (null != veniceProducer) {
+      if (veniceProducer != null) {
         veniceProducer.stop();
       }
     }

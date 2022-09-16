@@ -168,7 +168,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
 
   @Override
   public boolean isInstanceReadyToServe(String instanceId) {
-    return null == clientConnectionWarmingService || clientConnectionWarmingService.isInstanceReadyToServe(instanceId);
+    return clientConnectionWarmingService == null || clientConnectionWarmingService.isInstanceReadyToServe(instanceId);
   }
 
   @Override
@@ -248,7 +248,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
 
     public boolean isInstanceReadyToServe(String instanceId) {
       Long forceJoinTimestamp = nodeIdToForceJoinTimeMap.get(instanceId);
-      if (null == forceJoinTimestamp) {
+      if (forceJoinTimestamp == null) {
         return true;
       }
       if (forceJoinTimestamp < System.currentTimeMillis()) {

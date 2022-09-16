@@ -81,7 +81,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
       TopicPartition topicPartition) {
     // Check whether this version topic has been subscribed before or not.
     SharedKafkaConsumer chosenConsumer = versionTopicToConsumerMap.get(versionTopic);
-    if (null != chosenConsumer) {
+    if (chosenConsumer != null) {
       logger.info(
           "The version topic: {} has been subscribed previously, so this function will return the previously assigned shared consumer directly",
           versionTopic);
@@ -116,7 +116,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
           chosenConsumer = consumer;
         }
       }
-      if (null == chosenConsumer) {
+      if (chosenConsumer == null) {
         stats.recordConsumerSelectionForTopicError();
         throw new VeniceException(
             "Failed to find consumer for topic: " + versionTopic + ", and it might be caused by that all"
@@ -159,7 +159,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
   @Override
   public synchronized void unsubscribeAll(String versionTopic) {
     SharedKafkaConsumer sharedKafkaConsumer = versionTopicToConsumerMap.get(versionTopic);
-    if (null == sharedKafkaConsumer) {
+    if (sharedKafkaConsumer == null) {
       logger.warn("No assigned shared consumer found for this version topic: " + versionTopic);
       return;
     }

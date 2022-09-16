@@ -439,7 +439,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
               getSubPartitionId(key.partitionId, request.getResourceName(), partitionerConfig, key.keyBytes.array());
           MultiGetResponseRecordV1 record =
               BatchGetChunkingAdapter.get(store, subPartitionId, key.keyBytes, isChunked, responseWrapper);
-          if (null == record) {
+          if (record == null) {
             if (request.isStreamingRequest()) {
               // For streaming, we would like to send back non-existing keys since the end-user won't know the status of
               // non-existing keys in the response if the response is partial.
@@ -453,7 +453,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
             record.keyIndex = key.keyIndex;
           }
 
-          if (null != record) {
+          if (record != null) {
             // TODO: streaming support in storage node
             requestLock.lock();
             try {
@@ -496,7 +496,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
           getSubPartitionId(key.partitionId, request.getResourceName(), partitionerConfig, key.keyBytes.array());
       MultiGetResponseRecordV1 record =
           BatchGetChunkingAdapter.get(store, subPartitionId, key.keyBytes, isChunked, responseWrapper);
-      if (null == record) {
+      if (record == null) {
         if (request.isStreamingRequest()) {
           // For streaming, we would like to send back non-existing keys since the end-user won't know the status of
           // non-existing keys in the response if the response is partial.
@@ -510,7 +510,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
         record.keyIndex = key.keyIndex;
       }
 
-      if (null != record) {
+      if (record != null) {
         // TODO: streaming support in storage node
         responseWrapper.addRecord(record);
       }
@@ -605,7 +605,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
           responseWrapper,
           globalContext,
           reusedRawValue);
-      if (null != record) {
+      if (record != null) {
         // TODO: streaming support in storage node
         responseWrapper.addRecord(record);
       }
@@ -684,7 +684,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
         throw new VeniceException("Unknown rocksDB compute storage operation");
     }
 
-    if (null == reuseValueRecord) {
+    if (reuseValueRecord == null) {
       if (isStreaming) {
         // For streaming, we need to send back non-existing keys
         ComputeResponseRecordV1 computeResponseRecord = new ComputeResponseRecordV1();

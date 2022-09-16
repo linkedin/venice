@@ -57,7 +57,7 @@ public class StoreStateReader implements Closeable {
           3,
           Duration.ofMillis(100),
           Arrays.asList(ExecutionException.class));
-      if (null == response) {
+      if (response == null) {
         throw new VeniceClientException("Unexpected null response " + exceptionMessageFooter);
       }
       if (veniceSystemStoreType != null && veniceSystemStoreType.isNewMedataRepositoryAdopted()) {

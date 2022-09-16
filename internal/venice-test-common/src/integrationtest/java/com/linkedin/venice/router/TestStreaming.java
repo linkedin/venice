@@ -248,7 +248,7 @@ public class TestStreaming {
         trackingStoreClient.streamingBatchGet(keySet, new StreamingCallback<String, Object>() {
           @Override
           public void onRecordReceived(String key, Object value) {
-            if (null != value) {
+            if (value != null) {
               /**
                * {@link java.util.concurrent.ConcurrentHashMap#put) could not take 'null' as the value.
                */
@@ -288,7 +288,7 @@ public class TestStreaming {
           @Override
           public void onRecordReceived(String key, GenericRecord value) {
             computeResultCnt.incrementAndGet();
-            if (null != value) {
+            if (value != null) {
               finalComputeResultMap.put(key, value);
             }
           }

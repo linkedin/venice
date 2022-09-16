@@ -422,7 +422,7 @@ public class TestStoreMigration {
     } catch (Exception e) {
       throw new VeniceException(e);
     } finally {
-      if (null != veniceProducer0) {
+      if (veniceProducer0 != null) {
         veniceProducer0.stop();
       }
     }

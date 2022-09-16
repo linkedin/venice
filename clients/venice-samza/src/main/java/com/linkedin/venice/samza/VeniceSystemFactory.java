@@ -362,6 +362,6 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   }
 
   private static boolean isEmpty(String input) {
-    return (null == input) || input.isEmpty() || input.equals("null");
+    return (input == null) || input.isEmpty() || input.equals("null");
   }
 }

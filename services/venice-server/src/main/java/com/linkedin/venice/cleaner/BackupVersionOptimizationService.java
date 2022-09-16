@@ -113,7 +113,7 @@ public class BackupVersionOptimizationService extends AbstractVeniceService impl
         String storeName = Version.parseStoreFromVersionTopic(resourceName);
         int versionNumber = Version.parseVersionFromVersionTopicName(resourceName);
         Store store = storeRepository.getStore(storeName);
-        if (null == store) {
+        if (store == null) {
           LOGGER.warn("Failed to find out the store info from ReadOnlyStoreRepository for: {}", storeName);
           continue;
         }

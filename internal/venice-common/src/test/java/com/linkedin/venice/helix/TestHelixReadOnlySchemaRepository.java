@@ -113,9 +113,10 @@ public class TestHelixReadOnlySchemaRepository {
     String valueSchemaStr = "\"string\"";
     createStore(storeName);
     schemaRWRepo.addValueSchema(storeName, valueSchemaStr);
-    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
-      return 1 == schemaRORepo.getValueSchemas(storeName).size();
-    });
+    TestUtils.waitForNonDeterministicCompletion(
+        3,
+        TimeUnit.SECONDS,
+        () -> schemaRORepo.getValueSchemas(storeName).size() == 1);
     Assert
         .assertNotEquals(SchemaData.INVALID_VALUE_SCHEMA_ID, schemaRORepo.getValueSchemaId(storeName, valueSchemaStr));
     Assert.assertTrue(schemaRORepo.hasValueSchema(storeName, 1));
@@ -144,9 +145,10 @@ public class TestHelixReadOnlySchemaRepository {
 
     schemaRWRepo.addValueSchema(storeName, valueSchemaStr1);
     schemaRWRepo.addValueSchema(storeName, valueSchemaStr2);
-    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
-      return 2 == schemaRORepo.getValueSchemas(storeName).size();
-    });
+    TestUtils.waitForNonDeterministicCompletion(
+        3,
+        TimeUnit.SECONDS,
+        () -> schemaRORepo.getValueSchemas(storeName).size() == 2);
     SchemaEntry valueSchema1 = schemaRORepo.getValueSchema(storeName, 1);
     Assert.assertNotNull(valueSchema1);
     Assert.assertEquals(valueSchema1.getSchema().toString(), Schema.parse(valueSchemaStr1).toString());
@@ -162,12 +164,10 @@ public class TestHelixReadOnlySchemaRepository {
     Assert.assertTrue(valueSchemas.contains(valueSchema1));
     Assert.assertTrue(valueSchemas.contains(valueSchema2));
 
-    // After removing the store, we should not be able to get schema for it any more
+    // After removing the store, we should not be able to get schema for it anymore
     Assert.assertNotNull(schemaRORepo.getValueSchema(storeName, 1));
     storeRWRepo.deleteStore(storeName);
-    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
-      return !storeRORepo.hasStore(storeName);
-    });
+    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> !storeRORepo.hasStore(storeName));
     try {
       schemaRORepo.getValueSchema(storeName, 1);
       Assert.assertTrue(false);
@@ -191,9 +191,10 @@ public class TestHelixReadOnlySchemaRepository {
         + "\t\t{\"type\": \"string\", \"name\": \"id\"}\n" + "\t]\n" + "}";
 
     schemaRWRepo.addValueSchema(storeName, valueSchemaStr1);
-    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
-      return 1 == schemaRORepo.getValueSchemas(storeName).size();
-    });
+    TestUtils.waitForNonDeterministicCompletion(
+        3,
+        TimeUnit.SECONDS,
+        () -> schemaRORepo.getValueSchemas(storeName).size() == 1);
     SchemaEntry valueSchema1 = schemaRORepo.getValueSchema(storeName, 1);
     Assert.assertNotNull(valueSchema1);
 
@@ -201,9 +202,7 @@ public class TestHelixReadOnlySchemaRepository {
     storeRWRepo.deleteStore(storeName);
     // TODO:If we execute deleteStore and createStore without sleep, the RO store repo will
     // only receive one notification for store creation.
-    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
-      return !storeRORepo.hasStore(storeName);
-    });
+    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> !storeRORepo.hasStore(storeName));
     createStore(storeName);
     // The legacy value schema should not be there
     Assert.assertNull(schemaRORepo.getValueSchema(storeName, 1));

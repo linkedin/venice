@@ -33,7 +33,7 @@ public class SchemaPresenceChecker {
     for (int attempt = 1; attempt <= MAX_ATTEMPTS_FOR_SCHEMA_READER; attempt++) {
       try {
         Schema newProtocolSchema = schemaReader.getValueSchema(protocolVersion);
-        if (null == newProtocolSchema) {
+        if (newProtocolSchema == null) {
           throw new VeniceMessageException(
               "Failed to retrieve protocol version '" + protocolVersion + "' with remote fetch using "
                   + SchemaReader.class.getSimpleName() + " for " + avroProtocolDefinition.name());

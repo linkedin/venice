@@ -94,7 +94,7 @@ public interface Store {
             recordType.put(field.pos(), defaultValue);
             break;
           case UNION:
-            if (null == defaultValue) {
+            if (defaultValue == null) {
               recordType.put(field.pos(), null);
             } else {
               throw new VeniceException("Non 'null' default value is not supported for union type: " + field.name());
