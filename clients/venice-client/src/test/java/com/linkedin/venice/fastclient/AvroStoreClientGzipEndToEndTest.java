@@ -1,8 +1,11 @@
 package com.linkedin.venice.fastclient;
 
+import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.fastclient.transport.HttpClient5BasedR2Client;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.utils.SslUtils;
 import java.util.AbstractMap;
 import java.util.Map;
 import java.util.stream.IntStream;
@@ -16,6 +19,10 @@ public class AvroStoreClientGzipEndToEndTest extends AvroStoreClientEndToEndTest
   @DataProvider(name = "useDaVinciClientBasedMetadata")
   public static Object[][] useDaVinciClientBasedMetadata() {
     return new Object[][] { { true } };
+  }
+
+  protected Client constructR2Client() throws Exception {
+    return HttpClient5BasedR2Client.getR2Client(SslUtils.getVeniceLocalSslFactory().getSSLContext(), 8);
   }
 
   protected void prepareData() throws Exception {
