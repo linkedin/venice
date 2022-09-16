@@ -350,7 +350,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final Function<String, String> kafkaClusterUrlResolver;
   /** TODO Get rid of this map once we delete the dedicated consumer mode */
   private final Object2IntMap<String> kafkaClusterUrlToIdMap;
-
+  protected final boolean readOnlyForBatchOnlyStoreEnabled;
   protected final CompressionStrategy compressionStrategy;
 
   public StoreIngestionTask(
@@ -403,6 +403,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.versionedIngestionStats = builder.getVersionedStorageIngestionStats();
     this.isRunning = new AtomicBoolean(true);
     this.emitMetrics = new AtomicBoolean(true);
+    this.readOnlyForBatchOnlyStoreEnabled = storeConfig.isReadOnlyForBatchOnlyStoreEnabled();
 
     this.storeBufferService = builder.getStoreBufferService();
     this.isCurrentVersion = isCurrentVersion;
@@ -675,7 +676,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // After EOP, we never enable deferred writes.
       // No matter what the sorted config was before the EOP message, it doesn't matter anymore.
       deferredWrites = false;
-      if (partitionConsumptionState.isBatchOnly()) {
+      if (partitionConsumptionState.isBatchOnly() && readOnlyForBatchOnlyStoreEnabled) {
         readOnly = true;
       }
     } else {
