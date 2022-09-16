@@ -598,6 +598,7 @@ public abstract class StoreIngestionTaskTest {
         .getDatabaseSyncBytesIntervalForTransactionalMode();
     doReturn(databaseSyncBytesIntervalForDeferredWriteMode).when(storeConfig)
         .getDatabaseSyncBytesIntervalForDeferredWriteMode();
+    doReturn(false).when(storeConfig).isReadOnlyForBatchOnlyStoreEnabled();
 
     Store mockStore = mock(Store.class);
     Version version = new VersionImpl(storeNameWithoutVersionInfo, 1, "1", partitionCount);

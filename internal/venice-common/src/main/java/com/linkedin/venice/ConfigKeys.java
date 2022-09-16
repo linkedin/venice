@@ -599,6 +599,8 @@ public class ConfigKeys {
   public static final String SERVER_INGESTION_ISOLATION_APPLICATION_PORT =
       "server.ingestion.isolation.application.port";
 
+  public static final String SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED =
+      "server.db.read.only.for.batch.only.store.enabled";
   /**
    * A list of fully-qualified class names of all stats classes that needs to be initialized in isolated ingestion process,
    * separated by comma. This config will help isolated ingestion process to register extra stats needed for monitoring,

@@ -276,6 +276,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long optimizeDatabaseForBackupVersionNoReadThresholdMS;
   private final long optimizeDatabaseServiceScheduleIntervalSeconds;
   private final boolean unregisterMetricForDeletedStoreEnabled;
+  private final boolean readOnlyForBatchOnlyStoreEnabled; // TODO: remove this config as its never used in prod
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -328,6 +329,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS,
         RemoteIngestionRepairService.DEFAULT_REPAIR_THREAD_SLEEP_INTERVAL_SECONDS);
 
+    readOnlyForBatchOnlyStoreEnabled =
+        serverProperties.getBoolean(SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED, true);
     databaseSyncBytesIntervalForTransactionalMode =
         serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, 32 * 1024 * 1024);
     databaseSyncBytesIntervalForDeferredWriteMode =
@@ -917,5 +920,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isUnregisterMetricForDeletedStoreEnabled() {
     return unregisterMetricForDeletedStoreEnabled;
+  }
+
+  public boolean isReadOnlyForBatchOnlyStoreEnabled() {
+    return readOnlyForBatchOnlyStoreEnabled;
   }
 }
