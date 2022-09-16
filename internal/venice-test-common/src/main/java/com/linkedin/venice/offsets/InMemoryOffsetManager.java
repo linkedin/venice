@@ -20,13 +20,13 @@ public class InMemoryOffsetManager implements OffsetManager {
   @Override
   public void put(String topicName, int partitionId, OffsetRecord record) throws VeniceException {
     topicToPartitionToOffsetMap.compute(topicName, (topic, map) -> {
-      if (null == map) {
+      if (map == null) {
         ConcurrentMap<Integer, OffsetRecord> newMap = new ConcurrentHashMap<>();
         newMap.put(partitionId, record);
         return newMap;
       } else {
         map.compute(partitionId, (partition, oldRecord) -> {
-          if (null == oldRecord || oldRecord.getLocalVersionTopicOffset() < record.getLocalVersionTopicOffset()) {
+          if (oldRecord == null || oldRecord.getLocalVersionTopicOffset() < record.getLocalVersionTopicOffset()) {
             return record;
           } else {
             return oldRecord;
@@ -49,7 +49,7 @@ public class InMemoryOffsetManager implements OffsetManager {
   public OffsetRecord getLastOffset(String topicName, int partitionId) throws VeniceException {
     OffsetRecord returnOffset = null;
     ConcurrentMap<Integer, OffsetRecord> map = topicToPartitionToOffsetMap.get(topicName);
-    if (null != map) {
+    if (map != null) {
       returnOffset = map.get(partitionId);
     }
     if (returnOffset != null) {

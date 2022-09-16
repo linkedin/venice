@@ -524,7 +524,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   private Slice getPrefixIterationUpperBound(byte[] prefix) {
     byte[] upperBound = getIncrementedByteArray(Arrays.copyOf(prefix, prefix.length), prefix.length - 1);
-    return null == upperBound ? null : new Slice(upperBound);
+    return upperBound == null ? null : new Slice(upperBound);
   }
 
   private byte[] getIncrementedByteArray(byte[] array, int indexToIncrement) {
@@ -663,14 +663,14 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       isClosed = true;
       readCloseRWLock.writeLock().unlock();
     }
-    if (null != envOptions) {
+    if (envOptions != null) {
       envOptions.close();
     }
     if (deferredWrite) {
       rocksDBSstFileWritter.close();
     }
     options.close();
-    if (null != writeOptions) {
+    if (writeOptions != null) {
       writeOptions.close();
     }
     LOGGER.info(

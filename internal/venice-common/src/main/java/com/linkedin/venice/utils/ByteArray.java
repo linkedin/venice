@@ -60,7 +60,7 @@ public class ByteArray implements Serializable {
   }
 
   public boolean startsWith(byte[] prefixBytes) {
-    if (null == underlying || null == prefixBytes || underlying.length < prefixBytes.length) {
+    if (underlying == null || prefixBytes == null || underlying.length < prefixBytes.length) {
       return false;
     }
     for (int i = 0; i < prefixBytes.length; i++) {

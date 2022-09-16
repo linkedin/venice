@@ -260,13 +260,13 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   }
 
   private RecordSerializer<K> getKeySerializerWithRetry(boolean retryOnServiceDiscoveryFailure, int retryIntervalInMs) {
-    if (null != keySerializer) {
+    if (keySerializer != null) {
       return keySerializer;
     }
 
     // Delay the dynamic d2 service discovery and key schema retrieval until it is necessary
     synchronized (this) {
-      if (null != keySerializer) {
+      if (keySerializer != null) {
         return keySerializer;
       }
 
@@ -378,9 +378,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         () -> transportClient.get(requestPath, GET_HEADER_MAP),
         (response, throwable, responseCompleteReporter) -> {
           try {
-            if (null != throwable) {
+            if (throwable != null) {
               valueFuture.completeExceptionally(throwable);
-            } else if (null == response) {
+            } else if (response == null) {
               // Doesn't exist
               valueFuture.complete(null);
             } else if (!response.isSchemaIdValid()) {
@@ -428,9 +428,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         () -> transportClient.get(requestPath),
         (clientResponse, throwable, responseCompleteReporter) -> {
           try {
-            if (null != throwable) {
+            if (throwable != null) {
               valueFuture.completeExceptionally(throwable);
-            } else if (null == clientResponse) {
+            } else if (clientResponse == null) {
               // Doesn't exist
               valueFuture.complete(null);
             } else {
@@ -830,12 +830,12 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
           stats -> stats.recordRequestSubmissionToResponseHandlingTime(LatencyUtils.getLatencyInMS(preSubmitTimeInNS)));
       isStreamingResponse = headers.containsKey(HttpConstants.VENICE_STREAMING_RESPONSE);
       String schemaIdHeader = headers.get(HttpConstants.VENICE_SCHEMA_ID);
-      if (null != schemaIdHeader) {
+      if (schemaIdHeader != null) {
         responseSchemaId = Integer.parseInt(schemaIdHeader);
       }
       envelopeDeserializer = envelopeDeserializerFunc.apply(responseSchemaId);
       String compressionHeader = headers.get(HttpConstants.VENICE_COMPRESSION_STRATEGY);
-      if (null != compressionHeader) {
+      if (compressionHeader != null) {
         compressionStrategy = CompressionStrategy.valueOf(Integer.parseInt(compressionHeader));
       }
     }

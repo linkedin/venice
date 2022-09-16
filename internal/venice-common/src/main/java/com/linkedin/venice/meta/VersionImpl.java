@@ -198,7 +198,7 @@ public class VersionImpl implements Version {
 
   @Override
   public PartitionerConfig getPartitionerConfig() {
-    if (null == this.storeVersion.partitionerConfig) {
+    if (this.storeVersion.partitionerConfig == null) {
       return null;
     }
     return new PartitionerConfigImpl(this.storeVersion.partitionerConfig);
@@ -278,7 +278,7 @@ public class VersionImpl implements Version {
 
   @Override
   public HybridStoreConfig getHybridStoreConfig() {
-    if (null == this.storeVersion.hybridConfig) {
+    if (this.storeVersion.hybridConfig == null) {
       return null;
     }
     return new HybridStoreConfigImpl(this.storeVersion.hybridConfig);
@@ -313,7 +313,7 @@ public class VersionImpl implements Version {
 
   @Override
   public DataRecoveryVersionConfig getDataRecoveryVersionConfig() {
-    if (null == this.storeVersion.dataRecoveryConfig) {
+    if (this.storeVersion.dataRecoveryConfig == null) {
       return null;
     }
     return new DataRecoveryVersionConfigImpl(this.storeVersion.dataRecoveryConfig);

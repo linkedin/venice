@@ -84,7 +84,7 @@ public class ZkServerWrapper extends ProcessWrapper {
       }
 
       String chroot = CHROOTS.poll();
-      if (null == chroot) {
+      if (chroot == null) {
         CHROOTS.addAll(addPathsToZk(INSTANCE.getAddress(), 1));
         chroot = CHROOTS.poll();
       }
@@ -271,7 +271,7 @@ public class ZkServerWrapper extends ProcessWrapper {
    * @return List of paths that were created
    */
   private synchronized static List<String> addPathsToZk(String zkConnection, int count) {
-    if (null != zooKeeper && zooKeeper.getState() != ZooKeeper.States.CONNECTED) {
+    if (zooKeeper != null && zooKeeper.getState() != ZooKeeper.States.CONNECTED) {
       try {
         zooKeeper.close();
         zooKeeper = null;
@@ -279,7 +279,7 @@ public class ZkServerWrapper extends ProcessWrapper {
         throw new VeniceException(e);
       }
     }
-    if (null == zooKeeper) {
+    if (zooKeeper == null) {
       try {
         zooKeeper = new ZooKeeper(zkConnection, MAX_SESSION_TIMEOUT, event -> {});
         TestUtils.waitForNonDeterministicCompletion(

@@ -45,12 +45,12 @@ public class AvroGenericStoreClientImpl<K, V> extends AbstractAvroStoreClient<K,
 
     // Get latest value schema
     Schema readerSchema = schemaReader.getLatestValueSchema();
-    if (null == readerSchema) {
+    if (readerSchema == null) {
       throw new VeniceClientException("Failed to get latest value schema for store: " + getStoreName());
     }
 
     Schema writerSchema = schemaReader.getValueSchema(writerSchemaId);
-    if (null == writerSchema) {
+    if (writerSchema == null) {
       throw new VeniceClientException(
           "Failed to get value schema for store: " + getStoreName() + " and id: " + writerSchemaId);
     }

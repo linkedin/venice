@@ -219,13 +219,13 @@ public class TestPushJobWithNativeReplicationSharedProducer {
 
       ControllerResponse[] deleteStoreResponses = new ControllerResponse[parentControllerClients.length];
       for (int i = 0; i < storeCount; i++) {
-        if (null != parentControllerClients[i]) {
+        if (parentControllerClients[i] != null) {
           deleteStoreResponses[i] = parentControllerClients[i].disableAndDeleteStore(storeNames[i]);
           Utils.closeQuietlyWithErrorLogged(parentControllerClients[i]);
         }
       }
       for (int i = 0; i < storeCount; i++) {
-        if (null != parentControllerClients[i]) {
+        if (parentControllerClients[i] != null) {
           Assert.assertFalse(
               deleteStoreResponses[i].isError(),
               "Failed to delete the test store: " + deleteStoreResponses[i].getError());

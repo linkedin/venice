@@ -89,7 +89,7 @@ public class TerminalStateTopicCheckerForParentController implements Runnable, C
                 // Apply exponential backoff since polling job status is quite expensive.
                 topicToBackoffMap.compute(topic, (t, backoff) -> {
                   long now = System.currentTimeMillis();
-                  if (null == backoff) {
+                  if (backoff == null) {
                     backoff = new Pair<>(now + checkDelayInMs, checkDelayInMs);
                   } else {
                     long expBackoff = Math.min(MAX_BACKOFF_MS, 2 * backoff.getSecond());
@@ -137,7 +137,7 @@ public class TerminalStateTopicCheckerForParentController implements Runnable, C
             continue;
           }
           allVeniceVersionTopics.compute(storeName, (s, topics) -> {
-            if (null == topics) {
+            if (topics == null) {
               topics = new HashMap<>();
             }
             topics.put(topic, entry.getValue());

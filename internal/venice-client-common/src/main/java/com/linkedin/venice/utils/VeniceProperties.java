@@ -29,7 +29,7 @@ public class VeniceProperties {
   public VeniceProperties(Properties properties) {
     Map<String, String> tmpProps = new HashMap<>(properties.size());
     for (Map.Entry<Object, Object> e: properties.entrySet()) {
-      tmpProps.put((String) e.getKey(), null == e.getValue() ? null : e.getValue().toString());
+      tmpProps.put((String) e.getKey(), e.getValue() == null ? null : e.getValue().toString());
     }
     props = Collections.unmodifiableMap(tmpProps);
   }
@@ -37,7 +37,7 @@ public class VeniceProperties {
   public VeniceProperties(Map<CharSequence, CharSequence> properties) {
     Map<String, String> tmpProps = new HashMap<>(properties.size());
     for (Map.Entry<CharSequence, CharSequence> e: properties.entrySet()) {
-      tmpProps.put(e.getKey().toString(), null == e.getValue() ? null : e.getValue().toString());
+      tmpProps.put(e.getKey().toString(), e.getValue() == null ? null : e.getValue().toString());
     }
     props = Collections.unmodifiableMap(tmpProps);
   }

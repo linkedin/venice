@@ -48,18 +48,14 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
 
   @Override
   public ByteBuffer decompress(ByteBuffer data) throws IOException {
-    if (0 == data.remaining()) {
-      return data;
-    }
-    return decompress(data.array(), data.position(), data.remaining());
+    return data.hasRemaining() ? decompress(data.array(), data.position(), data.remaining()) : data;
   }
 
   @Override
   public ByteBuffer decompress(byte[] data, int offset, int length) throws IOException {
     // TODO: Investigate using ZstdDirectBufferDecompressingStream instead of copying data.
     try (InputStream zis = decompress(new ByteArrayInputStream(data, offset, length))) {
-      ByteBuffer decompressed = ByteBuffer.wrap(IOUtils.toByteArray(zis));
-      return decompressed;
+      return ByteBuffer.wrap(IOUtils.toByteArray(zis));
     }
   }
 

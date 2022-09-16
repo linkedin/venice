@@ -46,7 +46,7 @@ public class OptimizedBinaryDecoderTest {
     float deserializedFloat2 = decoder.readFloat();
 
     String assertionMessagePrefix = bufferedEncoder ? "Buffered encoder. " : "Non-Buffered encoder. ";
-    assertionMessagePrefix += null == reusedEncoder ? "First run: " : "Reused encoder: ";
+    assertionMessagePrefix += reusedEncoder == null ? "First run: " : "Reused encoder: ";
     Assert.assertEquals(
         deserializedFloat1,
         randomFloat1,

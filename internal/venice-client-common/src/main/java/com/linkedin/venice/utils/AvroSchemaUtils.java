@@ -138,7 +138,7 @@ public class AvroSchemaUtils {
    * Extracted from avro-1.7.7 avro/io/parsing/Symbol.java to work with legacy avro versions
    */
   private static boolean hasErrors(Symbol root, Symbol[] symbols) {
-    if (null != symbols) {
+    if (symbols != null) {
       for (Symbol s: symbols) {
         if (s == root) {
           continue;

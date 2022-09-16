@@ -1044,7 +1044,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                */
               PartitionConsumptionState partitionConsumptionState =
                   partitionConsumptionStateMap.get(consumingPartition);
-              if (null == partitionConsumptionState) {
+              if (partitionConsumptionState == null) {
                 /**
                  * Defensive coding.
                  */
@@ -1109,7 +1109,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                       + " because of one-time db compaction");
               PartitionConsumptionState partitionConsumptionState =
                   partitionConsumptionStateMap.get(consumingPartition);
-              if (null == partitionConsumptionState) {
+              if (partitionConsumptionState == null) {
                 /**
                  * Defensive coding.
                  */
@@ -1128,7 +1128,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               // Trigger one-time compaction
               AbstractStorageEngine storageEngineReloadedFromRepo =
                   storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
-              if (null == storageEngineReloadedFromRepo) {
+              if (storageEngineReloadedFromRepo == null) {
                 throw new VeniceException("Storage Engine for store: " + kafkaVersionTopic + " has been closed");
               }
               AbstractStoragePartition storagePartition =
@@ -1290,13 +1290,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected void processMessages(Store store) throws InterruptedException {
     Exception ingestionTaskException = lastStoreIngestionException.get();
-    if (null != ingestionTaskException) {
+    if (ingestionTaskException != null) {
       throw new VeniceException(
           "Unexpected store ingestion task level exception, will error out the entire"
               + " ingestion task and all its partitions",
           ingestionTaskException);
     }
-    if (null != lastConsumerException) {
+    if (lastConsumerException != null) {
       throw new VeniceException("Exception thrown by shared consumer", lastConsumerException);
     }
 
@@ -1535,7 +1535,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                   + ", will resume the consumption");
 
           ConsumerRecord<KafkaKey, KafkaMessageEnvelope> eopControlMessage = eopControlMessageMap.get(partition);
-          if (null == eopControlMessage) {
+          if (eopControlMessage == null) {
             throw new VeniceException(
                 "EOP control message wasn't persisted before the manual compaction for store: " + kafkaVersionTopic
                     + ", partition: " + partition);
@@ -1976,7 +1976,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected boolean shouldProcessRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record, int subPartition) {
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
 
-    if (null == partitionConsumptionState) {
+    if (partitionConsumptionState == null) {
       logger.info(
           "Topic " + kafkaVersionTopic + " Partition " + subPartition
               + " has been unsubscribed, skip this record that has offset " + record.offset());
@@ -2047,7 +2047,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       return false;
     }
-    if (null == partitionConsumptionState || !partitionConsumptionState.isSubscribed()) {
+    if (partitionConsumptionState == null || !partitionConsumptionState.isSubscribed()) {
       msg = "Topic " + kafkaVersionTopic + " Partition " + partitionId + " has been unsubscribed, skip this record";
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
         logger.info(msg + " that has offset " + record.offset());
@@ -2699,7 +2699,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     // We want to update offsets in all cases, except when we hit the PersistenceFailureException
-    if (null == partitionConsumptionState) {
+    if (partitionConsumptionState == null) {
       logger.info(
           "Topic " + kafkaVersionTopic + " Partition " + consumerRecord.partition()
               + " has been unsubscribed, will skip offset update");
@@ -3083,7 +3083,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private void waitReadyToProcessRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record)
       throws InterruptedException {
     KafkaMessageEnvelope kafkaValue = record.value();
-    if (record.key().isControlMessage() || null == kafkaValue) {
+    if (record.key().isControlMessage() || kafkaValue == null) {
       return;
     }
 
@@ -3130,7 +3130,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * @param schemaId
    */
   private void waitReadyToProcessDataRecord(int schemaId) throws InterruptedException {
-    if (-1 == schemaId) {
+    if (schemaId == -1) {
       // TODO: Once Venice Client (VeniceShellClient) finish the integration with schema registry,
       // we need to remove this check here.
       return;

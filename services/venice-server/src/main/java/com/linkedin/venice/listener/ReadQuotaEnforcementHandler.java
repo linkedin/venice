@@ -94,7 +94,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   public void init() {
     storeRepository.registerStoreDataChangedListener(this);
     ResourceAssignment resourceAssignment = routingRepository.getResourceAssignment();
-    if (null == resourceAssignment) {
+    if (resourceAssignment == null) {
       logger.error("Null resource assignment from RoutingDataRepository in ReadQuotaEnforcementHandler");
     } else {
       for (String resource: routingRepository.getResourceAssignment().getAssignedResources()) {

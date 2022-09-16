@@ -59,7 +59,7 @@ public class OptimizedBinaryDecoder extends BinaryDecoder {
   }
 
   private void checkInit() {
-    if (null == byteBuffer) {
+    if (byteBuffer == null) {
       throw new IllegalStateException("byteBuffer is not initialized! Should call configureByteBuffer before using.");
     }
   }

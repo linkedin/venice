@@ -34,7 +34,7 @@ public class HelixAdapterSerializer implements PathBasedZkSerializer {
   public byte[] serialize(Object data, String path) throws ZkMarshallingError {
     try {
       VeniceSerializer serializer = getSerializer(path);
-      if (null == serializer) {
+      if (serializer == null) {
         throw new VeniceException("Failed to get serializer for path: " + path);
       }
       return serializer.serialize(data, path);
@@ -47,7 +47,7 @@ public class HelixAdapterSerializer implements PathBasedZkSerializer {
   public Object deserialize(byte[] bytes, String path) throws ZkMarshallingError {
     try {
       VeniceSerializer serializer = getSerializer(path);
-      if (null == serializer) {
+      if (serializer == null) {
         throw new VeniceException("Failed to get serializer for path: " + path);
       }
       return serializer.deserialize(bytes, path);

@@ -706,11 +706,11 @@ public abstract class AbstractPushMonitor
     // As the outer method already locked on this instance, so this method is thread-safe.
     String storeName = Version.parseStoreFromKafkaTopicName(offlinePushStatus.getKafkaTopic());
     Store store = getReadWriteStoreRepository().getStore(storeName);
-    if (null == store) {
+    if (store == null) {
       logger.info(
           "Got a null store from metadataRepository for store name: '" + storeName + "'. Will attempt a refresh().");
       store = getReadWriteStoreRepository().refreshOneStore(storeName);
-      if (null == store) {
+      if (store == null) {
         throw new IllegalStateException(
             "checkHybridPushStatus could not find a store named '" + storeName
                 + "' in the metadataRepository, even after refresh()!");

@@ -134,7 +134,7 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
   }
 
   public boolean isEmptyRequest() {
-    return 0 == routerKeyMap.size();
+    return routerKeyMap.isEmpty();
   }
 
   public int getCurrentKeyNum() {

@@ -69,7 +69,7 @@ public class RetriableStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     CompletableFuture<T> retryFuture = new CompletableFuture<>();
 
     origFuture.whenComplete((T val, Throwable throwable) -> {
-      if (null != throwable) {
+      if (throwable != null) {
         int attempt = 0;
         Throwable retryThrowable = throwable;
         while (!retryFuture.isDone() && attempt < retryCount && isRetriableException(retryThrowable)) {

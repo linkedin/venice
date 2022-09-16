@@ -566,7 +566,7 @@ public class DaVinciComputeTest {
         @Override
         public void onRecordReceived(String key, GenericRecord value) {
           computeResultCnt.incrementAndGet();
-          if (null != value) {
+          if (value != null) {
             finalComputeResultMap.put(key, value);
           }
         }
@@ -665,7 +665,7 @@ public class DaVinciComputeTest {
           .executeWithFilter(partialKey, new StreamingCallback<GenericRecord, GenericRecord>() {
             @Override
             public void onRecordReceived(GenericRecord key, GenericRecord value) {
-              if (null != value) {
+              if (value != null) {
                 finalComputeResultMap.put(key, value);
               }
             }

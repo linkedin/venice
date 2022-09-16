@@ -175,7 +175,7 @@ public class AbstractRoute {
   protected static X509Certificate getCertificate(Request request) {
     HttpServletRequest rawRequest = request.raw();
     Object certificateObject = rawRequest.getAttribute(CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME);
-    if (null == certificateObject) {
+    if (certificateObject == null) {
       throw new VeniceException("Client request doesn't contain certificate for store: " + request.queryParams(NAME));
     }
     return ((X509Certificate[]) certificateObject)[0];

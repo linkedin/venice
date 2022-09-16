@@ -39,7 +39,7 @@ public class TestStartMultiControllers {
 
   @AfterClass
   public void cleanUp() {
-    if (null != helixManager) {
+    if (helixManager != null) {
       helixManager.disconnect();
     }
     Utils.closeQuietlyWithErrorLogged(cluster);

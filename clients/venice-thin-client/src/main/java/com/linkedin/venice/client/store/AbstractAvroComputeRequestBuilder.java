@@ -203,7 +203,7 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
   protected Set<String> commonValidityCheck() {
     // Projection
     projectFields.forEach(projectField -> {
-      if (null == latestValueSchema.getField(projectField)) {
+      if (latestValueSchema.getField(projectField) == null) {
         throw new VeniceClientException("Unknown project field: " + projectField);
       }
     });
@@ -387,7 +387,7 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
       Set<String> resultFieldsSet,
       ComputeOperationType computeType) {
     final Schema.Field fieldSchema = latestValueSchema.getField(computeFieldName);
-    if (null == fieldSchema) {
+    if (fieldSchema == null) {
       throw new VeniceClientException("Unknown " + computeType + " field: " + computeFieldName);
     }
 
@@ -414,7 +414,7 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
       throw new VeniceClientException(
           computeType + " result field: " + resultFieldName + " has been specified more than once");
     }
-    if (null != latestValueSchema.getField(resultFieldName)) {
+    if (latestValueSchema.getField(resultFieldName) != null) {
       throw new VeniceClientException(
           computeType + " result field: " + resultFieldName + " collides with the fields defined in value schema");
     }

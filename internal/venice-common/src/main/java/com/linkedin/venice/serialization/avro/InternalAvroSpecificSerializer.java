@@ -125,7 +125,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
     }
 
     // Payload handling
-    if (null == payloadOffsetOverride) {
+    if (payloadOffsetOverride == null) {
       this.PAYLOAD_OFFSET = PROTOCOL_VERSION_OFFSET + PROTOCOL_VERSION_LENGTH;
     } else {
       if (protocolDef.magicByte.isPresent() || protocolDef.protocolVersionStoredInHeader) {
@@ -271,7 +271,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
 
     // Sanity check to make sure the writer's protocol (i.e.: Avro schema) version is known to us
     if (!readerMap.containsKey(protocolVersion)) {
-      if (null == schemaReader) {
+      if (schemaReader == null) {
         throw new VeniceMessageException(
             "Received Protocol Version '" + protocolVersion + "' which is not supported by "
                 + this.getClass().getSimpleName() + ". Protocol forward compatibility is not enabled"
@@ -281,7 +281,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
       for (int attempt = 1; attempt <= MAX_ATTEMPTS_FOR_SCHEMA_READER; attempt++) {
         try {
           Schema newProtocolSchema = schemaReader.getValueSchema(protocolVersion);
-          if (null == newProtocolSchema) {
+          if (newProtocolSchema == null) {
             throw new VeniceMessageException(
                 "Received Protocol Version '" + protocolVersion + "' which is not currently known by "
                     + this.getClass().getSimpleName() + ". A remote fetch was attempted, but the "

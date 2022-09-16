@@ -131,7 +131,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
    */
   @Override
   public boolean hasValueSchema(String storeName, int id) {
-    return null != getValueSchema(storeName, id);
+    return getValueSchema(storeName, id) != null;
   }
 
   /**
@@ -285,7 +285,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     SchemaEntry keySchemaEntry = new SchemaEntry(Integer.parseInt(HelixSchemaAccessor.KEY_SCHEMA_ID), schemaStr);
     SchemaEntry existingKeySchema = getKeySchema(storeName);
 
-    if (null != existingKeySchema) {
+    if (existingKeySchema != null) {
       if (existingKeySchema.equals(keySchemaEntry)) {
         return existingKeySchema;
       } else {
@@ -368,7 +368,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
 
     // Make sure the value schema doesn't contain the reserved field name in the top level.
     if (valueSchemaEntry.getSchema().getType() == Schema.Type.RECORD
-        && null != valueSchemaEntry.getSchema().getField(VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)) {
+        && valueSchemaEntry.getSchema().getField(VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME) != null) {
       throw new VeniceException(
           "Field name: " + VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME + " is reserved,"
               + " please don't use it in the value schema");

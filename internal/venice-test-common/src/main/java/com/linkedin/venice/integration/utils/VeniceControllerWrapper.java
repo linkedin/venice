@@ -183,7 +183,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             }
             fabricAllowList += dcName;
             VeniceControllerWrapper childController = childControllers[dcIndex];
-            if (null == childController) {
+            if (childController == null) {
               throw new IllegalArgumentException("child controller at index " + dcIndex + " is null!");
             }
             builder.put(CHILD_CLUSTER_URL_PREFIX + "." + dcName, childController.getControllerUrl());

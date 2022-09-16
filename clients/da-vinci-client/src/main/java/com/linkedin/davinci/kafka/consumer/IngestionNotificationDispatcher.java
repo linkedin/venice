@@ -60,7 +60,7 @@ class IngestionNotificationDispatcher {
       String reportType,
       NotifierFunction function,
       PreNotificationCheck preCheck) {
-    if (null == pcs) {
+    if (pcs == null) {
       logger.info("Partition has been unsubscribed, no need to report " + reportType);
       return;
     }

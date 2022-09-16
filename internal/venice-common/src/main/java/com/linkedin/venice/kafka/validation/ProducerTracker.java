@@ -145,7 +145,7 @@ public class ProducerTracker {
     try {
       Segment segment = segments.get(partition);
       ProducerPartitionState state = offsetRecord.getProducerPartitionState(this.producerGUID);
-      if (null == state) {
+      if (state == null) {
         state = new ProducerPartitionState();
 
         /**
@@ -690,7 +690,7 @@ public class ProducerTracker {
 
       String previousSegment, previousSequenceNumber;
 
-      if (null == segment) {
+      if (segment == null) {
         previousSegment = previousSequenceNumber = "N/A (null segment)";
       } else {
         previousSegment = String.valueOf(segment.getSegmentNumber());
@@ -703,7 +703,7 @@ public class ProducerTracker {
           .append(GuidUtils.getHexFromGuid(producerMetadata.producerGUID))
           .append("; message type: " + messageTypeString)
           .append("; partition: " + consumerRecord.partition());
-      if (null != segment) {
+      if (segment != null) {
         sb.append(",; previous successful offset (in same segment): " + segment.getLastSuccessfulOffset());
       }
       sb.append("; incoming offset: " + consumerRecord.offset())
@@ -720,7 +720,7 @@ public class ProducerTracker {
       if (producerMetadata.upstreamOffset != -1) {
         sb.append("; producer metadata's upstream offset: " + producerMetadata.upstreamOffset);
       }
-      if (null != consumerRecord.value().leaderMetadataFooter) {
+      if (consumerRecord.value().leaderMetadataFooter != null) {
         sb.append("; leader metadata's upstream offset: " + consumerRecord.value().leaderMetadataFooter.upstreamOffset)
             .append("; leader metadata's host name: " + consumerRecord.value().leaderMetadataFooter.hostName);
       }

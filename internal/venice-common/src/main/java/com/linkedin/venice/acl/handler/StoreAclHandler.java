@@ -48,7 +48,7 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
   protected X509Certificate extractClientCert(ChannelHandlerContext ctx) throws SSLPeerUnverifiedException {
     SslHandler sslHandler = ctx.pipeline().get(SslHandler.class);
-    if (null == sslHandler) {
+    if (sslHandler == null) {
       /**
        * In HTTP/2, the SSLHandler is k  parent channel pipeline and the child channels won't have the SSL Handler.
        */

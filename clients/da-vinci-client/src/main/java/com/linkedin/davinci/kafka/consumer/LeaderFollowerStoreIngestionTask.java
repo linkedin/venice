@@ -469,7 +469,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 consumerTaskId + " start promoting to leader for partition " + partition
                     + ", unsubscribed from current topic: " + kafkaVersionTopic);
             OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
-            if (null == offsetRecord.getLeaderTopic()) {
+            if (offsetRecord.getLeaderTopic() == null) {
               /**
                * If this follower has processed a TS, the leader topic field should have been set. So, it must have been
                * consuming from version topic. Now it is becoming the leader. So the VT becomes its leader topic.
@@ -513,7 +513,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
            * if upstreamOffset exists, rewind to RT with the upstreamOffset instead of using the start timestamp in TS.
            */
           String currentLeaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
-          if (null == currentLeaderTopic) {
+          if (currentLeaderTopic == null) {
             String errorMsg = consumerTaskId + " Missing leader topic for actual leader. OffsetRecord: "
                 + partitionConsumptionState.getOffsetRecord().toSimplifiedString();
             logger.error(errorMsg);
@@ -567,7 +567,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           }
 
           TopicSwitch topicSwitch = partitionConsumptionState.getTopicSwitch();
-          if (null == topicSwitch || currentLeaderTopic.equals(topicSwitch.sourceTopicName.toString())) {
+          if (topicSwitch == null || currentLeaderTopic.equals(topicSwitch.sourceTopicName.toString())) {
             break;
           }
 
@@ -633,7 +633,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     final int partition = partitionConsumptionState.getPartition();
     final OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
     if (isNativeReplicationEnabled) {
-      if (null == nativeReplicationSourceVersionTopicKafkaURL
+      if (nativeReplicationSourceVersionTopicKafkaURL == null
           || nativeReplicationSourceVersionTopicKafkaURL.isEmpty()) {
         throw new VeniceException("Native replication is enabled but remote source address is not found");
       }
@@ -1083,7 +1083,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           + "; rewind start time:" + topicSwitch.rewindStartTimestamp + "; upstream start offset by source Kafka URL: "
           + upstreamStartOffsetByKafkaURL + ")";
 
-      if (null == storeVersionState.get().topicSwitch) {
+      if (storeVersionState.get().topicSwitch == null) {
         logger.info("First time receiving a " + newTopicSwitchLogging);
       } else {
         logger.info(
@@ -1443,7 +1443,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * {@link CachedKafkaMetadataGetter#ttlMs} earlier.
      */
     String leaderTopic = offsetRecord.getLeaderTopic();
-    if (null == leaderTopic || !Version.isRealTimeTopic(leaderTopic)) {
+    if (leaderTopic == null || !Version.isRealTimeTopic(leaderTopic)) {
       /**
        * 1. Usually there is a batch-push or empty push for the hybrid store before replaying messages from real-time
        *    topic; since we need to wait for at least 5 minutes of inactivity since the last successful consumed message
@@ -1569,7 +1569,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   protected boolean shouldProcessRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record, int subPartition) {
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
-    if (null == partitionConsumptionState) {
+    if (partitionConsumptionState == null) {
       logger.info(
           "Skipping message as partition is no longer actively subscribed. Topic: " + kafkaVersionTopic
               + " Partition Id: " + subPartition);
@@ -2030,7 +2030,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                     + " Offset: " + consumerRecord.offset());
           }
         }
-      } else if (null == kafkaValue) {
+      } else if (kafkaValue == null) {
         throw new VeniceMessageException(
             consumerTaskId + " hasProducedToKafka: Given null Venice Message.  Topic: " + consumerRecord.topic()
                 + " Partition " + consumerRecord.partition() + " Offset " + consumerRecord.offset());

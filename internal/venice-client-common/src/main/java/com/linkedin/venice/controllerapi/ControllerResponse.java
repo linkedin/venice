@@ -27,7 +27,7 @@ public class ControllerResponse { /* Uses Json Reflective Serializer, get withou
    */
   @JsonIgnore
   public boolean isError() {
-    return null != error;
+    return error != null;
   }
 
   public String getCluster() {

@@ -44,7 +44,7 @@ public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<Co
 
     // Validate API version
     String apiVersionStr = httpRequest.headers().get(HttpConstants.VENICE_API_VERSION);
-    if (null == apiVersionStr) {
+    if (apiVersionStr == null) {
       throw new VeniceException("Header: " + HttpConstants.VENICE_API_VERSION + " is missing");
     }
     int apiVersion = Integer.parseInt(apiVersionStr);

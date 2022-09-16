@@ -110,7 +110,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
        * {@link VeniceWriter#SendControlMessage} or {@link VeniceWriter#asyncSendControlMessage}
        */
       if (chunkedValueManifest != null) {
-        if (null == chunks) {
+        if (chunks == null) {
           throw new IllegalStateException("chunking info not initialized.");
         } else if (chunkedValueManifest.keysWithChunkIdSuffix.size() != chunks.length) {
           throw new IllegalStateException("chunkedValueManifest.keysWithChunkIdSuffix is not in sync with chunks.");

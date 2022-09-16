@@ -507,7 +507,7 @@ public class SchemaCompatibility {
     /** {@inheritDoc} */
     @Override
     public boolean equals(Object other) {
-      if ((null != other) && (other instanceof SchemaPairCompatibility)) {
+      if ((other != null) && (other instanceof SchemaPairCompatibility)) {
         final SchemaPairCompatibility result = (SchemaPairCompatibility) other;
         return objectsEqual(result.mType, mType) && objectsEqual(result.mReader, mReader)
             && objectsEqual(result.mWriter, mWriter) && objectsEqual(result.mDescription, mDescription);

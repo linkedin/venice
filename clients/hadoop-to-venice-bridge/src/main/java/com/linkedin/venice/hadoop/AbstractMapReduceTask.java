@@ -59,12 +59,12 @@ public abstract class AbstractMapReduceTask {
     setChunkingEnabled(props.getBoolean(VeniceWriter.ENABLE_CHUNKING));
     this.partitionCount = job.getNumReduceTasks();
     TaskAttemptID taskAttemptID = TaskAttemptID.forName(job.get(MAPRED_TASK_ID_PROP_NAME));
-    if (null == taskAttemptID) {
+    if (taskAttemptID == null) {
       throw new UndefinedPropertyException(
           MAPRED_TASK_ID_PROP_NAME + " not found in the " + JobConf.class.getSimpleName());
     }
     TaskID taskID = taskAttemptID.getTaskID();
-    if (null == taskID) {
+    if (taskID == null) {
       throw new NullPointerException("taskAttemptID.getTaskID() is null");
     }
     this.taskId = taskID.getId();

@@ -150,9 +150,9 @@ public class BatchGetRequestContext<K, V> extends RequestContext {
   /* Utility validation methods */
 
   private void validateResponseRoute(TransportClientResponseForRoute response) {
-    if (null == response) {
+    if (response == null) {
       throw new VeniceClientException(new IllegalArgumentException("Response object cannot be null"));
-    } else if (null == response.getRouteId()) {
+    } else if (response.getRouteId() == null) {
       throw new VeniceClientException(new IllegalArgumentException("Response route cannot be null"));
     } else if (!routeRequests.containsKey(response.getRouteId())) {
       throw new VeniceClientException(

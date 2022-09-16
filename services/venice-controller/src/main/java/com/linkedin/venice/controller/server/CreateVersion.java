@@ -96,7 +96,7 @@ public class CreateVersion extends AbstractRoute {
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         Store store = admin.getStore(clusterName, storeName);
-        if (null == store) {
+        if (store == null) {
           throw new VeniceNoStoreException(storeName);
         }
         responseObject.setCluster(clusterName);
@@ -105,7 +105,7 @@ public class CreateVersion extends AbstractRoute {
 
         // Retrieve partitioner config from the store
         PartitionerConfig storePartitionerConfig = store.getPartitionerConfig();
-        if (null == request.queryParams(PARTITIONERS)) {
+        if (request.queryParams(PARTITIONERS) == null) {
           // Request does not contain partitioner info
           responseObject.setPartitionerClass(storePartitionerConfig.getPartitionerClass());
           responseObject.setAmplificationFactor(storePartitionerConfig.getAmplificationFactor());

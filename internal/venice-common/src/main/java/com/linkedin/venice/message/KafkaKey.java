@@ -55,7 +55,7 @@ public class KafkaKey {
   }
 
   public boolean hasChunkId() {
-    return null != chunkId;
+    return chunkId != null;
   }
 
   /**

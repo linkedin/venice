@@ -65,7 +65,7 @@ public class TestD2ControllerClient {
         Assert.assertEquals(discoveryResponse.getD2Service(), D2TestUtils.DEFAULT_TEST_SERVICE_NAME);
       }
     } finally {
-      if (null != d2Client) {
+      if (d2Client != null) {
         D2ClientUtils.shutdownClient(d2Client);
       }
     }

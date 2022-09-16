@@ -102,7 +102,7 @@ public class ValueRecord {
   // TODO: If we meet GC issue later, we need to tune this part,
   // since it will allocate a new byte array and copy over the data.
   public byte[] serialize() {
-    if (null != serializedArr) {
+    if (serializedArr != null) {
       return serializedArr;
     }
     byte[] dataArr = data.array();

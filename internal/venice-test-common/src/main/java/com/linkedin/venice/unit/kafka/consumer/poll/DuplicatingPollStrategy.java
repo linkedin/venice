@@ -30,7 +30,7 @@ public class DuplicatingPollStrategy extends AbstractPollStrategy {
   protected Pair<TopicPartition, Long> getNextPoll(Map<TopicPartition, Long> offsets) {
     Pair<TopicPartition, Long> nextPoll = basePollStrategy.getNextPoll(offsets);
 
-    if (null == nextPoll) {
+    if (nextPoll == null) {
       return null;
     }
 

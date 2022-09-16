@@ -227,7 +227,7 @@ public class TopicCleanupService extends AbstractVeniceService {
         continue;
       }
       allStoreTopics.compute(storeName, (s, topics) -> {
-        if (null == topics) {
+        if (topics == null) {
           topics = new HashMap<>();
         }
         topics.put(topic, retention);

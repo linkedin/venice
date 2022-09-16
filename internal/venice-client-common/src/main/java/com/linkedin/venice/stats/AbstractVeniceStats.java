@@ -142,7 +142,7 @@ public class AbstractVeniceStats {
       MeasurableStat... stats) {
     String fullSensorName = getSensorFullName(resourceName, sensorName);
     Sensor sensor = metricsRepository.getSensor(fullSensorName);
-    if (null == sensor) {
+    if (sensor == null) {
       sensor = registerSensor(fullSensorName, config, parents, stats);
     }
     return sensor;

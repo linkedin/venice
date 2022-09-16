@@ -132,7 +132,7 @@ public class DumpAdminMessages {
       requiredSSLConfigList.add("ssl.truststore.password");
       requiredSSLConfigList.add("ssl.truststore.type");
       requiredSSLConfigList.forEach(configProperty -> {
-        if (null == kafkaConsumerProperties.getProperty(configProperty)) {
+        if (kafkaConsumerProperties.getProperty(configProperty) == null) {
           throw new VeniceException("Consumer config property: " + configProperty + " is required");
         }
       });

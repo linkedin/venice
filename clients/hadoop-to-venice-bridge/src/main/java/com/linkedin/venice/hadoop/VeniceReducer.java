@@ -356,7 +356,7 @@ public class VeniceReducer extends AbstractMapReduceTask
       Reporter reporter,
       Consumer<AbstractVeniceWriter<byte[], byte[], byte[]>> writerConsumer) {
     maybePropagateCallbackException();
-    if (null == veniceWriter) {
+    if (veniceWriter == null) {
       veniceWriter = createBasicVeniceWriter();
     }
     writerConsumer.accept(veniceWriter);
@@ -436,7 +436,7 @@ public class VeniceReducer extends AbstractMapReduceTask
     try {
       LOGGER.info("Kafka message progress before flushing and closing producer:");
       logMessageProgress();
-      if (null != veniceWriter) {
+      if (veniceWriter != null) {
         boolean shouldEndAllSegments = false;
         try {
           veniceWriter.flush();
@@ -549,7 +549,7 @@ public class VeniceReducer extends AbstractMapReduceTask
   }
 
   private void maybePropagateCallbackException() {
-    if (null != sendException) {
+    if (sendException != null) {
       throw new VeniceException(sendException);
     }
   }
@@ -587,7 +587,7 @@ public class VeniceReducer extends AbstractMapReduceTask
 
     @Override
     public void onCompletion(RecordMetadata recordMetadata, Exception e) {
-      if (null != e) {
+      if (e != null) {
         messageErrored.incrementAndGet();
         LOGGER.error("Exception thrown in send message callback. ", e);
         sendException = e;

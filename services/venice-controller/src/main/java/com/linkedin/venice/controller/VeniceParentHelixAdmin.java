@@ -709,11 +709,11 @@ public class VeniceParentHelixAdmin implements Admin {
       long currentTime = SystemTime.INSTANCE.getMilliseconds();
       if (currentTime - startTime > waitingTimeForConsumptionMs) {
         Exception lastException =
-            (null == storeName) ? null : getVeniceHelixAdmin().getLastExceptionForStore(clusterName, storeName);
+            (storeName == null) ? null : getVeniceHelixAdmin().getLastExceptionForStore(clusterName, storeName);
         String errMsg =
             "Timed out after waiting for " + waitingTimeForConsumptionMs + "ms for admin consumption to catch up.";
         errMsg += " Consumed execution id: " + consumedExecutionId + ", waiting to be consumed id: " + executionId;
-        errMsg += (null == lastException) ? "" : " Last exception: " + lastException.getMessage();
+        errMsg += (lastException == null) ? "" : " Last exception: " + lastException.getMessage();
         throw new VeniceException(errMsg, lastException);
       }
 
@@ -1052,7 +1052,7 @@ public class VeniceParentHelixAdmin implements Admin {
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
       ReadWriteStoreRepository storeRepo = resources.getStoreMetadataRepository();
       Store store = storeRepo.getStore(storeName);
-      if (null == store) {
+      if (store == null) {
         logger.info("The store to clean up: " + storeName + " doesn't exist");
         return;
       }
@@ -2087,7 +2087,7 @@ public class VeniceParentHelixAdmin implements Admin {
       String errorMessagePrefix = "Store update error for " + storeName + " in cluster: " + clusterName + ": ";
 
       Store currStore = getVeniceHelixAdmin().getStore(clusterName, storeName);
-      if (null == currStore) {
+      if (currStore == null) {
         String errorMessage = "store does not exist, and thus cannot be updated.";
         logger.error(errorMessagePrefix + errorMessage);
         throw new VeniceException(errorMessagePrefix + errorMessage);
@@ -2237,7 +2237,7 @@ public class VeniceParentHelixAdmin implements Admin {
                 + "Please disable incremental push if you'd like to convert the store to batch-only",
             ErrorType.BAD_REQUEST);
       }
-      if (null == hybridStoreConfig) {
+      if (hybridStoreConfig == null) {
         setStore.hybridStoreConfig = null;
       } else {
         HybridStoreConfigRecord hybridStoreConfigRecord = new HybridStoreConfigRecord();
@@ -3548,7 +3548,7 @@ public class VeniceParentHelixAdmin implements Admin {
        *
        * The reason is that every errored push will call this function.
        */
-      if (0 == maxErroredTopicNumToKeep) {
+      if (maxErroredTopicNumToKeep == 0) {
         // Truncate Kafka topic
         logger.info("Truncating topic when kill offline push job, topic: " + kafkaTopic);
         truncateKafkaTopic(kafkaTopic);
@@ -3733,7 +3733,7 @@ public class VeniceParentHelixAdmin implements Admin {
     getVeniceHelixAdmin().stop(clusterName);
     // Close the admin producer for this cluster
     VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
-    if (null != veniceWriter) {
+    if (veniceWriter != null) {
       veniceWriter.close();
     }
     asyncSetupEnabledMap.put(clusterName, false);

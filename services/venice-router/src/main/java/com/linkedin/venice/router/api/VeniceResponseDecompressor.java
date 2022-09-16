@@ -78,7 +78,7 @@ public class VeniceResponseDecompressor {
   }
 
   public static CompressionStrategy getCompressionStrategy(String compressionHeader) {
-    if (null == compressionHeader) {
+    if (compressionHeader == null) {
       return CompressionStrategy.NO_OP;
     }
     return CompressionStrategy.valueOf(Integer.parseInt(compressionHeader));

@@ -51,12 +51,8 @@ public class JobRoutes extends AbstractRoute {
         String store = request.queryParams(NAME);
         int versionNumber = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
         String incrementalPushVersion = AdminSparkServer.getOptionalParameterValue(request, INCREMENTAL_PUSH_VERSION);
-        responseObject = populateJobStatus(
-            cluster,
-            store,
-            versionNumber,
-            admin,
-            incrementalPushVersion == null ? Optional.empty() : Optional.of(incrementalPushVersion));
+        responseObject =
+            populateJobStatus(cluster, store, versionNumber, admin, Optional.ofNullable(incrementalPushVersion));
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);

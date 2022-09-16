@@ -96,7 +96,7 @@ public class SparseConcurrentList<E> extends CopyOnWriteArrayList<E> {
   public void forEach(Consumer<? super E> itemConsumer) {
     for (int partitionId = 0; partitionId < size(); partitionId++) {
       E item = get(partitionId);
-      if (null == item) {
+      if (item == null) {
         continue;
       }
       itemConsumer.accept(item);

@@ -643,7 +643,7 @@ public class TestPushUtils {
         GenericRecord keyRecord = new GenericData.Record(schemaWithSymbolDoc.getField("key").schema());
         keyRecord.put("memberId", (long) i);
         Schema sourceSchema = keyRecord.getSchema().getField("source").schema();
-        if (0 == i % 2) {
+        if (i % 2 == 0) {
           keyRecord
               .put("source", AvroCompatibilityHelper.newEnumSymbol(sourceSchema, testRecordType.NEARLINE.toString()));
         } else {
@@ -654,11 +654,11 @@ public class TestPushUtils {
         GenericRecord valueRecord = new GenericData.Record(schemaWithSymbolDoc.getField("value").schema());
         Schema targetSchema = valueRecord.getSchema().getField("targetedField").schema();
         valueRecord.put("priority", i);
-        if (0 == i % 3) {
+        if (i % 3 == 0) {
           valueRecord.put(
               "targetedField",
               AvroCompatibilityHelper.newEnumSymbol(targetSchema, testTargetedField.WEBSITE_URL.toString()));
-        } else if (1 == i % 3) {
+        } else if (i % 3 == 1) {
           valueRecord.put(
               "targetedField",
               AvroCompatibilityHelper.newEnumSymbol(targetSchema, testTargetedField.LOGO.toString()));

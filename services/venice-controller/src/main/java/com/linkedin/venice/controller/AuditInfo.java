@@ -54,7 +54,7 @@ public class AuditInfo {
       joiner.add("SUCCESS");
     } else {
       joiner.add("FAILURE: ");
-      if (null != errMsg) {
+      if (errMsg != null) {
         joiner.add(errMsg);
       }
     }

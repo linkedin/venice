@@ -84,13 +84,13 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
       } catch (VeniceNoStoreException e) {
         /** Young cluster, never knew about system schemas! Let's create the special system store. */
         Store store = admin.getStore(clusterToInit, systemStoreName);
-        if (null == store) {
+        if (store == null) {
           /**
            * At this point, this branch of the if should always be exercised since cluster discovery thinks
            * this store does not exist.
            */
           Schema firstValueSchema = protocolSchemaMap.get(1);
-          if (null == firstValueSchema) {
+          if (firstValueSchema == null) {
             throw new VeniceException(
                 "Invalid protocol definition: '" + protocolDefinition.name() + "' does not have a version 1");
           }
@@ -145,7 +145,7 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
       for (int valueSchemaVersion = 1; valueSchemaVersion <= protocolDefinition
           .getCurrentProtocolVersion(); valueSchemaVersion++) {
         Schema schemaInLocalResources = protocolSchemaMap.get(valueSchemaVersion);
-        if (null == schemaInLocalResources) {
+        if (schemaInLocalResources == null) {
           throw new VeniceException(
               "Invalid protocol definition: '" + protocolDefinition.name() + "' does not have a version "
                   + valueSchemaVersion + " even though that is inferior to the current version ("
@@ -154,7 +154,7 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
 
         Schema knownSchema = knownSchemaMap.get(valueSchemaVersion);
 
-        if (null == knownSchema) {
+        if (knownSchema == null) {
           try {
             admin.addValueSchema(
                 clusterToInit,

@@ -134,11 +134,11 @@ public class RouterBasedPushMonitor implements Closeable {
                * Unfortunately there is no solution to the above edge case at the moment; we can only pause the exit process
                * a bit and then check whether the active number of producers is still 0.
                */
-              if (0 == factory.getNumberOfActiveSystemProducers()) {
+              if (factory.getNumberOfActiveSystemProducers() == 0) {
                 // Pause a bit just in case user suddenly create new producers from the factory
                 logger.info("Pause 30 seconds before exiting the Samza process.");
                 Utils.sleep(30000);
-                if (0 != factory.getNumberOfActiveSystemProducers()) {
+                if (factory.getNumberOfActiveSystemProducers() != 0) {
                   break;
                 }
                 if (factory.getOverallExecutionStatus()) {

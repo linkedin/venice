@@ -530,7 +530,7 @@ public class RouterServer extends AbstractVeniceService {
            * Long tail retry threshold is based on key count for batch-get request.
            */
           int keyNum = path.getPartitionKeys().size();
-          if (0 == keyNum) {
+          if (keyNum == 0) {
             // Should not happen
             throw new VeniceException("Met scatter-gather request without any keys");
           }
@@ -849,7 +849,7 @@ public class RouterServer extends AbstractVeniceService {
   private CompletableFuture startServices(boolean async) {
     return CompletableFuture.runAsync(() -> {
       try {
-        if (null == this.manager) {
+        if (this.manager == null) {
           // TODO: Remove this check once test constructor is removed or otherwise fixed.
           logger.info("Not connecting to Helix because the HelixManager is null (the test constructor was used)");
         } else {

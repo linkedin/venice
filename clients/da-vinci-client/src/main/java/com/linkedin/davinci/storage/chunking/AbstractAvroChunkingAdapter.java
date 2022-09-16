@@ -406,14 +406,14 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       CompressionStrategy compressionStrategy,
       ReadResponse response) {
     if (compressionStrategy == CompressionStrategy.NO_OP) {
-      return (null == response) ? byteArrayDecoder : instrumentedByteArrayDecoder;
+      return (response == null) ? byteArrayDecoder : instrumentedByteArrayDecoder;
     } else {
-      return (null == response) ? decompressingByteArrayDecoder : instrumentedDecompressingByteArrayDecoder;
+      return (response == null) ? decompressingByteArrayDecoder : instrumentedDecompressingByteArrayDecoder;
     }
   }
 
   private DecoderWrapper<InputStream, T> getInputStreamDecoder(ReadResponse response) {
-    return (null == response) ? decompressingInputStreamDecoder : instrumentedDecompressingInputStreamDecoder;
+    return (response == null) ? decompressingInputStreamDecoder : instrumentedDecompressingInputStreamDecoder;
   }
 
   private interface DecoderWrapper<INPUT, OUTPUT> {

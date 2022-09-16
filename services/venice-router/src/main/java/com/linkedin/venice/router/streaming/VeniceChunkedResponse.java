@@ -183,7 +183,7 @@ public class VeniceChunkedResponse {
 
     @Override
     public void onCompletion(T result, Exception exception) {
-      if (null != exception) {
+      if (exception != null) {
         /**
          * For failure scenario, we will allow {@link com.linkedin.ddsstorage.netty4.handlers.AsyncFullHttpRequestHandler#channelRead0}
          * to release the message to avoid double free issue.

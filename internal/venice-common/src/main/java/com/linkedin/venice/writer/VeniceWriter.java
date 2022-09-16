@@ -1059,7 +1059,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         segment.addToCheckSum(key, kafkaValue);
       }
       Callback messageCallback = callback;
-      if (null == callback) {
+      if (callback == null) {
         messageCallback = new KafkaMessageCallback(kafkaValue, logger);
       } else if (callback instanceof CompletableFutureCallback) {
         CompletableFutureCallback completableFutureCallBack = (CompletableFutureCallback) callback;
@@ -1192,11 +1192,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       putPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
 
       chunkedKeySuffix.chunkId.chunkIndex = chunkIndex;
-      if (0 == chunkIndex) {
-        keyProvider = firstKeyProvider;
-      } else {
-        keyProvider = subsequentKeyProvider;
-      }
+      keyProvider = chunkIndex == 0 ? firstKeyProvider : subsequentKeyProvider;
 
       try {
         /**
@@ -1352,7 +1348,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   private Map<CharSequence, CharSequence> getDebugInfo(Map<String, String> debugInfoToAdd) {
-    if (null == debugInfoToAdd || debugInfoToAdd.isEmpty()) {
+    if (debugInfoToAdd == null || debugInfoToAdd.isEmpty()) {
       return defaultDebugInfo;
     }
 
@@ -1586,7 +1582,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   private Segment getSegment(int partition, boolean sendEndOfSegment) {
     Segment currentSegment = segmentsMap.get(partition);
-    if (null == currentSegment || currentSegment.isEnded()) {
+    if (currentSegment == null || currentSegment.isEnded()) {
       currentSegment = startSegment(partition);
     } else if (elapsedTimeForClosingSegmentEnabled) {
       // Close the current segment and create a new one if the current segment is
@@ -1621,7 +1617,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     synchronized (this.partitionLocks[partition]) {
       Segment currentSegment = segmentsMap.get(partition);
 
-      if (null == currentSegment) {
+      if (currentSegment == null) {
         currentSegment = new Segment(partition, 0, checkSumType);
         segmentsMap.put(partition, currentSegment);
       } else if (currentSegment.isEnded()) {
@@ -1649,7 +1645,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public void endSegment(int partition, boolean finalSegment) {
     synchronized (this.partitionLocks[partition]) {
       Segment currentSegment = segmentsMap.get(partition);
-      if (null == currentSegment) {
+      if (currentSegment == null) {
         logger.warn("endSegment(partition " + partition + ") called but currentSegment == null. Ignoring.");
       } else if (!currentSegment.isStarted()) {
         logger.warn("endSegment(partition " + partition + ") called but currentSegment.begun == false. Ignoring.");

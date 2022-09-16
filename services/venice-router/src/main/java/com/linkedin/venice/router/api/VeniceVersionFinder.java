@@ -64,7 +64,7 @@ public class VeniceVersionFinder {
      * in {@link ReadOnlyStoreRepository}, such as 'isEnableReads' and others.
      */
     Store store = metadataRepository.getStore(storeName);
-    if (null == store) {
+    if (store == null) {
       throw new VeniceNoStoreException(storeName);
     }
     if (!store.isEnableReads()) {

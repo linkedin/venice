@@ -218,7 +218,7 @@ public abstract class NativeMetadataRepository
   public SchemaEntry getKeySchema(String storeName) {
     fetchStoreSchemaIfNotInCache(storeName);
     SchemaData schemaData = schemaMap.get(storeName);
-    if (null == schemaData) {
+    if (schemaData == null) {
       throw new VeniceNoStoreException(storeName);
     }
     return schemaData.getKeySchema();
@@ -247,7 +247,7 @@ public abstract class NativeMetadataRepository
   @Override
   public boolean hasValueSchema(String storeName, int id) {
     SchemaEntry valueSchema = getValueSchemaInternally(storeName, id);
-    return null != valueSchema;
+    return valueSchema != null;
   }
 
   /**
@@ -263,7 +263,7 @@ public abstract class NativeMetadataRepository
   public int getValueSchemaId(String storeName, String valueSchemaStr) {
     fetchStoreSchemaIfNotInCache(storeName);
     SchemaData schemaData = schemaMap.get(storeName);
-    if (null == schemaData) {
+    if (schemaData == null) {
       throw new VeniceNoStoreException(storeName);
     }
     // Could throw SchemaParseException
@@ -279,7 +279,7 @@ public abstract class NativeMetadataRepository
   public Collection<SchemaEntry> getValueSchemas(String storeName) {
     fetchStoreSchemaIfNotInCache(storeName);
     SchemaData schemaData = schemaMap.get(storeName);
-    if (null == schemaData) {
+    if (schemaData == null) {
       throw new VeniceNoStoreException(storeName);
     }
     return schemaData.getValueSchemas();
@@ -289,7 +289,7 @@ public abstract class NativeMetadataRepository
   public SchemaEntry getSupersetOrLatestValueSchema(String storeName) {
     fetchStoreSchemaIfNotInCache(storeName);
     SchemaData schemaData = schemaMap.get(storeName);
-    if (null == schemaData) {
+    if (schemaData == null) {
       throw new VeniceNoStoreException(storeName);
     }
     final int latestValueSchemaId;
@@ -305,7 +305,7 @@ public abstract class NativeMetadataRepository
   public Optional<SchemaEntry> getSupersetSchema(String storeName) {
     fetchStoreSchemaIfNotInCache(storeName);
     SchemaData schemaData = schemaMap.get(storeName);
-    if (null == schemaData) {
+    if (schemaData == null) {
       throw new VeniceNoStoreException(storeName);
     }
 
@@ -557,7 +557,7 @@ public abstract class NativeMetadataRepository
   protected SchemaEntry getValueSchemaInternally(String storeName, int id) {
     fetchStoreSchemaIfNotInCache(storeName);
     SchemaData schemaData = schemaMap.get(storeName);
-    if (null == schemaData) {
+    if (schemaData == null) {
       throw new VeniceNoStoreException(storeName);
     }
     return schemaData.getValueSchema(id);

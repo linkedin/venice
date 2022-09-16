@@ -45,7 +45,7 @@ public class AvroSpecificStoreClientImpl<K, V extends SpecificRecord> extends Ab
   public RecordDeserializer<V> getDataRecordDeserializer(int schemaId) throws VeniceClientException {
     SchemaReader schemaReader = getSchemaReader();
     Schema writeSchema = schemaReader.getValueSchema(schemaId);
-    if (null == writeSchema) {
+    if (writeSchema == null) {
       throw new VeniceClientException(
           "Failed to get value schema for store: " + getStoreName() + " and id: " + schemaId);
     }

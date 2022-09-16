@@ -72,7 +72,7 @@ public class AvroCompatibilityUtils {
         Set<Map.Entry> set = map1.entrySet();
         for (Map.Entry entry: set) {
           Object value2 = map2.get(entry.getKey());
-          if (null == value2) {
+          if (value2 == null) {
             return -1;
           }
           int compare = compareGenericData(entry.getValue(), value2, s.getValueType());

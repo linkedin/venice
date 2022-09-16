@@ -128,7 +128,7 @@ public class MapTest {
 
     @Override
     public boolean equals(Object o) {
-      if (null == o) {
+      if (o == null) {
         return false;
       }
 
@@ -270,7 +270,7 @@ public class MapTest {
       }
 
       // Do put() to replace entry (and resize table when bug present)
-      if (null == map.put(0, 100)) {
+      if (map.put(0, 100) == null) {
         throw new RuntimeException("Error in test: expected key 0 to be in the HashMap");
       }
 

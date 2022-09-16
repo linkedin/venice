@@ -704,7 +704,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
       Assert.assertEquals(store.getCurrentVersion(), current);
       Assert.assertEquals(store.isEnableReads(), enableReads);
     } finally {
-      if (null != storeName) {
+      if (storeName != null) {
         deleteStore(storeName);
       }
     }

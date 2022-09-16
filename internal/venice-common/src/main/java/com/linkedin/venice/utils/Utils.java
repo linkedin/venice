@@ -99,7 +99,7 @@ public class Utils {
    * Run "function" on "t" if "t" is not null
    */
   public static <T> void computeIfNotNull(T t, Consumer<T> function) {
-    if (null != t) {
+    if (t != null) {
       function.accept(t);
     }
   }
@@ -440,7 +440,7 @@ public class Utils {
      * when there is an inconsistency.
      */
     Schema intendedCurrentProtocol = protocolSchemaMap.get((int) currentProtocolVersion);
-    if (null == intendedCurrentProtocol) {
+    if (intendedCurrentProtocol == null) {
       throw new VeniceException(
           "Failed to get schema for current version: " + currentProtocolVersion + " class: " + className);
     } else if (!intendedCurrentProtocol.equals(protocolDef.getCurrentProtocolVersionSchema())) {

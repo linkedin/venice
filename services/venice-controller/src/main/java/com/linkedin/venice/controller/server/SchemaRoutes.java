@@ -47,7 +47,7 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));
         SchemaEntry keySchemaEntry = admin.getKeySchema(responseObject.getCluster(), responseObject.getName());
-        if (null == keySchemaEntry) {
+        if (keySchemaEntry == null) {
           throw new VeniceException("Key schema doesn't exist for store: " + responseObject.getName());
         }
         responseObject.setId(keySchemaEntry.getId());
@@ -133,7 +133,7 @@ public class SchemaRoutes extends AbstractRoute {
 
         // Fail on adding derived schema if the value schema doesn't exist
         SchemaEntry valueSchemaEntry = admin.getValueSchema(clusterName, storeName, valueSchemaId);
-        if (null == valueSchemaEntry) {
+        if (valueSchemaEntry == null) {
           throw new VeniceException(
               "Value schema for schema id: " + valueSchemaId + " of store: " + storeName + " doesn't exist");
         }
@@ -181,7 +181,7 @@ public class SchemaRoutes extends AbstractRoute {
             responseObject.getCluster(),
             responseObject.getName(),
             Utils.parseIntFromString(schemaId, "schema id"));
-        if (null == valueSchemaEntry) {
+        if (valueSchemaEntry == null) {
           throw new VeniceException(
               "Value schema for schema id: " + schemaId + " of store: " + responseObject.getName() + " doesn't exist");
         }
@@ -380,7 +380,7 @@ public class SchemaRoutes extends AbstractRoute {
 
         DerivedSchemaEntry removedDerivedSchemaEntry =
             admin.removeDerivedSchema(cluster, store, schemaId, derivedSchemaId);
-        if (null == removedDerivedSchemaEntry) {
+        if (removedDerivedSchemaEntry == null) {
           throw new VeniceException(
               "Derived schema for schema id: " + schemaId + " of store: " + responseObject.getName()
                   + " doesn't exist");

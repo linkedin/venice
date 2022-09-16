@@ -164,7 +164,7 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
           String instanceName = entry.getKey();
           String instanceState = entry.getValue();
           Instance instance = liveInstanceSnapshot.get(instanceName);
-          if (null != instance) {
+          if (instance != null) {
             HelixState state;
             try {
               state = HelixState.valueOf(instanceState);

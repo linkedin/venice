@@ -49,7 +49,7 @@ public abstract class VenicePartitioner {
    * is just a minor optimization.
    */
   public int getPartitionId(byte[] keyBytes, int offset, int length, int numPartitions) {
-    if (0 != offset || keyBytes.length != length) {
+    if (offset != 0 || keyBytes.length != length) {
       return getPartitionId(ByteBuffer.wrap(keyBytes, offset, length), numPartitions);
     }
     return getPartitionId(keyBytes, numPartitions);

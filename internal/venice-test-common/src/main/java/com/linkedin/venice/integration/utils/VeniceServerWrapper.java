@@ -261,9 +261,9 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       String preferredName,
       String altName,
       String defaultValue) {
-    if (null != featureProperties.getProperty(preferredName)) {
+    if (featureProperties.getProperty(preferredName) != null) {
       return featureProperties.getProperty(preferredName, defaultValue);
-    } else if (null != featureProperties.getProperty(altName)) {
+    } else if (featureProperties.getProperty(altName) != null) {
       return featureProperties.getProperty(altName, defaultValue);
     } else {
       return defaultValue;

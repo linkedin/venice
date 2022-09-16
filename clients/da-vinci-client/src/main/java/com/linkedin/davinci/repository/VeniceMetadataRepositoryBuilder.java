@@ -90,7 +90,7 @@ public class VeniceMetadataRepositoryBuilder {
   }
 
   public Optional<HelixReadOnlyZKSharedSchemaRepository> getReadOnlyZKSharedSchemaRepository() {
-    return readOnlyZKSharedSchemaRepository == null ? Optional.empty() : Optional.of(readOnlyZKSharedSchemaRepository);
+    return Optional.ofNullable(readOnlyZKSharedSchemaRepository);
   }
 
   public boolean isDaVinciClient() {

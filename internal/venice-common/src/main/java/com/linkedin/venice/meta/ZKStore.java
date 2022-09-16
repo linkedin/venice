@@ -183,8 +183,8 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
         store.getCurrentVersion(),
         store.getStorageQuotaInByte(),
         store.getReadQuotaInCU(),
-        null == store.getHybridStoreConfig() ? null : store.getHybridStoreConfig().clone(),
-        null == store.getPartitionerConfig() ? null : store.getPartitionerConfig().clone(),
+        store.getHybridStoreConfig() == null ? null : store.getHybridStoreConfig().clone(),
+        store.getPartitionerConfig() == null ? null : store.getPartitionerConfig().clone(),
         store.getReplicationFactor());
     setEnableReads(store.isEnableReads());
     setEnableWrites(store.isEnableWrites());
@@ -452,7 +452,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
 
   @Override
   public boolean isHybrid() {
-    return null != this.storeProperties.hybridConfig;
+    return this.storeProperties.hybridConfig != null;
   }
 
   @Override

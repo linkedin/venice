@@ -27,7 +27,7 @@ public class DispatchingAvroSpecificStoreClient<K, V extends SpecificRecord>
   @Override
   protected RecordDeserializer<V> getDataRecordDeserializer(int schemaId) throws VeniceClientException {
     Schema writerSchema = getStoreMetadata().getValueSchema(schemaId);
-    if (null == writerSchema) {
+    if (writerSchema == null) {
       throw new VeniceClientException(
           "Failed to get value schema for store: " + getStoreName() + " and id: " + schemaId);
     }

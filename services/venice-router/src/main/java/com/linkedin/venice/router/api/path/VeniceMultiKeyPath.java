@@ -126,7 +126,7 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
     if (keyCount > maxKeyCount) {
       throw new VeniceKeyCountLimitException(getStoreName(), getRequestType(), keyCount, maxKeyCount);
     }
-    if (0 == keyCount) {
+    if (keyCount == 0) {
       /**
        * TODO: Right now, there is no good way to return empty response if the key set is empty.
        * The logic to handle empty key here is different from client side, since the client will return empty map
@@ -154,7 +154,7 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
   @Override
   public VenicePath substitutePartitionKey(RouterKey s) {
     K routerRequestKey = routerKeyMap.get(s);
-    if (null == routerRequestKey) {
+    if (routerRequestKey == null) {
       throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
           Optional.of(getStoreName()),
           Optional.of(getRequestType()),
@@ -196,7 +196,7 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
        * This could make a big difference considering large batch-get user cases.
        */
       K routerRequestKey = routerKeyMap.get(key);
-      if (null == routerRequestKey) {
+      if (routerRequestKey == null) {
         throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
             Optional.of(getStoreName()),
             Optional.of(getRequestType()),

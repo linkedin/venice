@@ -538,7 +538,7 @@ public class AdminTool {
     String foundCommand = null;
     for (Command c: Command.values()) {
       if (cmd.hasOption(c.toString())) {
-        if (null == foundCommand) {
+        if (foundCommand == null) {
           foundCommand = c.toString();
         } else {
           throw new VeniceException("Can only specify one of --" + foundCommand + " and --" + c.toString());
@@ -809,7 +809,7 @@ public class AdminTool {
       throw new VeniceException(" Argument does not exist in command doc: " + param);
     }
     String paramStr = getOptionalArgument(cmd, param);
-    if (null != paramStr) {
+    if (paramStr != null) {
       setter.accept(parser.apply(paramStr));
     }
   }
@@ -1204,13 +1204,13 @@ public class AdminTool {
 
     String kafkaTopic = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
     // optional arguments
-    int partitionNumber = (null == getOptionalArgument(cmd, Arg.KAFKA_TOPIC_PARTITION))
+    int partitionNumber = (getOptionalArgument(cmd, Arg.KAFKA_TOPIC_PARTITION) == null)
         ? -1
         : Integer.parseInt(getOptionalArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
-    long startingOffset = (null == getOptionalArgument(cmd, Arg.STARTING_OFFSET))
+    long startingOffset = (getOptionalArgument(cmd, Arg.STARTING_OFFSET) == null)
         ? -1
         : Long.parseLong(getOptionalArgument(cmd, Arg.STARTING_OFFSET));
-    int messageCount = (null == getOptionalArgument(cmd, Arg.MESSAGE_COUNT))
+    int messageCount = (getOptionalArgument(cmd, Arg.MESSAGE_COUNT) == null)
         ? -1
         : Integer.parseInt(getOptionalArgument(cmd, Arg.MESSAGE_COUNT));
     String parentDir = "./";
@@ -1305,7 +1305,7 @@ public class AdminTool {
 
     System.err.println("\n" + controller.getClusterName() + "\t" + controller.getLeaderControllerUrl());
 
-    if (null == store) {
+    if (store == null) {
       System.err.println(storeName + " DOES NOT EXIST in this cluster " + controller.getClusterName());
     } else {
       System.err.println(storeName + " exists in this cluster " + controller.getClusterName());
@@ -1423,12 +1423,12 @@ public class AdminTool {
       String storeName) {
     StoreResponse storeResponse = srcControllerClient.getStore(storeName);
     StoreInfo srcStore = storeResponse.getStore();
-    if (null == srcStore) {
+    if (srcStore == null) {
       throw new VeniceException("Store " + storeName + " does not exist in the original cluster!");
     }
 
     StoreInfo destStore = destControllerClient.getStore(storeName).getStore();
-    if (null == destStore) {
+    if (destStore == null) {
       System.err.println("WARN: Cloned store has not been created in the destination cluster!");
       return false;
     }
@@ -1668,7 +1668,7 @@ public class AdminTool {
     }
 
     // Skip original store deletion if it has already been deleted
-    if (null != srcControllerClient.getStore(storeName).getStore()) {
+    if (srcControllerClient.getStore(storeName).getStore() != null) {
       // Delete original store
       srcControllerClient
           .updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
@@ -1684,7 +1684,7 @@ public class AdminTool {
     ChildAwareResponse response = srcControllerClient.listChildControllers(srcClusterName);
     Map<String, ControllerClient> srcChildControllerClientMap = getControllerClientMap(srcClusterName, response);
     for (Map.Entry<String, ControllerClient> entry: srcChildControllerClientMap.entrySet()) {
-      if (null != entry.getValue().getStore(storeName).getStore()) {
+      if (entry.getValue().getStore(storeName).getStore() != null) {
         System.err.println(
             "ERROR: store " + storeName + " still exists in source cluster " + srcClusterName + " in fabric "
                 + entry.getKey() + ". Please try again later.");

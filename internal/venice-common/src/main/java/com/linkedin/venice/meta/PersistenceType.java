@@ -48,7 +48,7 @@ public enum PersistenceType {
 
   public static PersistenceType getPersistenceTypeFromInt(int i) {
     PersistenceType pType = idMapping.get(i);
-    if (null == pType) {
+    if (pType == null) {
       throw new VeniceException("Invalid PersistenceType id: " + i);
     }
     return pType;

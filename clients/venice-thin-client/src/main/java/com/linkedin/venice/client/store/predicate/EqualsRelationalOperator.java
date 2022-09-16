@@ -11,7 +11,7 @@ public class EqualsRelationalOperator implements Predicate {
   private final Object expectedValue;
 
   EqualsRelationalOperator(String fieldName, Object expectedValue) {
-    if (null == fieldName) {
+    if (fieldName == null) {
       throw new VeniceClientException("fieldName cannot be null.");
     }
     this.fieldName = fieldName;
@@ -20,7 +20,7 @@ public class EqualsRelationalOperator implements Predicate {
 
   @Override
   public boolean evaluate(GenericRecord dataRecord) {
-    if (null == dataRecord) {
+    if (dataRecord == null) {
       return false;
     } else {
       return Objects.deepEquals(dataRecord.get(fieldName), expectedValue);

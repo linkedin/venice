@@ -49,12 +49,12 @@ public class ScalaAdminUtils implements KafkaAdminWrapper {
 
   @Override
   public void initialize(Properties properties) {
-    if (null == properties) {
+    if (properties == null) {
       throw new IllegalArgumentException("properties cannot be null!");
     }
     this.properties = properties;
     this.zkConnection = properties.getProperty(ConfigKeys.KAFKA_ZK_ADDRESS);
-    if (null == this.zkConnection) {
+    if (this.zkConnection == null) {
       throw new IllegalArgumentException("properties must contain: " + ConfigKeys.KAFKA_ZK_ADDRESS);
     }
     zkUtilsLazy = Lazy.of(() -> new ZkUtils(getZkClient(), new ZkConnection(zkConnection), false));
@@ -156,14 +156,14 @@ public class ScalaAdminUtils implements KafkaAdminWrapper {
 
   @Override
   public void close() throws IOException {
-    if (null != this.zkClient) {
+    if (this.zkClient != null) {
       try {
         this.zkClient.close();
       } catch (Exception e) {
         logger.warn("Exception (suppressed) during zkClient.close()", e);
       }
     }
-    if (null != this.zkClient) {
+    if (this.zkClient != null) {
       try {
         getZkUtils().close();
       } catch (Exception e) {

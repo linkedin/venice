@@ -383,7 +383,7 @@ public class D2TransportClient extends TransportClient {
       String schemaIdHeader = null;
       if (HttpStatus.SC_OK == statusCode) {
         schemaIdHeader = result.getHeader(HttpConstants.VENICE_SCHEMA_ID);
-        if (null != schemaIdHeader) {
+        if (schemaIdHeader != null) {
           schemaId = Integer.parseInt(schemaIdHeader);
         }
       }
