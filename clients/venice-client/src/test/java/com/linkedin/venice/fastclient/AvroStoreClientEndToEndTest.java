@@ -91,6 +91,10 @@ public class AvroStoreClientEndToEndTest {
   protected final String keyPrefix = "key_";
   protected final int recordCnt = 100;
 
+  protected Client constructR2Client() throws Exception {
+    return ClientTestUtils.getR2Client(true);
+  }
+
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
     Utils.thisIsLocalhost();
@@ -98,7 +102,7 @@ public class AvroStoreClientEndToEndTest {
     props.put(SERVER_HTTP2_INBOUND_ENABLED, "true");
     veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 100, true, false, props);
 
-    r2Client = ClientTestUtils.getR2Client(true);
+    r2Client = constructR2Client();
 
     d2Client = D2TestUtils.getAndStartD2Client(veniceCluster.getZk().getAddress());
 
