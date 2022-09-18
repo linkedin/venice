@@ -47,7 +47,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -152,33 +151,21 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     this.sslToKafka = sslToKafka;
   }
 
-  static ServiceProvider<VeniceClusterWrapper> generateService(
-      String coloName,
-      boolean standalone,
-      ZkServerWrapper zkServerWrapper,
-      KafkaBrokerWrapper kafkaBrokerWrapper,
-      String clusterName,
-      String clusterToD2,
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters,
-      int replicationFactor,
-      int partitionSize,
-      boolean enableAllowlist,
-      boolean enableAutoJoinAllowlist,
-      long rebalanceDelayMs,
-      int minActiveReplica,
-      boolean sslToStorageNodes,
-      boolean sslToKafka,
-      boolean isKafkaOpenSSLEnabled,
-      Properties extraProperties,
-      boolean forkServer,
-      Map<String, Map<String, String>> kafkaClusterMap) {
-
+  static ServiceProvider<VeniceClusterWrapper> generateService(VeniceClusterCreateOptions options) {
     Map<Integer, VeniceControllerWrapper> veniceControllerWrappers = new HashMap<>();
     Map<Integer, VeniceServerWrapper> veniceServerWrappers = new HashMap<>();
     Map<Integer, VeniceRouterWrapper> veniceRouterWrappers = new HashMap<>();
+
+    ZkServerWrapper zkServerWrapper = options.getZkServerWrapper();
+    KafkaBrokerWrapper kafkaBrokerWrapper = options.getKafkaBrokerWrapper();
     try {
+      if (zkServerWrapper == null) {
+        zkServerWrapper = ServiceFactory.getZkServer();
+      }
+      if (kafkaBrokerWrapper == null) {
+        kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
+      }
+
       // Setup D2 for controller
       String zkAddress = zkServerWrapper.getAddress();
       D2TestUtils.setupD2Config(
@@ -187,61 +174,65 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           D2TestUtils.CONTROLLER_CLUSTER_NAME,
           D2TestUtils.CONTROLLER_SERVICE_NAME,
           false);
-      for (int i = 0; i < numberOfControllers; i++) {
-        if (numberOfRouters > 0) {
+      for (int i = 0; i < options.getNumberOfControllers(); i++) {
+        if (options.getNumberOfRouters() > 0) {
           ClientConfig clientConfig = new ClientConfig().setVeniceURL(zkAddress)
-              .setD2ServiceName(D2TestUtils.getD2ServiceName(clusterToD2, clusterName))
+              .setD2ServiceName(D2TestUtils.getD2ServiceName(options.getClusterToD2(), options.getClusterName()))
               .setSslEngineComponentFactory(SslUtils.getLocalSslFactory())
               .setStoreName("dummy");
-          extraProperties.put(CLIENT_CONFIG_FOR_CONSUMER, clientConfig);
+          options.getExtraProperties().put(CLIENT_CONFIG_FOR_CONSUMER, clientConfig);
         }
         VeniceControllerWrapper veniceControllerWrapper = ServiceFactory.getVeniceChildController(
-            new String[] { clusterName },
+            new String[] { options.getClusterName() },
             kafkaBrokerWrapper,
-            replicationFactor,
-            partitionSize,
-            rebalanceDelayMs,
-            minActiveReplica,
-            clusterToD2,
-            sslToKafka,
+            options.getReplicationFactor(),
+            options.getPartitionSize(),
+            options.getRebalanceDelayMs(),
+            options.getMinActiveReplica(),
+            options.getClusterToD2(),
+            options.isSslToKafka(),
             true,
-            extraProperties);
+            options.getExtraProperties());
         veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);
       }
 
-      for (int i = 0; i < numberOfRouters; i++) {
-        VeniceRouterWrapper veniceRouterWrapper = ServiceFactory
-            .getVeniceRouter(clusterName, kafkaBrokerWrapper, sslToStorageNodes, clusterToD2, extraProperties);
+      for (int i = 0; i < options.getNumberOfRouters(); i++) {
+        VeniceRouterWrapper veniceRouterWrapper = ServiceFactory.getVeniceRouter(
+            options.getClusterName(),
+            kafkaBrokerWrapper,
+            options.isSslToStorageNodes(),
+            options.getClusterToD2(),
+            options.getExtraProperties());
         veniceRouterWrappers.put(veniceRouterWrapper.getPort(), veniceRouterWrapper);
       }
 
-      for (int i = 0; i < numberOfServers; i++) {
+      for (int i = 0; i < options.getNumberOfServers(); i++) {
         Properties featureProperties = new Properties();
-        featureProperties.setProperty(SERVER_ENABLE_SERVER_WHITE_LIST, Boolean.toString(enableAllowlist));
-        featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(enableAutoJoinAllowlist));
-        featureProperties.setProperty(SERVER_ENABLE_SSL, Boolean.toString(sslToStorageNodes));
-        featureProperties.setProperty(SERVER_SSL_TO_KAFKA, Boolean.toString(sslToKafka));
+        featureProperties.setProperty(SERVER_ENABLE_SERVER_WHITE_LIST, Boolean.toString(options.isEnableAllowlist()));
+        featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(options.isEnableAutoJoinAllowlist()));
+        featureProperties.setProperty(SERVER_ENABLE_SSL, Boolean.toString(options.isSslToStorageNodes()));
+        featureProperties.setProperty(SERVER_SSL_TO_KAFKA, Boolean.toString(options.isSslToKafka()));
         if (!veniceRouterWrappers.isEmpty()) {
           ClientConfig clientConfig = new ClientConfig().setVeniceURL(zkAddress)
-              .setD2ServiceName(D2TestUtils.getD2ServiceName(clusterToD2, clusterName))
+              .setD2ServiceName(D2TestUtils.getD2ServiceName(options.getClusterToD2(), options.getClusterName()))
               .setSslEngineComponentFactory(SslUtils.getLocalSslFactory());
           featureProperties.put(CLIENT_CONFIG_FOR_CONSUMER, clientConfig);
         }
-        featureProperties.setProperty(SERVER_ENABLE_KAFKA_OPENSSL, Boolean.toString(isKafkaOpenSSLEnabled));
+        featureProperties.setProperty(SERVER_ENABLE_KAFKA_OPENSSL, Boolean.toString(options.isKafkaOpenSSLEnabled()));
 
         String serverName = "";
-        if (!coloName.isEmpty() && !clusterName.isEmpty()) {
-          serverName = coloName + ":" + clusterName + ":sn-" + i;
+        if (!options.getColoName().isEmpty() && !options.getClusterName().isEmpty()) {
+          serverName = options.getColoName() + ":" + options.getClusterName() + ":sn-" + i;
         }
         VeniceServerWrapper veniceServerWrapper = ServiceFactory.getVeniceServer(
-            clusterName,
+            options.getClusterName(),
             kafkaBrokerWrapper,
             zkAddress,
             featureProperties,
-            extraProperties,
-            forkServer,
+            options.getExtraProperties(),
+            options.isForkServer(),
             serverName,
-            kafkaClusterMap);
+            options.getKafkaClusterMap());
         veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
       }
 
@@ -250,23 +241,25 @@ public class VeniceClusterWrapper extends ProcessWrapper {
        * complexity of O(N^2) on the amount of retries. The calls have their own retries,
        * so we can assume they're reliable enough.
        */
+      ZkServerWrapper finalZkServerWrapper = zkServerWrapper;
+      KafkaBrokerWrapper finalKafkaBrokerWrapper = kafkaBrokerWrapper;
       return (serviceName) -> {
         VeniceClusterWrapper veniceClusterWrapper = null;
         try {
           veniceClusterWrapper = new VeniceClusterWrapper(
-              clusterName,
-              standalone,
-              zkServerWrapper,
-              kafkaBrokerWrapper,
+              options.getClusterName(),
+              options.isStandalone(),
+              finalZkServerWrapper,
+              finalKafkaBrokerWrapper,
               veniceControllerWrappers,
               veniceServerWrappers,
               veniceRouterWrappers,
-              replicationFactor,
-              partitionSize,
-              rebalanceDelayMs,
-              minActiveReplica,
-              sslToStorageNodes,
-              sslToKafka);
+              options.getReplicationFactor(),
+              options.getPartitionSize(),
+              options.getRebalanceDelayMs(),
+              options.getMinActiveReplica(),
+              options.isSslToStorageNodes(),
+              options.isSslToKafka());
           // Wait for all the asynchronous ClusterLeaderInitializationRoutine to complete before returning the
           // VeniceClusterWrapper to tests.
           if (!veniceClusterWrapper.getVeniceControllers().isEmpty()) {
@@ -276,7 +269,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
                 for (AvroProtocolDefinition avroProtocolDefinition: CLUSTER_LEADER_INITIALIZATION_ROUTINES) {
                   Store store = finalClusterWrapper.getLeaderVeniceController()
                       .getVeniceAdmin()
-                      .getStore(clusterName, avroProtocolDefinition.getSystemStoreName());
+                      .getStore(options.getClusterName(), avroProtocolDefinition.getSystemStoreName());
                   Assert.assertNotNull(
                       store,
                       "Store: " + avroProtocolDefinition.getSystemStoreName() + " should be initialized by "
@@ -306,7 +299,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
                  * {@link com.linkedin.venice.controller.VeniceHelixAdmin}#getHelixVeniceClusterResources(clusterName)
                  * will throw VeniceNoClusterException in VeniceHelixAdmin#throwClusterNotInitialized.
                  */
-                Assert.fail("Cluster: " + clusterName + " is not initialized yet");
+                Assert.fail("Cluster: " + options.getClusterName() + " is not initialized yet");
               }
             });
           }
@@ -321,61 +314,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       veniceRouterWrappers.values().forEach(Utils::closeQuietlyWithErrorLogged);
       veniceServerWrappers.values().forEach(Utils::closeQuietlyWithErrorLogged);
       veniceControllerWrappers.values().forEach(Utils::closeQuietlyWithErrorLogged);
-      throw e;
-    }
-  }
-
-  static ServiceProvider<VeniceClusterWrapper> generateService(
-      String clusterName,
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters,
-      int replicationFactor,
-      int partitionSize,
-      boolean enableAllowlist,
-      boolean enableAutoJoinAllowlist,
-      long rebalanceDelayMs,
-      int minActiveReplica,
-      boolean sslToStorageNodes,
-      boolean sslToKafka,
-      boolean isKafkaOpenSSLEnabled,
-      Properties extraProperties) {
-
-    ZkServerWrapper zkServerWrapper = null;
-    KafkaBrokerWrapper kafkaBrokerWrapper = null;
-
-    try {
-      zkServerWrapper = ServiceFactory.getZkServer();
-      kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
-      /**
-       * We get the various dependencies outside of the lambda, to avoid having a time
-       * complexity of O(N^2) on the amount of retries. The calls have their own retries,
-       * so we can assume they're reliable enough.
-       */
-      return generateService(
-          "",
-          true,
-          zkServerWrapper,
-          kafkaBrokerWrapper,
-          clusterName,
-          null,
-          numberOfControllers,
-          numberOfServers,
-          numberOfRouters,
-          replicationFactor,
-          partitionSize,
-          enableAllowlist,
-          enableAutoJoinAllowlist,
-          rebalanceDelayMs,
-          minActiveReplica,
-          sslToStorageNodes,
-          sslToKafka,
-          isKafkaOpenSSLEnabled,
-          extraProperties,
-          false,
-          Collections.emptyMap());
-
-    } catch (Exception e) {
       IOUtils.closeQuietly(kafkaBrokerWrapper);
       IOUtils.closeQuietly(zkServerWrapper);
       throw e;

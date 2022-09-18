@@ -17,6 +17,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputRecordReader;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.KafkaSSLUtils;
@@ -52,7 +53,9 @@ public class ProduceWithSSL {
 
   @BeforeClass
   public void setUp() {
-    cluster = ServiceFactory.getVeniceClusterWithKafkaSSL(false);
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().sslToKafka(true).isKafkaOpenSSLEnabled(false).build();
+    cluster = ServiceFactory.getVeniceCluster(options);
   }
 
   @AfterClass
@@ -107,7 +110,9 @@ public class ProduceWithSSL {
     VeniceClusterWrapper cluster = this.cluster;
     try {
       if (isOpenSSLEnabled) {
-        cluster = ServiceFactory.getVeniceClusterWithKafkaSSL(true);
+        VeniceClusterCreateOptions options =
+            new VeniceClusterCreateOptions.Builder().sslToKafka(true).isKafkaOpenSSLEnabled(true).build();
+        cluster = ServiceFactory.getVeniceCluster(options);
       }
       File inputDir = getTempDataDirectory();
       String storeName = Utils.getUniqueString("store");

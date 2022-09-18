@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
@@ -32,21 +33,16 @@ public class TestDelayedRebalance {
 
   @BeforeMethod
   public void setUp() {
-    int numberOfController = 1;
-    int numberOfRouter = 1;
     // Start a cluster with enabling delayed rebalance.
-    cluster = ServiceFactory.getVeniceCluster(
-        numberOfController,
-        numberOfServer,
-        numberOfRouter,
-        replicaFactor,
-        partitionSize,
-        false,
-        false,
-        delayRebalanceMS,
-        minActiveReplica,
-        false,
-        false);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(numberOfServer)
+        .numberOfRouters(1)
+        .replicationFactor(replicaFactor)
+        .partitionSize(partitionSize)
+        .rebalanceDelayMs(delayRebalanceMS)
+        .minActiveReplica(minActiveReplica)
+        .build();
+    cluster = ServiceFactory.getVeniceCluster(options);
   }
 
   @AfterMethod

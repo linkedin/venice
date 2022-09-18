@@ -140,31 +140,29 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       Properties extraProperties = veniceProperties.map(VeniceProperties::toProperties).orElse(new Properties());
       extraProperties.put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterNames[0]);
       extraProperties.putAll(KafkaSSLUtils.getLocalCommonKafkaSSLConfig());
-      veniceProperties = Optional.of(new VeniceProperties(extraProperties));
-      boolean sslToKafkaForServers = false;
+      VeniceClusterCreateOptions.Builder vvcBuilder = new VeniceClusterCreateOptions.Builder().coloName(coloName)
+          .standalone(false)
+          .zkServerWrapper(zkServerWrapper)
+          .kafkaBrokerWrapper(kafkaBrokerWrapper)
+          .clusterToD2(clusterToD2)
+          .numberOfControllers(0)
+          .numberOfServers(numberOfServers)
+          .numberOfRouters(numberOfRouters)
+          .replicationFactor(replicationFactor)
+          .partitionSize(partitionSize)
+          .enableAllowlist(enableAllowlist)
+          .enableAutoJoinAllowlist(enableAutoJoinAllowlist)
+          .rebalanceDelayMs(rebalanceDelayMs)
+          .minActiveReplica(minActiveReplica)
+          .sslToStorageNodes(sslToStorageNodes)
+          .extraProperties(extraProperties)
+          .forkServer(forkServer)
+          .kafkaClusterMap(kafkaClusterMap);
 
       for (int i = 0; i < numberOfClusters; i++) {
         // Create a wrapper for cluster without controller.
-        VeniceClusterWrapper clusterWrapper = ServiceFactory.getVeniceClusterWrapperForMultiCluster(
-            coloName,
-            zkServerWrapper,
-            kafkaBrokerWrapper,
-            clusterNames[i],
-            clusterToD2,
-            0,
-            numberOfServers,
-            numberOfRouters,
-            replicationFactor,
-            partitionSize,
-            enableAllowlist,
-            enableAutoJoinAllowlist,
-            rebalanceDelayMs,
-            minActiveReplica,
-            sslToStorageNodes,
-            sslToKafkaForServers,
-            veniceProperties,
-            forkServer,
-            kafkaClusterMap);
+        vvcBuilder.clusterName(clusterNames[i]);
+        VeniceClusterWrapper clusterWrapper = ServiceFactory.getVeniceCluster(vvcBuilder.build());
         controllerMap.values().stream().forEach(clusterWrapper::addVeniceControllerWrapper);
         clusterWrapperMap.put(clusterWrapper.getClusterName(), clusterWrapper);
         clusterWrapper.setExternalControllerDiscoveryURL(

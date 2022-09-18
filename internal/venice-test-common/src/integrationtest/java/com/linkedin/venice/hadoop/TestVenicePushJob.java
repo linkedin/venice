@@ -16,6 +16,7 @@ import com.linkedin.venice.hadoop.partitioner.BuggyOffsettingMapReduceShufflePar
 import com.linkedin.venice.hadoop.partitioner.BuggySprayingMapReduceShufflePartitioner;
 import com.linkedin.venice.hadoop.partitioner.NonDeterministicVenicePartitioner;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -123,7 +124,8 @@ public class TestVenicePushJob {
   @BeforeClass
   public void setUp() {
     Utils.thisIsLocalhost();
-    veniceCluster = ServiceFactory.getVeniceCluster(true); // Now with SSL!
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().sslToStorageNodes(true).build();
+    veniceCluster = ServiceFactory.getVeniceCluster(options); // Now with SSL!
     controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getRandomRouterURL());
   }
 

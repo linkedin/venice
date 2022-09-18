@@ -15,6 +15,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.QueryAction;
@@ -92,8 +93,8 @@ public class StorageNodeReadTest {
 
   @BeforeClass(alwaysRun = true)
   public void setUp() throws InterruptedException, ExecutionException, VeniceClientException {
-    boolean enableSSL = false;
-    veniceCluster = ServiceFactory.getVeniceCluster(enableSSL);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().build();
+    veniceCluster = ServiceFactory.getVeniceCluster(options);
     serverAddr = veniceCluster.getVeniceServers().get(0).getAddress();
     routerAddr = "http://" + veniceCluster.getVeniceRouters().get(0).getAddress();
 
