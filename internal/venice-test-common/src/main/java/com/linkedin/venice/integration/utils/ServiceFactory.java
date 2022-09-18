@@ -1,6 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.*;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.*;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -81,20 +82,6 @@ public class ServiceFactory {
     List<String> args = runtimeMxBean.getInputArguments();
     VM_ARGS = args.stream().collect(Collectors.joining(", "));
   }
-
-  // Test config
-  private static final int DEFAULT_MAX_ATTEMPT = 10;
-  private static final int DEFAULT_REPLICATION_FACTOR = 1;
-  private static final int DEFAULT_PARTITION_SIZE_BYTES = 100;
-  private static final long DEFAULT_DELAYED_TO_REBALANCE_MS = 0; // By default, disable the delayed rebalance for
-                                                                 // testing.
-  private static final boolean DEFAULT_SSL_TO_STORAGE_NODES = false;
-  private static final boolean DEFAULT_SSL_TO_KAFKA = false;
-
-  // Wait time to make sure all the cluster services have been started.
-  // If this value is not large enough, i.e. some services have not been
-  // started before clients start to interact, please increase it.
-  private static final int DEFAULT_WAIT_TIME_FOR_CLUSTER_START_S = 90;
 
   private static int maxAttempt = DEFAULT_MAX_ATTEMPT;
 
@@ -457,56 +444,6 @@ public class ServiceFactory {
     return getService(serviceName, MockHttpServerWrapper.generateService());
   }
 
-  public static VeniceClusterWrapper getVeniceCluster() {
-    return getVeniceCluster(DEFAULT_SSL_TO_STORAGE_NODES);
-  }
-
-  public static VeniceClusterWrapper getVeniceCluster(String clusterName) {
-    return getVeniceCluster(
-        clusterName,
-        1,
-        1,
-        1,
-        DEFAULT_REPLICATION_FACTOR,
-        DEFAULT_PARTITION_SIZE_BYTES,
-        false,
-        false,
-        DEFAULT_DELAYED_TO_REBALANCE_MS,
-        DEFAULT_REPLICATION_FACTOR - 1,
-        DEFAULT_SSL_TO_STORAGE_NODES,
-        DEFAULT_SSL_TO_KAFKA);
-  }
-
-  // TODO There are too many parameters and options that we used to create a venice cluster wrapper.
-  // TODO need a builder pattern or option class to simply this.
-  public static VeniceClusterWrapper getVeniceClusterWithKafkaSSL(boolean isKafkaOpenSSLEnabled) {
-    return getVeniceCluster(
-        Utils.getUniqueString("venice-cluster"),
-        1,
-        1,
-        1,
-        DEFAULT_REPLICATION_FACTOR,
-        DEFAULT_PARTITION_SIZE_BYTES,
-        false,
-        false,
-        DEFAULT_DELAYED_TO_REBALANCE_MS,
-        DEFAULT_REPLICATION_FACTOR - 1,
-        DEFAULT_SSL_TO_STORAGE_NODES,
-        true,
-        isKafkaOpenSSLEnabled);
-  }
-
-  public static VeniceClusterWrapper getVeniceCluster(boolean sslToStorageNodes) {
-    return getVeniceCluster(
-        1,
-        1,
-        1,
-        DEFAULT_REPLICATION_FACTOR,
-        DEFAULT_PARTITION_SIZE_BYTES,
-        sslToStorageNodes,
-        DEFAULT_SSL_TO_KAFKA);
-  }
-
   /**
    * Start up a testing Venice cluster in another process.
    *
@@ -544,35 +481,51 @@ public class ServiceFactory {
     VeniceClusterWrapper.stopServiceInAnotherProcess();
   }
 
+  public static VeniceClusterWrapper getVeniceCluster(VeniceClusterCreateOptions options) {
+    return getService(VeniceClusterWrapper.SERVICE_NAME, VeniceClusterWrapper.generateService(options));
+  }
+
+  /**
+   * @deprecated
+   * <p> Use {@link ServiceFactory#getVeniceCluster(VeniceClusterCreateOptions)} instead.
+   */
+  @Deprecated
+  public static VeniceClusterWrapper getVeniceCluster() {
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(1).numberOfRouters(1).build();
+    return getVeniceCluster(options);
+  }
+
+  @Deprecated
   public static VeniceClusterWrapper getVeniceCluster(
       int numberOfControllers,
       int numberOfServers,
       int numberOfRouters) {
-    return getVeniceCluster(
-        numberOfControllers,
-        numberOfServers,
-        numberOfRouters,
-        DEFAULT_REPLICATION_FACTOR,
-        DEFAULT_PARTITION_SIZE_BYTES,
-        DEFAULT_SSL_TO_STORAGE_NODES,
-        DEFAULT_SSL_TO_KAFKA);
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(numberOfControllers)
+            .numberOfServers(numberOfServers)
+            .numberOfRouters(numberOfRouters)
+            .build();
+    return getVeniceCluster(options);
   }
 
+  @Deprecated
   public static VeniceClusterWrapper getVeniceCluster(
       int numberOfControllers,
       int numberOfServers,
       int numberOfRouters,
       int replicationFactor) {
-    return getVeniceCluster(
-        numberOfControllers,
-        numberOfServers,
-        numberOfRouters,
-        replicationFactor,
-        DEFAULT_PARTITION_SIZE_BYTES,
-        DEFAULT_SSL_TO_STORAGE_NODES,
-        DEFAULT_SSL_TO_KAFKA);
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(numberOfControllers)
+            .numberOfServers(numberOfServers)
+            .numberOfRouters(numberOfRouters)
+            .replicationFactor(replicationFactor)
+            .minActiveReplica(replicationFactor - 1)
+            .build();
+    return getVeniceCluster(options);
   }
 
+  @Deprecated
   public static VeniceClusterWrapper getVeniceCluster(
       int numberOfControllers,
       int numberOfServers,
@@ -582,25 +535,21 @@ public class ServiceFactory {
       boolean sslToStorageNodes,
       boolean sslToKafka,
       Properties extraProperties) {
-    return getService(
-        VeniceClusterWrapper.SERVICE_NAME,
-        VeniceClusterWrapper.generateService(
-            Utils.getUniqueString("venice-cluster"),
-            numberOfControllers,
-            numberOfServers,
-            numberOfRouters,
-            replicationFactor,
-            partitionSize,
-            false,
-            false,
-            DEFAULT_DELAYED_TO_REBALANCE_MS,
-            replicationFactor - 1,
-            sslToStorageNodes,
-            sslToKafka,
-            false,
-            extraProperties));
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(numberOfControllers)
+            .numberOfServers(numberOfServers)
+            .numberOfRouters(numberOfRouters)
+            .replicationFactor(replicationFactor)
+            .partitionSize(partitionSize)
+            .minActiveReplica(replicationFactor - 1)
+            .sslToStorageNodes(sslToStorageNodes)
+            .sslToKafka(sslToKafka)
+            .extraProperties(extraProperties)
+            .build();
+    return getVeniceCluster(options);
   }
 
+  @Deprecated
   public static VeniceClusterWrapper getVeniceCluster(
       int numberOfControllers,
       int numberOfServers,
@@ -609,196 +558,17 @@ public class ServiceFactory {
       int partitionSize,
       boolean sslToStorageNodes,
       boolean sslToKafka) {
-    // As we introduce bootstrap state in to venice and transition from bootstrap to online will be blocked until get
-    // "end of push" message. We need more venice server for testing, because there is a limitation in helix about how
-    // many uncompleted transitions one server could handle. So if we still use one server and that limitation is
-    // reached, venice can not create new resource which will cause failed tests.
-    // Enable to start multiple controllers and routers too, so that we could fail some of them to do the failover
-    // integration test.
-    return getVeniceCluster(
-        numberOfControllers,
-        numberOfServers,
-        numberOfRouters,
-        replicationFactor,
-        partitionSize,
-        false,
-        false,
-        DEFAULT_DELAYED_TO_REBALANCE_MS,
-        replicationFactor - 1,
-        sslToStorageNodes,
-        sslToKafka);
-  }
-
-  public static VeniceClusterWrapper getVeniceCluster(
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters,
-      int replicationFactor,
-      int partitionSize,
-      boolean enableAllowlist,
-      boolean enableAutoJoinAllowlist,
-      long delayToRebalanceMS,
-      int minActiveReplica,
-      boolean sslToStorageNodes,
-      boolean sslToKafka) {
-    return getVeniceCluster(
-        Utils.getUniqueString("venice-cluster"),
-        numberOfControllers,
-        numberOfServers,
-        numberOfRouters,
-        replicationFactor,
-        partitionSize,
-        enableAllowlist,
-        enableAutoJoinAllowlist,
-        delayToRebalanceMS,
-        minActiveReplica,
-        sslToStorageNodes,
-        sslToKafka);
-  }
-
-  public static VeniceClusterWrapper getVeniceCluster(
-      String clusterName,
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters,
-      int replicaFactor,
-      int partitionSize,
-      boolean enableAllowlist,
-      boolean enableAutoJoinAllowlist,
-      long delayToRebalanceMS,
-      int minActiveReplica,
-      boolean sslToStorageNodes,
-      boolean sslToKafka) {
-    return getVeniceCluster(
-        clusterName,
-        numberOfControllers,
-        numberOfServers,
-        numberOfRouters,
-        replicaFactor,
-        partitionSize,
-        enableAllowlist,
-        enableAutoJoinAllowlist,
-        delayToRebalanceMS,
-        minActiveReplica,
-        sslToStorageNodes,
-        sslToKafka,
-        false);
-  }
-
-  // TODO instead of passing more and more parameters here, we could create a class ClusterOptions to include all of
-  // options to start a cluster. Then we only need one parameter here.
-  // Or a builder pattern
-  public static VeniceClusterWrapper getVeniceCluster(
-      String clusterName,
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters,
-      int replicaFactor,
-      int partitionSize,
-      boolean enableAllowlist,
-      boolean enableAutoJoinAllowlist,
-      long delayToRebalanceMS,
-      int minActiveReplica,
-      boolean sslToStorageNodes,
-      boolean sslToKafka,
-      boolean isKafkaOpenSSLEnabled) {
-    return getService(
-        VeniceClusterWrapper.SERVICE_NAME,
-        VeniceClusterWrapper.generateService(
-            clusterName,
-            numberOfControllers,
-            numberOfServers,
-            numberOfRouters,
-            replicaFactor,
-            partitionSize,
-            enableAllowlist,
-            enableAutoJoinAllowlist,
-            delayToRebalanceMS,
-            minActiveReplica,
-            sslToStorageNodes,
-            sslToKafka,
-            isKafkaOpenSSLEnabled,
-            new Properties()));
-  }
-
-  public static VeniceClusterWrapper getVeniceCluster(
-      String clusterName,
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters,
-      int replicaFactor,
-      int partitionSize,
-      boolean enableAllowlist,
-      boolean enableAutoJoinAllowlist,
-      long delayToRebalanceMS,
-      int minActiveReplica,
-      boolean sslToStorageNodes,
-      boolean sslToKafka,
-      boolean isKafkaOpenSSLEnabled,
-      Properties extraProperties) {
-    return getService(
-        VeniceClusterWrapper.SERVICE_NAME,
-        VeniceClusterWrapper.generateService(
-            clusterName,
-            numberOfControllers,
-            numberOfServers,
-            numberOfRouters,
-            replicaFactor,
-            partitionSize,
-            enableAllowlist,
-            enableAutoJoinAllowlist,
-            delayToRebalanceMS,
-            minActiveReplica,
-            sslToStorageNodes,
-            sslToKafka,
-            isKafkaOpenSSLEnabled,
-            extraProperties));
-  }
-
-  protected static VeniceClusterWrapper getVeniceClusterWrapperForMultiCluster(
-      String coloName,
-      ZkServerWrapper zkServerWrapper,
-      KafkaBrokerWrapper kafkaBrokerWrapper,
-      String clusterName,
-      String clusterToD2,
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters,
-      int replicaFactor,
-      int partitionSize,
-      boolean enableAllowlist,
-      boolean enableAutoJoinAllowlist,
-      long delayToRebalanceMS,
-      int minActiveReplica,
-      boolean sslToStorageNodes,
-      boolean sslToKafka,
-      Optional<VeniceProperties> veniceProperties,
-      boolean forkServer,
-      Map<String, Map<String, String>> kafkaClusterMap) {
-    return getService(
-        VeniceClusterWrapper.SERVICE_NAME,
-        VeniceClusterWrapper.generateService(
-            coloName,
-            false,
-            zkServerWrapper,
-            kafkaBrokerWrapper,
-            clusterName,
-            clusterToD2,
-            numberOfControllers,
-            numberOfServers,
-            numberOfRouters,
-            replicaFactor,
-            partitionSize,
-            enableAllowlist,
-            enableAutoJoinAllowlist,
-            delayToRebalanceMS,
-            minActiveReplica,
-            sslToStorageNodes,
-            sslToKafka,
-            false,
-            veniceProperties.orElse(EMPTY_VENICE_PROPS).toProperties(),
-            forkServer,
-            kafkaClusterMap));
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(numberOfControllers)
+            .numberOfServers(numberOfServers)
+            .numberOfRouters(numberOfRouters)
+            .replicationFactor(replicationFactor)
+            .partitionSize(partitionSize)
+            .minActiveReplica(replicationFactor - 1)
+            .sslToStorageNodes(sslToStorageNodes)
+            .sslToKafka(sslToKafka)
+            .build();
+    return getVeniceCluster(options);
   }
 
   public static VeniceMultiClusterWrapper getVeniceMultiClusterWrapper(
