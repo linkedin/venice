@@ -23,7 +23,7 @@ public class TestSslTransportClient {
   @DataProvider(name = "leaderControllerPathProvider")
   private static Object[][] dataProvider() {
     // go/inclusivecode deprecated (alias="leader_controller")
-    return new Object[][] { { "/master_controller" }, { "/leader_controller" } };
+    return new Object[][] { { "master_controller" }, { "leader_controller" } };
   }
 
   @Test(dataProvider = "leaderControllerPathProvider")

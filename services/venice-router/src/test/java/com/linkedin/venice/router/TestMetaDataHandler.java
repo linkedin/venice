@@ -167,7 +167,7 @@ public class TestMetaDataHandler {
   @DataProvider(name = "controllerUrlProvider")
   private static Object[][] dataProvider() {
     // go/inclusivecode deprecated (alias="leader_controller")
-    return new Object[][] { { "/master_controller" }, { "/leader_controller" } };
+    return new Object[][] { { "master_controller" }, { "leader_controller" } };
   }
 
   @Test(dataProvider = "controllerUrlProvider")
@@ -179,7 +179,7 @@ public class TestMetaDataHandler {
     Instance leaderControllerInstance = new Instance("1", leaderControllerHost, leaderControllerPort);
     Mockito.doReturn(leaderControllerInstance).when(routingRepo).getLeaderController();
     FullHttpResponse response =
-        passRequestToMetadataHandler("http://myRouterHost:4567" + controllerUrl, routingRepo, null);
+        passRequestToMetadataHandler("http://myRouterHost:4567/" + controllerUrl, routingRepo, null);
 
     Assert.assertEquals(response.status().code(), 200);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
