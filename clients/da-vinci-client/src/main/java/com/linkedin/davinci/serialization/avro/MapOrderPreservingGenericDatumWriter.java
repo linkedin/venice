@@ -10,6 +10,10 @@ import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.Encoder;
 
 
+/**
+ * {@code MapOrderPreservingGenericDatumWriter} converts map type instances to in-memory serialized format
+ *  * with a consistent ordering of map entries.
+ */
 public class MapOrderPreservingGenericDatumWriter<T> extends GenericDatumWriter<T> {
   public MapOrderPreservingGenericDatumWriter(Schema schema) {
     super(schema);

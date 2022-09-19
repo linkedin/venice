@@ -16,6 +16,9 @@ import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
 
+/**
+ * {@code ComputeRouterRequestWrapper} encapsulates a POST request for read-compute from routers.
+ */
 public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<ComputeRouterRequestKeyV1> {
   private final ComputeRequestWrapper computeRequestWrapper;
   private int valueSchemaId = -1;
@@ -37,7 +40,8 @@ public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<Co
     URI fullUri = URI.create(httpRequest.uri());
     String path = fullUri.getRawPath();
     String[] requestParts = path.split("/");
-    if (requestParts.length != 3) { // [0]""/[1]"compute"/[2]{$resourceName}
+    if (requestParts.length != 3) {
+      // [0]""/[1]"compute"/[2]{$resourceName}
       throw new VeniceException("Invalid request: " + path);
     }
     String resourceName = requestParts[2];

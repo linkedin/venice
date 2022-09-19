@@ -13,6 +13,9 @@ import java.net.URI;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
 
+/**
+ * {@code MultiGetRouterRequestWrapper} encapsulates a POST request to storage/resourcename on the storage node for a multi-get operation.
+ */
 public class MultiGetRouterRequestWrapper extends MultiKeyRouterRequestWrapper<MultiGetRouterRequestKeyV1> {
   private MultiGetRouterRequestWrapper(
       String resourceName,
@@ -25,7 +28,8 @@ public class MultiGetRouterRequestWrapper extends MultiKeyRouterRequestWrapper<M
     URI fullUri = URI.create(httpRequest.uri());
     String path = fullUri.getRawPath();
     String[] requestParts = path.split("/");
-    if (requestParts.length != 3) { // [0]""/[1]"storage"/[2]{$resourceName}
+    if (requestParts.length != 3) {
+      // [0]""/[1]"storage"/[2]{$resourceName}
       throw new VeniceException("Invalid request: " + path);
     }
     String resourceName = requestParts[2];

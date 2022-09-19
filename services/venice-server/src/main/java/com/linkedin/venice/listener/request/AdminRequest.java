@@ -7,6 +7,9 @@ import io.netty.handler.codec.http.HttpRequest;
 import java.net.URI;
 
 
+/**
+ * {@code AdminRequest} encapsulates an admin request from server admin tools.
+ */
 public class AdminRequest {
   private final String storeVersion;
   private final String storeName;

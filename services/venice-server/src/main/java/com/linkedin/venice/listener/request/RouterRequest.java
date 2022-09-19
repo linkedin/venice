@@ -7,6 +7,11 @@ import com.linkedin.venice.streaming.StreamingUtils;
 import io.netty.handler.codec.http.HttpRequest;
 
 
+/**
+ * {@code RouterRequest} is an abstract base class for single-get and multi-get operations.
+ * @see GetRouterRequest
+ * @see MultiGetRouterRequestWrapper
+ */
 public abstract class RouterRequest {
   // Early request termination is not enabled.
   public static final long NO_REQUEST_TIMEOUT = -1;
