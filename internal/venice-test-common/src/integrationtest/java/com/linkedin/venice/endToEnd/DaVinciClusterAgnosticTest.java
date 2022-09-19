@@ -45,8 +45,8 @@ import org.testng.annotations.Test;
 
 
 public class DaVinciClusterAgnosticTest {
-  private final static String INT_KEY_SCHEMA = "\"int\"";
-  private final static String INT_VALUE_SCHEMA = "\"int\"";
+  private static final String INT_KEY_SCHEMA = "\"int\"";
+  private static final String INT_VALUE_SCHEMA = "\"int\"";
   public static final String RECORD_VALUE_SCHEMA =
       "{" + "  \"namespace\": \"example.avro\",  " + "  \"type\": \"record\",   " + "  \"name\": \"TestRecord\",     "
           + "  \"fields\": [           " + "       {\"name\": \"field1\", \"type\": \"int\"}  " + "  ] " + " } ";
@@ -54,7 +54,7 @@ public class DaVinciClusterAgnosticTest {
       "{" + "  \"namespace\": \"example.avro\",  " + "  \"type\": \"record\",   " + "  \"name\": \"TestRecord\",     "
           + "  \"fields\": [           " + "       {\"name\": \"field1\", \"type\": \"int\"},  "
           + "       {\"name\": \"field2\", \"type\": \"int\", \"default\": 0}" + "  ] " + " } ";
-  private final static String FABRIC = "dc-0";
+  private static final String FABRIC = "dc-0";
 
   private VeniceMultiClusterWrapper multiClusterVenice;
   private String[] clusterNames;

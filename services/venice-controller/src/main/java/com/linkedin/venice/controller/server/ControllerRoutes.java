@@ -40,7 +40,7 @@ public class ControllerRoutes extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       response.type(HttpConstants.JSON);
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -106,7 +106,7 @@ public class ControllerRoutes extends AbstractRoute {
         response.status(HttpStatus.SC_FORBIDDEN);
         responseObject.setError("Only admin users are allowed to run " + request.url());
         responseObject.setErrorType(ErrorType.BAD_REQUEST);
-        return AdminSparkServer.mapper.writeValueAsString(responseObject);
+        return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
       }
       try {
         responseObject.setCluster(request.queryParams(CLUSTER));
@@ -116,7 +116,7 @@ public class ControllerRoutes extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       response.type(HttpConstants.JSON);
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 

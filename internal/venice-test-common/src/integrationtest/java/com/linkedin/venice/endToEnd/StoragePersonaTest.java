@@ -164,7 +164,7 @@ public class StoragePersonaTest {
     throw new VeniceException(response.getError());
   }
 
-  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = ".*" + storesFailedRegex)
+  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = ".*" + STORES_FAILED_REGEX)
   public void testCreatePersonaStoreDoesNotExist() {
     StoragePersona persona = createDefaultPersona();
     persona.getStoresToEnforce().add("testStore");
@@ -178,7 +178,7 @@ public class StoragePersonaTest {
     throw new VeniceException(response.getError());
   }
 
-  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = ".*" + quotaFailedRegex)
+  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = ".*" + QUOTA_FAILED_REGEX)
   public void testCreatePersonaInvalidQuota() {
     StoragePersona persona = createDefaultPersona();
     String testStoreName = setUpTestStoreAndAddToRepo(100).getName();
@@ -195,7 +195,7 @@ public class StoragePersonaTest {
   }
 
   @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = ".*"
-      + ownersDoesNotExistRegex)
+      + OWNERS_DOES_NOT_EXIST_REGEX)
   public void testCreatePersonaNoOwners() {
     String personaName = "testPersonaNoOwners";
     ControllerResponse response =
@@ -307,7 +307,7 @@ public class StoragePersonaTest {
         () -> Assert.assertEquals(controllerClient.getStoragePersona(persona.getName()).getStoragePersona(), persona));
   }
 
-  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = ".*" + quotaFailedRegex)
+  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = ".*" + QUOTA_FAILED_REGEX)
   public void testUpdatePersonaFailedQuota() {
     long totalQuota = 1000;
     StoragePersona persona = createDefaultPersona();
@@ -329,7 +329,7 @@ public class StoragePersonaTest {
   }
 
   @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = ".*"
-      + personaDoesNotExistRegex)
+      + PERSONA_DOES_NOT_EXIST_REGEX)
   public void testUpdatePersonaFailedDoesNotExist() {
     long totalQuota = 1000;
     StoragePersona persona = createDefaultPersona();

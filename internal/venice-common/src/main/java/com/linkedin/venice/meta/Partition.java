@@ -23,7 +23,7 @@ import org.apache.logging.log4j.Logger;
  * In the future, if Venice need more flexibility to manage cluster, some update/delete methods could be added here.
  */
 public class Partition {
-  private static final Logger logger = LogManager.getLogger(Partition.class);
+  private static final Logger LOGGER = LogManager.getLogger(Partition.class);
   /**
    * ID of partition. One of the number between [0 ~ total number of partition)
    */
@@ -93,7 +93,7 @@ public class Partition {
     }
 
     if (instances.size() > 1) {
-      logger.error(String.format("Detect multiple leaders. Partition: %d", id));
+      LOGGER.error(String.format("Detect multiple leaders. Partition: %d", id));
     }
 
     return instances.get(0);

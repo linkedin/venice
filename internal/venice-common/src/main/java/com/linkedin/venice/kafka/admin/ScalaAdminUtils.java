@@ -35,7 +35,7 @@ import scala.collection.JavaConversions;
  * to make sure no one is using ScalaAdminUtils.class for kafka.admin.class.
  */
 public class ScalaAdminUtils implements KafkaAdminWrapper {
-  private static final Logger logger = LogManager.getLogger(ScalaAdminUtils.class);
+  private static final Logger LOGGER = LogManager.getLogger(ScalaAdminUtils.class);
   public static final int DEFAULT_SESSION_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
   public static final int DEFAULT_CONNECTION_TIMEOUT_MS = 8 * Time.MS_PER_SECOND;
 
@@ -71,7 +71,7 @@ public class ScalaAdminUtils implements KafkaAdminWrapper {
     try {
       AdminUtils.deleteTopic(getZkUtils(), topicName);
     } catch (TopicAlreadyMarkedForDeletionException e) {
-      logger.warn("Topic delete requested, but topic already marked for deletion");
+      LOGGER.warn("Topic delete requested, but topic already marked for deletion");
     }
     return null;
   }
@@ -160,14 +160,14 @@ public class ScalaAdminUtils implements KafkaAdminWrapper {
       try {
         this.zkClient.close();
       } catch (Exception e) {
-        logger.warn("Exception (suppressed) during zkClient.close()", e);
+        LOGGER.warn("Exception (suppressed) during zkClient.close()", e);
       }
     }
     if (this.zkClient != null) {
       try {
         getZkUtils().close();
       } catch (Exception e) {
-        logger.warn("Exception (suppressed) during zkUtils.close()", e);
+        LOGGER.warn("Exception (suppressed) during zkUtils.close()", e);
       }
     }
   }

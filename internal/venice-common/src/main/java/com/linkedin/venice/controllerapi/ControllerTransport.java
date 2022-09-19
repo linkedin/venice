@@ -34,12 +34,12 @@ import org.apache.logging.log4j.Logger;
 
 
 public class ControllerTransport implements AutoCloseable {
-  private static final Logger logger = LogManager.getLogger(ControllerTransport.class);
+  private static final Logger LOGGER = LogManager.getLogger(ControllerTransport.class);
   private static final int CONNECTION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
   private static final int DEFAULT_REQUEST_TIMEOUT_MS = 60 * Time.MS_PER_SECOND;
 
-  private static final ObjectMapper objectMapper = ObjectMapperFactory.getInstance();
-  private static final RequestConfig requestConfig = getDefaultRequestConfig();
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
+  private static final RequestConfig REQUEST_CONFIG = getDefaultRequestConfig();
 
   private static RequestConfig getDefaultRequestConfig() {
     return RequestConfig.custom()
@@ -52,14 +52,14 @@ public class ControllerTransport implements AutoCloseable {
 
   public ControllerTransport(Optional<SSLFactory> sslFactory) {
     this.httpClient = HttpAsyncClients.custom()
-        .setDefaultRequestConfig(this.requestConfig)
+        .setDefaultRequestConfig(this.REQUEST_CONFIG)
         .setSSLStrategy(sslFactory.isPresent() ? new SSLIOSessionStrategy(sslFactory.get().getSSLContext()) : null)
         .build();
     this.httpClient.start();
   }
 
   public static ObjectMapper getObjectMapper() {
-    return objectMapper;
+    return OBJECT_MAPPER;
   }
 
   @Override
@@ -177,13 +177,13 @@ public class ControllerTransport implements AutoCloseable {
     try {
       content = EntityUtils.toString(response.getEntity());
     } catch (Exception e) {
-      logger.warn("Unable to read response content", e);
+      LOGGER.warn("Unable to read response content", e);
     }
 
     int statusCode = response.getStatusLine().getStatusCode();
     ContentType contentType = ContentType.getOrDefault(response.getEntity());
     if (!contentType.getMimeType().equals(ContentType.APPLICATION_JSON.getMimeType())) {
-      logger.warn("Bad controller response, request=" + request + ", response=" + response + ", content=" + content);
+      LOGGER.warn("Bad controller response, request=" + request + ", response=" + response + ", content=" + content);
       throw new VeniceHttpException(
           statusCode,
           "Controller returned unsupported content-type: " + contentType + " with content: " + content,
@@ -192,9 +192,9 @@ public class ControllerTransport implements AutoCloseable {
 
     T result;
     try {
-      result = objectMapper.readValue(content, responseType);
+      result = OBJECT_MAPPER.readValue(content, responseType);
     } catch (Exception e) {
-      logger.warn("Bad controller response, request=" + request + ", response=" + response + ", content=" + content);
+      LOGGER.warn("Bad controller response, request=" + request + ", response=" + response + ", content=" + content);
       throw new VeniceHttpException(statusCode, "Unable to deserialize controller response", e);
     }
 
@@ -203,7 +203,7 @@ public class ControllerTransport implements AutoCloseable {
     }
 
     if (statusCode != HttpStatus.SC_OK) {
-      logger.warn("Bad controller response, request=" + request + ", response=" + response + ", content=" + content);
+      LOGGER.warn("Bad controller response, request=" + request + ", response=" + response + ", content=" + content);
       throw new VeniceHttpException(statusCode, "Controller returned unexpected status");
     }
     return result;

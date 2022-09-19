@@ -23,7 +23,7 @@ import org.apache.logging.log4j.Logger;
  * PushStatus update is via a map-merge of Write-Compute.
  */
 public class PushStatusStoreWriter implements AutoCloseable {
-  private static final Logger logger = LogManager.getLogger(PushStatusStoreWriter.class);
+  private static final Logger LOGGER = LogManager.getLogger(PushStatusStoreWriter.class);
   private final String instanceName;
   private final PushStatusStoreVeniceWriterCache veniceWriterCache;
   private final int derivedSchemaId;
@@ -49,7 +49,7 @@ public class PushStatusStoreWriter implements AutoCloseable {
     PushStatusValue pushStatusValue = new PushStatusValue();
     pushStatusValue.reportTimestamp = System.currentTimeMillis();
     pushStatusValue.instances = Collections.emptyMap();
-    logger.info("Sending heartbeat of " + instanceName);
+    LOGGER.info("Sending heartbeat of " + instanceName);
     writer.put(
         pushStatusKey,
         pushStatusValue,
@@ -85,7 +85,7 @@ public class PushStatusStoreWriter implements AutoCloseable {
     instances.mapDiff = Collections.emptyList();
     writeComputeRecord.instances = instances;
     writeComputeRecord.reportTimestamp = new NoOp();
-    logger.info(
+    LOGGER.info(
         "Updating pushStatus of " + instanceName + " to " + status.toString() + ". storeName: " + storeName
             + " , version: " + version + " , partition: " + partitionId);
     writer.update(
@@ -116,7 +116,7 @@ public class PushStatusStoreWriter implements AutoCloseable {
     incrementalPushes.mapDiff = Collections.emptyList();
     writeComputeRecord.instances = incrementalPushes;
     writeComputeRecord.reportTimestamp = new NoOp();
-    logger.info(
+    LOGGER.info(
         "Adding incremental push version:{} to ongoingIncrementalPushes of store:{} from instance:{}",
         incrementalPushVersion,
         storeName,
@@ -141,7 +141,7 @@ public class PushStatusStoreWriter implements AutoCloseable {
     incrementalPushes.mapDiff = Collections.singletonList(incrementalPushVersion);
     writeComputeRecord.instances = incrementalPushes;
     writeComputeRecord.reportTimestamp = new NoOp();
-    logger.info(
+    LOGGER.info(
         "Removing incremental push version:{} from ongoingIncrementalPushes of store:{} from instance:{}",
         incrementalPushVersion,
         storeName,

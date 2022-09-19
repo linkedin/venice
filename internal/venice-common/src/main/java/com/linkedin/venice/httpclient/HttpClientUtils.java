@@ -31,7 +31,8 @@ import org.apache.logging.log4j.Logger;
 public class HttpClientUtils {
   private static final Logger LOGGER = LogManager.getLogger(HttpClientUtils.class);
 
-  private static final RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
+  private static final RedundantExceptionFilter EXCEPTION_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   public static class ClosableHttpAsyncClientWithConnManager {
     private final CloseableHttpAsyncClient client;
@@ -202,7 +203,7 @@ public class HttpClientUtils {
        */
       private static void logSessionFailure(String remoteHost, Exception e, String failureType) {
         if (e != null) {
-          if (!filter.isRedundantException(remoteHost, e)) {
+          if (!EXCEPTION_FILTER.isRedundantException(remoteHost, e)) {
             LOGGER.warn("Session request to " + remoteHost + " " + failureType + ": ", e);
           }
         } else {

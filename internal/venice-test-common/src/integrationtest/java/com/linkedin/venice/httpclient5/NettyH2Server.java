@@ -38,7 +38,7 @@ import org.testng.Assert;
  * This class will spin up a simple Netty-based H2 server.
  */
 public class NettyH2Server {
-  private static final Logger logger = LogManager.getLogger(NettyH2Server.class);
+  private static final Logger LOGGER = LogManager.getLogger(NettyH2Server.class);
   private final int port;
   private final String tempFilePathToNotifyServerFullyStarted;
 
@@ -71,7 +71,7 @@ public class NettyH2Server {
       writer.write("Started");
     }
 
-    logger.info("NettyH2Server started on port: " + port);
+    LOGGER.info("NettyH2Server started on port: " + port);
   }
 
   public void stop() throws Exception {
@@ -80,7 +80,7 @@ public class NettyH2Server {
     workerGroup.shutdownGracefully();
     bossGroup.shutdownGracefully();
     shutdown.sync();
-    logger.info("NettyH2Server stopped");
+    LOGGER.info("NettyH2Server stopped");
   }
 
   private static class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
@@ -101,7 +101,7 @@ public class NettyH2Server {
             @Override
             protected void configurePipeline(ChannelHandlerContext ctx, String protocol) throws Exception {
               if (ApplicationProtocolNames.HTTP_2.equals(protocol)) {
-                logger.info("Received ALPN request");
+                LOGGER.info("Received ALPN request");
                 Http2Settings settings = new Http2Settings().maxConcurrentStreams(100)
                     .maxFrameSize(8 * 1024 * 1024)
                     .initialWindowSize(8 * 1024 * 1024)

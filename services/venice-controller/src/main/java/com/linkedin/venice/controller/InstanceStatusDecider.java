@@ -28,7 +28,7 @@ import org.apache.logging.log4j.Logger;
  * This class is not Thread-safe.
  */
 public class InstanceStatusDecider {
-  private static final Logger logger = LogManager.getLogger(InstanceStatusDecider.class);
+  private static final Logger LOGGER = LogManager.getLogger(InstanceStatusDecider.class);
 
   static List<Replica> getReplicasForInstance(HelixVeniceClusterResources resources, String instanceId) {
     RoutingDataRepository routingDataRepository = resources.getRoutingDataRepository();
@@ -81,7 +81,7 @@ public class InstanceStatusDecider {
       ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
       long startTimeForAcquiringLockInMs = System.currentTimeMillis();
       synchronized (resourceAssignment) {
-        logger.info(
+        LOGGER.info(
             "Spent " + LatencyUtils.getElapsedTimeInMs(startTimeForAcquiringLockInMs)
                 + "ms on acquiring ResourceAssignment lock.");
         // Get resource names from replicas hold by this instance.
@@ -107,7 +107,7 @@ public class InstanceStatusDecider {
             // of topic.
             Pair<Boolean, String> result = willLoseData(resources.getPushMonitor(), partitionAssignmentAfterRemoving);
             if (result.getFirst()) {
-              logger.info(
+              LOGGER.info(
                   "Instance:" + instanceId + " is not removable because Version:" + resourceName
                       + " would lose data if this instance was removed from cluster:" + clusterName + " details: "
                       + result.getSecond());
@@ -130,7 +130,7 @@ public class InstanceStatusDecider {
             }
 
             if (result.getFirst()) {
-              logger.info(
+              LOGGER.info(
                   "Instance:" + instanceId + " is not removable because Version:" + resourceName
                       + " would be re-balanced if this instance was removed from cluster:" + clusterName + " details: "
                       + result.getSecond());
@@ -145,7 +145,7 @@ public class InstanceStatusDecider {
       return NodeRemovableResult.removableResult();
     } catch (Exception e) {
       String errorMsg = "Can not verify whether instance " + instanceId + " is removable.";
-      logger.error(errorMsg, e);
+      LOGGER.error(errorMsg, e);
       throw new VeniceException(errorMsg, e);
     }
   }
@@ -218,12 +218,12 @@ public class InstanceStatusDecider {
   private static VersionStatus getVersionStatus(ReadWriteStoreRepository storeRepository, String resourceName) {
     Store store = storeRepository.getStore(Version.parseStoreFromKafkaTopicName(resourceName));
     if (store == null) {
-      logger.info("Can not find store for the resource:" + resourceName);
+      LOGGER.info("Can not find store for the resource:" + resourceName);
       return VersionStatus.NOT_CREATED;
     }
     if (!store.isEnableReads()) {
       // Ignore store replicas that have read disabled.
-      logger.info(
+      LOGGER.info(
           "Ignoring node removal checks for resource: " + resourceName + " because the store: " + store.getName()
               + " has reads disabled");
       return VersionStatus.NOT_CREATED;

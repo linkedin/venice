@@ -60,7 +60,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  * call {@link #resumeTransfer()}.
  */
 public class NettyChunkedWriteHandler extends ChannelDuplexHandler {
-  private static final InternalLogger logger =
+  private static final InternalLogger LOGGER =
       InternalLoggerFactory.getInstance(io.netty.handler.stream.ChunkedWriteHandler.class);
 
   /**
@@ -101,8 +101,8 @@ public class NettyChunkedWriteHandler extends ChannelDuplexHandler {
       try {
         doFlush(ctx);
       } catch (Exception e) {
-        if (logger.isWarnEnabled()) {
-          logger.warn("Unexpected exception while sending chunks.", e);
+        if (LOGGER.isWarnEnabled()) {
+          LOGGER.warn("Unexpected exception while sending chunks.", e);
         }
       }
     } else {
@@ -113,8 +113,8 @@ public class NettyChunkedWriteHandler extends ChannelDuplexHandler {
           try {
             doFlush(ctx);
           } catch (Exception e) {
-            if (logger.isWarnEnabled()) {
-              logger.warn("Unexpected exception while sending chunks.", e);
+            if (LOGGER.isWarnEnabled()) {
+              LOGGER.warn("Unexpected exception while sending chunks.", e);
             }
           }
         }
@@ -175,7 +175,7 @@ public class NettyChunkedWriteHandler extends ChannelDuplexHandler {
           closeInput(in);
         } catch (Exception e) {
           currentWrite.fail(e);
-          logger.warn(ChunkedInput.class.getSimpleName() + ".isEndOfInput() failed", e);
+          LOGGER.warn(ChunkedInput.class.getSimpleName() + ".isEndOfInput() failed", e);
           closeInput(in);
         }
       } else {
@@ -337,8 +337,8 @@ public class NettyChunkedWriteHandler extends ChannelDuplexHandler {
     try {
       chunks.close();
     } catch (Throwable t) {
-      if (logger.isWarnEnabled()) {
-        logger.warn("Failed to close a chunked input.", t);
+      if (LOGGER.isWarnEnabled()) {
+        LOGGER.warn("Failed to close a chunked input.", t);
       }
     }
   }

@@ -30,7 +30,7 @@ import org.apache.logging.log4j.Logger;
  * for each Kafka bootstrap server url, {@link AggKafkaConsumerService} will create one {@link KafkaConsumerService}.
  */
 public class AggKafkaConsumerService extends AbstractVeniceService {
-  private static final Logger logger = LogManager.getLogger(AggKafkaConsumerService.class);
+  private static final Logger LOGGER = LogManager.getLogger(AggKafkaConsumerService.class);
 
   private final KafkaClientFactory consumerFactory;
   private final int numOfConsumersPerKafkaCluster;
@@ -68,7 +68,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.sharedConsumerAssignmentStrategy = serverConfig.getSharedConsumerAssignmentStrategy();
     this.kafkaClusterUrlToAliasMap = serverConfig.getKafkaClusterUrlToAliasMap();
     this.kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
-    logger.info("Successfully initialized AggKafkaConsumerService");
+    LOGGER.info("Successfully initialized AggKafkaConsumerService");
   }
 
   /**
@@ -109,7 +109,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     }
     final KafkaConsumerService alreadyCreatedConsumerService = kafkaServerToConsumerServiceMap.get(kafkaUrl);
     if (alreadyCreatedConsumerService != null) {
-      logger.warn("KafkaConsumerService has already been created for Kafka cluster with URL: {}", kafkaUrl);
+      LOGGER.warn("KafkaConsumerService has already been created for Kafka cluster with URL: {}", kafkaUrl);
       return alreadyCreatedConsumerService;
     }
 

@@ -58,7 +58,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
-  private static final Logger logger = LogManager.getLogger(ApacheHttpAsyncStorageNodeClient.class);
+  private static final Logger LOGGER = LogManager.getLogger(ApacheHttpAsyncStorageNodeClient.class);
 
   // see: https://hc.apache.org/httpcomponents-asyncclient-dev/quickstart.html
   private final int clientPoolSize;
@@ -106,7 +106,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
               config.getHostPatternForDnsCache(),
               config.getDnsCacheRefreshIntervalInMs(),
               dnsLookupStats));
-      logger.info(
+      LOGGER.info(
           "CachedDnsResolver is enabled, cached host pattern: " + config.getHostPatternForDnsCache()
               + ", refresh interval: " + config.getDnsCacheRefreshIntervalInMs() + "ms");
     }
@@ -157,11 +157,11 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
       Set<Instance> instanceSet = liveInstanceMonitor.getAllLiveInstances();
       instanceSet.forEach(host -> nodeIdToClientMap.put(host.getNodeId(), createAndStartNewClient()));
       if (routerConfig.isHttpasyncclientConnectionWarmingEnabled()) {
-        logger.info("Connection warming is enabled in HttpAsyncClient");
+        LOGGER.info("Connection warming is enabled in HttpAsyncClient");
         clientConnectionWarmingService = new ClientConnectionWarmingService();
         clientConnectionWarmingService.start();
       } else {
-        logger.info("Connection warming is disabled in HttpAsyncClient");
+        LOGGER.info("Connection warming is disabled in HttpAsyncClient");
       }
     }
   }
@@ -179,7 +179,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
         try {
           clientConnectionWarmingService.stop();
         } catch (Exception e) {
-          logger.error("Received exception when stopping ClientConnectionWarmingService", e);
+          LOGGER.error("Received exception when stopping ClientConnectionWarmingService", e);
         }
       }
     } else {
@@ -261,7 +261,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
     @Override
     public boolean startInner() throws Exception {
       int instanceNum = nodeIdToClientMap.size();
-      logger.info("Start connection warming for " + instanceNum + " instances");
+      LOGGER.info("Start connection warming for " + instanceNum + " instances");
       if (instanceNum == 0) {
         return true;
       }
@@ -277,20 +277,20 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
         futureList.add(CompletableFuture.runAsync(() -> {
           Instance instance = Instance.fromNodeId(nodeId);
           String instanceUrl = instance.getUrl(sslFactory.isPresent());
-          logger.info("Started warming up " + maxConnPerRoutePerClient + " connections to server: " + instanceUrl);
+          LOGGER.info("Started warming up " + maxConnPerRoutePerClient + " connections to server: " + instanceUrl);
           warmUpConnection(
               clientWithConnManager.getClient(),
               instanceUrl,
               maxConnPerRoutePerClient,
               routerConfig.getHttpasyncclientConnectionWarmingSleepIntervalMs());
-          logger.info("Finished warming up " + maxConnPerRoutePerClient + " connections to server: " + instanceUrl);
+          LOGGER.info("Finished warming up " + maxConnPerRoutePerClient + " connections to server: " + instanceUrl);
         }, clientConnectionWarmingExecutorDuringStart));
       });
       CompletableFuture[] futureArray = new CompletableFuture[futureList.size()];
       CompletableFuture allFuture = CompletableFuture.allOf(futureList.toArray(futureArray));
       try {
         allFuture.get(CONNECTION_WARMING_TOTAL_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-        logger.info("Finished connection warming for " + instanceNum + " instances");
+        LOGGER.info("Finished connection warming for " + instanceNum + " instances");
       } catch (Exception e) {
         throw new VeniceException("Failed to warm up HttpAsyncClient properly", e);
       } finally {
@@ -307,7 +307,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
           long currentTimestamp = System.currentTimeMillis();
           newInstances.forEach(instance -> {
             nodeIdToForceJoinTimeMap.put(instance.getNodeId(), currentTimestamp + newInstanceDelayJoinMs);
-            logger.info("Create and warm up a new http async client for instance: " + instance);
+            LOGGER.info("Create and warm up a new http async client for instance: " + instance);
             asyncCreateAndWarmupNewClientAndSwapAsync(instance, true);
           });
         }
@@ -338,7 +338,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
                 try {
                   client.close();
                 } catch (Exception e) {
-                  logger.warn("Failed to close an HttpAsyncClient properly", e);
+                  LOGGER.warn("Failed to close an HttpAsyncClient properly", e);
                 }
               }
             });
@@ -353,7 +353,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
               PoolStats stats = clientWithConnManager.getConnManager().getTotalStats();
               int availableConnections = stats.getAvailable() + stats.getLeased();
               if (availableConnections < connectionWarmingLowWaterMark) {
-                logger.info(
+                LOGGER.info(
                     "Create a new httpasyncclient and warm it up for instance: " + currentInstance + " since the total "
                         + "available connections: " + availableConnections
                         + " is lower than connection warming  low water mark: " + connectionWarmingLowWaterMark);
@@ -361,7 +361,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
               }
             });
           } catch (InterruptedException e) {
-            logger.info("Received InterruptedException in ClientConnHealthinessScanner, will exit");
+            LOGGER.info("Received InterruptedException in ClientConnHealthinessScanner, will exit");
             break;
           }
         }
@@ -371,7 +371,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
     private synchronized void asyncCreateAndWarmupNewClientAndSwapAsync(Instance instance, boolean force) {
       String nodeId = instance.getNodeId();
       if (!force && ongoingWarmUpClientSet.contains(nodeId)) {
-        logger.info(
+        LOGGER.info(
             "Connection warming for instance: " + instance
                 + " has already stared, so the new connection warming request will be skipped");
         return;
@@ -409,14 +409,14 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
         Instance host) {
       HttpClientUtils.ClosableHttpAsyncClientWithConnManager clientWithConnManager = createAndStartNewClient();
       String instanceUrl = host.getUrl(sslFactory.isPresent());
-      logger.info("Started warming up " + maxConnPerRoutePerClient + " connections to server: " + instanceUrl);
+      LOGGER.info("Started warming up " + maxConnPerRoutePerClient + " connections to server: " + instanceUrl);
       try {
         warmUpConnection(
             clientWithConnManager.getClient(),
             instanceUrl,
             maxConnPerRoutePerClient,
             connectionWarmingSleepIntervalMs);
-        logger.info("Finished warming up " + maxConnPerRoutePerClient + " connections to server: " + instanceUrl);
+        LOGGER.info("Finished warming up " + maxConnPerRoutePerClient + " connections to server: " + instanceUrl);
       } catch (Exception e) {
         Utils.closeQuietlyWithErrorLogged(clientWithConnManager.getClient());
         throw new VeniceException(
@@ -438,7 +438,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
 
       @Override
       protected HttpResponse buildResult(final HttpContext context) {
-        logger.info("Received buildResult invocation from instance url: " + instanceUrl);
+        LOGGER.info("Received buildResult invocation from instance url: " + instanceUrl);
         try {
           // Blocking IO threads of HttpAsyncClient, so that the current connection can't be reused by the new request
           latch.await();

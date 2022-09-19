@@ -32,7 +32,7 @@ public class SkipAdminRoute extends AbstractRoute {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
           responseObject.setErrorType(ErrorType.BAD_REQUEST);
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, SKIP_ADMIN.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
@@ -43,7 +43,7 @@ public class SkipAdminRoute extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 }

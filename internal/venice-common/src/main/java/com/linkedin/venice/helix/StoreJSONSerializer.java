@@ -31,7 +31,7 @@ public class StoreJSONSerializer extends VeniceJsonSerializer<Store> {
   }
 
   private void addMixin(Class veniceClass, Class serializerClass) {
-    mapper.addMixIn(veniceClass, serializerClass);
+    OBJECT_MAPPER.addMixIn(veniceClass, serializerClass);
   }
 
   /**
@@ -113,6 +113,6 @@ public class StoreJSONSerializer extends VeniceJsonSerializer<Store> {
     /**
      * This function will only deserialize into {@link ZKStore} implementation.
      */
-    return mapper.readValue(bytes, ZKStore.class);
+    return OBJECT_MAPPER.readValue(bytes, ZKStore.class);
   }
 }

@@ -20,7 +20,7 @@ import org.apache.logging.log4j.Logger;
 public class AvroSerializer<K> implements RecordSerializer<K> {
   public static final ThreadLocal<ReusableObjects> REUSE = ThreadLocal.withInitial(AvroSerializerReusableObjects::new);
 
-  private static final Logger logger = LogManager.getLogger(AvroSerializer.class);
+  private static final Logger LOGGER = LogManager.getLogger(AvroSerializer.class);
   private final DatumWriter<K> genericDatumWriter;
   private final DatumWriter<K> specificDatumWriter;
   private final boolean buffered;
@@ -50,7 +50,7 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
 
   static {
     AvroVersion version = AvroCompatibilityHelper.getRuntimeAvroVersion();
-    logger.info("Detected: " + version.toString() + " on the classpath.");
+    LOGGER.info("Detected: " + version.toString() + " on the classpath.");
   }
 
   public AvroSerializer(Schema schema) {
@@ -111,7 +111,7 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
       try {
         output.close();
       } catch (IOException e) {
-        logger.error("Failed to close stream", e);
+        LOGGER.error("Failed to close stream", e);
       }
     }
   }

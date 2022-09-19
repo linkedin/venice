@@ -19,7 +19,7 @@ import org.apache.logging.log4j.Logger;
  */
 @ChannelHandler.Sharable
 public class VerifySslHandler extends SimpleChannelInboundHandler<HttpRequest> {
-  private static final Logger logger = LogManager.getLogger(VerifySslHandler.class);
+  private static final Logger LOGGER = LogManager.getLogger(VerifySslHandler.class);
 
   /**
    * If the SSL handler is not in the channel pipeline, then return 403
@@ -40,7 +40,7 @@ public class VerifySslHandler extends SimpleChannelInboundHandler<HttpRequest> {
       String remote = ctx.channel().remoteAddress().toString(); // ip and port
       String method = req.method().name();
       String errLine = remote + " requested " + method + " " + req.uri();
-      logger.error("Got a non-ssl request on what should be an ssl only port: " + errLine);
+      LOGGER.error("Got a non-ssl request on what should be an ssl only port: " + errLine);
       ctx.writeAndFlush(new HttpShortcutResponse("SSL Required", HttpResponseStatus.FORBIDDEN));
       ctx.close();
     }

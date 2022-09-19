@@ -16,7 +16,7 @@ import org.apache.logging.log4j.Logger;
  * PushStatusRecordDeleter is a class help controller purge push status of outdated versions.
  */
 public class PushStatusStoreRecordDeleter implements AutoCloseable {
-  private static final Logger logger = LogManager.getLogger(PushStatusStoreRecordDeleter.class);
+  private static final Logger LOGGER = LogManager.getLogger(PushStatusStoreRecordDeleter.class);
   private final PushStatusStoreVeniceWriterCache veniceWriterCache;
 
   public PushStatusStoreRecordDeleter(VeniceWriterFactory veniceWriterFactory) {
@@ -29,7 +29,7 @@ public class PushStatusStoreRecordDeleter implements AutoCloseable {
       Optional<String> incrementalPushVersion,
       int partitionCount) {
     VeniceWriter writer = veniceWriterCache.prepareVeniceWriter(storeName);
-    logger.info("Deleting pushStatus of storeName: " + storeName + " , version: " + version);
+    LOGGER.info("Deleting pushStatus of storeName: " + storeName + " , version: " + version);
     for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
       PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion);
       writer.delete(pushStatusKey, null);
@@ -50,7 +50,7 @@ public class PushStatusStoreRecordDeleter implements AutoCloseable {
         partitionId,
         Optional.ofNullable(incrementalPushVersion),
         Optional.of(PushStatusStoreUtils.SERVER_INCREMENTAL_PUSH_PREFIX));
-    logger.info(
+    LOGGER.info(
         "Deleting incremental push status belonging to a partition:{}. pushStatusKey:{}",
         partitionId,
         pushStatusKey);
@@ -58,19 +58,19 @@ public class PushStatusStoreRecordDeleter implements AutoCloseable {
   }
 
   public void removePushStatusStoreVeniceWriter(String storeName) {
-    logger.info("Removing push status store writer for store " + storeName);
+    LOGGER.info("Removing push status store writer for store " + storeName);
     long veniceWriterRemovingStartTimeInNs = System.nanoTime();
     veniceWriterCache.removeVeniceWriter(storeName);
-    logger.info(
+    LOGGER.info(
         "Removed push status store writer for store " + storeName + " in "
             + LatencyUtils.getLatencyInMS(veniceWriterRemovingStartTimeInNs) + "ms.");
   }
 
   @Override
   public void close() {
-    logger.info("Closing VeniceWriter cache");
+    LOGGER.info("Closing VeniceWriter cache");
     long cacheClosingStartTimeInNs = System.nanoTime();
     veniceWriterCache.close();
-    logger.info("Closed VeniceWriter cache in " + LatencyUtils.getLatencyInMS(cacheClosingStartTimeInNs) + "ms.");
+    LOGGER.info("Closed VeniceWriter cache in " + LatencyUtils.getLatencyInMS(cacheClosingStartTimeInNs) + "ms.");
   }
 }

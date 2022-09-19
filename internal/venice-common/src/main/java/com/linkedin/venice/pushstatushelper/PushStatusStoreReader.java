@@ -35,7 +35,7 @@ import org.apache.logging.log4j.Logger;
  * Don't keep a map of [storeName->client] to minimize states kept by controller.
  */
 public class PushStatusStoreReader implements Closeable {
-  private static final Logger logger = LogManager.getLogger(PushStatusStoreReader.class);
+  private static final Logger LOGGER = LogManager.getLogger(PushStatusStoreReader.class);
   private final Map<String, AvroSpecificStoreClient<PushStatusKey, PushStatusValue>> veniceClients =
       new VeniceConcurrentHashMap<>();
   private final D2Client d2Client;
@@ -70,11 +70,11 @@ public class PushStatusStoreReader implements Closeable {
       if (pushStatusValue == null) {
         return Collections.emptyMap();
       } else {
-        logger.info(storeName + "/" + partitionId + " Instance Statuses: " + pushStatusValue.instances);
+        LOGGER.info(storeName + "/" + partitionId + " Instance Statuses: " + pushStatusValue.instances);
         return pushStatusValue.instances;
       }
     } catch (Exception e) {
-      logger.error("Failed to read push status of partition:{} store:{}", partitionId, storeName, e);
+      LOGGER.error("Failed to read push status of partition:{} store:{}", partitionId, storeName, e);
       throw new VeniceException(e);
     }
   }
@@ -154,13 +154,13 @@ public class PushStatusStoreReader implements Closeable {
       for (CompletableFuture<Map<PushStatusKey, PushStatusValue>> completableFuture: completableFutures) {
         Map<PushStatusKey, PushStatusValue> statuses = completableFuture.get();
         if (statuses == null) {
-          logger.warn("Failed to get incremental push status of some partitions. BatchGet returned null.");
+          LOGGER.warn("Failed to get incremental push status of some partitions. BatchGet returned null.");
           throw new VeniceException("Failed to get incremental push status of some partitions");
         }
         pushStatusMap.putAll(statuses);
       }
     } catch (InterruptedException | ExecutionException | VeniceClientException e) {
-      logger.error(
+      LOGGER.error(
           "Failed to get statuses of partitions. store:{}, storeVersion:{} incrementalPushVersion:{} "
               + "partitionIds:{} Exception:{}",
           storeName,
@@ -213,13 +213,13 @@ public class PushStatusStoreReader implements Closeable {
     try {
       pushStatusValue = storeClient.get(pushStatusKey).get();
     } catch (InterruptedException | ExecutionException | VeniceException e) {
-      logger.error("Failed to get ongoing incremental pushes for store:{}.", storeName, e);
+      LOGGER.error("Failed to get ongoing incremental pushes for store:{}.", storeName, e);
       throw new VeniceException(e);
     }
     if (pushStatusValue == null || pushStatusValue.instances == null) {
       return Collections.emptyMap();
     }
-    logger.info("Supposedly-ongoing incremental pushes for store:{} - {}", storeName, pushStatusValue.instances);
+    LOGGER.info("Supposedly-ongoing incremental pushes for store:{} - {}", storeName, pushStatusValue.instances);
     return pushStatusValue.instances;
   }
 
@@ -241,7 +241,7 @@ public class PushStatusStoreReader implements Closeable {
       try {
         veniceClient.close();
       } catch (Exception e) {
-        logger.error("Can not close VeniceClient. ", e);
+        LOGGER.error("Can not close VeniceClient. ", e);
       }
     });
   }

@@ -30,13 +30,13 @@ import org.apache.logging.log4j.Logger;
  * the registered notifiers in main process.
  */
 public class MainIngestionReportHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
-  private static final Logger logger = LogManager.getLogger(MainIngestionReportHandler.class);
+  private static final Logger LOGGER = LogManager.getLogger(MainIngestionReportHandler.class);
   private static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
       AvroProtocolDefinition.PARTITION_STATE.getSerializer();
   private final MainIngestionMonitorService mainIngestionMonitorService;
 
   public MainIngestionReportHandler(MainIngestionMonitorService mainIngestionMonitorService) {
-    logger.info("MainIngestionReportHandler created.");
+    LOGGER.info("MainIngestionReportHandler created.");
     this.mainIngestionMonitorService = mainIngestionMonitorService;
   }
 
@@ -53,7 +53,7 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
     long offset = report.offset;
-    logger.info(
+    LOGGER.info(
         "Received ingestion report {} for topic: {}, partition: {} from ingestion service. ",
         reportType.name(),
         topicName,
@@ -100,14 +100,14 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
         notifierHelper(notifier -> notifier.topicSwitchReceived(topicName, partitionId, offset));
         break;
       default:
-        logger.warn("Received unsupported ingestion report: {} it will be ignored for now.", report);
+        LOGGER.warn("Received unsupported ingestion report: {} it will be ignored for now.", report);
     }
     ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, getDummyContent()));
   }
 
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-    logger.error("Encounter exception during ingestion task report handling.", cause);
+    LOGGER.error("Encounter exception during ingestion task report handling.", cause);
     ctx.writeAndFlush(
         buildHttpResponse(
             HttpResponseStatus.INTERNAL_SERVER_ERROR,
@@ -134,7 +134,7 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
         StoreVersionState storeVersionState =
             IsolatedIngestionUtils.deserializeStoreVersionState(topicName, report.storeVersionState.array());
         mainIngestionMonitorService.getStorageMetadataService().putStoreVersionState(topicName, storeVersionState);
-        logger.info("Updated storeVersionState for topic: {} {}", topicName, storeVersionState.toString());
+        LOGGER.info("Updated storeVersionState for topic: {} {}", topicName, storeVersionState.toString());
       }
     }
   }

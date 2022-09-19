@@ -124,14 +124,14 @@ public class StoragePersonaRepositoryTest {
     Assert.assertTrue(personaRepository.hasPersona(persona1.getName()));
   }
 
-  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = storesFailedRegex)
+  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = STORES_FAILED_REGEX)
   public void testValidatePersonaStoreDoesNotExist() {
     StoragePersona persona1 = createDefaultPersona();
     persona1.getStoresToEnforce().add("test store");
     personaRepository.validatePersona(persona1);
   }
 
-  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = quotaFailedRegex)
+  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = QUOTA_FAILED_REGEX)
   public void testValidatePersonaStoreQuotaInvalid() {
     long storeQuota = 100;
     Store testStore1 = setUpTestStoreAndAddToRepo(storeQuota);
@@ -143,14 +143,14 @@ public class StoragePersonaRepositoryTest {
     personaRepository.validatePersona(persona);
   }
 
-  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = ownersDoesNotExistRegex)
+  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = OWNERS_DOES_NOT_EXIST_REGEX)
   public void testValidatePersonaNoOwners() {
     StoragePersona persona1 = createDefaultPersona();
     persona1.setOwners(new HashSet<>());
     personaRepository.validatePersona(persona1);
   }
 
-  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = storesFailedRegex)
+  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = STORES_FAILED_REGEX)
   public void testValidateStoreAlreadyContainedByPersona() {
     long totalQuota = 100;
     String storeName = setUpTestStoreAndAddToRepo(totalQuota).getName();
@@ -216,7 +216,7 @@ public class StoragePersonaRepositoryTest {
     Assert.assertEquals(personaRepository.getPersona(persona.getName()), persona);
   }
 
-  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = quotaFailedRegex)
+  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = QUOTA_FAILED_REGEX)
   public void testUpdateQuotaFailed() {
     long totalQuota = 1000;
     StoragePersona persona = createDefaultPersona();
@@ -230,14 +230,14 @@ public class StoragePersonaRepositoryTest {
         .validatePersonaUpdate(persona.getName(), new UpdateStoragePersonaQueryParams().setQuota(totalQuota));
   }
 
-  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = personaDoesNotExistRegex)
+  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = PERSONA_DOES_NOT_EXIST_REGEX)
   public void testUpdateQuotaFailedDoesNotExist() {
     long totalQuota = 1000;
     personaRepository
         .validatePersonaUpdate("testPersona", new UpdateStoragePersonaQueryParams().setQuota(totalQuota * 2));
   }
 
-  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = personaDoesNotExistRegex)
+  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = PERSONA_DOES_NOT_EXIST_REGEX)
   public void testUpdateStoresFailedDoesNotExist() {
     long totalQuota = 1000;
     Set<String> storeSet = new HashSet<>();
@@ -247,7 +247,7 @@ public class StoragePersonaRepositoryTest {
         .validatePersonaUpdate("testPersona", new UpdateStoragePersonaQueryParams().setStoresToEnforce(storeSet));
   }
 
-  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = personaDoesNotExistRegex)
+  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = PERSONA_DOES_NOT_EXIST_REGEX)
   public void testUpdateQuotaAndStoresFailedDoesNotExist() {
     long totalQuota = 1000;
     Set<String> storeSet = new HashSet<>();
@@ -279,7 +279,7 @@ public class StoragePersonaRepositoryTest {
     Assert.assertEquals(personaRepository.getPersonaContainingStore(stores.get(1)), persona);
   }
 
-  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = storesFailedRegex)
+  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = STORES_FAILED_REGEX)
   public void testUpdateStoresFailInvalidStore() {
     long totalQuota = 1000;
     StoragePersona persona = createDefaultPersona();
@@ -295,7 +295,7 @@ public class StoragePersonaRepositoryTest {
         new UpdateStoragePersonaQueryParams().setStoresToEnforce(new HashSet<>(stores)));
   }
 
-  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = quotaFailedRegex)
+  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = QUOTA_FAILED_REGEX)
   public void testUpdateStoresFailedInvalidQuota() {
     long totalQuota = 1000;
     StoragePersona persona = createDefaultPersona();
@@ -360,7 +360,7 @@ public class StoragePersonaRepositoryTest {
 
   }
 
-  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = storesFailedRegex)
+  @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = STORES_FAILED_REGEX)
   public void testUpdateStoresAlreadyContainedByPersona() {
     long totalQuota = 100;
     String storeName = setUpTestStoreAndAddToRepo(totalQuota).getName();

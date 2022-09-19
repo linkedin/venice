@@ -17,7 +17,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class StoreBackendConfig {
-  private static final Logger logger = LogManager.getLogger(StoreBackendConfig.class);
+  private static final Logger LOGGER = LogManager.getLogger(StoreBackendConfig.class);
 
   public static final String CONFIG_DIRECTORY = "config";
   public static final String IS_MANAGED = "managed";
@@ -50,7 +50,7 @@ public class StoreBackendConfig {
   public void load() {
     try (InputStream in = new FileInputStream(file)) {
       props.load(in);
-      logger.info("Loaded store config from " + file.getAbsolutePath() + ": " + props);
+      LOGGER.info("Loaded store config from " + file.getAbsolutePath() + ": " + props);
     } catch (Exception e) {
       throw new VeniceException("Unable to read store backend config", e);
     }
@@ -59,7 +59,7 @@ public class StoreBackendConfig {
   public void store() {
     try (OutputStream out = new BufferedOutputStream(new FileOutputStream(file))) {
       props.store(out, null);
-      logger.info("Stored store config at " + file.getAbsolutePath() + ": " + props);
+      LOGGER.info("Stored store config at " + file.getAbsolutePath() + ": " + props);
     } catch (Exception e) {
       throw new VeniceException("Unable to write store backend config", e);
     }
@@ -67,7 +67,7 @@ public class StoreBackendConfig {
 
   public void delete() {
     file.delete();
-    logger.info("Deleted store config from " + file.getAbsolutePath());
+    LOGGER.info("Deleted store config from " + file.getAbsolutePath());
   }
 
   public String getStoreName() {

@@ -48,7 +48,7 @@ public class AdminCommandExecutionRoutes extends AbstractRoute {
         responseObject.setError(
             "Could not track execution in this controller. Make sure you send the command to a correct parent controller.");
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -69,7 +69,7 @@ public class AdminCommandExecutionRoutes extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 }

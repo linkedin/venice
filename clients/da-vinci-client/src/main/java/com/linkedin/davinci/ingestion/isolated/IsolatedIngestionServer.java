@@ -93,7 +93,7 @@ import org.apache.logging.log4j.Logger;
  * tasks for fault tolerance purpose.
  */
 public class IsolatedIngestionServer extends AbstractVeniceService {
-  private static final Logger logger = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger();
   private final RedundantExceptionFilter redundantExceptionFilter =
       new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(10));
   private final ServerBootstrap bootstrap;
@@ -186,10 +186,10 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         Utils.sleep(waitTime);
       }
     }
-    logger.info("Listener service started on port: " + servicePort);
+    LOGGER.info("Listener service started on port: " + servicePort);
 
     initializeIsolatedIngestionServer();
-    logger.info("All ingestion components are initialized.");
+    LOGGER.info("All ingestion components are initialized.");
 
     heartbeatCheckScheduler.scheduleAtFixedRate(this::checkHeartbeatTimeout, 0, 5, TimeUnit.SECONDS);
     // There is no async process in this function, so we are completely finished with the start up process.
@@ -211,11 +211,11 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
       if (storeIngestionService != null) {
         storeIngestionService.stop();
       }
-      logger.info("StoreIngestionService has been shutdown.");
+      LOGGER.info("StoreIngestionService has been shutdown.");
       if (storageService != null) {
         storageService.stop();
       }
-      logger.info("StorageService has been shutdown.");
+      LOGGER.info("StorageService has been shutdown.");
     } catch (Throwable e) {
       throw new VeniceException("Unable to stop Ingestion Service", e);
     }
@@ -333,7 +333,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
   public void updateHeartbeatTime() {
     this.heartbeatTimeInMs = System.currentTimeMillis();
-    logger.info("Received heartbeat from main process at: " + this.heartbeatTimeInMs);
+    LOGGER.info("Received heartbeat from main process at: " + this.heartbeatTimeInMs);
   }
 
   public void cleanupTopicPartitionState(String topicName, int partitionId) {
@@ -389,7 +389,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         // Fetch LeaderState from LeaderSubPartition of the user partition.
         LeaderFollowerStateType leaderState =
             getStoreIngestionService().getLeaderStateFromPartitionConsumptionState(topicName, partitionId);
-        logger.info(
+        LOGGER.info(
             "Ingestion completed for topic: {}, partition: {}, offset: {}, leaderState: {}.",
             topicName,
             partitionId,
@@ -397,7 +397,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
             leaderState);
         report.leaderFollowerState = leaderState.getValue();
       } else {
-        logger.error(
+        LOGGER.error(
             "Ingestion error for topic: {}, partition: {}, error message: {}",
             topicName,
             partitionId,
@@ -411,7 +411,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         try {
           executionFuture.get();
         } catch (ExecutionException | InterruptedException e) {
-          logger.warn(
+          LOGGER.warn(
               "Encounter exception when trying to stop consumption and close storage for " + partitionId + " of topic: "
                   + topicName);
         }
@@ -478,7 +478,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
       getStoreIngestionService().stopConsumptionAndWait(storeConfig, partitionId, 1, stopConsumptionWaitRetriesNum);
       // Close all RocksDB sub-Partitions in Ingestion Service.
       getStorageService().closeStorePartition(storeConfig, partitionId);
-      logger.info(
+      LOGGER.info(
           "Partition: " + partitionId + " of topic: " + topicName + " closed in "
               + LatencyUtils.getElapsedTimeInMs(startTimeInMs) + " ms.");
     });
@@ -487,14 +487,14 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private void checkHeartbeatTimeout() {
     if (!isShuttingDown.get()) {
       long currentTimeMillis = System.currentTimeMillis();
-      if (logger.isDebugEnabled()) {
-        logger.debug(
+      if (LOGGER.isDebugEnabled()) {
+        LOGGER.debug(
             "Checking heartbeat timeout at " + currentTimeMillis + ", latest heartbeat on server: "
                 + heartbeatTimeInMs);
       }
 
       if ((currentTimeMillis - heartbeatTimeInMs) > heartbeatTimeoutMs) {
-        logger.warn(
+        LOGGER.warn(
             "Lost connection to parent process after " + heartbeatTimeoutMs
                 + "ms, will shutdown the ingestion backend gracefully.");
         isShuttingDown.set(true);
@@ -504,7 +504,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
           // necessary resources are shutdown.
           System.exit(0);
         } catch (Exception e) {
-          logger.info("Unable to shutdown ingestion service gracefully", e);
+          LOGGER.info("Unable to shutdown ingestion service gracefully", e);
         }
       }
     }
@@ -583,9 +583,9 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
             ingestionIsolationStatsClass,
             new Class<?>[] { MetricsRepository.class },
             new Object[] { metricsRepository });
-        logger.info("Created Ingestion Isolation stats: " + ingestionIsolationStats.getName());
+        LOGGER.info("Created Ingestion Isolation stats: " + ingestionIsolationStats.getName());
       } else {
-        logger.info("Ingestion isolation stats class name is empty, will skip it.");
+        LOGGER.info("Ingestion isolation stats class name is empty, will skip it.");
       }
     }
 
@@ -653,7 +653,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     storeIngestionService.addCommonNotifier(new IsolatedIngestionNotifier(this));
     ingestionBackend = new DefaultIngestionBackend(storageMetadataService, storeIngestionService, storageService);
 
-    logger.info(
+    LOGGER.info(
         "Starting report client with target application port: "
             + configLoader.getVeniceServerConfig().getIngestionApplicationPort());
     // Create Netty client to report status back to application.
@@ -666,7 +666,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   }
 
   public static void main(String[] args) throws Exception {
-    logger.info("Capture arguments: " + Arrays.toString(args));
+    LOGGER.info("Capture arguments: " + Arrays.toString(args));
     if (args.length != 1) {
       throw new VeniceException("Expected exactly one argument for config file path. Got " + args.length);
     }

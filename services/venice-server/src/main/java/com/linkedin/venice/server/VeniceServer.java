@@ -79,7 +79,7 @@ import org.apache.logging.log4j.Logger;
 public class VeniceServer {
   private static final Logger LOGGER = LogManager.getLogger(VeniceServer.class);
 
-  private final static String SERVER_SERVICE_NAME = "venice-server";
+  private static final String SERVER_SERVICE_NAME = "venice-server";
 
   private final VeniceConfigLoader veniceConfigLoader;
   private final Optional<SSLEngineComponentFactory> sslFactory;

@@ -84,7 +84,7 @@ public class TestStreaming {
   private VeniceKafkaSerializer valueSerializer;
   private VeniceWriter<Object, Object, Object> veniceWriter;
 
-  private static final String keyPrefix = "key_";
+  private static final String KEY_PREFIX = "key_";
   private static final String KEY_SCHEMA = "\"string\"";
   private static final String VALUE_SCHEMA = "{\n" + "  \"type\": \"record\",\n"
       + "  \"name\": \"test_value_schema\",\n" + "  \"fields\": [\n"
@@ -153,7 +153,7 @@ public class TestStreaming {
       }
 
       byte[] value = compressor.compress(valueSerializer.serialize("", valueRecord));
-      veniceWriter.put(keyPrefix + i, value, valueSchemaId).get();
+      veniceWriter.put(KEY_PREFIX + i, value, valueSchemaId).get();
     }
     // Write end of push message to make node become ONLINE from BOOTSTRAP
     veniceWriter.broadcastEndOfPush(new HashMap<>());
@@ -236,7 +236,7 @@ public class TestStreaming {
        */
       keySet.add(NON_EXISTING_KEY1);
       for (int i = 0; i < MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM; ++i) {
-        keySet.add(keyPrefix + i);
+        keySet.add(KEY_PREFIX + i);
       }
       keySet.add(NON_EXISTING_KEY2);
 
@@ -360,7 +360,7 @@ public class TestStreaming {
 
   private void verifyMultiGetResult(Map<String, Object> resultMap) {
     for (int i = 0; i < MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM; ++i) {
-      String key = keyPrefix + i;
+      String key = KEY_PREFIX + i;
       Object value = resultMap.get(key);
       Assert.assertTrue(value instanceof GenericRecord);
       GenericRecord record = (GenericRecord) value;
@@ -371,7 +371,7 @@ public class TestStreaming {
 
   private void verifyComputeResult(Map<String, GenericRecord> resultMap) {
     for (int i = 0; i < MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM; ++i) {
-      String key = keyPrefix + i;
+      String key = KEY_PREFIX + i;
       GenericRecord record = resultMap.get(key);
       Assert.assertEquals(record.get("int_field"), i);
       Assert.assertNull(record.get("float_field"));

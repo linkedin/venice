@@ -82,7 +82,7 @@ import org.testng.annotations.Test;
 
 
 public class TestPushJobWithNativeReplication {
-  private static final Logger logger = LogManager.getLogger(TestPushJobWithNativeReplication.class);
+  private static final Logger LOGGER = LogManager.getLogger(TestPushJobWithNativeReplication.class);
   private static final int TEST_TIMEOUT = 120_000; // ms
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
@@ -239,7 +239,7 @@ public class TestPushJobWithNativeReplication {
 
               Instance leaderNode = routingDataRepo.getLeaderInstance(topic, 0);
               Assert.assertNotNull(leaderNode);
-              logger.info("Restart server port " + leaderNode.getPort());
+              LOGGER.info("Restart server port " + leaderNode.getPort());
               veniceClusterWrapper.stopAndRestartVeniceServer(leaderNode.getPort());
             });
 
@@ -283,7 +283,7 @@ public class TestPushJobWithNativeReplication {
           }
 
           // Setup meta system store for Da Vinci usage.
-          TestUtils.createMetaSystemStore(parentControllerClient, storeName, Optional.of(logger));
+          TestUtils.createMetaSystemStore(parentControllerClient, storeName, Optional.of(LOGGER));
 
           // Test Da-vinci client is able to consume from NR colo which is consuming remotely
           VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(1);

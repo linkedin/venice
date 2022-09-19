@@ -16,7 +16,7 @@ import org.apache.logging.log4j.Logger;
  *  TODO 1. Later need to add stats and monitoring
  */
 public class StorageEngineRepository {
-  private static final Logger logger = LogManager.getLogger(StorageEngineRepository.class);
+  private static final Logger LOGGER = LogManager.getLogger(StorageEngineRepository.class);
 
   /**
    *   Local storage engine for this node. This is lowest level persistence abstraction, these StorageEngines provide an iterator over their values.
@@ -43,7 +43,7 @@ public class StorageEngineRepository {
     AbstractStorageEngine found = localStorageEngines.putIfAbsent(engine.getStoreName(), engine);
     if (found != null) {
       String errorMessage = "Storage Engine '" + engine.getStoreName() + "' has already been initialized.";
-      logger.error(errorMessage);
+      LOGGER.error(errorMessage);
       throw new VeniceException(errorMessage);
     }
   }
@@ -56,11 +56,11 @@ public class StorageEngineRepository {
     VeniceException lastException = null;
     for (AbstractStorageEngine store: localStorageEngines.values()) {
       String storeName = store.getStoreName();
-      logger.info("Closing storage engine for " + storeName);
+      LOGGER.info("Closing storage engine for " + storeName);
       try {
         store.close();
       } catch (VeniceException e) {
-        logger.error("Error closing storage engine for store" + storeName, e);
+        LOGGER.error("Error closing storage engine for store" + storeName, e);
         lastException = e;
       }
     }
@@ -68,6 +68,6 @@ public class StorageEngineRepository {
     if (lastException != null) {
       throw lastException;
     }
-    logger.info("All stores closed.");
+    LOGGER.info("All stores closed.");
   }
 }

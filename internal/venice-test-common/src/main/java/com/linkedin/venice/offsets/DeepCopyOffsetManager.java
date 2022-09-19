@@ -15,7 +15,7 @@ import org.apache.logging.log4j.Logger;
 public class DeepCopyOffsetManager implements OffsetManager {
   private static final Logger LOGGER = LogManager.getLogger(DeepCopyOffsetManager.class);
 
-  private final static InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+  private static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
       AvroProtocolDefinition.PARTITION_STATE.getSerializer();
 
   private final OffsetManager delegate;

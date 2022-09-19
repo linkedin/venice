@@ -27,7 +27,7 @@ import org.apache.logging.log4j.Logger;
  */
 @ChannelHandler.Sharable
 public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
-  private static final Logger logger = LogManager.getLogger(StoreAclHandler.class);
+  private static final Logger LOGGER = LogManager.getLogger(StoreAclHandler.class);
 
   private final ReadOnlyStoreRepository metadataRepository;
   private final DynamicAccessController accessController;
@@ -117,14 +117,14 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
               // Requested resource exists but does not have ACL.
               // Action:
               // return 401 Unauthorized
-              logger.warn("Requested store does not have ACL: " + errLine);
-              logger.debug(
+              LOGGER.warn("Requested store does not have ACL: " + errLine);
+              LOGGER.debug(
                   "Existing stores: " + metadataRepository.getAllStores()
                       .stream()
                       .map(Store::getName)
                       .sorted()
                       .collect(Collectors.toList()));
-              logger.debug(
+              LOGGER.debug(
                   "Access-controlled stores: "
                       + accessController.getAccessControlledResources().stream().sorted().collect(Collectors.toList()));
               NettyUtils.setupResponseAndFlush(
@@ -152,7 +152,7 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
               // Caller does not have permission to access the resource.
               // Action:
               // return 403 Forbidden
-              logger.debug("Unauthorized access rejected: " + errLine);
+              LOGGER.debug("Unauthorized access rejected: " + errLine);
               NettyUtils.setupResponseAndFlush(
                   HttpResponseStatus.FORBIDDEN,
                   ("Access denied!\n"
@@ -167,11 +167,11 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
           String errLine = String.format("%s requested %s %s", client, method, req.uri());
 
           if (accessController.isFailOpen()) {
-            logger.warn("Exception occurred! Access granted: " + errLine + "\n" + e);
+            LOGGER.warn("Exception occurred! Access granted: " + errLine + "\n" + e);
             ReferenceCountUtil.retain(req);
             ctx.fireChannelRead(req);
           } else {
-            logger.warn("Exception occurred! Access rejected: " + errLine + "\n" + e);
+            LOGGER.warn("Exception occurred! Access rejected: " + errLine + "\n" + e);
             NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
           }
         }
@@ -179,7 +179,7 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
     } catch (VeniceNoStoreException noStoreException) {
       String client = ctx.channel().remoteAddress().toString(); // ip and port
       String errLine = String.format("%s requested %s %s", client, method, req.uri());
-      logger.debug("Requested store does not exist: " + errLine);
+      LOGGER.debug("Requested store does not exist: " + errLine);
       NettyUtils.setupResponseAndFlush(
           HttpResponseStatus.BAD_REQUEST,
           ("Invalid Venice store name: " + storeName).getBytes(),

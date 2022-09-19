@@ -17,7 +17,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class StoreBackend {
-  private static final Logger logger = LogManager.getLogger(StoreBackend.class);
+  private static final Logger LOGGER = LogManager.getLogger(StoreBackend.class);
 
   private final DaVinciBackend backend;
   private final String storeName;
@@ -30,7 +30,7 @@ public class StoreBackend {
   private VersionBackend daVinciFutureVersion;
 
   StoreBackend(DaVinciBackend backend, String storeName) {
-    logger.info("Opening local store " + storeName);
+    LOGGER.info("Opening local store " + storeName);
     this.backend = backend;
     this.storeName = storeName;
     this.config =
@@ -39,7 +39,7 @@ public class StoreBackend {
     try {
       backend.getStoreRepository().subscribe(storeName);
     } catch (InterruptedException e) {
-      logger.warn("StoreRepository::subscribe was interrupted", e);
+      LOGGER.warn("StoreRepository::subscribe was interrupted", e);
       Thread.currentThread().interrupt();
       return;
     }
@@ -48,12 +48,12 @@ public class StoreBackend {
 
   synchronized void close() {
     if (subscription.isEmpty()) {
-      logger.info("Closing empty local store " + storeName);
+      LOGGER.info("Closing empty local store " + storeName);
       delete();
       return;
     }
 
-    logger.info("Closing local store " + storeName);
+    LOGGER.info("Closing local store " + storeName);
     subscription.clear();
     daVinciCurrentVersionRef.clear();
 
@@ -73,7 +73,7 @@ public class StoreBackend {
   }
 
   synchronized void delete() {
-    logger.info("Deleting local store " + storeName);
+    LOGGER.info("Deleting local store " + storeName);
     config.delete();
     subscription.clear();
     daVinciCurrentVersionRef.clear();
@@ -109,7 +109,7 @@ public class StoreBackend {
   }
 
   private synchronized void setDaVinciCurrentVersion(VersionBackend version) {
-    logger.info("Switching to new version " + version + ", currentVersion=" + daVinciCurrentVersion);
+    LOGGER.info("Switching to new version " + version + ", currentVersion=" + daVinciCurrentVersion);
     daVinciCurrentVersion = version;
     daVinciCurrentVersionRef.set(version);
     stats.recordCurrentVersion(version);
@@ -146,7 +146,7 @@ public class StoreBackend {
               + ", desiredVersion=" + bootstrapVersion.get().kafkaTopicName());
     }
 
-    logger.info("Subscribing to partitions " + partitions + " of " + storeName);
+    LOGGER.info("Subscribing to partitions " + partitions + " of " + storeName);
     if (subscription.isEmpty() && !partitions.isEmpty()) {
       // Recreate store config that was potentially deleted by unsubscribe.
       config.store();
@@ -172,16 +172,16 @@ public class StoreBackend {
     }).whenComplete((v, e) -> {
       synchronized (this) {
         if (e == null) {
-          logger.info("Ready to serve partitions " + subscription + " of " + daVinciCurrentVersion);
+          LOGGER.info("Ready to serve partitions " + subscription + " of " + daVinciCurrentVersion);
         } else {
-          logger.warn("Failed to subscribe to partitions " + subscription + " of " + savedVersion, e);
+          LOGGER.warn("Failed to subscribe to partitions " + subscription + " of " + savedVersion, e);
         }
       }
     });
   }
 
   public synchronized void unsubscribe(ComplementSet<Integer> partitions) {
-    logger.info("Unsubscribing from partitions " + partitions + " of " + storeName);
+    LOGGER.info("Unsubscribing from partitions " + partitions + " of " + storeName);
     subscription.removeAll(partitions);
 
     if (daVinciCurrentVersion != null) {
@@ -227,7 +227,7 @@ public class StoreBackend {
     } else {
       return;
     }
-    logger.info("Subscribing to future version " + targetVersion.kafkaTopicName());
+    LOGGER.info("Subscribing to future version " + targetVersion.kafkaTopicName());
     setDaVinciFutureVersion(new VersionBackend(backend, targetVersion, stats));
     daVinciFutureVersion.subscribe(subscription).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
   }
@@ -245,14 +245,14 @@ public class StoreBackend {
     if (veniceCurrentVersion != null && daVinciCurrentVersion != null) {
       if (veniceCurrentVersion.getNumber() > daVinciCurrentVersion.getVersion().getNumber()
           && faultyVersionSet.contains(veniceCurrentVersion.getNumber())) {
-        logger.info(
+        LOGGER.info(
             "Venice is rolling forward to version: " + veniceCurrentVersion.getNumber()
                 + ", removing it from faulty version set.");
         removeFaultyVersion(veniceCurrentVersion);
         return;
       }
       if (veniceCurrentVersion.getNumber() < daVinciCurrentVersion.getVersion().getNumber()) {
-        logger.info(
+        LOGGER.info(
             "Detected a version rollback from Da Vinci current version: " + daVinciCurrentVersion.getVersion()
                 + " to Venice current version: " + veniceCurrentVersion);
         removeFaultyVersion(veniceCurrentVersion);
@@ -269,12 +269,12 @@ public class StoreBackend {
       Store store = backend.getStoreRepository().getStoreOrThrow(storeName);
       int versionNumber = daVinciFutureVersion.getVersion().getNumber();
       if (!store.getVersion(versionNumber).isPresent()) {
-        logger.info(
+        LOGGER.info(
             "Deleting obsolete future version " + daVinciFutureVersion + ", currentVersion=" + daVinciCurrentVersion);
         deleteFutureVersion();
       }
       if (faultyVersionSet.contains(versionNumber)) {
-        logger.info(
+        LOGGER.info(
             "Deleting faulty future version " + daVinciFutureVersion + ", currentVersion=" + daVinciCurrentVersion);
         deleteFutureVersion();
       }
@@ -291,7 +291,7 @@ public class StoreBackend {
       // Fetch current version from store config.
       Version veniceCurrentVersion = backend.getVeniceCurrentVersion(storeName).orElse(null);
       if (veniceCurrentVersion == null) {
-        logger.warn("Failed to retrieve current version of store: " + storeName);
+        LOGGER.warn("Failed to retrieve current version of store: " + storeName);
         return;
       }
       int veniceCurrentVersionNumber = veniceCurrentVersion.getNumber();
@@ -308,18 +308,18 @@ public class StoreBackend {
        */
       if (daVinciFutureVersion.isReadyToServe(subscription) && !isDaVinciFutureVersionInvalid
           && daVinciFutureVersionNumber <= veniceCurrentVersionNumber) {
-        logger.info("Ready to serve partitions " + subscription + " of " + daVinciFutureVersion);
+        LOGGER.info("Ready to serve partitions " + subscription + " of " + daVinciFutureVersion);
         swapCurrentVersion();
         trySubscribeDaVinciFutureVersion();
       } else if (failure != null) {
         addFaultyVersion(daVinciFutureVersion, failure);
-        logger.info(
+        LOGGER.info(
             "Deleting faulty Da Vinci future version " + daVinciFutureVersion + ", Da Vinci current version="
                 + daVinciCurrentVersion);
         deleteFutureVersion();
         trySubscribeDaVinciFutureVersion();
       } else {
-        logger.info(
+        LOGGER.info(
             "Da Vinci future version " + daVinciFutureVersion
                 + " is not ready to serve traffic, will try again later.");
       }
@@ -331,12 +331,12 @@ public class StoreBackend {
   }
 
   private synchronized void addFaultyVersion(Version version, Throwable failure) {
-    logger.warn("Adding faulty version " + version + " to faulty version set: " + faultyVersionSet, failure);
+    LOGGER.warn("Adding faulty version " + version + " to faulty version set: " + faultyVersionSet, failure);
     faultyVersionSet.add(version.getNumber());
   }
 
   private synchronized void removeFaultyVersion(Version version) {
-    logger.warn("Removing version " + version + " from faulty version set: " + faultyVersionSet);
+    LOGGER.warn("Removing version " + version + " from faulty version set: " + faultyVersionSet);
     faultyVersionSet.remove(version.getNumber());
   }
 

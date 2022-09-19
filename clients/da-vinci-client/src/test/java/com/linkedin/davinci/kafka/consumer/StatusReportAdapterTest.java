@@ -25,7 +25,7 @@ import org.testng.annotations.Test;
 
 
 public class StatusReportAdapterTest {
-  private static final Logger logger = LogManager.getLogger(StatusReportAdapterTest.class);
+  private static final Logger LOGGER = LogManager.getLogger(StatusReportAdapterTest.class);
   private final List<ExecutionStatus> recordStatusList = new ArrayList<>();
   private final Random random = new Random();
 
@@ -88,7 +88,7 @@ public class StatusReportAdapterTest {
       try {
         for (ExecutionStatus executionStatus: executionStatusList) {
           Thread.sleep(random.nextInt(100));
-          logger.info("Sending report status: " + executionStatus + " to partition " + pcs.getPartition());
+          LOGGER.info("Sending report status: " + executionStatus + " to partition " + pcs.getPartition());
           switch (executionStatus) {
             case STARTED:
               adapter.reportStarted(pcs);
@@ -132,6 +132,6 @@ public class StatusReportAdapterTest {
 
   private void recordStatus(ExecutionStatus status) {
     recordStatusList.add(status);
-    logger.info("Write push status: " + status + " to mocked push monitor.");
+    LOGGER.info("Write push status: " + status + " to mocked push monitor.");
   }
 }

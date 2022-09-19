@@ -33,7 +33,7 @@ import org.apache.logging.log4j.Logger;
  * Configuration which is specific to a Venice cluster used by Venice controller.
  */
 public class VeniceControllerClusterConfig {
-  private static final Logger logger = LogManager.getLogger(VeniceControllerClusterConfig.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceControllerClusterConfig.class);
 
   private final VeniceProperties props;
   private String clusterName;
@@ -221,10 +221,10 @@ public class VeniceControllerClusterConfig {
     try {
       this.props = props;
       initFieldsWithProperties(props);
-      logger.info("Loaded configuration");
+      LOGGER.info("Loaded configuration");
     } catch (Exception e) {
       String errorMessage = "Can not load properties.";
-      logger.error(errorMessage);
+      LOGGER.error(errorMessage);
       throw new VeniceException(errorMessage, e);
     }
   }
@@ -312,7 +312,7 @@ public class VeniceControllerClusterConfig {
     if (!leaderFollowerEnabledForAllStores && !lfModelDependencyCheckDisabled
         && (nativeReplicationEnabledAsDefaultForBatchOnly || nativeReplicationEnabledAsDefaultForIncremental
             || nativeReplicationEnabledAsDefaultForHybrid)) {
-      logger.error(
+      LOGGER.error(
           "Cannot enable native replication when leader follower is not enabled for all stores. Will revert "
               + "the cluster-level native replication flags to false");
       nativeReplicationEnabledForBatchOnly = false;
@@ -326,7 +326,7 @@ public class VeniceControllerClusterConfig {
     if (!leaderFollowerEnabledForAllStores && !lfModelDependencyCheckDisabled
         && (activeActiveReplicationEnabledAsDefaultForHybrid || activeActiveReplicationEnabledAsDefaultForIncremental
             || activeActiveReplicationEnabledAsDefaultForBatchOnly)) {
-      logger.error(
+      LOGGER.error(
           "Cannot enable active-active replication when leader follower is not enabled for all stores. Will revert "
               + "the cluster-level active-active replication flags to false");
       activeActiveReplicationEnabledAsDefaultForHybrid = false;

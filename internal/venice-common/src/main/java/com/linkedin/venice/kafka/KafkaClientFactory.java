@@ -34,7 +34,7 @@ import org.apache.logging.log4j.Logger;
  * A factory that creates Kafka clients, specifically Kafka consumer and Kafka admin client.
  */
 public abstract class KafkaClientFactory {
-  private static final Logger logger = LogManager.getLogger(KafkaClientFactory.class);
+  private static final Logger LOGGER = LogManager.getLogger(KafkaClientFactory.class);
   public static final boolean DEFAULT_AUTO_CLOSE_IDLE_CONSUMERS_ENABLED = false;
 
   protected final Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader;
@@ -139,7 +139,7 @@ public abstract class KafkaClientFactory {
       final String kafkaAdminStatsName =
           String.format("%s_%s_%s", statsNamePrefix, kafkaAdminClientClass, kafkaBootstrapServers);
       adminWrapper = new InstrumentedKafkaAdmin(adminWrapper, optionalMetricsRepository.get(), kafkaAdminStatsName);
-      logger.info(
+      LOGGER.info(
           String.format(
               "Created instrumented Kafka admin client of class %s for Kafka cluster with bootstrap "
                   + "server %s and has stats name prefix %s",
@@ -147,7 +147,7 @@ public abstract class KafkaClientFactory {
               kafkaBootstrapServers,
               statsNamePrefix));
     } else {
-      logger.info(
+      LOGGER.info(
           String.format(
               "Created non-instrumented Kafka admin client of class %s for Kafka cluster with bootstrap server %s",
               kafkaAdminClientClass,

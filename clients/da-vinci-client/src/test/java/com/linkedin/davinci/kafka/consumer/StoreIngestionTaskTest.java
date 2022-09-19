@@ -162,7 +162,7 @@ import org.testng.annotations.Test;
  */
 @Test(singleThreaded = true)
 public abstract class StoreIngestionTaskTest {
-  private static final Logger logger = LogManager.getLogger(StoreIngestionTaskTest.class);
+  private static final Logger LOGGER = LogManager.getLogger(StoreIngestionTaskTest.class);
 
   private static final long READ_CYCLE_DELAY_MS = 5;
   private static final long TEST_TIMEOUT_MS = 1000 * READ_CYCLE_DELAY_MS;
@@ -248,17 +248,17 @@ public abstract class StoreIngestionTaskTest {
   private static final RecordSerializer REPLICATION_METADATA_SERIALIZER =
       FastSerializerDeserializerFactory.getFastAvroGenericSerializer(REPLICATION_METADATA_SCHEMA);
 
-  private static final long putKeyFooTimestamp = 2L;
-  private static final long deleteKeyFooTimestamp = 2L;
-  private static final long putKeyFooOffset = 1L;
-  private static final long deleteKeyFooOffset = 2L;
+  private static final long PUT_KEY_FOO_TIMESTAMP = 2L;
+  private static final long DELETE_KEY_FOO_TIMESTAMP = 2L;
+  private static final long PUT_KEY_FOO_OFFSET = 1L;
+  private static final long DELETE_KEY_FOO_OFFSET = 2L;
 
   private static final byte[] putKeyFooReplicationMetadataWithValueSchemaIdBytesDefault =
-      createReplicationMetadataWithValueSchemaId(putKeyFooTimestamp - 1, putKeyFooOffset, EXISTING_SCHEMA_ID);
+      createReplicationMetadataWithValueSchemaId(PUT_KEY_FOO_TIMESTAMP - 1, PUT_KEY_FOO_OFFSET, EXISTING_SCHEMA_ID);
   private static final byte[] putKeyFooReplicationMetadataWithValueSchemaIdBytes =
-      createReplicationMetadataWithValueSchemaId(putKeyFooTimestamp, putKeyFooOffset, EXISTING_SCHEMA_ID);
+      createReplicationMetadataWithValueSchemaId(PUT_KEY_FOO_TIMESTAMP, PUT_KEY_FOO_OFFSET, EXISTING_SCHEMA_ID);
   private static final byte[] deleteKeyFooReplicationMetadataWithValueSchemaIdBytes =
-      createReplicationMetadataWithValueSchemaId(deleteKeyFooTimestamp, deleteKeyFooOffset, EXISTING_SCHEMA_ID);
+      createReplicationMetadataWithValueSchemaId(DELETE_KEY_FOO_TIMESTAMP, DELETE_KEY_FOO_OFFSET, EXISTING_SCHEMA_ID);
 
   private boolean databaseChecksumVerificationEnabled = false;
   private KafkaConsumerServiceStats kafkaConsumerServiceStats = mock(KafkaConsumerServiceStats.class);
@@ -668,7 +668,7 @@ public abstract class StoreIngestionTaskTest {
     mockWriterFactory = mock(VeniceWriterFactory.class);
     doReturn(null).when(mockWriterFactory).createBasicVeniceWriter(any());
     StorageMetadataService offsetManager;
-    logger.info("mockStorageMetadataService: " + mockStorageMetadataService.getClass().getName());
+    LOGGER.info("mockStorageMetadataService: " + mockStorageMetadataService.getClass().getName());
     final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
     if (mockStorageMetadataService.getClass() != InMemoryStorageMetadataService.class) {
@@ -918,9 +918,10 @@ public abstract class StoreIngestionTaskTest {
   public void testVeniceMessagesProcessing(boolean isActiveActiveReplicationEnabled) throws Exception {
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     RecordMetadata putMetadata =
-        (RecordMetadata) localVeniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, putKeyFooTimestamp, null).get();
+        (RecordMetadata) localVeniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, PUT_KEY_FOO_TIMESTAMP, null)
+            .get();
     RecordMetadata deleteMetadata =
-        (RecordMetadata) localVeniceWriter.delete(deleteKeyFoo, deleteKeyFooTimestamp, null).get();
+        (RecordMetadata) localVeniceWriter.delete(deleteKeyFoo, DELETE_KEY_FOO_TIMESTAMP, null).get();
 
     Queue<AbstractPollStrategy> pollStrategies = new LinkedList<>();
     pollStrategies.add(new RandomPollStrategy());
@@ -996,8 +997,8 @@ public abstract class StoreIngestionTaskTest {
           PARTITION_FOO,
           new LeaderFollowerPartitionStateModel.LeaderSessionIdChecker(1, new AtomicLong(1)));
       try {
-        rtWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, putKeyFooTimestamp, null).get();
-        rtWriter.delete(deleteKeyFoo, deleteKeyFooTimestamp, null).get();
+        rtWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, PUT_KEY_FOO_TIMESTAMP, null).get();
+        rtWriter.delete(deleteKeyFoo, DELETE_KEY_FOO_TIMESTAMP, null).get();
 
         verifyPutAndDelete(amplificationFactor, isActiveActiveReplicationEnabled, false);
       } catch (Exception e) {
@@ -1487,7 +1488,7 @@ public abstract class StoreIngestionTaskTest {
     long lastOffset = getOffset(veniceWriterForDataAfterPush.put(putKeyBar, putValue, SCHEMA_ID));
     veniceWriterForDataAfterPush.close();
 
-    logger.info("lastOffsetBeforeEOP: " + lastOffsetBeforeEOP + ", lastOffset: " + lastOffset);
+    LOGGER.info("lastOffsetBeforeEOP: " + lastOffsetBeforeEOP + ", lastOffset: " + lastOffset);
 
     try {
       runTest(Utils.setOf(PARTITION_BAR), () -> {
@@ -1564,7 +1565,7 @@ public abstract class StoreIngestionTaskTest {
         new RandomPollStrategy(),
         Utils.setOf(new Pair(new TopicPartition(topic, PARTITION_FOO), fooOffsetToSkip)));
 
-    logger.info("lastOffsetBeforeEOP: " + lastOffsetBeforeEOP + ", lastOffset: " + lastOffset);
+    LOGGER.info("lastOffsetBeforeEOP: " + lastOffsetBeforeEOP + ", lastOffset: " + lastOffset);
 
     runTest(pollStrategy, Utils.setOf(PARTITION_FOO), () -> {}, () -> {
       for (Object[] args: mockNotifierError) {
@@ -1807,17 +1808,17 @@ public abstract class StoreIngestionTaskTest {
     PollStrategy pollStrategy =
         new BlockingObserverPollStrategy(new RandomPollStrategy(false), topicPartitionOffsetRecordPair -> {
           if (topicPartitionOffsetRecordPair == null || topicPartitionOffsetRecordPair.getSecond() == null) {
-            logger.info("Received null OffsetRecord!");
+            LOGGER.info("Received null OffsetRecord!");
           } else if (messagesConsumedSoFar.incrementAndGet()
               % (totalNumberOfMessages / totalNumberOfConsumptionRestarts) == 0) {
-            logger.info("Restarting consumer after consuming " + messagesConsumedSoFar.get() + " messages so far.");
+            LOGGER.info("Restarting consumer after consuming " + messagesConsumedSoFar.get() + " messages so far.");
             relevantPartitions.stream()
                 .forEach(partition -> storeIngestionTaskUnderTest.unSubscribePartition(topic, partition));
             relevantPartitions.stream()
                 .forEach(
                     partition -> storeIngestionTaskUnderTest.subscribePartition(topic, partition, Optional.empty()));
           } else {
-            logger.info(
+            LOGGER.info(
                 "TopicPartition: " + topicPartitionOffsetRecordPair.getFirst() + ", Offset: "
                     + topicPartitionOffsetRecordPair.getSecond());
           }
@@ -1831,7 +1832,7 @@ public abstract class StoreIngestionTaskTest {
           .forEach(entry -> {
             int partition = entry.getKey();
             long offset = entry.getValue();
-            logger.info(
+            LOGGER.info(
                 "Verifying completed was called for partition " + partition + " and offset " + offset + " or greater.");
             verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
                 .completed(eq(topic), eq(partition), LongEqualOrGreaterThanMatcher.get(offset));
@@ -2103,7 +2104,7 @@ public abstract class StoreIngestionTaskTest {
                 errorMessages.contains("Disk is full"),
                 "Expecting disk full error, found following error messages instead: " + errorMessages);
           } else {
-            logger.info("EOP was received, and therefore this test cannot perform its assertions.");
+            LOGGER.info("EOP was received, and therefore this test cannot perform its assertions.");
           }
         }),
         Optional.empty(),
@@ -2486,11 +2487,11 @@ public abstract class StoreIngestionTaskTest {
 
     long recordsNum = 5L;
     for (int i = 0; i < recordsNum; i++) {
-      localRtWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, putKeyFooTimestamp, null).get();
+      localRtWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, PUT_KEY_FOO_TIMESTAMP, null).get();
     }
 
     for (int i = 0; i < recordsNum; i++) {
-      remoteRtWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, putKeyFooTimestamp, null).get();
+      remoteRtWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, PUT_KEY_FOO_TIMESTAMP, null).get();
     }
 
     waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
@@ -2501,11 +2502,11 @@ public abstract class StoreIngestionTaskTest {
     // Pause remote kafka consumption
     remoteKafkaQuota.set(0);
     for (int i = 0; i < recordsNum; i++) {
-      localRtWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, putKeyFooTimestamp, null).get();
+      localRtWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, PUT_KEY_FOO_TIMESTAMP, null).get();
     }
 
     for (int i = 0; i < recordsNum; i++) {
-      remoteRtWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, putKeyFooTimestamp, null).get();
+      remoteRtWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, PUT_KEY_FOO_TIMESTAMP, null).get();
     }
 
     Long doubleRecordsNum = recordsNum * 2;

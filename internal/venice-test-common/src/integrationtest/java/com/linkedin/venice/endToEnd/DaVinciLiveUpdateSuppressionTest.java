@@ -37,6 +37,8 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
@@ -47,6 +49,7 @@ import org.testng.annotations.Test;
  * Create this class to isolate the live update suppression test as it could lead to unknown writer creation failure.
  */
 public class DaVinciLiveUpdateSuppressionTest {
+  private static final Logger LOGGER = LogManager.getLogger(DaVinciLiveUpdateSuppressionTest.class);
   private static final int KEY_COUNT = 10;
   private static final int TEST_TIMEOUT = 120_000; // ms
   private VeniceClusterWrapper cluster;
@@ -91,7 +94,7 @@ public class DaVinciLiveUpdateSuppressionTest {
       if (response.isError()) {
         throw new VeniceException(response.getError());
       }
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(logger));
+      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
       // Update to hybrid store
       client.updateStore(
           storeName,

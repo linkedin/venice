@@ -14,7 +14,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class R2ClientCallback implements Callback<RestResponse> {
-  private static final Logger logger = LogManager.getLogger(R2ClientCallback.class);
+  private static final Logger LOGGER = LogManager.getLogger(R2ClientCallback.class);
   private final Consumer<PortableHttpResponse> responseConsumer;
   private final Consumer<Throwable> failedCallback;
   private final BooleanSupplier cancelledCallBack;
@@ -42,7 +42,7 @@ public class R2ClientCallback implements Callback<RestResponse> {
       String msg = e.getMessage();
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg != null ? msg : "")) {
         e.setStackTrace(emptyStackTrace);
-        logger.error("Received error from R2 client ", e);
+        LOGGER.error("Received error from R2 client ", e);
       }
       failedCallback.accept(e);
       cancelledCallBack.getAsBoolean();

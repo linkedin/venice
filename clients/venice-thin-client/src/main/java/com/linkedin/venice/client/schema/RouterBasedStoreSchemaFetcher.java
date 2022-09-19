@@ -33,11 +33,11 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
   public static final String TYPE_VALUE_SCHEMA = "value_schema";
   public static final String TYPE_UPDATE_SCHEMA = "update_schema";
   private final AbstractAvroStoreClient storeClient;
-  private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   // Ignore the unknown field while parsing the json response.
   static {
-    mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    OBJECT_MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
   }
 
   public RouterBasedStoreSchemaFetcher(AbstractAvroStoreClient client) {
@@ -137,7 +137,7 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
     MultiSchemaResponse multiSchemaResponse;
     byte[] response = executeRequest(requestPath);
     try {
-      multiSchemaResponse = mapper.readValue(response, MultiSchemaResponse.class);
+      multiSchemaResponse = OBJECT_MAPPER.readValue(response, MultiSchemaResponse.class);
     } catch (Exception e) {
       throw new VeniceException("Got exception while deserializing response", e);
     }
@@ -156,7 +156,7 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
     SchemaResponse schemaResponse;
     byte[] response = executeRequest(requestPath);
     try {
-      schemaResponse = mapper.readValue(response, SchemaResponse.class);
+      schemaResponse = OBJECT_MAPPER.readValue(response, SchemaResponse.class);
     } catch (Exception e) {
       throw new VeniceException("Got exception while deserializing response", e);
     }

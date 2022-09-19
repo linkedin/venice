@@ -56,8 +56,8 @@ import org.rocksdb.WriteOptions;
  */
 public class RocksDBStoragePartition extends AbstractStoragePartition {
   private static final Logger LOGGER = LogManager.getLogger(RocksDBStoragePartition.class);
-  protected static final ReadOptions readOptionsToSkipCache = new ReadOptions().setFillCache(false);
-  protected static final ReadOptions readOptionsDefault = new ReadOptions();
+  protected static final ReadOptions READ_OPTIONS_TO_SKIP_CACHE = new ReadOptions().setFillCache(false);
+  protected static final ReadOptions READ_OPTIONS_DEFAULT = new ReadOptions();
   protected static final byte[] REPLICATION_METADATA_COLUMN_FAMILY = "timestamp_metadata".getBytes();
 
   private static final FlushOptions WAIT_FOR_FLUSH_OPTIONS = new FlushOptions().setWaitForFlush(true);
@@ -70,7 +70,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   private final String fullPathForTempSSTFileDir;
 
   private final EnvOptions envOptions;
-  private final byte maxUnsignedByte = (byte) 255;
 
   protected final String storeName;
   protected final int partitionId;
@@ -419,7 +418,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   private static ReadOptions getReadOptions(boolean skipCache) {
-    return skipCache ? readOptionsToSkipCache : readOptionsDefault;
+    return skipCache ? READ_OPTIONS_TO_SKIP_CACHE : READ_OPTIONS_DEFAULT;
   }
 
   @Override
@@ -528,6 +527,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   private byte[] getIncrementedByteArray(byte[] array, int indexToIncrement) {
+    byte maxUnsignedByte = (byte) 255;
     if (array[indexToIncrement] != maxUnsignedByte) {
       array[indexToIncrement]++;
       return array;

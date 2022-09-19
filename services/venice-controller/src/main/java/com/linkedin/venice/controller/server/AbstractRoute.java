@@ -16,19 +16,19 @@ import spark.Request;
 
 
 public class AbstractRoute {
-  private static final Logger logger = LogManager.getLogger(AbstractRoute.class);
+  private static final Logger LOGGER = LogManager.getLogger(AbstractRoute.class);
 
   private static final String USER_UNKNOWN = "USER_UNKNOWN";
   private static final String STORE_UNKNOWN = "STORE_UNKNOWN";
 
   // A singleton of acl check function against store resource
-  private static final ResourceAclCheck getAccessToStore =
+  private static final ResourceAclCheck GET_ACCESS_TO_STORE =
       (cert, resourceName, aclClient) -> aclClient.hasAccess(cert, resourceName, HTTP_GET);
   // A singleton of acl check function against topic resource
-  private static final ResourceAclCheck writeAccessToTopic =
+  private static final ResourceAclCheck WRITE_ACCESS_TO_TOPIC =
       (cert, resourceName, aclClient) -> aclClient.hasAccessToTopic(cert, resourceName, "Write");
 
-  private static final ResourceAclCheck readAccessToTopic =
+  private static final ResourceAclCheck READ_ACCESS_TO_TOPIC =
       (cert, resourceName, aclClient) -> aclClient.hasAccessToTopic(cert, resourceName, "Read");
 
   private final boolean sslEnabled;
@@ -68,7 +68,7 @@ public class AbstractRoute {
     try {
       if (!aclCheckFunction.apply(certificate, storeName, accessController.get())) {
         // log the abused users
-        logger.warn(
+        LOGGER.warn(
             String.format(
                 "Client %s [host:%s IP:%s] doesn't have access to store %s",
                 certificate.getSubjectX500Principal().toString(),
@@ -78,7 +78,7 @@ public class AbstractRoute {
         return false;
       }
     } catch (AclException e) {
-      logger.error(
+      LOGGER.error(
           String.format(
               "Error while parsing certificate from client %s [host:%s IP:%s]",
               certificate.getSubjectX500Principal().toString(),
@@ -94,14 +94,14 @@ public class AbstractRoute {
    * Check whether the user has "Write" method access to the related version topics.
    */
   protected boolean hasWriteAccessToTopic(Request request) {
-    return hasAccess(request, writeAccessToTopic);
+    return hasAccess(request, WRITE_ACCESS_TO_TOPIC);
   }
 
   /**
    * Check whether the user has "Read" method access to the related version topics.
    */
   protected boolean hasReadAccessToTopic(Request request) {
-    return hasAccess(request, readAccessToTopic);
+    return hasAccess(request, READ_ACCESS_TO_TOPIC);
   }
 
   /**
@@ -109,7 +109,7 @@ public class AbstractRoute {
    */
   protected String getPrincipalId(Request request) {
     if (!isSslEnabled()) {
-      logger.warn("SSL is not enabled. No certificate could be extracted from request.");
+      LOGGER.warn("SSL is not enabled. No certificate could be extracted from request.");
       return USER_UNKNOWN;
     }
     X509Certificate certificate = getCertificate(request);
@@ -117,7 +117,7 @@ public class AbstractRoute {
       try {
         return accessController.get().getPrincipalId(certificate);
       } catch (Exception e) {
-        logger.error("Error when retrieving principal Id from request", e);
+        LOGGER.error("Error when retrieving principal Id from request", e);
         return USER_UNKNOWN;
       }
     } else {
@@ -132,7 +132,7 @@ public class AbstractRoute {
    * ACL is not checked for requests that want to get metadata of a store/job.
    */
   protected boolean hasAccessToStore(Request request) {
-    return hasAccess(request, getAccessToStore);
+    return hasAccess(request, GET_ACCESS_TO_STORE);
   }
 
   /**

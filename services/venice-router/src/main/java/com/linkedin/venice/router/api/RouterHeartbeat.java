@@ -26,7 +26,7 @@ import org.apache.logging.log4j.Logger;
 
 public class RouterHeartbeat extends AbstractVeniceService {
   private final Thread heartBeatThread;
-  private static final Logger logger = LogManager.getLogger(RouterHeartbeat.class);
+  private static final Logger LOGGER = LogManager.getLogger(RouterHeartbeat.class);
 
   /**
    *
@@ -93,22 +93,22 @@ public class RouterHeartbeat extends AbstractVeniceService {
               }
               int code = response.getStatusCode();
               if (code != SC_OK) {
-                logger.warn("Heartbeat returns " + code + " for " + instanceUrl);
+                LOGGER.warn("Heartbeat returns " + code + " for " + instanceUrl);
                 health.setHostAsUnhealthy(instance);
               } else {
                 health.setHostAsHealthy(instance);
               }
             } catch (ExecutionException e) {
-              logger.warn("Failed to execute heartbeat on " + instanceUrl, e.getCause());
+              LOGGER.warn("Failed to execute heartbeat on " + instanceUrl, e.getCause());
               health.setHostAsUnhealthy(instance);
             } catch (TimeoutException e) {
-              logger.warn("Heartbeat timeout for " + instanceUrl);
+              LOGGER.warn("Heartbeat timeout for " + instanceUrl);
               health.setHostAsUnhealthy(instance);
             }
           }
           Thread.sleep(heartbeatCycleMillis);
         } catch (InterruptedException e) {
-          logger.info("Heartbeat thread shutting down", e);
+          LOGGER.info("Heartbeat thread shutting down", e);
           running = false;
         }
       }

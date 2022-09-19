@@ -25,7 +25,7 @@ import org.apache.logging.log4j.Logger;
  * This class aggregates across the partitions and emits aggregate stats
  */
 public class RocksDBMemoryStats extends AbstractVeniceStats {
-  private static final Logger logger = LogManager.getLogger(RocksDBMemoryStats.class);
+  private static final Logger LOGGER = LogManager.getLogger(RocksDBMemoryStats.class);
 
   // List of metric domains to emit
   static final List<String> PARTITION_METRIC_DOMAINS = Arrays.asList(
@@ -85,7 +85,7 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
             try {
               total += dbPartition.getRocksDBStatValue(metric);
             } catch (VeniceException e) {
-              logger.warn(String.format("Could not get rocksDB metric %s with error:", metric), e);
+              LOGGER.warn(String.format("Could not get rocksDB metric %s with error:", metric), e);
               continue;
             }
             if (INSTANCE_METRIC_DOMAINS.contains(metric)) {

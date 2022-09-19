@@ -24,7 +24,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHealthStats>
     implements RoutingDataRepository.RoutingDataChangedListener {
-  private static final Logger logger = LogManager.getLogger(AggPartitionHealthStats.class);
+  private static final Logger LOGGER = LogManager.getLogger(AggPartitionHealthStats.class);
 
   private final ReadOnlyStoreRepository storeRepository;
 
@@ -95,7 +95,7 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
 
   protected void reportUnderReplicatedPartition(String version, int underReplicatedPartitions) {
     if (underReplicatedPartitions > 0) {
-      logger.warn(
+      LOGGER.warn(
           "Version: " + version + " has " + underReplicatedPartitions + " partitions which are under replicated.");
       totalStats.recordUnderReplicatePartition(underReplicatedPartitions);
       getStoreStats(version).recordUnderReplicatePartition(underReplicatedPartitions);

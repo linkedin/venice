@@ -73,6 +73,8 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.FileUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -82,6 +84,7 @@ import org.testng.annotations.Test;
 
 
 public class DaVinciClientTest {
+  private static final Logger LOGGER = LogManager.getLogger(DaVinciClientTest.class);
   private static final int KEY_COUNT = 10;
   private static final int TEST_TIMEOUT = 120_000;
   private static final String TEST_RECORD_VALUE_SCHEMA =
@@ -259,7 +262,7 @@ public class DaVinciClientTest {
     final GenericRecord value = new GenericData.Record(schema);
     value.put("number", 10);
     String storeName = cluster.createStore(KEY_COUNT, value);
-    cluster.useControllerClient(client -> TestUtils.createMetaSystemStore(client, storeName, Optional.of(logger)));
+    cluster.useControllerClient(client -> TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER)));
 
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
@@ -483,7 +486,7 @@ public class DaVinciClientTest {
           TimeUnit.SECONDS,
           () -> assertTrue(
               finalMetricsRepository.metrics().keySet().stream().anyMatch(k -> k.contains("ingestion_isolation"))));
-      logger.info(
+      LOGGER.info(
           "Successfully finished all assertions! All that's left is closing the {}",
           factory.getClass().getSimpleName());
     }
@@ -876,7 +879,7 @@ public class DaVinciClientTest {
     paramsConsumer.accept(params);
     cluster.useControllerClient(client -> {
       client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(logger));
+      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
       client.updateStore(storeName, params);
       cluster.createVersion(storeName, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, Stream.of());
       SystemProducer producer = TestPushUtils.getSamzaProducer(
@@ -928,7 +931,7 @@ public class DaVinciClientTest {
     paramsConsumer.accept(params);
     try (ControllerClient controllerClient =
         createStoreForJob(cluster, DEFAULT_KEY_SCHEMA, "\"string\"", h2vProperties)) {
-      TestUtils.createMetaSystemStore(controllerClient, storeName, Optional.of(logger));
+      TestUtils.createMetaSystemStore(controllerClient, storeName, Optional.of(LOGGER));
       ControllerResponse response = controllerClient.updateStore(storeName, params);
       Assert.assertFalse(response.isError(), response.getError());
 
@@ -943,12 +946,12 @@ public class DaVinciClientTest {
     TestPushUtils.runPushJob(jobName, h2vProperties);
     String storeName = (String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP);
     cluster.waitVersion(storeName, expectedVersionNumber);
-    logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
+    LOGGER.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
   }
 
   private String createStoreWithMetaSystemStore(int keyCount) throws Exception {
     String storeName = cluster.createStore(keyCount);
-    cluster.useControllerClient(client -> TestUtils.createMetaSystemStore(client, storeName, Optional.of(logger)));
+    cluster.useControllerClient(client -> TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER)));
     return storeName;
   }
 

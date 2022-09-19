@@ -56,10 +56,10 @@ import org.testng.Assert;
 public class ReplicationConsumptionBenchmark {
   protected static final int KEY_COUNT = 1_000_000;
   private static final String DATA_BASE_DIR = Utils.getUniqueTempPath();
-  private static final String keyPrefix = "key_";
-  private static final String valuePrefix = "value_";
-  private static final String metadataPrefix = "metadata_";
-  private static final RocksDBThrottler rocksDbThrottler = new RocksDBThrottler(3);
+  private static final String KEY_PREFIX = "key_";
+  private static final String VALUE_PREFIX = "value_";
+  private static final String METADATA_PREFIX = "metadata_";
+  private static final RocksDBThrottler ROCKSDB_THROTTLER = new RocksDBThrottler(3);
   private String storeDir;
   private Map<String, Pair<String, String>> inputRecords;
   private Optional<CheckSum> runningChecksum;
@@ -92,7 +92,7 @@ public class ReplicationConsumptionBenchmark {
         factory,
         DATA_BASE_DIR,
         null,
-        rocksDbThrottler,
+        ROCKSDB_THROTTLER,
         rocksDBServerConfig);
     syncPerRecords = 10000;
 
@@ -155,10 +155,10 @@ public class ReplicationConsumptionBenchmark {
         factory,
         DATA_BASE_DIR,
         null,
-        rocksDbThrottler,
+        ROCKSDB_THROTTLER,
         rocksDBServerConfig);
     // Test deletion
-    String toBeDeletedKey = keyPrefix + 10;
+    String toBeDeletedKey = KEY_PREFIX + 10;
     // Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
     storagePartition.delete(toBeDeletedKey.getBytes());
     Assert.assertNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
@@ -174,9 +174,9 @@ public class ReplicationConsumptionBenchmark {
     });
 
     for (int i = startIndex; i < endIndex; ++i) {
-      String value = i % 100 == 0 ? null : valuePrefix + i;
-      String metadata = metadataPrefix + i;
-      records.put(keyPrefix + i, Pair.create(value, metadata));
+      String value = i % 100 == 0 ? null : VALUE_PREFIX + i;
+      String metadata = METADATA_PREFIX + i;
+      records.put(KEY_PREFIX + i, Pair.create(value, metadata));
     }
     return records;
   }

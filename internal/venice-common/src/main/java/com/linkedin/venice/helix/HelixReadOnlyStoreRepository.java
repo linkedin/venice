@@ -17,7 +17,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class HelixReadOnlyStoreRepository extends CachedReadOnlyStoreRepository {
-  private static final Logger logger = LogManager.getLogger(HelixReadOnlyStoreRepository.class);
+  private static final Logger LOGGER = LogManager.getLogger(HelixReadOnlyStoreRepository.class);
 
   public HelixReadOnlyStoreRepository(
       ZkClient zkClient,
@@ -84,7 +84,7 @@ public class HelixReadOnlyStoreRepository extends CachedReadOnlyStoreRepository 
   protected void onStoreChanged(Store newStore) {
     Store oldStore = putStore(newStore);
     if (oldStore == null) {
-      logger.warn("Out of order store change notification, storeName=" + newStore.getName());
+      LOGGER.warn("Out of order store change notification, storeName=" + newStore.getName());
     }
   }
 
@@ -122,7 +122,7 @@ public class HelixReadOnlyStoreRepository extends CachedReadOnlyStoreRepository 
     @Override
     public void handleChildChange(String path, List<String> children) {
       if (!path.equals(clusterStoreRepositoryPath)) {
-        logger.warn("Notification path mismatch, path=" + path + ", expected=" + clusterStoreRepositoryPath);
+        LOGGER.warn("Notification path mismatch, path=" + path + ", expected=" + clusterStoreRepositoryPath);
         return;
       }
       onRepositoryChanged(children);
@@ -133,14 +133,14 @@ public class HelixReadOnlyStoreRepository extends CachedReadOnlyStoreRepository 
     @Override
     public void handleDataChange(String path, Object data) {
       if (!(data instanceof Store)) {
-        logger.warn("Notification data is not a Store, path=" + path + ", data=" + data);
+        LOGGER.warn("Notification data is not a Store, path=" + path + ", data=" + data);
         return;
       }
 
       Store store = (Store) data;
       String storePath = getStoreZkPath(store.getName());
       if (!path.equals(storePath)) {
-        logger.warn("Notification path mismatch, path=" + path + ", expected=" + storePath);
+        LOGGER.warn("Notification path mismatch, path=" + path + ", expected=" + storePath);
         return;
       }
       onStoreChanged(store);

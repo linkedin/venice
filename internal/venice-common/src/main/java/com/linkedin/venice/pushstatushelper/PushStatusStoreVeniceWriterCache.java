@@ -20,7 +20,7 @@ import org.apache.logging.log4j.Logger;
  * Wrapper class for acquiring VeniceWriter for push status stores.
  */
 public class PushStatusStoreVeniceWriterCache implements AutoCloseable {
-  private static final Logger logger = LogManager.getLogger(PushStatusStoreVeniceWriterCache.class);
+  private static final Logger LOGGER = LogManager.getLogger(PushStatusStoreVeniceWriterCache.class);
 
   private final VeniceWriterFactory writerFactory;
   // Local cache of VeniceWriters.
@@ -65,7 +65,7 @@ public class PushStatusStoreVeniceWriterCache implements AutoCloseable {
       try {
         v.close();
       } catch (Exception e) {
-        logger.error("Can not close VeniceWriter. ", e);
+        LOGGER.error("Can not close VeniceWriter. ", e);
       }
     });
   }

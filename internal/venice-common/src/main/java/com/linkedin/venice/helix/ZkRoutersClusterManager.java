@@ -29,7 +29,7 @@ import org.apache.zookeeper.Watcher;
  */
 public class ZkRoutersClusterManager
     implements RoutersClusterManager, IZkChildListener, IZkDataListener, VeniceResource, IZkStateListener {
-  private static final Logger logger = LogManager.getLogger(ZkRoutersClusterManager.class);
+  private static final Logger LOGGER = LogManager.getLogger(ZkRoutersClusterManager.class);
   private static final String PREFIX_PATH = "/routers";
   private final String clusterName;
   private final ZkClient zkClient;
@@ -71,7 +71,7 @@ public class ZkRoutersClusterManager
 
   @Override
   public void refresh() {
-    logger.info("Refresh started for cluster " + clusterName + "'s " + getClass().getSimpleName());
+    LOGGER.info("Refresh started for cluster " + clusterName + "'s " + getClass().getSimpleName());
     zkClient.subscribeDataChanges(getRouterRootPath(), this);
     zkClient.subscribeChildChanges(getRouterRootPath(), this);
     RoutersClusterConfig newRoutersClusterConfig = dataAccessor.get(getRouterRootPath(), null, AccessOption.PERSISTENT);
@@ -84,7 +84,7 @@ public class ZkRoutersClusterManager
     zkClient.subscribeStateChanges(zkStateListener);
     // force a live router count update
     changeLiveRouterCount(zkClient.getChildren(getRouterRootPath()).size());
-    logger.info("Refresh finished for cluster " + clusterName + "'s " + getClass().getSimpleName());
+    LOGGER.info("Refresh finished for cluster " + clusterName + "'s " + getClass().getSimpleName());
   }
 
   @Override
@@ -103,7 +103,7 @@ public class ZkRoutersClusterManager
     // TODO we could add weight value for each router later, weight could be written into this znode.
     try {
       zkClient.createEphemeral(getRouterPath(instanceId));
-      logger.info("Add router: " + instanceId + " into live routers.");
+      LOGGER.info("Add router: " + instanceId + " into live routers.");
       changeLiveRouterCount(zkClient.getChildren(getRouterRootPath()).size());
     } catch (ZkNoNodeException e) {
       // For a new cluster, the path for routers might not be created, try to create it.
@@ -123,7 +123,7 @@ public class ZkRoutersClusterManager
       // if this returns false, it means the router instance doesn't exist zk path
       boolean pathExistedPriorToDeletion = zkClient.delete(getRouterPath(instanceId));
       if (!pathExistedPriorToDeletion) {
-        logger.info("Attempted to delete a non-existent zk path: " + getRouterPath(instanceId));
+        LOGGER.info("Attempted to delete a non-existent zk path: " + getRouterPath(instanceId));
       }
     } catch (Exception e) {
       // cannot delete this instance from zk path because of exceptions
@@ -132,7 +132,7 @@ public class ZkRoutersClusterManager
           e);
     }
     changeLiveRouterCount(zkClient.getChildren(getRouterRootPath()).size());
-    logger.info("Removed router " + instanceId + " from live routers temporarily");
+    LOGGER.info("Removed router " + instanceId + " from live routers temporarily");
   }
 
   /**
@@ -308,7 +308,7 @@ public class ZkRoutersClusterManager
   public void handleChildChange(String parentPath, List<String> currentChilds) throws Exception {
     int oldLiveRouterCount = liveRouterCount;
     changeLiveRouterCount(currentChilds.size());
-    logger.info("Live router count has been changed from: " + oldLiveRouterCount + " to: " + currentChilds.size());
+    LOGGER.info("Live router count has been changed from: " + oldLiveRouterCount + " to: " + currentChilds.size());
   }
 
   /**
@@ -324,13 +324,13 @@ public class ZkRoutersClusterManager
       if (routersClusterConfig == null || !routersClusterConfig.equals(newConfig)) {
         routersClusterConfig = newConfig;
         triggerRouterClusterConfigChangedEvent(routersClusterConfig);
-        logger.info("Router Cluster Config have been changed.");
+        LOGGER.info("Router Cluster Config have been changed.");
       } else {
-        logger.info("Router Cluster Config have not been changed, ignore the data changed event.");
+        LOGGER.info("Router Cluster Config have not been changed, ignore the data changed event.");
       }
     } else {
       if (data != null) {
-        logger.error("Invalid config type: " + data.getClass().getName());
+        LOGGER.error("Invalid config type: " + data.getClass().getName());
       }
     }
   }
@@ -372,13 +372,13 @@ public class ZkRoutersClusterManager
   public void handleStateChanged(Watcher.Event.KeeperState keeperState) throws Exception {
     if (keeperState.getIntValue() != 3 && keeperState.getIntValue() != 5 && keeperState.getIntValue() != 6) {
       // Looks like we're disconnected. Lets update our connection state and freeze our internal state
-      logger.warn(
+      LOGGER.warn(
           "zkclient is disconnected and is in state: " + Watcher.Event.KeeperState.fromInt(keeperState.getIntValue()));
       this.isConnected.set(false);
     } else {
       // Now we are in a connected state. Unfreeze things and refresh data
       this.isConnected.set(true);
-      logger.info(
+      LOGGER.info(
           "zkclient is connected and is in state: " + Watcher.Event.KeeperState.fromInt(keeperState.getIntValue()));
       this.refresh();
     }

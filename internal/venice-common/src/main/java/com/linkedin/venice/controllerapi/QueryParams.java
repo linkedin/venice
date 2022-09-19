@@ -24,7 +24,7 @@ import org.apache.http.message.BasicNameValuePair;
  */
 public class QueryParams {
   protected final Map<String, String> params;
-  private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   public QueryParams(Map<String, String> initialParams) {
     this.params = initialParams;
@@ -74,7 +74,7 @@ public class QueryParams {
 
   public QueryParams putStringMap(String name, Map<String, String> value) {
     try {
-      return add(name, mapper.writeValueAsString(value));
+      return add(name, OBJECT_MAPPER.writeValueAsString(value));
     } catch (JsonProcessingException e) {
       throw new VeniceException(e.getMessage());
     }
@@ -82,7 +82,7 @@ public class QueryParams {
 
   public QueryParams putStringSet(String name, Set<String> value) {
     try {
-      return add(name, mapper.writeValueAsString(value));
+      return add(name, OBJECT_MAPPER.writeValueAsString(value));
     } catch (JsonProcessingException e) {
       throw new VeniceException(e);
     }
@@ -93,7 +93,7 @@ public class QueryParams {
       return Optional.empty();
     } else {
       try {
-        return Optional.of(mapper.readValue(params.get(name), Set.class));
+        return Optional.of(OBJECT_MAPPER.readValue(params.get(name), Set.class));
       } catch (IOException e) {
         throw new VeniceException(e);
       }
@@ -105,7 +105,7 @@ public class QueryParams {
       return Optional.empty();
     } else {
       try {
-        return Optional.of(mapper.readValue(params.get(name), Map.class));
+        return Optional.of(OBJECT_MAPPER.readValue(params.get(name), Map.class));
       } catch (IOException e) {
         throw new VeniceException(e.getMessage());
       }

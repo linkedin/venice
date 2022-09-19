@@ -29,8 +29,9 @@ import org.apache.logging.log4j.Logger;
 
 
 public class VeniceVersionFinder {
-  private static final Logger logger = LogManager.getLogger(VeniceVersionFinder.class);
-  private static final RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
+  private static final Logger LOGGER = LogManager.getLogger(VeniceVersionFinder.class);
+  private static final RedundantExceptionFilter EXCEPTION_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private final ReadOnlyStoreRepository metadataRepository;
   private final StaleVersionStats stats;
@@ -127,8 +128,8 @@ public class VeniceVersionFinder {
     boolean prevVersionDecompressorReady = isDecompressorReady(store, lastCurrentVersion);
     if (lastCurrentVersionStatus.equals(VersionStatus.ONLINE) && prevVersionDecompressorReady) {
       String message = errorMessage + " Continuing to serve previous version: " + lastCurrentVersion + ".";
-      if (!filter.isRedundantException(message)) {
-        logger.warn(message);
+      if (!EXCEPTION_FILTER.isRedundantException(message)) {
+        LOGGER.warn(message);
       }
       stats.recordStale(newCurrentVersion, lastCurrentVersion);
       return lastCurrentVersion;
@@ -150,8 +151,8 @@ public class VeniceVersionFinder {
        * be decompressed, then the router will return an error response.
        */
       String message = errorMessage + " Switching to serve new active version.";
-      if (!filter.isRedundantException(message)) {
-        logger.warn(message);
+      if (!EXCEPTION_FILTER.isRedundantException(message)) {
+        LOGGER.warn(message);
       }
       lastCurrentVersionMap.put(storeName, newCurrentVersion);
       stats.recordNotStale();
@@ -171,13 +172,13 @@ public class VeniceVersionFinder {
         try {
           partitionAssignment = routingDataRepository.getAllInstances(kafkaTopic, partitionId).toString();
         } catch (Exception e) {
-          logger.warn("Failed to get partition assignment for logging purposes for resource: " + kafkaTopic, e);
+          LOGGER.warn("Failed to get partition assignment for logging purposes for resource: " + kafkaTopic, e);
           partitionAssignment = "unknown";
         }
         String message = "No online replica exists for partition " + partitionId + " of " + kafkaTopic
             + ", partition assignment: " + partitionAssignment;
-        if (!filter.isRedundantException(message)) {
-          logger.warn(message);
+        if (!EXCEPTION_FILTER.isRedundantException(message)) {
+          LOGGER.warn(message);
         }
         return false;
       }

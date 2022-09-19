@@ -22,7 +22,7 @@ import org.apache.logging.log4j.Logger;
  * controller and only in the parent controller based on the availability of the AuthorizerService.
  */
 public class SystemStoreAclSynchronizationTask implements Runnable, Closeable {
-  private static final Logger logger = LogManager.getLogger(SystemStoreAclSynchronizationTask.class);
+  private static final Logger LOGGER = LogManager.getLogger(SystemStoreAclSynchronizationTask.class);
 
   private final AuthorizerService authorizationService;
   private final VeniceParentHelixAdmin veniceParentHelixAdmin;
@@ -49,7 +49,7 @@ public class SystemStoreAclSynchronizationTask implements Runnable, Closeable {
    */
   @Override
   public void run() {
-    logger.info("Running " + SystemStoreAclSynchronizationTask.class.getSimpleName());
+    LOGGER.info("Running " + SystemStoreAclSynchronizationTask.class.getSimpleName());
     isRunning.set(true);
     while (isRunning.get()) {
       try {
@@ -83,20 +83,20 @@ public class SystemStoreAclSynchronizationTask implements Runnable, Closeable {
                 synchronizeAclForSystemStore(cluster, veniceSystemStoreType, storeName, storeAclBinding);
               }
             } catch (Exception e) {
-              logger.error(
+              LOGGER.error(
                   "Unexpected exception occurred while trying to synchronize acl for store: " + storeInList.getName(),
                   e);
             }
           }
         }
       } catch (InterruptedException e) {
-        logger.info("Task interrupted, closing");
+        LOGGER.info("Task interrupted, closing");
         close();
       } catch (Exception e) {
-        logger.error("Unexpected exception encountered", e);
+        LOGGER.error("Unexpected exception encountered", e);
       }
     }
-    logger.info("Stopped " + SystemStoreAclSynchronizationTask.class.getSimpleName());
+    LOGGER.info("Stopped " + SystemStoreAclSynchronizationTask.class.getSimpleName());
   }
 
   private void synchronizeAclForSystemStore(

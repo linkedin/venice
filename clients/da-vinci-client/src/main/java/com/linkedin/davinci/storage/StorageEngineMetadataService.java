@@ -18,7 +18,7 @@ import org.apache.logging.log4j.Logger;
  * It contains methods to read/write/clear the store version state and partition offset that are stored in metadata partition.
  */
 public class StorageEngineMetadataService extends AbstractVeniceService implements StorageMetadataService {
-  private static final Logger logger = LogManager.getLogger(StorageEngineMetadataService.class);
+  private static final Logger LOGGER = LogManager.getLogger(StorageEngineMetadataService.class);
 
   private final StorageEngineRepository storageEngineRepository;
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
@@ -39,7 +39,7 @@ public class StorageEngineMetadataService extends AbstractVeniceService implemen
   public void clearOffset(String topicName, int partitionId) {
     AbstractStorageEngine<?> storageEngine = this.storageEngineRepository.getLocalStorageEngine(topicName);
     if (storageEngine == null) {
-      logger.info("Store " + topicName + " could not be located, ignoring the reset partition message.");
+      LOGGER.info("Store " + topicName + " could not be located, ignoring the reset partition message.");
       return;
     }
     storageEngine.clearPartitionOffset(partitionId);

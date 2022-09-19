@@ -36,7 +36,7 @@ import org.apache.logging.log4j.Logger;
  * {@link VeniceControllerClusterConfig}. TODO: remove one of them
  */
 public class VeniceControllerConfig extends VeniceControllerClusterConfig {
-  private static final Logger logger = LogManager.getLogger(VeniceControllerConfig.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceControllerConfig.class);
 
   private final int adminPort;
   private final int adminSecurePort;
@@ -330,7 +330,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.systemStoreAclSynchronizationDelayMs =
         props.getLong(CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS, TimeUnit.HOURS.toMillis(1));
     this.regionName = RegionUtils.getLocalRegionName(props, parent);
-    logger.info("Final region name for this node: " + this.regionName);
+    LOGGER.info("Final region name for this node: " + this.regionName);
     this.disabledRoutes = parseControllerRoutes(props, CONTROLLER_DISABLED_ROUTES, Collections.emptyList());
     this.adminTopicRemoteConsumptionEnabled = props.getBoolean(ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED, false);
     if (adminTopicRemoteConsumptionEnabled && childDataCenterKafkaUrlMap.isEmpty()) {
@@ -363,13 +363,13 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
               ConfigKeys.ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER));
 
     } else if (this.activeActiveEnabledOnController) {
-      logger.info(
+      LOGGER.info(
           String.format(
               "A/A is enabled on a child controller and %s == %s",
               ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST,
               this.activeActiveRealTimeSourceFabrics));
     } else {
-      logger.info(
+      LOGGER.info(
           "A/A is not enabled on child controller." + (!this.activeActiveRealTimeSourceFabrics.isEmpty()
               ? String.format(
                   " But %s is still set to %s.",

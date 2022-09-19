@@ -10,7 +10,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class UserCredentialsFactory {
-  private static final Logger logger = LogManager.getLogger(UserCredentialsFactory.class);
+  private static final Logger LOGGER = LogManager.getLogger(UserCredentialsFactory.class);
   public static final int REQUIRED_SECRET_KEY_COUNT = 4;
 
   /**
@@ -39,9 +39,9 @@ public class UserCredentialsFactory {
 
   private static void verifyCredentials(Credentials credentials) {
     if (credentials.numberOfSecretKeys() < REQUIRED_SECRET_KEY_COUNT) {
-      logger.info("Number of tokens found: " + credentials.numberOfTokens()); // Currently is 4
-      logger.warn("Number of secret keys found: " + credentials.numberOfSecretKeys()); // Currently should be 4
-      logger.warn(
+      LOGGER.info("Number of tokens found: " + credentials.numberOfTokens()); // Currently is 4
+      LOGGER.warn("Number of secret keys found: " + credentials.numberOfSecretKeys()); // Currently should be 4
+      LOGGER.warn(
           "The current credentials does not contain required secret keys which are required by enabling Kafka SSL.");
     }
   }

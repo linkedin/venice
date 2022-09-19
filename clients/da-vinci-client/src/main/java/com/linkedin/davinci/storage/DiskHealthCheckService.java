@@ -34,12 +34,12 @@ import org.apache.logging.log4j.Logger;
  * disk operation hang due to disk failure and start reporting unhealthy for this server.
  */
 public class DiskHealthCheckService extends AbstractVeniceService {
-  private static final Logger logger = LogManager.getLogger(DiskHealthCheckService.class);
+  private static final Logger LOGGER = LogManager.getLogger(DiskHealthCheckService.class);
 
   private static final long HEALTH_CHECK_HARD_TIMEOUT = TimeUnit.SECONDS.toMillis(30); // 30 seconds
 
-  private static final String tmpFileName = ".health_check_file";
-  private static final int tmpFileSizeInBytes = 64 * 1024; // 64KB
+  private static final String TMP_FILE_NAME = ".health_check_file";
+  private static final int TMP_FILE_SIZE_IN_BYTES = 64 * 1024; // 64KB
 
   // lock object protects diskHealthy and lastStatusUpdateTimeInNS.
   private final Lock lock = new ReentrantLock();
@@ -180,7 +180,7 @@ public class DiskHealthCheckService extends AbstractVeniceService {
           }
 
           // create a temporary file to test disk IO
-          File tmpFile = new File(databaseDir, tmpFileName);
+          File tmpFile = new File(databaseDir, TMP_FILE_NAME);
           if (!tmpFile.exists()) {
             tmpFile.createNewFile();
           }
@@ -190,7 +190,7 @@ public class DiskHealthCheckService extends AbstractVeniceService {
           try (PrintWriter printWriter = new PrintWriter(tmpFile, "UTF-8")) {
             String message = String.valueOf(System.currentTimeMillis());
             // write 64KB data to the temporary file first
-            int repeats = tmpFileSizeInBytes / message.length();
+            int repeats = TMP_FILE_SIZE_IN_BYTES / message.length();
             for (int i = 0; i < repeats; i++) {
               printWriter.println(message);
             }
@@ -220,9 +220,9 @@ public class DiskHealthCheckService extends AbstractVeniceService {
             }
           }
         } catch (InterruptedException e) {
-          logger.info("Disk check service thread shutting down", e);
+          LOGGER.info("Disk check service thread shutting down", e);
         } catch (Exception ee) {
-          logger.error("Error while checking the disk health in server: ", ee);
+          LOGGER.error("Error while checking the disk health in server: ", ee);
           errorMessage = ee.getMessage();
           setDiskHealthy(false);
         }

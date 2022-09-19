@@ -24,7 +24,7 @@ import org.apache.logging.log4j.Logger;
  * to release leaked resources from local disk.
  */
 public class LeakedResourceCleaner extends AbstractVeniceService {
-  private static final Logger logger = LogManager.getLogger(LeakedResourceCleaner.class);
+  private static final Logger LOGGER = LogManager.getLogger(LeakedResourceCleaner.class);
 
   private final long pollIntervalMs;
   private LeakedResourceCleanerRunnable cleaner;
@@ -87,7 +87,7 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
         try {
           Thread.sleep(pollIntervalMs);
         } catch (InterruptedException e) {
-          logger.info("Received interruptedException while running LeakedResourceCleanerRunnable, will exit");
+          LOGGER.info("Received interruptedException while running LeakedResourceCleanerRunnable, will exit");
           break;
         }
 
@@ -106,9 +106,9 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
                 long timestamp = nonExistentStoreToCheckedTimestamp.get(storeName);
                 // If store is reported missing for more than a day by the store repo, delete the resources.
                 if (timestamp + nonExistentStoreCleanupInterval < currentTime) {
-                  logger.info("Store: {} is not hosted by this host, it's resources will be cleaned up.", storeName);
+                  LOGGER.info("Store: {} is not hosted by this host, it's resources will be cleaned up.", storeName);
                   storageService.removeStorageEngine(resourceName);
-                  logger.info("Resource: {} has been cleaned up.", resourceName);
+                  LOGGER.info("Resource: {} has been cleaned up.", resourceName);
                   stats.recordLeakedVersion();
                   nonExistentStoreToCheckedTimestamp.remove(storeName);
                 }
@@ -126,7 +126,7 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
                * and it might be caused by Zookeeper issue in the extreme scenario, and we will skip the resource cleanup
                * for this store.
                */
-              logger.warn(
+              LOGGER.warn(
                   "Found no version for store: {}, but a lingering resource: {}, which is suspicious, so here will skip the cleanup.",
                   storeName,
                   resourceName);
@@ -142,15 +142,15 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
              * is safe to be deleted.
              */
                 !ingestionService.containsRunningConsumption(resourceName)) {
-              logger.info(
+              LOGGER.info(
                   "Resource: {} doesn't have either the corresponding version stored in ZK, or a running ingestion task, so it will be cleaned up.",
                   resourceName);
               storageService.removeStorageEngine(resourceName);
-              logger.info("Resource: " + resourceName + " has been cleaned up.");
+              LOGGER.info("Resource: " + resourceName + " has been cleaned up.");
               stats.recordLeakedVersion();
             }
           } catch (Exception e) {
-            logger.error("Received exception while verifying/cleaning up resource: {} error {}", resourceName, e);
+            LOGGER.error("Received exception while verifying/cleaning up resource: {} error {}", resourceName, e);
           }
         } // ~for
       } // ~while

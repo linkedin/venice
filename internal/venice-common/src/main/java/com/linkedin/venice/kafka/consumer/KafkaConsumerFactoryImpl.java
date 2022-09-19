@@ -14,7 +14,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class KafkaConsumerFactoryImpl extends KafkaClientFactory {
-  private static final Logger logger = LogManager.getLogger(KafkaConsumerFactoryImpl.class);
+  private static final Logger LOGGER = LogManager.getLogger(KafkaConsumerFactoryImpl.class);
   private final VeniceProperties veniceProperties;
 
   public KafkaConsumerFactoryImpl(VeniceProperties veniceProperties) {
@@ -31,7 +31,7 @@ public class KafkaConsumerFactoryImpl extends KafkaClientFactory {
           CommonClientConfigs.SECURITY_PROTOCOL_CONFIG,
           veniceProperties.getString(ConfigKeys.KAFKA_SECURITY_PROTOCOL));
     } catch (UndefinedPropertyException e) {
-      logger.warn("SSL properties are missing, Kafka consumer will not be able to consume if SSL is required.");
+      LOGGER.warn("SSL properties are missing, Kafka consumer will not be able to consume if SSL is required.");
     }
     return properties;
   }

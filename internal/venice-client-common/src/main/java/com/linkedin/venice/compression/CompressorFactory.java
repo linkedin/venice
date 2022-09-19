@@ -11,7 +11,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class CompressorFactory implements Closeable, AutoCloseable {
-  private static final Logger logger = LogManager.getLogger(CompressorFactory.class);
+  private static final Logger LOGGER = LogManager.getLogger(CompressorFactory.class);
   private final Map<CompressionStrategy, VeniceCompressor> compressorMap = new VeniceConcurrentHashMap<>();
   private final Map<String, VeniceCompressor> versionSpecificCompressorMap = new VeniceConcurrentHashMap<>();
 
@@ -53,7 +53,7 @@ public class CompressorFactory implements Closeable, AutoCloseable {
       try {
         previousCompressor.close();
       } catch (IOException e) {
-        logger.warn(
+        LOGGER.warn(
             "Previous compressor with strategy " + previousCompressor.getCompressionStrategy() + " for " + kafkaTopic
                 + " exists but it could not be closed due to IO Exception: " + e.toString());
       }
@@ -89,7 +89,7 @@ public class CompressorFactory implements Closeable, AutoCloseable {
   @Override
   public void close() {
     for (VeniceCompressor compressor: compressorMap.values()) {
-      IOUtils.closeQuietly(compressor, logger::error);
+      IOUtils.closeQuietly(compressor, LOGGER::error);
     }
 
     for (String topic: versionSpecificCompressorMap.keySet()) {

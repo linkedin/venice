@@ -20,7 +20,7 @@ import org.apache.logging.log4j.Logger;
 
 @ChannelHandler.Sharable
 public class IsolatedIngestionServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
-  private static final Logger logger = LogManager.getLogger(IsolatedIngestionServerAclHandler.class);
+  private static final Logger LOGGER = LogManager.getLogger(IsolatedIngestionServerAclHandler.class);
   private final String allowedPrincipalName;
 
   public IsolatedIngestionServerAclHandler(String allowedPrincipalName) {
@@ -47,7 +47,7 @@ public class IsolatedIngestionServerAclHandler extends SimpleChannelInboundHandl
     } else {
       String clientAddress = ctx.channel().remoteAddress().toString();
       String errLine = String.format("%s requested from %s with principal: %s", req.uri(), clientAddress, principal);
-      logger.error("Unauthorized access rejected: " + errLine);
+      LOGGER.error("Unauthorized access rejected: " + errLine);
       NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
     }
   }

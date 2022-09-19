@@ -55,7 +55,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, VenicePath, RouterKey> {
-  private static final Logger logger = LogManager.getLogger(VeniceDispatcher.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceDispatcher.class);
   /**
    * This map is used to capture all the {@link CompletableFuture} returned by {@link #storageNodeClient},
    * and it is used to clean up the leaked futures in {@link LeakedCompletableFutureCleanupService}.
@@ -405,13 +405,13 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
           Thread.sleep(pollIntervalMs);
           responseFutureMap.forEach((requestId, responseFuture) -> {
             if (System.currentTimeMillis() - responseFuture.requestTime >= cleanupThresholdMs) {
-              logger.warn("Cleaning up the leaked response future: " + responseFuture);
+              LOGGER.warn("Cleaning up the leaked response future: " + responseFuture);
               responseFuture.completeExceptionally(new VeniceException("Leaking response future"));
               aggHostHealthStats.recordLeakedPendingRequestCount(responseFuture.hostName);
             }
           });
         } catch (InterruptedException e) {
-          logger.info("LeakedCompletableFutureCleanupService was interrupt, will exit", e);
+          LOGGER.info("LeakedCompletableFutureCleanupService was interrupt, will exit", e);
           break;
         }
       }

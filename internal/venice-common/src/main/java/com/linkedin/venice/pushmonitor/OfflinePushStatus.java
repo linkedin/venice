@@ -32,7 +32,7 @@ import org.apache.logging.log4j.Logger;
  * Class stores all the statuses and history of one offline push.
  */
 public class OfflinePushStatus {
-  private static final Logger logger = LogManager.getLogger(OfflinePushStatus.class);
+  private static final Logger LOGGER = LogManager.getLogger(OfflinePushStatus.class);
   private final String kafkaTopic;
   private final int numberOfPartition;
   private final int replicationFactor;
@@ -84,7 +84,7 @@ public class OfflinePushStatus {
     } else {
       if (this.currentStatus.equals(newStatus)) {
         // State change is redundant. Just log the event, no need to throw a whole trace.
-        logger.warn(
+        LOGGER.warn(
             String.format(
                 "Redundant push state status received for state %s.  New state details: %s",
                 newStatus,

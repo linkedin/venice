@@ -46,7 +46,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataRepository {
   private static final int KEY_SCHEMA_ID = 1;
-  private static final Logger logger = LogManager.getLogger(DaVinciClientMetaStoreBasedRepository.class);
+  private static final Logger LOGGER = LogManager.getLogger(DaVinciClientMetaStoreBasedRepository.class);
 
   // Map of user store name to their corresponding meta store which is used for finding the correct current version.
   // TODO Store objects in this map are mocked locally based on client.meta.system.store.version.map config.
@@ -71,7 +71,7 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
         String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(store.getName());
         SystemStore existingMetaSystemStore = metaStoreMap.get(metaSystemStoreName);
         if (existingMetaSystemStore == null) {
-          logger.warn(
+          LOGGER.warn(
               "Meta system store: " + metaSystemStoreName + " is missing unexpectedly from internal metaStoreMap");
           return;
         }
@@ -287,7 +287,7 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
       } catch (InterruptedException | ExecutionException e) {
         throw new VeniceException("Failed to construct DaVinci client for the meta store of store: " + storeName, e);
       }
-      logger.info(
+      LOGGER.info(
           String.format(
               "DaVinci client for the meta store of store: %s constructed, took: %s ms",
               storeName,

@@ -23,7 +23,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closeable {
-  private static final Logger logger = LogManager.getLogger(CachingDaVinciClientFactory.class);
+  private static final Logger LOGGER = LogManager.getLogger(CachingDaVinciClientFactory.class);
 
   protected boolean closed;
   protected final D2Client d2Client;
@@ -56,7 +56,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
       VeniceProperties backendConfig,
       Optional<Set<String>> managedClients,
       ICProvider icProvider) {
-    logger.info(
+    LOGGER.info(
         "Creating client factory, managedClients=" + managedClients + "existingMetrics="
             + metricsRepository.metrics().keySet());
     this.d2Client = d2Client;
@@ -69,25 +69,25 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
   @Override
   public synchronized void close() {
     if (closed) {
-      logger.warn("Ignoring duplicate attempt to close client factory");
+      LOGGER.warn("Ignoring duplicate attempt to close client factory");
       return;
     }
     closed = true;
 
     List<DaVinciClient> clients = new ArrayList<>(sharedClients.values());
     clients.addAll(isolatedClients);
-    logger.info("Closing client factory, clientCount=" + clients.size());
+    LOGGER.info("Closing client factory, clientCount=" + clients.size());
     for (DaVinciClient client: clients) {
       try {
         client.close();
       } catch (Throwable e) {
-        logger.error("Unable to close a client, storeName=" + client.getStoreName(), e);
+        LOGGER.error("Unable to close a client, storeName=" + client.getStoreName(), e);
       }
     }
     sharedClients.clear();
     isolatedClients.clear();
     configs.clear();
-    logger.info("Client factory is closed successfully, clientCount=" + clients.size());
+    LOGGER.info("Client factory is closed successfully, clientCount=" + clients.size());
   }
 
   @Override

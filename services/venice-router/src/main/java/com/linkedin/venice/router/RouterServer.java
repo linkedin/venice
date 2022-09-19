@@ -117,7 +117,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class RouterServer extends AbstractVeniceService {
-  private static final Logger logger = LogManager.getLogger(RouterServer.class);
+  private static final Logger LOGGER = LogManager.getLogger(RouterServer.class);
 
   // Immutable state
   private final List<D2Server> d2ServerList;
@@ -170,21 +170,21 @@ public class RouterServer extends AbstractVeniceService {
   // A map of optional ChannelHandlers that retains insertion order to be added at the end of the router pipeline
   private final Map<String, ChannelHandler> optionalChannelHandlers = new LinkedHashMap<>();
 
-  private final static String ROUTER_SERVICE_NAME = "venice-router";
+  private static final String ROUTER_SERVICE_NAME = "venice-router";
 
   /**
    * Thread number used to monitor the listening port;
    */
-  private final static int ROUTER_BOSS_THREAD_NUM = 1;
+  private static final int ROUTER_BOSS_THREAD_NUM = 1;
   /**
    * How many threads should be used by router for directly handling requests
    */
-  private final static int ROUTER_IO_THREAD_NUM = Runtime.getRuntime().availableProcessors();;
+  private static final int ROUTER_IO_THREAD_NUM = Runtime.getRuntime().availableProcessors();
   /**
    * How big should the thread pool used by the router be.  This is the number of threads used for handling
    * requests plus the threads used by the boss thread pool per bound socket (ie 1 for SSL and 1 for non-SSL)
    */
-  private final static int ROUTER_THREAD_POOL_SIZE = 2 * (ROUTER_IO_THREAD_NUM + ROUTER_BOSS_THREAD_NUM);;
+  private static final int ROUTER_THREAD_POOL_SIZE = 2 * (ROUTER_IO_THREAD_NUM + ROUTER_BOSS_THREAD_NUM);
   private VeniceJVMStats jvmStats;
 
   private final AggHostHealthStats aggHostHealthStats;
@@ -198,11 +198,11 @@ public class RouterServer extends AbstractVeniceService {
       throw new VeniceException("No config file parameter found", e);
     }
 
-    logger.info("Zookeeper: " + props.getString(ConfigKeys.ZOOKEEPER_ADDRESS));
-    logger.info("Cluster: " + props.getString(ConfigKeys.CLUSTER_NAME));
-    logger.info("Port: " + props.getInt(ConfigKeys.LISTENER_PORT));
-    logger.info("SSL Port: " + props.getInt(ConfigKeys.LISTENER_SSL_PORT));
-    logger.info("Thread count: " + ROUTER_THREAD_POOL_SIZE);
+    LOGGER.info("Zookeeper: " + props.getString(ConfigKeys.ZOOKEEPER_ADDRESS));
+    LOGGER.info("Cluster: " + props.getString(ConfigKeys.CLUSTER_NAME));
+    LOGGER.info("Port: " + props.getInt(ConfigKeys.LISTENER_PORT));
+    LOGGER.info("SSL Port: " + props.getInt(ConfigKeys.LISTENER_SSL_PORT));
+    LOGGER.info("Thread count: " + ROUTER_THREAD_POOL_SIZE);
 
     Optional<SSLEngineComponentFactory> sslFactory = Optional.of(SslUtils.getLocalSslFactory());
     RouterServer server = new RouterServer(props, new ArrayList<>(), Optional.empty(), sslFactory, null);
@@ -215,7 +215,7 @@ public class RouterServer extends AbstractVeniceService {
           try {
             server.stop();
           } catch (Exception e) {
-            logger.error("Error shutting the server. ", e);
+            LOGGER.error("Error shutting the server. ", e);
           }
         }
       }
@@ -406,7 +406,7 @@ public class RouterServer extends AbstractVeniceService {
       serverSocketChannelClass = EpollServerSocketChannel.class;
     } catch (LinkageError error) {
       useEpoll = false;
-      logger.info("Epoll is only supported on Linux; switching to NIO");
+      LOGGER.info("Epoll is only supported on Linux; switching to NIO");
       workerEventLoopGroup = new NioEventLoopGroup(config.getNettyClientEventLoopThreads(), workerExecutor);
       channelClass = NioSocketChannel.class;
       serverEventLoopGroup = new NioEventLoopGroup(ROUTER_BOSS_THREAD_NUM);
@@ -415,21 +415,21 @@ public class RouterServer extends AbstractVeniceService {
 
     switch (config.getStorageNodeClientType()) {
       case NETTY_4_CLIENT:
-        logger.info("Router will use NETTY_4_CLIENT");
+        LOGGER.info("Router will use NETTY_4_CLIENT");
         storageNodeClient =
             new NettyStorageNodeClient(config, sslFactoryForRequests, routerStats, workerEventLoopGroup, channelClass);
         break;
       case APACHE_HTTP_ASYNC_CLIENT:
-        logger.info("Router will use Apache_Http_Async_Client");
+        LOGGER.info("Router will use Apache_Http_Async_Client");
         storageNodeClient =
             new ApacheHttpAsyncStorageNodeClient(config, sslFactoryForRequests, metricsRepository, liveInstanceMonitor);
         break;
       case R2_CLIENT:
-        logger.info("Router will use R2 client in per node client mode");
+        LOGGER.info("Router will use R2 client in per node client mode");
         storageNodeClient = new R2StorageNodeClient(sslFactoryForRequests, config);
         break;
       case HTTP_CLIENT_5_CLIENT:
-        logger.info("Router will use HTTP CLIENT5");
+        LOGGER.info("Router will use HTTP CLIENT5");
         storageNodeClient = new HttpClient5StorageNodeClient(sslFactoryForRequests, config);
         break;
       default:
@@ -708,13 +708,13 @@ public class RouterServer extends AbstractVeniceService {
     if (asyncStart) {
       startFuture.whenComplete((Object v, Throwable e) -> {
         if (e != null) {
-          logger.error("Router has failed to start", e);
+          LOGGER.error("Router has failed to start", e);
           close();
         }
       });
     } else {
       startFuture.get();
-      logger.info("All the required services have been started");
+      LOGGER.info("All the required services have been started");
     }
     // The start up process is not finished yet if async start is enabled, because it is continuing asynchronously.
     return !asyncStart;
@@ -737,11 +737,11 @@ public class RouterServer extends AbstractVeniceService {
   @Override
   public void stopInner() throws Exception {
     for (D2Server d2Server: d2ServerList) {
-      logger.info("Stopping d2 announcer: " + d2Server);
+      LOGGER.info("Stopping d2 announcer: " + d2Server);
       try {
         d2Server.notifyShutdown();
       } catch (RuntimeException e) {
-        logger.error("D2 announcer " + d2Server + " failed to shutdown properly", e);
+        LOGGER.error("D2 announcer " + d2Server + " failed to shutdown properly", e);
       }
     }
     // Graceful shutdown
@@ -788,12 +788,12 @@ public class RouterServer extends AbstractVeniceService {
     if (router.isPresent()) {
       router.get().waitForShutdown();
     }
-    logger.info("Non-secure router has been shutdown completely");
+    LOGGER.info("Non-secure router has been shutdown completely");
     secureRouter.waitForShutdown();
-    logger.info("Secure router has been shutdown completely");
+    LOGGER.info("Secure router has been shutdown completely");
     registry.shutdown();
     registry.waitForShutdown();
-    logger.info("Other resources managed by local ResourceRegistry have been shutdown completely");
+    LOGGER.info("Other resources managed by local ResourceRegistry have been shutdown completely");
 
     routersClusterManager.unregisterRouter(Utils.getHelixNodeIdentifier(config.getPort()));
     routersClusterManager.clear();
@@ -851,13 +851,13 @@ public class RouterServer extends AbstractVeniceService {
       try {
         if (this.manager == null) {
           // TODO: Remove this check once test constructor is removed or otherwise fixed.
-          logger.info("Not connecting to Helix because the HelixManager is null (the test constructor was used)");
+          LOGGER.info("Not connecting to Helix because the HelixManager is null (the test constructor was used)");
         } else {
           HelixUtils.connectHelixManager(manager, 30, 1);
-          logger.info(this.toString() + " finished connectHelixManager()");
+          LOGGER.info(this.toString() + " finished connectHelixManager()");
         }
       } catch (VeniceException ve) {
-        logger.error(this.toString() + " got an exception while trying to connectHelixManager()", ve);
+        LOGGER.error(this.toString() + " got an exception while trying to connectHelixManager()", ve);
         handleExceptionInStartServices(ve, async);
       }
       // Should refresh after Helix cluster is setup
@@ -869,7 +869,7 @@ public class RouterServer extends AbstractVeniceService {
       try {
         storageNodeClient.start();
       } catch (VeniceException e) {
-        logger.error("Encountered issue when starting storage node client", e);
+        LOGGER.error("Encountered issue when starting storage node client", e);
         handleExceptionInStartServices(e, async);
       }
 
@@ -923,7 +923,7 @@ public class RouterServer extends AbstractVeniceService {
       try {
         dictionaryRetrievalService.startInner();
       } catch (VeniceException e) {
-        logger.error("Encountered issue when starting dictionary retriever", e);
+        LOGGER.error("Encountered issue when starting dictionary retriever", e);
         handleExceptionInStartServices(e, async);
       }
 
@@ -944,19 +944,19 @@ public class RouterServer extends AbstractVeniceService {
       }
 
       for (D2Server d2Server: d2ServerList) {
-        logger.info("Starting d2 announcer: " + d2Server);
+        LOGGER.info("Starting d2 announcer: " + d2Server);
         d2Server.forceStart();
       }
 
       try {
         if (router.isPresent()) {
           int port = ((InetSocketAddress) serverFuture.get()).getPort();
-          logger.info(this.toString() + " started on non-ssl port: " + port);
+          LOGGER.info(this.toString() + " started on non-ssl port: " + port);
         }
         int sslPort = ((InetSocketAddress) secureServerFuture.get()).getPort();
-        logger.info(this.toString() + " started on ssl port: " + sslPort);
+        LOGGER.info(this.toString() + " started on ssl port: " + sslPort);
       } catch (Exception e) {
-        logger.error("Exception while waiting for " + this.toString() + " to start", e);
+        LOGGER.error("Exception while waiting for " + this.toString() + " to start", e);
         serviceState.set(ServiceState.STOPPED);
         handleExceptionInStartServices(new VeniceException(e), async);
       }

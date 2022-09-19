@@ -59,7 +59,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class HelixParticipationService extends AbstractVeniceService
     implements StatusMessageHandler<KillOfflinePushMessage> {
-  private static final Logger logger = LogManager.getLogger(HelixParticipationService.class);
+  private static final Logger LOGGER = LogManager.getLogger(HelixParticipationService.class);
 
   private static final int MAX_RETRY = 30;
   private static final int RETRY_INTERVAL_SEC = 1;
@@ -155,7 +155,7 @@ public class HelixParticipationService extends AbstractVeniceService
 
   @Override
   public boolean startInner() {
-    logger.info("Attempting to start HelixParticipation service");
+    LOGGER.info("Attempting to start HelixParticipation service");
     helixManager = new SafeHelixManager(
         HelixManagerFactory.getZKHelixManager(clusterName, this.participantName, InstanceType.PARTICIPANT, zkAddress));
 
@@ -189,7 +189,7 @@ public class HelixParticipationService extends AbstractVeniceService
           partitionPushStatusAccessorFuture,
           instance.getNodeId());
     }
-    logger.info(
+    LOGGER.info(
         "LeaderFollower threadPool info: strategy = {}, max future state transition thread = {}",
         config.getLeaderFollowerThreadPoolStrategy(),
         config.getMaxFutureVersionLeaderFollowerStateTransitionThreadNumber());
@@ -220,21 +220,21 @@ public class HelixParticipationService extends AbstractVeniceService
 
   @Override
   public void stopInner() throws IOException {
-    logger.info("Attempting to stop HelixParticipation service.");
+    LOGGER.info("Attempting to stop HelixParticipation service.");
     if (helixManager != null) {
       try {
         helixManager.disconnect();
-        logger.info("Disconnected Helix Manager.");
+        LOGGER.info("Disconnected Helix Manager.");
       } catch (Exception e) {
-        logger.error(
+        LOGGER.error(
             "Swallowed an exception while trying to disconnect the " + helixManager.getClass().getSimpleName(),
             e);
       }
     } else {
-      logger.info("Helix Manager is null.");
+      LOGGER.info("Helix Manager is null.");
     }
     ingestionBackend.close();
-    logger.info("Closed VeniceIngestionBackend.");
+    LOGGER.info("Closed VeniceIngestionBackend.");
     leaderFollowerParticipantModelFactory.shutDownExecutor();
 
     try {
@@ -244,11 +244,11 @@ public class HelixParticipationService extends AbstractVeniceService
     }
 
     if (zkClient != null) {
-      logger.info("Start closing ZkClient.");
+      LOGGER.info("Start closing ZkClient.");
       zkClient.close();
-      logger.info("Closed ZkClient.");
+      LOGGER.info("Closed ZkClient.");
     }
-    logger.info("Finished stopping HelixParticipation service.");
+    LOGGER.info("Finished stopping HelixParticipation service.");
   }
 
   private void checkBeforeJoinInCluster() {
@@ -258,16 +258,16 @@ public class HelixParticipationService extends AbstractVeniceService
       HelixUtils.checkClusterSetup(admin, clusterName, MAX_RETRY, RETRY_INTERVAL_SEC);
       List<String> instances = admin.getInstancesInCluster(clusterName);
       if (instances.contains(instance.getNodeId())) {
-        logger.info(instance.getNodeId() + " is not a new node to cluster: " + clusterName + ", skip the cleaning up.");
+        LOGGER.info(instance.getNodeId() + " is not a new node to cluster: " + clusterName + ", skip the cleaning up.");
         return;
       }
       // Could not get instance from helix cluster. So it's a new machine or the machine which had been removed from
       // this cluster. In order to prevent resource leaking, we need to clean up all legacy stores.
-      logger.info(
+      LOGGER.info(
           instance.getNodeId() + " is a new node or had been removed from cluster: " + clusterName
               + " start cleaning up local storage.");
       storageService.cleanupAllStores(veniceConfigLoader);
-      logger.info("Cleaning up complete, " + instance.getNodeId() + " can now join cluster:" + clusterName);
+      LOGGER.info("Cleaning up complete, " + instance.getNodeId() + " can now join cluster:" + clusterName);
     } finally {
       admin.close();
     }
@@ -317,8 +317,8 @@ public class HelixParticipationService extends AbstractVeniceService
         helixManager.connect();
         managerFuture.complete(helixManager);
       } catch (Exception e) {
-        logger.error(e.getMessage(), e);
-        logger.error("Venice server is about to close");
+        LOGGER.error(e.getMessage(), e);
+        LOGGER.error("Venice server is about to close");
         Utils.exit("Failed to start HelixParticipationService");
       }
 
@@ -338,10 +338,10 @@ public class HelixParticipationService extends AbstractVeniceService
        * the notifier is added.
        */
       partitionPushStatusAccessorFuture.complete(partitionPushStatusAccessor);
-      logger.info("Successfully started Helix partition status accessor.");
+      LOGGER.info("Successfully started Helix partition status accessor.");
 
       serviceState.set(ServiceState.STARTED);
-      logger.info("Successfully started Helix Participation Service.");
+      LOGGER.info("Successfully started Helix Participation Service.");
     });
   }
 
@@ -350,13 +350,13 @@ public class HelixParticipationService extends AbstractVeniceService
     VeniceStoreVersionConfig storeConfig = veniceConfigLoader.getStoreConfig(message.getKafkaTopic());
     if (ingestionService.containsRunningConsumption(storeConfig)) {
       // push is failed, stop consumption.
-      logger.info(
+      LOGGER.info(
           "Receive the message to kill consumption for topic:" + message.getKafkaTopic() + ", msgId: "
               + message.getMessageId());
       ingestionService.killConsumptionTask(storeConfig.getStoreVersionName());
-      logger.info("Killed Consumption for topic:" + message.getKafkaTopic() + ", msgId: " + message.getMessageId());
+      LOGGER.info("Killed Consumption for topic:" + message.getKafkaTopic() + ", msgId: " + message.getMessageId());
     } else {
-      logger.info("Ignore the kill message for topic:" + message.getKafkaTopic());
+      LOGGER.info("Ignore the kill message for topic:" + message.getKafkaTopic());
     }
   }
 }

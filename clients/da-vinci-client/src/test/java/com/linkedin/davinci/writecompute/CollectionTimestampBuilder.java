@@ -16,7 +16,7 @@ import org.apache.commons.lang.Validate;
  *
  */
 public class CollectionTimestampBuilder {
-  private final static int DEFAULT_CAPACITY = 10;
+  private static final int DEFAULT_CAPACITY = 10;
 
   private Schema collectionTimestampSchema;
   private Long topLevelFieldTimestamp;

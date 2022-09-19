@@ -33,7 +33,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class MockHttpServerWrapper extends ProcessWrapper {
-  private static final Logger logger = LogManager.getLogger(MockHttpServerWrapper.class);
+  private static final Logger LOGGER = LogManager.getLogger(MockHttpServerWrapper.class);
 
   private final ServerBootstrap bootstrap;
   private final EventLoopGroup bossGroup;
@@ -89,7 +89,7 @@ public class MockHttpServerWrapper extends ProcessWrapper {
   @Override
   protected void internalStart() throws Exception {
     serverFuture = bootstrap.bind(port).sync();
-    logger.info("Mock Http Server has been started.");
+    LOGGER.info("Mock Http Server has been started.");
   }
 
   @Override
@@ -98,7 +98,7 @@ public class MockHttpServerWrapper extends ProcessWrapper {
     workerGroup.shutdownGracefully();
     bossGroup.shutdownGracefully();
     shutdown.sync();
-    logger.info("Mock Http Server has been stopped.");
+    LOGGER.info("Mock Http Server has been stopped.");
   }
 
   @Override
@@ -119,7 +119,7 @@ public class MockHttpServerWrapper extends ProcessWrapper {
   }
 
   private static class MockServerHandler extends SimpleChannelInboundHandler {
-    private static final Logger logger = LogManager.getLogger(MockServerHandler.class);
+    private static final Logger LOGGER = LogManager.getLogger(MockServerHandler.class);
     private final Map<String, FullHttpResponse> responseMap;
     private final Map<String, FullHttpResponse> uriPatternToResponseMap;
     private final FullHttpResponse notFoundResponse;
@@ -156,21 +156,21 @@ public class MockHttpServerWrapper extends ProcessWrapper {
         // stripe URI scheme, host and port
         String uriStr = uri.getPath();
         uriStr = uri.getQuery() == null ? uriStr : uriStr + "?" + uri.getQuery();
-        logger.trace("Receive request uri: " + uriStr);
+        LOGGER.trace("Receive request uri: " + uriStr);
 
         if (responseMap.containsKey(uriStr)) {
-          logger.trace("Found matched response");
+          LOGGER.trace("Found matched response");
           ctx.writeAndFlush(responseMap.get(uriStr).copy());
         } else {
           for (Map.Entry<String, FullHttpResponse> entry: uriPatternToResponseMap.entrySet()) {
             String uriPattern = entry.getKey();
             if (uriStr.matches(uriPattern)) {
-              logger.trace("Found matched response by uri pattern: " + uriPattern);
+              LOGGER.trace("Found matched response by uri pattern: " + uriPattern);
               ctx.writeAndFlush(entry.getValue().copy()).addListener(ChannelFutureListener.CLOSE);
               return;
             }
           }
-          logger.trace("No matched response");
+          LOGGER.trace("No matched response");
           ctx.writeAndFlush(notFoundResponse.copy()).addListener(ChannelFutureListener.CLOSE);
         }
       } else {
@@ -180,7 +180,7 @@ public class MockHttpServerWrapper extends ProcessWrapper {
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-      logger.error("Got exception during serving:", cause);
+      LOGGER.error("Got exception during serving:", cause);
       ctx.writeAndFlush(internalErrorResponse.copy()).addListener(ChannelFutureListener.CLOSE);
       // Close connection
       ctx.close();

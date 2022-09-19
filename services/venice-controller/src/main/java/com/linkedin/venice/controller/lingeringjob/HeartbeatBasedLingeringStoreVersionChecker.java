@@ -23,7 +23,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStoreVersionChecker {
-  private static final Logger logger = LogManager.getLogger(HeartbeatBasedLingeringStoreVersionChecker.class);
+  private static final Logger LOGGER = LogManager.getLogger(HeartbeatBasedLingeringStoreVersionChecker.class);
   private final Duration heartbeatTimeout;
   private final Duration initialHeartbeatBufferTime; // If a push job was started less than this much time ago, do not
                                                      // check heartbeat
@@ -43,7 +43,7 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
     this.initialHeartbeatBufferTime = initialHeartbeatBufferTime;
     this.defaultLingeringStoreVersionChecker = defaultLingeringStoreVersionChecker;
     this.heartbeatBasedCheckerStats = heartbeatBasedCheckerStats;
-    logger.info(
+    LOGGER.info(
         String.format(
             "HeartbeatBasedLingeringStoreVersionChecker instance is created with "
                 + "[initialHeartbeatBufferTime=%s] and [heartbeatTimeout=%s]",
@@ -60,14 +60,14 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
       Optional<X509Certificate> requesterCert,
       IdentityParser identityParser) {
     if (isBatchJobHeartbeatEnabled(store, version, time, controllerAdmin, requesterCert, identityParser)) {
-      logger.info(
+      LOGGER.info(
           String.format(
               "Batch job heartbeat is enabled for store %s with version %d",
               store.getName(),
               version.getNumber()));
       return !isBatchJobAlive(store, version, time, controllerAdmin); // A not-alive job is lingering
     }
-    logger.info(
+    LOGGER.info(
         String.format(
             "Batch job heartbeat is not enabled for store %s with version %d. " + "Fall back to the default behavior.",
             store.getName(),
@@ -85,7 +85,7 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
       lastSeenHeartbeatValue = controllerAdmin.getBatchJobHeartbeatValue(batchJobHeartbeatKey);
     } catch (Exception e) {
       // store %s with version %s for requester: %s", store.getName(), version.getNumber()
-      logger.warn(
+      LOGGER.warn(
           String.format(
               "Got exception when getting heartbeat value. Store %s with version %s",
               store.getName(),
@@ -102,7 +102,7 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
         // In other words, there could be no heartbeat since the first of its heartbeat is on its way to the heartbeat
         // store.
         // So, we assume that the batch job is alive to avoid falsely killing an alive and heart beating job.
-        logger.info(
+        LOGGER.info(
             String.format(
                 "No heartbeat found for store %s with version %d. However, still assume it is alive, "
                     + "because this store version was created %d ms ago and this duration is shorter than the buffer time %d ms.",
@@ -112,7 +112,7 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
                 initialHeartbeatBufferTime.toMillis()));
         return true;
       }
-      logger.info(
+      LOGGER.info(
           String.format(
               "No heartbeat found for store %s with version %d with created time %d ms",
               store.getName(),
@@ -122,7 +122,7 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
     }
     final long timeSinceLastHeartbeatMs = time.getMilliseconds() - lastSeenHeartbeatValue.timestamp;
     if (timeSinceLastHeartbeatMs > heartbeatTimeout.toMillis()) {
-      logger.info(
+      LOGGER.info(
           String.format(
               "Heartbeat timed out for store %s with version %d. Timeout threshold is %d ms and time"
                   + " since last heartbeat in ms is: %d",
@@ -133,7 +133,7 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
       heartbeatBasedCheckerStats.recordTimeoutHeartbeatCheck();
       return false;
     }
-    logger.info(
+    LOGGER.info(
         String.format(
             "Heartbeat detected for store %s with version %d and time since last heartbeat is: %d ms "
                 + "and the timeout threshold is %s ms",
@@ -160,7 +160,7 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
         requestIdentity = "unknown (no cert)";
       }
 
-      logger.warn(
+      LOGGER.warn(
           String.format(
               "Assume the batch job heartbeat is not enabled since it does not have write access to the "
                   + "heartbeat store. Requested store %s with version %d for requester: %s",
@@ -177,7 +177,7 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
     try {
       pushJobDetails = controllerAdmin.getPushJobDetails(pushJobStatusRecordKey);
     } catch (Exception e) {
-      logger.error(
+      LOGGER.error(
           String.format(
               "Cannot determine if batch job heartbeat is enabled or not with exception. Assume it is "
                   + "not enabled. Store %s and its version %s",
@@ -188,13 +188,13 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
       return false;
     }
     if (pushJobDetails == null) {
-      logger.warn(
+      LOGGER.warn(
           String.format("Found no push job details for store %s version %d", store.getName(), version.getNumber()));
       return false;
     }
     Map<CharSequence, CharSequence> pushJobConfigs = pushJobDetails.pushJobConfigs;
     if (pushJobConfigs == null) {
-      logger.warn(
+      LOGGER.warn(
           String.format(
               "Null push job configs in the push job details event. Store %s and its version %s",
               store.getName(),
@@ -202,7 +202,7 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
       heartbeatBasedCheckerStats.recordCheckJobHasHeartbeatFailed();
       return false;
     }
-    logger.info(
+    LOGGER.info(
         "For store " + store.getName() + " with version " + version.getNumber() + ", found pushJobConfigs: "
             + pushJobConfigs);
     Optional<CharSequence> heartbeatEnableConfigValue =
@@ -219,7 +219,7 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
       Optional<X509Certificate> requesterCert,
       IdentityParser identityParser) {
     if (!requesterCert.isPresent()) {
-      logger.warn(
+      LOGGER.warn(
           "No requester cert is provided. Hence assume the requester has no write permission to the heartbeat store");
       return false;
     }
@@ -229,7 +229,7 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
           VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix(),
           identityParser);
     } catch (Exception e) {
-      logger.warn("Cannot check access permission. Assume no access permission.", e);
+      LOGGER.warn("Cannot check access permission. Assume no access permission.", e);
     }
     return false;
   }

@@ -7,7 +7,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class MockD2ServerWrapper extends MockHttpServerWrapper {
-  private static final Logger logger = LogManager.getLogger(MockD2ServerWrapper.class);
+  private static final Logger LOGGER = LogManager.getLogger(MockD2ServerWrapper.class);
   private final ZkServerWrapper zkServer;
   private final D2Server d2Server;
 
@@ -38,7 +38,7 @@ public class MockD2ServerWrapper extends MockHttpServerWrapper {
     try {
       d2Server.notifyShutdown();
     } catch (RuntimeException e) {
-      logger.error("D2 announcer " + d2Server + " failed to shutdown properly", e);
+      LOGGER.error("D2 announcer " + d2Server + " failed to shutdown properly", e);
     }
 
     zkServer.close();

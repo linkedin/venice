@@ -25,10 +25,11 @@ import org.apache.logging.log4j.Logger;
 
 
 public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
-  private static final Logger logger = LogManager.getLogger(ParticipantStoreConsumptionTask.class);
+  private static final Logger LOGGER = LogManager.getLogger(ParticipantStoreConsumptionTask.class);
 
   private static final String CLIENT_STATS_PREFIX = "venice-client";
-  private static final RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
+  private static final RedundantExceptionFilter EXCEPTION_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private final AtomicBoolean isClosing = new AtomicBoolean();
   private final ParticipantStoreConsumptionStats stats;
@@ -58,8 +59,7 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
 
   @Override
   public void run() {
-    logger.info("Started running {}", getClass().getSimpleName());
-
+    LOGGER.info("Started running {}", getClass().getSimpleName());
     while (!isClosing.get() && !Thread.currentThread().isInterrupted()) {
       stats.recordHeartbeat();
       try {
@@ -94,36 +94,36 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
             }
           } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            logger.info("Got an InterruptedException while killing consumption task for topic: {}", topic, e);
+            LOGGER.info("Got an InterruptedException while killing consumption task for topic: {}", topic, e);
             throw e;
           } catch (Exception e) {
             String msg = "Unexpected exception while trying to check or kill ingestion topic: " + topic + ". ExMsg: "
                 + e.getMessage();
-            if (!filter.isRedundantException(msg)) {
-              logger.error(msg, e);
+            if (!EXCEPTION_FILTER.isRedundantException(msg)) {
+              LOGGER.error(msg, e);
             }
             stats.recordKillPushJobFailedConsumption();
           }
         }
       } catch (InterruptedException e) {
-        logger.info("ParticipantStoreConsumptionTask was interrupted and hence exiting now...", e);
+        LOGGER.info("ParticipantStoreConsumptionTask was interrupted and hence exiting now...", e);
         break;
       } catch (Exception e) {
         // Some expected exception can be thrown during initializing phase of the participant store
         // or if participant store is disabled.
         String msg = "Exception thrown while running " + getClass().getSimpleName() + " thread. ExMsg: "
             + ExceptionUtils.compactExceptionDescription(e);
-        if (!filter.isRedundantException(msg)) {
-          logger.error(msg, e);
+        if (!EXCEPTION_FILTER.isRedundantException(msg)) {
+          LOGGER.error(msg, e);
         }
         stats.recordKillPushJobFailedConsumption();
       } catch (Throwable t) {
-        logger.error("Throwable thrown while running {} thread", getClass().getSimpleName(), t);
+        LOGGER.error("Throwable thrown while running {} thread", getClass().getSimpleName(), t);
         break;
       }
     }
 
-    logger.info("Stopped running {}", getClass().getSimpleName());
+    LOGGER.info("Stopped running {}", getClass().getSimpleName());
   }
 
   private AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue> getParticipantStoreClient(
@@ -138,7 +138,7 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
       });
     } catch (Exception e) {
       stats.recordFailedInitialization();
-      logger.error("Failed to get participant client for cluster: {}", clusterName, e);
+      LOGGER.error("Failed to get participant client for cluster: {}", clusterName, e);
     }
     return clientMap.get(clusterName);
   }

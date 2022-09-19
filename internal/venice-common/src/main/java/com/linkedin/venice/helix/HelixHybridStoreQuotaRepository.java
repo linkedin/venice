@@ -26,7 +26,7 @@ import org.apache.logging.log4j.Logger;
  * Extend RoutingTableChangeListener to leverage customized view data for hybrid store quota.
  */
 public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListener {
-  private static final Logger logger = LogManager.getLogger(HelixHybridStoreQuotaRepository.class);
+  private static final Logger LOGGER = LogManager.getLogger(HelixHybridStoreQuotaRepository.class);
   private final SafeHelixManager manager;
   private final Map<PropertyType, List<String>> dataSource;
 
@@ -72,14 +72,14 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
         return resourceToStatusMap.get(resourceName);
       }
       String errorMessage = "Resource '" + resourceName + "' does not exist";
-      logger.warn(errorMessage);
+      LOGGER.warn(errorMessage);
       return HybridStoreQuotaStatus.UNKNOWN;
     }
   }
 
   public void refresh() {
     try {
-      logger.info("Refresh started for cluster " + manager.getClusterName() + "'s" + getClass().getSimpleName());
+      LOGGER.info("Refresh started for cluster " + manager.getClusterName() + "'s" + getClass().getSimpleName());
       routingTableProvider = new RoutingTableProvider(manager.getOriginalManager(), dataSource);
       routingTableProvider.addRoutingTableChangeListener(this, null);
       // We only support HYBRID_STORE_QUOTA in this class.
@@ -87,10 +87,10 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
           routingTableProvider
               .getRoutingTableSnapshot(PropertyType.CUSTOMIZEDVIEW, HelixPartitionState.HYBRID_STORE_QUOTA.name()),
           null);
-      logger.info("Refresh finished for cluster" + manager.getClusterName() + "'s" + getClass().getSimpleName());
+      LOGGER.info("Refresh finished for cluster" + manager.getClusterName() + "'s" + getClass().getSimpleName());
     } catch (Exception e) {
       String errorMessage = "Cannot refresh routing table from Helix for cluster " + manager.getClusterName();
-      logger.error(errorMessage, e);
+      LOGGER.error(errorMessage, e);
       throw new VeniceException(errorMessage, e);
     }
   }
@@ -104,7 +104,7 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
   private void onHybridStoreQuotaViewChange(RoutingTableSnapshot routingTableSnapshot) {
     Collection<CustomizedView> customizedViewCollection = routingTableSnapshot.getCustomizeViews();
     if (customizedViewCollection == null) {
-      logger.warn("There is no existing customized view");
+      LOGGER.warn("There is no existing customized view");
       return;
     }
     /**
@@ -126,7 +126,7 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
               status = HybridStoreQuotaStatus.valueOf(instanceState);
             } catch (Exception e) {
               String instanceName = entry.getKey();
-              logger.warn("Instance:" + instanceName + " unrecognized status:" + instanceState);
+              LOGGER.warn("Instance:" + instanceName + " unrecognized status:" + instanceState);
               continue;
             }
             if (status.equals(HybridStoreQuotaStatus.QUOTA_VIOLATED)) {
@@ -147,8 +147,8 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
             .collect(Collectors.toSet());
         this.resourceToStatusMap = newResourceToStatusMap;
       }
-      logger.info("Updated resource execution status map.");
-      logger.info(
+      LOGGER.info("Updated resource execution status map.");
+      LOGGER.info(
           "Hybrid store quota view is changed. The number of active resources is " + resourcesInCustomizedView.size()
               + ", and the number of deleted resource is " + deletedResourceNames.size());
     }
@@ -157,17 +157,17 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
   @Override
   public void onRoutingTableChange(RoutingTableSnapshot routingTableSnapshot, Object context) {
     if (routingTableSnapshot == null) {
-      logger.warn("Routing table snapshot should not be null");
+      LOGGER.warn("Routing table snapshot should not be null");
       return;
     }
     PropertyType helixPropertyType = routingTableSnapshot.getPropertyType();
     switch (helixPropertyType) {
       case CUSTOMIZEDVIEW:
-        logger.debug("Received Helix routing table change on Customized View");
+        LOGGER.debug("Received Helix routing table change on Customized View");
         onHybridStoreQuotaViewChange(routingTableSnapshot);
         break;
       default:
-        logger.warn("Received Helix routing table change on invalid type " + helixPropertyType);
+        LOGGER.warn("Received Helix routing table change on invalid type " + helixPropertyType);
     }
   }
 }

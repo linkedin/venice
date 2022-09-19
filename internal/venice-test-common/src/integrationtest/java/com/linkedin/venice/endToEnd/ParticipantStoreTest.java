@@ -47,7 +47,7 @@ import org.testng.annotations.Test;
 
 
 public class ParticipantStoreTest {
-  private static final Logger logger = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger();
 
   private VeniceClusterWrapper venice;
   private VeniceControllerWrapper parentController;
@@ -282,7 +282,7 @@ public class ParticipantStoreTest {
 
     @Override
     public void handleStoreChanged(Store store) {
-      logger.info("Received handleStoreChanged: " + store.toString());
+      LOGGER.info("Received handleStoreChanged: " + store.toString());
       changeCount.incrementAndGet();
     }
 
@@ -319,7 +319,7 @@ public class ParticipantStoreTest {
           expectedDeletionCount,
           "Listener's deletion count should be " + expectedDeletionCount + " following: " + details);
 
-      logger.info("Successfully asserted that notifications work after " + details);
+      LOGGER.info("Successfully asserted that notifications work after " + details);
     });
   }
 

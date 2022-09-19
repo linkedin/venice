@@ -22,7 +22,7 @@ import org.apache.logging.log4j.Logger;
  * DefaultIngestionBackend is the default ingestion backend implementation. Ingestion will be done in the same JVM as the application.
  */
 public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceIngestionBackend {
-  private static final Logger logger = LogManager.getLogger(DefaultIngestionBackend.class);
+  private static final Logger LOGGER = LogManager.getLogger(DefaultIngestionBackend.class);
   private final StorageMetadataService storageMetadataService;
   private final StorageService storageService;
   private final KafkaStoreIngestionService storeIngestionService;
@@ -43,17 +43,17 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
       VeniceStoreVersionConfig storeConfig,
       int partition,
       Optional<LeaderFollowerStateType> leaderState) {
-    logger.info("Retrieving storage engine for store " + storeConfig.getStoreVersionName() + " partition " + partition);
+    LOGGER.info("Retrieving storage engine for store " + storeConfig.getStoreVersionName() + " partition " + partition);
     Utils.waitStoreVersionOrThrow(storeConfig.getStoreVersionName(), getStoreIngestionService().getMetadataRepo());
     AbstractStorageEngine storageEngine = getStorageService().openStoreForNewPartition(storeConfig, partition);
     if (topicStorageEngineReferenceMap.containsKey(storeConfig.getStoreVersionName())) {
       topicStorageEngineReferenceMap.get(storeConfig.getStoreVersionName()).set(storageEngine);
     }
-    logger.info(
+    LOGGER.info(
         "Retrieved storage engine for store " + storeConfig.getStoreVersionName() + " partition " + partition
             + ". Starting consumption in ingestion service");
     getStoreIngestionService().startConsumption(storeConfig, partition, leaderState);
-    logger.info(
+    LOGGER.info(
         "Completed starting consumption in ingestion service for store " + storeConfig.getStoreVersionName()
             + " partition " + partition);
   }
@@ -82,7 +82,7 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
     if (storeIngestionService.isPartitionConsuming(storeConfig, partition)) {
       long startTimeInMs = System.currentTimeMillis();
       getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, 1, timeoutInSeconds);
-      logger.info(
+      LOGGER.info(
           String.format(
               "Partition: %d of topic: %s has stopped consumption in %d ms.",
               partition,
@@ -91,7 +91,7 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
     }
     getStoreIngestionService().resetConsumptionOffset(storeConfig, partition);
     getStorageService().dropStorePartition(storeConfig, partition, removeEmptyStorageEngine);
-    logger.info("Partition: " + partition + " of topic: " + storeConfig.getStoreVersionName() + " has been dropped.");
+    LOGGER.info("Partition: " + partition + " of topic: " + storeConfig.getStoreVersionName() + " has been dropped.");
   }
 
   @Override
@@ -99,7 +99,7 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
       VeniceStoreVersionConfig storeConfig,
       int partition,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
-    logger
+    LOGGER
         .info("Promoting partition: " + partition + " of topic: " + storeConfig.getStoreVersionName() + " to leader.");
     getStoreIngestionService().promoteToLeader(storeConfig, partition, leaderSessionIdChecker);
   }
@@ -109,7 +109,7 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
       VeniceStoreVersionConfig storeConfig,
       int partition,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
-    logger
+    LOGGER
         .info("Demoting partition: " + partition + " of topic: " + storeConfig.getStoreVersionName() + " to standby.");
     getStoreIngestionService().demoteToStandby(storeConfig, partition, leaderSessionIdChecker);
   }

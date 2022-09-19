@@ -13,12 +13,12 @@ import java.util.Optional;
 
 
 public class D2ControllerClient extends ControllerClient {
-  private final static String D2_SCHEME = "d2://";
+  private static final String D2_SCHEME = "d2://";
   /**
    * {@link #DUMMY_URL_WHEN_USING_D2_CLIENT} is not used since {@link D2ControllerClient}
    * will use D2Client to fetch the controller URL.
    */
-  private final static String DUMMY_URL_WHEN_USING_D2_CLIENT = "http://fake.host";
+  private static final String DUMMY_URL_WHEN_USING_D2_CLIENT = "http://fake.host";
 
   private final String d2ServiceName;
   private final D2Client d2Client;

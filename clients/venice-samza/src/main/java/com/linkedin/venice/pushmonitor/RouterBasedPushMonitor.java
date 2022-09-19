@@ -28,7 +28,7 @@ import org.apache.samza.system.SystemProducer;
  * stores running in Leader/Follower mode and it will be built for STREAM_REPROCESSING job.
  */
 public class RouterBasedPushMonitor implements Closeable {
-  private static final Logger logger = LogManager.getLogger(RouterBasedPushMonitor.class);
+  private static final Logger LOGGER = LogManager.getLogger(RouterBasedPushMonitor.class);
 
   private static final int POLL_CYCLE_DELAY_MS = 10000;
   private static final long POLL_TIMEOUT_MS = 10000L;
@@ -100,7 +100,7 @@ public class RouterBasedPushMonitor implements Closeable {
 
     @Override
     public void run() {
-      logger.info("Running " + this.getClass().getSimpleName());
+      LOGGER.info("Running " + this.getClass().getSimpleName());
       while (isRunning.get()) {
         try {
           // Get push status
@@ -108,14 +108,14 @@ public class RouterBasedPushMonitor implements Closeable {
           TransportClientResponse response = responseFuture.get(POLL_TIMEOUT_MS, TimeUnit.MILLISECONDS);
           PushStatusResponse pushStatusResponse = MAPPER.readValue(response.getBody(), PushStatusResponse.class);
           if (pushStatusResponse.isError()) {
-            logger.error("Router was not able to get push status: " + pushStatusResponse.getError());
+            LOGGER.error("Router was not able to get push status: " + pushStatusResponse.getError());
             continue;
           }
           pushMonitorService.setCurrentStatus(pushStatusResponse.getExecutionStatus());
           switch (pushStatusResponse.getExecutionStatus()) {
             case END_OF_PUSH_RECEIVED:
             case COMPLETED:
-              logger.info("Samza stream reprocessing has finished successfully for store version: " + topicName);
+              LOGGER.info("Samza stream reprocessing has finished successfully for store version: " + topicName);
               factory.endStreamReprocessingSystemProducer(producer, true);
               /**
                * If there is no more active samza producer, check whether all the stream reprocessing jobs succeed;
@@ -136,7 +136,7 @@ public class RouterBasedPushMonitor implements Closeable {
                */
               if (factory.getNumberOfActiveSystemProducers() == 0) {
                 // Pause a bit just in case user suddenly create new producers from the factory
-                logger.info("Pause 30 seconds before exiting the Samza process.");
+                LOGGER.info("Pause 30 seconds before exiting the Samza process.");
                 Utils.sleep(30000);
                 if (factory.getNumberOfActiveSystemProducers() != 0) {
                   break;
@@ -145,7 +145,7 @@ public class RouterBasedPushMonitor implements Closeable {
                   /**
                    * All stream reprocessing jobs succeed; exit the task based on the selected exit mode
                    */
-                  logger.info("Exiting Samza process after all stream reprocessing jobs succeeded.");
+                  LOGGER.info("Exiting Samza process after all stream reprocessing jobs succeeded.");
                   exitMode.exit();
                 } else {
                   throw new VeniceException("Not all stream reprocessing jobs succeeded.");
@@ -153,19 +153,19 @@ public class RouterBasedPushMonitor implements Closeable {
               }
               return;
             case ERROR:
-              logger.info("Stream reprocessing job failed for store version: " + topicName);
+              LOGGER.info("Stream reprocessing job failed for store version: " + topicName);
               factory.endStreamReprocessingSystemProducer(producer, false);
               // Stop polling
               return;
             default:
-              logger.info(
+              LOGGER.info(
                   "Current stream reprocessing job state: " + pushStatusResponse.getExecutionStatus()
                       + " for store version: " + topicName);
           }
 
           Utils.sleep(POLL_CYCLE_DELAY_MS);
         } catch (Exception e) {
-          logger.error("Error when polling push status from router for store version: " + topicName, e);
+          LOGGER.error("Error when polling push status from router for store version: " + topicName, e);
         }
       }
     }

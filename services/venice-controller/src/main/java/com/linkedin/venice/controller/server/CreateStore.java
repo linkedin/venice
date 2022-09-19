@@ -73,7 +73,7 @@ public class CreateStore extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -98,7 +98,7 @@ public class CreateStore extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -121,7 +121,7 @@ public class CreateStore extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -143,7 +143,7 @@ public class CreateStore extends AbstractRoute {
         controllerResponse.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(controllerResponse);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(controllerResponse);
     };
   }
 

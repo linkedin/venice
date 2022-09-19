@@ -25,7 +25,7 @@ public class ByteUtils {
 
   public static final int SIZE_OF_BOOLEAN = 1;
 
-  private final static int MAX_LENGTH_TO_LOG = 50;
+  private static final int MAX_LENGTH_TO_LOG = 50;
 
   /**
    * Translate the given byte array into a hexadecimal string

@@ -51,7 +51,7 @@ import org.apache.logging.log4j.Logger;
  * 2. no write-compute messages/partial updates/incremental push
  */
 public class StorageUtilizationManager implements StoreDataChangedListener {
-  private static final Logger logger = LogManager.getLogger(StorageUtilizationManager.class);
+  private static final Logger LOGGER = LogManager.getLogger(StorageUtilizationManager.class);
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = getRedundantExceptionFilter();
 
   private final Map<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
@@ -165,7 +165,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     }
     Optional<Version> version = store.getVersion(storeVersion);
     if (!version.isPresent()) {
-      logger.debug(
+      LOGGER.debug(
           "Version: {}  doesn't exist in the store: {}",
           Version.parseVersionFromKafkaTopicName(versionTopic),
           storeName);
@@ -173,7 +173,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     }
     versionIsOnline = isVersionOnline(version.get());
     if (this.storeQuotaInBytes != store.getStorageQuotaInByte() || !store.isHybridStoreDiskQuotaEnabled()) {
-      logger.info(
+      LOGGER.info(
           "Store: " + this.storeName + " changed, updated quota from " + this.storeQuotaInBytes + " to "
               + store.getStorageQuotaInByte() + " and store quota is "
               + (store.isHybridStoreDiskQuotaEnabled() ? "" : "not ")
@@ -279,7 +279,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       // Log quota exceeded info only once a minute per partition.
       boolean shouldLogQuotaExceeded = !REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier);
       if (shouldLogQuotaExceeded) {
-        logger.info(
+        LOGGER.info(
             "Quota exceeded for store " + storeName + " partition " + partition + ", paused this partition."
                 + versionTopic);
       }
@@ -290,7 +290,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       statusReportAdapter.reportQuotaNotViolated(pcs);
       if (isPartitionPausedIngestion(partition)) {
         resumePartition(partition, consumingTopic);
-        logger.info("Quota available for store " + storeName + " partition " + partition + ", resumed this partition.");
+        LOGGER.info("Quota available for store " + storeName + " partition " + partition + ", resumed this partition.");
       }
     }
   }

@@ -25,7 +25,7 @@ import org.apache.avro.io.BinaryEncoder;
  * @param <K>
  */
 public class AvroComputeRequestBuilderV2<K> extends AbstractAvroComputeRequestBuilder<K> {
-  private static final int computeRequestVersion = COMPUTE_REQUEST_VERSION_V2;
+  private static final int COMPUTE_REQUEST_VERSION = COMPUTE_REQUEST_VERSION_V2;
 
   public AvroComputeRequestBuilderV2(
       Schema latestValueSchema,
@@ -69,7 +69,7 @@ public class AvroComputeRequestBuilderV2<K> extends AbstractAvroComputeRequestBu
   @Override
   protected ComputeRequestWrapper generateComputeRequest(String resultSchemaStr) {
     // Generate ComputeRequestWrapper object
-    ComputeRequestWrapper computeRequestWrapper = new ComputeRequestWrapper(computeRequestVersion);
+    ComputeRequestWrapper computeRequestWrapper = new ComputeRequestWrapper(COMPUTE_REQUEST_VERSION);
     computeRequestWrapper.setValueSchema(latestValueSchema);
     computeRequestWrapper.setResultSchemaStr(resultSchemaStr);
     computeRequestWrapper.setOperations(getCommonComputeOperations());

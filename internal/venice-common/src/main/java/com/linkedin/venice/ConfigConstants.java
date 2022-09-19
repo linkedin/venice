@@ -9,7 +9,7 @@ import org.conscrypt.Conscrypt;
 
 
 public class ConfigConstants {
-  private static final Logger logger = LogManager.getLogger(ConfigConstants.class);
+  private static final Logger LOGGER = LogManager.getLogger(ConfigConstants.class);
   /**
    * Start of controller config default value
    */
@@ -39,7 +39,7 @@ public class ConfigConstants {
       Conscrypt.checkAvailability();
       return "org.apache.kafka.common.security.ssl.BoringSslContextProvider";
     } catch (UnsatisfiedLinkError e) {
-      logger.warn("Conscrypt is not available, falling back to " + SslConfigs.DEFAULT_SSL_CONTEXT_PROVIDER_CLASS, e);
+      LOGGER.warn("Conscrypt is not available, falling back to " + SslConfigs.DEFAULT_SSL_CONTEXT_PROVIDER_CLASS, e);
       return SslConfigs.DEFAULT_SSL_CONTEXT_PROVIDER_CLASS;
     }
   }).get();

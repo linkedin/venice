@@ -24,7 +24,7 @@ import org.apache.logging.log4j.Logger;
  * Configuration for Venice Router.
  */
 public class VeniceRouterConfig {
-  private static final Logger logger = LogManager.getLogger(VeniceRouterConfig.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceRouterConfig.class);
 
   private String clusterName;
   private String zkConnection;
@@ -130,10 +130,10 @@ public class VeniceRouterConfig {
   public VeniceRouterConfig(VeniceProperties props) {
     try {
       checkProperties(props);
-      logger.info("Loaded configuration");
+      LOGGER.info("Loaded configuration");
     } catch (Exception e) {
       String errorMessage = "Can not load properties.";
-      logger.error(errorMessage);
+      LOGGER.error(errorMessage);
       throw new VeniceException(errorMessage, e);
     }
   }
@@ -282,7 +282,7 @@ public class VeniceRouterConfig {
     try {
       multiKeyRoutingStrategy = VeniceMultiKeyRoutingStrategy.valueOf(multiKeyRoutingStrategyStr);
     } catch (Exception e) {
-      logger.warn(
+      LOGGER.warn(
           "Invalid {} config: {}, and allowed values are: {}. Using default strategy {}",
           ROUTER_MULTI_KEY_ROUTING_STRATEGY,
           multiKeyRoutingStrategyStr,

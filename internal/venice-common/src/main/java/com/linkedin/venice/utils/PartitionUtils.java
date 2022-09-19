@@ -20,7 +20,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class PartitionUtils {
-  private static final Logger logger = LogManager.getLogger(PartitionUtils.class);
+  private static final Logger LOGGER = LogManager.getLogger(PartitionUtils.class);
 
   /**
    * Calculate partition count for new version. If the version is the first one of the given store,
@@ -45,7 +45,7 @@ public class PartitionUtils {
       } else if (partitionCount < minPartitionCount) {
         partitionCount = minPartitionCount;
       }
-      logger.info(
+      LOGGER.info(
           "Assign partition count: {} by given size: {} for the first version of store: {}",
           partitionCount,
           storeSizeBytes,
@@ -53,7 +53,7 @@ public class PartitionUtils {
       return (int) partitionCount;
     } else {
       // Active version exists, use the partition count calculated before.
-      logger.info(
+      LOGGER.info(
           "Assign partition count: {}, which come from previous version, for store: {}",
           previousPartitionCount,
           storeName);
@@ -207,12 +207,12 @@ public class PartitionUtils {
       if (version.isPresent()) {
         amplifcationFactor = version.get().getPartitionerConfig().getAmplificationFactor();
       } else {
-        logger.warn("Version " + versionNumber + " does not exist.");
+        LOGGER.warn("Version " + versionNumber + " does not exist.");
         amplifcationFactor =
             readOnlyStoreRepository.getStore(storeName).getPartitionerConfig().getAmplificationFactor();
       }
     } catch (Exception e) {
-      logger.warn("Failed to fetch amplificationFactor from for store " + storeName + ". Using default value 1.");
+      LOGGER.warn("Failed to fetch amplificationFactor from for store " + storeName + ". Using default value 1.");
       amplifcationFactor = 1;
     }
     return amplifcationFactor;

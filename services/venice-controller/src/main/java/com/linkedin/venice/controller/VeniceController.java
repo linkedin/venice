@@ -26,7 +26,7 @@ import org.apache.logging.log4j.Logger;
  * Venice Controller to manage the cluster. Internally wraps Helix Controller.
  */
 public class VeniceController {
-  private static final Logger logger = LogManager.getLogger(VeniceController.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceController.class);
 
   // services
   private VeniceControllerService controllerService;
@@ -44,7 +44,7 @@ public class VeniceController {
   private final D2Client d2Client;
   private final Optional<ClientConfig> routerClientConfig;
   private final Optional<ICProvider> icProvider;
-  private final static String CONTROLLER_SERVICE_NAME = "venice-controller";
+  private static final String CONTROLLER_SERVICE_NAME = "venice-controller";
 
   /**
    * This constructor is being used in integration test.
@@ -183,7 +183,7 @@ public class VeniceController {
       }
       storeBackupVersionCleanupService =
           Optional.of(new StoreBackupVersionCleanupService((VeniceHelixAdmin) admin, multiClusterConfigs));
-      logger.info("StoreBackupVersionCleanupService is enabled");
+      LOGGER.info("StoreBackupVersionCleanupService is enabled");
     }
   }
 
@@ -191,7 +191,7 @@ public class VeniceController {
    * Causes venice controller and its associated services to begin execution.
    */
   public void start() {
-    logger.info(
+    LOGGER.info(
         "Starting controller: " + multiClusterConfigs.getControllerName() + " for clusters: "
             + multiClusterConfigs.getClusters().toString() + " with ZKAddress: " + multiClusterConfigs.getZkAddress());
     controllerService.start();
@@ -204,9 +204,9 @@ public class VeniceController {
     // start d2 service at the end
     d2ServerList.forEach(d2Server -> {
       d2Server.forceStart();
-      logger.info("Started d2 announcer: " + d2Server);
+      LOGGER.info("Started d2 announcer: " + d2Server);
     });
-    logger.info("Controller is started.");
+    LOGGER.info("Controller is started.");
   }
 
   /**
@@ -216,7 +216,7 @@ public class VeniceController {
     // stop d2 service first
     d2ServerList.forEach(d2Server -> {
       d2Server.notifyShutdown();
-      logger.info("Stopped d2 announcer: " + d2Server);
+      LOGGER.info("Stopped d2 announcer: " + d2Server);
     });
     // TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
     Utils.closeQuietlyWithErrorLogged(topicCleanupService);

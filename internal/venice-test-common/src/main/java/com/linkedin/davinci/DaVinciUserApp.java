@@ -18,13 +18,17 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
  * DaVinciUserApp is a dummy class that spins up a Da Vinci Client and ingest data from all partitions.
- * It then sleep for preset seconds before exiting itself, which leaves enough time window for tests to perform actions and checks.
+ * It then sleeps for preset seconds before exiting itself, which leaves enough time window for tests to perform actions and checks.
  */
 public class DaVinciUserApp {
+  private static final Logger LOGGER = LogManager.getLogger(DaVinciUserApp.class);
+
   public static void main(String[] args) throws InterruptedException, ExecutionException {
     String zkHosts = args[0];
     String baseDataPath = args[1];
@@ -55,10 +59,10 @@ public class DaVinciUserApp {
     try (CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient()) {
       client.subscribeAll().get();
-      logger.info("Da Vinci client finished subscription.");
-      // This guarantees this dummy app process can finish in time and will not lingering forever.
+      LOGGER.info("Da Vinci client finished subscription.");
+      // This guarantees this dummy app process can finish in time and will not linger forever.
       Thread.sleep(TimeUnit.SECONDS.toMillis(sleepSeconds));
-      logger.info("Da Vinci user app finished sleeping.");
+      LOGGER.info("Da Vinci user app finished sleeping.");
     }
   }
 }

@@ -29,7 +29,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
-  protected static final Logger logger = LogManager.getLogger(CachedReadOnlyStoreRepository.class);
+  private static final Logger LOGGER = LogManager.getLogger(CachedReadOnlyStoreRepository.class);
 
   public static final String STORE_REPOSITORY_PATH = "/Stores";
 
@@ -105,10 +105,10 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
 
   @Override
   public void refresh() {
-    logger.info("Refresh started for cluster " + clusterName + "'s " + getClass().getSimpleName());
+    LOGGER.info("Refresh started for cluster " + clusterName + "'s " + getClass().getSimpleName());
     try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       List<Store> newStores = getStoresFromZk();
-      logger.info(
+      LOGGER.info(
           "Got " + newStores.size() + " stores from cluster " + clusterName + " during refresh in repo: "
               + getClass().getSimpleName());
       Set<String> deletedStoreNames = storeMap.values().stream().map(Store::getName).collect(Collectors.toSet());
@@ -120,7 +120,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
       for (String storeName: deletedStoreNames) {
         removeStore(storeName);
       }
-      logger.info("Refresh finished for cluster " + clusterName + "'s " + getClass().getSimpleName());
+      LOGGER.info("Refresh finished for cluster " + clusterName + "'s " + getClass().getSimpleName());
     }
   }
 
@@ -216,7 +216,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
       try {
         listener.handleStoreCreated(store);
       } catch (Throwable e) {
-        logger.error("Could not handle store creation event for store: " + store.getName(), e);
+        LOGGER.error("Could not handle store creation event for store: " + store.getName(), e);
       }
     }
   }
@@ -226,7 +226,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
       try {
         listener.handleStoreDeleted(store);
       } catch (Throwable e) {
-        logger.error("Could not handle store deletion event for store: " + store.getName(), e);
+        LOGGER.error("Could not handle store deletion event for store: " + store.getName(), e);
       }
     }
   }
@@ -236,7 +236,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
       try {
         listener.handleStoreChanged(store);
       } catch (Throwable e) {
-        logger.error("Could not handle store updating event for store: " + store.getName(), e);
+        LOGGER.error("Could not handle store updating event for store: " + store.getName(), e);
       }
     }
   }

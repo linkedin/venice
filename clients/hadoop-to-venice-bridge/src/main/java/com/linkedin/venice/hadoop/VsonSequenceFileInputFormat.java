@@ -20,7 +20,7 @@ import org.apache.logging.log4j.Logger;
  * https://github.com/voldemort/voldemort/blob/master/contrib/hadoop-store-builder/src/java/voldemort/store/readonly/mr/serialization/JsonSequenceFileInputFormat.java
  */
 public class VsonSequenceFileInputFormat extends SequenceFileInputFormat<BytesWritable, BytesWritable> {
-  protected static final Logger logger = LogManager.getLogger(VsonSequenceFileInputFormat.class.getName());
+  private static final Logger LOGGER = LogManager.getLogger(VsonSequenceFileInputFormat.class.getName());
 
   @Override
   protected FileStatus[] listStatus(JobConf job) throws IOException {

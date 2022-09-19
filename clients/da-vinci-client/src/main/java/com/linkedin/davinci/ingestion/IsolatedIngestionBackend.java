@@ -39,7 +39,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class IsolatedIngestionBackend extends DefaultIngestionBackend
     implements DaVinciIngestionBackend, VeniceIngestionBackend {
-  private static final Logger logger = LogManager.getLogger(IsolatedIngestionBackend.class);
+  private static final Logger LOGGER = LogManager.getLogger(IsolatedIngestionBackend.class);
   private static final int RETRY_WAIT_TIME_IN_MS = 10 * Time.MS_PER_SECOND;
 
   private final MainIngestionRequestClient mainIngestionRequestClient;
@@ -76,11 +76,11 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
           .setStorageMetadataService((MainIngestionStorageMetadataService) storageMetadataService);
 
       mainIngestionMonitorService.startInner();
-      logger.info("Ingestion Report Listener started.");
+      LOGGER.info("Ingestion Report Listener started.");
     } catch (Exception e) {
       throw new VeniceException("Unable to start ingestion report listener.", e);
     }
-    logger.info(
+    LOGGER.info(
         "Created isolated ingestion backend with service port: " + servicePort + ", listener port: " + listenerPort);
   }
 
@@ -90,12 +90,12 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       int partition,
       Optional<LeaderFollowerStateType> leaderState) {
     if (isTopicPartitionInLocal(storeConfig.getStoreVersionName(), partition)) {
-      logger.info(
+      LOGGER.info(
           "Start consumption of topic: " + storeConfig.getStoreVersionName() + ", partition: " + partition
               + " in main process.");
       super.startConsumption(storeConfig, partition, leaderState);
     } else {
-      logger.info(
+      LOGGER.info(
           "Sending consumption request of topic: " + storeConfig.getStoreVersionName() + ", partition: " + partition
               + " to fork process.");
       mainIngestionMonitorService.addVersionPartitionToIngestionMap(storeConfig.getStoreVersionName(), partition);
@@ -131,15 +131,15 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       boolean removeEmptyStorageEngine) {
     String topicName = storeConfig.getStoreVersionName();
     if (isTopicPartitionInLocal(topicName, partition)) {
-      logger.info("Dropping partition: " + partition + " of topic: " + topicName + " in main process.");
+      LOGGER.info("Dropping partition: " + partition + " of topic: " + topicName + " in main process.");
       super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, removeEmptyStorageEngine);
     } else {
-      logger.info("Dropping partition: " + partition + " of topic: " + topicName + " in forked ingestion process.");
+      LOGGER.info("Dropping partition: " + partition + " of topic: " + topicName + " in forked ingestion process.");
       mainIngestionRequestClient.unsubscribeTopicPartition(topicName, partition);
     }
     mainIngestionMonitorService.cleanupTopicPartitionState(topicName, partition);
     if (mainIngestionMonitorService.getTopicPartitionCount(topicName) == 0) {
-      logger.info("No serving partitions exist for topic: " + topicName + ", dropping the topic storage.");
+      LOGGER.info("No serving partitions exist for topic: " + topicName + ", dropping the topic storage.");
       mainIngestionRequestClient.removeStorageEngine(topicName);
       mainIngestionMonitorService.cleanupTopicState(topicName);
     }
@@ -173,14 +173,14 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         messageCompleted = mainIngestionRequestClient.promoteToLeader(storeConfig.getStoreVersionName(), partition);
       }
       if (!messageCompleted) {
-        logger.info(
+        LOGGER.info(
             "Leader promotion message rejected by remote ingestion server, will retry in " + RETRY_WAIT_TIME_IN_MS
                 + " ms.");
         try {
           Thread.sleep(RETRY_WAIT_TIME_IN_MS);
         } catch (InterruptedException e) {
           Thread.currentThread().interrupt();
-          logger.info("Retry in leader promotion is interrupted.");
+          LOGGER.info("Retry in leader promotion is interrupted.");
           break;
         }
       }
@@ -201,14 +201,14 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         messageCompleted = mainIngestionRequestClient.demoteToStandby(storeConfig.getStoreVersionName(), partition);
       }
       if (!messageCompleted) {
-        logger.info(
+        LOGGER.info(
             "Leader demotion message rejected by remote ingestion server, will retry in " + RETRY_WAIT_TIME_IN_MS
                 + " ms.");
         try {
           Thread.sleep(RETRY_WAIT_TIME_IN_MS);
         } catch (InterruptedException e) {
           Thread.currentThread().interrupt();
-          logger.info("Retry in leader demotion is interrupted.");
+          LOGGER.info("Retry in leader demotion is interrupted.");
           break;
         }
       }
@@ -272,7 +272,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       mainIngestionRequestClient.close();
       super.close();
     } catch (Exception e) {
-      logger.info("Unable to close " + getClass().getSimpleName(), e);
+      LOGGER.info("Unable to close " + getClass().getSimpleName(), e);
     }
   }
 

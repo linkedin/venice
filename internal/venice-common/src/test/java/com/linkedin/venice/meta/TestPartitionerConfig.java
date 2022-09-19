@@ -10,8 +10,8 @@ import org.testng.annotations.Test;
 
 
 public class TestPartitionerConfig {
-  static ObjectMapper objectMapper = ObjectMapperFactory.getInstance();
-  static final String serialized =
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
+  private static final String SERIALIZED_CONFIG =
       "{\"partitionerParams\":{\"majorField\" : \"jobId\"}, \"partitionerClass\": \"com.linkedin.venice.partitioner.DefaultVenicePartitioner\", \"amplificationFactor\":10}";
 
   /**
@@ -25,7 +25,7 @@ public class TestPartitionerConfig {
     Map<String, String> testPartitionParams = new HashMap<>();
     testPartitionParams.put("majorField", "jobId");
 
-    PartitionerConfig partitionerConfig = objectMapper.readValue(serialized, PartitionerConfig.class);
+    PartitionerConfig partitionerConfig = OBJECT_MAPPER.readValue(SERIALIZED_CONFIG, PartitionerConfig.class);
     Assert.assertEquals(partitionerConfig.getPartitionerParams(), testPartitionParams);
     Assert.assertEquals(
         partitionerConfig.getPartitionerClass(),

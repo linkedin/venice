@@ -116,7 +116,8 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
     readCloseRWLock.readLock().lock();
     try {
       makeSureRocksDBIsStillOpen();
-      return rocksDB.get(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), readOptionsDefault, key);
+      return rocksDB
+          .get(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), READ_OPTIONS_DEFAULT, key);
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
     } finally {

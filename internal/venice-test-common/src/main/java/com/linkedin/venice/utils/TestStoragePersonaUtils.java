@@ -6,11 +6,11 @@ import java.util.Set;
 
 
 public class TestStoragePersonaUtils {
-  public final static String quotaFailedRegex = "Invalid persona quota:.*";
-  public final static String storesFailedRegex = "Invalid store\\(s\\) provided: .*";
-  public final static String personaDoesNotExistRegex =
+  public static final String QUOTA_FAILED_REGEX = "Invalid persona quota:.*";
+  public static final String STORES_FAILED_REGEX = "Invalid store\\(s\\) provided: .*";
+  public static final String PERSONA_DOES_NOT_EXIST_REGEX =
       "Update failed: persona with name .* does not exist in this cluster";
-  public final static String ownersDoesNotExistRegex = "Invalid owner\\(s\\) provided";
+  public static final String OWNERS_DOES_NOT_EXIST_REGEX = "Invalid owner\\(s\\) provided";
 
   public static StoragePersona createDefaultPersona() {
     long quota = 100;

@@ -12,7 +12,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class RetryUtils {
-  private static final Logger logger = LogManager.getLogger(RetryUtils.class);
+  private static final Logger LOGGER = LogManager.getLogger(RetryUtils.class);
 
   private RetryUtils() {
     // Util class
@@ -241,7 +241,7 @@ public class RetryUtils {
   }
 
   private static <T> void logAttemptWithFailure(ExecutionAttemptedEvent<T> executionAttemptedEvent) {
-    logger.error(
+    LOGGER.error(
         String.format(
             "Execution failed with message %s on attempt count %d",
             executionAttemptedEvent.getLastFailure().getMessage(),

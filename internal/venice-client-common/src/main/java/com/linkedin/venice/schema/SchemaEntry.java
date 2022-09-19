@@ -24,7 +24,7 @@ public class SchemaEntry {
   // To ensure we don't accidentally use different compatibility type for schema creation in Venice.
   public static final DirectionalSchemaCompatibilityType DEFAULT_SCHEMA_CREATION_COMPATIBILITY_TYPE =
       DirectionalSchemaCompatibilityType.FULL;
-  private static final Logger logger = LogManager.getLogger(SchemaEntry.class);
+  private static final Logger LOGGER = LogManager.getLogger(SchemaEntry.class);
 
   private final int id;
   private Schema schema;
@@ -47,11 +47,11 @@ public class SchemaEntry {
           && (AvroCompatibilityHelper.getRuntimeAvroVersion().laterThan(AvroVersion.AVRO_1_8))) {
         this.schema = Schema.create(Schema.Type.NULL);
         this.failedParsing = true;
-        logger.warn(
+        LOGGER.warn(
             "Avro 1.9 and newer version enforces stricter schema validation during parsing, will treat failed value schema as deprecated old value schema and ignore it. Error trace: ",
             e);
       } else {
-        logger.error("Failed to parse schema: " + schemaStr + " with exception: ", e);
+        LOGGER.error("Failed to parse schema: " + schemaStr + " with exception: ", e);
         throw new SchemaParseException(e);
       }
     }
@@ -142,7 +142,7 @@ public class SchemaEntry {
           /** writer */
           this.schema);
       if (backwardCompatibility.getType() == INCOMPATIBLE) {
-        logger.info(
+        LOGGER.info(
             "New schema (id " + newSchemaEntry.getId()
                 + ") is not backward compatible with (i.e.: cannot read data written by) existing schema (id " + this.id
                 + "), Full message:\n" + backwardCompatibility.getDescription());
@@ -157,7 +157,7 @@ public class SchemaEntry {
           /** writer */
           newSchemaEntry.schema);
       if (forwardCompatibility.getType() == INCOMPATIBLE) {
-        logger.info(
+        LOGGER.info(
             "New schema id (" + newSchemaEntry.getId()
                 + ") is not forward compatible with (i.e.: cannot have its written data read by) existing schema id ("
                 + this.id + "), Full message:\n" + forwardCompatibility.getDescription());

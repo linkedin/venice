@@ -19,7 +19,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class SslUtils {
-  private static final Logger logger = LogManager.getLogger(SslUtils.class);
+  private static final Logger LOGGER = LogManager.getLogger(SslUtils.class);
 
   /**
    * Self-signed cert. Use keystore as truststore since self-signed. Cert has CN=localhost
@@ -148,7 +148,7 @@ public class SslUtils {
     try {
       return new SSLEngineComponentFactoryImpl(config);
     } catch (Exception e) {
-      logger.error("Failed to build ssl engine component factory by config.", e);
+      LOGGER.error("Failed to build ssl engine component factory by config.", e);
       throw e;
     }
   }
@@ -182,7 +182,7 @@ public class SslUtils {
     try (FileInputStream inputStream = new FileInputStream(configFilePath)) {
       props.load(inputStream);
     } catch (IOException e) {
-      logger.error("Could not load ssl config file from path: " + configFilePath, e);
+      LOGGER.error("Could not load ssl config file from path: " + configFilePath, e);
       throw e;
     }
     return props;

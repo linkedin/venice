@@ -27,14 +27,14 @@ public class TestChunkAssembler {
   // Since every invocation on this method should clear its internal state, all tests sharing one instance should work
   private final ChunkAssembler chunkAssembler = new ChunkAssembler();
 
-  private final static int CHUNK_MANIFEST_SCHEMA_ID =
+  private static final int CHUNK_MANIFEST_SCHEMA_ID =
       AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
-  private final static int CHUNK_VALUE_SCHEMA_ID = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
-  private final static int VALUE_SCHEMA_ID = 1234;
-  private final static int VALUE_SCHEMA_ID_2 = 2234;
-  private final static ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER =
+  private static final int CHUNK_VALUE_SCHEMA_ID = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
+  private static final int VALUE_SCHEMA_ID = 1234;
+  private static final int VALUE_SCHEMA_ID_2 = 2234;
+  private static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER =
       new ChunkedValueManifestSerializer(true);
-  private final static ChunkedKeySuffixSerializer CHUNKED_KEY_SUFFIX_SERIALIZER = new ChunkedKeySuffixSerializer();
+  private static final ChunkedKeySuffixSerializer CHUNKED_KEY_SUFFIX_SERIALIZER = new ChunkedKeySuffixSerializer();
 
   // E.g. chunk_0, chunk_1, … chunk_N, chunk_manifest
   @Test

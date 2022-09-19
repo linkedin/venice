@@ -30,7 +30,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSenderFactory {
-  private static final Logger logger = LogManager.getLogger(DefaultPushJobHeartbeatSenderFactory.class);
+  private static final Logger LOGGER = LogManager.getLogger(DefaultPushJobHeartbeatSenderFactory.class);
 
   @Override
   public PushJobHeartbeatSender createHeartbeatSender(
@@ -58,12 +58,12 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
             -1));
 
     if (versionCreationResponse.isError()) {
-      logger.warn(
+      LOGGER.warn(
           "Got error in [heartbeat store: " + heartbeatStoreName + "] VersionCreationResponse: "
               + versionCreationResponse);
       throw new VeniceException(versionCreationResponse.getError());
     }
-    logger
+    LOGGER
         .info("Got [heartbeat store: " + heartbeatStoreName + "] VersionCreationResponse: " + versionCreationResponse);
     String heartbeatKafkaTopicName = versionCreationResponse.getKafkaTopic();
     VeniceWriter<byte[], byte[], byte[]> veniceWriter = getVeniceWriter(
@@ -91,7 +91,7 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
         properties.getBoolean(
             HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG.getConfigName(),
             HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG.getDefaultValue()));
-    logger.info(
+    LOGGER.info(
         "Successfully created a default push job heartbeat sender with heartbeat store name " + heartbeatStoreName);
     return defaultPushJobHeartbeatSender;
   }
@@ -122,7 +122,7 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
       String heartbeatStoreName) {
     SchemaResponse keySchemaResponse =
         ControllerClient.retryableRequest(controllerClient, retryAttempts, c -> c.getKeySchema(heartbeatStoreName));
-    logger
+    LOGGER
         .info("Got [heartbeat store: " + heartbeatStoreName + "] SchemaResponse for key schema: " + keySchemaResponse);
     return Schema.parse(keySchemaResponse.getSchemaStr());
   }

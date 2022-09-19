@@ -38,10 +38,11 @@ import org.apache.logging.log4j.Logger;
 
 @ChannelHandler.Sharable
 public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequest> {
-  private static final Logger logger = LogManager.getLogger(AdminOperationsHandler.class);
+  private static final Logger LOGGER = LogManager.getLogger(AdminOperationsHandler.class);
   private static final byte[] EMPTY_BYTES = new byte[0];
-  private static final RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
-  private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
+  private static final RedundantExceptionFilter EXCEPTION_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   public static final String READ_THROTTLING_ENABLED = "readThrottlingEnabled";
   public static final String EARLY_THROTTLE_ENABLED = "earlyThrottleEnabled";
@@ -116,13 +117,13 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
         String client = ctx.channel().remoteAddress().toString(); // ip and port
         String errLine = String.format("%s requested %s %s", client, method, req.uri());
 
-        logger.warn("Exception occurred! Access rejected: " + errLine + "\n" + e);
+        LOGGER.warn("Exception occurred! Access rejected: " + errLine + "\n" + e);
         sendErrorResponse(HttpResponseStatus.FORBIDDEN, "Access Rejected", ctx);
         return;
       }
     }
 
-    logger.info(
+    LOGGER.info(
         "Received admin operation request from " + ctx.channel().remoteAddress() + ". Method: " + method + " Task: "
             + adminTask + " Action: " + pathHelper.getKey());
 
@@ -140,8 +141,8 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
     adminOperationsStats.recordErrorAdminRequest();
     InetSocketAddress sockAddr = (InetSocketAddress) (ctx.channel().remoteAddress());
     String remoteAddr = sockAddr.getHostName() + ":" + sockAddr.getPort();
-    if (!filter.isRedundantException(sockAddr.getHostName(), e)) {
-      logger.error(
+    if (!EXCEPTION_FILTER.isRedundantException(sockAddr.getHostName(), e)) {
+      LOGGER.error(
           "Got exception while handling admin operation request from " + remoteAddr + ", and error: " + e.getMessage());
     }
     setupResponseAndFlush(INTERNAL_SERVER_ERROR, EMPTY_BYTES, false, ctx);
@@ -193,7 +194,7 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
     String delay = queryParams.get(RequestConstants.DELAY_EXECUTION);
     if (delay != null) {
       if (routerReadQuotaThrottlingLeaseFuture != null && !routerReadQuotaThrottlingLeaseFuture.isDone()) {
-        logger.info("Cancelling existing read quota timer.");
+        LOGGER.info("Cancelling existing read quota timer.");
         routerReadQuotaThrottlingLeaseFuture.cancel(true);
       }
 
@@ -216,7 +217,7 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
    */
   private void disableReadQuotaThrottling() {
     if (routerReadQuotaThrottlingLeaseFuture != null && !routerReadQuotaThrottlingLeaseFuture.isDone()) {
-      logger.info("Cancelling existing read quota timer.");
+      LOGGER.info("Cancelling existing read quota timer.");
       routerReadQuotaThrottlingLeaseFuture.cancel(true);
     }
 
@@ -274,7 +275,7 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
     if (payload == null) {
       setupResponseAndFlush(status, EMPTY_BYTES, true, ctx);
     } else {
-      setupResponseAndFlush(status, mapper.writeValueAsString(payload).getBytes(), true, ctx);
+      setupResponseAndFlush(status, OBJECT_MAPPER.writeValueAsString(payload).getBytes(), true, ctx);
     }
   }
 }

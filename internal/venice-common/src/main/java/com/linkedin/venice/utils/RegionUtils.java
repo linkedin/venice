@@ -10,7 +10,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class RegionUtils {
-  public static final Logger logger = LogManager.getLogger(RegionUtils.class.getName());
+  private static final Logger LOGGER = LogManager.getLogger(RegionUtils.class);
 
   public static String getLocalRegionName(VeniceProperties props, boolean isParentRegion) {
     String regionName;
@@ -21,13 +21,13 @@ public class RegionUtils {
       String regionNameFromEnv = null;
       try {
         regionNameFromEnv = System.getenv(ENVIRONMENT_CONFIG_KEY_FOR_REGION_NAME);
-        logger.info("Region name from environment config: " + regionNameFromEnv);
+        LOGGER.info("Region name from environment config: " + regionNameFromEnv);
         if (regionNameFromEnv == null) {
           regionNameFromEnv = System.getProperty(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION);
-          logger.info("Region name from System property: " + regionNameFromEnv);
+          LOGGER.info("Region name from System property: " + regionNameFromEnv);
         }
       } catch (Exception e) {
-        logger.warn(
+        LOGGER.warn(
             "Error when trying to retrieve environment variable for region name; will use default value instead.",
             e);
       }

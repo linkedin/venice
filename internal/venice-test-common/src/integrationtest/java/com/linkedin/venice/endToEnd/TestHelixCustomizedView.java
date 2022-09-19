@@ -54,7 +54,7 @@ import org.testng.annotations.Test;
 
 @Test
 public class TestHelixCustomizedView {
-  private static final Logger logger = LogManager.getLogger(TestHelixCustomizedView.class);
+  private static final Logger LOGGER = LogManager.getLogger(TestHelixCustomizedView.class);
   private VeniceClusterWrapper veniceCluster;
   private HelixAdmin admin;
   private ControllerClient controllerClient;
@@ -149,7 +149,7 @@ public class TestHelixCustomizedView {
       int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
       return currentVersion == pushVersion;
     });
-    logger.info("The current version is " + controllerClient.getStore(storeName).getStore().getCurrentVersion());
+    LOGGER.info("The current version is " + controllerClient.getStore(storeName).getStore().getCurrentVersion());
     resourceStateResponse = getResourceStateFromRouter();
     Assert.assertEquals(resourceStateResponse.getName(), storeVersionName);
     List<ReplicaState> replicaStates = resourceStateResponse.getReplicaStates();

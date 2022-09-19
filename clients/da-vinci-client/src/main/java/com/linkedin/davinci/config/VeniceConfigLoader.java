@@ -69,7 +69,7 @@ import org.apache.logging.log4j.Logger;
  *  patterns are narrowed down, checks can be enforced if necessary.
  */
 public class VeniceConfigLoader {
-  private static final Logger logger = LogManager.getLogger(VeniceConfigLoader.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceConfigLoader.class);
 
   public static final String VENICE_CONFIG_DIR = "VENICE_CONFIG_DIR";
   public static final String CLUSTER_PROPERTIES_FILE = "cluster.properties";
@@ -134,7 +134,7 @@ public class VeniceConfigLoader {
   }
 
   public static VeniceConfigLoader loadFromConfigDirectory(String configDirPath) {
-    logger.info("loading cluster and server configs...");
+    LOGGER.info("loading cluster and server configs...");
 
     if (!Utils.isReadableDir(configDirPath)) {
       String fullFilePath = Utils.getCanonicalPath(configDirPath);

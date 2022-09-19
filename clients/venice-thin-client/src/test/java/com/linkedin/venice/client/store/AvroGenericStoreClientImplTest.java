@@ -52,7 +52,7 @@ import org.testng.annotations.Test;
 public class AvroGenericStoreClientImplTest {
   private static final Logger LOGGER = LogManager.getLogger(AvroGenericStoreClientImplTest.class);
 
-  private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
   private final String storeName = "test_store";
   private final String defaultKeySchemaStr = "\"string\"";
   private final Map<String, AvroGenericStoreClient<String, Object>> storeClients = new HashMap<>();
@@ -190,7 +190,7 @@ public class AvroGenericStoreClientImplTest {
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
       LOGGER.info("Execute test for transport client: " + entry.getKey());
       byte[] byteResponse = ((InternalAvroStoreClient<String, Object>) entry.getValue()).getRaw(keySchemaPath).get();
-      SchemaResponse ret = mapper.readValue(byteResponse, SchemaResponse.class);
+      SchemaResponse ret = OBJECT_MAPPER.readValue(byteResponse, SchemaResponse.class);
       Assert.assertEquals(ret.getName(), storeName);
       Assert.assertEquals(ret.getId(), 1);
       Assert.assertEquals(ret.getSchemaStr(), defaultKeySchemaStr);

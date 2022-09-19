@@ -10,11 +10,11 @@ import org.testng.annotations.Test;
 
 public class MemoryBoundBlockingQueueTest {
   private static class MeasurableObject implements Measurable {
-    public static final int size = 10;
+    public static final int SIZE = 10;
 
     @Override
     public int getSize() {
-      return this.size;
+      return SIZE;
     }
   }
 
@@ -23,7 +23,7 @@ public class MemoryBoundBlockingQueueTest {
     int memoryCap = 5000;
     MemoryBoundBlockingQueue<MeasurableObject> queue = new MemoryBoundBlockingQueue<>(memoryCap, 1000);
     int objectCntAtMost =
-        memoryCap / (MemoryBoundBlockingQueue.LINKED_QUEUE_NODE_OVERHEAD_IN_BYTE + MeasurableObject.size);
+        memoryCap / (MemoryBoundBlockingQueue.LINKED_QUEUE_NODE_OVERHEAD_IN_BYTE + MeasurableObject.SIZE);
     Thread t = new Thread(() -> {
       while (true) {
         try {
@@ -48,7 +48,7 @@ public class MemoryBoundBlockingQueueTest {
     int memoryCap = 5000;
     MemoryBoundBlockingQueue<MeasurableObject> queue = new MemoryBoundBlockingQueue<>(memoryCap, 1000);
     int objectCntAtMost =
-        memoryCap / (MemoryBoundBlockingQueue.LINKED_QUEUE_NODE_OVERHEAD_IN_BYTE + MeasurableObject.size);
+        memoryCap / (MemoryBoundBlockingQueue.LINKED_QUEUE_NODE_OVERHEAD_IN_BYTE + MeasurableObject.SIZE);
     for (int i = 0; i < objectCntAtMost; ++i) {
       queue.put(new MeasurableObject());
     }
@@ -81,7 +81,7 @@ public class MemoryBoundBlockingQueueTest {
     int notifyDelta = 1000;
     MemoryBoundBlockingQueue<MeasurableObject> queue = new MemoryBoundBlockingQueue<>(memoryCap, notifyDelta);
     int objectCntAtMost =
-        memoryCap / (MemoryBoundBlockingQueue.LINKED_QUEUE_NODE_OVERHEAD_IN_BYTE + MeasurableObject.size);
+        memoryCap / (MemoryBoundBlockingQueue.LINKED_QUEUE_NODE_OVERHEAD_IN_BYTE + MeasurableObject.SIZE);
     Thread t = new Thread(() -> {
       while (true) {
         try {
@@ -102,7 +102,7 @@ public class MemoryBoundBlockingQueueTest {
       int previousQueueSize = queue.size();
       // Here we need to take out some objects to allow more put
       double objectCntTakenAtLeast = Math.ceil(
-          (double) notifyDelta / (MemoryBoundBlockingQueue.LINKED_QUEUE_NODE_OVERHEAD_IN_BYTE + MeasurableObject.size));
+          (double) notifyDelta / (MemoryBoundBlockingQueue.LINKED_QUEUE_NODE_OVERHEAD_IN_BYTE + MeasurableObject.SIZE));
       for (int i = 1; i < objectCntTakenAtLeast; ++i) {
         queue.take();
         Assert.assertEquals(queue.size(), previousQueueSize - 1);

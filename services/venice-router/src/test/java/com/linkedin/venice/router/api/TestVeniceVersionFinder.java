@@ -42,9 +42,9 @@ import org.testng.annotations.Test;
 
 public class TestVeniceVersionFinder {
   private final Map<String, String> clusterToD2Map = new HashMap<>();
-  private final static String DEST_CLUSTER = "destCluster";
-  private final static String D2_SERVICE = "d2Service";
-  private final static String CLUSTER = "cluster";
+  private static final String DEST_CLUSTER = "destCluster";
+  private static final String D2_SERVICE = "d2Service";
+  private static final String CLUSTER = "cluster";
 
   private BasicFullHttpRequest request;
 

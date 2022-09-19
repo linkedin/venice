@@ -75,7 +75,7 @@ import org.bouncycastle.crypto.digests.MD5Digest;
 
 
 public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
-  private static final Logger logger = LogManager.getLogger(AbstractAvroStoreClient.class);
+  private static final Logger LOGGER = LogManager.getLogger(AbstractAvroStoreClient.class);
   public static final String TYPE_STORAGE = "storage";
   public static final String TYPE_COMPUTE = "compute";
   public static final String B64_FORMAT = "?f=b64";
@@ -128,7 +128,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     COMPUTE_HEADER_MAP_FOR_STREAMING_V3.put(HttpConstants.VENICE_STREAMING, "1");
 
     AvroVersion version = AvroCompatibilityHelper.getRuntimeAvroVersion();
-    logger.info("Detected: " + version.toString() + " on the classpath.");
+    LOGGER.info("Detected: " + version.toString() + " on the classpath.");
   }
 
   private final CompletableFuture<Map<K, V>> COMPLETABLE_FUTURE_FOR_EMPTY_KEY_IN_BATCH_GET =
@@ -473,7 +473,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         key,
         getKeySerializerWithoutRetry(),
         getSchemaReader(),
-        logger);
+        LOGGER);
   }
 
   public static <T, K> T tryToDeserializeWithVerboseLogging(
@@ -483,7 +483,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       K key,
       RecordSerializer<K> keySerializer,
       SchemaReader schemaReader,
-      Logger logger) {
+      Logger LOGGER) {
     try {
       return dataDeserializer.deserialize(data);
     } catch (VeniceSerializationException e) {
@@ -499,24 +499,24 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         checksumHex = Hex.encodeHexString(valueChecksum);
       } catch (Exception e2) {
         checksumHex = "failed to compute value checksum";
-        logger.error(checksumHex + " for logging purposes...", e2);
+        LOGGER.error(checksumHex + " for logging purposes...", e2);
       }
 
       try {
         keyHex = Hex.encodeHexString(keySerializer.serialize(key, AvroSerializer.REUSE.get()));
       } catch (Exception e3) {
         keyHex = "failed to serialize key and encode it as hex";
-        logger.error(keyHex + " for logging purposes...", e3);
+        LOGGER.error(keyHex + " for logging purposes...", e3);
       }
 
       try {
         latestSchemaId = schemaReader.getLatestValueSchemaId().toString();
       } catch (Exception e4) {
         latestSchemaId = "failed to retrieve latest value schema ID";
-        logger.error(latestSchemaId + " for logging purposes...", e4);
+        LOGGER.error(latestSchemaId + " for logging purposes...", e4);
       }
 
-      logger.error(
+      LOGGER.error(
           "Caught a " + VeniceSerializationException.class.getSimpleName() + ", will bubble up.\n"
               + "RecordDeserializer: " + dataDeserializer.getClass().getSimpleName() + "\n" + "Writer schema ID: "
               + (writerSchemaId == -1 ? "N/A" : writerSchemaId) + "\n" + "Latest schema ID: " + latestSchemaId + "\n"
@@ -647,12 +647,12 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   @Override
   public void close() {
     boolean isHttp = transportClient instanceof HttpTransportClient;
-    IOUtils.closeQuietly(transportClient, logger::error);
+    IOUtils.closeQuietly(transportClient, LOGGER::error);
     if (isHttp) { // TODO make d2client close method idempotent. d2client re-uses the transport client for the schema
                   // reader
-      IOUtils.closeQuietly(schemaReader, logger::error);
+      IOUtils.closeQuietly(schemaReader, LOGGER::error);
     }
-    IOUtils.closeQuietly(compressorFactory, logger::error);
+    IOUtils.closeQuietly(compressorFactory, LOGGER::error);
   }
 
   protected Optional<Schema> getReaderSchema() {
@@ -677,7 +677,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       try {
         getKeySerializerWithoutRetry();
       } catch (Exception e) {
-        logger.info(
+        LOGGER.info(
             "Got error when trying to warm up client during start phase for store: {}, and will kick off an "
                 + "async warm-up:{}",
             getStoreName(),

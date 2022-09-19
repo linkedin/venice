@@ -32,9 +32,10 @@ public class RouterExceptionAndTrackingUtils {
 
   private static RouterStats<AggRouterHttpRequestStats> ROUTER_STATS;
 
-  private static final Logger logger = LogManager.getLogger(RouterExceptionAndTrackingUtils.class);
+  private static final Logger LOGGER = LogManager.getLogger(RouterExceptionAndTrackingUtils.class);
 
-  private static final RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
+  private static final RedundantExceptionFilter EXCEPTION_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   public static void setRouterStats(RouterStats<AggRouterHttpRequestStats> routerStats) {
     ROUTER_STATS = routerStats;
@@ -55,13 +56,13 @@ public class RouterExceptionAndTrackingUtils {
       e.setStackTrace(emptyStackTrace);
     }
     String name = storeName.isPresent() ? storeName.get() : "";
-    if (!filter.isRedundantException(name, String.valueOf(e.code()))) {
+    if (!EXCEPTION_FILTER.isRedundantException(name, String.valueOf(e.code()))) {
       if (responseStatus == BAD_REQUEST) {
-        logger.debug(BAD_REQUEST + " for store: " + name, e);
+        LOGGER.debug(BAD_REQUEST + " for store: " + name, e);
       } else if (failureType == FailureType.RESOURCE_NOT_FOUND) {
-        logger.error("Could not find resources for store: " + name, e);
+        LOGGER.error("Could not find resources for store: " + name, e);
       } else {
-        logger.warn("Got an exception for store: " + name, e);
+        LOGGER.warn("Got an exception for store: " + name, e);
       }
     }
     return e;
@@ -98,8 +99,8 @@ public class RouterExceptionAndTrackingUtils {
     if (responseStatus.equals(TOO_MANY_REQUESTS) || responseStatus.equals(SERVICE_UNAVAILABLE)) {
       e.setStackTrace(emptyStackTrace);
     }
-    if (!filter.isRedundantException(name, e)) {
-      logger.warn("Got an exception for store:" + name, e);
+    if (!EXCEPTION_FILTER.isRedundantException(name, e)) {
+      LOGGER.warn("Got an exception for store:" + name, e);
     }
     return e;
   }

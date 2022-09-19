@@ -53,7 +53,7 @@ public class TestAdminOperationsHandler {
   private static final String READ_QUOTA_THROTTLE_INCORRECT_ACTION_URI =
       String.join("/", READ_QUOTA_THROTTLE_URI, "incorrect");
 
-  private static final ObjectMapper objectMapper = ObjectMapperFactory.getInstance();
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   private final ConfigFake fake = new ConfigFake();
 
@@ -141,7 +141,7 @@ public class TestAdminOperationsHandler {
       boolean readThrottlingEnabled,
       boolean earlyThrottleEnabled,
       boolean adminOperationAuthorized) throws IOException, AclException {
-    Map responseContent = objectMapper.readValue(response.content().toString(StandardCharsets.UTF_8), Map.class);
+    Map responseContent = OBJECT_MAPPER.readValue(response.content().toString(StandardCharsets.UTF_8), Map.class);
     if (accessControllerPresent && isSSL) {
       verify(accessController, times(1)).hasAccessToAdminOperation(any(), eq(TASK_READ_QUOTA_THROTTLE));
       Mockito.clearInvocations(accessController);
@@ -163,7 +163,7 @@ public class TestAdminOperationsHandler {
       boolean accessControllerPresent,
       boolean adminOperationAuthorized,
       HttpResponseStatus expectedResponseStatus) throws IOException, AclException {
-    Map responseContent = objectMapper.readValue(response.content().toString(StandardCharsets.UTF_8), Map.class);
+    Map responseContent = OBJECT_MAPPER.readValue(response.content().toString(StandardCharsets.UTF_8), Map.class);
     if (accessControllerPresent && isSSL) {
       verify(accessController, times(1)).hasAccessToAdminOperation(any(), anyString());
       Mockito.clearInvocations(accessController);

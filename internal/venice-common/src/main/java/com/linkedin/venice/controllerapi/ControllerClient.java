@@ -38,7 +38,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class ControllerClient implements Closeable {
-  private final static Logger logger = LogManager.getLogger(ControllerClient.class);
+  private static final Logger LOGGER = LogManager.getLogger(ControllerClient.class);
 
   private static final int DEFAULT_MAX_ATTEMPTS = 10;
   private static final int QUERY_JOB_STATUS_TIMEOUT = 60 * Time.MS_PER_SECOND;
@@ -146,16 +146,16 @@ public class ControllerClient implements Closeable {
           String leaderControllerUrl =
               transport.request(url, ControllerRoute.MASTER_CONTROLLER, newParams(), LeaderControllerResponse.class)
                   .getUrl();
-          logger.info("Discovered leader controller " + leaderControllerUrl + " from " + url);
+          LOGGER.info("Discovered leader controller " + leaderControllerUrl + " from " + url);
           return leaderControllerUrl;
         } catch (Exception e) {
-          logger.warn("Unable to discover leader controller from " + url);
+          LOGGER.warn("Unable to discover leader controller from " + url);
           lastException = e;
         }
       }
     }
     String message = "Unable to discover leader controller from " + this.controllerDiscoveryUrls;
-    logger.error(message, lastException);
+    LOGGER.error(message, lastException);
     throw new VeniceException(message, lastException);
   }
 
@@ -532,7 +532,7 @@ public class ControllerClient implements Closeable {
       if (!response.isError() || currentAttempt == totalAttempts || valueSchemaNotFoundSchemaResponse(response)) {
         return response;
       } else {
-        logger.warn(
+        LOGGER.warn(
             "Error on attempt " + currentAttempt + "/" + totalAttempts + " of querying the Controller: "
                 + response.getError());
         currentAttempt++;
@@ -969,7 +969,7 @@ public class ControllerClient implements Closeable {
             return transport.executeGet(url, routerPath, new QueryParams(), D2ServiceDiscoveryResponse.class);
           }
         } catch (Exception e) {
-          logger.warn("Unable to discover cluster for store " + storeName + " from " + url);
+          LOGGER.warn("Unable to discover cluster for store " + storeName + " from " + url);
           lastException = e;
         }
       }
@@ -1165,7 +1165,7 @@ public class ControllerClient implements Closeable {
         }
 
         if (attempt < maxAttempts) {
-          logger.info(
+          LOGGER.info(
               "Retrying controller request" + ", attempt = " + attempt + "/" + maxAttempts + ", controller = "
                   + this.leaderControllerUrl + ", route = " + route.getPath() + ", params = "
                   + params.getNameValuePairs() + ", timeout = " + timeoutMs,
@@ -1187,13 +1187,13 @@ public class ControllerClient implements Closeable {
       String message,
       Exception exception,
       Class<T> responseType) {
-    logger.error(message, exception);
+    LOGGER.error(message, exception);
     try {
       T response = responseType.newInstance();
       response.setError(message, exception);
       return response;
     } catch (InstantiationException | IllegalAccessException e) {
-      logger.error("Unable to instantiate controller response " + responseType.getName(), e);
+      LOGGER.error("Unable to instantiate controller response " + responseType.getName(), e);
       throw new VeniceException(message, exception);
     }
   }

@@ -33,7 +33,7 @@ public class SystemStoreJSONSerializer extends VeniceJsonSerializer<Serializable
   }
 
   private void addMixin(Class veniceClass, Class serializerClass) {
-    mapper.addMixIn(veniceClass, serializerClass);
+    OBJECT_MAPPER.addMixIn(veniceClass, serializerClass);
   }
 
   @Override
@@ -43,6 +43,6 @@ public class SystemStoreJSONSerializer extends VeniceJsonSerializer<Serializable
 
   @Override
   public SerializableSystemStore deserialize(byte[] bytes, String path) throws IOException {
-    return mapper.readValue(bytes, SerializableSystemStore.class);
+    return OBJECT_MAPPER.readValue(bytes, SerializableSystemStore.class);
   }
 }

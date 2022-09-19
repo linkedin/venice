@@ -32,7 +32,7 @@ import org.apache.logging.log4j.Logger;
  * class that maintains config very specific to a Venice cluster
  */
 public class VeniceClusterConfig {
-  private static final Logger logger = LogManager.getLogger(VeniceServerConfig.class.getName());
+  private static final Logger LOGGER = LogManager.getLogger(VeniceServerConfig.class.getName());
 
   private final String clusterName;
   private final String zookeeperAddress;
@@ -114,7 +114,7 @@ public class VeniceClusterConfig {
         .getSizeInBytes(KAFKA_FETCH_PARTITION_MAX_SIZE_PER_SEC, ConsumerConfig.DEFAULT_MAX_PARTITION_FETCH_BYTES);
 
     this.regionName = RegionUtils.getLocalRegionName(clusterProps, false);
-    logger.info("Final region name for this node: " + this.regionName);
+    LOGGER.info("Final region name for this node: " + this.regionName);
 
     String kafkaSecurityProtocolString =
         clusterProps.getString(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name());
@@ -174,7 +174,7 @@ public class VeniceClusterConfig {
       }
     }
     if (!foundBaseKafkaUrlInMappingIfItIsPopulated) {
-      logger.info(
+      LOGGER.info(
           "baseKafkaBootstrapServers ({}) not found in Kafka cluster mapping: {}",
           baseKafkaBootstrapServers,
           kafkaClusterMap);
@@ -216,7 +216,7 @@ public class VeniceClusterConfig {
       this.sslConfig = Optional.empty();
     }
 
-    logger.info(
+    LOGGER.info(
         "Derived kafka cluster mapping: kafkaClusterIdToUrlMap: " + tmpKafkaClusterIdToUrlMap
             + ", kafkaClusterUrlToIdMap: " + tmpKafkaClusterUrlToIdMap + ", kafkaClusterIdToAliasMap: "
             + tmpKafkaClusterIdToAliasMap + ", kafkaClusterAliasToIdMap: " + tmpKafkaClusterAliasToIdMap);

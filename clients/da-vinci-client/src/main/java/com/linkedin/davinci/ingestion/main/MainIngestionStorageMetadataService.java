@@ -36,7 +36,7 @@ import org.apache.logging.log4j.Logger;
  * through IPC protocol.
  */
 public class MainIngestionStorageMetadataService extends AbstractVeniceService implements StorageMetadataService {
-  private static final Logger logger = LogManager.getLogger(MainIngestionStorageMetadataService.class);
+  private static final Logger LOGGER = LogManager.getLogger(MainIngestionStorageMetadataService.class);
 
   private final MainIngestionRequestClient client;
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
@@ -86,7 +86,7 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
 
   @Override
   public void clearStoreVersionState(String topicName) {
-    logger.info("Clearing StoreVersionState for " + topicName);
+    LOGGER.info("Clearing StoreVersionState for " + topicName);
     topicStoreVersionStateMap.remove(topicName);
     // Sync update with metadata partition opened by ingestion process.
     IngestionStorageMetadata ingestionStorageMetadata = new IngestionStorageMetadata();
@@ -119,7 +119,7 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
 
   @Override
   public void clearOffset(String topicName, int partitionId) {
-    logger.info("Clearing OffsetRecord for " + topicName + " " + partitionId);
+    LOGGER.info("Clearing OffsetRecord for " + topicName + " " + partitionId);
     if (topicPartitionOffsetRecordMap.containsKey(topicName)) {
       Map<Integer, OffsetRecord> partitionOffsetRecordMap = topicPartitionOffsetRecordMap.get(topicName);
       partitionOffsetRecordMap.remove(partitionId);
@@ -147,7 +147,7 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
    * putOffsetRecord will only put OffsetRecord into in-memory state, without persisting into metadata RocksDB partition.
    */
   public void putOffsetRecord(String topicName, int partitionId, OffsetRecord record) {
-    logger
+    LOGGER
         .info("Updating OffsetRecord for " + topicName + " " + partitionId + " " + record.getLocalVersionTopicOffset());
     Map<Integer, OffsetRecord> partitionOffsetRecordMap =
         topicPartitionOffsetRecordMap.getOrDefault(topicName, new VeniceConcurrentHashMap<>());
@@ -159,7 +159,7 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
    * putStoreVersionState will only put StoreVersionState into in-memory state, without persisting into metadata RocksDB partition.
    */
   public void putStoreVersionState(String topicName, StoreVersionState record) {
-    logger.info("Updating StoreVersionState for " + topicName);
+    LOGGER.info("Updating StoreVersionState for " + topicName);
     topicStoreVersionStateMap.put(topicName, record);
   }
 
@@ -202,13 +202,13 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
           }
           Thread.sleep(Time.MS_PER_SECOND);
           if (metadataUpdateQueue.size() > 0) {
-            logger.info("Number of remaining metadata update requests in queue: " + metadataUpdateQueue.size());
+            LOGGER.info("Number of remaining metadata update requests in queue: " + metadataUpdateQueue.size());
           }
         } catch (InterruptedException ie) {
           Thread.currentThread().interrupt();
           break;
         } catch (Throwable e) {
-          logger.error("Unexpected throwable while running " + getClass().getSimpleName(), e);
+          LOGGER.error("Unexpected throwable while running " + getClass().getSimpleName(), e);
           metadataUpdateStats.recordMetadataQueueUpdateError(1.0);
         }
       }

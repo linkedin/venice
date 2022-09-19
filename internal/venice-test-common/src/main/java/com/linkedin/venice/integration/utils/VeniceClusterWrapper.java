@@ -77,7 +77,7 @@ import org.testng.Assert;
  * - {@link VeniceServerWrapper}
  */
 public class VeniceClusterWrapper extends ProcessWrapper {
-  public static final Logger logger = LogManager.getLogger(VeniceClusterWrapper.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceClusterWrapper.class);
   public static final String SERVICE_NAME = "VeniceCluster";
 
   // Forked process constants
@@ -304,7 +304,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
             });
           }
         } catch (Throwable e) {
-          logger.error("Caught Throwable while creating the " + VeniceClusterWrapper.class.getSimpleName(), e);
+          LOGGER.error("Caught Throwable while creating the " + VeniceClusterWrapper.class.getSimpleName(), e);
           Utils.closeQuietlyWithErrorLogged(veniceClusterWrapper);
           throw e;
         }
@@ -323,7 +323,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   static synchronized void generateServiceInAnotherProcess(String clusterInfoFilePath, int waitTimeInSeconds)
       throws IOException, InterruptedException {
     if (veniceClusterProcess != null) {
-      logger.warn(
+      LOGGER.warn(
           "Received a request to spawn a venice cluster in another process for testing"
               + "but one has already been running. Will not spawn a new one.");
       return;
@@ -339,11 +339,11 @@ public class VeniceClusterWrapper extends ProcessWrapper {
             "Venice cluster exited unexpectedly with the code " + veniceClusterProcess.exitValue());
       }
     } catch (InterruptedException e) {
-      logger.warn("Waiting for veniceClusterProcess to start is interrupted", e);
+      LOGGER.warn("Waiting for veniceClusterProcess to start is interrupted", e);
       Thread.currentThread().interrupt();
       return;
     }
-    logger.info("Venice cluster is started in a remote process!");
+    LOGGER.info("Venice cluster is started in a remote process!");
   }
 
   static synchronized void stopServiceInAnotherProcess() {
@@ -927,7 +927,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           "The current version of store " + storeName + " does not have the expected value of '" + versionId + "'.");
     });
     refreshAllRouterMetaData();
-    logger.info("Finished waiting for version {} of store {} to become available.", versionId, storeName);
+    LOGGER.info("Finished waiting for version {} of store {} to become available.", versionId, storeName);
   }
 
   /**
@@ -985,11 +985,11 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       propertyBuilder.put(FORKED_PROCESS_ZK_ADDRESS, veniceClusterWrapper.getZk().getAddress());
       // Store properties into config file.
       propertyBuilder.build().storeFlattened(configFile);
-      logger.info("Configs are stored into: " + clusterInfoConfigPath);
+      LOGGER.info("Configs are stored into: " + clusterInfoConfigPath);
     } catch (Exception e) {
       propertyBuilder.put(FORKED_PROCESS_EXCEPTION, ExceptionUtils.stackTraceToString(e));
       propertyBuilder.build().storeFlattened(configFile);
-      logger.info("Exception stored into: " + clusterInfoConfigPath);
+      LOGGER.info("Exception stored into: " + clusterInfoConfigPath);
       throw new VeniceException(e);
     }
   }

@@ -45,7 +45,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class VersionBackend {
-  private static final Logger logger = LogManager.getLogger(VersionBackend.class);
+  private static final Logger LOGGER = LogManager.getLogger(VersionBackend.class);
 
   private static final int DEFAULT_PUSH_STATUS_HEARTBEAT_INTERVAL_IN_SECONDS = 10;
 
@@ -96,7 +96,7 @@ public class VersionBackend {
   }
 
   synchronized void close() {
-    logger.info("Closing local version " + this);
+    LOGGER.info("Closing local version " + this);
     backend.getVersionByTopicMap().remove(version.kafkaTopicName(), this);
     if (heartbeat != null) {
       heartbeat.cancel(true);
@@ -107,19 +107,19 @@ public class VersionBackend {
     try {
       backend.getIngestionBackend().killConsumptionTask(version.kafkaTopicName());
     } catch (VeniceException e) {
-      logger.error("Encounter exception when killing consumption task: " + e);
+      LOGGER.error("Encounter exception when killing consumption task: " + e);
     }
   }
 
   synchronized void delete() {
-    logger.info("Deleting local version " + this);
+    LOGGER.info("Deleting local version " + this);
     close();
     final String topicName = version.kafkaTopicName();
     try {
       backend.getIngestionBackend().removeStorageEngine(topicName);
       backend.getCompressorFactory().removeVersionSpecificCompressor(topicName);
     } catch (VeniceException e) {
-      logger.error("Encounter exception when removing version storage of topic: " + topicName, e);
+      LOGGER.error("Encounter exception when removing version storage of topic: " + topicName, e);
     }
   }
 
@@ -150,7 +150,7 @@ public class VersionBackend {
         try {
           backend.getPushStatusStoreWriter().writeHeartbeat(version.getStoreName());
         } catch (Throwable t) {
-          logger.error("Unable to send heartbeat for " + this);
+          LOGGER.error("Unable to send heartbeat for " + this);
         }
       }, 0, heartbeatInterval, TimeUnit.SECONDS);
     }
@@ -352,12 +352,12 @@ public class VersionBackend {
   synchronized CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
     Instant startTime = Instant.now();
     List<Integer> partitionList = getPartitions(partitions);
-    logger.info("Subscribing to partitions " + partitionList + " of " + this);
+    LOGGER.info("Subscribing to partitions " + partitionList + " of " + this);
     List<CompletableFuture<Void>> futures = new ArrayList<>(partitionList.size());
     for (int partition: partitionList) {
       AbstractStorageEngine engine = storageEngine.get();
       if (partitionFutures.containsKey(partition)) {
-        logger.info("Partition " + partition + " of " + this + " is subscribed, ignoring subscribe request.");
+        LOGGER.info("Partition " + partition + " of " + this + " is subscribed, ignoring subscribe request.");
       } else if (suppressLiveUpdates && engine != null
           && engine.containsPartition(partition, version.getPartitionerConfig())) {
         // If live update suppression is enabled and local data exists, don't start ingestion and report ready to serve.
@@ -378,11 +378,11 @@ public class VersionBackend {
 
   synchronized void unsubscribe(ComplementSet<Integer> partitions) {
     List<Integer> partitionList = getPartitions(partitions);
-    logger.info("Unsubscribing from partitions " + partitions + " of " + this);
+    LOGGER.info("Unsubscribing from partitions " + partitions + " of " + this);
 
     for (int partition: partitionList) {
       if (!partitionFutures.containsKey(partition)) {
-        logger.warn("Partition " + partition + " of " + this + " is not subscribed, ignoring unsubscribe request.");
+        LOGGER.warn("Partition " + partition + " of " + this + " is not subscribed, ignoring unsubscribe request.");
         return;
       }
       completePartition(partition);
@@ -393,12 +393,12 @@ public class VersionBackend {
   }
 
   void completePartition(int partition) {
-    logger.info("Partition " + partition + " of " + this + " is ready to serve.");
+    LOGGER.info("Partition " + partition + " of " + this + " is ready to serve.");
     partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture<>()).complete(null);
   }
 
   void completePartitionExceptionally(int partition, Throwable failure) {
-    logger.warn("Failed to subscribe to partition " + partition + " of " + this, failure);
+    LOGGER.warn("Failed to subscribe to partition " + partition + " of " + this, failure);
     partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture<>()).completeExceptionally(failure);
   }
 

@@ -19,7 +19,7 @@ import org.apache.logging.log4j.Logger;
  * The expected users are all venice-backend components.
  */
 public class HelixReadOnlyLiveClusterConfigRepository implements ReadOnlyLiveClusterConfigRepository {
-  private static final Logger logger = LogManager.getLogger(HelixReadOnlyLiveClusterConfigRepository.class);
+  private static final Logger LOGGER = LogManager.getLogger(HelixReadOnlyLiveClusterConfigRepository.class);
 
   private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
@@ -74,14 +74,14 @@ public class HelixReadOnlyLiveClusterConfigRepository implements ReadOnlyLiveClu
       liveClusterConfig = (LiveClusterConfig) data;
       String logMessage = "Received updated LiveClusterConfig:\n" + liveClusterConfig;
       if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(logMessage)) {
-        logger.info(logMessage);
+        LOGGER.info(logMessage);
       }
       ;
     }
 
     @Override
     public void handleDataDeleted(String dataPath) {
-      logger.info(dataPath + " ZNode deleted. Resetting configs to default.");
+      LOGGER.info(dataPath + " ZNode deleted. Resetting configs to default.");
       liveClusterConfig = DEFAULT_LIVE_CLUSTER_CONFIG;
     }
   }

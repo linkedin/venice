@@ -28,7 +28,7 @@ public class ClusterDiscovery {
         AdminSparkServer.handleError(e, request, response);
       }
       response.type(HttpConstants.JSON);
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 }

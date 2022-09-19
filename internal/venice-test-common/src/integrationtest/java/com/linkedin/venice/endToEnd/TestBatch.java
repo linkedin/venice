@@ -70,8 +70,8 @@ public abstract class TestBatch {
   protected static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
   private static final int MAX_RETRY_ATTEMPTS = 3;
   private static final String STRING_SCHEMA = "\"string\"";
-  protected static final String baseDataPath1 = Utils.getTempDataDirectory().getAbsolutePath();
-  protected static final String baseDataPath2 = Utils.getTempDataDirectory().getAbsolutePath();
+  protected static final String BASE_DATA_PATH_1 = Utils.getTempDataDirectory().getAbsolutePath();
+  protected static final String BASE_DATA_PATH_2 = Utils.getTempDataDirectory().getAbsolutePath();
 
   protected VeniceClusterWrapper veniceCluster;
 
@@ -399,10 +399,10 @@ public abstract class TestBatch {
 
     // First version should be fully cleaned up, while newer versions should exists.
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      String firstVersionDataPath1 = baseDataPath1 + "/rocksdb/" + storeName + "_v1";
-      String secondVersionDataPath1 = baseDataPath1 + "/rocksdb/" + storeName + "_v2";
-      String firstVersionDataPath2 = baseDataPath2 + "/rocksdb/" + storeName + "_v1";
-      String secondVersionDataPath2 = baseDataPath2 + "/rocksdb/" + storeName + "_v2";
+      String firstVersionDataPath1 = BASE_DATA_PATH_1 + "/rocksdb/" + storeName + "_v1";
+      String secondVersionDataPath1 = BASE_DATA_PATH_1 + "/rocksdb/" + storeName + "_v2";
+      String firstVersionDataPath2 = BASE_DATA_PATH_2 + "/rocksdb/" + storeName + "_v1";
+      String secondVersionDataPath2 = BASE_DATA_PATH_2 + "/rocksdb/" + storeName + "_v2";
       File firstVersionDataFolder1 = new File(firstVersionDataPath1);
       File firstVersionDataFolder2 = new File(firstVersionDataPath2);
       Assert.assertFalse(firstVersionDataFolder1.exists() || firstVersionDataFolder2.exists());

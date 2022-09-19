@@ -24,7 +24,7 @@ public class AdminCommandExecution {
    */
   private ConcurrentMap<String, AdminCommandExecutionStatus> fabricToExecutionStatusMap;
 
-  private static final Logger logger = LogManager.getLogger(AdminCommandExecution.class);
+  private static final Logger LOGGER = LogManager.getLogger(AdminCommandExecution.class);
 
   /**
    * CTOR used by JSON serializer.
@@ -72,7 +72,7 @@ public class AdminCommandExecution {
         this.updateCommandStatusForFabric(fabric, AdminCommandExecutionStatus.PROCESSING);
       }
     } catch (Exception e) {
-      logger.error("Can not get status from fabric: " + fabric, e);
+      LOGGER.error("Can not get status from fabric: " + fabric, e);
       this.updateCommandStatusForFabric(fabric, AdminCommandExecutionStatus.UNKNOWN);
     }
   }

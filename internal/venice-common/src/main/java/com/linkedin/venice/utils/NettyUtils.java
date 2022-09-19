@@ -15,7 +15,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class NettyUtils {
-  private static final Logger logger = LogManager.getLogger(NettyUtils.class);
+  private static final Logger LOGGER = LogManager.getLogger(NettyUtils.class);
 
   public static void setupResponseAndFlush(
       HttpResponseStatus status,
@@ -30,7 +30,7 @@ public class NettyUtils {
         response.headers().set(CONTENT_TYPE, HttpConstants.TEXT_PLAIN);
       }
     } catch (NoSuchMethodError e) { // netty version conflict
-      logger.warn("NoSuchMethodError, probably from netty version conflict.  Printing netty on classpath: ", e);
+      LOGGER.warn("NoSuchMethodError, probably from netty version conflict.  Printing netty on classpath: ", e);
       logClassLoaderContent("netty");
       throw e;
     }

@@ -16,7 +16,7 @@ import org.apache.logging.log4j.Logger;
  * https://github.com/voldemort/voldemort/blob/ea37ef67fa7724180608510c6d4237167b78dd63/src/java/voldemort/utils/ExceptionUtils.java
  */
 public class ExceptionUtils {
-  private static final Logger logger = LogManager.getLogger(ExceptionUtils.class);
+  private static final Logger LOGGER = LogManager.getLogger(ExceptionUtils.class);
 
   /**
    * Inspects a given {@link Throwable} as well as its nested causes, in order to look
@@ -87,7 +87,7 @@ public class ExceptionUtils {
   public static void logClassLoaderContent(String packageName) {
     ClassLoader cl = ClassLoader.getSystemClassLoader();
     URL[] urls = ((URLClassLoader) cl).getURLs();
-    Arrays.asList(urls).stream().filter(url -> url.getFile().contains(packageName)).forEach(logger::warn);
+    Arrays.asList(urls).stream().filter(url -> url.getFile().contains(packageName)).forEach(LOGGER::warn);
   }
 
   public static String compactExceptionDescription(Throwable t) {

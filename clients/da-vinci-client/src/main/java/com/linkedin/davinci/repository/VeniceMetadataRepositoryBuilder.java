@@ -36,7 +36,7 @@ import org.apache.logging.log4j.Logger;
  * for Da Vinci, Venice Service and Isolated Ingestion Service.
  */
 public class VeniceMetadataRepositoryBuilder {
-  private static final Logger logger = LogManager.getLogger(VeniceMetadataRepositoryBuilder.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceMetadataRepositoryBuilder.class);
 
   private final VeniceConfigLoader configLoader;
   private final ClientConfig clientConfig;
@@ -101,7 +101,7 @@ public class VeniceMetadataRepositoryBuilder {
     VeniceProperties veniceProperties = configLoader.getCombinedProperties();
     boolean useSystemStore = veniceProperties.getBoolean(ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY, false);
     if (useSystemStore) {
-      logger.info(
+      LOGGER.info(
           "Initializing meta system store based store repository with "
               + NativeMetadataRepository.class.getSimpleName());
       NativeMetadataRepository systemStoreBasedRepository =
@@ -112,7 +112,7 @@ public class VeniceMetadataRepositoryBuilder {
       schemaRepo = systemStoreBasedRepository;
       liveClusterConfigRepo = null;
     } else {
-      logger.info(
+      LOGGER.info(
           "Initializing ZK based store repository with " + SubscriptionBasedStoreRepository.class.getSimpleName());
 
       // Create ZkClient

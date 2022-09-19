@@ -32,7 +32,7 @@ public class TestDictionaryUtils {
 
   /** Wait time for {@link #manager} operations, in seconds */
   private static final int WAIT_TIME = 10;
-  private static final int partitionCount = 1;
+  private static final int PARTITION_COUNT = 1;
   private KafkaBrokerWrapper kafka;
   private ZkServerWrapper zkServer;
   private TopicManager manager;
@@ -42,7 +42,7 @@ public class TestDictionaryUtils {
     String callingFunction = Thread.currentThread().getStackTrace()[2].getMethodName();
     String topicName = Utils.getUniqueString(callingFunction);
     int replicas = 1;
-    manager.createTopic(topicName, partitionCount, replicas, false);
+    manager.createTopic(topicName, PARTITION_COUNT, replicas, false);
     TestUtils.waitForNonDeterministicAssertion(
         WAIT_TIME,
         TimeUnit.SECONDS,
@@ -86,7 +86,7 @@ public class TestDictionaryUtils {
     Properties props = getKafkaProperties();
 
     try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter =
-        TestUtils.getVeniceWriterFactory(props).createVeniceWriter(topic, partitionCount)) {
+        TestUtils.getVeniceWriterFactory(props).createVeniceWriter(topic, PARTITION_COUNT)) {
       veniceWriter.broadcastStartOfPush(
           true,
           false,
@@ -106,7 +106,7 @@ public class TestDictionaryUtils {
     Properties props = getKafkaProperties();
 
     try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter =
-        TestUtils.getVeniceWriterFactory(props).createVeniceWriter(topic, partitionCount)) {
+        TestUtils.getVeniceWriterFactory(props).createVeniceWriter(topic, PARTITION_COUNT)) {
       veniceWriter.broadcastStartOfPush(true, false, CompressionStrategy.ZSTD_WITH_DICT, null);
       veniceWriter.broadcastEndOfPush(null);
     }
@@ -121,7 +121,7 @@ public class TestDictionaryUtils {
     Properties props = getKafkaProperties();
 
     try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter =
-        TestUtils.getVeniceWriterFactory(props).createVeniceWriter(topic, partitionCount)) {
+        TestUtils.getVeniceWriterFactory(props).createVeniceWriter(topic, PARTITION_COUNT)) {
       veniceWriter.put(new KafkaKey(MessageType.PUT, "blah".getBytes()), "blah".getBytes(), 1, null);
     }
 

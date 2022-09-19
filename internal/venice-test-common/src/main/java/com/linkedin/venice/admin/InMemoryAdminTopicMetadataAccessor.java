@@ -11,13 +11,13 @@ import org.apache.logging.log4j.Logger;
  * In memory implementation of {@link AdminTopicMetadataAccessor}, should only be used for testing purposes.
  */
 public class InMemoryAdminTopicMetadataAccessor extends AdminTopicMetadataAccessor {
-  private static final Logger logger = LogManager.getLogger(InMemoryAdminTopicMetadataAccessor.class);
+  private static final Logger LOGGER = LogManager.getLogger(InMemoryAdminTopicMetadataAccessor.class);
   private Map<String, Long> inMemoryMetadata = new HashMap<>();
 
   @Override
   public void updateMetadata(String clusterName, Map<String, Long> metadata) {
     inMemoryMetadata = metadata;
-    logger.info("Persisted admin topic metadata map for cluster: " + clusterName + ", map: " + metadata);
+    LOGGER.info("Persisted admin topic metadata map for cluster: " + clusterName + ", map: " + metadata);
   }
 
   @Override

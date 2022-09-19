@@ -24,8 +24,9 @@ public class VeniceHttp2PipelineInitializerBuilder {
 
   private final VeniceServerConfig serverConfig;
 
-  private static final ActiveStreamsCountHandler activeStreamsCountHandler = new ActiveStreamsCountHandler();
-  private static final Http2SettingsFrameLogger http2SettingsFrameLogger = new Http2SettingsFrameLogger(LogLevel.INFO);
+  private static final ActiveStreamsCountHandler ACTIVE_STREAMS_COUNT_HANDLER = new ActiveStreamsCountHandler();
+  private static final Http2SettingsFrameLogger HTTP2_SETTINGS_FRAME_LOGGER =
+      new Http2SettingsFrameLogger(LogLevel.INFO);
 
   public VeniceHttp2PipelineInitializerBuilder(VeniceServerConfig serverConfig) {
     this.serverConfig = serverConfig;
@@ -49,8 +50,8 @@ public class VeniceHttp2PipelineInitializerBuilder {
       Consumer<ChannelPipeline> existingHttpPipelineInitializer) {
     return Http2PipelineInitializer.DEFAULT_BUILDER.get()
         .http2Settings(getServerHttpSettings())
-        .activeStreamsCountHandler(activeStreamsCountHandler)
-        .http2SettingsFrameLogger(http2SettingsFrameLogger)
+        .activeStreamsCountHandler(ACTIVE_STREAMS_COUNT_HANDLER)
+        .http2SettingsFrameLogger(HTTP2_SETTINGS_FRAME_LOGGER)
         .existingHttpPipelineInitializer(existingHttpPipelineInitializer)
         .maxInitialLineLength(DEFAULT_MAX_INITIAL_LINE_LENGTH)
         .maxHeaderSize(DEFAULT_MAX_HEADER_SIZE)

@@ -40,7 +40,7 @@ import org.apache.logging.log4j.Logger;
 
 public class PostBulkLoadAnalysisMapper
     implements Mapper<AvroWrapper<IndexedRecord>, NullWritable, NullWritable, NullWritable> {
-  private static final Logger logger = LogManager.getLogger(PostBulkLoadAnalysisMapper.class);
+  private static final Logger LOGGER = LogManager.getLogger(PostBulkLoadAnalysisMapper.class);
 
   private static final int NUM_THREADS = 200;
   private static final int REQUEST_TIME_OUT_MS = 10000;
@@ -75,7 +75,7 @@ public class PostBulkLoadAnalysisMapper
   @Override
   public void configure(JobConf job) {
     VeniceProperties props = HadoopUtils.getVeniceProps(job);
-    logger.info(this.getClass().getSimpleName() + " to be constructed with props: " + props.toString(true));
+    LOGGER.info(this.getClass().getSimpleName() + " to be constructed with props: " + props.toString(true));
 
     // Set up config
     this.failFast = props.getBoolean(VenicePushJob.PBNJ_FAIL_FAST);
@@ -102,19 +102,19 @@ public class PostBulkLoadAnalysisMapper
 
     this.sampler = new Sampler(samplingRatio);
 
-    logger.info("veniceClient started: " + veniceClient.toString());
+    LOGGER.info("veniceClient started: " + veniceClient.toString());
 
     if (async) {
       this.executor = Executors.newFixedThreadPool(NUM_THREADS);
       this.executor.execute(new CompletionTask(this));
       this.completionService = new ExecutorCompletionService<>(executor);
-      logger.info("Async mode activated. CompletionTask started.");
+      LOGGER.info("Async mode activated. CompletionTask started.");
     } else {
       this.executor = null;
       this.completionService = null;
     }
 
-    logger.info(this.getClass().getSimpleName() + " constructed.");
+    LOGGER.info(this.getClass().getSimpleName() + " constructed.");
   }
 
   private boolean isRunning() {
@@ -133,7 +133,7 @@ public class PostBulkLoadAnalysisMapper
 
   @Override
   public void close() throws IOException {
-    logger.info("Records progress before closing client:");
+    LOGGER.info("Records progress before closing client:");
     logMessageProgress();
 
     closeCalled.set(true);
@@ -158,7 +158,7 @@ public class PostBulkLoadAnalysisMapper
     veniceClient.close();
 
     maybePropagateCallbackException();
-    logger.info("Records progress after flushing and closing producer:");
+    LOGGER.info("Records progress after flushing and closing producer:");
     logMessageProgress();
     if (goodRecords.get() != queriedRecords.get()) {
       throw new VeniceException("Good records: " + goodRecords + " don't match total records: " + queriedRecords);
@@ -239,7 +239,7 @@ public class PostBulkLoadAnalysisMapper
   }
 
   private void logMessageProgress() {
-    logger.info(
+    LOGGER.info(
         "Good records: " + goodRecords.get() + ",\t Bad records: " + badRecords.get() + ",\t Queried records: "
             + queriedRecords.get() + ",\t Skipped records: " + skippedRecords.get());
   }
@@ -253,7 +253,7 @@ public class PostBulkLoadAnalysisMapper
 
     @Override
     public void run() {
-      logger.info("Start of " + CompletionTask.class.getSimpleName());
+      LOGGER.info("Start of " + CompletionTask.class.getSimpleName());
       while (pbnj.isRunning()) {
         try {
           Data data = pbnj.completionService.take().get(REQUEST_TIME_OUT_MS, TimeUnit.MILLISECONDS);
@@ -290,9 +290,9 @@ public class PostBulkLoadAnalysisMapper
     } else {
       pbnj.badRecords.incrementAndGet();
       String exceptionMessage = "Records don't match for key: " + data.keyDatum.toString();
-      logger.error(exceptionMessage);
-      logger.error("Value read from HDFS: " + data.valueDatumFromHdfs);
-      logger.error("Value read from Venice: " + data.valueFromVenice);
+      LOGGER.error(exceptionMessage);
+      LOGGER.error("Value read from HDFS: " + data.valueDatumFromHdfs);
+      LOGGER.error("Value read from Venice: " + data.valueFromVenice);
       pbnj.sendException.set(new VeniceException(exceptionMessage));
     }
   }

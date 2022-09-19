@@ -42,7 +42,7 @@ import org.apache.logging.log4j.Logger;
 @ChannelHandler.Sharable
 public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<RouterRequest>
     implements RoutingDataRepository.RoutingDataChangedListener, StoreDataChangedListener {
-  private static final Logger logger = LogManager.getLogger(ReadQuotaEnforcementHandler.class);
+  private static final Logger LOGGER = LogManager.getLogger(ReadQuotaEnforcementHandler.class);
   private final ConcurrentMap<String, TokenBucket> storeVersionBuckets = new VeniceConcurrentHashMap<>();
   private final TokenBucket storageNodeBucket;
   private final ReadOnlyStoreRepository storeRepository;
@@ -82,7 +82,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     this.thisNodeId = nodeId;
     this.stats = stats;
     routingRepositoryFuture.thenAccept(routing -> {
-      logger.info("Initializing ReadQuotaEnforcementHandler with completed RoutingDataRepository");
+      LOGGER.info("Initializing ReadQuotaEnforcementHandler with completed RoutingDataRepository");
       this.routingRepository = routing;
       init();
     });
@@ -95,7 +95,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     storeRepository.registerStoreDataChangedListener(this);
     ResourceAssignment resourceAssignment = routingRepository.getResourceAssignment();
     if (resourceAssignment == null) {
-      logger.error("Null resource assignment from RoutingDataRepository in ReadQuotaEnforcementHandler");
+      LOGGER.error("Null resource assignment from RoutingDataRepository in ReadQuotaEnforcementHandler");
     } else {
       for (String resource: routingRepository.getResourceAssignment().getAssignedResources()) {
         this.onExternalViewChange(routingRepository.getPartitionAssignments(resource));
@@ -153,7 +153,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     } else if (enforcing && !noBucketStores.contains(request.getResourceName())) {
       // If this happens it is probably due to a short-lived race condition
       // of the resource being allocated before the bucket is allocated.
-      logger.warn(
+      LOGGER.warn(
           "Request for resource " + request.getResourceName()
               + " but no TokenBucket for that resource.  Not yet enforcing quota");
       // TODO: We could consider initializing a bucket. Would need to carefully consider this case.
@@ -193,7 +193,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
         // Eventually, we'll want to add some extra cost beyond the look up cost for compute operations.
         return request.getKeyCount();
       default:
-        logger.error(
+        LOGGER.error(
             "Unknown request type " + request.getRequestType().toString() + ", request for resource: "
                 + request.getResourceName());
         return Integer.MAX_VALUE;
@@ -246,14 +246,14 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   private void updateQuota(PartitionAssignment partitionAssignment) {
     String topic = partitionAssignment.getTopic();
     if (partitionAssignment.getAllPartitions().isEmpty()) {
-      logger.warn(
+      LOGGER.warn(
           "QuotaEnforcementHandler updated with an empty partition map for topic: " + topic
               + ".  Skipping update process");
       return;
     }
     double thisNodeQuotaResponsibility = getNodeResponsibilityForQuota(partitionAssignment, thisNodeId);
     if (thisNodeQuotaResponsibility <= 0) {
-      logger.warn(
+      LOGGER.warn(
           "Routing data changed on quota enforcement handler with 0 replicas assigned to this node, removing quota for resource: "
               + topic);
       storeVersionBuckets.remove(topic);

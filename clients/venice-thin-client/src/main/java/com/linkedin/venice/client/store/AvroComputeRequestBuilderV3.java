@@ -40,7 +40,7 @@ public class AvroComputeRequestBuilderV3<K> extends AbstractAvroComputeRequestBu
   private static final String COUNT_SPEC = "count_spec";
   private List<Count> countLists = new LinkedList<>();
 
-  private static final int computeRequestVersion = COMPUTE_REQUEST_VERSION_V3;
+  private static final int COMPUTE_REQUEST_VERSION = COMPUTE_REQUEST_VERSION_V3;
 
   public AvroComputeRequestBuilderV3(
       Schema latestValueSchema,
@@ -123,7 +123,7 @@ public class AvroComputeRequestBuilderV3<K> extends AbstractAvroComputeRequestBu
   @Override
   protected ComputeRequestWrapper generateComputeRequest(String resultSchemaStr) {
     // Generate ComputeRequestWrapper object
-    ComputeRequestWrapper computeRequestWrapper = new ComputeRequestWrapper(computeRequestVersion);
+    ComputeRequestWrapper computeRequestWrapper = new ComputeRequestWrapper(COMPUTE_REQUEST_VERSION);
     computeRequestWrapper.setResultSchemaStr(resultSchemaStr);
     computeRequestWrapper.setOperations(getComputeRequestOperations());
     computeRequestWrapper.setValueSchema(latestValueSchema);

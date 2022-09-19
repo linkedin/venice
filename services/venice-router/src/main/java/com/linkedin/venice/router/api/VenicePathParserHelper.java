@@ -21,7 +21,7 @@ import org.apache.logging.log4j.Logger;
  * Created by mwise on 4/25/16.
  */
 public class VenicePathParserHelper {
-  private static final Logger logger = LogManager.getLogger(VenicePathParserHelper.class);
+  private static final Logger LOGGER = LogManager.getLogger(VenicePathParserHelper.class);
 
   private String resourceType = null;
   private String resourceName = null;
@@ -67,7 +67,7 @@ public class VenicePathParserHelper {
             URLDecoder.decode(pair.substring(idx + 1), "UTF-8"));
       }
     } catch (UnsupportedEncodingException | URISyntaxException ex) {
-      logger.warn("Failed to parse uri query string: " + request.uri(), ex);
+      LOGGER.warn("Failed to parse uri query string: " + request.uri(), ex);
     }
     return queryPairs;
   }
@@ -92,7 +92,7 @@ public class VenicePathParserHelper {
         }
       }
     } catch (URISyntaxException e) {
-      logger.warn("Failed to parse uri: " + uri);
+      LOGGER.warn("Failed to parse uri: " + uri);
     }
   }
 

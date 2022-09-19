@@ -51,7 +51,7 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -67,7 +67,7 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
           responseObject.setErrorType(ErrorType.BAD_REQUEST);
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
 
         AdminSparkServer.validateParams(request, UPDATE_ADMIN_TOPIC_METADATA.getParams(), admin);
@@ -95,7 +95,7 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 }

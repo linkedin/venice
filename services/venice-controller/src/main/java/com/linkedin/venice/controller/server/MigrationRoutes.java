@@ -32,7 +32,7 @@ public class MigrationRoutes extends AbstractRoute {
       } catch (Throwable e) {
         strategyResponse.setError(e);
       }
-      return AdminSparkServer.mapper.writeValueAsString(strategyResponse);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(strategyResponse);
     };
   }
 
@@ -49,7 +49,7 @@ public class MigrationRoutes extends AbstractRoute {
           response.status(HttpStatus.SC_FORBIDDEN);
           updateResponse.setError("Only admin users are allowed to run " + request.url());
           updateResponse.setErrorType(ErrorType.BAD_REQUEST);
-          return AdminSparkServer.mapper.writeValueAsString(updateResponse);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(updateResponse);
         }
         AdminSparkServer.validateParams(request, SET_MIGRATION_PUSH_STRATEGY.getParams(), admin);
         String voldemortStoreName = request.queryParams(VOLDEMORT_STORE_NAME);
@@ -59,7 +59,7 @@ public class MigrationRoutes extends AbstractRoute {
         updateResponse.setError(e);
       }
       response.type(HttpConstants.JSON);
-      return AdminSparkServer.mapper.writeValueAsString(updateResponse);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(updateResponse);
     };
   }
 }

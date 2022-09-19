@@ -29,7 +29,7 @@ import org.apache.logging.log4j.Logger;
  * A service venice controller. Wraps Helix Controller.
  */
 public class VeniceControllerService extends AbstractVeniceService {
-  private static final Logger logger = LogManager.getLogger(VeniceControllerService.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceControllerService.class);
 
   private final Admin admin;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
@@ -65,10 +65,10 @@ public class VeniceControllerService extends AbstractVeniceService {
           authorizerService,
           createLingeringStoreVersionChecker(multiClusterConfigs, metricsRepository),
           WriteComputeSchemaConverter.getInstance());
-      logger.info("Controller works as a parent controller.");
+      LOGGER.info("Controller works as a parent controller.");
     } else {
       this.admin = internalAdmin;
-      logger.info("Controller works as a child controller.");
+      LOGGER.info("Controller works as a child controller.");
     }
     Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader = Optional.empty();
     try {
@@ -79,7 +79,7 @@ public class VeniceControllerService extends AbstractVeniceService {
                       .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())))
           : Optional.empty();
     } catch (Exception e) {
-      logger.error("Exception in initializing KME schema reader", e);
+      LOGGER.error("Exception in initializing KME schema reader", e);
     }
     // The admin consumer needs to use VeniceHelixAdmin to update Zookeeper directly
     consumerServicesByClusters = new HashMap<>(multiClusterConfigs.getClusters().size());
@@ -100,7 +100,7 @@ public class VeniceControllerService extends AbstractVeniceService {
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository) {
     if (multiClusterConfigs.getBatchJobHeartbeatEnabled()) {
-      logger.info("Batch job heartbeat is enabled. Hence use the heartbeat-based batch job liveness checker.");
+      LOGGER.info("Batch job heartbeat is enabled. Hence use the heartbeat-based batch job liveness checker.");
       return new HeartbeatBasedLingeringStoreVersionChecker(
           multiClusterConfigs.getBatchJobHeartbeatTimeout(),
           multiClusterConfigs.getBatchJobHeartbeatInitialBufferTime(),
@@ -108,7 +108,7 @@ public class VeniceControllerService extends AbstractVeniceService {
           new HeartbeatBasedCheckerStats(metricsRepository));
     }
     {
-      logger.info("Batch job heartbeat is NOT enabled. Hence use the default batch job liveness checker.");
+      LOGGER.info("Batch job heartbeat is NOT enabled. Hence use the default batch job liveness checker.");
       return new DefaultLingeringStoreVersionChecker();
     }
   }
@@ -121,9 +121,9 @@ public class VeniceControllerService extends AbstractVeniceService {
     for (String clusterName: multiClusterConfigs.getClusters()) {
       admin.initStorageCluster(clusterName);
       consumerServicesByClusters.get(clusterName).start();
-      logger.info("started cluster: " + clusterName);
+      LOGGER.info("started cluster: " + clusterName);
     }
-    logger.info("Started Venice controller.");
+    LOGGER.info("Started Venice controller.");
     // There is no async process in this function, so we are completely finished with the start up process.
     return true;
   }
@@ -140,15 +140,15 @@ public class VeniceControllerService extends AbstractVeniceService {
       try {
         consumerServicesByClusters.get(clusterName).stop();
       } catch (Exception e) {
-        logger.error("Got exception when stop AdminConsumerService", e);
+        LOGGER.error("Got exception when stop AdminConsumerService", e);
       }
-      logger.info("Stopped cluster: " + clusterName);
+      LOGGER.info("Stopped cluster: " + clusterName);
     }
     // TODO merge or differentiate the difference between close() and stopVeniceController() explicitly.
     admin.stopVeniceController();
     admin.close();
 
-    logger.info("Stopped Venice controller.");
+    LOGGER.info("Stopped Venice controller.");
   }
 
   /**

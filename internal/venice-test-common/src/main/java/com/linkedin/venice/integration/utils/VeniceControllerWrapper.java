@@ -41,7 +41,7 @@ import org.apache.logging.log4j.Logger;
  * Calling close() will clean up the controller's data directory.
  */
 public class VeniceControllerWrapper extends ProcessWrapper {
-  public static final Logger logger = LogManager.getLogger(VeniceControllerWrapper.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceControllerWrapper.class);
 
   public static final String SERVICE_NAME = "VeniceController";
   public static final double DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO = 0.85d;
@@ -192,7 +192,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
                   CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + dcName,
                   childController.getKafkaBootstrapServers(sslToKafka));
               builder.put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + dcName, childController.getKafkaZkAddress());
-              logger.info(
+              LOGGER.info(
                   "ControllerConfig: " + CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + dcName + " KafkaUrl: "
                       + childController.getKafkaBootstrapServers(sslToKafka) + " kafkaZk: "
                       + childController.getKafkaZkAddress());

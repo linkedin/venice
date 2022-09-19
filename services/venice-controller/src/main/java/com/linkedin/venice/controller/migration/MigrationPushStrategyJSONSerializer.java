@@ -13,7 +13,7 @@ public class MigrationPushStrategyJSONSerializer extends VeniceJsonSerializer<Ma
 
   @Override
   public Map<String, String> deserialize(byte[] bytes, String path) throws IOException {
-    return mapper.readValue(bytes, new TypeReference<Map<String, String>>() {
+    return OBJECT_MAPPER.readValue(bytes, new TypeReference<Map<String, String>>() {
     });
   }
 }

@@ -16,7 +16,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class VeniceHostHealth implements HostHealthMonitor<Instance> {
-  private static final Logger logger = LogManager.getLogger(VeniceHostHealth.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceHostHealth.class);
   private final int maxPendingConnectionPerHost;
   private final int routerPendingConnResumeThreshold;
   private final boolean statefulRouterHealthCheckEnabled;
@@ -53,7 +53,7 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
   public void setHostAsUnhealthy(Instance instance) {
     String identifier = instance.getNodeId();
     unhealthyHosts.add(identifier);
-    logger.info("Marking " + identifier + " as unhealthy until it passes the next health check.");
+    LOGGER.info("Marking " + identifier + " as unhealthy until it passes the next health check.");
     aggHostHealthStats.recordUnhealthyHostCountCausedByRouterHeartBeat(unhealthyHosts.size());
   }
 
@@ -67,7 +67,7 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
     String identifier = hostname.getNodeId();
     if (unhealthyHosts.contains(identifier)) {
       unhealthyHosts.remove(identifier);
-      logger.info("Marking " + identifier + " back to healthy host");
+      LOGGER.info("Marking " + identifier + " back to healthy host");
       aggHostHealthStats.recordUnhealthyHostCountCausedByRouterHeartBeat(unhealthyHosts.size());
     }
   }

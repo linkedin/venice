@@ -39,7 +39,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class KafkaAdminClient implements KafkaAdminWrapper {
-  private static final Logger logger = LogManager.getLogger(KafkaAdminClient.class);
+  private static final Logger LOGGER = LogManager.getLogger(KafkaAdminClient.class);
   private AdminClient kafkaAdminClient;
   private Long maxRetryInMs;
 
@@ -171,7 +171,7 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
       TopicDescription topicDescription = getKafkaAdminClient().describeTopics(topicNames).values().get(topic).get();
 
       if (topicDescription == null) {
-        logger.warn(
+        LOGGER.warn(
             "Unexpected: kafkaAdminClient.describeTopics returned null "
                 + "(rather than throwing an InvalidTopicException). Will carry on assuming the topic doesn't exist.");
         return false;
@@ -197,14 +197,14 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
       TopicDescription topicDescription = getKafkaAdminClient().describeTopics(topicNames).values().get(topic).get();
 
       if (topicDescription == null) {
-        logger.warn(
+        LOGGER.warn(
             "Unexpected: kafkaAdminClient.describeTopics returned null "
                 + "(rather than throwing an InvalidTopicException). Will carry on assuming the topic doesn't exist.");
         return false;
       }
 
       if (topicDescription.partitions().size() <= partitionID) {
-        logger.warn(
+        LOGGER.warn(
             topic + " is trying to check partitionID " + partitionID + ", but total partitions count "
                 + topicDescription.partitions().size() + " Will carry on assuming the topic doesn't exist.");
         return false;
@@ -251,7 +251,7 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
       try {
         this.kafkaAdminClient.close(Duration.ofSeconds(60));
       } catch (Exception e) {
-        logger.warn("Exception (suppressed) during kafkaAdminClient.close()", e);
+        LOGGER.warn("Exception (suppressed) during kafkaAdminClient.close()", e);
       }
     }
   }

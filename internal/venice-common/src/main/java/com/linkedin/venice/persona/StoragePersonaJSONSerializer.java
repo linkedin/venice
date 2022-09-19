@@ -12,7 +12,7 @@ import java.util.Set;
 public class StoragePersonaJSONSerializer extends VeniceJsonSerializer<StoragePersona> {
   public StoragePersonaJSONSerializer() {
     super(StoragePersona.class);
-    mapper.addMixIn(StoragePersona.class, StoragePersonaSerializerMixin.class);
+    OBJECT_MAPPER.addMixIn(StoragePersona.class, StoragePersonaSerializerMixin.class);
   }
 
   /** This class annotates the constructor for {@link StoragePersona} and serves as a property-based creator.

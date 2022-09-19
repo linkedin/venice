@@ -49,7 +49,7 @@ import org.testng.annotations.Test;
  *
  */
 public class TestPushJobWithNativeReplicationSharedProducer {
-  private static final Logger logger = LogManager.getLogger(TestPushJobWithNativeReplicationSharedProducer.class);
+  private static final Logger LOGGER = LogManager.getLogger(TestPushJobWithNativeReplicationSharedProducer.class);
   private static final int TEST_TIMEOUT = 140_000; // ms
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
@@ -159,7 +159,7 @@ public class TestPushJobWithNativeReplicationSharedProducer {
         }
       }
 
-      logger.info("NRSP: Finished setting up stores");
+      LOGGER.info("NRSP: Finished setting up stores");
       for (int i = 0; i < storeCount; i++) {
         int id = i;
         Thread pushJobThread =
@@ -167,21 +167,21 @@ public class TestPushJobWithNativeReplicationSharedProducer {
         threads[i] = pushJobThread;
       }
 
-      logger.info("NRSP: Starting push job threads");
+      LOGGER.info("NRSP: Starting push job threads");
       for (int i = 0; i < storeCount; i++) {
         threads[i].start();
       }
 
-      logger.info("NRSP: Waiting for push job threads to complete");
+      LOGGER.info("NRSP: Waiting for push job threads to complete");
       for (int i = 0; i < storeCount; i++) {
         threads[i].join(45 * 1000);
       }
 
       for (int i = 0; i < storeCount; i++) {
         if (threads[i].isAlive()) {
-          logger.info("NRSP: push job thread " + threads[i].getName() + " didn't complete");
+          LOGGER.info("NRSP: push job thread " + threads[i].getName() + " didn't complete");
         } else {
-          logger.info("NRSP: push job thread " + threads[i].getName() + " completed");
+          LOGGER.info("NRSP: push job thread " + threads[i].getName() + " completed");
         }
       }
 

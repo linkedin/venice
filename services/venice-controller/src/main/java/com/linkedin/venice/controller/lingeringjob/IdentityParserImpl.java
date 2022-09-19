@@ -8,7 +8,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class IdentityParserImpl implements IdentityParser {
-  private static final Logger logger = LogManager.getLogger(IdentityParserImpl.class);
+  private static final Logger LOGGER = LogManager.getLogger(IdentityParserImpl.class);
 
   /**
    * Firstly, it tries to parse the principal from the given certificate. If it works, use the principal's toString as
@@ -19,7 +19,7 @@ public class IdentityParserImpl implements IdentityParser {
     try {
       return PrincipalBuilder.builderForCertificate(certificate).build().toString();
     } catch (CertificateParsingException e) {
-      logger.error(
+      LOGGER.error(
           "Failed to parse principal from cert. " + "Ignore this error. Use certificate.toString as identity",
           e);
       return certificate.toString();

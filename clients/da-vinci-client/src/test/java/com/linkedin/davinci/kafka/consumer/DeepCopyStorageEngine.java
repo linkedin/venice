@@ -24,9 +24,9 @@ import java.util.function.Supplier;
  * If you need to pass a deep copy parameter to other functions, you can modify this class accordingly.
  */
 public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStoragePartition> {
-  private final static InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+  private static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
       AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-  private final static InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
+  private static final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
       AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
   private final AbstractStorageEngine delegate;
 

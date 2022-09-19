@@ -12,7 +12,7 @@ import java.util.concurrent.ConcurrentMap;
  * In memory implementation of OffsetManager, should really only be used for tests
  */
 public class InMemoryOffsetManager implements OffsetManager {
-  private final static InternalAvroSpecificSerializer<PartitionState> serializer =
+  private static final InternalAvroSpecificSerializer<PartitionState> serializer =
       AvroProtocolDefinition.PARTITION_STATE.getSerializer();
   private ConcurrentMap<String, ConcurrentMap<Integer, OffsetRecord>> topicToPartitionToOffsetMap =
       new ConcurrentHashMap<>();

@@ -11,8 +11,8 @@ import org.testng.annotations.Test;
 
 
 public class TestVeniceControllerConfig {
-  private final static String DELIMITER = ",\\s*";
-  private final static String WHITE_LIST = "dc1,dc2";
+  private static final String DELIMITER = ",\\s*";
+  private static final String WHITE_LIST = "dc1,dc2";
 
   @Test
   public void canParseClusterMap() {
