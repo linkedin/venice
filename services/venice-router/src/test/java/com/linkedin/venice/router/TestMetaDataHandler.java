@@ -67,7 +67,7 @@ public class TestMetaDataHandler {
   private static final String ZK_ADDRESS = "localhost:1234";
   private static final String KAFKA_ZK_ADDRESS = "localhost:1234";
   private static final String KAFKA_BOOTSTRAP_SERVERS = "localhost:1234";
-  private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
   private final HelixHybridStoreQuotaRepository hybridStoreQuotaRepository =
       Mockito.mock(HelixHybridStoreQuotaRepository.class);
 
@@ -159,7 +159,7 @@ public class TestMetaDataHandler {
     Assert.assertEquals(response.status().code(), 200);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
     LeaderControllerResponse controllerResponse =
-        mapper.readValue(response.content().array(), LeaderControllerResponse.class);
+        OBJECT_MAPPER.readValue(response.content().array(), LeaderControllerResponse.class);
     Assert.assertEquals(controllerResponse.getUrl(), "http://" + leaderControllerHost + ":" + leaderControllerPort);
   }
 
@@ -184,7 +184,7 @@ public class TestMetaDataHandler {
     Assert.assertEquals(response.status().code(), 200);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
     LeaderControllerResponse controllerResponse =
-        mapper.readValue(response.content().array(), LeaderControllerResponse.class);
+        OBJECT_MAPPER.readValue(response.content().array(), LeaderControllerResponse.class);
     Assert.assertEquals(controllerResponse.getUrl(), "http://" + leaderControllerHost + ":" + leaderControllerPort);
   }
 
@@ -204,7 +204,7 @@ public class TestMetaDataHandler {
 
     Assert.assertEquals(response.status().code(), 200);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
-    SchemaResponse schemaResponse = mapper.readValue(response.content().array(), SchemaResponse.class);
+    SchemaResponse schemaResponse = OBJECT_MAPPER.readValue(response.content().array(), SchemaResponse.class);
     Assert.assertEquals(schemaResponse.getId(), keySchemaId);
     Assert.assertEquals(schemaResponse.getSchemaStr(), keySchemaStr);
     Assert.assertEquals(schemaResponse.getName(), storeName);
@@ -246,7 +246,7 @@ public class TestMetaDataHandler {
 
     Assert.assertEquals(response.status().code(), 200);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
-    SchemaResponse schemaResponse = mapper.readValue(response.content().array(), SchemaResponse.class);
+    SchemaResponse schemaResponse = OBJECT_MAPPER.readValue(response.content().array(), SchemaResponse.class);
     Assert.assertEquals(schemaResponse.getId(), 1);
     Assert.assertEquals(schemaResponse.getSchemaStr(), valueSchemaStr);
     Assert.assertEquals(schemaResponse.getName(), storeName);
@@ -291,7 +291,8 @@ public class TestMetaDataHandler {
 
     Assert.assertEquals(response.status().code(), 200);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
-    MultiSchemaResponse multiSchemaResponse = mapper.readValue(response.content().array(), MultiSchemaResponse.class);
+    MultiSchemaResponse multiSchemaResponse =
+        OBJECT_MAPPER.readValue(response.content().array(), MultiSchemaResponse.class);
 
     Assert.assertEquals(multiSchemaResponse.getName(), storeName);
     Assert.assertEquals(multiSchemaResponse.getCluster(), clusterName);
@@ -318,7 +319,8 @@ public class TestMetaDataHandler {
 
     Assert.assertEquals(response.status().code(), 200);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
-    MultiSchemaResponse multiSchemaResponse = mapper.readValue(response.content().array(), MultiSchemaResponse.class);
+    MultiSchemaResponse multiSchemaResponse =
+        OBJECT_MAPPER.readValue(response.content().array(), MultiSchemaResponse.class);
 
     Assert.assertEquals(multiSchemaResponse.getName(), storeName);
     Assert.assertEquals(multiSchemaResponse.getCluster(), clusterName);
@@ -355,7 +357,7 @@ public class TestMetaDataHandler {
 
     Assert.assertEquals(response.status().code(), 200);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
-    SchemaResponse schemaResponse = mapper.readValue(response.content().array(), SchemaResponse.class);
+    SchemaResponse schemaResponse = OBJECT_MAPPER.readValue(response.content().array(), SchemaResponse.class);
 
     Assert.assertEquals(schemaResponse.getName(), storeName);
     Assert.assertEquals(schemaResponse.getCluster(), clusterName);
@@ -387,7 +389,7 @@ public class TestMetaDataHandler {
     Assert.assertEquals(response.status().code(), 200);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
     D2ServiceDiscoveryResponse d2ServiceResponse =
-        mapper.readValue(response.content().array(), D2ServiceDiscoveryResponse.class);
+        OBJECT_MAPPER.readValue(response.content().array(), D2ServiceDiscoveryResponse.class);
     Assert.assertEquals(d2ServiceResponse.getCluster(), clusterName);
     Assert.assertEquals(d2ServiceResponse.getD2Service(), d2Service);
     Assert.assertEquals(d2ServiceResponse.getName(), storeName);
@@ -434,7 +436,7 @@ public class TestMetaDataHandler {
         Collections.emptyMap());
     Assert.assertEquals(response.status().code(), 200);
     ResourceStateResponse resourceStateResponse =
-        mapper.readValue(response.content().array(), ResourceStateResponse.class);
+        OBJECT_MAPPER.readValue(response.content().array(), ResourceStateResponse.class);
     Assert.assertTrue(resourceStateResponse.isReadyToServe());
     // Add a not ready to serve replica in partition 0 which should put the version to not ready to serve.
     replicaStates0
@@ -448,7 +450,7 @@ public class TestMetaDataHandler {
         storeConfigRepository,
         Collections.emptyMap());
     Assert.assertEquals(response.status().code(), 200);
-    resourceStateResponse = mapper.readValue(response.content().array(), ResourceStateResponse.class);
+    resourceStateResponse = OBJECT_MAPPER.readValue(response.content().array(), ResourceStateResponse.class);
     Assert.assertFalse(resourceStateResponse.isReadyToServe());
     // Add one more ready to serve replica in each partition which should put the version to ready to serve.
     replicaStates0
@@ -462,7 +464,7 @@ public class TestMetaDataHandler {
         storeConfigRepository,
         Collections.emptyMap());
     Assert.assertEquals(response.status().code(), 200);
-    resourceStateResponse = mapper.readValue(response.content().array(), ResourceStateResponse.class);
+    resourceStateResponse = OBJECT_MAPPER.readValue(response.content().array(), ResourceStateResponse.class);
     Assert.assertTrue(resourceStateResponse.isReadyToServe());
   }
 
@@ -490,7 +492,7 @@ public class TestMetaDataHandler {
           Collections.emptyMap());
       Assert.assertEquals(response.status().code(), 200);
       ResourceStateResponse resourceStateResponse =
-          mapper.readValue(response.content().array(), ResourceStateResponse.class);
+          OBJECT_MAPPER.readValue(response.content().array(), ResourceStateResponse.class);
       Assert.assertTrue(resourceStateResponse.isReadyToServe());
       List<ReplicaState> responseReplicaStates = resourceStateResponse.getReplicaStates();
       for (int i = 0; i < replicaStates.size(); i++) {
@@ -533,7 +535,7 @@ public class TestMetaDataHandler {
         Collections.emptyMap());
     Assert.assertEquals(response.status().code(), 200);
     ResourceStateResponse resourceStateResponse =
-        mapper.readValue(response.content().array(), ResourceStateResponse.class);
+        OBJECT_MAPPER.readValue(response.content().array(), ResourceStateResponse.class);
     Assert.assertTrue(resourceStateResponse.isError());
     Assert.assertEquals(resourceStateResponse.getUnretrievablePartitions().iterator().next().intValue(), 1);
   }
@@ -559,7 +561,7 @@ public class TestMetaDataHandler {
         Collections.emptyMap());
     Assert.assertEquals(response.status().code(), 200);
     HybridStoreQuotaStatusResponse pushStatusResponse =
-        mapper.readValue(response.content().array(), HybridStoreQuotaStatusResponse.class);
+        OBJECT_MAPPER.readValue(response.content().array(), HybridStoreQuotaStatusResponse.class);
     Assert.assertEquals(pushStatusResponse.getQuotaStatus(), HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
 
     // Router returns QUOTA_VIOLATED state
@@ -573,7 +575,7 @@ public class TestMetaDataHandler {
         storeConfigRepository,
         Collections.emptyMap());
     Assert.assertEquals(response.status().code(), 200);
-    pushStatusResponse = mapper.readValue(response.content().array(), HybridStoreQuotaStatusResponse.class);
+    pushStatusResponse = OBJECT_MAPPER.readValue(response.content().array(), HybridStoreQuotaStatusResponse.class);
     Assert.assertEquals(pushStatusResponse.getQuotaStatus(), HybridStoreQuotaStatus.QUOTA_VIOLATED);
   }
 
@@ -599,7 +601,7 @@ public class TestMetaDataHandler {
     System.out.println(response);
     Assert.assertEquals(response.status().code(), 200);
     HybridStoreQuotaStatusResponse pushStatusResponse =
-        mapper.readValue(response.content().array(), HybridStoreQuotaStatusResponse.class);
+        OBJECT_MAPPER.readValue(response.content().array(), HybridStoreQuotaStatusResponse.class);
     Assert.assertEquals(pushStatusResponse.getQuotaStatus(), HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
 
     // Router returns QUOTA_VIOLATED state
@@ -613,7 +615,7 @@ public class TestMetaDataHandler {
         storeConfigRepository,
         Collections.emptyMap());
     Assert.assertEquals(response.status().code(), 200);
-    pushStatusResponse = mapper.readValue(response.content().array(), HybridStoreQuotaStatusResponse.class);
+    pushStatusResponse = OBJECT_MAPPER.readValue(response.content().array(), HybridStoreQuotaStatusResponse.class);
     Assert.assertEquals(pushStatusResponse.getQuotaStatus(), HybridStoreQuotaStatus.QUOTA_VIOLATED);
   }
 

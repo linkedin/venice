@@ -26,9 +26,9 @@ import org.apache.logging.log4j.Logger;
  */
 public abstract class PushStatusDecider {
   private final Logger logger = LogManager.getLogger(PushStatusDecider.class);
-  private final static String REASON_NOT_IN_EV = "not yet in EXTERNALVIEW";
-  private final static String REASON_NOT_ENOUGH_PARTITIONS_IN_EV = "not enough partitions in EXTERNALVIEW";
-  private final static String REASON_UNDER_REPLICATED = "does not have enough replicas";
+  private static final String REASON_NOT_IN_EV = "not yet in EXTERNALVIEW";
+  private static final String REASON_NOT_ENOUGH_PARTITIONS_IN_EV = "not enough partitions in EXTERNALVIEW";
+  private static final String REASON_UNDER_REPLICATED = "does not have enough replicas";
 
   private static Map<OfflinePushStrategy, PushStatusDecider> decidersMap = new HashMap<>();
 

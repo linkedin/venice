@@ -24,7 +24,7 @@ import org.apache.logging.log4j.Logger;
  * this store's  replicas.
  */
 public class StoreReadThrottler {
-  private static final Logger logger = LogManager.getLogger(StoreReadThrottler.class);
+  private static final Logger LOGGER = LogManager.getLogger(StoreReadThrottler.class);
   private final String storeName;
   private final long localQuota;
   private final EventThrottlingStrategy throttlingStrategy;
@@ -122,7 +122,7 @@ public class StoreReadThrottler {
     }
 
     if (addedOrUpdated[0] != 0 || deleted != 0) {
-      logger.info(
+      LOGGER.info(
           "Added or Updated throttlers for " + addedOrUpdated[0] + " storage nodes.  Deleted: " + deleted
               + " throttlers for storage nodes. Store: " + storeName + " currentVersion:" + currentVersion);
     }

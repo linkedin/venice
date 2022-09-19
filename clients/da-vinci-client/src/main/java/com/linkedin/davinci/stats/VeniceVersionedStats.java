@@ -12,7 +12,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceStatsReporter<STATS>> {
-  private static final Logger logger = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger();
 
   private final String storeName;
   private final Int2ObjectMap<STATS> versionedStats;
@@ -81,7 +81,7 @@ public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceSt
   protected STATS getStats(int version) {
     STATS stats = versionedStats.get(version);
     if (stats == null) {
-      logger.warn(
+      LOGGER.warn(
           "Stats has not been created while trying to set it as current version. " + "Store: " + storeName
               + " version: " + version);
       stats = addVersion(version);
@@ -100,7 +100,7 @@ public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceSt
 
   public synchronized void removeVersion(int version) {
     if (versionedStats.remove(version) == null) {
-      logger.warn(
+      LOGGER.warn(
           "Stats has already been removed. Something might be wrong. " + "Store: " + storeName + " version: "
               + version);
     }

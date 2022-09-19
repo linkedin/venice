@@ -23,7 +23,7 @@ import org.apache.logging.log4j.Logger;
 
 public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
   private boolean isBlock = false;
-  private static final Logger logger = LogManager.getLogger(MockTestStateModelFactory.class);
+  private static final Logger LOGGER = LogManager.getLogger(MockTestStateModelFactory.class);
   private final VeniceOfflinePushMonitorAccessor offlinePushStatusAccessor;
 
   // we have a list of state model as the value because this factory could be shared by different participants
@@ -150,7 +150,7 @@ public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
           try {
             boolean latchClosedBeforeTimeout = latch.await(30, TimeUnit.SECONDS);
             if (!latchClosedBeforeTimeout) {
-              logger.warn("StateTransition lock wait timed out!!");
+              LOGGER.warn("StateTransition lock wait timed out!!");
             }
           } catch (InterruptedException e) {
             // Do nothing

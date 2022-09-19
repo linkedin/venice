@@ -51,7 +51,7 @@ import org.testng.annotations.Test;
 public class PushJobDetailsTest {
   private final Map<Integer, Schema> schemaVersionMap = new HashMap<>();
   private final int latestSchemaId = 2;
-  private static final Logger logger = LogManager.getLogger(PushJobDetailsTest.class);
+  private static final Logger LOGGER = LogManager.getLogger(PushJobDetailsTest.class);
   private VeniceClusterWrapper venice;
   private VeniceControllerWrapper parentController;
   private ZkServerWrapper zkWrapper;

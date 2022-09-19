@@ -106,7 +106,7 @@ import org.testng.annotations.Test;
 
 
 public class TestHybrid {
-  private static final Logger logger = LogManager.getLogger(TestHybrid.class);
+  private static final Logger LOGGER = LogManager.getLogger(TestHybrid.class);
   public static final int STREAMING_RECORD_SIZE = 1024;
   private static final long MIN_COMPACTION_LAG = 24 * Time.MS_PER_HOUR;
 
@@ -247,7 +247,7 @@ public class TestHybrid {
   @Test(dataProvider = "testPermutations", timeOut = 180 * Time.MS_PER_SECOND, groups = { "flaky" })
   public void testHybridEndToEnd(boolean multiDivStream, boolean chunkingEnabled, BufferReplayPolicy bufferReplayPolicy)
       throws Exception {
-    logger.info("About to create VeniceClusterWrapper");
+    LOGGER.info("About to create VeniceClusterWrapper");
     Properties extraProperties = new Properties();
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
     if (chunkingEnabled) {
@@ -265,7 +265,7 @@ public class TestHybrid {
     // N.B.: RF 2 with 2 servers is important, in order to test both the leader and follower code paths
     VeniceClusterWrapper venice = sharedVenice;
     try {
-      logger.info("Finished creating VeniceClusterWrapper");
+      LOGGER.info("Finished creating VeniceClusterWrapper");
 
       long streamingRewindSeconds = 10L;
       long streamingMessageLag = 2L;
@@ -360,7 +360,7 @@ public class TestHybrid {
         assertEquals(client.get("19").get().toString(), "test_name_19");
 
         // TODO: Would be great to eliminate this wait time...
-        logger.info("***** Sleeping to get outside of rewind time: " + streamingRewindSeconds + " seconds");
+        LOGGER.info("***** Sleeping to get outside of rewind time: " + streamingRewindSeconds + " seconds");
         Utils.sleep(TimeUnit.MILLISECONDS.convert(streamingRewindSeconds, TimeUnit.SECONDS));
 
         // Write more streaming records
@@ -413,7 +413,7 @@ public class TestHybrid {
             .keySet()
             .stream()
             .forEach(
-                s -> logger.info(
+                s -> LOGGER.info(
                     "Replicas for " + s + ": "
                         + Arrays.toString(controllerClient.listStorageNodeReplicas(s).getReplicas())));
 
@@ -629,7 +629,7 @@ public class TestHybrid {
           long extraWaitTime = TimeUnit.SECONDS
               .toMillis(Long.parseLong(extraProperties.getProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS)));
           long normalTimeForConsuming = TimeUnit.SECONDS.toMillis(3);
-          logger.info("normalTimeForConsuming:" + normalTimeForConsuming + "; extraWaitTime:" + extraWaitTime);
+          LOGGER.info("normalTimeForConsuming:" + normalTimeForConsuming + "; extraWaitTime:" + extraWaitTime);
           Utils.sleep(normalTimeForConsuming + extraWaitTime);
           TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
             for (int i = 1; i < 20; i++) {
@@ -836,7 +836,7 @@ public class TestHybrid {
               Assert.assertEquals(client.get(key).get(), new Utf8("value_" + i));
             }
           } catch (Exception e) {
-            logger.error("Caught exception in client.get()", e);
+            LOGGER.error("Caught exception in client.get()", e);
             Assert.fail(e.getMessage());
           }
 
@@ -847,7 +847,7 @@ public class TestHybrid {
               Assert.assertNull(client.get(key).get());
             }
           } catch (Exception e) {
-            logger.error("Caught exception in client.get()", e);
+            LOGGER.error("Caught exception in client.get()", e);
             Assert.fail(e.getMessage());
           }
         });
@@ -1147,7 +1147,7 @@ public class TestHybrid {
     // N.B.: RF 2 with 2 servers is important, in order to test both the leader and follower code paths
     VeniceClusterWrapper venice = isIngestionIsolationEnabled ? ingestionIsolationEnabledSharedVenice : sharedVenice;
     try {
-      logger.info("Finished creating VeniceClusterWrapper");
+      LOGGER.info("Finished creating VeniceClusterWrapper");
 
       long streamingRewindSeconds = 10L;
       long streamingMessageLag = 2L;
@@ -1334,7 +1334,7 @@ public class TestHybrid {
 
     // N.B.: RF 2 with 2 servers is important, in order to test both the leader and follower code paths
     VeniceClusterWrapper venice = sharedVenice;
-    logger.info("Finished creating VeniceClusterWrapper");
+    LOGGER.info("Finished creating VeniceClusterWrapper");
     long streamingRewindSeconds = 10L;
     long streamingMessageLag = 2L;
     String storeName = Utils.getUniqueString("hybrid-store");
@@ -1406,7 +1406,7 @@ public class TestHybrid {
 
     // N.B.: RF 2 with 2 servers is important, in order to test both the leader and follower code paths
     VeniceClusterWrapper venice = sharedVenice;
-    logger.info("Finished creating VeniceClusterWrapper");
+    LOGGER.info("Finished creating VeniceClusterWrapper");
     long streamingRewindSeconds = 10L;
     long streamingMessageLag = 2L;
     String storeName = Utils.getUniqueString("hybrid-store");
@@ -1732,7 +1732,7 @@ public class TestHybrid {
           () -> controllerClient.getStore((String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
               .getStore()
               .getCurrentVersion() == expectedVersionNumber);
-      logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
+      LOGGER.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
     }
   }
 

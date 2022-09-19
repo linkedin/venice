@@ -50,15 +50,15 @@ import org.apache.logging.log4j.Logger;
  * status reporting to main process.
  */
 public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
-  private static final Logger logger = LogManager.getLogger(IsolatedIngestionServerHandler.class);
+  private static final Logger LOGGER = LogManager.getLogger(IsolatedIngestionServerHandler.class);
 
   private final IsolatedIngestionServer isolatedIngestionServer;
 
   public IsolatedIngestionServerHandler(IsolatedIngestionServer isolatedIngestionServer) {
     super();
     this.isolatedIngestionServer = isolatedIngestionServer;
-    if (logger.isDebugEnabled()) {
-      logger.debug("IsolatedIngestionServerHandler created for listener service.");
+    if (LOGGER.isDebugEnabled()) {
+      LOGGER.debug("IsolatedIngestionServerHandler created for listener service.");
     }
   }
 
@@ -72,8 +72,8 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
     try {
       IngestionAction action = getIngestionActionFromRequest(msg);
       byte[] result = getDummyContent();
-      if (logger.isDebugEnabled()) {
-        logger.debug("Received " + action.name() + " message: " + msg);
+      if (LOGGER.isDebugEnabled()) {
+        LOGGER.debug("Received " + action.name() + " message: " + msg);
       }
       if (!isolatedIngestionServer.isInitiated()) {
         throw new VeniceException("Isolated ingestion server is not initialized yet!");
@@ -110,7 +110,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
       ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, result));
     } catch (UnsupportedOperationException e) {
       // Here we only handles the bad requests exception. Other errors are handled in exceptionCaught() method.
-      logger.error("Caught unrecognized request action:", e);
+      LOGGER.error("Caught unrecognized request action:", e);
       ctx.writeAndFlush(
           buildHttpResponse(
               HttpResponseStatus.BAD_REQUEST,
@@ -120,7 +120,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
 
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-    logger.error("Encounter exception -  message: {}, cause: {}", cause.getMessage(), cause);
+    LOGGER.error("Encounter exception -  message: {}, cause: {}", cause.getMessage(), cause);
     ctx.writeAndFlush(
         buildHttpResponse(
             HttpResponseStatus.INTERNAL_SERVER_ERROR,
@@ -150,10 +150,10 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           ReadOnlyStoreRepository storeRepository = isolatedIngestionServer.getStoreRepository();
           // For subscription based store repository, we will need to subscribe to the store explicitly.
           if (storeRepository instanceof SubscriptionBasedReadOnlyStoreRepository) {
-            logger.info("Ingestion Service subscribing to store: " + storeName);
+            LOGGER.info("Ingestion Service subscribing to store: " + storeName);
             ((SubscriptionBasedReadOnlyStoreRepository) storeRepository).subscribe(storeName);
           }
-          logger.info("Start ingesting partition: " + partitionId + " of topic: " + topicName);
+          LOGGER.info("Start ingesting partition: " + partitionId + " of topic: " + topicName);
           isolatedIngestionServer.setPartitionToBeSubscribed(topicName, partitionId);
           isolatedIngestionServer.getIngestionBackend().startConsumption(storeConfig, partitionId);
           break;
@@ -196,7 +196,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           storeConfig.setRestoreDataPartitions(false);
           storeConfig.setRestoreMetadataPartition(true);
           isolatedIngestionServer.getStorageService().openStore(storeConfig);
-          logger.info("Metadata partition of topic: " + ingestionTaskCommand.topicName.toString() + " restored.");
+          LOGGER.info("Metadata partition of topic: " + ingestionTaskCommand.topicName.toString() + " restored.");
           break;
         case PROMOTE_TO_LEADER:
           // This is to avoid the race condition. When partition is being unsubscribed, we should not add it to the
@@ -209,7 +209,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
                     isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId));
           } else {
             report.isPositive = false;
-            logger.info(
+            LOGGER.info(
                 "Partition " + partitionId + " of topic: " + topicName
                     + " is being unsubscribed, reject leader promotion request");
           }
@@ -223,7 +223,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
                     isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId));
           } else {
             report.isPositive = false;
-            logger.info(
+            LOGGER.info(
                 "Partition " + partitionId + " of topic: " + topicName
                     + " is being unsubscribed, reject leader demotion request");
           }
@@ -232,13 +232,13 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           break;
       }
     } catch (Exception e) {
-      logger.error("Encounter exception while handling ingestion command", e);
+      LOGGER.error("Encounter exception while handling ingestion command", e);
       report.isPositive = false;
       report.message = e.getClass().getSimpleName() + "_"
           + ExceptionUtils.compactExceptionDescription(e, "handleIngestionTaskCommand");
     }
     long executionTimeInMs = System.currentTimeMillis() - startTimeInMs;
-    logger.info(
+    LOGGER.info(
         "Completed ingestion command " + ingestionCommandType + " for topic: " + topicName + ", partition: "
             + partitionId + " in millis: " + executionTimeInMs);
     return report;
@@ -260,7 +260,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           } catch (Exception e) {
             String exceptionLogMessage = "Encounter exception when retrieving value of metric: " + name;
             if (!isolatedIngestionServer.getRedundantExceptionFilter().isRedundantException(exceptionLogMessage)) {
-              logger.error(exceptionLogMessage, e);
+              LOGGER.error(exceptionLogMessage, e);
             }
           }
         }
@@ -278,7 +278,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
       if (!isolatedIngestionServer.isInitiated()) {
         // Short circuit here when ingestion service is not initiated.
         String errorMessage = "IsolatedIngestionServer has not been initiated.";
-        logger.error(errorMessage);
+        LOGGER.error(errorMessage);
         report.isPositive = false;
         report.message = errorMessage;
         return report;
@@ -310,7 +310,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           break;
       }
     } catch (VeniceException e) {
-      logger.error("Encounter exception while updating storage metadata", e);
+      LOGGER.error("Encounter exception while updating storage metadata", e);
       // Will not retry the message as the VeniceException indicates topic not found in storage engine repository.
       report.isPositive = true;
       report.message = e.getClass().getSimpleName() + "_"
@@ -336,7 +336,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           break;
       }
     } catch (Exception e) {
-      logger.error("Encounter exception while shutting down ingestion components in forked process", e);
+      LOGGER.error("Encounter exception while shutting down ingestion components in forked process", e);
       report.isPositive = false;
       report.message = e.getClass().getSimpleName() + "_"
           + ExceptionUtils.compactExceptionDescription(e, "handleProcessShutdownCommand");

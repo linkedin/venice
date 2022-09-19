@@ -74,7 +74,7 @@ public class TestStoreMigration {
   private static final String NEW_OWNER = "newtest@linkedin.com";
   private static final String FABRIC0 = "dc-0";
   private static final boolean[] ABORT_MIGRATION_PROMPTS_OVERRIDE = { false, true, true };
-  private static final Logger logger = LogManager.getLogger(TestStoreMigration.class);
+  private static final Logger LOGGER = LogManager.getLogger(TestStoreMigration.class);
 
   private VeniceTwoLayerMultiColoMultiClusterWrapper twoLayerMultiColoMultiClusterWrapper;
   private VeniceMultiClusterWrapper multiClusterWrapper;
@@ -389,7 +389,7 @@ public class TestStoreMigration {
             .setHybridOffsetLagThreshold(2L);
     TestPushUtils.createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreQueryParams).close();
     try (ControllerClient client = new ControllerClient(clusterName, controllerUrl)) {
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(logger));
+      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
     }
 
     // L/F is enabled in dc-0 and disabled in parent.

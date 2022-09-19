@@ -20,7 +20,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class TempFileSSLConfigurator implements SSLConfigurator {
-  private static final Logger logger = LogManager.getLogger(TempFileSSLConfigurator.class);
+  private static final Logger LOGGER = LogManager.getLogger(TempFileSSLConfigurator.class);
 
   @Override
   public Properties setupSSLConfig(Properties props, Credentials userCredentials) {
@@ -28,23 +28,23 @@ public class TempFileSSLConfigurator implements SSLConfigurator {
     properties.putAll(props);
     if (properties.containsKey(KAFKA_SECURITY_PROTOCOL)
         && properties.getProperty(KAFKA_SECURITY_PROTOCOL).toLowerCase().equals("ssl")) {
-      logger.info("Start setting up the ssl properties.");
+      LOGGER.info("Start setting up the ssl properties.");
       try {
         // Setup keystore certification
         byte[] keyStoreCert = getCertification(
             userCredentials,
             new Text(properties.getProperty(VenicePushJob.SSL_KEY_STORE_PROPERTY_NAME)));
-        logger.info("Found key store cert from credentials.");
+        LOGGER.info("Found key store cert from credentials.");
         String keyStoreLocation = writeToTempFile(keyStoreCert);
-        logger.info("Write key store cert to file: " + keyStoreLocation);
+        LOGGER.info("Write key store cert to file: " + keyStoreLocation);
         properties.put(SSL_KEYSTORE_LOCATION, keyStoreLocation);
         // Setup truststore certification
         byte[] truestStoreCert = getCertification(
             userCredentials,
             new Text(properties.getProperty(VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME)));
-        logger.info("Found trust store cert from credentials.");
+        LOGGER.info("Found trust store cert from credentials.");
         String trustStoreLocation = writeToTempFile(truestStoreCert);
-        logger.info("Write trust store cert to file: " + trustStoreLocation);
+        LOGGER.info("Write trust store cert to file: " + trustStoreLocation);
         properties.put(SSL_TRUSTSTORE_LOCATION, trustStoreLocation);
 
         // Setup keystore password.
@@ -76,7 +76,7 @@ public class TempFileSSLConfigurator implements SSLConfigurator {
         if (!properties.containsKey(SSL_SECURE_RANDOM_IMPLEMENTATION)) {
           properties.put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
         }
-        logger.info("Complete setting up the ssl properties.");
+        LOGGER.info("Complete setting up the ssl properties.");
       } catch (VeniceException e) {
         throw e;
       }

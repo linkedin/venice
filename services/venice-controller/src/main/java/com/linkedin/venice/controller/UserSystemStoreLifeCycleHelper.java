@@ -36,7 +36,7 @@ public class UserSystemStoreLifeCycleHelper {
       new VeniceSystemStoreType[] { VeniceSystemStoreType.META_STORE, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE };
   private static final Set<VeniceSystemStoreType> aclRequiredSystemStoresSet =
       new HashSet<>(Arrays.asList(aclRequiredSystemStores));
-  private static final Logger logger = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger();
 
   private final Map<String, Set<VeniceSystemStoreType>> clusterToAutoCreateEnabledSystemStoresMap = new HashMap<>();
   private final VeniceParentHelixAdmin parentAdmin;
@@ -127,8 +127,8 @@ public class UserSystemStoreLifeCycleHelper {
       boolean isStoreMigrating,
       MetaStoreWriter metaStoreWriter,
       Optional<PushStatusStoreRecordDeleter> pushStatusStoreRecordDeleter,
-      Logger logger) {
-    logger.info("Start deleting system store: " + systemStoreName);
+      Logger LOGGER) {
+    LOGGER.info("Start deleting system store: " + systemStoreName);
     admin.deleteAllVersionsInStore(clusterName, systemStoreName);
     pushMonitor.cleanupStoreStatus(systemStoreName);
     if (!isStoreMigrating) {
@@ -144,7 +144,7 @@ public class UserSystemStoreLifeCycleHelper {
           break;
         case BATCH_JOB_HEARTBEAT_STORE:
           // TODO: do we need to do any clean up here? HEARTBEAT_STORE is not coupled with any specific user store.
-          logger.error(
+          LOGGER.error(
               "Venice store " + BATCH_JOB_HEARTBEAT_STORE.extractRegularStoreName(systemStoreName)
                   + " has a coupled batch job heartbeat system store?");
           break;
@@ -153,13 +153,13 @@ public class UserSystemStoreLifeCycleHelper {
       }
       admin.truncateKafkaTopic(Version.composeRealTimeTopic(systemStoreName));
     } else {
-      logger.info("The RT topic for: " + systemStoreName + " will not be deleted since the user store is migrating");
+      LOGGER.info("The RT topic for: " + systemStoreName + " will not be deleted since the user store is migrating");
     }
     Store systemStore = storeRepository.getStore(systemStoreName);
     if (systemStore != null) {
       admin.truncateOldTopics(clusterName, systemStore, true);
     }
-    logger.info("Finished deleting system store: " + systemStoreName);
+    LOGGER.info("Finished deleting system store: " + systemStoreName);
   }
 
   public static void maybeDeleteSystemStoresForUserStore(
@@ -170,7 +170,7 @@ public class UserSystemStoreLifeCycleHelper {
       Store userStore,
       MetaStoreWriter metaStoreWriter,
       Optional<PushStatusStoreRecordDeleter> pushStatusStoreRecordDeleter,
-      Logger logger) {
+      Logger LOGGER) {
     if (userStore.isDaVinciPushStatusStoreEnabled()) {
       deleteSystemStore(
           admin,
@@ -181,7 +181,7 @@ public class UserSystemStoreLifeCycleHelper {
           userStore.isMigrating(),
           metaStoreWriter,
           pushStatusStoreRecordDeleter,
-          logger);
+          LOGGER);
     }
     // We must delete meta system store at the end as deleting other system store will try to send update to meta system
     // store as well.
@@ -195,7 +195,7 @@ public class UserSystemStoreLifeCycleHelper {
           userStore.isMigrating(),
           metaStoreWriter,
           pushStatusStoreRecordDeleter,
-          logger);
+          LOGGER);
     }
   }
 
@@ -209,7 +209,7 @@ public class UserSystemStoreLifeCycleHelper {
       case DAVINCI_PUSH_STATUS_STORE:
         return userStore.isDaVinciPushStatusStoreEnabled();
       default:
-        logger.warn(
+        LOGGER.warn(
             "System store type: " + systemStoreType + " is not user level system store, return false by default.");
         return false;
     }

@@ -22,7 +22,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
-  private static final Logger logger = LogManager.getLogger(VeniceHostFinder.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceHostFinder.class);
 
   private final OnlineInstanceFinder onlineInstanceFinder;
   private final RouterStats<AggRouterHttpRequestStats> routerStats;
@@ -62,7 +62,7 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
       /**
        * Zero available host issue is handled by {@link VeniceDelegateMode} by checking whether there is any 'offline request'.
        */
-      logger.warn("No ready-to-serve host for resource " + resourceName + " with partition " + partitionName);
+      LOGGER.warn("No ready-to-serve host for resource " + resourceName + " with partition " + partitionName);
       return hosts;
     }
     /**
@@ -105,7 +105,7 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
     final int hostCount = newHosts.size();
     if (hostCount <= 1) {
       if (hostCount == 0) {
-        logger.warn(
+        LOGGER.warn(
             "All host(s) for resource " + resourceName + " with partition " + partitionName + " are not healthy: "
                 + hosts);
       }

@@ -26,7 +26,7 @@ import org.apache.logging.log4j.Logger;
  * This push monitor is able to query hybrid store quota status from routers
  */
 public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
-  private static final Logger logger = LogManager.getLogger(RouterBasedHybridStoreQuotaMonitor.class);
+  private static final Logger LOGGER = LogManager.getLogger(RouterBasedHybridStoreQuotaMonitor.class);
 
   private static final int POLL_CYCLE_DELAY_MS = 10000;
   private static final long POLL_TIMEOUT_MS = 10000L;
@@ -104,7 +104,7 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
 
     @Override
     public void run() {
-      logger.info("Running " + this.getClass().getSimpleName());
+      LOGGER.info("Running " + this.getClass().getSimpleName());
       while (isRunning.get()) {
         try {
           // Get hybrid store quota status
@@ -113,16 +113,16 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
           HybridStoreQuotaStatusResponse quotaStatusResponse =
               mapper.readValue(response.getBody(), HybridStoreQuotaStatusResponse.class);
           if (quotaStatusResponse.isError()) {
-            logger.error("Router was not able to get hybrid quota status: " + quotaStatusResponse.getError());
+            LOGGER.error("Router was not able to get hybrid quota status: " + quotaStatusResponse.getError());
             continue;
           }
           hybridStoreQuotaMonitorService.setCurrentStatus(quotaStatusResponse.getQuotaStatus());
           switch (quotaStatusResponse.getQuotaStatus()) {
             case QUOTA_VIOLATED:
-              logger.info("Hybrid job failed with quota violation for store: " + storeName);
+              LOGGER.info("Hybrid job failed with quota violation for store: " + storeName);
               break;
             default:
-              logger.info(
+              LOGGER.info(
                   "Current hybrid job state: " + quotaStatusResponse.getQuotaStatus() + " for store: " + storeName);
           }
 
@@ -130,7 +130,7 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
         } catch (Exception e) {
           if (isRunning.get() && !ExceptionUtils.recursiveClassEquals(e, InterruptedException.class)) {
             // Only worth logging if we're actually supposed to be running.
-            logger.error("Error when polling push status from router for store version: " + storeName, e);
+            LOGGER.error("Error when polling push status from router for store version: " + storeName, e);
           } else {
             break;
           }

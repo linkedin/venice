@@ -31,7 +31,7 @@ import org.apache.logging.log4j.Logger;
  * This class is non-cluster specified.
  */
 public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRepository, VeniceResource {
-  public static final Logger logger = LogManager.getLogger(HelixReadOnlyStoreConfigRepository.class);
+  private static final Logger LOGGER = LogManager.getLogger(HelixReadOnlyStoreConfigRepository.class);
 
   private final AtomicReference<Map<String, StoreConfig>> storeConfigMap;
   private final ZkStoreConfigAccessor accessor;
@@ -72,11 +72,11 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
 
   @Override
   public void refresh() {
-    logger.info("Loading all store configs from zk.");
+    LOGGER.info("Loading all store configs from zk.");
     accessor.subscribeStoreConfigAddedOrDeletedListener(storeConfigAddedOrDeletedListener);
     List<StoreConfig> configList =
         accessor.getAllStoreConfigs(refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
-    logger.info("Found " + configList.size() + " store configs.");
+    LOGGER.info("Found " + configList.size() + " store configs.");
     Map<String, StoreConfig> configMap = new HashMap<>();
     for (StoreConfig config: configList) {
       configMap.put(config.getStoreName(), config);
@@ -84,19 +84,19 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
     }
     storeConfigMap.set(configMap);
     zkClient.subscribeStateChanges(zkStateListener);
-    logger.info("All store configs are loaded.");
+    LOGGER.info("All store configs are loaded.");
   }
 
   @Override
   public void clear() {
-    logger.info("Clearing all store configs in local");
+    LOGGER.info("Clearing all store configs in local");
     accessor.unsubscribeStoreConfigAddedOrDeletedListener(storeConfigAddedOrDeletedListener);
     for (String storeName: storeConfigMap.get().keySet()) {
       accessor.unsubscribeStoreConfigDataChangedListener(storeName, storeConfigChangedListener);
     }
     this.storeConfigMap.set(Collections.emptyMap());
     zkClient.unsubscribeStateChanges(zkStateListener);
-    logger.info("Cleared all store configs in local");
+    LOGGER.info("Cleared all store configs in local");
   }
 
   /**
@@ -154,7 +154,7 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
 
         Set<String> deletedStores = new HashSet<>(map.keySet());
         currentChildren.forEach(deletedStores::remove);
-        logger.info(
+        LOGGER.info(
             "Store configs list is changed. " + newStores.size() + " new configs. And will delete "
                 + deletedStores.size() + " configs.");
         // New added store configs

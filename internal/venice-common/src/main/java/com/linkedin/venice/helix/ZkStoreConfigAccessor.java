@@ -23,7 +23,7 @@ import org.apache.logging.log4j.Logger;
  * This class is non-cluster specified.
  */
 public class ZkStoreConfigAccessor {
-  public static final Logger logger = LogManager.getLogger(ZkStoreConfigAccessor.class);
+  private static final Logger LOGGER = LogManager.getLogger(ZkStoreConfigAccessor.class);
   private static final String ROOT_PATH = "/storeConfigs";
 
   private final ZkClient zkClient;
@@ -57,7 +57,7 @@ public class ZkStoreConfigAccessor {
         .filter(storeConfig -> storeConfig != null)
         .collect(Collectors.toList());
 
-    logger.info("Read " + configs.size() + " store configs from path:" + ROOT_PATH);
+    LOGGER.info("Read " + configs.size() + " store configs from path:" + ROOT_PATH);
     return configs;
   }
 

@@ -48,7 +48,7 @@ import org.apache.logging.log4j.Logger;
 @BatchMode
 public abstract class HelixBaseRoutingRepository
     implements RoutingDataRepository, ControllerChangeListener, IdealStateChangeListener, RoutingTableChangeListener {
-  private static final Logger logger = LogManager.getLogger(HelixBaseRoutingRepository.class);
+  private static final Logger LOGGER = LogManager.getLogger(HelixBaseRoutingRepository.class);
 
   /**
    * Manager used to communicate with Helix.
@@ -91,7 +91,7 @@ public abstract class HelixBaseRoutingRepository
    */
   public void refresh() {
     try {
-      logger.info("Refresh started for cluster " + manager.getClusterName() + "'s" + getClass().getSimpleName());
+      LOGGER.info("Refresh started for cluster " + manager.getClusterName() + "'s" + getClass().getSimpleName());
       // After adding the listener, helix will initialize the callback which will get the entire external view
       // and trigger the external view change event. In other words, venice will read the newest external view
       // immediately.
@@ -115,10 +115,10 @@ public abstract class HelixBaseRoutingRepository
       }
       // TODO subscribe zk state change event after we can get zk client from HelixManager
       // (Should be fixed by Helix team soon)
-      logger.info("Refresh finished for cluster" + manager.getClusterName() + "'s" + getClass().getSimpleName());
+      LOGGER.info("Refresh finished for cluster" + manager.getClusterName() + "'s" + getClass().getSimpleName());
     } catch (Exception e) {
       String errorMessage = "Cannot refresh routing table from Helix for cluster " + manager.getClusterName();
-      logger.error(errorMessage, e);
+      LOGGER.error(errorMessage, e);
       throw new VeniceException(errorMessage, e);
     }
   }
@@ -132,7 +132,7 @@ public abstract class HelixBaseRoutingRepository
       try {
         routingTableProvider.shutdown();
       } catch (Exception e) {
-        logger.error("Exception thrown during shutdown of routingTableProvider. " + e);
+        LOGGER.error("Exception thrown during shutdown of routingTableProvider. " + e);
       }
     }
   }
@@ -237,15 +237,15 @@ public abstract class HelixBaseRoutingRepository
       // Finalized notification, listener will be removed.
       return;
     }
-    logger.info("Got notification type:" + changeContext.getType() + ". Leader controller is changed.");
+    LOGGER.info("Got notification type:" + changeContext.getType() + ". Leader controller is changed.");
     LiveInstance leader = manager.getHelixDataAccessor().getProperty(keyBuilder.controllerLeader());
     this.leaderControllerChangeTimeMs = System.currentTimeMillis();
     if (leader == null) {
       this.leaderController = null;
-      logger.error("Cluster do not have leader controller now!");
+      LOGGER.error("Cluster do not have leader controller now!");
     } else {
       this.leaderController = createInstanceFromLiveInstance(leader);
-      logger.info("New leader controller is:" + leaderController.getHost() + ":" + leaderController.getPort());
+      LOGGER.info("New leader controller is:" + leaderController.getHost() + ":" + leaderController.getPort());
     }
   }
 
@@ -296,21 +296,21 @@ public abstract class HelixBaseRoutingRepository
   @Override
   public void onRoutingTableChange(RoutingTableSnapshot routingTableSnapshot, Object context) {
     if (routingTableSnapshot == null) {
-      logger.warn("Routing table snapshot should not be null");
+      LOGGER.warn("Routing table snapshot should not be null");
       return;
     }
     PropertyType helixPropertyType = routingTableSnapshot.getPropertyType();
     switch (helixPropertyType) {
       case EXTERNALVIEW:
-        logger.debug("Received Helix routing table change on External View");
+        LOGGER.debug("Received Helix routing table change on External View");
         onExternalViewDataChange(routingTableSnapshot);
         break;
       case CUSTOMIZEDVIEW:
-        logger.debug("Received Helix routing table change on Customized View");
+        LOGGER.debug("Received Helix routing table change on Customized View");
         onCustomizedViewDataChange(routingTableSnapshot);
         break;
       default:
-        logger.warn("Received Helix routing table change on invalid type " + helixPropertyType);
+        LOGGER.warn("Received Helix routing table change on invalid type " + helixPropertyType);
     }
   }
 

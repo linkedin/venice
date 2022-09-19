@@ -20,7 +20,7 @@ import org.testng.annotations.Test;
 
 
 public class TestRmdSchemaGenerator {
-  private static final Logger logger = LogManager.getLogger(TestRmdSchemaGenerator.class);
+  private static final Logger LOGGER = LogManager.getLogger(TestRmdSchemaGenerator.class);
   private static final Schema EMPTY_RECORD_SCHEMA;
   static {
     EMPTY_RECORD_SCHEMA = Schema.createRecord("EmptyRecord", "", "", false);
@@ -98,7 +98,7 @@ public class TestRmdSchemaGenerator {
     Schema origSchema = Schema.create(INT);
     Schema aaSchema = RmdSchemaGenerator.generateMetadataSchema(origSchema);
     String aaSchemaStr = aaSchema.toString(true);
-    logger.info(aaSchemaStr);
+    LOGGER.info(aaSchemaStr);
 
     verifyFullUpdateTsRecordPresent(aaSchema, true);
   }
@@ -108,7 +108,7 @@ public class TestRmdSchemaGenerator {
     Schema origSchema = AvroCompatibilityHelper.parse(primitiveTypedSchemaStr);
     Schema aaSchema = RmdSchemaGenerator.generateMetadataSchema(origSchema);
     String aaSchemaStr = aaSchema.toString(true);
-    logger.info(aaSchemaStr);
+    LOGGER.info(aaSchemaStr);
     Assert.assertEquals(aaSchema, AvroCompatibilityHelper.parse(aaSchema.toString()));
     Assert.assertEquals(
         AvroCompatibilityHelper.parse(aaSchemaPrimitive),
@@ -123,8 +123,8 @@ public class TestRmdSchemaGenerator {
     String OrigSchemaStr = origSchema.toString(true);
     Schema aaSchema = RmdSchemaGenerator.generateMetadataSchema(origSchema);
     String aaSchemaStr = aaSchema.toString(true);
-    logger.info(OrigSchemaStr);
-    logger.info(aaSchemaStr);
+    LOGGER.info(OrigSchemaStr);
+    LOGGER.info(aaSchemaStr);
 
     Assert.assertEquals(aaSchema, AvroCompatibilityHelper.parse(aaSchema.toString()));
     Assert.assertEquals(
@@ -158,8 +158,8 @@ public class TestRmdSchemaGenerator {
         "Expect the original schema to have 2 fields with the same element type");
 
     final Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(origSchema);
-    logger.info(origSchema.toString(true));
-    logger.info(rmdSchema.toString(true));
+    LOGGER.info(origSchema.toString(true));
+    LOGGER.info(rmdSchema.toString(true));
 
     verifyFullUpdateTsRecordPresent(rmdSchema, false);
     Assert.assertEquals(rmdSchema.getField(TIMESTAMP_FIELD_NAME).schema().getType(), UNION);
@@ -191,8 +191,8 @@ public class TestRmdSchemaGenerator {
         "Expect the original schema to have 2 fields with different array element type");
 
     final Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(origSchema);
-    logger.info(origSchema.toString(true));
-    logger.info(rmdSchema.toString(true));
+    LOGGER.info(origSchema.toString(true));
+    LOGGER.info(rmdSchema.toString(true));
 
     verifyFullUpdateTsRecordPresent(rmdSchema, false);
 
@@ -234,8 +234,8 @@ public class TestRmdSchemaGenerator {
         "Expect the original schema to have last 2 fields with different array element type");
 
     final Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(origSchema);
-    logger.info(origSchema.toString(true));
-    logger.info(rmdSchema.toString(true));
+    LOGGER.info(origSchema.toString(true));
+    LOGGER.info(rmdSchema.toString(true));
 
     verifyFullUpdateTsRecordPresent(rmdSchema, false);
 
@@ -288,8 +288,8 @@ public class TestRmdSchemaGenerator {
     Schema origSchema = createRecordOfMap(Schema.createMap(Schema.create(INT)));
     Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(origSchema);
 
-    logger.info(origSchema.toString(true));
-    logger.info(rmdSchema.toString(true));
+    LOGGER.info(origSchema.toString(true));
+    LOGGER.info(rmdSchema.toString(true));
 
     verifyFullUpdateTsRecordPresent(rmdSchema, false);
     Schema recordTsSchema = rmdSchema.getField(TIMESTAMP_FIELD_NAME).schema().getTypes().get(1);
@@ -305,8 +305,8 @@ public class TestRmdSchemaGenerator {
   public void testMetadataSchemaForArray() {
     Schema origSchema = AvroCompatibilityHelper.parse(arraySchemaStr);
     Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(origSchema);
-    logger.info(origSchema.toString(true));
-    logger.info(rmdSchema.toString(true));
+    LOGGER.info(origSchema.toString(true));
+    LOGGER.info(rmdSchema.toString(true));
     Assert.assertEquals(
         AvroCompatibilityHelper.parse(aaSchemaArray),
         AvroCompatibilityHelper.parse(rmdSchema.toString()));
@@ -319,8 +319,8 @@ public class TestRmdSchemaGenerator {
     String OrigSchemaStr = origSchema.toString(true);
     Schema aaSchema = RmdSchemaGenerator.generateMetadataSchema(origSchema);
     String aaSchemaStr = aaSchema.toString(true);
-    logger.info(OrigSchemaStr);
-    logger.info(aaSchemaStr);
+    LOGGER.info(OrigSchemaStr);
+    LOGGER.info(aaSchemaStr);
     Assert.assertEquals(AvroCompatibilityHelper.parse(aaSchemaMap), AvroCompatibilityHelper.parse(aaSchema.toString()));
     verifyFullUpdateTsRecordPresent(aaSchema, true);
   }
@@ -329,8 +329,8 @@ public class TestRmdSchemaGenerator {
   public void testMetadataSchemaForUnion() {
     Schema origSchema = AvroCompatibilityHelper.parse(unionSchemaStr);
     Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(origSchema);
-    logger.info(origSchema.toString(true));
-    logger.info(rmdSchema.toString(true));
+    LOGGER.info(origSchema.toString(true));
+    LOGGER.info(rmdSchema.toString(true));
     Assert.assertEquals(
         AvroCompatibilityHelper.parse(rmdSchemaUnion),
         AvroCompatibilityHelper.parse(rmdSchema.toString()));

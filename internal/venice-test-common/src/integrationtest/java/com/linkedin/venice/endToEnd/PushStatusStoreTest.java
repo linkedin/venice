@@ -46,6 +46,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
@@ -53,6 +55,7 @@ import org.testng.annotations.Test;
 
 
 public class PushStatusStoreTest {
+  private static final Logger LOGGER = LogManager.getLogger(PushStatusStoreTest.class);
   private static final int TEST_TIMEOUT_MS = 60_000;
   private static final int NUMBER_OF_SERVERS = 2;
   private static final int PARTITION_COUNT = 2;
@@ -108,7 +111,7 @@ public class PushStatusStoreTest {
     String owner = "test";
     // set up push status store
     TestUtils.assertCommand(controllerClient.createNewStore(storeName, owner, DEFAULT_KEY_SCHEMA, "\"string\""));
-    TestUtils.createMetaSystemStore(controllerClient, storeName, Optional.of(logger));
+    TestUtils.createMetaSystemStore(controllerClient, storeName, Optional.of(LOGGER));
     TestUtils.assertCommand(
         controllerClient.updateStore(
             storeName,
@@ -200,7 +203,7 @@ public class PushStatusStoreTest {
       try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
         job.run();
         cluster.waitVersion(storeName, expectedVersionNumber, controllerClient);
-        logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
+        LOGGER.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
         assertEquals(storeClient.get(1).get().toString(), "name 1");
         Optional<String> incPushVersion = job.getIncrementalPushVersion();
         for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
@@ -236,7 +239,7 @@ public class PushStatusStoreTest {
       try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
         job.run();
         cluster.waitVersion(storeName, expectedVersionNumber, controllerClient);
-        logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
+        LOGGER.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
         assertEquals(storeClient.get(1).get().toString(), "name 1");
         Optional<String> incPushVersion = job.getIncrementalPushVersion();
         // verify partition replicas have reported their status to the push status store
@@ -411,7 +414,7 @@ public class PushStatusStoreTest {
       job.run();
       String storeName = (String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP);
       cluster.waitVersion(storeName, expectedVersionNumber, controllerClient);
-      logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
+      LOGGER.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
     }
   }
 }

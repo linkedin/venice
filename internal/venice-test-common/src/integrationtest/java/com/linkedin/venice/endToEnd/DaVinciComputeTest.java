@@ -59,6 +59,8 @@ import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
@@ -67,6 +69,7 @@ import org.testng.annotations.Test;
 
 
 public class DaVinciComputeTest {
+  private static final Logger LOGGER = LogManager.getLogger(DaVinciComputeTest.class);
   private static final int TEST_TIMEOUT = 120_000; // ms
 
   private VeniceClusterWrapper cluster;
@@ -166,7 +169,7 @@ public class DaVinciComputeTest {
               getClass().getName(),
               DEFAULT_KEY_SCHEMA,
               VALUE_SCHEMA_FOR_COMPUTE_NULLABLE_LIST_FIELD));
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(logger));
+      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
     });
 
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
@@ -270,7 +273,7 @@ public class DaVinciComputeTest {
     cluster.useControllerClient(client -> {
       TestUtils.assertCommand(
           client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, VALUE_SCHEMA_FOR_COMPUTE));
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(logger));
+      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
     });
 
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
@@ -399,7 +402,7 @@ public class DaVinciComputeTest {
     cluster.useControllerClient(client -> {
       TestUtils.assertCommand(
           client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, VALUE_SCHEMA_FOR_COMPUTE_SWAPPED));
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(logger));
+      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
     });
 
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
@@ -508,7 +511,7 @@ public class DaVinciComputeTest {
               getClass().getName(),
               KEY_SCHEMA_STEAMING_COMPUTE,
               VALUE_SCHEMA_STREAMING_COMPUTE));
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(logger));
+      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
     });
 
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
@@ -605,7 +608,7 @@ public class DaVinciComputeTest {
               getClass().getName(),
               KEY_SCHEMA_PARTIAL_KEY_LOOKUP,
               VALUE_SCHEMA_FOR_COMPUTE));
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(logger));
+      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
     });
 
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
@@ -701,7 +704,7 @@ public class DaVinciComputeTest {
               getClass().getName(),
               KEY_SCHEMA_PARTIAL_KEY_LOOKUP,
               VALUE_SCHEMA_FOR_COMPUTE));
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(logger));
+      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
     });
 
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);

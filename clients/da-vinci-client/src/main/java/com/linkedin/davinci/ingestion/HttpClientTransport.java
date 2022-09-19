@@ -25,7 +25,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class HttpClientTransport implements AutoCloseable {
-  private static final Logger logger = LogManager.getLogger(HttpClientTransport.class);
+  private static final Logger LOGGER = LogManager.getLogger(HttpClientTransport.class);
   private static final int DEFAULT_CONNECTION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
   private static final int DEFAULT_SOCKET_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
   private static final int DEFAULT_REQUEST_TIMEOUT_MS = 60 * Time.MS_PER_SECOND;
@@ -132,7 +132,7 @@ public class HttpClientTransport implements AutoCloseable {
       } catch (VeniceException e) {
         retryCount++;
         if (retryCount != maxAttempt) {
-          logger.warn(
+          LOGGER.warn(
               "Encounter exception when sending request, will retry for " + retryCount + "/" + maxAttempt + " time.");
         } else {
           long totalTimeInMs = System.currentTimeMillis() - startTimeIsMs;

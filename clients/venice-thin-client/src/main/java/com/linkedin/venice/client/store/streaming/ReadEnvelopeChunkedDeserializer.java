@@ -23,7 +23,7 @@ import org.apache.logging.log4j.Logger;
  * @param <V>
  */
 public abstract class ReadEnvelopeChunkedDeserializer<V> {
-  protected static final Logger LOGGER = LogManager.getLogger(ReadEnvelopeChunkedDeserializer.class);
+  private static final Logger LOGGER = LogManager.getLogger(ReadEnvelopeChunkedDeserializer.class);
 
   // All available deserialized bytes
   private final LinkedList<BytesContainer> buffers = new LinkedList<>();

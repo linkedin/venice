@@ -20,7 +20,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class TopicManagerRepository implements Closeable {
-  private static final Logger logger = LogManager.getLogger(TopicManagerRepository.class);
+  private static final Logger LOGGER = LogManager.getLogger(TopicManagerRepository.class);
 
   private final String localKafkaBootstrapServers;
   private final String localKafkaZkAddress;
@@ -113,17 +113,17 @@ public class TopicManagerRepository implements Closeable {
     AtomicReference<Exception> lastException = new AtomicReference<>();
     topicManagersMap.entrySet().stream().forEach(entry -> {
       try {
-        logger.info("Closing TopicManager for Kafka cluster [" + entry.getKey() + "]");
+        LOGGER.info("Closing TopicManager for Kafka cluster [" + entry.getKey() + "]");
         entry.getValue().close();
-        logger.info("Closed TopicManager for Kafka cluster [" + entry.getKey() + "]");
+        LOGGER.info("Closed TopicManager for Kafka cluster [" + entry.getKey() + "]");
       } catch (Exception e) {
-        logger.error("Error when closing TopicManager for Kafka cluster [" + entry.getKey() + "]");
+        LOGGER.error("Error when closing TopicManager for Kafka cluster [" + entry.getKey() + "]");
         lastException.set(e);
       }
     });
     if (lastException.get() != null) {
       throw new VeniceException(lastException.get());
     }
-    logger.info("All TopicManager closed.");
+    LOGGER.info("All TopicManager closed.");
   }
 }

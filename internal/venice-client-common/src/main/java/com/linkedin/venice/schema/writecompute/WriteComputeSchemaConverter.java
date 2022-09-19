@@ -42,13 +42,13 @@ import org.apache.commons.lang.Validate;
  * Nested Record/Array/Map will remain the same after parsing.
  */
 public class WriteComputeSchemaConverter {
-  private final static WriteComputeSchemaConverter instance = new WriteComputeSchemaConverter();
+  private static final WriteComputeSchemaConverter INSTANCE = new WriteComputeSchemaConverter();
 
   private WriteComputeSchemaConverter() {
   }
 
   public static WriteComputeSchemaConverter getInstance() {
-    return instance;
+    return INSTANCE;
   }
 
   public Schema convertFromValueRecordSchemaStr(String valueRecordSchemaStr) {
@@ -120,13 +120,13 @@ public class WriteComputeSchemaConverter {
   private Schema convert(Schema originSchema, String derivedSchemaName, String namespace) {
     switch (originSchema.getType()) {
       case RECORD:
-        return instance.convertRecord(originSchema, derivedSchemaName);
+        return INSTANCE.convertRecord(originSchema, derivedSchemaName);
       case ARRAY:
-        return instance.convertArray(originSchema, derivedSchemaName, namespace);
+        return INSTANCE.convertArray(originSchema, derivedSchemaName, namespace);
       case MAP:
-        return instance.convertMap(originSchema, derivedSchemaName, namespace);
+        return INSTANCE.convertMap(originSchema, derivedSchemaName, namespace);
       case UNION:
-        return instance.convertUnion(originSchema, derivedSchemaName, namespace);
+        return INSTANCE.convertUnion(originSchema, derivedSchemaName, namespace);
       default:
         return originSchema;
     }

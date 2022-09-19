@@ -38,7 +38,7 @@ import org.apache.logging.log4j.Logger;
  *
  */
 public class MetaStoreShadowReader {
-  private static final Logger logger = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger();
   private final ReadOnlySchemaRepository schemaRepo;
   private final RecordDeserializer<StoreMetaKey> keyDeserializer =
       FastSerializerDeserializerFactory.getAvroSpecificDeserializer(StoreMetaKey.class);
@@ -114,7 +114,7 @@ public class MetaStoreShadowReader {
     } catch (Exception e) {
       // Use redundant exception filter to make sure no log spamming happen on Router.
       if (!filter.isRedundantException(path.getStoreName(), e)) {
-        logger.error("Got exception when performing meta store shadow read " + path.getStoreName(), e);
+        LOGGER.error("Got exception when performing meta store shadow read " + path.getStoreName(), e);
       }
       /**
        * In case shadow read failed, we return the original Http response. In this case, it will still fail on

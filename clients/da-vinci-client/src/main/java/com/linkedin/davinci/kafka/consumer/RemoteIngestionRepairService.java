@@ -23,7 +23,7 @@ public class RemoteIngestionRepairService extends AbstractVeniceService {
   // 30 minutes default sleep interval
   public static final int DEFAULT_REPAIR_THREAD_SLEEP_INTERVAL_SECONDS = 1800;
   private final int repairThreadSleepInterval;
-  private static final Logger logger = LogManager.getLogger(RemoteIngestionRepairService.class);
+  private static final Logger LOGGER = LogManager.getLogger(RemoteIngestionRepairService.class);
 
   public RemoteIngestionRepairService(int repairThreadSleepInterval) {
     // Create queue and polling thread
@@ -80,7 +80,7 @@ public class RemoteIngestionRepairService extends AbstractVeniceService {
       try {
         task.run();
       } catch (Exception e) {
-        logger.error("Failed to repair partition for ingestion task for store: " + taskEntry.getKey());
+        LOGGER.error("Failed to repair partition for ingestion task for store: " + taskEntry.getKey());
         taskQueue.add(task);
       }
     }
@@ -102,7 +102,7 @@ public class RemoteIngestionRepairService extends AbstractVeniceService {
           break;
         }
       }
-      logger.info("RemoteIngestionRepairService thread interrupted!  Shutting down...");
+      LOGGER.info("RemoteIngestionRepairService thread interrupted!  Shutting down...");
     }
   }
 }

@@ -39,8 +39,8 @@ import org.openjdk.jmh.runner.options.OptionsBuilder;
 @Warmup(iterations = 3)
 @Measurement(iterations = 3)
 public class SerdeBenchmark {
-  private final static int numQueries = 100_000;
-  private final static int _numThreads = 1;
+  private static final int NUM_QUERIES = 100_000;
+  private static final int NUM_THREADS = 1;
 
   /**
    * Testing with different value size
@@ -73,23 +73,23 @@ public class SerdeBenchmark {
   }
 
   @Benchmark
-  @OperationsPerInvocation(numQueries)
+  @OperationsPerInvocation(NUM_QUERIES)
   public void fastAvroSerdeBenchmarkTest(Blackhole bh) {
     Map<String, Float> metricsDelta = BenchmarkUtils.runWithMetrics(
-        () -> BenchmarkUtils.avroBenchmark(true, valueSize, numQueries, serializeOnce, accessData, bh),
+        () -> BenchmarkUtils.avroBenchmark(true, valueSize, NUM_QUERIES, serializeOnce, accessData, bh),
         "fastAvro_" + testNameSuffix(),
-        numQueries,
-        _numThreads);
+        NUM_QUERIES,
+        NUM_THREADS);
     ;
   }
 
   @Benchmark
-  @OperationsPerInvocation(numQueries)
+  @OperationsPerInvocation(NUM_QUERIES)
   public void avroSerdeBenchmarkTest(Blackhole bh) {
     Map<String, Float> metricsDelta = BenchmarkUtils.runWithMetrics(
-        () -> BenchmarkUtils.avroBenchmark(false, valueSize, numQueries, serializeOnce, accessData, bh),
+        () -> BenchmarkUtils.avroBenchmark(false, valueSize, NUM_QUERIES, serializeOnce, accessData, bh),
         "avro_" + testNameSuffix(),
-        numQueries,
-        _numThreads);
+        NUM_QUERIES,
+        NUM_THREADS);
   }
 }

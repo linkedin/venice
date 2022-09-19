@@ -40,7 +40,7 @@ import org.testng.annotations.Test;
 
 public class TestEarlyTermination {
   private static final int MAX_KEY_LIMIT = 20;
-  private static final Logger logger = LogManager.getLogger(TestEarlyTermination.class);
+  private static final Logger LOGGER = LogManager.getLogger(TestEarlyTermination.class);
   private VeniceClusterWrapper veniceCluster;
   private ControllerClient controllerClient;
   private String storeVersionName;

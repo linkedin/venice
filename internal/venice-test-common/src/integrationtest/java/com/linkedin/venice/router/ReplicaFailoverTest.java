@@ -35,7 +35,7 @@ import org.testng.annotations.Test;
 
 
 public class ReplicaFailoverTest {
-  private static final Logger logger = LogManager.getLogger(ReplicaFailoverTest.class);
+  private static final Logger LOGGER = LogManager.getLogger(ReplicaFailoverTest.class);
 
   private static final int KEY_COUNT = 1000;
   private static final int TEST_TIMEOUT = 15000; // ms
@@ -257,14 +257,14 @@ public class ReplicaFailoverTest {
       throw new AssertionError(e);
 
     } finally {
-      logger.info(
+      LOGGER.info(
           outlierRequests.get() + " out of " + completedRequests.get() + " single-get requests exceeded "
               + maxConcurrentLatency + "ms, " + "average outlier latency is "
               + totalOutlierLatency.get() / Math.max(1, outlierRequests.get()) + "ms, " + "average latency is "
               + totalLatency.get() / Math.max(1, completedRequests.get()) + "ms");
 
       if (!errorHitCountMap.isEmpty()) {
-        logger.info(
+        LOGGER.info(
             errorHitCountMap.values().stream().mapToInt(AtomicInteger::get).sum() + " errors were triggered in total");
       }
     }

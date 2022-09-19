@@ -33,7 +33,7 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
   private static final boolean LOG_CLEANER_ENABLE = false;
 
   private final int sslPort;
-  private static final Logger logger = LogManager.getLogger(KafkaBrokerWrapper.class);
+  private static final Logger LOGGER = LogManager.getLogger(KafkaBrokerWrapper.class);
 
   /**
    * This is package private because the only way to call this should be from
@@ -69,7 +69,7 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
       sslConfig.entrySet().stream().forEach(entry -> configMap.put((String) entry.getKey(), entry.getValue()));
       KafkaConfig kafkaConfig = new KafkaConfig(configMap, true);
       KafkaServer kafkaServer = instantiateNewKafkaServer(kafkaConfig, mockTime);
-      logger.info("KafkaBroker URL: " + kafkaServer.config().hostName() + ":" + kafkaServer.config().port());
+      LOGGER.info("KafkaBroker URL: " + kafkaServer.config().hostName() + ":" + kafkaServer.config().port());
       return new KafkaBrokerWrapper(kafkaConfig, kafkaServer, dir, zkServerWrapper, mockTime, sslPort);
     };
   }
@@ -161,7 +161,7 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
           "kafka_mx4jenable should not be set! kafka_mx4jenable = " + properties.getProperty("kafka_mx4jenable"));
     }
     kafkaServer.startup();
-    logger.info("Start kafka broker listen on port: " + getPort() + " and ssl port: " + getSslPort());
+    LOGGER.info("Start kafka broker listen on port: " + getPort() + " and ssl port: " + getSslPort());
   }
 
   @Override

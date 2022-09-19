@@ -44,7 +44,7 @@ import org.openjdk.jmh.runner.options.OptionsBuilder;
 @Warmup(iterations = 1)
 @Measurement(iterations = 10)
 public class IngestionBenchmarkInSingleProcess {
-  private static final int numRecords = 100_000;
+  private static final int NUM_RECORDS = 100_000;
   private static final String FLOAT_VECTOR_VALUE_SCHEMA = "{" + "  \"namespace\" : \"example.avro\",  "
       + "  \"type\": \"record\",   " + "  \"name\": \"FloatVector\",     " + "  \"fields\": [           "
       + "       { \"name\": \"value\", \"type\": {\"type\": \"array\", \"items\": \"float\"} }  " + "  ] " + " } ";
@@ -110,6 +110,6 @@ public class IngestionBenchmarkInSingleProcess {
       floatVector.add((float) (i * 1.0));
     }
     record.put("value", floatVector);
-    return cluster.createStore(numRecords, record);
+    return cluster.createStore(NUM_RECORDS, record);
   }
 }

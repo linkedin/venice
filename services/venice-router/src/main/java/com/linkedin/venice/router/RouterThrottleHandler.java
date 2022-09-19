@@ -35,10 +35,11 @@ import org.apache.logging.log4j.Logger;
 public class RouterThrottleHandler extends SimpleChannelInboundHandler<HttpRequest> {
   public static final AttributeKey<byte[]> THROTTLE_HANDLER_BYTE_ATTRIBUTE_KEY =
       AttributeKey.valueOf("THROTTLE_HANDLER_BYTE_ATTRIBUTE_KEY");
-  private static final Logger logger = LogManager.getLogger(RouterThrottleHandler.class);
+  private static final Logger LOGGER = LogManager.getLogger(RouterThrottleHandler.class);
   private static final byte[] EMPTY_BYTES = new byte[0];
 
-  private static final RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
+  private static final RedundantExceptionFilter EXCEPTION_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private final RouterThrottleStats routerStats;
   private final EventThrottler throttler;
@@ -95,8 +96,8 @@ public class RouterThrottleHandler extends SimpleChannelInboundHandler<HttpReque
       } catch (QuotaExceededException e) {
         routerStats.recordRouterThrottledRequest();
         String errorMessage = "Total router read quota has been exceeded. Resource name: " + helper.getResourceName();
-        if (!filter.isRedundantException(errorMessage)) {
-          logger.warn(errorMessage);
+        if (!EXCEPTION_FILTER.isRedundantException(errorMessage)) {
+          LOGGER.warn(errorMessage);
         }
         NettyUtils.setupResponseAndFlush(TOO_MANY_REQUESTS, new byte[0], false, ctx);
         return;
@@ -128,8 +129,8 @@ public class RouterThrottleHandler extends SimpleChannelInboundHandler<HttpReque
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable e) {
     InetSocketAddress sockAddr = (InetSocketAddress) (ctx.channel().remoteAddress());
     String remoteAddr = sockAddr.getHostName() + ":" + sockAddr.getPort();
-    if (!filter.isRedundantException(sockAddr.getHostName(), e)) {
-      logger.error("Got exception while throttling request from " + remoteAddr + ": ", e);
+    if (!EXCEPTION_FILTER.isRedundantException(sockAddr.getHostName(), e)) {
+      LOGGER.error("Got exception while throttling request from " + remoteAddr + ": ", e);
     }
     setupResponseAndFlush(INTERNAL_SERVER_ERROR, EMPTY_BYTES, false, ctx);
   }

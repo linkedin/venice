@@ -78,8 +78,8 @@ import org.apache.logging.log4j.util.StringBuilderFormattable;
  * The performance of the netty client can be scaled up by increasing the number of event loop (#threads).
  */
 public class NettyStorageNodeClient implements StorageNodeClient {
-  private static final Logger logger = LogManager.getLogger(NettyStorageNodeClient.class);
-  private static final boolean loggerDebugEnabled = logger.isDebugEnabled();
+  private static final Logger LOGGER = LogManager.getLogger(NettyStorageNodeClient.class);
+  private static final boolean LOGGERDebugEnabled = LOGGER.isDebugEnabled();
   private static final AsciiString X_QUEUE_NAME = AsciiString.of("X-Queue-Name");
   private static final AsciiString X_QOS = AsciiString.of("X-QOS");
   private final ByteToMessageDecoder.Cumulator cumulator = ByteToMessageDecoder.MERGE_CUMULATOR;
@@ -147,7 +147,7 @@ public class NettyStorageNodeClient implements StorageNodeClient {
 
   @Override
   public void start() {
-    logger.info("Nothing to do during start");
+    LOGGER.info("Nothing to do during start");
   }
 
   @Override
@@ -255,8 +255,8 @@ public class NettyStorageNodeClient implements StorageNodeClient {
             }
           }
         };
-        if (loggerDebugEnabled) {
-          logger.debug(
+        if (LOGGERDebugEnabled) {
+          LOGGER.debug(
               "Channel: " + channelFuture.getNow() + " className: " + channelFuture.getNow()
                   + channelFuture.getNow().getClass().getSimpleName()
                   + Msg.make(

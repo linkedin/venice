@@ -32,11 +32,11 @@ import org.testng.annotations.Test;
 
 
 public class RocksDBStoragePartitionTest {
-  private static final Logger logger = LogManager.getLogger(RocksDBStoragePartitionTest.class);
+  private static final Logger LOGGER = LogManager.getLogger(RocksDBStoragePartitionTest.class);
   private static final String DATA_BASE_DIR = Utils.getUniqueTempPath();
-  private static final String keyPrefix = "key_";
-  private static final String valuePrefix = "value_";
-  private static final RocksDBThrottler rocksDbThrottler = new RocksDBThrottler(3);
+  private static final String KEY_PREFIX = "key_";
+  private static final String VALUE_PREFIX = "value_";
+  private static final RocksDBThrottler ROCKSDB_THROTTLER = new RocksDBThrottler(3);
 
   private Map<String, String> generateInput(int recordCnt, boolean sorted, int padLength) {
     Map<String, String> records;
@@ -51,11 +51,11 @@ public class RocksDBStoragePartitionTest {
       records = new HashMap<>();
     }
     for (int i = 0; i < recordCnt; ++i) {
-      String value = valuePrefix + i;
+      String value = VALUE_PREFIX + i;
       if (padLength > 0) {
         value += RandomStringUtils.random(padLength, true, true);
       }
-      records.put(keyPrefix + i, value);
+      records.put(KEY_PREFIX + i, value);
     }
     return records;
   }
@@ -115,7 +115,7 @@ public class RocksDBStoragePartitionTest {
         factory,
         DATA_BASE_DIR,
         null,
-        rocksDbThrottler,
+        ROCKSDB_THROTTLER,
         rocksDBServerConfig);
     final int syncPerRecords = 100;
     final int interruptedRecord = 345;
@@ -162,7 +162,7 @@ public class RocksDBStoragePartitionTest {
                 factory,
                 DATA_BASE_DIR,
                 null,
-                rocksDbThrottler,
+                ROCKSDB_THROTTLER,
                 rocksDBServerConfig);
             Options storeOptions = storagePartition.getOptions();
             Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
@@ -218,10 +218,10 @@ public class RocksDBStoragePartitionTest {
         factory,
         DATA_BASE_DIR,
         null,
-        rocksDbThrottler,
+        ROCKSDB_THROTTLER,
         rocksDBServerConfig);
     // Test deletion
-    String toBeDeletedKey = keyPrefix + 10;
+    String toBeDeletedKey = KEY_PREFIX + 10;
     Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
     storagePartition.delete(toBeDeletedKey.getBytes());
     Assert.assertNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
@@ -261,7 +261,7 @@ public class RocksDBStoragePartitionTest {
         factory,
         DATA_BASE_DIR,
         null,
-        rocksDbThrottler,
+        ROCKSDB_THROTTLER,
         rocksDBServerConfig);
     final int syncPerRecords = 100;
     final int interruptedRecord = 345;
@@ -308,7 +308,7 @@ public class RocksDBStoragePartitionTest {
                 factory,
                 DATA_BASE_DIR,
                 null,
-                rocksDbThrottler,
+                ROCKSDB_THROTTLER,
                 rocksDBServerConfig);
             Options storeOptions = storagePartition.getOptions();
             Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
@@ -364,10 +364,10 @@ public class RocksDBStoragePartitionTest {
         factory,
         DATA_BASE_DIR,
         null,
-        rocksDbThrottler,
+        ROCKSDB_THROTTLER,
         rocksDBServerConfig);
     // Test deletion
-    String toBeDeletedKey = keyPrefix + 10;
+    String toBeDeletedKey = KEY_PREFIX + 10;
     Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
     storagePartition.delete(toBeDeletedKey.getBytes());
     Assert.assertNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
@@ -396,7 +396,7 @@ public class RocksDBStoragePartitionTest {
         factory,
         DATA_BASE_DIR,
         null,
-        rocksDbThrottler,
+        ROCKSDB_THROTTLER,
         rocksDBServerConfig);
 
     Optional<Supplier<byte[]>> checksumSupplier = Optional.of(() -> new byte[16]);
@@ -430,12 +430,12 @@ public class RocksDBStoragePartitionTest {
         factory,
         DATA_BASE_DIR,
         null,
-        rocksDbThrottler,
+        ROCKSDB_THROTTLER,
         rocksDBServerConfig);
 
     storagePartition.close();
     try {
-      storagePartition.get((keyPrefix + "10").getBytes(), false);
+      storagePartition.get((KEY_PREFIX + "10").getBytes(), false);
       Assert.fail("VeniceException is expected when looking up an already closed DB");
     } catch (VeniceException e) {
       Assert.assertTrue(e.getMessage().contains("RocksDB has been closed for store"));
@@ -471,7 +471,7 @@ public class RocksDBStoragePartitionTest {
         factory,
         DATA_BASE_DIR,
         null,
-        rocksDbThrottler,
+        ROCKSDB_THROTTLER,
         rocksDBServerConfig);
 
     // By default, it is write only
@@ -492,7 +492,7 @@ public class RocksDBStoragePartitionTest {
         factory,
         DATA_BASE_DIR,
         null,
-        rocksDbThrottler,
+        ROCKSDB_THROTTLER,
         rocksDBServerConfig);
     Options readWriteOptions = storagePartition.getOptions();
     Assert.assertEquals(readWriteOptions.level0FileNumCompactionTrigger(), 10);

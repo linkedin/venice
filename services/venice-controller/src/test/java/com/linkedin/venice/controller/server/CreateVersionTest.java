@@ -41,7 +41,7 @@ import spark.Route;
 
 
 public class CreateVersionTest {
-  private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   private static final String CLUSTER_NAME = "test_cluster";
   private static final String STORE_NAME = "test_store";
@@ -193,7 +193,8 @@ public class CreateVersionTest {
 
     Object result = createVersionRoute.handle(request, response);
     Assert.assertNotNull(result);
-    VersionCreationResponse versionCreateResponse = mapper.readValue(result.toString(), VersionCreationResponse.class);
+    VersionCreationResponse versionCreateResponse =
+        OBJECT_MAPPER.readValue(result.toString(), VersionCreationResponse.class);
     Assert.assertEquals(versionCreateResponse.getKafkaTopic(), "test_store_rt");
   }
 
@@ -245,7 +246,8 @@ public class CreateVersionTest {
     Object result = createVersionRoute.handle(request, response);
     Assert.assertNotNull(result);
     verify(response).status(org.apache.http.HttpStatus.SC_BAD_REQUEST);
-    VersionCreationResponse versionCreateResponse = mapper.readValue(result.toString(), VersionCreationResponse.class);
+    VersionCreationResponse versionCreateResponse =
+        OBJECT_MAPPER.readValue(result.toString(), VersionCreationResponse.class);
     Assert.assertTrue(versionCreateResponse.isError());
     Assert.assertTrue(versionCreateResponse.getError().contains("which does not have hybrid mode enabled"));
     Assert.assertNull(versionCreateResponse.getKafkaTopic());

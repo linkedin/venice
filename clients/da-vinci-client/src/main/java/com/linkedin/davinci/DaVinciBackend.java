@@ -1,5 +1,8 @@
 package com.linkedin.davinci;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static java.lang.Thread.*;
+
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.StoreBackendConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -67,12 +70,9 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static java.lang.Thread.*;
-
 
 public class DaVinciBackend implements Closeable {
-  private static final Logger logger = LogManager.getLogger(DaVinciBackend.class);
+  private static final Logger LOGGER = LogManager.getLogger(DaVinciBackend.class);
 
   private final ZkClient zkClient;
   private final VeniceConfigLoader configLoader;
@@ -98,7 +98,7 @@ public class DaVinciBackend implements Closeable {
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
       Optional<ObjectCacheConfig> cacheConfig) {
-    logger.info("Creating Da Vinci backend");
+    LOGGER.info("Creating Da Vinci backend");
     try {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
       this.configLoader = configLoader;
@@ -219,10 +219,10 @@ public class DaVinciBackend implements Closeable {
       cacheBackend.ifPresent(
           objectCacheBackend -> storeRepository
               .registerStoreDataChangedListener(objectCacheBackend.getCacheInvalidatingStoreChangeListener()));
-      logger.info("Da Vinci backend created successfully");
+      LOGGER.info("Da Vinci backend created successfully");
     } catch (Throwable e) {
       String msg = "Unable to create Da Vinci backend";
-      logger.error(msg, e);
+      LOGGER.error(msg, e);
       throw new VeniceException(msg, e);
     }
   }
@@ -230,7 +230,7 @@ public class DaVinciBackend implements Closeable {
   protected synchronized void bootstrap(Optional<Set<String>> managedClients) {
     List<AbstractStorageEngine> storageEngines =
         storageService.getStorageEngineRepository().getAllLocalStorageEngines();
-    logger.info("Starting bootstrap, storageEngines=" + storageEngines + ", managedClients=" + managedClients);
+    LOGGER.info("Starting bootstrap, storageEngines=" + storageEngines + ", managedClients=" + managedClients);
     Map<String, Set<Integer>> expectedBootstrapVersions = new HashMap<>();
     Map<String, Version> storeNameToBootstrapVersionMap = new HashMap<>();
     Map<String, List<Integer>> storeNameToPartitionListMap = new HashMap<>();
@@ -243,14 +243,14 @@ public class DaVinciBackend implements Closeable {
         StoreBackend storeBackend = getStoreOrThrow(storeName); // throws VeniceNoStoreException
         if (managedClients.isPresent() && !managedClients.get().contains(storeName) && storeBackend.isManaged()) {
           // If the store is not-managed, all its versions will be removed.
-          logger.info("Deleting unused managed version " + kafkaTopicName);
+          LOGGER.info("Deleting unused managed version " + kafkaTopicName);
           unusedStores.add(storeName);
           storageService.removeStorageEngine(kafkaTopicName);
           continue;
         }
       } catch (VeniceNoStoreException e) {
         // The store does not exist in Venice anymore, so it will be deleted.
-        logger.info("Deleting invalid local version " + kafkaTopicName);
+        LOGGER.info("Deleting invalid local version " + kafkaTopicName);
         unusedStores.add(storeName);
         storageService.removeStorageEngine(kafkaTopicName);
         continue;
@@ -269,7 +269,7 @@ public class DaVinciBackend implements Closeable {
       int versionNumber = Version.parseVersionFromKafkaTopicName(kafkaTopicName);
       // The version is no longer valid (stale version), it will be deleted.
       if (!expectedBootstrapVersions.get(storeName).contains(versionNumber)) {
-        logger.info("Deleting obsolete local version " + kafkaTopicName);
+        LOGGER.info("Deleting obsolete local version " + kafkaTopicName);
         storageService.removeStorageEngine(kafkaTopicName);
         continue;
       }
@@ -342,7 +342,7 @@ public class DaVinciBackend implements Closeable {
     // Subscribe all bootstrap version partitions.
     storeNameToBootstrapVersionMap.forEach((storeName, version) -> {
       List<Integer> partitions = storeNameToPartitionListMap.get(storeName);
-      logger.info("Bootstrapping partitions " + partitions + " for " + version.kafkaTopicName());
+      LOGGER.info("Bootstrapping partitions " + partitions + " for " + version.kafkaTopicName());
       StoreBackend storeBackend = getStoreOrThrow(version.getStoreName());
       storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
     });
@@ -350,7 +350,7 @@ public class DaVinciBackend implements Closeable {
 
   @Override
   public synchronized void close() {
-    logger.info("Closing Da Vinci backend");
+    LOGGER.info("Closing Da Vinci backend");
     storeRepository.unregisterStoreDataChangedListener(storeChangeListener);
     cacheBackend.ifPresent(
         objectCacheBackend -> storeRepository
@@ -391,10 +391,10 @@ public class DaVinciBackend implements Closeable {
       storeRepository.clear();
       schemaRepository.clear();
       pushStatusStoreWriter.close();
-      logger.info("Da Vinci backend is closed successfully");
+      LOGGER.info("Da Vinci backend is closed successfully");
     } catch (Throwable e) {
       String msg = "Unable to stop Da Vinci backend";
-      logger.error(msg, e);
+      LOGGER.error(msg, e);
       throw new VeniceException(msg, e);
     }
   }

@@ -50,7 +50,7 @@ public abstract class VeniceRouteHandler<T extends ControllerResponse> implement
     if (veniceResponse.isError() && veniceResponse.getError().startsWith(ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX)) {
       response.status(HttpStatus.SC_FORBIDDEN);
     }
-    return AdminSparkServer.mapper.writeValueAsString(veniceResponse);
+    return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(veniceResponse);
   }
 
   protected boolean checkIsAllowListUser(

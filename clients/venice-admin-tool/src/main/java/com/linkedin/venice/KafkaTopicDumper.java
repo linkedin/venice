@@ -45,7 +45,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class KafkaTopicDumper implements AutoCloseable {
-  private static final Logger logger = LogManager.getLogger(KafkaTopicDumper.class);
+  private static final Logger LOGGER = LogManager.getLogger(KafkaTopicDumper.class);
   public static final String VENICE_ETL_KEY_FIELD = "key";
   public static final String VENICE_ETL_VALUE_FIELD = "value";
   public static final String VENICE_ETL_OFFSET_FIELD = "offset";
@@ -103,7 +103,7 @@ public class KafkaTopicDumper implements AutoCloseable {
     } else {
       this.keySchemaStr = controllerClient.getKeySchema(storeName).getSchemaStr();
       MultiSchemaResponse.Schema[] schemas = controllerClient.getAllValueSchema(storeName).getSchemas();
-      logger.info("Found " + schemas.length + " value schemas for store " + storeName);
+      LOGGER.info("Found " + schemas.length + " value schemas for store " + storeName);
       this.latestValueSchemaStr = schemas[schemas.length - 1].getSchemaStr();
       allValueSchemas = new Schema[schemas.length];
       int i = 0;
@@ -119,11 +119,11 @@ public class KafkaTopicDumper implements AutoCloseable {
     consumer.assign(partitions);
     Map<TopicPartition, Long> partitionToBeginningOffset = consumer.beginningOffsets(partitions);
     long computedStartingOffset = Math.max(partitionToBeginningOffset.get(partition), startingOffset);
-    logger.info("Starting from offset: " + computedStartingOffset);
+    LOGGER.info("Starting from offset: " + computedStartingOffset);
     consumer.seek(partition, computedStartingOffset);
     Map<TopicPartition, Long> partitionToEndOffset = consumer.endOffsets(partitions);
     this.endOffset = partitionToEndOffset.get(partition);
-    logger.info("End offset for partition " + partition.partition() + " is " + this.endOffset);
+    LOGGER.info("End offset for partition " + partition.partition() + " is " + this.endOffset);
     if (messageCount < 0) {
       this.messageCount = this.endOffset;
     } else {
@@ -156,7 +156,7 @@ public class KafkaTopicDumper implements AutoCloseable {
       }
 
       if (currentMessageCount - lastReportedConsumedCount > 1000) {
-        logger.info(
+        LOGGER.info(
             "Consumed {} messages; last consumed message offset:{}",
             currentMessageCount,
             lastProcessRecord.offset());
@@ -228,7 +228,7 @@ public class KafkaTopicDumper implements AutoCloseable {
 
       LeaderMetadata leaderMetadata = kafkaMessageEnvelope.leaderMetadataFooter;
 
-      logger.info(
+      LOGGER.info(
           "{} {} Offset:{} ProducerMd=(guid:{},seqNum:{},segNum:{},mts:{},lts:{}) LeaderMd=(host:{},uo:{},ukcId:{})",
           kafkaKey.isControlMessage() ? CONTROL_REC : REGULAR_REC,
           msgType,
@@ -242,7 +242,7 @@ public class KafkaTopicDumper implements AutoCloseable {
           leaderMetadata == null ? "-" : leaderMetadata.upstreamOffset,
           leaderMetadata == null ? "-" : leaderMetadata.upstreamKafkaClusterId);
     } catch (Exception e) {
-      logger.error("Failed when building record for offset " + record.offset(), e);
+      LOGGER.error("Failed when building record for offset " + record.offset(), e);
     }
   }
 
@@ -259,7 +259,7 @@ public class KafkaTopicDumper implements AutoCloseable {
       KafkaKey kafkaKey = record.key();
       KafkaMessageEnvelope kafkaMessageEnvelope = record.value();
       if (kafkaKey.isControlMessage()) {
-        logger.info("Found a control message, continue");
+        LOGGER.info("Found a control message, continue");
         return;
       }
       // build the record
@@ -296,14 +296,14 @@ public class KafkaTopicDumper implements AutoCloseable {
           convertedRecord.put(VENICE_ETL_DELETED_TS_FIELD, record.offset());
           break;
         case UPDATE:
-          logger.info("Found update message! continue");
+          LOGGER.info("Found update message! continue");
           break;
         default:
           throw new VeniceException("How come?");
       }
       dataFileWriter.append(convertedRecord);
     } catch (Exception e) {
-      logger.error("Failed when building record for offset " + record.offset(), e);
+      LOGGER.error("Failed when building record for offset " + record.offset(), e);
     }
   }
 

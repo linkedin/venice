@@ -56,7 +56,7 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -73,7 +73,7 @@ public class SchemaRoutes extends AbstractRoute {
         if (!isAllowListUser(request) && !hasWriteAccessToTopic(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("User is neither Admin nor has write access to topic to run " + request.url());
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, ADD_VALUE_SCHEMA.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
@@ -103,7 +103,7 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -120,7 +120,7 @@ public class SchemaRoutes extends AbstractRoute {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
           responseObject.setErrorType(ErrorType.BAD_REQUEST);
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, ADD_DERIVED_SCHEMA.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
@@ -159,7 +159,7 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -191,7 +191,7 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -227,7 +227,7 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -268,7 +268,7 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -307,7 +307,7 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -352,7 +352,7 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -369,7 +369,7 @@ public class SchemaRoutes extends AbstractRoute {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
           responseObject.setErrorType(ErrorType.BAD_REQUEST);
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
 
         AdminSparkServer.validateParams(request, REMOVE_DERIVED_SCHEMA.getParams(), admin);
@@ -396,7 +396,7 @@ public class SchemaRoutes extends AbstractRoute {
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
 
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -429,7 +429,7 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 }

@@ -22,9 +22,10 @@ import org.apache.logging.log4j.Logger;
 
 @ChannelHandler.Sharable
 public class HealthCheckHandler extends SimpleChannelInboundHandler<HttpRequest> {
-  private static final Logger logger = LogManager.getLogger(HealthCheckHandler.class);
+  private static final Logger LOGGER = LogManager.getLogger(HealthCheckHandler.class);
   private static final byte[] EMPTY_BYTES = new byte[0];
-  private static final RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
+  private static final RedundantExceptionFilter EXCEPTION_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private final HealthCheckStats healthCheckStats;
 
@@ -61,8 +62,8 @@ public class HealthCheckHandler extends SimpleChannelInboundHandler<HttpRequest>
     healthCheckStats.recordErrorHealthCheck();
     InetSocketAddress sockAddr = (InetSocketAddress) (ctx.channel().remoteAddress());
     String remoteAddr = sockAddr.getHostName() + ":" + sockAddr.getPort();
-    if (!filter.isRedundantException(sockAddr.getHostName(), e)) {
-      logger.error(
+    if (!EXCEPTION_FILTER.isRedundantException(sockAddr.getHostName(), e)) {
+      LOGGER.error(
           "Got exception while handling health check request from " + remoteAddr + ", and error: " + e.getMessage());
     }
     setupResponseAndFlush(INTERNAL_SERVER_ERROR, EMPTY_BYTES, false, ctx);

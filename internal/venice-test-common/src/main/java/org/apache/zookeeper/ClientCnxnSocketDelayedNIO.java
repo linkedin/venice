@@ -24,7 +24,7 @@ import org.apache.zookeeper.client.ZKClientConfig;
  * nodes.
  */
 public class ClientCnxnSocketDelayedNIO extends ClientCnxnSocketNIO {
-  private static final Logger logger = LogManager.getLogger(ClientCnxnSocketDelayedNIO.class);
+  private static final Logger LOGGER = LogManager.getLogger(ClientCnxnSocketDelayedNIO.class);
   /**
    * How long is the socket IO operation is delayed at least. It's the default value when creating {@link
    * ClientCnxnSocketDelayedNIO} instances.
@@ -78,9 +78,9 @@ public class ClientCnxnSocketDelayedNIO extends ClientCnxnSocketNIO {
           (long) (Math.random() * (socketIoDelayUpperBoundMS - socketIoDelayLowerBoundMS) + socketIoDelayLowerBoundMS);
       try {
         TimeUnit.MILLISECONDS.sleep(socketIoDelay);
-        logger.debug("Delayed: " + socketIoDelay + "ms");
+        LOGGER.debug("Delayed: " + socketIoDelay + "ms");
       } catch (InterruptedException e) {
-        logger.error("Delay is interrupted, io operation will continue to be executed.", e);
+        LOGGER.error("Delay is interrupted, io operation will continue to be executed.", e);
       }
     }
     super.doIO(pendingQueue, cnxn);

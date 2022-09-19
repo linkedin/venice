@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller.server;
 
-import static com.linkedin.venice.controller.server.AdminSparkServer.mapper;
+import static com.linkedin.venice.controller.server.AdminSparkServer.OBJECT_MAPPER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LEADER_CONTROLLER;
 
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
@@ -73,7 +73,7 @@ public class TestAdminSparkServerGetLeader {
             jsonStr = IOUtils.toString(bodyStream);
           }
 
-          LeaderControllerResponse responseObject = mapper.readValue(jsonStr, LeaderControllerResponse.class);
+          LeaderControllerResponse responseObject = OBJECT_MAPPER.readValue(jsonStr, LeaderControllerResponse.class);
 
           String leaderControllerUrl = responseObject.getUrl();
 

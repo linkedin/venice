@@ -10,9 +10,10 @@ import org.apache.logging.log4j.Logger;
 
 
 public class RedundantExceptionFilter {
+  private static final Logger LOGGER = LogManager.getLogger(RedundantExceptionFilter.class);
   public static final int DEFAULT_BITSET_SIZE = 8 * 1024 * 1024 * 16; // 16MB
   public static final long DEFAULT_NO_REDUNDANT_EXCEPTION_DURATION_MS = TimeUnit.SECONDS.toMillis(60); // 60s
-  public static final Logger logger = LogManager.getLogger(RedundantExceptionFilter.class);
+
   private static RedundantExceptionFilter singleton;
 
   private final long noRedundantExceptionDurationMs;

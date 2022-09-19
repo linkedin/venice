@@ -15,7 +15,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class StoreStatusDecider {
-  private final static Logger logger = LogManager.getLogger(StoreStatusDecider.class);
+  private static final Logger LOGGER = LogManager.getLogger(StoreStatusDecider.class);
 
   /**
    * Get the statuses of given stores based on the replicas statues in the given assignment.
@@ -33,7 +33,7 @@ public class StoreStatusDecider {
       if (!resourceAssignment.containsResource(resourceName)) {
         // TODO: Determine if it makes sense to mark stores with no versions in them as UNAVAILABLE...? That seems
         // ambiguous.
-        logger.warn(
+        LOGGER.warn(
             "Store:" + store.getName() + " is unavailable because current version: " + store.getCurrentVersion()
                 + " does not exist ");
         storeStatusMap.put(store.getName(), StoreStatus.UNAVAILABLE.toString());
@@ -43,7 +43,7 @@ public class StoreStatusDecider {
       if (currentVersionAssignment.getAssignedNumberOfPartitions() < currentVersionAssignment
           .getExpectedNumberOfPartitions()) {
         // One or more partition is unavailable.
-        logger.warn("Store: " + store.getName() + " is unavailable because missing one or more partitions.");
+        LOGGER.warn("Store: " + store.getName() + " is unavailable because missing one or more partitions.");
         storeStatusMap.put(store.getName(), StoreStatus.DEGRADED.toString());
         continue;
       }
@@ -55,7 +55,7 @@ public class StoreStatusDecider {
         if (onlineReplicasCount == 0) {
           // Once one partition is unavailable we say this store is unavailable, do not need to continue.
           status = StoreStatus.DEGRADED;
-          logger.warn(
+          LOGGER.warn(
               "Store: " + store.getName() + " is unavailable because partition: " + partition.getId()
                   + " has 0 ONLINE replicas.");
           break;

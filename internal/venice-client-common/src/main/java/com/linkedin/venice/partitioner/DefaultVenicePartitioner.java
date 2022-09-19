@@ -17,7 +17,7 @@ import org.apache.logging.log4j.Logger;
  * for each message.
  */
 public class DefaultVenicePartitioner extends VenicePartitioner {
-  static final Logger logger = LogManager.getLogger(DefaultVenicePartitioner.class);
+  private static final Logger LOGGER = LogManager.getLogger(DefaultVenicePartitioner.class);
 
   public static final String MD5_HASH_ALGORITHM = "MD5";
   private static final int MD5_DIGEST_SIZE = 16;
@@ -76,8 +76,8 @@ public class DefaultVenicePartitioner extends VenicePartitioner {
 
     int partition = Math.abs(ps.modulo % numPartitions);
 
-    if (logger.isDebugEnabled()) {
-      logger.debug("Choose partitionId " + partition + " out of " + numPartitions);
+    if (LOGGER.isDebugEnabled()) {
+      LOGGER.debug("Choose partitionId " + partition + " out of " + numPartitions);
     }
 
     ps.md.reset();

@@ -13,19 +13,19 @@ public class VeniceJsonSerializer<T> implements VeniceSerializer<T> {
    * will throw exception if the serialized map exceeds this limit.
    */
   private final int serializedMapSizeLimit = 0xfffff;
-  protected static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
+  protected static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
   private Class<T> type;
 
   public VeniceJsonSerializer(Class<T> type) {
     // Ignore unknown properties
-    mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    OBJECT_MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     this.type = type;
   }
 
   @Override
   public byte[] serialize(T object, String path) throws IOException {
     // Use pretty JSON format, easy to read.
-    byte[] serializedObject = mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(object);
+    byte[] serializedObject = OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsBytes(object);
     if (serializedObject.length > serializedMapSizeLimit) {
       throw new IOException("Serialized map exceeded the size limit of " + serializedMapSizeLimit + " bytes");
     }
@@ -34,6 +34,6 @@ public class VeniceJsonSerializer<T> implements VeniceSerializer<T> {
 
   @Override
   public T deserialize(byte[] bytes, String path) throws IOException {
-    return mapper.readValue(bytes, type);
+    return OBJECT_MAPPER.readValue(bytes, type);
   }
 }

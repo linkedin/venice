@@ -17,7 +17,7 @@ import org.apache.logging.log4j.Logger;
  */
 
 public class VeniceJVMStats extends AbstractVeniceStats {
-  private static final Logger logger = LogManager.getLogger(VeniceJVMStats.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceJVMStats.class);
 
   /**
    * Returns an estimate of the memory that the Java virtual machine is using
@@ -55,7 +55,7 @@ public class VeniceJVMStats extends AbstractVeniceStats {
         try {
           return function.apply(pool);
         } catch (Throwable e) {
-          logger.warn("Could not read direct memory stat with exception:", e);
+          LOGGER.warn("Could not read direct memory stat with exception:", e);
           return -1L;
         }
       }

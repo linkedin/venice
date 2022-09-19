@@ -17,7 +17,7 @@ public class TestStoreCreationResponse {
   static final String TOPIC = "mystore_v3";
   static final int CURRENT_VERSION = 1;
 
-  static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
+  static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   @Test
   public void creationResponseCanBeSerialized() throws IOException {
@@ -26,9 +26,9 @@ public class TestStoreCreationResponse {
     obj.setKafkaBootstrapServers(KAFKA);
     obj.setKafkaTopic(TOPIC);
 
-    String serialized = mapper.writeValueAsString(obj);
+    String serialized = OBJECT_MAPPER.writeValueAsString(obj);
 
-    VersionCreationResponse deserialized = mapper.readValue(serialized, VersionCreationResponse.class);
+    VersionCreationResponse deserialized = OBJECT_MAPPER.readValue(serialized, VersionCreationResponse.class);
 
     Assert.assertEquals(deserialized.getName(), STORENAME);
     Assert.assertEquals(deserialized.getKafkaBootstrapServers(), KAFKA);

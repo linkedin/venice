@@ -19,7 +19,7 @@ import org.apache.avro.generic.IndexedRecord;
  */
 public class WriteComputeHandlerV1 implements WriteComputeHandler {
   // GenericData is a singleton util class Avro provides. We're using it to construct the default field values
-  protected static final GenericData genericData = GenericData.get();
+  protected static final GenericData GENERIC_DATA = GenericData.get();
 
   @Override
   public GenericRecord updateValueRecord(

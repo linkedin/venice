@@ -35,14 +35,14 @@ import org.apache.logging.log4j.Logger;
 public class RouterBackedSchemaReader implements SchemaReader {
   public static final String TYPE_KEY_SCHEMA = "key_schema";
   public static final String TYPE_VALUE_SCHEMA = "value_schema";
-  private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   // Ignore the unknown field while parsing the json response.
   static {
-    mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    OBJECT_MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
   }
 
-  private final static Logger logger = LogManager.getLogger(RouterBackedSchemaReader.class);
+  private static final Logger LOGGER = LogManager.getLogger(RouterBackedSchemaReader.class);
   private final Optional<Schema> readerSchema;
   private Schema keySchema;
   private Map<Integer, Schema> valueSchemaMap = new VeniceConcurrentHashMap<>();
@@ -101,7 +101,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
     valueSchema = valueSchemaMap.get(id);
     if (valueSchema == null) {
-      logger.info("Got null value schema from Venice for store: " + storeName + " and id: " + id);
+      LOGGER.info("Got null value schema from Venice for store: " + storeName + " and id: " + id);
     }
     return valueSchema;
   }
@@ -139,7 +139,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
   @Override
   public void close() throws IOException {
-    IOUtils.closeQuietly(storeClient, logger::error);
+    IOUtils.closeQuietly(storeClient, LOGGER::error);
   }
 
   private <T> T ensureLatestValueSchemaIsFetched(Function<SchemaEntry, T> schemaEntryConsumer) {
@@ -164,10 +164,10 @@ public class RouterBackedSchemaReader implements SchemaReader {
           Duration.ofNanos(1),
           Arrays.asList(ExecutionException.class));
       if (response == null) {
-        logger.info("Requested schema doesn't exist for request path: " + requestPath);
+        LOGGER.info("Requested schema doesn't exist for request path: " + requestPath);
         return null;
       }
-      SchemaResponse schemaResponse = mapper.readValue(response, SchemaResponse.class);
+      SchemaResponse schemaResponse = OBJECT_MAPPER.readValue(response, SchemaResponse.class);
       if (!schemaResponse.isError()) {
         Schema writerSchema = isValueSchema
             ? preemptiveSchemaVerification(
@@ -210,10 +210,10 @@ public class RouterBackedSchemaReader implements SchemaReader {
           Duration.ofNanos(1),
           Arrays.asList(ExecutionException.class));
       if (response == null) {
-        logger.info("Got null for request path: " + requestPath);
+        LOGGER.info("Got null for request path: " + requestPath);
         return;
       }
-      MultiSchemaResponse schemaResponse = mapper.readValue(response, MultiSchemaResponse.class);
+      MultiSchemaResponse schemaResponse = OBJECT_MAPPER.readValue(response, MultiSchemaResponse.class);
       if (!schemaResponse.isError()) {
         // Update local cache
         int latestSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
@@ -271,22 +271,22 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
     try {
       if (AvroSchemaUtils.schemaResolveHasErrors(writerSchema, readerSchemaCopy)) {
-        logger.info(
+        LOGGER.info(
             "Schema error detected during preemptive schema check for store " + storeName + " with writer schema id "
                 + schemaId + " Reader schema: " + readerSchemaCopy.toString() + " Writer schema: " + writerSchemaStr);
         alternativeWriterSchema =
             AvroSchemaUtils.generateSchemaWithNamespace(writerSchemaStr, readerSchemaCopy.getNamespace());
         if (AvroSchemaUtils.schemaResolveHasErrors(alternativeWriterSchema, readerSchemaCopy)) {
-          logger.info("Schema error cannot be resolved with writer schema namespace fix");
+          LOGGER.info("Schema error cannot be resolved with writer schema namespace fix");
           alternativeWriterSchema = writerSchema;
         } else {
-          logger.info(
+          LOGGER.info(
               "Schema error can be resolved with writer schema namespace fix. Replacing writer schema for store "
                   + storeName + " and schema id " + schemaId);
         }
       }
     } catch (Exception e) {
-      logger.info("Unknown exception during preemptive schema verification", e);
+      LOGGER.info("Unknown exception during preemptive schema verification", e);
       alternativeWriterSchema = writerSchema;
     }
     return alternativeWriterSchema;

@@ -23,7 +23,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class D2ClientUtils {
-  private static final Logger logger = LogManager.getLogger(D2ClientUtils.class);
+  private static final Logger LOGGER = LogManager.getLogger(D2ClientUtils.class);
   private static long DEFAULT_D2_STARTUP_TIMEOUT_MS = 5_000;
   private static long DEFAULT_D2_SHUTDOWN_TIMEOUT_MS = 60_000;
 
@@ -50,7 +50,7 @@ public class D2ClientUtils {
       future.get(timeoutInMs, TimeUnit.MILLISECONDS);
     } catch (Throwable e) {
       String msg = "D2 client startup failed.";
-      logger.error(msg, e);
+      LOGGER.error(msg, e);
       throw new VeniceException(msg, e);
     }
   }
@@ -81,11 +81,11 @@ public class D2ClientUtils {
 
     try {
       future.get(timeoutInMs, TimeUnit.MILLISECONDS);
-      logger.info("D2 client shutdown took " + (System.currentTimeMillis() - startTime) + "ms.");
+      LOGGER.info("D2 client shutdown took " + (System.currentTimeMillis() - startTime) + "ms.");
     } catch (ExecutionException e) {
-      logger.warn("D2 client shutdown failed.", e.getCause());
+      LOGGER.warn("D2 client shutdown failed.", e.getCause());
     } catch (TimeoutException e) {
-      logger.warn("D2 client shutdown timed out after " + (System.currentTimeMillis() - startTime) + "ms.");
+      LOGGER.warn("D2 client shutdown timed out after " + (System.currentTimeMillis() - startTime) + "ms.");
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     }

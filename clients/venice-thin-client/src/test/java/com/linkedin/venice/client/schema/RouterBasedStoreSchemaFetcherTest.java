@@ -17,8 +17,8 @@ import org.testng.annotations.Test;
 
 
 public class RouterBasedStoreSchemaFetcherTest {
-  private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
-  private static final WriteComputeSchemaConverter updateSchemaConverter = WriteComputeSchemaConverter.getInstance();
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
+  private static final WriteComputeSchemaConverter UPDATE_SCHEMA_CONVERTER = WriteComputeSchemaConverter.getInstance();
 
   private final String storeName = "test_store";
   private final String keySchemaStr = "\"string\"";
@@ -42,7 +42,7 @@ public class RouterBasedStoreSchemaFetcherTest {
     schemaResponse.setId(1);
     schemaResponse.setSchemaStr(keySchemaStr);
     CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
-    Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
+    Mockito.doReturn(OBJECT_MAPPER.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
 
     StoreSchemaFetcher storeSchemaFetcher = new RouterBasedStoreSchemaFetcher(mockClient);
@@ -62,7 +62,7 @@ public class RouterBasedStoreSchemaFetcherTest {
     Mockito.doReturn(storeName).when(mockClient).getStoreName();
     // Set up mocks for value schemas
     CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
-    Mockito.doReturn(mapper.writeValueAsBytes(createValueSchemaMultiSchemaResponse())).when(mockFuture).get();
+    Mockito.doReturn(OBJECT_MAPPER.writeValueAsBytes(createValueSchemaMultiSchemaResponse())).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("value_schema/" + storeName);
 
     // Get latest value schema twice.
@@ -86,18 +86,18 @@ public class RouterBasedStoreSchemaFetcherTest {
     Mockito.doReturn(storeName).when(mockClient).getStoreName();
     // Set up mocks for value schemas
     CompletableFuture<byte[]> mockGetAllValueSchemaFuture = Mockito.mock(CompletableFuture.class);
-    Mockito.doReturn(mapper.writeValueAsBytes(createValueSchemaMultiSchemaResponse()))
+    Mockito.doReturn(OBJECT_MAPPER.writeValueAsBytes(createValueSchemaMultiSchemaResponse()))
         .when(mockGetAllValueSchemaFuture)
         .get();
     Mockito.doReturn(mockGetAllValueSchemaFuture).when(mockClient).getRaw("value_schema/" + storeName);
     // Set up mocks for update schemas
     CompletableFuture<byte[]> mockGetUpdateValueSchemaFuture1 = Mockito.mock(CompletableFuture.class);
-    Mockito.doReturn(mapper.writeValueAsBytes(createUpdateSchemaResponse(1, 1, valueSchemaStr1)))
+    Mockito.doReturn(OBJECT_MAPPER.writeValueAsBytes(createUpdateSchemaResponse(1, 1, valueSchemaStr1)))
         .when(mockGetUpdateValueSchemaFuture1)
         .get();
     Mockito.doReturn(mockGetUpdateValueSchemaFuture1).when(mockClient).getRaw("update_schema/" + storeName + "/1");
     CompletableFuture<byte[]> mockGetUpdateValueSchemaFuture2 = Mockito.mock(CompletableFuture.class);
-    Mockito.doReturn(mapper.writeValueAsBytes(createUpdateSchemaResponse(2, 1, valueSchemaStr2)))
+    Mockito.doReturn(OBJECT_MAPPER.writeValueAsBytes(createUpdateSchemaResponse(2, 1, valueSchemaStr2)))
         .when(mockGetUpdateValueSchemaFuture2)
         .get();
     Mockito.doReturn(mockGetUpdateValueSchemaFuture2).when(mockClient).getRaw("update_schema/" + storeName + "/2");
@@ -106,8 +106,8 @@ public class RouterBasedStoreSchemaFetcherTest {
     StoreSchemaFetcher storeSchemaFetcher = new RouterBasedStoreSchemaFetcher(mockClient);
     Schema updateSchema1 = storeSchemaFetcher.getUpdateSchema(Schema.parse(valueSchemaStr1));
     Schema updateSchema2 = storeSchemaFetcher.getUpdateSchema(Schema.parse(valueSchemaStr2));
-    Assert.assertEquals(updateSchema1, updateSchemaConverter.convert(valueSchemaStr1));
-    Assert.assertEquals(updateSchema2, updateSchemaConverter.convert(valueSchemaStr2));
+    Assert.assertEquals(updateSchema1, UPDATE_SCHEMA_CONVERTER.convert(valueSchemaStr1));
+    Assert.assertEquals(updateSchema2, UPDATE_SCHEMA_CONVERTER.convert(valueSchemaStr2));
     // Each update schema fetch should call get value schemas first then get latest update schema.
     Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(4)).getRaw(Mockito.anyString());
   }
@@ -133,7 +133,7 @@ public class RouterBasedStoreSchemaFetcherTest {
     SchemaResponse schemaResponse = new SchemaResponse();
     schemaResponse.setId(valueSchemaId);
     schemaResponse.setDerivedSchemaId(derivedSchemaId);
-    schemaResponse.setSchemaStr(updateSchemaConverter.convert(valueSchemaStr).toString());
+    schemaResponse.setSchemaStr(UPDATE_SCHEMA_CONVERTER.convert(valueSchemaStr).toString());
     return schemaResponse;
   }
 }

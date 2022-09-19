@@ -28,7 +28,7 @@ import org.testng.annotations.Test;
 
 
 public class LeaderFollowerThreadPoolTest {
-  private static final Logger logger = LogManager.getLogger(LeaderFollowerThreadPoolTest.class);
+  private static final Logger LOGGER = LogManager.getLogger(LeaderFollowerThreadPoolTest.class);
   private VeniceClusterWrapper cluster;
   private VeniceServerWrapper server0;
   private VeniceServerWrapper server1;
@@ -143,7 +143,7 @@ public class LeaderFollowerThreadPoolTest {
         server0.getVeniceServer().getHelixParticipationService().getLeaderFollowerHelixStateTransitionThreadPool();
 
     Future blockingTask = leaderFollowerPool.submit(() -> {
-      logger.info("blocking task is running...");
+      LOGGER.info("blocking task is running...");
       lock.lock();
       try {
         isBlockingTaskStarted = true;
@@ -156,7 +156,7 @@ public class LeaderFollowerThreadPoolTest {
         // Blocking the thread pool long enough for the test.
         Thread.sleep(120 * Time.MS_PER_SECOND);
       } catch (InterruptedException e) {
-        logger.warn(e.getMessage());
+        LOGGER.warn(e.getMessage());
       }
     });
 

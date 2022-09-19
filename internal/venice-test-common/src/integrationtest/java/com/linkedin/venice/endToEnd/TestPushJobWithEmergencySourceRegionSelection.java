@@ -42,7 +42,7 @@ import org.testng.annotations.Test;
  * precedence over other configs.
  */
 public class TestPushJobWithEmergencySourceRegionSelection {
-  public static final Logger LOGGER = LogManager.getLogger(TestPushJobWithEmergencySourceRegionSelection.class);
+  private static final Logger LOGGER = LogManager.getLogger(TestPushJobWithEmergencySourceRegionSelection.class);
 
   private static final int TEST_TIMEOUT = 90_000; // ms
 

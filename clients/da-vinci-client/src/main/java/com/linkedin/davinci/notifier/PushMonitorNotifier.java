@@ -17,7 +17,7 @@ import org.apache.logging.log4j.Logger;
  * Notifier used to update replica status by offline push monitor accessor.
  */
 public class PushMonitorNotifier implements VeniceNotifier {
-  private static final Logger log = LogManager.getLogger(PushMonitorNotifier.class);
+  private static final Logger LOGGER = LogManager.getLogger(PushMonitorNotifier.class);
 
   private final OfflinePushAccessor accessor;
   private final PushStatusStoreWriter pushStatuStoreWriter;
@@ -94,7 +94,7 @@ public class PushMonitorNotifier implements VeniceNotifier {
         return;
       }
     } catch (Exception e) {
-      log.error(
+      LOGGER.error(
           "Failed to report status of incremental push version:{}."
               + " Got an exception while checking whether push status store exist for store:{}",
           incPushVersion,

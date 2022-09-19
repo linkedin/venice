@@ -44,7 +44,7 @@ import org.testng.Assert;
  * This class initializes a cluster and pushes some synthetic data into a store.
  */
 public class VeniceClusterInitializer implements AutoCloseable {
-  public static final Logger LOGGER = LogManager.getLogger(VeniceClusterInitializer.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceClusterInitializer.class);
 
   public static final String VALUE_SCHEMA_STR = "{" + "  \"namespace\": \"example.compute\",    "
       + "  \"type\": \"record\",        " + "  \"name\": \"MemberFeature\",       " + "  \"fields\": [        "

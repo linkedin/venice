@@ -13,7 +13,7 @@ import java.util.Set;
 
 
 public class UpdateStoragePersonaQueryParams extends QueryParams {
-  private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   public UpdateStoragePersonaQueryParams(Map<String, String> initialParams) {
     super(initialParams);

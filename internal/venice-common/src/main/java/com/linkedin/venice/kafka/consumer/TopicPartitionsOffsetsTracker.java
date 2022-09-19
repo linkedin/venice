@@ -30,7 +30,7 @@ class TopicPartitionsOffsetsTracker {
     VALID_OFFSET_LAG, NO_OFFSET_LAG, INVALID_OFFSET_LAG
   }
 
-  private static final Logger logger = LogManager.getLogger(TopicPartitionsOffsetsTracker.class);
+  private static final Logger LOGGER = LogManager.getLogger(TopicPartitionsOffsetsTracker.class);
   private static final Duration DEFAULT_OFFSETS_UPDATE_INTERVAL = Duration.ofSeconds(30);
   private static final Duration DEFAULT_MIN_LOG_INTERVAL = Duration.ofMinutes(3);
   private static final ResultType[] RESULT_TYPE_VALUES = ResultType.values();
@@ -106,7 +106,7 @@ class TopicPartitionsOffsetsTracker {
     try {
       return Objects.equals(metricName.name(), "records-lag") && (metric.metricValue() instanceof Double);
     } catch (Exception e) {
-      logger.warn(
+      LOGGER.warn(
           "Caught exception: {} when attempting to get consumer metrics. Incomplete metrics might be returned.",
           e.getMessage());
       return false;
@@ -166,7 +166,7 @@ class TopicPartitionsOffsetsTracker {
       return -1;
     }
     statsAccumulator.recordResult(ResultType.VALID_OFFSET_LAG);
-    statsAccumulator.maybeLogAccumulatedStats(logger);
+    statsAccumulator.maybeLogAccumulatedStats(LOGGER);
     return offsetLag;
   }
 
@@ -199,16 +199,16 @@ class TopicPartitionsOffsetsTracker {
     }
 
     /**
-     * @param logger the logger instance which is used to log the accumulated stats
+     * @param LOGGER the {@link Logger} instance which is used to log the accumulated stats
      */
-    private void maybeLogAccumulatedStats(Logger logger) {
+    private void maybeLogAccumulatedStats(Logger LOGGER) {
       if (resultsStats.isEmpty()) {
         return;
       }
       final Instant now = Instant.now();
       final Duration timeSinceLastTimeLogged = Duration.between(lastLoggedTime, now);
       if (timeSinceLastTimeLogged.toMillis() >= minLogInterval.toMillis()) {
-        logger.info(
+        LOGGER.info(
             String.format(
                 "In the last %d second(s), results states are: %s",
                 timeSinceLastTimeLogged.getSeconds(),

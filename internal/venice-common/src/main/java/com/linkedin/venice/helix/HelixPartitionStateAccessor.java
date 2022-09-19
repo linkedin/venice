@@ -22,7 +22,7 @@ import org.apache.logging.log4j.Logger;
 */
 
 public abstract class HelixPartitionStateAccessor {
-  private static final Logger logger = LogManager.getLogger(HelixPartitionStateAccessor.class);
+  private static final Logger LOGGER = LogManager.getLogger(HelixPartitionStateAccessor.class);
   CustomizedStateProvider customizedStateProvider;
 
   public HelixPartitionStateAccessor(HelixManager helixManager, String instanceId) {
@@ -45,11 +45,11 @@ public abstract class HelixPartitionStateAccessor {
     } catch (NullPointerException e) {
       String errorMsg = String
           .format("The partition %s does not have " + "state %s available in ZK", partitionName, stateType.name());
-      logger.error(errorMsg, e);
+      LOGGER.error(errorMsg, e);
       throw new VeniceException(errorMsg, e);
     } catch (HelixMetaDataAccessException e) {
       String errorMsg = String.format("Failed to get state %s for partition " + "%s", stateType.name(), partitionName);
-      logger.error(errorMsg, e);
+      LOGGER.error(errorMsg, e);
       throw new VeniceException(errorMsg, e);
     }
   }

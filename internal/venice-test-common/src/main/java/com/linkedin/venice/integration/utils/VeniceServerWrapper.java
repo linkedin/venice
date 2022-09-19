@@ -44,7 +44,7 @@ import org.apache.logging.log4j.Logger;
  * A wrapper for the {@link com.linkedin.venice.server.VeniceServer}.
  */
 public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware {
-  private static final Logger logger = LogManager.getLogger(VeniceServerWrapper.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceServerWrapper.class);
   public static final String SERVICE_NAME = "VeniceServer";
 
   /**
@@ -340,7 +340,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           Arrays.asList("-Xms64m", "-Xmx128m"),
           true,
           Optional.of(serverName));
-      logger.info("VeniceServer " + serverName + " is started!");
+      LOGGER.info("VeniceServer " + serverName + " is started!");
     }
   }
 
@@ -382,7 +382,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
   public static void main(String args[]) throws Exception {
     // parse the inputs
-    logger.info("VeniceServer args: " + Arrays.toString(args));
+    LOGGER.info("VeniceServer args: " + Arrays.toString(args));
     Options options = new Options();
     options.addOption(new Option("cn", "clusterName", true, "cluster name"));
     options.addOption(new Option("lp", "listenPort", true, "listening port for server"));
@@ -452,14 +452,14 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
   private static void addShutdownHook(VeniceServer server) {
     Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-      logger.info("shutting down server");
+      LOGGER.info("shutting down server");
       server.shutdown();
     }));
 
     try {
       Thread.currentThread().join();
     } catch (InterruptedException e) {
-      logger.error("Unable to join thread in shutdown hook. ", e);
+      LOGGER.error("Unable to join thread in shutdown hook. ", e);
     }
   }
 }

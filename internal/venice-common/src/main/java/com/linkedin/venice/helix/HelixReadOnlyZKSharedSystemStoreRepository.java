@@ -21,7 +21,7 @@ import org.apache.logging.log4j.Logger;
  * will be constrained by the healthiness of system store cluster.
  */
 public class HelixReadOnlyZKSharedSystemStoreRepository extends HelixReadOnlyStoreRepository {
-  protected static final Logger logger = LogManager.getLogger(HelixReadOnlyZKSharedSystemStoreRepository.class);
+  private static final Logger LOGGER = LogManager.getLogger(HelixReadOnlyZKSharedSystemStoreRepository.class);
 
   /**
    * This set is used to keep all the zk shared stores the current repo will monitor.

@@ -44,7 +44,7 @@ import org.apache.logging.log4j.Logger;
  * {@link D2Client} based TransportClient implementation.
  */
 public class D2TransportClient extends TransportClient {
-  private static final Logger logger = LogManager.getLogger(D2TransportClient.class);
+  private static final Logger LOGGER = LogManager.getLogger(D2TransportClient.class);
 
   private final D2Client d2Client;
 
@@ -182,7 +182,7 @@ public class D2TransportClient extends TransportClient {
             @Override
             public synchronized void onDataAvailable(ByteString data) {
               if (isDone) {
-                logger.warn("Received data after completion and data length: " + data.length());
+                LOGGER.warn("Received data after completion and data length: " + data.length());
                 return;
               } else {
                 callback.onDataReceived(data.asByteBuffer());
@@ -194,7 +194,7 @@ public class D2TransportClient extends TransportClient {
             @Override
             public synchronized void onDone() {
               if (isDone) {
-                logger.warn("onDone got invoked after completion");
+                LOGGER.warn("onDone got invoked after completion");
                 return;
               }
               callback.onCompletion(Optional.empty());
@@ -204,7 +204,7 @@ public class D2TransportClient extends TransportClient {
             @Override
             public synchronized void onError(Throwable e) {
               if (isDone) {
-                logger.warn("onError got invoked after completion");
+                LOGGER.warn("onError got invoked after completion");
                 return;
               }
               callback.onCompletion(Optional.of(new VeniceClientException(e)));
@@ -267,7 +267,7 @@ public class D2TransportClient extends TransportClient {
                 URI uri = new URI(locationHeader);
                 // update d2 service
                 d2ServiceName = uri.getAuthority();
-                logger.info("update d2ServiceName to " + d2ServiceName);
+                LOGGER.info("update d2ServiceName to " + d2ServiceName);
                 RestRequest redirectedRequest = request.builder().setURI(uri).build();
                 /**
                  * Don't include VENICE_ALLOW_REDIRECT in request headers.
@@ -277,12 +277,12 @@ public class D2TransportClient extends TransportClient {
                 d2Client.restRequest(redirectedRequest, requestContext.clone(), callback);
                 return;
               } else {
-                logger.error("location header is null");
+                LOGGER.error("location header is null");
               }
             }
           }
         } catch (Exception ex) {
-          logger.error("cannot redirect request", ex);
+          LOGGER.error("cannot redirect request", ex);
           callback.onError(ex);
           return;
         }
@@ -314,7 +314,7 @@ public class D2TransportClient extends TransportClient {
                 URI uri = new URI(locationHeader);
                 // update d2 service
                 d2ServiceName = uri.getAuthority();
-                logger.info("update d2ServiceName to " + d2ServiceName);
+                LOGGER.info("update d2ServiceName to " + d2ServiceName);
                 StreamRequest redirectedRequest = request.builder().setURI(uri).build(request.getEntityStream());
                 /**
                  * Don't include VENICE_ALLOW_REDIRECT in request headers.
@@ -324,12 +324,12 @@ public class D2TransportClient extends TransportClient {
                 d2Client.streamRequest(redirectedRequest, requestContext.clone(), callback);
                 return;
               } else {
-                logger.error("location header is null");
+                LOGGER.error("location header is null");
               }
             }
           }
         } catch (Exception ex) {
-          logger.error("cannot follow redirection", ex);
+          LOGGER.error("cannot follow redirection", ex);
           callback.onError(ex);
           return;
         }
@@ -353,7 +353,7 @@ public class D2TransportClient extends TransportClient {
     if (privateD2Client) {
       D2ClientUtils.shutdownClient(d2Client);
     } else {
-      logger.info(
+      LOGGER.info(
           "This is a shared D2Client. TransportClient is not responsible to shut it down. Please do it manually.");
     }
   }
@@ -370,7 +370,7 @@ public class D2TransportClient extends TransportClient {
         RestResponse result = ((RestException) e).getResponse();
         onSuccess(result);
       } else {
-        logger.error("", e);
+        LOGGER.error("", e);
         getValueFuture().completeExceptionally(new VeniceClientException(e));
       }
     }

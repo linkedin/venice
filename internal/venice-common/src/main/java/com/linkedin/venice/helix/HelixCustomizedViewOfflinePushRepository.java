@@ -36,7 +36,7 @@ import org.apache.logging.log4j.Logger;
  * Extend {@link HelixBaseRoutingRepository} to leverage customized view data for offline push.
  */
 public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRepository {
-  private static final Logger logger = LogManager.getLogger(HelixCustomizedViewOfflinePushRepository.class);
+  private static final Logger LOGGER = LogManager.getLogger(HelixCustomizedViewOfflinePushRepository.class);
   private final ReentrantReadWriteLock resourceAssignmentRWLock = new ReentrantReadWriteLock();
   private static final String LEADER_FOLLOWER_VENICE_STATE_FILLER = "N/A";
 
@@ -97,7 +97,7 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
   protected void onCustomizedViewDataChange(RoutingTableSnapshot routingTableSnapshot) {
     Collection<CustomizedView> customizedViewCollection = routingTableSnapshot.getCustomizeViews();
     if (customizedViewCollection == null) {
-      logger.warn("There is no existing customized view");
+      LOGGER.warn("There is no existing customized view");
       return;
     }
     /**
@@ -113,7 +113,7 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
           customizedViewCollection.stream().map(CustomizedView::getResourceName).collect(Collectors.toSet());
 
       if (!resourceToPartitionCountMapSnapshot.keySet().containsAll(resourcesInCustomizedView)) {
-        logger.info(
+        LOGGER.info(
             "Found the inconsistent data between customized view and ideal state of cluster: "
                 + manager.getClusterName() + ". Reading the latest ideal state from zk.");
 
@@ -124,9 +124,9 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
           List<IdealState> idealStates = manager.getHelixDataAccessor().getProperty(keys);
           refreshResourceToIdealPartitionCountMap(idealStates);
           resourceToPartitionCountMapSnapshot = resourceToIdealPartitionCountMap;
-          logger.info("Ideal state of cluster: " + manager.getClusterName() + " is updated from zk");
+          LOGGER.info("Ideal state of cluster: " + manager.getClusterName() + " is updated from zk");
         } catch (HelixMetaDataAccessException e) {
-          logger.error(
+          LOGGER.error(
               "Failed to update the ideal state of cluster: " + manager.getClusterName()
                   + " because we could not access to zk.",
               e);
@@ -137,7 +137,7 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
       for (CustomizedView customizedView: customizedViewCollection) {
         String resourceName = customizedView.getResourceName();
         if (!resourceToPartitionCountMapSnapshot.containsKey(resourceName)) {
-          logger.warn(
+          LOGGER.warn(
               "Could not find resource: " + resourceName + " in ideal state. Ideal state is up to date,"
                   + " so the resource has been deleted from ideal state or could not read " + "from "
                   + "zk. Ignore its customized view update.");
@@ -159,12 +159,12 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
               try {
                 status = ExecutionStatus.valueOf(instanceState);
               } catch (Exception e) {
-                logger.warn("Instance:" + instanceName + " unrecognized status:" + instanceState);
+                LOGGER.warn("Instance:" + instanceName + " unrecognized status:" + instanceState);
                 continue;
               }
               stateToInstanceMap.computeIfAbsent(status.toString(), s -> new ArrayList<>()).add(instance);
             } else {
-              logger.warn("Cannot find instance '" + instanceName + "' in /LIVEINSTANCES");
+              LOGGER.warn("Cannot find instance '" + instanceName + "' in /LIVEINSTANCES");
             }
           }
           // Update partitionAssignment of customized state
@@ -193,9 +193,9 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
           this.liveInstancesMap = Collections.unmodifiableMap(liveInstanceSnapshot);
         }
         updates = resourceAssignment.updateResourceAssignment(newResourceAssignment);
-        logger.info("Updated resource assignment and live instances for .");
+        LOGGER.info("Updated resource assignment and live instances for .");
       }
-      logger.info(
+      LOGGER.info(
           "Customized view is changed. The number of active resources is " + resourcesInCustomizedView.size()
               + ", and the deleted resources are " + updates.getDeletedResource());
       // Notify listeners that listen on customized view data change

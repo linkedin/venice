@@ -75,7 +75,7 @@ import org.testng.annotations.Test;
 @Test(singleThreaded = true)
 public abstract class TestRead {
   private static final int MAX_KEY_LIMIT = 20;
-  private static final Logger logger = LogManager.getLogger(TestRead.class);
+  private static final Logger LOGGER = LogManager.getLogger(TestRead.class);
   private VeniceClusterWrapper veniceCluster;
   private ControllerClient controllerClient;
   private D2Client d2Client;
@@ -632,7 +632,7 @@ public abstract class TestRead {
       ResourceStateResponse resourceStateResponse =
           mapper.readValue(responseBody.getBytes(), ResourceStateResponse.class);
       Assert.assertEquals(resourceStateResponse.getName(), storeVersionName);
-      logger.info(responseBody);
+      LOGGER.info(responseBody);
     } catch (Exception e) {
       fail("Unexpected exception", e);
     }

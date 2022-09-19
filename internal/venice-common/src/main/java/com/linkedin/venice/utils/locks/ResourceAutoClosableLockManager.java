@@ -16,7 +16,7 @@ import org.apache.logging.log4j.Logger;
  * @param <T> Type of the resource
  */
 public class ResourceAutoClosableLockManager<T> {
-  private static final Logger logger = LogManager.getLogger(ResourceAutoClosableLockManager.class);
+  private static final Logger LOGGER = LogManager.getLogger(ResourceAutoClosableLockManager.class);
 
   private final ConcurrentHashMap<T, Lock> resourceToLockMap;
   private final Function<T, Lock> lockCreator; // User defines how and what kind of lock is created
@@ -35,7 +35,7 @@ public class ResourceAutoClosableLockManager<T> {
   public void removeLockForResource(@Nonnull T resource) {
     Validate.notNull(resource);
     if (resourceToLockMap.remove(resource) == null) {
-      logger.warn("No lock for resource: {}", resource);
+      LOGGER.warn("No lock for resource: {}", resource);
     }
   }
 

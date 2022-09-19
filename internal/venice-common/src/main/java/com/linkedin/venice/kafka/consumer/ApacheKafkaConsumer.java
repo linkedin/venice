@@ -30,7 +30,7 @@ import org.apache.logging.log4j.Logger;
  */
 @NotThreadsafe
 public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
-  private static final Logger logger = LogManager.getLogger(ApacheKafkaConsumer.class);
+  private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaConsumer.class);
 
   public static final String CONSUMER_POLL_RETRY_TIMES_CONFIG = "consumer.poll.retry.times";
   public static final String CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG = "consumer.poll.retry.backoff.ms";
@@ -61,9 +61,9 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
         props.getInt(CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG, CONSUMER_POLL_RETRY_BACKOFF_MS_DEFAULT);
     this.topicPartitionsOffsetsTracker =
         isKafkaConsumerOffsetCollectionEnabled ? Optional.of(new TopicPartitionsOffsetsTracker()) : Optional.empty();
-    logger.info("Consumer poll retry times: " + this.consumerPollRetryTimes);
-    logger.info("Consumer poll retry back off in ms: " + this.consumerPollRetryBackoffMs);
-    logger.info("Consumer offset collection enabled: " + isKafkaConsumerOffsetCollectionEnabled);
+    LOGGER.info("Consumer poll retry times: " + this.consumerPollRetryTimes);
+    LOGGER.info("Consumer poll retry back off in ms: " + this.consumerPollRetryBackoffMs);
+    LOGGER.info("Consumer offset collection enabled: " + isKafkaConsumerOffsetCollectionEnabled);
   }
 
   private void seekNextOffset(TopicPartition topicPartition, long lastReadOffset) {
@@ -94,9 +94,9 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
       topicPartitionList.add(topicPartition);
       kafkaConsumer.assign(topicPartitionList);
       seekNextOffset(topicPartition, lastReadOffset);
-      logger.info("Subscribed to Topic: " + topic + " Partition: " + partition + " Offset: " + lastReadOffset);
+      LOGGER.info("Subscribed to Topic: " + topic + " Partition: " + partition + " Offset: " + lastReadOffset);
     } else {
-      logger.warn(
+      LOGGER.warn(
           "Already subscribed on Topic: " + topic + " Partition: " + partition
               + ", ignore the request of subscription.");
     }
@@ -146,7 +146,7 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
         records = kafkaConsumer.poll(Duration.ofMillis(timeoutMs));
         break;
       } catch (RetriableException e) {
-        logger.warn(
+        LOGGER.warn(
             "Retriable exception thrown when attempting to consume records from kafka, attempt " + attemptCount + "/"
                 + consumerPollRetryTimes,
             e);
@@ -228,7 +228,7 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
       try {
         kafkaConsumer.close(Duration.ZERO);
       } catch (Exception e) {
-        logger.warn(kafkaConsumer.getClass().getSimpleName() + " threw an exception while closing.", e);
+        LOGGER.warn(kafkaConsumer.getClass().getSimpleName() + " threw an exception while closing.", e);
       }
     }
   }

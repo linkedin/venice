@@ -23,7 +23,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class AdminCommandExecutionTracker {
   private static final int DEFAULT_TTL_HOUR = 24;
-  private static final Logger logger = LogManager.getLogger(AdminCommandExecutionTracker.class);
+  private static final Logger LOGGER = LogManager.getLogger(AdminCommandExecutionTracker.class);
 
   private final String cluster;
   private final int executionTTLHour;
@@ -66,7 +66,7 @@ public class AdminCommandExecutionTracker {
    */
   public synchronized void startTrackingExecution(AdminCommandExecution execution) {
     idToExecutionMap.put(execution.getExecutionId(), execution);
-    logger.info(
+    LOGGER.info(
         "Add Execution: " + execution.getExecutionId() + " for operation: " + execution.getOperation()
             + " into tracker.");
     // Try to Collect executions which live longer than TTL.
@@ -87,7 +87,7 @@ public class AdminCommandExecutionTracker {
         break;
       }
     }
-    logger.info(
+    LOGGER.info(
         "Collected " + collectedCount + " executions which succeed and were executed before the earliest time to keep:"
             + earliestStartTimeToKeep.toString());
   }
@@ -100,11 +100,11 @@ public class AdminCommandExecutionTracker {
     if (execution == null) {
       return null;
     }
-    logger.info("Sending query to remote fabrics to check status of execution: " + id);
+    LOGGER.info("Sending query to remote fabrics to check status of execution: " + id);
     for (Map.Entry<String, ControllerClient> entry: fabricToControllerClientsMap.entrySet()) {
       execution.checkAndUpdateStatusForRemoteFabric(entry.getKey(), entry.getValue());
     }
-    logger.info("Updated statuses in remote fabrics for execution: " + id);
+    LOGGER.info("Updated statuses in remote fabrics for execution: " + id);
     return execution;
   }
 

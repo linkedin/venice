@@ -91,7 +91,7 @@ public class StorageNodeComputeTest {
   }
 
   private VeniceClusterWrapper veniceCluster;
-  Map<AvroImpl, Map<SerializerReuse, AvroGenericStoreClient<String, Object>>> clientsMap = new HashMap<>();
+  private Map<AvroImpl, Map<SerializerReuse, AvroGenericStoreClient<String, Object>>> clientsMap = new HashMap<>();
   private int valueSchemaId;
   private String storeName;
 
@@ -101,7 +101,7 @@ public class StorageNodeComputeTest {
 
   private CompressorFactory compressorFactory;
 
-  private static final String valueSchemaForCompute = "{" + "  \"namespace\": \"example.compute\",    "
+  private static final String VALUE_SCHEMA_FOR_COMPUTE = "{" + "  \"namespace\": \"example.compute\",    "
       + "  \"type\": \"record\",        " + "  \"name\": \"MemberFeature\",       " + "  \"fields\": [        "
       + "         { \"name\": \"id\", \"type\": \"string\" },             "
       + "         { \"name\": \"name\", \"type\": \"string\" },           "
@@ -128,13 +128,13 @@ public class StorageNodeComputeTest {
     String keySchema = "\"string\"";
 
     // Create test store
-    VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion(keySchema, valueSchemaForCompute);
+    VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion(keySchema, VALUE_SCHEMA_FOR_COMPUTE);
     storeName = Version.parseStoreFromKafkaTopicName(creationResponse.getKafkaTopic());
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
     // TODO: Make serializers parameterized so we test them all.
     keySerializer = new VeniceAvroKafkaSerializer(keySchema);
-    valueSerializer = new VeniceAvroKafkaSerializer(valueSchemaForCompute);
+    valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE);
 
     for (AvroImpl fastAvro: AvroImpl.values()) {
       for (SerializerReuse serializerReuse: SerializerReuse.values()) {
@@ -394,7 +394,7 @@ public class StorageNodeComputeTest {
       int pushVersion,
       CompressionStrategy compressionStrategy,
       boolean valueLargerThan1MB) throws Exception {
-    Schema valueSchema = Schema.parse(valueSchemaForCompute);
+    Schema valueSchema = Schema.parse(VALUE_SCHEMA_FOR_COMPUTE);
     // Insert test record
     List<byte[]> values = new ArrayList<>(numOfRecords);
     for (int i = 0; i < numOfRecords; ++i) {

@@ -32,7 +32,7 @@ import org.apache.logging.log4j.Logger;
  * dispatch them to related handlers.
  */
 public class HelixStatusMessageChannel implements StatusMessageChannel {
-  private static final Logger logger = LogManager.getLogger(HelixStatusMessageChannel.class);
+  private static final Logger LOGGER = LogManager.getLogger(HelixStatusMessageChannel.class);
 
   public static final int DEFAULT_SEND_MESSAGE_TIME_OUT = 1000;
 
@@ -78,9 +78,9 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
       attempt++;
       if (attempt > 1) {
         // only wait and print the log of the retry.
-        logger.info("Wait " + retryDurationMs + "ms to retry.");
+        LOGGER.info("Wait " + retryDurationMs + "ms to retry.");
         Utils.sleep(retryDurationMs);
-        logger.info("Attempt #" + attempt + ": Sending message to controller.");
+        LOGGER.info("Attempt #" + attempt + ": Sending message to controller.");
         // Use a new message Id, otherwise controller will not handle the retry message because it think it had already
         // failed.
         // It a new issue introduced by new helix version 0.6.6.1
@@ -91,31 +91,31 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
         // Send and wait until getting response or time out.
         int numMsg = messageService.sendAndWait(criteria, helixMessage, callBack, sendMessageTimeOut);
         if (numMsg == 0) {
-          logger.error("No controller could be found to send messages " + message.getMessageId());
+          LOGGER.error("No controller could be found to send messages " + message.getMessageId());
           continue;
         }
         if (callBack.isTimeOut) {
-          logger.error("Error: Can not send message to controller. Sending is time out.");
+          LOGGER.error("Error: Can not send message to controller. Sending is time out.");
           continue;
         }
         Message replyMessage = callBack.getMessageReplied().get(0);
         String result = replyMessage.getResultMap().get("SUCCESS");
         isSuccess = Boolean.valueOf(result);
         if (!isSuccess) {
-          logger.error(
+          LOGGER.error(
               "Error: controller can not handle this message correctly. "
                   + replyMessage.getResultMap().get("ERRORINFO"));
         }
         continue;
       } catch (Exception e) {
-        logger.error("Error: Can not send message to controller.", e);
+        LOGGER.error("Error: Can not send message to controller.", e);
         continue;
       }
     }
 
     if (!isSuccess) {
       String errorMsg = "Error: After attempting " + attempt + " times, sending is still failed.";
-      logger.error(errorMsg);
+      LOGGER.error(errorMsg);
       throw new VeniceException(errorMsg);
     }
   }
@@ -143,12 +143,12 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
     int numMsgSent = messageService.sendAndWait(criteria, helixMessage, callBack, sendMessageTimeOut, retryCount);
     if (numMsgSent == 0) {
       String errorMsg = "No storage node is found to send message to. Message:" + message.toString();
-      logger.error(errorMsg);
+      LOGGER.error(errorMsg);
       // Not throwing exception for now,
       // this scenario could be introduced by two cases: wrong resource or no storage node.
       // TODO: need to think a better way to handle those two different scenarios.
     } else {
-      logger.info("Sent " + numMsgSent + " messages to storage nodes. Message:" + message.toString());
+      LOGGER.info("Sent " + numMsgSent + " messages to storage nodes. Message:" + message.toString());
     }
 
     stats.recordToStorageNodesMessageCount(numMsgSent);
@@ -157,7 +157,7 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
     if (callBack.isTimeOut) {
       String errorMsg = "Sending messages to storage node is time out. Resource:" + resourceName + ". Message sent:"
           + numMsgSent + ". Message replied:" + callBack.getMessageReplied().size();
-      logger.error(errorMsg);
+      LOGGER.error(errorMsg);
       throw new VeniceException(errorMsg);
     }
 
@@ -166,12 +166,12 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
       String result = replyMessage.getResultMap().get("SUCCESS");
       if (!Boolean.valueOf(result)) {
         // message is not processed by storage node successfully.
-        logger.error("Message is not processed successfully by instance:" + replyMessage.getMsgSrc());
+        LOGGER.error("Message is not processed successfully by instance:" + replyMessage.getMsgSrc());
         isSuccessful = false;
       }
     }
     if (isSuccessful) {
-      logger.info(numMsgSent + " messages have been send and processed. Message:" + message.toString());
+      LOGGER.info(numMsgSent + " messages have been send and processed. Message:" + message.toString());
     } else {
       // We have printed the detail error information before for each of message.
       throw new VeniceException(
@@ -191,7 +191,7 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
   public <T extends StatusMessage> void unRegisterHandler(Class<T> clazz, StatusMessageHandler<T> handler) {
     if (!handlers.containsKey(clazz.getName())) {
       // If no listener is found by given class, just skip this un-register request.
-      logger.info("Can not find any handler for given message type:" + clazz.toGenericString());
+      LOGGER.info("Can not find any handler for given message type:" + clazz.toGenericString());
       return;
     }
     if (handler.equals(this.handlers.get(clazz.getName()))) {
@@ -301,7 +301,7 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
         getHandler(msg.getClass()).handleMessage(msg);
       } catch (Exception e) {
         // Log the message content in case of handing failure
-        logger.error("Handle message " + _message.getId() + " failed. Venice message content:" + msg.toString(), e);
+        LOGGER.error("Handle message " + _message.getId() + " failed. Venice message content:" + msg.toString(), e);
         // re-throw exception to helix.
         throw e;
       }
@@ -311,7 +311,7 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
 
     @Override
     public void onError(Exception e, ErrorCode code, ErrorType type) {
-      logger.error("Message handling pipeline met error for message:" + _message.getMsgId(), e);
+      LOGGER.error("Message handling pipeline met error for message:" + _message.getMsgId(), e);
     }
   }
 

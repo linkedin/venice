@@ -19,7 +19,7 @@ import org.apache.logging.log4j.Logger;
  * This class is used to throttle records consumed per Kafka cluster
  */
 public class KafkaClusterBasedRecordThrottler {
-  private static final Logger logger = LogManager.getLogger(KafkaClusterBasedRecordThrottler.class);
+  private static final Logger LOGGER = LogManager.getLogger(KafkaClusterBasedRecordThrottler.class);
   // Kafka URL to records throttler
   private final Map<String, EventThrottler> kafkaUrlToRecordsThrottler;
   // Kafka URL to throttled records
@@ -52,7 +52,7 @@ public class KafkaClusterBasedRecordThrottler {
       } catch (QuotaExceededException quotaExceededException) {
         String msgIdentifier = kafkaUrl + "_records_quota_exceeded";
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier)) {
-          logger.info("Ingestion quota exceeded for Kafka URL " + kafkaUrl);
+          LOGGER.info("Ingestion quota exceeded for Kafka URL " + kafkaUrl);
         }
 
         kafkaUrlToThrottledRecords.put(kafkaUrl, consumerRecords);

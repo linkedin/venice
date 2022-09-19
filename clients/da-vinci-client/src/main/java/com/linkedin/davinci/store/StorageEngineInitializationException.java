@@ -8,7 +8,7 @@ import com.linkedin.venice.exceptions.VeniceException;
  * storage services or stores within a service.
  */
 public class StorageEngineInitializationException extends VeniceException {
-  private final static long serialVersionUID = 1;
+  private static final long serialVersionUID = 1;
 
   public StorageEngineInitializationException() {
   }

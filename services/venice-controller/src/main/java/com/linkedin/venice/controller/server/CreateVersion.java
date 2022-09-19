@@ -86,7 +86,7 @@ public class CreateVersion extends AbstractRoute {
                 + "\". Please visit go/veniceacl and setup ACLs for your store";
           }
           responseObject.setError(errorMsg);
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
 
         AdminSparkServer.validateParams(request, REQUEST_TOPIC.getParams(), admin);
@@ -402,7 +402,7 @@ public class CreateVersion extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
 
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -453,7 +453,7 @@ public class CreateVersion extends AbstractRoute {
         if (!isAllowListUser(request) && !hasWriteAccessToTopic(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("ACL failed for request " + request.url());
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, ADD_VERSION.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
@@ -511,7 +511,7 @@ public class CreateVersion extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -525,7 +525,7 @@ public class CreateVersion extends AbstractRoute {
         if (!isAllowListUser(request) && !hasWriteAccessToTopic(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("ACL failed for request " + request.url());
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, OFFLINE_PUSH_INFO.getParams(), admin);
 
@@ -539,7 +539,7 @@ public class CreateVersion extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
 
     };
   }
@@ -557,7 +557,7 @@ public class CreateVersion extends AbstractRoute {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject
               .setError("You don't have permission to end this push job; please grant write ACL for yourself.");
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, END_OF_PUSH.getParams(), admin);
 
@@ -576,7 +576,7 @@ public class CreateVersion extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -592,7 +592,7 @@ public class CreateVersion extends AbstractRoute {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
           responseObject.setErrorType(ErrorType.BAD_REQUEST);
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, EMPTY_PUSH.getParams(), admin);
 
@@ -631,7 +631,7 @@ public class CreateVersion extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 }

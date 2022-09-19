@@ -26,7 +26,7 @@ import org.testng.annotations.Test;
 
 @Test(singleThreaded = true)
 public class TestRebalanceByDefaultStrategy {
-  private static final Logger logger = LogManager.getLogger(TestRebalanceByDefaultStrategy.class);
+  private static final Logger LOGGER = LogManager.getLogger(TestRebalanceByDefaultStrategy.class);
   private static final long TIMEOUT_MS = 30000l;
   private static final long UPGRADE_TIME_MS = 1000l;
   private static final long RETRY_TIME_MS = 500l;
@@ -119,7 +119,7 @@ public class TestRebalanceByDefaultStrategy {
           isAllOnline = false;
         }
       }
-      logger.info("Replica number:" + replicas.size() + ", non-online replicas:" + log);
+      LOGGER.info("Replica number:" + replicas.size() + ", non-online replicas:" + log);
       return (replicas.size() == partitionNumber * replicationFactor) && isAllOnline;
     });
   }

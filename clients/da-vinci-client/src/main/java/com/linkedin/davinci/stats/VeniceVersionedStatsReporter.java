@@ -13,7 +13,7 @@ import java.util.function.DoubleSupplier;
 
 public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends AbstractVeniceStatsReporter<STATS>>
     extends AbstractVeniceStats {
-  private static final AtomicBoolean isVersionStatsSetup = new AtomicBoolean(false);
+  private static final AtomicBoolean IS_VERSION_STATS_SETUP = new AtomicBoolean(false);
 
   private int currentVersion = NON_EXISTING_VERSION;
   private int futureVersion = NON_EXISTING_VERSION;
@@ -40,9 +40,9 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
      * way to deal with it. We might want to refactor the code in the future to remove it. (e.g.
      * we could have a centralized stats version dispatcher that listens to Helix data changes,
      * keeps track of store version and notifies each stats.
-     * TODO: get ride of {@link isVersionStatsSetup}
+     * TODO: get ride of {@link IS_VERSION_STATS_SETUP}
      */
-    if (isVersionStatsSetup.compareAndSet(false, true)) {
+    if (IS_VERSION_STATS_SETUP.compareAndSet(false, true)) {
       registerSensor("current_version", new VersionStat(() -> (double) currentVersion));
       if (!isSystemStore) {
         registerSensor("future_version", new VersionStat(() -> (double) futureVersion));
@@ -134,6 +134,6 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
    * TODO: Fix, VOLDENG-4211
    */
   public static void resetStats() {
-    isVersionStatsSetup.set(false);
+    IS_VERSION_STATS_SETUP.set(false);
   }
 }

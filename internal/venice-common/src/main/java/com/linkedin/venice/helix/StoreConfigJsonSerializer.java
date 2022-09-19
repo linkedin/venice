@@ -8,7 +8,7 @@ import com.linkedin.venice.meta.StoreConfig;
 public class StoreConfigJsonSerializer extends VeniceJsonSerializer<StoreConfig> {
   public StoreConfigJsonSerializer() {
     super(StoreConfig.class);
-    mapper.addMixIn(StoreConfig.class, StoreConfigSerializerMixin.class);
+    OBJECT_MAPPER.addMixIn(StoreConfig.class, StoreConfigSerializerMixin.class);
   }
 
   public static class StoreConfigSerializerMixin {

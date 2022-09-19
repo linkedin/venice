@@ -14,8 +14,8 @@ import com.linkedin.venice.pushmonitor.StatusSnapshot;
 public class OfflinePushStatusJSONSerializer extends VeniceJsonSerializer<OfflinePushStatus> {
   public OfflinePushStatusJSONSerializer() {
     super(OfflinePushStatus.class);
-    mapper.addMixIn(OfflinePushStatus.class, OfflinePushStatusSerializerMixin.class);
-    mapper.addMixIn(StatusSnapshot.class, StatusSnapshotSerializerMixin.class);
+    OBJECT_MAPPER.addMixIn(OfflinePushStatus.class, OfflinePushStatusSerializerMixin.class);
+    OBJECT_MAPPER.addMixIn(StatusSnapshot.class, StatusSnapshotSerializerMixin.class);
   }
 
   public static class OfflinePushStatusSerializerMixin {

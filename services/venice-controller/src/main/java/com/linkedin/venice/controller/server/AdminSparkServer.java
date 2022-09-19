@@ -42,7 +42,7 @@ import spark.embeddedserver.EmbeddedServers;
  * AdminSparkServer is shared by multiple clusters' controllers running in one physical Venice controller instance.
  */
 public class AdminSparkServer extends AbstractVeniceService {
-  private static final Logger logger = LogManager.getLogger(AdminSparkServer.class);
+  private static final Logger LOGGER = LogManager.getLogger(AdminSparkServer.class);
 
   private final int port;
   private final Admin admin;
@@ -52,7 +52,7 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final Optional<SSLConfig> sslConfig;
   private final Optional<DynamicAccessController> accessController;
 
-  protected static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
+  protected static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
   final private Map<String, SparkServerStats> statsMap;
   final private SparkServerStats nonclusterSpecificStats;
 
@@ -123,7 +123,7 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService.before((request, response) -> {
       AuditInfo audit = new AuditInfo(request);
-      logger.info(audit.toString());
+      LOGGER.info(audit.toString());
       SparkServerStats stats = statsMap.get(request.queryParams(CLUSTER));
       if (stats == null) {
         stats = nonclusterSpecificStats;
@@ -164,10 +164,10 @@ public class AdminSparkServer extends AbstractVeniceService {
       }
       long latency = System.currentTimeMillis() - (long) request.attribute(REQUEST_START_TIME);
       if ((boolean) request.attribute(REQUEST_SUCCEED)) {
-        logger.info(audit.successString());
+        LOGGER.info(audit.successString());
         stats.recordSuccessfulRequestLatency(latency);
       } else {
-        logger.info(audit.failureString(response.body()));
+        LOGGER.info(audit.failureString(response.body()));
         stats.recordFailedRequestLatency(latency);
       }
     });
@@ -345,7 +345,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.awaitInitialization(); // Wait for server to be initialized
     Exception e = initFailure.get();
     if (e != null) {
-      logger.error("Unable to initialize spark server", e);
+      LOGGER.error("Unable to initialize spark server", e);
       throw e;
     }
 
@@ -431,7 +431,7 @@ public class AdminSparkServer extends AbstractVeniceService {
       sb.append(k).append("=").append(String.join(",", v)).append(" ");
     });
     String errMsg = sb.toString();
-    logger.error(errMsg, e);
+    LOGGER.error(errMsg, e);
     if (e instanceof Error) {
       throw (Error) e;
     }

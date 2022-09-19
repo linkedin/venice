@@ -19,7 +19,7 @@ import org.apache.logging.log4j.Logger;
  * In order to distinguish the collected metrics from the main process metrics, prefix "ingestion_isolation" is added to every metric names.
  */
 public class IsolatedIngestionProcessStats extends AbstractVeniceStats {
-  private static final Logger logger = LogManager.getLogger(IsolatedIngestionProcessStats.class);
+  private static final Logger LOGGER = LogManager.getLogger(IsolatedIngestionProcessStats.class);
 
   private static final String METRIC_PREFIX = "ingestion_isolation";
 
@@ -64,8 +64,8 @@ public class IsolatedIngestionProcessStats extends AbstractVeniceStats {
       metricValueMap.put(originalMetricName, value);
     });
     if (!newMetricNameSet.isEmpty()) {
-      logger.info("Registered " + newMetricNameSet.size() + " new metrics.");
-      logger.debug("New metrics list: " + newMetricNameSet);
+      LOGGER.info("Registered " + newMetricNameSet.size() + " new metrics.");
+      LOGGER.debug("New metrics list: " + newMetricNameSet);
     }
   }
 

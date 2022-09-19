@@ -25,7 +25,7 @@ import org.apache.logging.log4j.Logger;
  * sub-partitions have reported the status.
  */
 public class StatusReportAdapter {
-  private static final Logger logger = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger();
   private final AmplificationFactorAdapter amplificationFactorAdapter;
   private final IngestionNotificationDispatcher dispatcher;
   private final Map<Integer, PartitionReportStatus> partitionReportStatus = new VeniceConcurrentHashMap<>();
@@ -215,7 +215,7 @@ public class StatusReportAdapter {
         }
         if (!statusRecordMap.get(versionAwareStatus).contains(subPartitionIndex)) {
           if (logStatus) {
-            logger.info(
+            LOGGER.info(
                 "{} reported from subPartition: {}, status report details: {}.",
                 versionAwareStatus,
                 subPartitionId,
@@ -241,7 +241,7 @@ public class StatusReportAdapter {
         // This is a safeguard to make sure we only report exactly once for each status.
         if (statusReportMap.get(versionAwareStatus).compareAndSet(false, true)) {
           if (logStatus) {
-            logger.info("Reporting status {} for user partition: {}.", versionAwareStatus, userPartition);
+            LOGGER.info("Reporting status {} for user partition: {}.", versionAwareStatus, userPartition);
           }
           report.run();
           if (status.equals(COMPLETED)) {

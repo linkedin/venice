@@ -22,7 +22,7 @@ import org.apache.logging.log4j.Logger;
 
 public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceStatsReporter<STATS>>
     implements StoreDataChangedListener {
-  private static final Logger logger = LogManager.getLogger(AbstractVeniceAggVersionedStats.class);
+  private static final Logger LOGGER = LogManager.getLogger(AbstractVeniceAggVersionedStats.class);
 
   private final Supplier<STATS> statsInitiator;
   private final StatsSupplier<STATS_REPORTER> reporterSupplier;
@@ -121,7 +121,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
       VersionStatus status = version.getStatus();
       if (status == VersionStatus.STARTED || status == VersionStatus.PUSHED) {
         if (futureVersion != NON_EXISTING_VERSION) {
-          logger.warn(
+          LOGGER.warn(
               "Multiple versions have been marked as STARTED PUSHING. " + "There might be a parallel push. Store: "
                   + storeName);
         }
@@ -134,7 +134,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
         // check past version
         if (status == VersionStatus.ONLINE && versionNum != newCurrentVersion) {
           if (backupVersion != 0) {
-            logger.warn("There are more than 1 backup versions. Something might be wrong." + "Store: " + storeName);
+            LOGGER.warn("There are more than 1 backup versions. Something might be wrong." + "Store: " + storeName);
           }
 
           backupVersion = versionNum;
@@ -164,7 +164,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
   public void handleStoreDeleted(String storeName) {
     VeniceVersionedStats<STATS, STATS_REPORTER> stats = aggStats.remove(storeName);
     if (stats == null) {
-      logger.debug("Trying to delete stats but store '{}' is not in the metric list.", storeName);
+      LOGGER.debug("Trying to delete stats but store '{}' is not in the metric list.", storeName);
     } else if (unregisterMetricForDeletedStoreEnabled) {
       stats.unregisterStats();
     }

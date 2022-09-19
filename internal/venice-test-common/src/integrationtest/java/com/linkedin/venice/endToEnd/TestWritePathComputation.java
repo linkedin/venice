@@ -18,7 +18,7 @@ import org.testng.annotations.Test;
 
 
 public class TestWritePathComputation {
-  private static final Logger logger = LogManager.getLogger(TestWritePathComputation.class);
+  private static final Logger LOGGER = LogManager.getLogger(TestWritePathComputation.class);
   private static final long GET_LEADER_CONTROLLER_TIMEOUT = 20 * Time.MS_PER_SECOND;
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)

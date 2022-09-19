@@ -22,7 +22,7 @@ import org.apache.logging.log4j.Logger;
 public class ZkExecutionIdAccessor implements ExecutionIdAccessor {
   private static final String EXECUTION_ID_DIR = "/executionids";
   private static final int ZK_RETRY_COUNT = 3;
-  private static final Logger logger = LogManager.getLogger(ZkExecutionIdAccessor.class);
+  private static final Logger LOGGER = LogManager.getLogger(ZkExecutionIdAccessor.class);
   private final ZkClient zkclient;
   private final ZkBaseDataAccessor<Map<String, Long>> zkMapAccessor;
   private final ZkBaseDataAccessor<String> executionIdAccessor;
@@ -138,7 +138,7 @@ public class ZkExecutionIdAccessor implements ExecutionIdAccessor {
         }
         return executionIdMap;
       } catch (Exception e) {
-        logger.warn("Could not get the execution id map from ZK with: " + path + ". Will retry the query.", e);
+        LOGGER.warn("Could not get the execution id map from ZK with: " + path + ". Will retry the query.", e);
         retry--;
       }
     }
@@ -166,7 +166,7 @@ public class ZkExecutionIdAccessor implements ExecutionIdAccessor {
         }
         return Long.valueOf(lastSucceedExecutionId);
       } catch (Exception e) {
-        logger.warn("Could not get the execution id from ZK from: " + path + ". Will retry the query.", e);
+        LOGGER.warn("Could not get the execution id from ZK from: " + path + ". Will retry the query.", e);
         retry--;
       }
     }
@@ -185,7 +185,7 @@ public class ZkExecutionIdAccessor implements ExecutionIdAccessor {
         zkclient.writeData(path, executionId.toString());
       } catch (Exception e) {
         e.printStackTrace();
-        logger.warn("Could not update the execution id to ZK in: " + path + ". Will retry the query.", e);
+        LOGGER.warn("Could not update the execution id to ZK in: " + path + ". Will retry the query.", e);
         retry--;
       }
     }

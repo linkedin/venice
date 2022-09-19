@@ -64,7 +64,7 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -85,7 +85,7 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -112,7 +112,7 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -138,7 +138,7 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -189,7 +189,7 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -206,7 +206,7 @@ public class NodesAndReplicas extends AbstractRoute {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
           responseObject.setErrorType(ErrorType.BAD_REQUEST);
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, REMOVE_NODE.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
@@ -217,7 +217,7 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -234,7 +234,7 @@ public class NodesAndReplicas extends AbstractRoute {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
           responseObject.setErrorType(ErrorType.BAD_REQUEST);
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, ALLOW_LIST_ADD_NODE.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
@@ -245,7 +245,7 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -262,7 +262,7 @@ public class NodesAndReplicas extends AbstractRoute {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
           responseObject.setErrorType(ErrorType.BAD_REQUEST);
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, WHITE_LIST_REMOVE_NODE.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
@@ -273,7 +273,7 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -298,7 +298,7 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObj.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObj);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObj);
     };
   }
 }

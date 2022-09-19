@@ -26,8 +26,8 @@ import java.util.concurrent.ExecutionException;
  * E.g. store level configs and versions. This class doesn't maintain any local cache of the retrieved store state.
  */
 public class StoreStateReader implements Closeable {
-  private static final StoreJSONSerializer storeSerializer = new StoreJSONSerializer();
-  private static final SystemStoreJSONSerializer systemStoreSerializer = new SystemStoreJSONSerializer();
+  private static final StoreJSONSerializer STORE_SERIALIZER = new StoreJSONSerializer();
+  private static final SystemStoreJSONSerializer SYSTEM_STORE_SERIALIZER = new SystemStoreJSONSerializer();
 
   private final String storeName;
   private final String requestPath;
@@ -61,13 +61,13 @@ public class StoreStateReader implements Closeable {
         throw new VeniceClientException("Unexpected null response " + exceptionMessageFooter);
       }
       if (veniceSystemStoreType != null && veniceSystemStoreType.isNewMedataRepositoryAdopted()) {
-        SerializableSystemStore serializableSystemStore = systemStoreSerializer.deserialize(response, null);
+        SerializableSystemStore serializableSystemStore = SYSTEM_STORE_SERIALIZER.deserialize(response, null);
         return new SystemStore(
             serializableSystemStore.getZkSharedStore(),
             serializableSystemStore.getSystemStoreType(),
             serializableSystemStore.getVeniceStore());
       } else {
-        return storeSerializer.deserialize(response, null);
+        return STORE_SERIALIZER.deserialize(response, null);
       }
     } catch (Exception e) {
       throw new VeniceClientException("Unexpected exception " + exceptionMessageFooter, e);

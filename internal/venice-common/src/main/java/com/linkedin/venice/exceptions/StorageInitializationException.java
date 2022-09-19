@@ -4,7 +4,7 @@ package com.linkedin.venice.exceptions;
  * thrown by StorageEngineFactory and AbstractStorageEngine when storage creation fails
  */
 public class StorageInitializationException extends VeniceException {
-  private final static long serialVersionUID = 1L;
+  private static final long serialVersionUID = 1L;
 
   public StorageInitializationException() {
   }

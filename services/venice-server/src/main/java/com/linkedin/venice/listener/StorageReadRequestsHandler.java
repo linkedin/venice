@@ -93,7 +93,7 @@ import org.apache.logging.log4j.Logger;
  */
 @ChannelHandler.Sharable
 public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
-  private static final Logger logger = LogManager.getLogger(StorageReadRequestsHandler.class);
+  private static final Logger LOGGER = LogManager.getLogger(StorageReadRequestsHandler.class);
 
   /**
    * When constructing a {@link BinaryDecoder}, we pass in this 16 bytes array because if we pass anything
@@ -241,7 +241,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
                           "No storage exists for: " + ((VeniceNoStoreException) e).getStoreName(),
                           HttpResponseStatus.BAD_REQUEST));
                 } else {
-                  logger.error("Exception thrown in parallel batch get for " + request.getResourceName(), e);
+                  LOGGER.error("Exception thrown in parallel batch get for " + request.getResourceName(), e);
                   context.writeAndFlush(
                       new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
                 }
@@ -287,7 +287,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
         } catch (VeniceRequestEarlyTerminationException e) {
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), e.getHttpResponseStatus()));
         } catch (Exception e) {
-          logger.error("Exception thrown for " + request.getResourceName(), e);
+          LOGGER.error("Exception thrown for " + request.getResourceName(), e);
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
         }
       });
@@ -300,7 +300,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
             new HttpShortcutResponse(
                 "Venice storage node hardware is not healthy!",
                 HttpResponseStatus.INTERNAL_SERVER_ERROR));
-        logger.error(
+        LOGGER.error(
             "Disk is not healthy according to the disk health check service: {}",
             diskHealthCheckService.getErrorMessage());
       }
@@ -365,7 +365,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
         }
         return partitionerConfig;
       } catch (Exception e) {
-        logger.error("Can not acquire partitionerConfig. ", e);
+        LOGGER.error("Can not acquire partitionerConfig. ", e);
         return null;
       }
     });

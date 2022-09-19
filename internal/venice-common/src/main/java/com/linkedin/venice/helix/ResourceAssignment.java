@@ -17,7 +17,7 @@ import org.apache.logging.log4j.Logger;
  * date.
  */
 public class ResourceAssignment {
-  private static final Logger logger = LogManager.getLogger(ResourceAssignment.class);
+  private static final Logger LOGGER = LogManager.getLogger(ResourceAssignment.class);
 
   private volatile Map<String, PartitionAssignment> resourceToAssignmentsMap = new HashMap<>();
 
@@ -45,7 +45,7 @@ public class ResourceAssignment {
   private void checkResource(String resourceName) {
     if (!resourceToAssignmentsMap.containsKey(resourceName)) {
       String errorMessage = "Resource '" + resourceName + "' does not exist";
-      logger.trace(errorMessage);
+      LOGGER.trace(errorMessage);
       // TODO: Might want to add some (configurable) retries here or higher up the stack. If the Helix spectator is out
       // of sync, this fails...
       throw new VeniceNoHelixResourceException(resourceName);

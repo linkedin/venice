@@ -60,9 +60,9 @@ import org.apache.avro.io.BinaryDecoder;
  *    a chunked value.
  */
 public class ChunkingUtils {
-  final static ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER =
+  static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER =
       new ChunkedValueManifestSerializer(false);
-  public final static KeyWithChunkingSuffixSerializer KEY_WITH_CHUNKING_SUFFIX_SERIALIZER =
+  public static final KeyWithChunkingSuffixSerializer KEY_WITH_CHUNKING_SUFFIX_SERIALIZER =
       new KeyWithChunkingSuffixSerializer();
 
   /**

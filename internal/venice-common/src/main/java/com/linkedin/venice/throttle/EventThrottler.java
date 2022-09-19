@@ -31,7 +31,7 @@ import org.apache.logging.log4j.Logger;
  * throttle Bytes read or written, number of entries scanned, etc.
  */
 public class EventThrottler {
-  private static final Logger logger = LogManager.getLogger(EventThrottler.class);
+  private static final Logger LOGGER = LogManager.getLogger(EventThrottler.class);
   private static final long DEFAULT_CHECK_INTERVAL_MS = TimeUnit.SECONDS.toMillis(30); // 30 sec
   private static final String THROTTLER_NAME = "event-throttler";
   private static final String UNIT_POSTFIX = " event/sec";
@@ -169,8 +169,8 @@ public class EventThrottler {
       initialize(maxRatePerSecond);
     }
 
-    if (logger.isDebugEnabled()) {
-      logger.debug("EventThrottler constructed with maxRatePerSecond = " + getMaxRatePerSecond());
+    if (LOGGER.isDebugEnabled()) {
+      LOGGER.debug("EventThrottler constructed with maxRatePerSecond = " + getMaxRatePerSecond());
     }
   }
 
@@ -207,15 +207,15 @@ public class EventThrottler {
       } else {
         sleepTimeMs = Math.round(excessRate / quota * Time.MS_PER_SECOND);
       }
-      if (logger.isDebugEnabled()) {
-        logger.debug(
+      if (LOGGER.isDebugEnabled()) {
+        LOGGER.debug(
             "Throttler: " + throttlerName + " quota exceeded:\n" + "currentRate \t= " + currentRate + UNIT_POSTFIX
                 + "\n" + "maxRatePerSecond \t= " + quota + UNIT_POSTFIX + "\n" + "excessRate \t= " + excessRate
                 + UNIT_POSTFIX + "\n" + "sleeping for \t" + sleepTimeMs + " ms to compensate.\n"
                 + "rateConfig.timeWindowMs() = " + timeWindowMS);
       }
       if (sleepTimeMs > timeWindowMS) {
-        logger.warn(
+        LOGGER.warn(
             "Throttler: " + throttlerName + " sleep time(" + sleepTimeMs + "ms) exceeds " + "window size ("
                 + timeWindowMS + " ms). This will likely "
                 + "result in not being able to honor the rate limit accurately.");

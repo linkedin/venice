@@ -7,8 +7,8 @@ import org.testng.annotations.Test;
 
 
 public class TestHybridStoreConfig {
-  static ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
-  static final String serialized = "{\"rewindTimeInSeconds\":123,\"offsetLagThresholdToGoOnline\":2500}";
+  private static final ObjectMapper OBJECT_MAPPER = new com.fasterxml.jackson.databind.ObjectMapper();
+  private static final String SERIALIZED_CONFIG = "{\"rewindTimeInSeconds\":123,\"offsetLagThresholdToGoOnline\":2500}";
 
   /**
    * This test verifies that we can deserialize existing {@link HybridStoreConfig} objects. If we add a field then this
@@ -18,7 +18,7 @@ public class TestHybridStoreConfig {
    */
   @Test
   public void deserializes() throws IOException {
-    HybridStoreConfig fasterXml = objectMapper.readValue(serialized, HybridStoreConfig.class);
+    HybridStoreConfig fasterXml = OBJECT_MAPPER.readValue(SERIALIZED_CONFIG, HybridStoreConfig.class);
     Assert.assertEquals(fasterXml.getRewindTimeInSeconds(), 123L);
     Assert.assertEquals(fasterXml.getDataReplicationPolicy(), DataReplicationPolicy.NON_AGGREGATE);
   }

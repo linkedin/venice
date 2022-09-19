@@ -29,7 +29,7 @@ import org.apache.logging.log4j.Logger;
  */
 @ChannelHandler.Sharable
 public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
-  private static final Logger logger = LogManager.getLogger(ServerAclHandler.class);
+  private static final Logger LOGGER = LogManager.getLogger(ServerAclHandler.class);
 
   public static final AttributeKey<Boolean> SERVER_ACL_APPROVED_ATTRIBUTE_KEY =
       AttributeKey.valueOf("SERVER_ACL_APPROVED_ATTRIBUTE_KEY");
@@ -71,7 +71,7 @@ public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
     } else {
       String client = ctx.channel().remoteAddress().toString(); // ip and port
       String errLine = String.format("%s requested %s %s", client, method, req.uri());
-      logger.debug("Unauthorized access rejected: " + errLine);
+      LOGGER.debug("Unauthorized access rejected: " + errLine);
       NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
     }
   }

@@ -36,7 +36,7 @@ import org.apache.logging.log4j.Logger;
  * MainIngestionRequestClient sends requests to isolated ingestion process and retrieves responses.
  */
 public class MainIngestionRequestClient implements Closeable {
-  private static final Logger logger = LogManager.getLogger(MainIngestionRequestClient.class);
+  private static final Logger LOGGER = LogManager.getLogger(MainIngestionRequestClient.class);
   private static final int REQUEST_MAX_ATTEMPT = 10;
   private static final int HEARTBEAT_REQUEST_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
   private HttpClientTransport httpClientTransport;
@@ -77,7 +77,7 @@ public class MainIngestionRequestClient implements Closeable {
          */
         forkedIngestionProcess = ForkedJavaProcess
             .exec(IsolatedIngestionServer.class, Collections.singletonList(configFilePath), jvmArgs, false);
-        logger.info("Forked new isolated ingestion process at PID: " + forkedIngestionProcess.pid());
+        LOGGER.info("Forked new isolated ingestion process at PID: " + forkedIngestionProcess.pid());
         IsolatedIngestionUtils.saveForkedIngestionProcessMetadata(configLoader, forkedIngestionProcess);
         // Wait for server in forked child process to bind the listening port.
         IsolatedIngestionUtils.waitPortBinding(ingestionServicePort, 100);
@@ -88,13 +88,13 @@ public class MainIngestionRequestClient implements Closeable {
         if (currentAttempt == totalAttempts) {
           throw new VeniceException("Exception caught during initialization of ingestion service:", e);
         } else {
-          logger.warn(
+          LOGGER.warn(
               "Caught exception when initializing forked process in attempt " + currentAttempt + "/" + totalAttempts,
               e);
           continue;
         }
       }
-      logger.info("Isolated ingestion service initialization finished.");
+      LOGGER.info("Isolated ingestion service initialization finished.");
       break;
     }
     return forkedIngestionProcess;
@@ -175,7 +175,7 @@ public class MainIngestionRequestClient implements Closeable {
 
   public boolean updateMetadata(IngestionStorageMetadata ingestionStorageMetadata) {
     try {
-      logger.info(
+      LOGGER.info(
           "Sending UPDATE_METADATA request to child process: "
               + IngestionMetadataUpdateType.valueOf(ingestionStorageMetadata.metadataUpdateType) + " for topic: "
               + ingestionStorageMetadata.topicName + " partition: " + ingestionStorageMetadata.partitionId);
@@ -187,7 +187,7 @@ public class MainIngestionRequestClient implements Closeable {
        * We only log the exception when failing to persist metadata updates into child process.
        * Child process might crash, but it will be respawned and will be able to receive future updates.
        */
-      logger.warn(
+      LOGGER.warn(
           "Encounter exception when sending metadata updates to child process for topic: "
               + ingestionStorageMetadata.topicName + ", partition: " + ingestionStorageMetadata.partitionId);
       return false;
@@ -198,26 +198,26 @@ public class MainIngestionRequestClient implements Closeable {
     // Send ingestion request to ingestion service.
     ProcessShutdownCommand processShutdownCommand = new ProcessShutdownCommand();
     processShutdownCommand.componentType = ingestionComponentType.getValue();
-    logger.info("Sending shutdown component request to forked process for component: " + ingestionComponentType.name());
+    LOGGER.info("Sending shutdown component request to forked process for component: " + ingestionComponentType.name());
     try {
       httpClientTransport.sendRequest(IngestionAction.SHUTDOWN_COMPONENT, processShutdownCommand);
     } catch (Exception e) {
-      logger.warn("Encounter exception when shutting down component: " + ingestionComponentType.name());
+      LOGGER.warn("Encounter exception when shutting down component: " + ingestionComponentType.name());
     }
   }
 
   public boolean collectMetrics(IsolatedIngestionProcessStats isolatedIngestionProcessStats) {
     try {
       IngestionMetricsReport metricsReport = httpClientTransport.sendRequest(IngestionAction.METRIC, getDummyCommand());
-      if (logger.isDebugEnabled()) {
-        logger
+      if (LOGGER.isDebugEnabled()) {
+        LOGGER
             .debug("Collected " + metricsReport.aggregatedMetrics.size() + " metrics from isolated ingestion service.");
       }
       isolatedIngestionProcessStats.updateMetricMap(metricsReport.aggregatedMetrics);
       return true;
     } catch (Exception e) {
       // Don't spam the server logging.
-      logger.warn("Unable to collect metrics from ingestion service");
+      LOGGER.warn("Unable to collect metrics from ingestion service");
       return false;
     }
   }
@@ -228,7 +228,7 @@ public class MainIngestionRequestClient implements Closeable {
       return true;
     } catch (Exception e) {
       // Don't spam the server logging.
-      logger.warn("Unable to get heartbeat from ingestion service");
+      LOGGER.warn("Unable to get heartbeat from ingestion service");
       return false;
     }
   }
@@ -252,7 +252,7 @@ public class MainIngestionRequestClient implements Closeable {
     String commandType = IngestionCommandType.valueOf(command.commandType).toString();
     String commandInfo =
         " for topic: " + topicName + (partitionId.map(integer -> (", partition: " + integer)).orElse(""));
-    logger.info("Sending request: " + commandType + " to forked process" + commandInfo);
+    LOGGER.info("Sending request: " + commandType + " to forked process" + commandInfo);
     IngestionTaskReport report;
     try {
       report = httpClientTransport.sendRequestWithRetry(IngestionAction.COMMAND, command, requestMaxAttempt);
@@ -274,7 +274,7 @@ public class MainIngestionRequestClient implements Closeable {
     while (true) {
       try {
         if (sendHeartbeatRequest()) {
-          logger.info(
+          LOGGER.info(
               "Ingestion service server health check passed in " + (System.currentTimeMillis() - startTimeInMs)
                   + " ms.");
           break;
@@ -284,7 +284,7 @@ public class MainIngestionRequestClient implements Closeable {
       } catch (Exception e) {
         retryCount++;
         if (retryCount > maxAttempt) {
-          logger.info("Fail to pass health-check for ingestion service after " + maxAttempt + " retries.");
+          LOGGER.info("Fail to pass health-check for ingestion service after " + maxAttempt + " retries.");
           throw e;
         }
         Utils.sleep(waitTime);

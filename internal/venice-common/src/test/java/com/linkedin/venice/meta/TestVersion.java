@@ -13,13 +13,13 @@ import org.testng.annotations.Test;
  * Created by mwise on 5/9/16.
  */
 public class TestVersion {
-  static ObjectMapper objectMapper = ObjectMapperFactory.getInstance();
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
-  static final String oldSerialized =
+  private static final String OLD_SERIALIZED =
       "{\"storeName\":\"store-1492637190910-78714331\",\"number\":17,\"createdTime\":1492637190912,\"status\":\"STARTED\"}";
-  static final String extraFieldSerialized =
+  private static final String EXTRA_FIELD_SERIALIZED =
       "{\"storeName\":\"store-1492637190910-12345678\",\"number\":17,\"createdTime\":1492637190912,\"status\":\"STARTED\",\"extraField\":\"12345\"}";
-  static final String missingFieldSerialized =
+  private static final String MISSING_FIELD_SERIALIZED =
       "{\"storeName\":\"store-missing\",\"number\":17,\"createdTime\":1492637190912}"; // no status
 
   @Test
@@ -40,7 +40,7 @@ public class TestVersion {
     String storeName = Utils.getUniqueString("store");
     int versionNumber = 17;
     Version version = new VersionImpl(storeName, versionNumber);
-    String serialized = objectMapper.writeValueAsString(version);
+    String serialized = OBJECT_MAPPER.writeValueAsString(version);
     Assert.assertTrue(serialized.contains(storeName));
   }
 
@@ -51,13 +51,13 @@ public class TestVersion {
    */
   @Test
   public void deserializeWithWrongFields() throws IOException {
-    Version oldParsedVersion = objectMapper.readValue(oldSerialized, Version.class);
+    Version oldParsedVersion = OBJECT_MAPPER.readValue(OLD_SERIALIZED, Version.class);
     Assert.assertEquals(oldParsedVersion.getStoreName(), "store-1492637190910-78714331");
 
-    Version newParsedVersion = objectMapper.readValue(extraFieldSerialized, Version.class);
+    Version newParsedVersion = OBJECT_MAPPER.readValue(EXTRA_FIELD_SERIALIZED, Version.class);
     Assert.assertEquals(newParsedVersion.getStoreName(), "store-1492637190910-12345678");
 
-    Version legacyParsedVersion = objectMapper.readValue(missingFieldSerialized, Version.class);
+    Version legacyParsedVersion = OBJECT_MAPPER.readValue(MISSING_FIELD_SERIALIZED, Version.class);
     Assert.assertEquals(legacyParsedVersion.getStoreName(), "store-missing");
     Assert.assertNotNull(legacyParsedVersion.getPushJobId()); // missing final field can still deserialize, just gets
                                                               // arbitrary value from constructor

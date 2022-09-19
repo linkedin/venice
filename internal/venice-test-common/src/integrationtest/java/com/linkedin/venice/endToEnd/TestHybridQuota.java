@@ -40,7 +40,7 @@ import org.testng.annotations.Test;
 
 
 public class TestHybridQuota {
-  private static final Logger logger = LogManager.getLogger(TestHybrid.class);
+  private static final Logger LOGGER = LogManager.getLogger(TestHybrid.class);
 
   private VeniceClusterWrapper sharedVenice;
 
@@ -66,7 +66,7 @@ public class TestHybridQuota {
     sharedVenice.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);
     sharedVenice.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);
     sharedVenice.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);
-    logger.info("Finished creating VeniceClusterWrapper");
+    LOGGER.info("Finished creating VeniceClusterWrapper");
   }
 
   @AfterClass
@@ -198,11 +198,11 @@ public class TestHybridQuota {
           sendCustomSizeStreamingRecord(veniceProducer, storeName, i, TestHybrid.STREAMING_RECORD_SIZE);
         } catch (VeniceException e) {
           // Expected exception.
-          logger.info(e.getMessage());
+          LOGGER.info(e.getMessage());
         }
       }
       long normalTimeForConsuming = TimeUnit.SECONDS.toMillis(15);
-      logger.info("normalTimeForConsuming:" + normalTimeForConsuming);
+      LOGGER.info("normalTimeForConsuming:" + normalTimeForConsuming);
       Utils.sleep(normalTimeForConsuming);
 
       String topicVersion = isStreamReprocessing ? Version.composeKafkaTopic(storeName, 4) : topicForStoreVersion3;
@@ -260,7 +260,7 @@ public class TestHybridQuota {
 
     } catch (VeniceException e) {
       if (recoverFromViolation) {
-        logger.error("Exception got during test of recovering exception: ", e);
+        LOGGER.error("Exception got during test of recovering exception: ", e);
         throw e;
       }
       // Expected

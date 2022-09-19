@@ -63,7 +63,7 @@ import org.apache.logging.log4j.Logger;
  * deserialized meta system store data directly.
  */
 public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
-  private static final Logger logger = LogManager.getLogger(DaVinciClientBasedMetadata.class);
+  private static final Logger LOGGER = LogManager.getLogger(DaVinciClientBasedMetadata.class);
   private static final String STORE_PROPERTIES_KEY = "store_properties";
   private static final String STORE_KEY_SCHEMAS_KEY = "store_key_schemas";
   private static final String STORE_VALUE_SCHEMAS_KEY = "store_value_schemas";
@@ -266,7 +266,7 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
           // Ignore MissingKeyInStoreMetadataException since a new version may not have replica assignment for all
           // partitions yet. We still want to fetch assignment for all known versions all the time since the refresh is
           // asynchronous to reads and non-blocking. Meaning current version can change in the middle of a refresh.
-          logger.info(
+          LOGGER.info(
               "No replica info available in meta system store yet for version: {} partition: {}. This is normal if this is a new version",
               Version.composeKafkaTopic(storeName, entry.getIntKey()),
               partitionId);
@@ -326,7 +326,7 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
       Thread.currentThread().interrupt();
       throw new VeniceClientException("Dictionary fetch operation was interrupted");
     } catch (ExecutionException | TimeoutException e) {
-      logger.warn(
+      LOGGER.warn(
           "Dictionary fetch operation could not complete in time for some of the versions. "
               + "Will be retried on next refresh",
           e);
@@ -343,7 +343,7 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
       updateCache();
     } catch (Exception e) {
       // Catch all errors so periodic refresh doesn't break on transient errors.
-      logger.error("Encountered unexpected error during refresh", e);
+      LOGGER.error("Encountered unexpected error during refresh", e);
     }
   }
 
@@ -398,7 +398,7 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
     String route = routes.get(ThreadLocalRandom.current().nextInt(routes.size()));
     String url = route + "/" + QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + version;
 
-    logger.info("Fetching compression dictionary for version {} from URL {} ", version, url);
+    LOGGER.info("Fetching compression dictionary for version {} from URL {} ", version, url);
     transportClient.get(url).whenComplete((response, throwable) -> {
       if (throwable != null) {
         String message = String.format(
@@ -406,7 +406,7 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
             url,
             storeName,
             version);
-        logger.warn(message, throwable);
+        LOGGER.warn(message, throwable);
         compressionDictionaryFuture.completeExceptionally(throwable);
       } else {
         byte[] dictionary = response.getBody();

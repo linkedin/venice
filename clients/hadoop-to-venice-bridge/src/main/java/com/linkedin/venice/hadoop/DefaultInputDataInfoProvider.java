@@ -43,8 +43,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
   // Vson input configs
   // Vson files store key/value schema on file header. key / value fields are optional
   // and should be specified only when key / value schema is the partial of the files.
-  public final static String FILE_KEY_SCHEMA = "key.schema";
-  public final static String FILE_VALUE_SCHEMA = "value.schema";
+  public static final String FILE_KEY_SCHEMA = "key.schema";
+  public static final String FILE_VALUE_SCHEMA = "value.schema";
   public static final String KEY_FIELD_PROP = "key.field";
   public static final String VALUE_FIELD_PROP = "value.field";
 

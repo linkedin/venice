@@ -34,7 +34,7 @@ public class UpdateStoreQueryParams extends QueryParams {
     setReplicateAllConfigs(false);
   }
 
-  private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   /**
    * This method must be updated everytime a new store property is introduced
@@ -552,7 +552,7 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   private UpdateStoreQueryParams putStringList(String name, List<String> value) {
     try {
-      return (UpdateStoreQueryParams) add(name, mapper.writeValueAsString(value));
+      return (UpdateStoreQueryParams) add(name, OBJECT_MAPPER.writeValueAsString(value));
     } catch (JsonProcessingException e) {
       throw new VeniceException(e.getMessage());
     }
@@ -563,7 +563,7 @@ public class UpdateStoreQueryParams extends QueryParams {
       return Optional.empty();
     } else {
       try {
-        return Optional.of(mapper.readValue(params.get(name), List.class));
+        return Optional.of(OBJECT_MAPPER.readValue(params.get(name), List.class));
       } catch (IOException e) {
         throw new VeniceException(e.getMessage());
       }

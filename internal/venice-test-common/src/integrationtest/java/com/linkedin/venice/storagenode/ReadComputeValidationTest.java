@@ -50,7 +50,7 @@ import org.testng.annotations.Test;
 
 @Test(singleThreaded = true)
 public class ReadComputeValidationTest {
-  private static final String valuePrefix = "id_";
+  private static final String VALUE_PREFIX = "id_";
   private VeniceClusterWrapper veniceCluster;
   private String storeName;
   private String routerAddr;
@@ -60,11 +60,11 @@ public class ReadComputeValidationTest {
   private VeniceKafkaSerializer valueSerializerSwapped;
   private CompressorFactory compressorFactory;
 
-  private static final List<Float> mfEmbedding = generateRandomFloatList(100);
-  private static final List<Float> companiesEmbedding = generateRandomFloatList(100);
-  private static final List<Float> pymkCosineSimilarityEmbedding = generateRandomFloatList(100);
+  private static final List<Float> MF_EMBEDDING = generateRandomFloatList(100);
+  private static final List<Float> COMPANIES_EMBEDDING = generateRandomFloatList(100);
+  private static final List<Float> PYMK_COSINE_SIMILARITY_EMBEDDING = generateRandomFloatList(100);
 
-  private static final String valueSchemaForCompute = "{" + "  \"namespace\": \"example.compute\",    "
+  private static final String VALUE_SCHEMA_FOR_COMPUTE = "{" + "  \"namespace\": \"example.compute\",    "
       + "  \"type\": \"record\",        " + "  \"name\": \"MemberFeature\",       " + "  \"fields\": [        "
       + "         { \"name\": \"id\", \"type\": \"string\" },             "
       + "         { \"name\": \"name\", \"type\": \"string\" },           "
@@ -72,14 +72,14 @@ public class ReadComputeValidationTest {
       + "         { \"name\": \"member_feature\", \"type\": { \"type\": \"array\", \"items\": \"float\" } }        "
       + "  ]       " + " }       ";
 
-  private static final String valueSchemaForCompute2 = "{" + "  \"namespace\": \"example.compute\",    "
+  private static final String VALUE_SCHEMA_FOR_COMPUTE_2 = "{" + "  \"namespace\": \"example.compute\",    "
       + "  \"type\": \"record\",        " + "  \"name\": \"MemberFeature\",       " + "  \"fields\": [        "
       + "         { \"name\": \"id\", \"type\": \"string\" },             "
       + "         { \"name\": \"name\", \"type\": \"string\" },           "
       + "         { \"name\": \"member_feature\", \"type\": { \"type\": \"array\", \"items\": \"float\" } }        "
       + "  ]       " + " }       ";
 
-  private static final String valueSchemaForComputeSwapped = "{" + "  \"namespace\": \"example.compute\",    "
+  private static final String VALUE_SCHEMA_FOR_COMPUTE_SWAPPED = "{" + "  \"namespace\": \"example.compute\",    "
       + "  \"type\": \"record\",        " + "  \"name\": \"MemberFeature\",       " + "  \"fields\": [        "
       + "         { \"name\": \"id\", \"type\": \"string\" },             "
       + "         { \"name\": \"name\", \"type\": \"string\" },           "
@@ -105,14 +105,14 @@ public class ReadComputeValidationTest {
     String keySchema = "\"int\"";
 
     // Create test store
-    VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion(keySchema, valueSchemaForCompute);
+    VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion(keySchema, VALUE_SCHEMA_FOR_COMPUTE);
     storeName = Version.parseStoreFromKafkaTopicName(creationResponse.getKafkaTopic());
 
     // TODO: Make serializers parameterized so we test them all.
     keySerializer = new VeniceAvroKafkaSerializer(keySchema);
-    valueSerializer = new VeniceAvroKafkaSerializer(valueSchemaForCompute);
-    valueSerializer2 = new VeniceAvroKafkaSerializer(valueSchemaForCompute2);
-    valueSerializerSwapped = new VeniceAvroKafkaSerializer(valueSchemaForComputeSwapped);
+    valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE);
+    valueSerializer2 = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE_2);
+    valueSerializerSwapped = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE_SWAPPED);
 
     compressorFactory = new CompressorFactory();
   }
@@ -147,20 +147,28 @@ public class ReadComputeValidationTest {
         AvroGenericStoreClient<Integer, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr).setUseFastAvro(fastAvro))) {
 
-      pushSyntheticDataToStore(topic, 100, veniceWriter, pushVersion, valueSchemaForCompute, valueSerializer, false, 1);
+      pushSyntheticDataToStore(
+          topic,
+          100,
+          veniceWriter,
+          pushVersion,
+          VALUE_SCHEMA_FOR_COMPUTE,
+          valueSerializer,
+          false,
+          1);
 
       Set<Integer> keySet = new HashSet<>();
       keySet.add(1);
       keySet.add(2);
       storeClient.compute()
-          .cosineSimilarity("companiesEmbedding", pymkCosineSimilarityEmbedding, "companiesEmbedding_score")
-          .cosineSimilarity("member_feature", pymkCosineSimilarityEmbedding, "member_feature_score")
+          .cosineSimilarity("companiesEmbedding", PYMK_COSINE_SIMILARITY_EMBEDDING, "companiesEmbedding_score")
+          .cosineSimilarity("member_feature", PYMK_COSINE_SIMILARITY_EMBEDDING, "member_feature_score")
           .execute(keySet)
           .get();
       ControllerClient controllerClient = new ControllerClient(
           veniceCluster.getClusterName(),
           veniceCluster.getRandmonVeniceController().getControllerUrl());
-      SchemaResponse schemaResponse = controllerClient.addValueSchema(storeName, valueSchemaForCompute2);
+      SchemaResponse schemaResponse = controllerClient.addValueSchema(storeName, VALUE_SCHEMA_FOR_COMPUTE_2);
       // Restart the server to get new schemas
       veniceCluster.stopAndRestartVeniceServer(veniceCluster.getVeniceServers().get(0).getPort());
 
@@ -174,7 +182,7 @@ public class ReadComputeValidationTest {
           100,
           veniceWriter2,
           pushVersion2,
-          valueSchemaForCompute2,
+          VALUE_SCHEMA_FOR_COMPUTE_2,
           valueSerializer2,
           true,
           2);
@@ -183,8 +191,8 @@ public class ReadComputeValidationTest {
 
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
         Map<Integer, GenericRecord> computeResult = storeClient.compute()
-            .cosineSimilarity("companiesEmbedding", pymkCosineSimilarityEmbedding, "companiesEmbedding_score")
-            .cosineSimilarity("member_feature", pymkCosineSimilarityEmbedding, "member_feature_score")
+            .cosineSimilarity("companiesEmbedding", PYMK_COSINE_SIMILARITY_EMBEDDING, "companiesEmbedding_score")
+            .cosineSimilarity("member_feature", PYMK_COSINE_SIMILARITY_EMBEDDING, "member_feature_score")
             .execute(keySet)
             .get();
 
@@ -222,7 +230,7 @@ public class ReadComputeValidationTest {
           100,
           veniceWriter,
           pushVersion,
-          valueSchemaForComputeSwapped,
+          VALUE_SCHEMA_FOR_COMPUTE_SWAPPED,
           valueSerializer,
           false,
           1);
@@ -231,14 +239,14 @@ public class ReadComputeValidationTest {
       keySet.add(1);
       keySet.add(2);
       storeClient.compute()
-          .cosineSimilarity("companiesEmbedding", pymkCosineSimilarityEmbedding, "companiesEmbedding_score")
-          .cosineSimilarity("member_feature", pymkCosineSimilarityEmbedding, "member_feature_score")
+          .cosineSimilarity("companiesEmbedding", PYMK_COSINE_SIMILARITY_EMBEDDING, "companiesEmbedding_score")
+          .cosineSimilarity("member_feature", PYMK_COSINE_SIMILARITY_EMBEDDING, "member_feature_score")
           .execute(keySet)
           .get();
       ControllerClient controllerClient = new ControllerClient(
           veniceCluster.getClusterName(),
           veniceCluster.getRandmonVeniceController().getControllerUrl());
-      SchemaResponse schemaResponse = controllerClient.addValueSchema(storeName, valueSchemaForCompute2);
+      SchemaResponse schemaResponse = controllerClient.addValueSchema(storeName, VALUE_SCHEMA_FOR_COMPUTE_2);
       // Restart the server to get new schemas
       veniceCluster.stopAndRestartVeniceServer(veniceCluster.getVeniceServers().get(0).getPort());
 
@@ -252,7 +260,7 @@ public class ReadComputeValidationTest {
           100,
           veniceWriter2,
           pushVersion2,
-          valueSchemaForComputeSwapped,
+          VALUE_SCHEMA_FOR_COMPUTE_SWAPPED,
           valueSerializerSwapped,
           false,
           2);
@@ -409,12 +417,12 @@ public class ReadComputeValidationTest {
     // Insert test record and wait synchronously for it to succeed
     for (int i = 0; i < numOfRecords; ++i) {
       GenericRecord value = new GenericData.Record(valueSchema);
-      value.put("id", valuePrefix + i);
+      value.put("id", VALUE_PREFIX + i);
       value.put("name", "companiesEmbedding");
       if (!skip) {
-        value.put("companiesEmbedding", companiesEmbedding);
+        value.put("companiesEmbedding", COMPANIES_EMBEDDING);
       }
-      value.put("member_feature", mfEmbedding);
+      value.put("member_feature", MF_EMBEDDING);
       byte[] compressedValue =
           compressorFactory.getCompressor(CompressionStrategy.NO_OP).compress(serializer.serialize(topic, value));
       veniceWriter.put(i, compressedValue, valueSchemaId).get();

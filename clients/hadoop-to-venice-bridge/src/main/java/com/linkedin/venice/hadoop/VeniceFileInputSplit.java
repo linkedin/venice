@@ -13,7 +13,7 @@ import org.apache.hadoop.mapred.InputSplit;
  * 2. {@link ValidateSchemaAndBuildDictMapper} is a map only MR supporting only 1 mapper, so only 1 split is created in total.
  */
 class VeniceFileInputSplit implements InputSplit {
-  protected final static int MAPPER_BUILD_DICTIONARY_KEY = -1;
+  protected static final int MAPPER_BUILD_DICTIONARY_KEY = -1;
   private String inputDirectory;
 
   public VeniceFileInputSplit() {

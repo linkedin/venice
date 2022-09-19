@@ -27,7 +27,7 @@ import org.apache.logging.log4j.Logger;
  * operations that can be performed on the cache
  */
 public class ObjectCacheBackend {
-  private static final Logger logger = LogManager.getLogger(ObjectCacheBackend.class);
+  private static final Logger LOGGER = LogManager.getLogger(ObjectCacheBackend.class);
 
   private final VeniceConcurrentHashMap<String, VeniceStoreCacheStorageEngine> versionTopicToCacheEngineMap =
       new VeniceConcurrentHashMap<>();
@@ -54,7 +54,7 @@ public class ObjectCacheBackend {
   public synchronized void close() {
     // iterate through any version engines and clean up.
     versionTopicToCacheEngineMap.forEach((k, v) -> {
-      logger.info("Closing VeniceStoreCacheBackend for store vers: " + k);
+      LOGGER.info("Closing VeniceStoreCacheBackend for store vers: " + k);
       if (v != null) {
         v.drop();
         v.close();
@@ -132,7 +132,7 @@ public class ObjectCacheBackend {
       for (String key: versionTopicToCacheEngineMap.keySet()) {
         if (!upToDateVersionsSet.contains(key)) {
           // This is no longer in the version list, so clean it out
-          logger.info(String.format("Closing VeniceStoreCacheBackend for store:%s version:%s", storeName, key));
+          LOGGER.info(String.format("Closing VeniceStoreCacheBackend for store:%s version:%s", storeName, key));
           VeniceStoreCacheStorageEngine cache = versionTopicToCacheEngineMap.remove(key);
           cache.drop();
           cache.close();

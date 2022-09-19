@@ -17,7 +17,7 @@ import org.apache.logging.log4j.Logger;
 
 @ChannelHandler.Sharable
 public class RouterSslVerificationHandler extends SimpleChannelInboundHandler<HttpRequest> {
-  private static final Logger logger = LogManager.getLogger(RouterSslVerificationHandler.class);
+  private static final Logger LOGGER = LogManager.getLogger(RouterSslVerificationHandler.class);
   private final SecurityStats stats;
   private final boolean requireSsl;
 
@@ -51,7 +51,7 @@ public class RouterSslVerificationHandler extends SimpleChannelInboundHandler<Ht
       stats.recordNonSslRequest();
       if (requireSsl) {
         // Log that we got an unexpected non-ssl request only if SSL is required
-        logger.warn(
+        LOGGER.warn(
             "[requireSsl={}] Got an unexpected non-ssl request: {} requested {} {}",
             this.requireSsl,
             ctx.channel().remoteAddress(),
@@ -79,8 +79,8 @@ public class RouterSslVerificationHandler extends SimpleChannelInboundHandler<Ht
       return;
     }
 
-    logger.info("Could not set up connection from: " + ctx.channel().remoteAddress());
-    logger.warn(event);
+    LOGGER.info("Could not set up connection from: " + ctx.channel().remoteAddress());
+    LOGGER.warn(event);
     stats.recordSslError();
     NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
     ctx.pipeline().remove(this);

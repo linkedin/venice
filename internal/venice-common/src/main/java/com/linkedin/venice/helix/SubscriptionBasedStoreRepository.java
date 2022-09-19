@@ -15,7 +15,7 @@ import org.apache.logging.log4j.Logger;
 
 public class SubscriptionBasedStoreRepository extends HelixReadOnlyStoreRepository
     implements SubscriptionBasedReadOnlyStoreRepository {
-  private static final Logger logger = LogManager.getLogger(HelixReadOnlyStoreRepository.class);
+  private static final Logger LOGGER = LogManager.getLogger(HelixReadOnlyStoreRepository.class);
 
   private final Set<String> subscription = new HashSet<>();
 
@@ -54,7 +54,7 @@ public class SubscriptionBasedStoreRepository extends HelixReadOnlyStoreReposito
       if (subscription.contains(newStore.getName()) || VeniceSystemStoreUtils.isSystemStore(newStore.getName())) {
         return super.putStore(newStore);
       }
-      logger.info("Ignoring not-subscribed store, storeName=" + newStore.getName());
+      LOGGER.info("Ignoring not-subscribed store, storeName=" + newStore.getName());
       return null;
     }
   }

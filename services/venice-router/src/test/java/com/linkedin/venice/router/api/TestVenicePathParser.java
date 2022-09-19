@@ -47,8 +47,8 @@ import org.testng.annotations.Test;
  */
 public class TestVenicePathParser {
   private final Map<String, String> clusterToD2Map = new HashMap<>();
-  private final static String CLUSTER = "cluster";
-  private final static VeniceRouterConfig mockRouterConfig = mock(VeniceRouterConfig.class);
+  private static final String CLUSTER = "cluster";
+  private static final VeniceRouterConfig MOCK_ROUTER_CONFIG = mock(VeniceRouterConfig.class);
 
   VeniceVersionFinder getVersionFinder() {
     // Mock objects
@@ -86,7 +86,7 @@ public class TestVenicePathParser {
                 requestType,
                 mock(ReadOnlyStoreRepository.class),
                 true)));
-    doReturn(10).when(mockRouterConfig).getRouterMultiGetDecompressionThreads();
+    doReturn(10).when(MOCK_ROUTER_CONFIG).getRouterMultiGetDecompressionThreads();
   }
 
   @AfterClass
@@ -106,7 +106,7 @@ public class TestVenicePathParser {
         partitionFinder,
         getMockedStats(),
         mock(ReadOnlyStoreRepository.class),
-        mockRouterConfig,
+        MOCK_ROUTER_CONFIG,
         compressorFactory);
     BasicFullHttpRequest request = new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri, 0, 0);
     VenicePath path = parser.parseResourceUri(uri, request);
@@ -135,7 +135,7 @@ public class TestVenicePathParser {
         partitionFinder,
         getMockedStats(),
         mock(ReadOnlyStoreRepository.class),
-        mockRouterConfig,
+        MOCK_ROUTER_CONFIG,
         compressorFactory).parseResourceUri(myUri, request);
     ByteBuffer partitionKey = path.getPartitionKey().getKeyBuffer();
     Assert.assertEquals(
@@ -154,7 +154,7 @@ public class TestVenicePathParser {
         partitionFinder,
         getMockedStats(),
         mock(ReadOnlyStoreRepository.class),
-        mockRouterConfig,
+        MOCK_ROUTER_CONFIG,
         compressorFactory).parseResourceUri("/badAction/storeName/key");
   }
 
@@ -198,7 +198,7 @@ public class TestVenicePathParser {
         partitionFinder,
         mockRouterStats,
         storeRepository,
-        mockRouterConfig,
+        MOCK_ROUTER_CONFIG,
         compressorFactory);
     try {
       pathParser.parseResourceUri(myUri, request);

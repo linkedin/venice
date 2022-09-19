@@ -22,10 +22,10 @@ import org.apache.logging.log4j.Logger;
 
 
 public class DaVinciTestContext<K, V> {
-  private static final Logger logger = LogManager.getLogger(DaVinciTestContext.class);
+  private static final Logger LOGGER = LogManager.getLogger(DaVinciTestContext.class);
   private final CachingDaVinciClientFactory daVinciClientFactory;
   private final DaVinciClient<K, V> daVinciClient;
-  private static final int maxAttempt = 10;
+  private static final int MAX_ATTEMPT = 10;
 
   public DaVinciTestContext(CachingDaVinciClientFactory factory, DaVinciClient<K, V> client) {
     daVinciClientFactory = factory;
@@ -49,7 +49,7 @@ public class DaVinciTestContext<K, V> {
         .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
         .setVeniceURL(zkAddress);
     DaVinciClient<K, V> daVinciClient = null;
-    for (int attempt = 1; attempt <= maxAttempt; attempt++) {
+    for (int attempt = 1; attempt <= MAX_ATTEMPT; attempt++) {
       try {
         // Prepare backend config with overrides.
         PropertyBuilder backendConfigBuilder = getDaVinciPropertyBuilder(zkAddress);
@@ -61,12 +61,12 @@ public class DaVinciTestContext<K, V> {
         return daVinciClient;
       } catch (Exception e) {
         String errorMessage = "Got " + e.getClass().getSimpleName()
-            + " while trying to start Da Vinci client. Attempt #" + attempt + "/" + maxAttempt + ".";
-        logger.warn(errorMessage, e);
+            + " while trying to start Da Vinci client. Attempt #" + attempt + "/" + MAX_ATTEMPT + ".";
+        LOGGER.warn(errorMessage, e);
         Utils.closeQuietlyWithErrorLogged(daVinciClient);
       }
     }
-    throw new VeniceException("Failed to start Da Vinci client in " + maxAttempt + " attempts.");
+    throw new VeniceException("Failed to start Da Vinci client in " + MAX_ATTEMPT + " attempts.");
   }
 
   public static <K, V> DaVinciTestContext<K, V> getGenericAvroDaVinciFactoryAndClientWithRetries(
@@ -79,13 +79,13 @@ public class DaVinciTestContext<K, V> {
       Map<String, Object> extraBackendProperties) {
     CachingDaVinciClientFactory factory = null;
     DaVinciClient<K, V> daVinciClient = null;
-    for (int attempt = 1; attempt <= maxAttempt; attempt++) {
+    for (int attempt = 1; attempt <= MAX_ATTEMPT; attempt++) {
       try {
         // Prepare backend config with overrides.
         PropertyBuilder backendConfigBuilder = getDaVinciPropertyBuilder(zkAddress);
         extraBackendProperties.forEach(backendConfigBuilder::put);
         VeniceProperties backendConfig = backendConfigBuilder.build();
-        logger.info("Creating Da Vinci factory with backend config: " + backendConfig);
+        LOGGER.info("Creating Da Vinci factory with backend config: " + backendConfig);
         // Create Da Vinci factory
         factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig, managedClients);
         // Get and start Da Vinci client.
@@ -94,13 +94,13 @@ public class DaVinciTestContext<K, V> {
         return new DaVinciTestContext<>(factory, daVinciClient);
       } catch (Exception e) {
         String errorMessage = "Got " + e.getClass().getSimpleName()
-            + " while trying to start Da Vinci client. Attempt #" + attempt + "/" + maxAttempt + ".";
-        logger.warn(errorMessage, e);
+            + " while trying to start Da Vinci client. Attempt #" + attempt + "/" + MAX_ATTEMPT + ".";
+        LOGGER.warn(errorMessage, e);
         Utils.closeQuietlyWithErrorLogged(daVinciClient);
         Utils.closeQuietlyWithErrorLogged(factory);
       }
     }
-    throw new VeniceException("Failed to start Da Vinci client in " + maxAttempt + " attempts.");
+    throw new VeniceException("Failed to start Da Vinci client in " + MAX_ATTEMPT + " attempts.");
   }
 
   public static PropertyBuilder getDaVinciPropertyBuilder(String zkAddress) {

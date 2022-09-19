@@ -16,7 +16,7 @@ import org.testng.Assert;
 
 
 public class NativeReplicationTestUtils {
-  private static final Logger logger = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger();
 
   public static void verifyDCConfigNativeRepl(
       List<ControllerClient> controllerClients,
@@ -56,7 +56,7 @@ public class NativeReplicationTestUtils {
     // Verify the data in the first child fabric which consumes remotely
     for (int idx = 0; idx < childDatacenters.size(); idx++) {
       VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(idx);
-      logger.info("verifying dc-" + idx);
+      LOGGER.info("verifying dc-" + idx);
       String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
       try (AvroGenericStoreClient<String, Object> client = ClientFactory
           .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {

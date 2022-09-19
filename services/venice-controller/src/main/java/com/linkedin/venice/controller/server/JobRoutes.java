@@ -29,7 +29,7 @@ import spark.Route;
 
 
 public class JobRoutes extends AbstractRoute {
-  private static final Logger logger = LogManager.getLogger(JobRoutes.class);
+  private static final Logger LOGGER = LogManager.getLogger(JobRoutes.class);
   private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer =
       AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
 
@@ -57,7 +57,7 @@ public class JobRoutes extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -113,7 +113,7 @@ public class JobRoutes extends AbstractRoute {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject
               .setError("You don't have permission to kill this push job; please grant write ACL for yourself.");
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, KILL_OFFLINE_PUSH_JOB.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
@@ -126,7 +126,7 @@ public class JobRoutes extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -135,7 +135,7 @@ public class JobRoutes extends AbstractRoute {
       PushJobStatusUploadResponse responseObject = new PushJobStatusUploadResponse();
       response.type(HttpConstants.JSON);
       // TODO: remove once all h2v plugin deployments have updated and no longer calling into this for reporting.
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -172,7 +172,7 @@ public class JobRoutes extends AbstractRoute {
         admin.sendPushJobDetails(key, pushJobDetails);
 
         if (pushJobDetails.sendLivenessHeartbeatFailureDetails != null) {
-          logger.warn(
+          LOGGER.warn(
               String.format(
                   "Sending push job liveness heartbeats for store %s with version %d failed due to "
                       + "%s. Push job ID is: %s",
@@ -186,7 +186,7 @@ public class JobRoutes extends AbstractRoute {
         controllerResponse.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(controllerResponse);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(controllerResponse);
     });
   }
 
@@ -206,7 +206,7 @@ public class JobRoutes extends AbstractRoute {
         incrementalPushVersionsResponse.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.mapper.writeValueAsString(incrementalPushVersionsResponse);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(incrementalPushVersionsResponse);
     });
   }
 }

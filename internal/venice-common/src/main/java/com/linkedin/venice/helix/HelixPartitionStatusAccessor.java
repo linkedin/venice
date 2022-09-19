@@ -17,7 +17,7 @@ import org.apache.logging.log4j.Logger;
 public class HelixPartitionStatusAccessor extends HelixPartitionStateAccessor {
   static final String PARTITION_DELIMITER = "_";
   private final boolean helixHybridStoreQuotaEnabled;
-  private static final Logger logger = LogManager.getLogger(HelixPartitionStatusAccessor.class);
+  private static final Logger LOGGER = LogManager.getLogger(HelixPartitionStatusAccessor.class);
 
   public HelixPartitionStatusAccessor(
       HelixManager helixManager,
@@ -60,7 +60,7 @@ public class HelixPartitionStatusAccessor extends HelixPartitionStateAccessor {
     try {
       super.deleteReplicaStatus(HelixPartitionState.OFFLINE_PUSH, topic, getPartitionNameFromId(topic, partitionId));
     } catch (NullPointerException e) {
-      logger.warn(
+      LOGGER.warn(
           "The partition " + partitionId + " doesn't exist in resource " + topic
               + " , cannot delete a non-existent partition state for " + HelixPartitionState.OFFLINE_PUSH.name());
     }
@@ -71,7 +71,7 @@ public class HelixPartitionStatusAccessor extends HelixPartitionStateAccessor {
             topic,
             getPartitionNameFromId(topic, partitionId));
       } catch (NullPointerException e) {
-        logger.warn(
+        LOGGER.warn(
             "The partition " + partitionId + " doesn't exist in resource " + topic
                 + " , cannot delete a non-existent partition state for "
                 + HelixPartitionState.HYBRID_STORE_QUOTA.name());

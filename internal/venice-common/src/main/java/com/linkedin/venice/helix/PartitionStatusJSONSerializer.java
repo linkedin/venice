@@ -13,9 +13,9 @@ import com.linkedin.venice.pushmonitor.StatusSnapshot;
 public class PartitionStatusJSONSerializer extends VeniceJsonSerializer<PartitionStatus> {
   public PartitionStatusJSONSerializer() {
     super(PartitionStatus.class);
-    mapper.addMixIn(PartitionStatus.class, PartitionStatusSerializerMixin.class);
-    mapper.addMixIn(StatusSnapshot.class, OfflinePushStatusJSONSerializer.StatusSnapshotSerializerMixin.class);
-    mapper.addMixIn(ReplicaStatus.class, ReplicaStatusSerializerMixin.class);
+    OBJECT_MAPPER.addMixIn(PartitionStatus.class, PartitionStatusSerializerMixin.class);
+    OBJECT_MAPPER.addMixIn(StatusSnapshot.class, OfflinePushStatusJSONSerializer.StatusSnapshotSerializerMixin.class);
+    OBJECT_MAPPER.addMixIn(ReplicaStatus.class, ReplicaStatusSerializerMixin.class);
   }
 
   public static class PartitionStatusSerializerMixin {

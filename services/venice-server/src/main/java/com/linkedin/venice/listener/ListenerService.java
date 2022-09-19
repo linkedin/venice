@@ -37,7 +37,7 @@ import org.apache.logging.log4j.Logger;
  * Service that listens on configured port to accept incoming GET requests
  */
 public class ListenerService extends AbstractVeniceService {
-  private static final Logger logger = LogManager.getLogger(ListenerService.class);
+  private static final Logger LOGGER = LogManager.getLogger(ListenerService.class);
 
   private final ServerBootstrap bootstrap;
   private EventLoopGroup bossGroup;
@@ -113,9 +113,9 @@ public class ListenerService extends AbstractVeniceService {
         workerGroup = new EpollEventLoopGroup(serverConfig.getNettyWorkerThreadCount()); // if 0, defaults to 2*cpu
                                                                                          // count
         serverSocketChannelClass = EpollServerSocketChannel.class;
-        logger.info("Epoll is enabled in Server Rest Service");
+        LOGGER.info("Epoll is enabled in Server Rest Service");
       } catch (LinkageError error) {
-        logger.info("Epoll is only supported on Linux; switching to NIO for Server Rest Service", error);
+        LOGGER.info("Epoll is only supported on Linux; switching to NIO for Server Rest Service", error);
         epollEnabled = false;
       }
     }
@@ -137,7 +137,7 @@ public class ListenerService extends AbstractVeniceService {
   @Override
   public boolean startInner() throws Exception {
     serverFuture = bootstrap.bind(port).sync();
-    logger.info("Listener service started on port: " + port);
+    LOGGER.info("Listener service started on port: " + port);
 
     // There is no async process in this function, so we are completely finished with the start up process.
     return true;

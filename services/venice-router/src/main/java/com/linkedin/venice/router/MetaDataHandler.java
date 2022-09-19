@@ -73,11 +73,12 @@ import org.apache.logging.log4j.Logger;
  */
 @ChannelHandler.Sharable
 public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
-  private static final Logger logger = LogManager.getLogger(MetaDataHandler.class);
-  private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
-  private static final StoreJSONSerializer storeSerializer = new StoreJSONSerializer();
-  private static final SystemStoreJSONSerializer systemStoreSerializer = new SystemStoreJSONSerializer();
-  private static final RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
+  private static final Logger LOGGER = LogManager.getLogger(MetaDataHandler.class);
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
+  private static final StoreJSONSerializer STORE_SERIALIZER = new StoreJSONSerializer();
+  private static final SystemStoreJSONSerializer SYSTEM_STORE_SERIALIZER = new SystemStoreJSONSerializer();
+  private static final RedundantExceptionFilter EXCEPTION_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private final RoutingDataRepository routingDataRepository;
   private final ReadOnlySchemaRepository schemaRepo;
@@ -163,10 +164,10 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     LeaderControllerResponse responseObject = new LeaderControllerResponse();
     responseObject.setCluster(clusterName);
     responseObject.setUrl(routingDataRepository.getLeaderController().getUrl());
-    logger.info(
+    LOGGER.info(
         "For cluster " + responseObject.getCluster() + ", the leader controller url is " + responseObject.getUrl()
             + ", last refreshed at " + routingDataRepository.getLeaderControllerChangeTimeMs());
-    setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
+    setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
   }
 
   private void handleKeySchemaLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
@@ -183,7 +184,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     responseObject.setName(storeName);
     responseObject.setId(keySchema.getId());
     responseObject.setSchemaStr(keySchema.getSchema().toString());
-    setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
+    setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
   }
 
   private void handleValueSchemaLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
@@ -213,7 +214,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
         ++cur;
       }
       responseObject.setSchemas(schemas);
-      setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
+      setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
     } else {
       // URI: /value_schema/{$storeName}/{$valueSchemaId}
       // Get single value schema
@@ -228,7 +229,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       }
       responseObject.setId(valueSchema.getId());
       responseObject.setSchemaStr(valueSchema.getSchema().toString());
-      setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
+      setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
     }
   }
 
@@ -258,7 +259,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       responseObject.setId(valueSchemaId);
       responseObject.setDerivedSchemaId(updateSchemaOptional.get().getId());
       responseObject.setSchemaStr(updateSchemaOptional.get().getSchemaStr());
-      setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
+      setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
     }
   }
 
@@ -287,13 +288,13 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       responseObject.setZkAddress(zkAddress);
       responseObject.setKafkaZkAddress(kafkaZkAddress);
       responseObject.setKafkaBootstrapServers(kafkaBootstrapServers);
-      setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
+      setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
     } else {
       D2ServiceDiscoveryResponse responseObject = new D2ServiceDiscoveryResponse();
       responseObject.setCluster(config.get().getCluster());
       responseObject.setName(config.get().getStoreName());
       responseObject.setD2Service(d2Service);
-      setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
+      setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
     }
   }
 
@@ -312,7 +313,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     if (status.equals(NOT_FOUND)) {
       responseObject.setErrorType(ErrorType.STORE_NOT_FOUND);
     }
-    setupResponseAndFlush(status, mapper.writeValueAsBytes(responseObject), true, ctx);
+    setupResponseAndFlush(status, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
   }
 
   private void handleResourceStateLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
@@ -364,7 +365,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     response.setName(resourceName);
     response.setReplicaStates(replicaStates);
     response.setReadyToServe(isResourceReadyToServe);
-    setupResponseAndFlush(OK, mapper.writeValueAsBytes(response), true, ctx);
+    setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(response), true, ctx);
   }
 
   /**
@@ -384,7 +385,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     PushStatusResponse pushStatusResponse = new PushStatusResponse();
     pushStatusResponse.setName(resourceName);
     pushStatusResponse.setError("Only support getting push status for stores running in Leader/Follower mode");
-    setupResponseAndFlush(BAD_REQUEST, mapper.writeValueAsBytes(pushStatusResponse), true, ctx);
+    setupResponseAndFlush(BAD_REQUEST, OBJECT_MAPPER.writeValueAsBytes(pushStatusResponse), true, ctx);
   }
 
   /**
@@ -438,9 +439,9 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     byte[] body;
     if (store instanceof SystemStore) {
       SystemStore systemStore = (SystemStore) store;
-      body = systemStoreSerializer.serialize(systemStore.getSerializableSystemStore(), null);
+      body = SYSTEM_STORE_SERIALIZER.serialize(systemStore.getSerializableSystemStore(), null);
     } else {
-      body = storeSerializer.serialize(store, null);
+      body = STORE_SERIALIZER.serialize(store, null);
     }
     setupResponseAndFlush(OK, body, true, ctx);
   }
@@ -455,7 +456,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     } else {
       hybridStoreQuotaStatusResponse.setQuotaStatus(HybridStoreQuotaStatus.UNKNOWN);
     }
-    setupResponseAndFlush(OK, mapper.writeValueAsBytes(hybridStoreQuotaStatusResponse), true, ctx);
+    setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(hybridStoreQuotaStatusResponse), true, ctx);
   }
 
   private String getD2ServiceByClusterName(String clusterName) {
@@ -484,21 +485,21 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable e) throws Exception {
     InetSocketAddress sockAddr = (InetSocketAddress) (ctx.channel().remoteAddress());
     String remoteAddr = sockAddr.getHostName() + ":" + sockAddr.getPort();
-    if (!filter.isRedundantException(sockAddr.getHostName(), e)) {
-      logger.error("Got exception while handling meta data request from " + remoteAddr + ": ", e);
+    if (!EXCEPTION_FILTER.isRedundantException(sockAddr.getHostName(), e)) {
+      LOGGER.error("Got exception while handling meta data request from " + remoteAddr + ": ", e);
     }
 
     try {
       if (ExceptionUtils.recursiveClassEquals(e, CertificateExpiredException.class)) {
         String errorMsg = "Your certificate has expired. Please renew.";
         setupResponseAndFlush(UNAUTHORIZED, errorMsg.getBytes(), false, ctx);
-        logger.info("Sent an error message to client about expired certificate");
+        LOGGER.info("Sent an error message to client about expired certificate");
       } else {
         String stackTraceStr = ExceptionUtils.stackTraceToString(e);
         setupResponseAndFlush(INTERNAL_SERVER_ERROR, stackTraceStr.getBytes(), false, ctx);
       }
     } catch (Exception ex) {
-      logger.error("Got exception while trying to send error response", ex);
+      LOGGER.error("Got exception while trying to send error response", ex);
     } finally {
       ctx.channel().close();
     }

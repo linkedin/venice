@@ -84,7 +84,7 @@ public class IsolatedIngestionUtils {
 
   public static final String PID = "pid";
 
-  private static final Logger logger = LogManager.getLogger(IsolatedIngestionUtils.class);
+  private static final Logger LOGGER = LogManager.getLogger(IsolatedIngestionUtils.class);
   private static final int D2_STARTUP_TIMEOUT = 60000;
   private static final int SHELL_COMMAND_WAIT_TIME = 1000;
 
@@ -125,11 +125,11 @@ public class IsolatedIngestionUtils {
               new AbstractMap.SimpleEntry<>(SHUTDOWN_COMPONENT, ingestionTaskReportSerializer))
           .collect(Collectors.toMap(AbstractMap.SimpleEntry::getKey, AbstractMap.SimpleEntry::getValue));
 
-  private static final IngestionTaskCommand dummyCommand = new IngestionTaskCommand();
+  private static final IngestionTaskCommand DUMMY_COMMAND = new IngestionTaskCommand();
   static {
-    dummyCommand.topicName = "";
+    DUMMY_COMMAND.topicName = "";
   }
-  private static final byte[] dummyContent = ingestionTaskCommandSerializer.serialize(null, dummyCommand);
+  private static final byte[] DUMMY_CONTENT = ingestionTaskCommandSerializer.serialize(null, DUMMY_COMMAND);
 
   public static <T extends SpecificRecordBase> byte[] serializeIngestionActionRequest(IngestionAction action, T param) {
     return ingestionActionToRequestSerializerMap.get(action).serialize(null, param);
@@ -154,11 +154,11 @@ public class IsolatedIngestionUtils {
   }
 
   public static IngestionTaskCommand getDummyCommand() {
-    return dummyCommand;
+    return DUMMY_COMMAND;
   }
 
   public static byte[] getDummyContent() {
-    return dummyContent;
+    return DUMMY_CONTENT;
   }
 
   public static byte[] serializeStoreVersionState(String topicName, StoreVersionState storeVersionState) {
@@ -196,13 +196,13 @@ public class IsolatedIngestionUtils {
       @Override
       public void onSuccess(None result) {
         latch.countDown();
-        logger.info("D2 client started successfully");
+        LOGGER.info("D2 client started successfully");
       }
 
       @Override
       public void onError(Throwable e) {
         latch.countDown();
-        logger.error("D2 client failed to startup", e);
+        LOGGER.error("D2 client failed to startup", e);
       }
     });
     try {
@@ -244,14 +244,14 @@ public class IsolatedIngestionUtils {
       } catch (Exception e) {
         retryCount++;
         if (retryCount > maxAttempt) {
-          logger.info("Fail to connect to target port " + port + " after " + maxAttempt + " retries.");
+          LOGGER.info("Fail to connect to target port " + port + " after " + maxAttempt + " retries.");
           throw e;
         }
         Utils.sleep(waitTime);
       }
     }
     long endTime = System.currentTimeMillis();
-    logger.info("Connect time to target port in millis: " + (endTime - startTime));
+    LOGGER.info("Connect time to target port in millis: " + (endTime - startTime));
   }
 
   /**
@@ -259,11 +259,11 @@ public class IsolatedIngestionUtils {
    * the port, which is created from previous deployment and was not killed due to unexpected failures.
    */
   public static void releaseTargetPortBinding(int port) {
-    logger.info("Releasing isolated ingestion process binding on target port: " + port);
+    LOGGER.info("Releasing isolated ingestion process binding on target port: " + port);
     Optional<Integer> lingeringIngestionProcessPid = getLingeringIngestionProcessId(port);
     if (lingeringIngestionProcessPid.isPresent()) {
       int pid = lingeringIngestionProcessPid.get();
-      logger.info("Found lingering ingestion process ID: " + pid);
+      LOGGER.info("Found lingering ingestion process ID: " + pid);
       executeShellCommand("kill -9 " + pid);
       boolean hasLingeringProcess = true;
       while (hasLingeringProcess) {
@@ -271,18 +271,18 @@ public class IsolatedIngestionUtils {
           Thread.sleep(SHELL_COMMAND_WAIT_TIME);
           lingeringIngestionProcessPid = getLingeringIngestionProcessId(port);
           if (!lingeringIngestionProcessPid.isPresent() || lingeringIngestionProcessPid.get() != pid) {
-            logger.info("Lingering ingestion process on pid " + pid + " is killed.");
+            LOGGER.info("Lingering ingestion process on pid " + pid + " is killed.");
             hasLingeringProcess = false;
           }
         } catch (InterruptedException e) {
           // Keep the interruption flag.
           Thread.currentThread().interrupt();
-          logger.info("Shell command execution was interrupted");
+          LOGGER.info("Shell command execution was interrupted");
           break;
         }
       }
     } else {
-      logger.info("No lingering ingestion process is running on target port: " + port);
+      LOGGER.info("No lingering ingestion process is running on target port: " + port);
     }
   }
 
@@ -295,12 +295,12 @@ public class IsolatedIngestionUtils {
     Optional<Integer> isolatedIngestionProcessPid = Optional.empty();
     String processIds = executeShellCommand("/usr/sbin/lsof -t -i :" + port);
     if (processIds.length() != 0) {
-      logger.info("Target port is associated to process IDs:\n" + processIds);
+      LOGGER.info("Target port is associated to process IDs:\n" + processIds);
       for (String processId: processIds.split("\n")) {
         if (!processId.equals("")) {
           int pid = Integer.parseInt(processId);
           String fullProcessName = executeShellCommand("ps -p " + pid + " -o command");
-          logger.info("Target port: " + port + " is associated to process: " + fullProcessName + " with pid: " + pid);
+          LOGGER.info("Target port: " + port + " is associated to process: " + fullProcessName + " with pid: " + pid);
           if (fullProcessName.contains(IsolatedIngestionServer.class.getName())) {
             isolatedIngestionProcessPid = Optional.of(pid);
           }
@@ -319,7 +319,7 @@ public class IsolatedIngestionUtils {
         if (command.contains("kill")) {
           throw new VeniceException("Encountered exitCode " + exitCode + " when executing shell command: " + command);
         } else {
-          logger.info("Exit code " + exitCode + " when executing shell command: " + command);
+          LOGGER.info("Exit code " + exitCode + " when executing shell command: " + command);
           return "";
         }
       }
@@ -331,7 +331,7 @@ public class IsolatedIngestionUtils {
       if (command.contains("kill")) {
         throw new VeniceException("Encountered exception when executing shell command: " + command, e);
       } else {
-        logger.info("Encounter exception when executing shell command: " + command, e);
+        LOGGER.info("Encounter exception when executing shell command: " + command, e);
         return "";
       }
     }
@@ -367,10 +367,10 @@ public class IsolatedIngestionUtils {
   public static void destroyIsolatedIngestionProcess(Process isolatedIngestionServiceProcess) {
     if (isolatedIngestionServiceProcess != null) {
       long startTime = System.currentTimeMillis();
-      logger.info("Destroying lingering isolated ingestion process.");
+      LOGGER.info("Destroying lingering isolated ingestion process.");
       isolatedIngestionServiceProcess.destroy();
       long endTime = System.currentTimeMillis();
-      logger.info("Isolated ingestion process has been destroyed in " + (endTime - startTime) + "ms.");
+      LOGGER.info("Isolated ingestion process has been destroyed in " + (endTime - startTime) + "ms.");
     }
   }
 
@@ -382,7 +382,7 @@ public class IsolatedIngestionUtils {
     if (fullProcessName.contains(IsolatedIngestionServer.class.getName())) {
       executeShellCommand("kill -9 " + pid);
     } else {
-      logger.warn("PID: " + pid + " does not belong to isolated ingestion process, will not kill the process.");
+      LOGGER.warn("PID: " + pid + " does not belong to isolated ingestion process, will not kill the process.");
     }
   }
 
@@ -400,9 +400,9 @@ public class IsolatedIngestionUtils {
         destroyIsolatedIngestionProcessByPid(pid);
       }
     } catch (FileNotFoundException e) {
-      logger.info("No lingering ingestion process was found, so there is nothing to cleanup. Moving on.");
+      LOGGER.info("No lingering ingestion process was found, so there is nothing to cleanup. Moving on.");
     } catch (Exception e) {
-      logger.warn("Caught an exception while trying to clean up a lingering ingestion process.", e);
+      LOGGER.warn("Caught an exception while trying to clean up a lingering ingestion process.", e);
     }
     releaseTargetPortBinding(configLoader.getVeniceServerConfig().getIngestionServicePort());
   }
@@ -450,7 +450,7 @@ public class IsolatedIngestionUtils {
         Paths.get(configBasePath, ISOLATED_INGESTION_KAFKA_CLUSTER_MAP_FILENAME).toAbsolutePath().toString();
     File configFile = new File(configFilePath);
     if (configFile.exists()) {
-      logger.info("Kafka cluster map file already exists, will delete existing file: " + configFilePath);
+      LOGGER.info("Kafka cluster map file already exists, will delete existing file: " + configFilePath);
       if (!configFile.delete()) {
         throw new VeniceException("Unable to delete config file: " + configFilePath);
       }
@@ -507,11 +507,11 @@ public class IsolatedIngestionUtils {
           throw new VeniceException(
               "Ingestion isolation SSL is enabled for communication, but SSL configs are missing.");
         }
-        logger.info("SSL is enabled, will create SSLEngineComponentFactory");
+        LOGGER.info("SSL is enabled, will create SSLEngineComponentFactory");
         SSLConfig sslConfig = new SSLConfig(configLoader.getCombinedProperties());
         return Optional.of(new SSLEngineComponentFactoryImpl(sslConfig.getSslEngineComponentConfig()));
       } else {
-        logger.warn("SSL is not enabled");
+        LOGGER.warn("SSL is not enabled");
         return Optional.empty();
       }
     } catch (Exception e) {
@@ -530,7 +530,7 @@ public class IsolatedIngestionUtils {
           throw new VeniceException(
               "Ingestion isolation SSL is enabled for communication, but SSL configs are missing.");
         }
-        logger.info("SSL is enabled, will create SSLFactory");
+        LOGGER.info("SSL is enabled, will create SSLFactory");
         return Optional.of(new DefaultSSLFactory(configLoader.getCombinedProperties().toProperties()));
       } catch (Exception e) {
         throw new VeniceException("Caught exception during SSLFactory creation", e);
@@ -546,7 +546,7 @@ public class IsolatedIngestionUtils {
   public static Optional<SSLFactory> getSSLFactoryForIngestion(VeniceConfigLoader configLoader) {
     if (sslEnabled(configLoader)) {
       try {
-        logger.info("SSL is enabled, will create SSLFactory");
+        LOGGER.info("SSL is enabled, will create SSLFactory");
         return Optional.of(new DefaultSSLFactory(configLoader.getCombinedProperties().toProperties()));
       } catch (Exception e) {
         throw new VeniceException("Caught exception during SSLFactory creation", e);
@@ -564,7 +564,7 @@ public class IsolatedIngestionUtils {
         throw new VeniceException(
             "Ingestion isolation server SSL and ACL validation are enabled, but allowed principal name is missing in config.");
       }
-      logger.info(
+      LOGGER.info(
           "Isolated ingestion server request ACL validation is enabled. Creating ACL handler with allowed principal name: "
               + allowedPrincipalName);
       return Optional.of(new IsolatedIngestionServerAclHandler(allowedPrincipalName));
@@ -589,12 +589,12 @@ public class IsolatedIngestionUtils {
       PropertyBuilder propertyBuilder,
       VeniceConfigLoader configLoader) {
     if (!isolatedIngestionServerSslEnabled(configLoader)) {
-      logger.info("Skip populating service principal name since ingestion server SSL is not enabled.");
+      LOGGER.info("Skip populating service principal name since ingestion server SSL is not enabled.");
       return;
     }
 
     if (!isolatedIngestionServerAclEnabled(configLoader)) {
-      logger.info("Skip populating service principal name since ingestion server ACL validation is not enabled.");
+      LOGGER.info("Skip populating service principal name since ingestion server ACL validation is not enabled.");
       return;
     }
 
@@ -624,7 +624,7 @@ public class IsolatedIngestionUtils {
     String configFilePath = Paths.get(basePath, fileName).toAbsolutePath().toString();
     File configFile = new File(configFilePath);
     if (configFile.exists()) {
-      logger.warn("Config file already exists, will delete existing file: " + configFilePath);
+      LOGGER.warn("Config file already exists, will delete existing file: " + configFilePath);
       if (!configFile.delete()) {
         throw new VeniceException("Unable to delete config file: " + configFilePath);
       }
@@ -632,7 +632,7 @@ public class IsolatedIngestionUtils {
     // Store properties into config file.
     try {
       veniceProperties.storeFlattened(configFile);
-      logger.info("Configs are stored into: " + configFilePath);
+      LOGGER.info("Configs are stored into: " + configFilePath);
     } catch (IOException e) {
       throw new VeniceException(e);
     }

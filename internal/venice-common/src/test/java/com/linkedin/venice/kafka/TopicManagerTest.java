@@ -66,7 +66,7 @@ import org.testng.annotations.Test;
 
 
 public class TopicManagerTest {
-  private static final Logger logger = LogManager.getLogger(TopicManagerTest.class);
+  private static final Logger LOGGER = LogManager.getLogger(TopicManagerTest.class);
 
   /** Wait time for {@link #topicManager} operations, in seconds */
   private static final int WAIT_TIME_IN_SECONDS = 10;
@@ -279,7 +279,7 @@ public class TopicManagerTest {
 
     // Since we're dealing with a mock in this test case, we'll just use a fake topic name
     String topicName = "mockTopicName";
-    // Without using mockito spy, the logger inside TopicManager cannot be prepared.
+    // Without using mockito spy, the LOGGER inside TopicManager cannot be prepared.
     TopicManager partiallyMockedTopicManager = Mockito.spy(
         new TopicManager(
             DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
@@ -522,7 +522,7 @@ public class TopicManagerTest {
 
     CompletableFuture delayedTopicCreationFuture = CompletableFuture.runAsync(() -> {
       delayedTopicCreationStartedSignal.countDown();
-      logger.info(
+      LOGGER.info(
           String.format(
               "Thread started and it will create topic %s in %s second(s)",
               initiallyNotExistTopic,
@@ -533,7 +533,7 @@ public class TopicManagerTest {
         Assert.fail("Got unexpected exception...", e);
       }
       topicManager.createTopic(initiallyNotExistTopic, 1, 1, false);
-      logger.info("Created this initially-not-exist topic: " + initiallyNotExistTopic);
+      LOGGER.info("Created this initially-not-exist topic: " + initiallyNotExistTopic);
     });
     Assert.assertTrue(delayedTopicCreationStartedSignal.await(5, TimeUnit.SECONDS));
 
