@@ -71,7 +71,7 @@ public class ObjectCacheBackendTest {
 
     // Make a version push happen that invalidates entries (by triggering the store change event)
     Store mockStore = Mockito.mock(Store.class);
-    Mockito.when(mockStore.getName()).thenReturn(cachedStorageEngine.getStoreName());
+    Mockito.when(mockStore.getName()).thenReturn(STORE_NAME);
     List<Version> newStoreVersions = new ArrayList<>();
     for (Integer version: NEW_STORE_VERSIONS) {
       Version newMockVersion = Mockito.mock(Version.class);
