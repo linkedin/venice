@@ -1,6 +1,6 @@
 package com.linkedin.venice.cleaner;
 
-import static com.linkedin.venice.meta.VersionStatus.*;
+import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -85,6 +85,14 @@ public class BackupVersionOptimizationService extends AbstractVeniceService impl
 
   private boolean stop = false;
 
+  /**
+   * Allocate and initialize a new {@code BackupVersionOptimizationService} object.
+   * @param storeRepository provides readonly operations to access stores.
+   * @param storageEngineRepository local storage engines for a server node.
+   * @param noReadThresholdMSForDatabaseOptimization controls the no read threshold for database optimization to kick in.
+   * @param scheduleIntervalSeconds sets the scheduling interval for this service.
+   * @param stats records the statistics for this service.
+   */
   public BackupVersionOptimizationService(
       ReadOnlyStoreRepository storeRepository,
       StorageEngineRepository storageEngineRepository,

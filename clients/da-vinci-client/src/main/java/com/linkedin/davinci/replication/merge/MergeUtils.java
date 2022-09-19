@@ -1,6 +1,7 @@
 package com.linkedin.davinci.replication.merge;
 
-import static com.linkedin.venice.schema.rmd.RmdConstants.*;
+import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
+import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -97,7 +98,8 @@ public class MergeUtils {
 
     // Making sure there is room available for the insertion (fastserde LongList can't be cast to arraylist)
     // Lists in java require that gaps be filled, so first we fill any gaps by adding some initial offset values
-    for (int i = offsetVector.size(); i <= sourceBrokerID; i++) {
+    int i = offsetVector.size();
+    for (; i <= sourceBrokerID; i++) {
       offsetVector.add(i, 0L);
     }
     offsetVector.set(sourceBrokerID, newOffset);

@@ -3,6 +3,9 @@ package com.linkedin.venice.listener.request;
 import io.netty.handler.codec.http.HttpRequest;
 
 
+/**
+ * {@code MultiKeyRouterRequestWrapper} is a base class for a multi-key operation.
+ */
 public abstract class MultiKeyRouterRequestWrapper<K> extends RouterRequest {
   private final Iterable<K> keys;
   protected int keyCount = 0;

@@ -9,6 +9,10 @@ import org.apache.avro.io.Encoder;
 import org.apache.avro.specific.SpecificDatumWriter;
 
 
+/**
+ * {@code MapOrderPreservingSpecificDatumWriter} converts map type instances to in-memory serialized format
+ * with a consistent ordering of map entries.
+ */
 public class MapOrderPreservingSpecificDatumWriter<T> extends SpecificDatumWriter<T> {
   public MapOrderPreservingSpecificDatumWriter(Schema schema) {
     super(schema);

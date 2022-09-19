@@ -9,6 +9,10 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumReader;
 
 
+/**
+ * {@code MapOrderPreservingDatumReader} converts map type serialized items into instances with
+ * a consistent ordering of entries.
+ */
 public class MapOrderPreservingDatumReader<T> extends GenericDatumReader<T> {
   public MapOrderPreservingDatumReader(Schema writer, Schema reader) {
     super(writer, reader);
