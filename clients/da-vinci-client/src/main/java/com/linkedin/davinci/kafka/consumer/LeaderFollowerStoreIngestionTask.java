@@ -15,7 +15,6 @@ import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
-import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -170,12 +169,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         cacheBackend,
         builder.getLeaderFollowerNotifiers());
     /**
-     * We are going to apply fast leader failover for {@link com.linkedin.venice.common.VeniceSystemStoreType#META_STORE}
-     * since it is time sensitive, and if the split-brain problem happens in prod, we could design a way to periodically
-     * produce snapshot to the meta system store to make correction in the future.
+     * We are going to apply fast leader failover for per user store system store since it is time sensitive, and if the
+     * split-brain problem happens in prod, we could design a way to periodically produce snapshot to the meta system
+     * store to make correction in the future.
      */
-    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
-    if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
+    if (isUserSystemStore()) {
       newLeaderInactiveTime = serverConfig.getServerSystemStorePromotionToLeaderReplicaDelayMs();
     } else {
       newLeaderInactiveTime = serverConfig.getServerPromotionToLeaderReplicaDelayMs();
