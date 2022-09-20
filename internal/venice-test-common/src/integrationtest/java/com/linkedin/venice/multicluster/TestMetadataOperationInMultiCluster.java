@@ -31,7 +31,7 @@ import org.testng.annotations.Test;
 
 
 public class TestMetadataOperationInMultiCluster {
-  private static Logger logger = LogManager.getLogger(TestMetadataOperationInMultiCluster.class);
+  private static final Logger LOGGER = LogManager.getLogger(TestMetadataOperationInMultiCluster.class);
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testCreateStoreAndVersionForMultiCluster() {
@@ -185,7 +185,7 @@ public class TestMetadataOperationInMultiCluster {
           () -> controllerClient.getStore((String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
               .getStore()
               .getCurrentVersion() == expectedVersionNumber);
-      logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
+      LOGGER.info("**TIME** H2V {} takes {}ms.", expectedVersionNumber, (System.currentTimeMillis() - h2vStart));
     }
   }
 }

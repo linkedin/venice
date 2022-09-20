@@ -40,7 +40,7 @@ public class TestReadForHttpClient5 extends TestRead {
     boolean testEnabled = Utils.getJavaMajorVersion() >= 11;
     if (!testEnabled) {
       LOGGER.info(
-          "All the tests are disabled since StorageNodeClientType: {} with HTTP/2 enabled" + " requires JDK11 or above",
+          "All the tests are disabled since StorageNodeClientType: {} with HTTP/2 enabled requires JDK11 or above",
           StorageNodeClientType.HTTP_CLIENT_5_CLIENT);
     }
     return testEnabled;

@@ -56,7 +56,7 @@ public class HttpClient5Test {
           @Override
           public void completed(SimpleHttpResponse result) {
             byte[] body = result.getBodyBytes();
-            LOGGER.info("received response: " + new String(body));
+            LOGGER.info("received response: {}", new String(body));
           }
 
           @Override
@@ -78,7 +78,7 @@ public class HttpClient5Test {
         LOGGER.error("Request timed out");
       }
     } catch (Exception e) {
-      LOGGER.error("Received other types of exception: " + e.getCause().getClass());
+      LOGGER.error("Received other types of exception: {}", e.getCause().getClass());
     }
   }
 
@@ -101,7 +101,7 @@ public class HttpClient5Test {
         ForkedJavaProcess.getClasspath(),
         true,
         Optional.empty());
-    LOGGER.info("Server process id: " + serverProcess.pid());
+    LOGGER.info("Server process id: {}", serverProcess.pid());
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       if (!serverProcess.isAlive()) {
         Assert.fail("Process with pid: " + serverProcess.pid() + " is still not alive yet");
@@ -130,7 +130,7 @@ public class HttpClient5Test {
         // Manually kill -9 process before iteration 150
         if (i == iterationToStopProcess) {
           forceKillProcess(serverProcess.pid());
-          LOGGER.info("Killed process: " + serverProcess.pid());
+          LOGGER.info("Killed process: {}", serverProcess.pid());
         }
         if (i == iterationToRestartProcess) {
           serverProcess = spinupServerProcess();

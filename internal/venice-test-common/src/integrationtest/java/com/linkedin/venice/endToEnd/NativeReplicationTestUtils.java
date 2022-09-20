@@ -56,7 +56,7 @@ public class NativeReplicationTestUtils {
     // Verify the data in the first child fabric which consumes remotely
     for (int idx = 0; idx < childDatacenters.size(); idx++) {
       VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(idx);
-      LOGGER.info("verifying dc-" + idx);
+      LOGGER.info("verifying dc-{}", idx);
       String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
       try (AvroGenericStoreClient<String, Object> client = ClientFactory
           .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {

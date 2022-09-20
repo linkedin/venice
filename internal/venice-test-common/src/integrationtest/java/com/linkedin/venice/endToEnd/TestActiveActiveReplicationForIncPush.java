@@ -165,10 +165,10 @@ public class TestActiveActiveReplicationForIncPush {
       UpdateStoreQueryParams enableAARepl = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true);
 
       // Print all the kafka cluster URLs
-      LOGGER.info("KafkaURL dc-0:" + childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
-      LOGGER.info("KafkaURL dc-1:" + childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
-      LOGGER.info("KafkaURL dc-2:" + childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
-      LOGGER.info("KafkaURL dc-parent-0:" + veniceParentDefaultKafka.getAddress());
+      LOGGER.info("KafkaURL dc-0:{}", childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+      LOGGER.info("KafkaURL dc-1:{}", childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
+      LOGGER.info("KafkaURL dc-2:{}", childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
+      LOGGER.info("KafkaURL dc-parent-0:{}", veniceParentDefaultKafka.getAddress());
 
       // Turn on A/A in parent to trigger auto replication metadata schema registration
       TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, enableAARepl);

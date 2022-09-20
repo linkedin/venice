@@ -149,7 +149,7 @@ public class TestHelixCustomizedView {
       int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
       return currentVersion == pushVersion;
     });
-    LOGGER.info("The current version is " + controllerClient.getStore(storeName).getStore().getCurrentVersion());
+    LOGGER.info("The current version is {}", controllerClient.getStore(storeName).getStore().getCurrentVersion());
     resourceStateResponse = getResourceStateFromRouter();
     Assert.assertEquals(resourceStateResponse.getName(), storeVersionName);
     List<ReplicaState> replicaStates = resourceStateResponse.getReplicaStates();

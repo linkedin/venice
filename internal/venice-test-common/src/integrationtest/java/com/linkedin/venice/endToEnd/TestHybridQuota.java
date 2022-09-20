@@ -202,7 +202,7 @@ public class TestHybridQuota {
         }
       }
       long normalTimeForConsuming = TimeUnit.SECONDS.toMillis(15);
-      LOGGER.info("normalTimeForConsuming:" + normalTimeForConsuming);
+      LOGGER.info("normalTimeForConsuming:{}", normalTimeForConsuming);
       Utils.sleep(normalTimeForConsuming);
 
       String topicVersion = isStreamReprocessing ? Version.composeKafkaTopic(storeName, 4) : topicForStoreVersion3;

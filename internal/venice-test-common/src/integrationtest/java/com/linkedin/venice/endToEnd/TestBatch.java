@@ -484,7 +484,7 @@ public abstract class TestBatch {
     double randomNumber = Math.random();
     String classAndFunctionName = getClass().getSimpleName() + ".testIncrementalPushWritesToRealTimeTopicWithPolicy()";
     String uniqueTestId = "attempt [" + randomNumber + "] of " + classAndFunctionName;
-    LOGGER.info("Start of " + uniqueTestId);
+    LOGGER.info("Start of {}", uniqueTestId);
     try {
       String storeName = testBatchStore(inputDir -> {
         Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
@@ -525,9 +525,9 @@ public abstract class TestBatch {
           }
         });
       }, storeName, null, false);
-      LOGGER.info("Successful end of " + uniqueTestId);
+      LOGGER.info("Successful end of {}", uniqueTestId);
     } catch (Throwable e) {
-      LOGGER.error("Caught throwable in " + uniqueTestId, e);
+      LOGGER.error("Caught throwable in {}", uniqueTestId, e);
       throw e;
     }
   }
@@ -989,7 +989,7 @@ public abstract class TestBatch {
         String expectedString = new String(chars);
         Utf8 expectedUtf8 = new Utf8(expectedString);
 
-        LOGGER.info("About to query key: " + i);
+        LOGGER.info("About to query key: {}", i);
         // This call often fails due to a race condition where the store is not perceived to exist yet
         Utf8 returnedUtf8Value = null;
         Integer attempts = 0;
@@ -1008,7 +1008,7 @@ public abstract class TestBatch {
         }
 
         Assert.assertNotNull(returnedUtf8Value, "Avro client returned null value for key: " + key + ".");
-        LOGGER.info("Received value of size: " + returnedUtf8Value.length() + " for key: " + key);
+        LOGGER.info("Received value of size: {} for key: {}", returnedUtf8Value.length(), key);
         Assert.assertEquals(
             returnedUtf8Value.toString().substring(0, 1),
             key,
@@ -1042,7 +1042,7 @@ public abstract class TestBatch {
 
         Utf8 returnedUtf8Value = utf8Results.get(key);
         Assert.assertNotNull(returnedUtf8Value, "Avro client returned null value for key: " + key + ".");
-        LOGGER.info("Received value of size: " + returnedUtf8Value.length() + " for key: " + key);
+        LOGGER.info("Received value of size: {} for key: {}", returnedUtf8Value.length(), key);
         Assert.assertEquals(
             returnedUtf8Value.toString().substring(0, 1),
             key,
@@ -1186,7 +1186,7 @@ public abstract class TestBatch {
           Assert.assertEquals(utf8Results.size(), keysPerCall, "Not enough records returned!");
           long queryTimeNs = endTime - startTime;
           long queryTimeMs = queryTimeNs / Time.NS_PER_MS;
-          LOGGER.info("Call #" + finalCall + ": " + queryTimeNs + " ns (" + queryTimeMs + " ms).");
+          LOGGER.info("Call #{}: {} ns ({} ms).", finalCall, queryTimeNs, queryTimeMs);
           minQueryTimeMs.add(queryTimeMs);
           maxQueryTimeMs.add(queryTimeMs);
           totalQueryTimeMs.add(queryTimeMs);
@@ -1196,9 +1196,9 @@ public abstract class TestBatch {
         });
         if (call > 0 && call % numberOfConcurrentCallsPerBatch == 0) {
           CompletableFuture.allOf(futures).thenAccept(aVoid -> {
-            LOGGER.info("Min query time: " + minQueryTimeMs + " ms.");
-            LOGGER.info("Max query time: " + maxQueryTimeMs + " ms.");
-            LOGGER.info("Average query time: " + (totalQueryTimeMs.get() / numberOfConcurrentCallsPerBatch) + " ms.");
+            LOGGER.info("Min query time: {} ms.", minQueryTimeMs);
+            LOGGER.info("Max query time: {} ms.", maxQueryTimeMs);
+            LOGGER.info("Average query time: {} ms.", (totalQueryTimeMs.get() / numberOfConcurrentCallsPerBatch));
             minQueryTimeMs.reset();
             maxQueryTimeMs.reset();
             totalQueryTimeMs.reset();
@@ -1209,16 +1209,20 @@ public abstract class TestBatch {
         long allQueriesFinishTime = System.currentTimeMillis();
         double totalQueryTime = allQueriesFinishTime - firstQueryStartTime;
         LOGGER.info(
-            "Total query time: " + totalQueryTime + " ms for " + numberOfCalls + " total queries in "
-                + numberOfBatchesOfConcurrentCalls + " batches of " + numberOfConcurrentCallsPerBatch + " calls each.");
+            "Total query time: {} ms for {} total queries in {} batches of {} calls each.",
+            totalQueryTime,
+            numberOfCalls,
+            numberOfBatchesOfConcurrentCalls,
+            numberOfConcurrentCallsPerBatch);
         DecimalFormat decimalFormat = new DecimalFormat("0.0");
         LOGGER.info(
-            "Throughput (per test metrics): " + decimalFormat.format(numberOfCalls / (totalQueryTime / 1000.0))
-                + " queries / sec");
-        LOGGER.info("Global min query time (per test metrics): " + globalMinQueryTimeMs + " ms.");
-        LOGGER.info("Global max query time (per test metrics): " + globalMaxQueryTimeMs + " ms.");
+            "Throughput (per test metrics): {} queries / sec",
+            decimalFormat.format(numberOfCalls / (totalQueryTime / 1000.0)));
+        LOGGER.info("Global min query time (per test metrics): {} ms.", globalMinQueryTimeMs);
+        LOGGER.info("Global max query time (per test metrics): {} ms.", globalMaxQueryTimeMs);
         LOGGER.info(
-            "Global average query time (per test metrics): " + (globalTotalQueryTimeMs.get() / numberOfCalls) + " ms.");
+            "Global average query time (per test metrics): {} ms.",
+            (globalTotalQueryTimeMs.get() / numberOfCalls));
 
         Map<String, ? extends Metric> metrics = metricsRepository.metrics();
         String metricPrefix = "." + storeName + "--" + RequestType.MULTI_GET.getMetricPrefix();
@@ -1265,39 +1269,40 @@ public abstract class TestBatch {
         Metric latencyMetric99 = metrics.get(metricPrefix + "healthy_request_latency.99thPercentile");
 
         LOGGER.info(
-            "Request serialization time                       (Avg, p50, p99) : "
-                + Utils.round(requestSerializationTimeMetric.value(), 1) + " ms, \t"
-                + Utils.round(requestSerializationTimeMetric50.value(), 1) + " ms, \t"
-                + Utils.round(requestSerializationTimeMetric99.value(), 1) + " ms.");
+            "Request serialization time                       (Avg, p50, p99) : {} ms, \t{} ms, \t{} ms.",
+            Utils.round(requestSerializationTimeMetric.value(), 1),
+            Utils.round(requestSerializationTimeMetric50.value(), 1),
+            Utils.round(requestSerializationTimeMetric99.value(), 1));
         LOGGER.info(
-            "Request submission to response time              (Avg, p50, p99) : "
-                + Utils.round(requestSubmissionToResponseHandlingTimeMetric.value(), 1) + " ms, \t"
-                + Utils.round(requestSubmissionToResponseHandlingTimeMetric50.value(), 1) + " ms, \t"
-                + Utils.round(requestSubmissionToResponseHandlingTimeMetric99.value(), 1) + " ms.");
+            "Request submission to response time              (Avg, p50, p99) : {} ms, \t{} ms, \t{} ms.",
+            Utils.round(requestSubmissionToResponseHandlingTimeMetric.value(), 1),
+            Utils.round(requestSubmissionToResponseHandlingTimeMetric50.value(), 1),
+            Utils.round(requestSubmissionToResponseHandlingTimeMetric99.value(), 1));
         LOGGER.info(
-            "Response deserialization time                    (Avg, p50, p99) : "
-                + Utils.round(responseDeserializationTimeMetric.value(), 1) + " ms, \t"
-                + Utils.round(responseDeserializationTimeMetric50.value(), 1) + " ms, \t"
-                + Utils.round(responseDeserializationTimeMetric99.value(), 1) + " ms.");
+            "Response deserialization time                    (Avg, p50, p99) : {} ms, \t{} ms, \t{} ms.",
+            Utils.round(responseDeserializationTimeMetric.value(), 1),
+            Utils.round(responseDeserializationTimeMetric50.value(), 1),
+            Utils.round(responseDeserializationTimeMetric99.value(), 1));
         LOGGER.info(
-            "Response envelope deserialization time           (Avg, p50, p99) : "
-                + Utils.round(responseEnvelopeDeserializationTimeMetric.value(), 1) + " ms, \t"
-                + Utils.round(responseEnvelopeDeserializationTimeMetric50.value(), 1) + " ms, \t"
-                + Utils.round(responseEnvelopeDeserializationTimeMetric99.value(), 1) + " ms.");
+            "Response envelope deserialization time           (Avg, p50, p99) : {} ms, \t{} ms, \t{} ms.",
+            Utils.round(responseEnvelopeDeserializationTimeMetric.value(), 1),
+            Utils.round(responseEnvelopeDeserializationTimeMetric50.value(), 1),
+            Utils.round(responseEnvelopeDeserializationTimeMetric99.value(), 1));
         LOGGER.info(
-            "Response records deserialization time            (Avg, p50, p99) : "
-                + Utils.round(responseRecordsDeserializationTimeMetric.value(), 9) + " ms, \t"
-                + Utils.round(responseRecordsDeserializationTimeMetric50.value(), 9) + " ms, \t"
-                + Utils.round(responseRecordsDeserializationTimeMetric99.value(), 9) + " ms.");
+            "Response records deserialization time            (Avg, p50, p99) : {}ms, \t{}ms, \t{}ms.",
+            Utils.round(responseRecordsDeserializationTimeMetric.value(), 9),
+            Utils.round(responseRecordsDeserializationTimeMetric50.value(), 9),
+            Utils.round(responseRecordsDeserializationTimeMetric99.value(), 9));
         LOGGER.info(
-            "Response records deserialization submission time (Avg, p50, p99) : "
-                + Utils.round(responseRecordsDeserializationSubmissionToStartTime.value(), 9) + " ms, \t"
-                + Utils.round(responseRecordsDeserializationSubmissionToStartTime50.value(), 9) + " ms, \t"
-                + Utils.round(responseRecordsDeserializationSubmissionToStartTime99.value(), 9) + " ms.");
+            "Response records deserialization submission time (Avg, p50, p99) : {} ms, \t{} ms, \t{} ms.",
+            Utils.round(responseRecordsDeserializationSubmissionToStartTime.value(), 9),
+            Utils.round(responseRecordsDeserializationSubmissionToStartTime50.value(), 9),
+            Utils.round(responseRecordsDeserializationSubmissionToStartTime99.value(), 9));
         LOGGER.info(
-            "Latency                                          (p50, p90, p99) : "
-                + Utils.round(latencyMetric50.value(), 1) + " ms, \t" + Utils.round(latencyMetric90.value(), 1)
-                + " ms, \t" + Utils.round(latencyMetric99.value(), 1) + " ms.");
+            "Latency                                          (p50, p90, p99) : {} ms, \t{} ms, \t{} ms.",
+            Utils.round(latencyMetric50.value(), 1),
+            Utils.round(latencyMetric90.value(), 1),
+            Utils.round(latencyMetric99.value(), 1));
 
       }).get();
     }, new UpdateStoreQueryParams().setBatchGetLimit(1000).setReadQuotaInCU(Integer.MAX_VALUE));

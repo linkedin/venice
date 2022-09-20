@@ -30,8 +30,6 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.IOUtils;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -40,7 +38,6 @@ import org.testng.annotations.Test;
 
 public class TestEarlyTermination {
   private static final int MAX_KEY_LIMIT = 20;
-  private static final Logger LOGGER = LogManager.getLogger(TestEarlyTermination.class);
   private VeniceClusterWrapper veniceCluster;
   private ControllerClient controllerClient;
   private String storeVersionName;

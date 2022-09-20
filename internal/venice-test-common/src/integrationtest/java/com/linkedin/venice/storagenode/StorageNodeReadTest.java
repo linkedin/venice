@@ -252,7 +252,7 @@ public class StorageNodeReadTest {
           jsonEncoder.flush();
           output.flush();
 
-          LOGGER.info("Got an admin response: " + (new String(output.toByteArray())));
+          LOGGER.info("Got an admin response: {}", output);
         } catch (IOException exception) {
           throw new VeniceException(exception);
         }

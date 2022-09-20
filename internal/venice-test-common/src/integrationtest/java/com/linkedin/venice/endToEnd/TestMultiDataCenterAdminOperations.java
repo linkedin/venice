@@ -80,19 +80,19 @@ public class TestMultiDataCenterAdminOperations {
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
 
     LOGGER.info(
-        "parentControllers: " + parentControllers.stream()
-            .map(VeniceControllerWrapper::getControllerUrl)
-            .collect(Collectors.joining(", ")));
+        "parentControllers: {}",
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(", ")));
 
     int i = 0;
     for (VeniceMultiClusterWrapper multiClusterWrapper: childClusters) {
       LOGGER.info(
-          "childCluster" + i++ + " controllers: "
-              + multiClusterWrapper.getControllers()
-                  .values()
-                  .stream()
-                  .map(VeniceControllerWrapper::getControllerUrl)
-                  .collect(Collectors.joining(", ")));
+          "childCluster{} controllers: {}",
+          i++,
+          multiClusterWrapper.getControllers()
+              .values()
+              .stream()
+              .map(VeniceControllerWrapper::getControllerUrl)
+              .collect(Collectors.joining(", ")));
     }
   }
 
