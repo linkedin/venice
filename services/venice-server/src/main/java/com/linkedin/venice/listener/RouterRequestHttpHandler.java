@@ -32,7 +32,6 @@ import java.util.concurrent.TimeUnit;
  * The downstream handler is not expected to use this object any more.
  */
 public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
-  private static final String API_VERSION = "1";
   private final StatsHandler statsHandler;
   private final boolean useFastAvro;
   private final Map<String, Integer> storeToEarlyTerminationThresholdMSMap;

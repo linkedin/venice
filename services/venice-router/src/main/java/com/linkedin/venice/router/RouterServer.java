@@ -133,6 +133,10 @@ public class RouterServer extends AbstractVeniceService {
   private SafeHelixManager manager;
   private ReadOnlySchemaRepository schemaRepository;
   private Optional<MetaStoreShadowReader> metaStoreShadowReader;
+  /*
+   * Helix customized view is a mechanism to store customers' per partition customized states
+   * under each instance, aggregate the states across the cluster, and provide the aggregation results to customers.
+   */
   private HelixCustomizedViewOfflinePushRepository routingDataRepository;
   private Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository;
   private ReadOnlyStoreRepository metadataRepository;
@@ -781,10 +785,9 @@ public class RouterServer extends AbstractVeniceService {
 
     dispatcher.stop();
 
-    if (router.isPresent()) {
-      router.get().shutdown();
-    }
+    router.ifPresent(Router::shutdown);
     secureRouter.shutdown();
+
     if (router.isPresent()) {
       router.get().waitForShutdown();
     }
@@ -883,9 +886,7 @@ public class RouterServer extends AbstractVeniceService {
       routersClusterManager.refresh();
       routersClusterManager.registerRouter(Utils.getHelixNodeIdentifier(config.getPort()));
       routingDataRepository.refresh();
-      if (hybridStoreQuotaRepository.isPresent()) {
-        hybridStoreQuotaRepository.get().refresh();
-      }
+      hybridStoreQuotaRepository.ifPresent(HelixHybridStoreQuotaRepository::refresh);
 
       readRequestThrottler = new ReadRequestThrottler(
           routersClusterManager,

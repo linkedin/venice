@@ -65,5 +65,10 @@ public abstract class VeniceRouteHandler<T extends ControllerResponse> implement
     return true;
   }
 
+  /**
+   * {@internalHandle} provides a common way to write a handler function for an HTTP request and fill in the HTTP response.
+   * @param request HTTP request for Venice.
+   * @param veniceResponse Venice constructed response.
+   */
   public abstract void internalHandle(Request request, T veniceResponse);
 }
