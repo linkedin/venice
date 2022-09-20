@@ -102,43 +102,54 @@ public abstract class AbstractPushMonitor
       // Subscribe to changes first
       List<OfflinePushStatus> refreshedOfflinePushStatusList = new ArrayList<>();
       for (OfflinePushStatus offlinePushStatus: offlinePushStatusList) {
-        routingDataRepository.subscribeRoutingDataChange(offlinePushStatus.getKafkaTopic(), this);
+        try {
+          routingDataRepository.subscribeRoutingDataChange(offlinePushStatus.getKafkaTopic(), this);
 
-        // Now that we're subscribed, update the view of this data. Once we move to L/F, we'll move this logic into the
-        // parameterless
-        // version of this function above. But until then we put it here. We refresh this data after subscribing to be
-        // sure that we're
-        // going to get ALL the change events and not lose any in between reading the data and subscribing to changes in
-        // the data.
-        refreshedOfflinePushStatusList
-            .add(offlinePushAccessor.getOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus.getKafkaTopic()));
+          // Now that we're subscribed, update the view of this data. Once we move to L/F, we'll move this logic into
+          // the
+          // parameterless
+          // version of this function above. But until then we put it here. We refresh this data after subscribing to be
+          // sure that we're
+          // going to get ALL the change events and not lose any in between reading the data and subscribing to changes
+          // in
+          // the data.
+          refreshedOfflinePushStatusList
+              .add(offlinePushAccessor.getOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus.getKafkaTopic()));
+        } catch (Exception e) {
+          logger.error("Could not load offline push for {}", offlinePushStatus.getKafkaTopic(), e);
+        }
+
       }
       offlinePushStatusList = refreshedOfflinePushStatusList;
 
       for (OfflinePushStatus offlinePushStatus: offlinePushStatusList) {
-        topicToPushMap.put(offlinePushStatus.getKafkaTopic(), offlinePushStatus);
-        getOfflinePushAccessor().subscribePartitionStatusChange(offlinePushStatus, this);
+        try {
+          topicToPushMap.put(offlinePushStatus.getKafkaTopic(), offlinePushStatus);
+          getOfflinePushAccessor().subscribePartitionStatusChange(offlinePushStatus, this);
 
-        // Check the status for running pushes. In case controller missed some notification during the failover, we
-        // need to update it based on current routing data.
-        if (!offlinePushStatus.getCurrentStatus().isTerminal()) {
-          String topic = offlinePushStatus.getKafkaTopic();
-          if (routingDataRepository.containsKafkaTopic(topic)) {
-            Pair<ExecutionStatus, Optional<String>> status =
-                checkPushStatus(offlinePushStatus, routingDataRepository.getPartitionAssignments(topic));
-            if (status.getFirst().isTerminal()) {
-              logger.info(
-                  "Found a offline pushes could be terminated: " + offlinePushStatus.getKafkaTopic() + " status: "
-                      + status.getFirst());
-              handleOfflinePushUpdate(offlinePushStatus, status.getFirst(), status.getSecond());
+          // Check the status for running pushes. In case controller missed some notification during the failover, we
+          // need to update it based on current routing data.
+          if (!offlinePushStatus.getCurrentStatus().isTerminal()) {
+            String topic = offlinePushStatus.getKafkaTopic();
+            if (routingDataRepository.containsKafkaTopic(topic)) {
+              Pair<ExecutionStatus, Optional<String>> status =
+                  checkPushStatus(offlinePushStatus, routingDataRepository.getPartitionAssignments(topic));
+              if (status.getFirst().isTerminal()) {
+                logger.info(
+                    "Found a offline pushes could be terminated: " + offlinePushStatus.getKafkaTopic() + " status: "
+                        + status.getFirst());
+                handleOfflinePushUpdate(offlinePushStatus, status.getFirst(), status.getSecond());
+              } else {
+                checkWhetherToStartBufferReplayForHybrid(offlinePushStatus);
+              }
             } else {
-              checkWhetherToStartBufferReplayForHybrid(offlinePushStatus);
+              // In any case, we found the offline push status is STARTED, but the related version could not be found.
+              // We only log it as cleaning up here was found to prematurely delete push jobs during controller failover
+              logger.info("Found legacy offline push: " + offlinePushStatus.getKafkaTopic());
             }
-          } else {
-            // In any case, we found the offline push status is STARTED, but the related version could not be found.
-            // We only log it as cleaning up here was found to prematurely delete push jobs during controller failover
-            logger.info("Found legacy offline push: " + offlinePushStatus.getKafkaTopic());
           }
+        } catch (Exception e) {
+          logger.error("Could not load offline push for {}", offlinePushStatus.getKafkaTopic(), e);
         }
       }
 
@@ -880,7 +891,7 @@ public abstract class AbstractPushMonitor
   }
 
   private Integer getStoreCurrentVersion(String storeName) {
-    Store store = metadataRepository.getStoreOrThrow(storeName);
+    Store store = metadataRepository.getStore(storeName);
     if (store == null) {
       return null;
     }
