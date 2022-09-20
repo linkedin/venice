@@ -19,6 +19,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.router.RouterServer;
+import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
@@ -121,6 +122,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
           .put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(clusterName))
           .put(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)
           .put(ROUTER_THROTTLE_CLIENT_SSL_HANDSHAKES, true)
+          .put(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT.name())
           .put(extraConfigs);
       StoreConfig storeConfig = new StoreConfig("test");
       storeConfig.setCluster(clusterName);
