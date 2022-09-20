@@ -6,6 +6,9 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
 
+/**
+ * {@code RouterKey} encapsulates the required information for a key in a router request.
+ */
 public class RouterKey implements Comparable<RouterKey> {
   private static final int UNKNOWN_PARTITION_ID = -1;
 

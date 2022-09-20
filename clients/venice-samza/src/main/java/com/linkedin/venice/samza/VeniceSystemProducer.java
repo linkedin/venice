@@ -1,7 +1,8 @@
 package com.linkedin.venice.samza;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.schema.AvroSchemaParseUtils.*;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
+import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.d2.balancer.D2Client;
@@ -66,6 +67,9 @@ import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
 
 
+/**
+ * {@code VeniceSystemProducer} defines the interfaces for Samza jobs to send data to Venice stores.
+ */
 public class VeniceSystemProducer implements SystemProducer, Closeable {
   private static final Logger LOGGER = LogManager.getLogger(VeniceSystemProducer.class);
 
@@ -97,20 +101,20 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private final String fsBasePath;
   private final String runningFabric;
   private final boolean verifyLatestProtocolPresent;
+  private final VeniceConcurrentHashMap<Schema, Pair<Integer, Integer>> valueSchemaIds =
+      new VeniceConcurrentHashMap<>();
+  /**
+   * key is schema
+   * value is Avro serializer
+   */
+  private final Map<String, VeniceAvroKafkaSerializer> serializers = new VeniceConcurrentHashMap<>();
 
   // Mutable, lazily initialized, state
   private Schema keySchema;
   private String canonicalKeySchemaStr;
   // To avoid the excessive usage of the cache in case each message is using a unique key schema
   private Map<Schema, String> canonicalSchemaStrCache = new BoundedHashMap<>(10, true);
-  private final VeniceConcurrentHashMap<Schema, Pair<Integer, Integer>> valueSchemaIds =
-      new VeniceConcurrentHashMap<>();
 
-  /**
-   * key is schema
-   * value is Avro serializer
-   */
-  private final Map<String, VeniceAvroKafkaSerializer> serializers = new VeniceConcurrentHashMap<>();
   private D2Client d2Client;
   private D2ControllerClient controllerClient;
   // It can be version topic, real-time topic or stream reprocessing topic, depending on push type
@@ -265,7 +269,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     D2ServiceDiscoveryResponse discoveryResponse = (D2ServiceDiscoveryResponse) controllerRequestWithRetry(
         () -> D2ControllerClient.discoverCluster(d2Client, d2ServiceName, this.storeName));
     String clusterName = discoveryResponse.getCluster();
-    LOGGER.info("Found cluster: " + clusterName + " for store: " + storeName);
+    LOGGER.info("Found cluster: {} for store: {}", clusterName, storeName);
 
     /**
      * Verify that the latest {@link com.linkedin.venice.serialization.avro.AvroProtocolDefinition#KAFKA_MESSAGE_ENVELOPE}
@@ -306,7 +310,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
             Optional.ofNullable(runningFabric),
             false,
             -1));
-    LOGGER.info("Got [store: " + this.storeName + "] VersionCreationResponse: " + versionCreationResponse);
+    LOGGER.info("Got [store: {}] VersionCreationResponse: {}", storeName, versionCreationResponse);
     this.topicName = versionCreationResponse.getKafkaTopic();
     this.kafkaBootstrapServers = versionCreationResponse.getKafkaBootstrapServers();
 
@@ -318,13 +322,13 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
     SchemaResponse keySchemaResponse =
         (SchemaResponse) controllerRequestWithRetry(() -> this.controllerClient.getKeySchema(this.storeName));
-    LOGGER.info("Got [store: " + this.storeName + "] SchemaResponse for key schema: " + keySchemaResponse);
+    LOGGER.info("Got [store: {}] SchemaResponse for key schema: {}", storeName, keySchemaResponse);
     this.keySchema = parseSchemaFromJSONStrictValidation(keySchemaResponse.getSchemaStr());
     this.canonicalKeySchemaStr = AvroCompatibilityHelper.toParsingForm(this.keySchema);
 
     MultiSchemaResponse valueSchemaResponse = (MultiSchemaResponse) controllerRequestWithRetry(
         () -> this.controllerClient.getAllValueAndDerivedSchema(this.storeName));
-    LOGGER.info("Got [store: " + this.storeName + "] SchemaResponse for value schemas: " + valueSchemaResponse);
+    LOGGER.info("Got [store: {}] SchemaResponse for value schemas: {}", storeName, valueSchemaResponse);
     for (MultiSchemaResponse.Schema valueSchema: valueSchemaResponse.getSchemas()) {
       valueSchemaIds.put(
           parseSchemaFromJSONLooseValidation(valueSchema.getSchemaStr()),
@@ -394,13 +398,13 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
       switch (pushMonitor.get().getCurrentStatus()) {
         case COMPLETED:
-          LOGGER.info("Push job for " + topicName + " is COMPLETED.");
+          LOGGER.info("Push job for {} is COMPLETED.", topicName);
           break;
         case END_OF_PUSH_RECEIVED:
-          LOGGER.info("Batch load for " + topicName + " has finished.");
+          LOGGER.info("Batch load for {} has finished.", topicName);
           break;
         case ERROR:
-          LOGGER.info("Push job for " + topicName + " encountered error.");
+          LOGGER.info("Push job for {} encountered error.", topicName);
           break;
         default:
           LOGGER.warn("Push job in Venice backend is still in progress... Will clean up resources in Venice");
@@ -410,7 +414,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
            */
           Utils.sleep(ThreadLocalRandom.current().nextInt(30000));
           controllerClient.retryableRequest(3, c -> c.killOfflinePushJob(versionTopic));
-          LOGGER.info("Offline push job has been killed, topic: " + versionTopic);
+          LOGGER.info("Offline push job has been killed, topic: {}", versionTopic);
       }
       Utils.closeQuietlyWithErrorLogged(pushMonitor.get());
     }
@@ -420,7 +424,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     try {
       FileUtils.deleteDirectory(new File(fsBasePath));
     } catch (IOException e) {
-      LOGGER.info("Error in cleaning up: " + fsBasePath);
+      LOGGER.info("Error in cleaning up: {}", fsBasePath);
     }
   }
 
@@ -450,7 +454,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
               "Push job for resource " + topicName + " is in error state; please reach out to Venice team.");
         case END_OF_PUSH_RECEIVED:
         case COMPLETED:
-          LOGGER.info("Stream reprocessing for resource " + topicName + " has finished. No message will be sent.");
+          LOGGER.info("Stream reprocessing for resource {} has finished. No message will be sent.", topicName);
           return;
         default:
           // no-op
@@ -465,8 +469,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
            * If there are multiple stream SystemProducer in one Samza job, one failed push will
            * also affect other push jobs.
            */
-          LOGGER.error(
-              "Current hybrid store quota status: " + currentStatus + ", should throw exception to kill the job.");
+          LOGGER.error("Current hybrid store quota status: {}, should throw exception to kill the job.", currentStatus);
           throw new VeniceException(
               "Push job for resource " + topicName
                   + " is in hybrid quota violated mode; please reach out to Venice team.");
@@ -518,7 +521,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       Pair<Integer, Integer> valueSchemaIdPair = valueSchemaIds.computeIfAbsent(valueObjectSchema, valueSchema -> {
         SchemaResponse valueSchemaResponse = (SchemaResponse) controllerRequestWithRetry(
             () -> controllerClient.getValueOrDerivedSchemaId(storeName, valueSchema.toString()));
-        LOGGER.info("Got [store: " + this.storeName + "] SchemaResponse for schema: " + valueSchema);
+        LOGGER.info("Got [store: {}] SchemaResponse for schema: {}", storeName, valueSchema);
         return new Pair<>(valueSchemaResponse.getId(), valueSchemaResponse.getDerivedSchemaId());
       });
 

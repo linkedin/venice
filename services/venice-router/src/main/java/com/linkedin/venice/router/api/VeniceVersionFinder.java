@@ -28,6 +28,9 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/**
+ * {@code VeniceVersionFinder} provides methods to find the version for a given store.
+ */
 public class VeniceVersionFinder {
   private static final Logger LOGGER = LogManager.getLogger(VeniceVersionFinder.class);
   private static final RedundantExceptionFilter EXCEPTION_FILTER =

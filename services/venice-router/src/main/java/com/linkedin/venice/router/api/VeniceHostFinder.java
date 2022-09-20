@@ -21,6 +21,9 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/**
+ * {code VeniceHostFinder} finds a set of hosts that can serve the given Venice resource partition.
+ */
 public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceHostFinder.class);
 

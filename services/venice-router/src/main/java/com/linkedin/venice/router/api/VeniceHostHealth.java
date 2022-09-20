@@ -6,6 +6,7 @@ import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.AggHostHealthStats;
+import com.linkedin.venice.router.stats.HostHealthStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
@@ -15,6 +16,10 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/**
+ * {@code VeniceHostHealth} the aggregate statistics for {@linkplain HostHealthStats}.
+ * It recomputes the aggregate metrics for the host healthiness of the cluster.
+ */
 public class VeniceHostHealth implements HostHealthMonitor<Instance> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceHostHealth.class);
   private final int maxPendingConnectionPerHost;

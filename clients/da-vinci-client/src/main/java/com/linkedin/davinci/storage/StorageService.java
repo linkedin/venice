@@ -1,6 +1,8 @@
 package com.linkedin.davinci.storage;
 
-import static com.linkedin.venice.meta.PersistenceType.*;
+import static com.linkedin.venice.meta.PersistenceType.BLACK_HOLE;
+import static com.linkedin.venice.meta.PersistenceType.IN_MEMORY;
+import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -59,6 +61,17 @@ public class StorageService extends AbstractVeniceService {
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
   private final ReadOnlyStoreRepository storeRepository;
 
+  /**
+   * Allocates a new {@code StorageService} object.
+   * @param configLoader a config loader to load configs related to cluster and server.
+   * @param storageEngineStats storage engine related stats.
+   * @param rocksDBMemoryStats RocksDB memory consumption stats.
+   * @param storeVersionStateSerializer serializer for translating a store-version level state into avro-format.
+   * @param partitionStateSerializer serializer for translating a partition state into avro-format.
+   * @param storeRepository supports readonly operations to access stores
+   * @param restoreDataPartitions indicates if store data needs to be restored.
+   * @param restoreMetadataPartitions indicates if meta data needs to be restored.
+   */
   public StorageService(
       VeniceConfigLoader configLoader,
       AggVersionedStorageEngineStats storageEngineStats,
@@ -78,7 +91,7 @@ public class StorageService extends AbstractVeniceService {
       }
 
       File dataDir = new File(dataPath);
-      LOGGER.info("Creating data directory " + dataDir.getAbsolutePath() + ".");
+      LOGGER.info("Creating data directory {}", dataDir.getAbsolutePath());
       dataDir.mkdirs();
     }
 
@@ -98,6 +111,9 @@ public class StorageService extends AbstractVeniceService {
     }
   }
 
+  /**
+   * @see #StorageService(VeniceConfigLoader, AggVersionedStorageEngineStats, RocksDBMemoryStats, InternalAvroSpecificSerializer, InternalAvroSpecificSerializer, ReadOnlyStoreRepository)
+   */
   public StorageService(
       VeniceConfigLoader configLoader,
       AggVersionedStorageEngineStats storageEngineStats,
@@ -140,10 +156,10 @@ public class StorageService extends AbstractVeniceService {
     for (Map.Entry<PersistenceType, StorageEngineFactory> entry: persistenceTypeToStorageEngineFactoryMap.entrySet()) {
       PersistenceType pType = entry.getKey();
       StorageEngineFactory factory = entry.getValue();
-      LOGGER.info("Start restoring all the stores with type: " + pType);
+      LOGGER.info("Start restoring all the stores with type: {}", pType);
       Set<String> storeNames = factory.getPersistedStoreNames();
       for (String storeName: storeNames) {
-        LOGGER.info("Start restoring store: " + storeName + " with type: " + pType);
+        LOGGER.info("Start restoring store: {} with type: {}", storeName, pType);
         /**
          * Setup store-level persistence type based on current database setup.
          */
@@ -166,11 +182,12 @@ public class StorageService extends AbstractVeniceService {
 
         Set<Integer> partitionIds = storageEngine.getPartitionIds();
         LOGGER.info(
-            "Loaded the following partitions: " + Arrays.toString(partitionIds.toArray()) + ", for store: "
-                + storeName);
-        LOGGER.info("Done restoring store: " + storeName + " with type: " + pType);
+            "Loaded the following partitions: {}, for store: {}",
+            Arrays.toString(partitionIds.toArray()),
+            storeName);
+        LOGGER.info("Done restoring store: {} with type: {}", storeName, pType);
       }
-      LOGGER.info("Done restoring all the stores with type: " + pType);
+      LOGGER.info("Done restoring all the stores with type: {}", pType);
     }
     LOGGER.info("Done restoring all the stores persisted previously");
   }
@@ -178,7 +195,7 @@ public class StorageService extends AbstractVeniceService {
   public synchronized AbstractStorageEngine openStoreForNewPartition(
       VeniceStoreVersionConfig storeConfig,
       int partitionId) {
-    LOGGER.info("Opening store for " + storeConfig.getStoreVersionName() + " partition " + partitionId);
+    LOGGER.info("Opening store for {} partition {}", storeConfig.getStoreVersionName(), partitionId);
     AbstractStorageEngine engine = openStore(storeConfig);
     synchronized (engine) {
       for (int subPartition: getSubPartition(storeConfig.getStoreVersionName(), partitionId)) {
@@ -187,7 +204,7 @@ public class StorageService extends AbstractVeniceService {
         }
       }
     }
-    LOGGER.info("Opened store for " + storeConfig.getStoreVersionName() + " partition " + partitionId);
+    LOGGER.info("Opened store for {} partition {}", storeConfig.getStoreVersionName(), partitionId);
     return engine;
   }
 
@@ -236,8 +253,7 @@ public class StorageService extends AbstractVeniceService {
       storeConfig.setStorePersistenceType(storeConfig.getPersistenceType());
     }
 
-    LOGGER
-        .info("Creating/Opening Storage Engine " + topicName + " with type: " + storeConfig.getStorePersistenceType());
+    LOGGER.info("Creating/Opening Storage Engine {} with type: {}", topicName, storeConfig.getStorePersistenceType());
     StorageEngineFactory factory = getInternalStorageEngineFactory(storeConfig);
     engine =
         factory.getStorageEngine(storeConfig, isReplicationMetadataEnabled(topicName, factory.getPersistenceType()));
@@ -246,8 +262,9 @@ public class StorageService extends AbstractVeniceService {
     aggVersionedStorageEngineStats.setStorageEngine(topicName, engine);
 
     LOGGER.info(
-        "time spent on creating new storage Engine for store " + topicName + ": "
-            + LatencyUtils.getLatencyInMS(startTimeInBuildingNewEngine) + " ms");
+        "time spent on creating new storage Engine for store {}: {} ms",
+        topicName,
+        LatencyUtils.getLatencyInMS(startTimeInBuildingNewEngine));
     return engine;
   }
 
@@ -269,15 +286,14 @@ public class StorageService extends AbstractVeniceService {
     String kafkaTopic = storeConfig.getStoreVersionName();
     AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaTopic);
     if (storageEngine == null) {
-      LOGGER.warn("Storage engine " + kafkaTopic + " does not exist, ignoring drop partition request.");
+      LOGGER.warn("Storage engine {} does not exist, ignoring drop partition request.", kafkaTopic);
       return;
     }
     for (int subPartition: getSubPartition(kafkaTopic, partition)) {
       storageEngine.dropPartition(subPartition);
     }
     Set<Integer> remainingPartitions = storageEngine.getPartitionIds();
-    LOGGER
-        .info("Dropped partition " + partition + " of " + kafkaTopic + ", remaining partitions=" + remainingPartitions);
+    LOGGER.info("Dropped partition {} of {}, remaining partitions={}", partition, kafkaTopic, remainingPartitions);
 
     if (remainingPartitions.isEmpty() && removeEmptyStorageEngine) {
       removeStorageEngine(kafkaTopic);
@@ -288,7 +304,7 @@ public class StorageService extends AbstractVeniceService {
     String kafkaTopic = storeConfig.getStoreVersionName();
     AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaTopic);
     if (storageEngine == null) {
-      LOGGER.warn("Storage engine " + kafkaTopic + " does not exist, ignoring close partition request.");
+      LOGGER.warn("Storage engine {} does not exist, ignoring close partition request.", kafkaTopic);
       return;
     }
     for (int subPartition: getSubPartition(kafkaTopic, partition)) {
@@ -299,7 +315,7 @@ public class StorageService extends AbstractVeniceService {
   public synchronized void removeStorageEngine(String kafkaTopic) {
     AbstractStorageEngine<?> storageEngine = getStorageEngineRepository().removeLocalStorageEngine(kafkaTopic);
     if (storageEngine == null) {
-      LOGGER.warn("Storage engine " + kafkaTopic + " does not exist, ignoring remove request.");
+      LOGGER.warn("Storage engine {} does not exist, ignoring remove request.", kafkaTopic);
       return;
     }
     storageEngine.drop();
@@ -314,7 +330,7 @@ public class StorageService extends AbstractVeniceService {
   public synchronized void closeStorageEngine(String kafkaTopic) {
     AbstractStorageEngine<?> storageEngine = getStorageEngineRepository().removeLocalStorageEngine(kafkaTopic);
     if (storageEngine == null) {
-      LOGGER.warn("Storage engine " + kafkaTopic + " does not exist, ignoring close request.");
+      LOGGER.warn("Storage engine {} does not exist, ignoring close request.", kafkaTopic);
       return;
     }
     storageEngine.close();
@@ -333,12 +349,12 @@ public class StorageService extends AbstractVeniceService {
     LOGGER.info("Start cleaning up all the stores persisted previously");
     storageEngineRepository.getAllLocalStorageEngines().stream().forEach(storageEngine -> {
       String storeName = storageEngine.getStoreName();
-      LOGGER.info("Start deleting store: " + storeName);
+      LOGGER.info("Start deleting store: {}", storeName);
       Set<Integer> partitionIds = storageEngine.getPartitionIds();
       for (Integer partitionId: partitionIds) {
         dropStorePartition(configLoader.getStoreConfig(storeName), partitionId);
       }
-      LOGGER.info("Deleted store: " + storeName);
+      LOGGER.info("Deleted store: {}", storeName);
     });
     LOGGER.info("Done cleaning up all the stores persisted previously");
   }
@@ -347,7 +363,7 @@ public class StorageService extends AbstractVeniceService {
     int amplificationFactor = PartitionUtils.getAmplificationFactor(storeRepository, kafkaTopicName);
     AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaTopicName);
     if (storageEngine == null) {
-      LOGGER.warn("Local storage engine does not exist for topic: " + kafkaTopicName);
+      LOGGER.warn("Local storage engine does not exist for topic: {}", kafkaTopicName);
       return Collections.emptyList();
     }
     return PartitionUtils.getUserPartitions(storageEngine.getPartitionIds(), amplificationFactor);
@@ -355,14 +371,14 @@ public class StorageService extends AbstractVeniceService {
 
   public void closeAllStorageEngines() {
     LOGGER.info(
-        "Storage service has " + storageEngineRepository.getAllLocalStorageEngines().size()
-            + " storage engines before cleanup.");
+        "Storage service has {} storage engines before cleanup.",
+        storageEngineRepository.getAllLocalStorageEngines().size());
     for (AbstractStorageEngine storageEngine: storageEngineRepository.getAllLocalStorageEngines()) {
       closeStorageEngine(storageEngine.getStoreName());
     }
     LOGGER.info(
-        "Storage service has " + storageEngineRepository.getAllLocalStorageEngines().size()
-            + " storage engines after cleanup.");
+        "Storage service has {} storage engines after cleanup.",
+        storageEngineRepository.getAllLocalStorageEngines().size());
   }
 
   public StorageEngineRepository getStorageEngineRepository() {
@@ -395,7 +411,7 @@ public class StorageService extends AbstractVeniceService {
     for (Map.Entry<PersistenceType, StorageEngineFactory> storageEngineFactory: persistenceTypeToStorageEngineFactoryMap
         .entrySet()) {
       PersistenceType factoryType = storageEngineFactory.getKey();
-      LOGGER.info("Closing " + factoryType + " storage engine factory");
+      LOGGER.info("Closing {} storage engine factory", factoryType);
       try {
         storageEngineFactory.getValue().close();
       } catch (VeniceException e) {
@@ -438,11 +454,11 @@ public class StorageService extends AbstractVeniceService {
       if (version.isPresent()) {
         return version.get().isActiveActiveReplicationEnabled();
       } else {
-        LOGGER.warn("Version " + versionNum + " of store " + storeName + " does not exist in storeRepository.");
+        LOGGER.warn("Version {} of store {} does not exist in storeRepository.", versionNum, storeName);
         return false;
       }
     } catch (VeniceNoStoreException e) {
-      LOGGER.warn("Store " + storeName + " does not exist in storeRepository.");
+      LOGGER.warn("Store {} does not exist in storeRepository.", storeName);
       return false;
     }
   }

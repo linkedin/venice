@@ -45,6 +45,9 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/**
+ * {@code VeniceResponseAggregator} aggregates the sub-responses returned by storage node for a multi-get request.
+ */
 public class VeniceResponseAggregator implements ResponseAggregatorFactory<BasicFullHttpRequest, FullHttpResponse> {
   private static final List<HttpResponseStatus> HEALTHY_STATUSES = Arrays.asList(OK, NOT_FOUND);
 

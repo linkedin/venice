@@ -1,9 +1,10 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.venice.router.api.VenicePathParser.*;
-import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
-import static com.linkedin.venice.utils.NettyUtils.*;
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_HEALTH_CHECK;
+import static com.linkedin.venice.router.api.VenicePathParserHelper.parseRequest;
+import static com.linkedin.venice.utils.NettyUtils.setupResponseAndFlush;
+import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
+import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.router.stats.HealthCheckStats;
