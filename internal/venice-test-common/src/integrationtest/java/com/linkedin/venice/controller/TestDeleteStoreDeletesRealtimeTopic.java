@@ -121,9 +121,9 @@ public class TestDeleteStoreDeletesRealtimeTopic {
           isTruncated,
           "Real-time buffer topic should be truncated: " + realTimeTopicName + " but retention is set to: "
               + topicManager.getTopicRetention(realTimeTopicName) + ".");
-      LOGGER.info("Confirmed truncation of real-time topic: " + realTimeTopicName);
+      LOGGER.info("Confirmed truncation of real-time topic: {}", realTimeTopicName);
     } catch (TopicDoesNotExistException e) {
-      LOGGER.info("Caught a TopicDoesNotExistException for real-time topic: " + realTimeTopicName + ", which is fine.");
+      LOGGER.info("Caught a TopicDoesNotExistException for real-time topic: {}, which is fine.", realTimeTopicName);
     } catch (Exception e) {
       LOGGER.error(e);
     }

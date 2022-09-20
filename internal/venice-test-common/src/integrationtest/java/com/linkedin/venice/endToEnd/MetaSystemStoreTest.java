@@ -301,7 +301,7 @@ public class MetaSystemStoreTest {
         fail("The store cleanup for meta system store: " + metaSystemStoreName + " is not done yet");
       }
     });
-    LOGGER.info("Resource cleanup is done for meta system store: " + metaSystemStoreName);
+    LOGGER.info("Resource cleanup is done for meta system store: {}", metaSystemStoreName);
   }
 
   @Test(timeOut = 120 * Time.MS_PER_SECOND)

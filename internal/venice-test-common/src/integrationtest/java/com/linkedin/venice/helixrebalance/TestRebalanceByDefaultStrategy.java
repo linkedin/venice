@@ -119,7 +119,7 @@ public class TestRebalanceByDefaultStrategy {
           isAllOnline = false;
         }
       }
-      LOGGER.info("Replica number:" + replicas.size() + ", non-online replicas:" + log);
+      LOGGER.info("Replica number:{}, non-online replicas:{}", replicas.size(), log);
       return (replicas.size() == partitionNumber * replicationFactor) && isAllOnline;
     });
   }

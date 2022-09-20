@@ -71,7 +71,7 @@ public class NettyH2Server {
       writer.write("Started");
     }
 
-    LOGGER.info("NettyH2Server started on port: " + port);
+    LOGGER.info("NettyH2Server started on port: {}", port);
   }
 
   public void stop() throws Exception {

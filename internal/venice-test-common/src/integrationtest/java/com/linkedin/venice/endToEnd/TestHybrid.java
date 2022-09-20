@@ -360,7 +360,7 @@ public class TestHybrid {
         assertEquals(client.get("19").get().toString(), "test_name_19");
 
         // TODO: Would be great to eliminate this wait time...
-        LOGGER.info("***** Sleeping to get outside of rewind time: " + streamingRewindSeconds + " seconds");
+        LOGGER.info("***** Sleeping to get outside of rewind time: {} seconds", streamingRewindSeconds);
         Utils.sleep(TimeUnit.MILLISECONDS.convert(streamingRewindSeconds, TimeUnit.SECONDS));
 
         // Write more streaming records
@@ -411,11 +411,11 @@ public class TestHybrid {
         controllerClient.listInstancesStatuses()
             .getInstancesStatusMap()
             .keySet()
-            .stream()
             .forEach(
                 s -> LOGGER.info(
-                    "Replicas for " + s + ": "
-                        + Arrays.toString(controllerClient.listStorageNodeReplicas(s).getReplicas())));
+                    "Replicas for {}: {}",
+                    s,
+                    Arrays.toString(controllerClient.listStorageNodeReplicas(s).getReplicas())));
 
         // TODO will move this test case to a single fail-over integration test.
         // Stop one server

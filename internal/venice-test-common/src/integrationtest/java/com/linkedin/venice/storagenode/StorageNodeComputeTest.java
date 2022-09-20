@@ -356,18 +356,15 @@ public class StorageNodeComputeTest {
         Assert.assertEquals(computeResult.size(), numberOfRecords);
 
         LOGGER.info(
-            "Current round: " + cur + "/" + rounds + "\n - max part_count: "
-                + MetricsUtils.getMax(".total--compute_request_part_count.Max", veniceCluster.getVeniceServers())
-                + "\n - min part_count: "
-                + MetricsUtils.getMin(".total--compute_request_part_count.Min", veniceCluster.getVeniceServers())
-                + "\n - avg part_count: "
-                + MetricsUtils.getAvg(".total--compute_request_part_count.Avg", veniceCluster.getVeniceServers())
-                + "\n - max request size: "
-                + MetricsUtils.getMax(".total--compute_request_size_in_bytes.Max", veniceCluster.getVeniceServers())
-                + "\n - min request size: "
-                + MetricsUtils.getMin(".total--compute_request_size_in_bytes.Min", veniceCluster.getVeniceServers())
-                + "\n - avg request size: "
-                + MetricsUtils.getAvg(".total--compute_request_size_in_bytes.Avg", veniceCluster.getVeniceServers()));
+            "Current round: {}/{}\n - max part_count: {}\n - min part_count: {}\n - avg part_count: {}\n - max request size: {}\n - min request size: {}\n - avg request size: {}",
+            cur,
+            rounds,
+            MetricsUtils.getMax(".total--compute_request_part_count.Max", veniceCluster.getVeniceServers()),
+            MetricsUtils.getMin(".total--compute_request_part_count.Min", veniceCluster.getVeniceServers()),
+            MetricsUtils.getAvg(".total--compute_request_part_count.Avg", veniceCluster.getVeniceServers()),
+            MetricsUtils.getMax(".total--compute_request_size_in_bytes.Max", veniceCluster.getVeniceServers()),
+            MetricsUtils.getMin(".total--compute_request_size_in_bytes.Min", veniceCluster.getVeniceServers()),
+            MetricsUtils.getAvg(".total--compute_request_size_in_bytes.Avg", veniceCluster.getVeniceServers()));
 
         Assert.assertEquals(
             MetricsUtils.getMax(".total--compute_request_part_count.Max", veniceCluster.getVeniceServers()),

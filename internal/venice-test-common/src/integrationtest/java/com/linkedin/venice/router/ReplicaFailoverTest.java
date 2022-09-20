@@ -258,10 +258,12 @@ public class ReplicaFailoverTest {
 
     } finally {
       LOGGER.info(
-          outlierRequests.get() + " out of " + completedRequests.get() + " single-get requests exceeded "
-              + maxConcurrentLatency + "ms, " + "average outlier latency is "
-              + totalOutlierLatency.get() / Math.max(1, outlierRequests.get()) + "ms, " + "average latency is "
-              + totalLatency.get() / Math.max(1, completedRequests.get()) + "ms");
+          "{} out of {} single-get requests exceeded {}ms, average outlier latency is {}ms, average latency is {}ms",
+          outlierRequests.get(),
+          completedRequests.get(),
+          maxConcurrentLatency,
+          totalOutlierLatency.get() / Math.max(1, outlierRequests.get()),
+          totalLatency.get() / Math.max(1, completedRequests.get()));
 
       if (!errorHitCountMap.isEmpty()) {
         LOGGER.info(

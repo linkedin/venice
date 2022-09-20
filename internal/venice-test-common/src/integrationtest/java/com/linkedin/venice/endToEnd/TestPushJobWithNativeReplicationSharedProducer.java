@@ -159,7 +159,7 @@ public class TestPushJobWithNativeReplicationSharedProducer {
         }
       }
 
-      LOGGER.info("NRSP: Finished setting up stores");
+      LOGGER.info("Finished setting up stores");
       for (int i = 0; i < storeCount; i++) {
         int id = i;
         Thread pushJobThread =
@@ -167,21 +167,21 @@ public class TestPushJobWithNativeReplicationSharedProducer {
         threads[i] = pushJobThread;
       }
 
-      LOGGER.info("NRSP: Starting push job threads");
+      LOGGER.info("Starting push job threads");
       for (int i = 0; i < storeCount; i++) {
         threads[i].start();
       }
 
-      LOGGER.info("NRSP: Waiting for push job threads to complete");
+      LOGGER.info("Waiting for push job threads to complete");
       for (int i = 0; i < storeCount; i++) {
         threads[i].join(45 * 1000);
       }
 
       for (int i = 0; i < storeCount; i++) {
         if (threads[i].isAlive()) {
-          LOGGER.info("NRSP: push job thread " + threads[i].getName() + " didn't complete");
+          LOGGER.info("push job thread {} didn't complete", threads[i].getName());
         } else {
-          LOGGER.info("NRSP: push job thread " + threads[i].getName() + " completed");
+          LOGGER.info("push job thread {} completed", threads[i].getName());
         }
       }
 

@@ -239,7 +239,7 @@ public class TestPushJobWithNativeReplication {
 
               Instance leaderNode = routingDataRepo.getLeaderInstance(topic, 0);
               Assert.assertNotNull(leaderNode);
-              LOGGER.info("Restart server port " + leaderNode.getPort());
+              LOGGER.info("Restart server port {}", leaderNode.getPort());
               veniceClusterWrapper.stopAndRestartVeniceServer(leaderNode.getPort());
             });
 

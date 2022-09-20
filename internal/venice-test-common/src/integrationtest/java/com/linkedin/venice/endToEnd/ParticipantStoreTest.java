@@ -282,7 +282,7 @@ public class ParticipantStoreTest {
 
     @Override
     public void handleStoreChanged(Store store) {
-      LOGGER.info("Received handleStoreChanged: " + store.toString());
+      LOGGER.info("Received handleStoreChanged: {}", store);
       changeCount.incrementAndGet();
     }
 
@@ -319,7 +319,7 @@ public class ParticipantStoreTest {
           expectedDeletionCount,
           "Listener's deletion count should be " + expectedDeletionCount + " following: " + details);
 
-      LOGGER.info("Successfully asserted that notifications work after " + details);
+      LOGGER.info("Successfully asserted that notifications work after {}", details);
     });
   }
 
