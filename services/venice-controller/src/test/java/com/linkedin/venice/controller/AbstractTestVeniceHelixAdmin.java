@@ -10,7 +10,6 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.integration.utils.D2TestUtils;
-import com.linkedin.venice.integration.utils.HelixAsAServiceWrapper;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -63,7 +62,6 @@ class AbstractTestVeniceHelixAdmin {
   private ZkServerWrapper kafkaZkServer;
   KafkaBrokerWrapper kafkaBrokerWrapper;
   SafeHelixManager helixManager;
-  HelixAsAServiceWrapper helixWrapper;
   Map<String, SafeHelixManager> helixManagerByNodeID = new ConcurrentHashMap<>();
 
   VeniceProperties controllerProps;
@@ -102,6 +100,16 @@ class AbstractTestVeniceHelixAdmin {
     veniceAdmin.initStorageCluster(clusterName);
     startParticipant();
     waitUntilIsLeader(veniceAdmin, clusterName, LEADER_CHANGE_TIMEOUT_MS);
+
+    if (createParticipantStore) {
+      // Wait for participant store to finish materializing
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        Store store =
+            veniceAdmin.getStore(clusterName, VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName));
+        Assert.assertNotNull(store);
+        Assert.assertEquals(store.getCurrentVersion(), 1);
+      });
+    }
   }
 
   public void cleanupCluster() {
