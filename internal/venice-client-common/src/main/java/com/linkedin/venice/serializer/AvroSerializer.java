@@ -17,6 +17,9 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/**
+ * {@code AvroSerializer} provides the functionality to serialize and deserialize objects by using Avro.
+ */
 public class AvroSerializer<K> implements RecordSerializer<K> {
   public static final ThreadLocal<ReusableObjects> REUSE = ThreadLocal.withInitial(AvroSerializerReusableObjects::new);
 
@@ -50,7 +53,7 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
 
   static {
     AvroVersion version = AvroCompatibilityHelper.getRuntimeAvroVersion();
-    LOGGER.info("Detected: " + version.toString() + " on the classpath.");
+    LOGGER.info("Detected: {} on the classpath.", version);
   }
 
   public AvroSerializer(Schema schema) {

@@ -21,6 +21,9 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 
+/**
+ * {@code VenicePartitionFinder} provides methods to find the partition name or number for the given data.
+ */
 public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
   private final RoutingDataRepository dataRepository;
   private final ReadOnlyStoreRepository metadataRepository;

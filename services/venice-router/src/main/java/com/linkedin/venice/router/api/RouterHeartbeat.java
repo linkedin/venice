@@ -24,6 +24,9 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/**
+ * {@code RouterHeartbeat} is a service that monitors and reports the health of current live instances in the Venice cluster.
+ */
 public class RouterHeartbeat extends AbstractVeniceService {
   private final Thread heartBeatThread;
   private static final Logger LOGGER = LogManager.getLogger(RouterHeartbeat.class);
