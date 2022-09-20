@@ -22,22 +22,14 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.httpclient.ApacheHttpAsyncStorageNodeClient;
-import com.linkedin.venice.router.httpclient.NettyStorageNodeClient;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.AggHostHealthStats;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
-import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
 import io.netty.buffer.Unpooled;
-import io.netty.channel.Channel;
-import io.netty.channel.MultithreadEventLoopGroup;
-import io.netty.channel.epoll.EpollEventLoopGroup;
-import io.netty.channel.epoll.EpollSocketChannel;
-import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.DefaultHttpHeaders;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -66,9 +58,9 @@ import org.testng.annotations.Test;
 
 //TODO: refactor Dispatcher to take a HttpClient Factory, so we don't need to spin up an HTTP server for these tests
 public class TestVeniceDispatcher {
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testErrorRetry(boolean useNettyClient) {
-    VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient, false, false);
+  @Test
+  public void testErrorRetry() {
+    VeniceDispatcher dispatcher = getMockDispatcher(false, false);
     try {
       AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
       AsyncPromise<HttpResponseStatus> mockRetryFuture = mock(AsyncPromise.class);
@@ -95,9 +87,9 @@ public class TestVeniceDispatcher {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testErrorRetryOnPendingCheckFail(boolean useNettyClient) {
-    VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient, true, false);
+  @Test
+  public void testErrorRetryOnPendingCheckFail() {
+    VeniceDispatcher dispatcher = getMockDispatcher(true, false);
     try {
       AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
       AsyncPromise<HttpResponseStatus> mockRetryFuture = mock(AsyncPromise.class);
@@ -125,9 +117,9 @@ public class TestVeniceDispatcher {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testErrorRetryOnPendingCheckLeak(boolean useNettyClient) {
-    VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient, false, true);
+  @Test
+  public void testErrorRetryOnPendingCheckLeak() {
+    VeniceDispatcher dispatcher = getMockDispatcher(false, true);
     try {
       AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
       AsyncPromise<HttpResponseStatus> mockRetryFuture = mock(AsyncPromise.class);
@@ -155,9 +147,9 @@ public class TestVeniceDispatcher {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void passesThroughHttp429(boolean useNettyClient) {
-    VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient, false, false);
+  @Test
+  public void passesThroughHttp429() {
+    VeniceDispatcher dispatcher = getMockDispatcher(false, false);
     try {
       AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
       AsyncPromise<HttpResponseStatus> mockRetryFuture = mock(AsyncPromise.class);
@@ -184,9 +176,9 @@ public class TestVeniceDispatcher {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void passThroughCompressedDataIfClientSupportsDecompressionForSingleGet(boolean useNettyClient) {
-    VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient, false, false);
+  @Test
+  public void passThroughCompressedDataIfClientSupportsDecompressionForSingleGet() {
+    VeniceDispatcher dispatcher = getMockDispatcher(false, false);
     try {
       AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
       AsyncPromise<HttpResponseStatus> mockRetryFuture = mock(AsyncPromise.class);
@@ -217,9 +209,9 @@ public class TestVeniceDispatcher {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void decompressRecordIfClientDoesntSupportsDecompressionForSingleGet(boolean useNettyClient) {
-    VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient, false, false);
+  @Test
+  public void decompressRecordIfClientDoesntSupportsDecompressionForSingleGet() {
+    VeniceDispatcher dispatcher = getMockDispatcher(false, false);
     try {
       AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
       AsyncPromise<HttpResponseStatus> mockRetryFuture = mock(AsyncPromise.class);
@@ -249,9 +241,9 @@ public class TestVeniceDispatcher {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void passThroughCompressedDataIfClientSupportsDecompressionForMultiGet(boolean useNettyClient) {
-    VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient, false, false);
+  @Test
+  public void passThroughCompressedDataIfClientSupportsDecompressionForMultiGet() {
+    VeniceDispatcher dispatcher = getMockDispatcher(false, false);
     try {
       AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
       AsyncPromise<HttpResponseStatus> mockRetryFuture = mock(AsyncPromise.class);
@@ -281,9 +273,9 @@ public class TestVeniceDispatcher {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void decompressRecordIfClientDoesntSupportsDecompressionForMultiGet(boolean useNettyClient) {
-    VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient, false, false);
+  @Test
+  public void decompressRecordIfClientDoesntSupportsDecompressionForMultiGet() {
+    VeniceDispatcher dispatcher = getMockDispatcher(false, false);
     try {
       AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
       AsyncPromise<HttpResponseStatus> mockRetryFuture = mock(AsyncPromise.class);
@@ -313,15 +305,11 @@ public class TestVeniceDispatcher {
     }
   }
 
-  private VeniceDispatcher getMockDispatcher(
-      boolean useNettyClient,
-      boolean forcePendingCheck,
-      boolean forceLeakPending) {
+  private VeniceDispatcher getMockDispatcher(boolean forcePendingCheck, boolean forceLeakPending) {
     VeniceRouterConfig routerConfig = mock(VeniceRouterConfig.class);
     doReturn(2).when(routerConfig).getHttpClientPoolSize();
     doReturn(10).when(routerConfig).getMaxOutgoingConn();
     doReturn(5).when(routerConfig).getMaxOutgoingConnPerRoute();
-    doReturn(10).when(routerConfig).getNettyClientChannelPoolMaxPendingAcquires();
     doReturn(10l).when(routerConfig).getMaxPendingRequest();
     doReturn(false).when(routerConfig).isSslToStorageNodes();
 
@@ -345,33 +333,8 @@ public class TestVeniceDispatcher {
       doReturn(10l).when(routeHttpRequestStats).getPendingRequestCount(anyString());
     }
     LiveInstanceMonitor mockLiveInstanceMonitor = mock(LiveInstanceMonitor.class);
-    StorageNodeClient storageNodeClient;
-    if (useNettyClient) {
-      MultithreadEventLoopGroup workerEventLoopGroup;
-      Class<? extends Channel> channelClass;
-      try {
-        workerEventLoopGroup = new EpollEventLoopGroup(1);
-        channelClass = EpollSocketChannel.class;
-      } catch (NoClassDefFoundError e) {
-        workerEventLoopGroup = new NioEventLoopGroup(1);
-        channelClass = NioSocketChannel.class;
-      } catch (UnsatisfiedLinkError ee) {
-        workerEventLoopGroup = new NioEventLoopGroup(1);
-        channelClass = NioSocketChannel.class;
-      }
-      storageNodeClient = new NettyStorageNodeClient(
-          routerConfig,
-          Optional.empty(),
-          mockRouterStats,
-          workerEventLoopGroup,
-          channelClass);
-    } else {
-      storageNodeClient = new ApacheHttpAsyncStorageNodeClient(
-          routerConfig,
-          Optional.empty(),
-          mockMetricsRepo,
-          mockLiveInstanceMonitor);
-    }
+    StorageNodeClient storageNodeClient =
+        new ApacheHttpAsyncStorageNodeClient(routerConfig, Optional.empty(), mockMetricsRepo, mockLiveInstanceMonitor);
     VeniceDispatcher dispatcher = new VeniceDispatcher(
         routerConfig,
         mockStoreRepo,

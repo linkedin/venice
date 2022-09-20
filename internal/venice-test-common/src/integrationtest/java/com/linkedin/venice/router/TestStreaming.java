@@ -185,9 +185,7 @@ public class TestStreaming {
     routerProperties.put(ConfigKeys.ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, MAX_KEY_LIMIT); // 10 keys at most in a
                                                                                           // batch-get request
     routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-:100");
-    routerProperties.put(
-        ConfigKeys.ROUTER_STORAGE_NODE_CLIENT_TYPE,
-        enableNettyClient ? NETTY_4_CLIENT.name() : APACHE_HTTP_ASYNC_CLIENT.name());
+    routerProperties.put(ConfigKeys.ROUTER_STORAGE_NODE_CLIENT_TYPE, APACHE_HTTP_ASYNC_CLIENT.name());
     routerProperties.put(ConfigKeys.ROUTER_CLIENT_DECOMPRESSION_ENABLED, Boolean.toString(enableClientCompression));
     routerProperties.put(ConfigKeys.ROUTER_HTTP2_INBOUND_ENABLED, Boolean.toString(routerH2Enabled));
 

@@ -803,8 +803,10 @@ public class ConfigKeys {
    */
   public static final String ROUTER_HTTP_CLIENT_POOL_SIZE = "router.http.client.pool.size";
 
-  public static final String ROUTER_R2_CLIENT_POOL_SIZE = "router.r2.client.pool.size";
-
+  /**
+   * Config to control the Netty IO thread count for the Router Server
+   */
+  public static final String ROUTER_IO_WORKER_COUNT = "router.io.worker.count";
   /**
    * The max connection number per route (to one storage node);
    */
@@ -874,53 +876,6 @@ public class ConfigKeys {
    * Whether the router use netty http client or apache http async client
    */
   public static final String ROUTER_STORAGE_NODE_CLIENT_TYPE = "router.storage.node.client.type";
-
-  /**
-   * Number of event loop; one thread for each event loop.
-   */
-  public static final String ROUTER_NETTY_CLIENT_EVENT_LOOP_THREADS = "router.netty.client.event.loop.threads";
-
-  /**
-   * Timeout for getting a channel from channel pool; if timeout, create a new channel
-   */
-  public static final String ROUTER_NETTY_CLIENT_CHANNEL_POOL_ACQUIRE_TIMEOUT_MS =
-      "router.netty.client.channel.pool.acquire.timeout.ms";
-
-  /**
-   * Minimum connections for each host (a host is identified by InetSocketAddress)
-   */
-  public static final String ROUTER_NETTY_CLIENT_CHANNEL_POOL_MIN_CONNECTIONS =
-      "router.netty.client.channel.pool.min.connections";
-
-  /**
-   * Maximum connections for each host/InetSocketAddress
-   */
-  public static final String ROUTER_NETTY_CLIENT_CHANNEL_POOL_MAX_CONNECTIONS =
-      "router.netty.client.channel.pool.max.connections";
-
-  /**
-   * The maximum number of pending acquires for a channel in the channel pool.
-   *
-   * If the pending acquires exceed the threshold, netty client will fail the new requests without blocking and it won't
-   * throw exception in the router thread.
-   */
-  public static final String ROUTER_NETTY_CLIENT_CHANNEL_POOL_MAX_PENDING_ACQUIRES =
-      "router.netty.client.channel.pool.max.pending.acquires";
-
-  /**
-   * Interval between each channel health check
-   */
-  public static final String ROUTER_NETTY_CLIENT_CHANNEL_POOL_HEALTH_CHECK_INTERVAL_MS =
-      "router.netty.client.channel.pool.health.check.interval.ms";
-
-  /**
-   * The maximum length of the aggregated content (response from SN to router) in bytes.
-   *
-   * If the length of the aggregated content exceeds this value, an exception will be thrown in router and the channel that
-   * receives this response will be closed.
-   */
-  public static final String ROUTER_NETTY_CLIENT_MAX_AGGREGATED_OBJECT_LENGTH =
-      "router.netty.client.max.aggregated.object.length";
 
   /**
    * Netty graceful shutdown period considering the following factors:
@@ -1554,19 +1509,6 @@ public class ConfigKeys {
    *  Disable router heart-beat job which marks hosts as unhealthy.
    */
   public static final String ROUTER_HEART_BEAT_ENABLED = "router.heart.beat.enabled";
-
-  /**
-   * The following config to be used by R2 client for large value support.
-   */
-  public static final String ROUTER_HTTP_MAX_RESPONSE_SIZE = "router.http.max.response.size";
-
-  /**
-   * Will be replaced by {@link #ROUTER_HTTP2_CLIENT_ENABLED}.
-   */
-  @Deprecated
-  public static final String ROUTER_HTTP2_R2_CLIENT_ENABLED = "router.http2.r2.client.enabled";
-
-  public static final String ROUTER_HTTP2_CLIENT_ENABLED = "router.http2.client.enabled";
 
   /**
    * HttpClient5 pool size.

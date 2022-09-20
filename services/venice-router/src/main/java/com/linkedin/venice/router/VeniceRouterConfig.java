@@ -43,7 +43,6 @@ public class VeniceRouterConfig {
   private int maxKeyCountInMultiGetReq;
   private int connectionLimit;
   private int httpClientPoolSize;
-  private int r2ClientPoolSize;
   private int maxOutgoingConnPerRoute;
   private int maxOutgoingConn;
   private Map<String, String> clusterToD2Map;
@@ -61,13 +60,6 @@ public class VeniceRouterConfig {
   private boolean readThrottlingEnabled;
   private long maxPendingRequest;
   private StorageNodeClientType storageNodeClientType;
-  private int nettyClientEventLoopThreads;
-  private long nettyClientChannelPoolAcquireTimeoutMs;
-  private int nettyClientChannelPoolMinConnections;
-  private int nettyClientChannelPoolMaxConnections;
-  private int nettyClientChannelPoolMaxPendingAcquires;
-  private long nettyClientChannelPoolHealthCheckIntervalMs;
-  private int nettyClientMaxAggregatedObjectLength;
   private boolean decompressOnClient;
   private boolean computeFastAvroEnabled;
   private int socketTimeout;
@@ -110,9 +102,6 @@ public class VeniceRouterConfig {
   private long clientSslHandshakeBackoffMs;
   private long readQuotaThrottlingLeaseTimeoutMs;
   private boolean routerHeartBeatEnabled;
-  private int routerHTTPMaxResponseSize;
-  private boolean routerHTTP2R2ClientEnabled;
-  private boolean routerHTTP2ClientEnabled;
   private int httpClient5PoolSize;
   private int httpClient5TotalIOThreadCount;
   private boolean httpClient5SkipCipherCheck;
@@ -126,6 +115,7 @@ public class VeniceRouterConfig {
   private int http2MaxHeaderListSize;
   private boolean metaStoreShadowReadEnabled;
   private boolean unregisterMetricForDeletedStoreEnabled;
+  private int routerIOWorkerCount;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -163,7 +153,6 @@ public class VeniceRouterConfig {
     maxKeyCountInMultiGetReq = props.getInt(ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, 500);
     connectionLimit = props.getInt(ROUTER_CONNECTION_LIMIT, 10000);
     httpClientPoolSize = props.getInt(ROUTER_HTTP_CLIENT_POOL_SIZE, 12);
-    r2ClientPoolSize = props.getInt(ROUTER_R2_CLIENT_POOL_SIZE, 2);
     maxOutgoingConnPerRoute = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE, 120);
     maxOutgoingConn = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION, 1200);
     clusterToD2Map = props.getMap(CLUSTER_TO_D2);
@@ -189,26 +178,8 @@ public class VeniceRouterConfig {
     readThrottlingEnabled = props.getBoolean(ROUTER_ENABLE_READ_THROTTLING, true);
     maxPendingRequest = props.getLong(ROUTER_MAX_PENDING_REQUEST, 2500L * 12L);
 
-    storageNodeClientType = StorageNodeClientType.valueOf(
-        props.getString(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT.name()));
-    // TODO: what is the best setting? 5*NUMBER_OF_CORES?
-    nettyClientEventLoopThreads = props.getInt(ROUTER_NETTY_CLIENT_EVENT_LOOP_THREADS, 24);
-    nettyClientChannelPoolAcquireTimeoutMs = props.getLong(ROUTER_NETTY_CLIENT_CHANNEL_POOL_ACQUIRE_TIMEOUT_MS, 10);
-    nettyClientChannelPoolMinConnections = props.getInt(ROUTER_NETTY_CLIENT_CHANNEL_POOL_MIN_CONNECTIONS, 160);
-    nettyClientChannelPoolMaxConnections = props.getInt(ROUTER_NETTY_CLIENT_CHANNEL_POOL_MAX_CONNECTIONS, 165);
-    /**
-     * ignore this config by default; only rely on the ROUTER_MAX_PENDING_REQUEST config for pending request throttling
-      */
-    nettyClientChannelPoolMaxPendingAcquires =
-        props.getInt(ROUTER_NETTY_CLIENT_CHANNEL_POOL_MAX_PENDING_ACQUIRES, Integer.MAX_VALUE);
-    /**
-     * A channel will be closed if a request fails while using this channel, so there is no need to do frequent health check unless the system doesn't receive much traffic
-     */
-    nettyClientChannelPoolHealthCheckIntervalMs = props.getLong(
-        ROUTER_NETTY_CLIENT_CHANNEL_POOL_HEALTH_CHECK_INTERVAL_MS,
-        TimeUnit.MILLISECONDS.convert(5, TimeUnit.MINUTES));
-    nettyClientMaxAggregatedObjectLength =
-        props.getInt(ROUTER_NETTY_CLIENT_MAX_AGGREGATED_OBJECT_LENGTH, 1024 * 1024 * 20);
+    storageNodeClientType = StorageNodeClientType
+        .valueOf(props.getString(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.HTTP_CLIENT_5_CLIENT.name()));
     decompressOnClient = props.getBoolean(ROUTER_CLIENT_DECOMPRESSION_ENABLED, true);
     computeFastAvroEnabled = props.getBoolean(ROUTER_COMPUTE_FAST_AVRO_ENABLED, false);
 
@@ -302,17 +273,10 @@ public class VeniceRouterConfig {
     }
     systemSchemaClusterName = props.getString(SYSTEM_SCHEMA_CLUSTER_NAME, "");
     routerHeartBeatEnabled = props.getBoolean(ROUTER_HEART_BEAT_ENABLED, true);
-    routerHTTPMaxResponseSize = props.getInt(ROUTER_HTTP_MAX_RESPONSE_SIZE, 32000000);
-    routerHTTP2R2ClientEnabled = props.getBoolean(ROUTER_HTTP2_R2_CLIENT_ENABLED, false);
-    routerHTTP2ClientEnabled = props.getBoolean(ROUTER_HTTP2_CLIENT_ENABLED, false);
     httpClient5PoolSize = props.getInt(ROUTER_HTTP_CLIENT5_POOL_SIZE, 1);
     httpClient5TotalIOThreadCount =
         props.getInt(ROUTER_HTTP_CLIENT5_TOTAL_IO_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
     httpClient5SkipCipherCheck = props.getBoolean(ROUTER_HTTP_CLIENT5_SKIP_CIPHER_CHECK_ENABLED, false);
-    /**
-     * If the legacy config enables http2, Router will use it.
-     */
-    routerHTTP2ClientEnabled |= routerHTTP2R2ClientEnabled;
     routerMultiGetDecompressionThreads = props.getInt(ROUTER_MULTI_KEY_DECOMPRESSION_THREADS, 10);
     routerMultiGetDecompressionBatchSize = props.getInt(ROUTER_MULTI_KEY_DECOMPRESSION_BATCH_SIZE, 5);
     http2InboundEnabled = props.getBoolean(ROUTER_HTTP2_INBOUND_ENABLED, false);
@@ -324,6 +288,11 @@ public class VeniceRouterConfig {
 
     metaStoreShadowReadEnabled = props.getBoolean(ROUTER_META_STORE_SHADOW_READ_ENABLED, false);
     unregisterMetricForDeletedStoreEnabled = props.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
+    /**
+     * This config is used to maintain the existing io thread count being used by Router, and we
+     * should consider to use some number, which is proportional to the available cores.
+     */
+    routerIOWorkerCount = props.getInt(ROUTER_IO_WORKER_COUNT, 24);
   }
 
   public String getClusterName() {
@@ -380,10 +349,6 @@ public class VeniceRouterConfig {
 
   public int getHttpClientPoolSize() {
     return httpClientPoolSize;
-  }
-
-  public int getR2ClientPoolSize() {
-    return r2ClientPoolSize;
   }
 
   public int getMaxOutgoingConnPerRoute() {
@@ -468,34 +433,6 @@ public class VeniceRouterConfig {
 
   public StorageNodeClientType getStorageNodeClientType() {
     return storageNodeClientType;
-  }
-
-  public int getNettyClientEventLoopThreads() {
-    return nettyClientEventLoopThreads;
-  }
-
-  public long getNettyClientChannelPoolAcquireTimeoutMs() {
-    return nettyClientChannelPoolAcquireTimeoutMs;
-  }
-
-  public int getNettyClientChannelPoolMinConnections() {
-    return nettyClientChannelPoolMinConnections;
-  }
-
-  public int getNettyClientChannelPoolMaxConnections() {
-    return nettyClientChannelPoolMaxConnections;
-  }
-
-  public int getNettyClientChannelPoolMaxPendingAcquires() {
-    return nettyClientChannelPoolMaxPendingAcquires;
-  }
-
-  public long getNettyClientChannelPoolHealthCheckIntervalMs() {
-    return nettyClientChannelPoolHealthCheckIntervalMs;
-  }
-
-  public int getNettyClientMaxAggregatedObjectLength() {
-    return nettyClientMaxAggregatedObjectLength;
   }
 
   public boolean isDecompressOnClient() {
@@ -746,14 +683,6 @@ public class VeniceRouterConfig {
     return routerHeartBeatEnabled;
   }
 
-  public int getRouterHTTPMaxResponseSize() {
-    return routerHTTPMaxResponseSize;
-  }
-
-  public boolean isRouterHTTP2ClientEnabled() {
-    return routerHTTP2ClientEnabled;
-  }
-
   public int getHttpClient5PoolSize() {
     return httpClient5PoolSize;
   }
@@ -804,5 +733,9 @@ public class VeniceRouterConfig {
 
   public boolean isUnregisterMetricForDeletedStoreEnabled() {
     return unregisterMetricForDeletedStoreEnabled;
+  }
+
+  public int getRouterIOWorkerCount() {
+    return routerIOWorkerCount;
   }
 }

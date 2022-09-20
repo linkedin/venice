@@ -41,9 +41,6 @@ public class HttpClient5StorageNodeClient implements StorageNodeClient {
   public HttpClient5StorageNodeClient(Optional<SSLFactory> sslFactory, VeniceRouterConfig routerConfig) {
     sslFactory.orElseThrow(
         () -> new VeniceException("Param 'sslFactory' must be present while using " + this.getClass().getSimpleName()));
-    if (!routerConfig.isRouterHTTP2ClientEnabled()) {
-      throw new VeniceException("HTTP/2 needs to be enabled while using " + this.getClass().getSimpleName());
-    }
     /**
      * HttpClient5 needs to use JDK11 to support HTTP/2, so this class will fail fast if the Java version is below JDK11.
      */

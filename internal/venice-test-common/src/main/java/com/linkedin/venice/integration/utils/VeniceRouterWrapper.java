@@ -9,6 +9,7 @@ import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.router.RouterServer;
+import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.tehuti.MetricsAware;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
@@ -78,6 +79,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)
           .put(MAX_READ_CAPACITY, DEFAULT_PER_ROUTER_READ_QUOTA)
           .put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterName)
+          .put(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT.name())
           .put(properties);
 
       // setup d2 config first

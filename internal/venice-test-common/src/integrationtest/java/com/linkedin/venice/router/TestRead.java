@@ -98,7 +98,7 @@ public abstract class TestRead {
 
   protected abstract StorageNodeClientType getStorageNodeClientType();
 
-  protected boolean isHttp2Enabled() {
+  protected boolean isRouterHttp2ClientEnabled() {
     return false;
   }
 
@@ -131,10 +131,7 @@ public abstract class TestRead {
     System.setProperty("io.netty.leakDetection.level", "paranoid");
 
     Utils.thisIsLocalhost();
-    boolean isR2Client = getStorageNodeClientType() == StorageNodeClientType.R2_CLIENT;
-    boolean isHttp2Enabled = isHttp2Enabled();
     Properties extraProperties = new Properties();
-    extraProperties.setProperty(ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED, Boolean.toString(isHttp2Enabled));
     // Add the following specific configs for Router
     // To trigger long-tail retry
     extraProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 1);
@@ -142,16 +139,15 @@ public abstract class TestRead {
                                                                                          // batch-get request
     extraProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-:1");
     extraProperties.put(ConfigKeys.ROUTER_SMART_LONG_TAIL_RETRY_ENABLED, false);
-    // set config for whether use Netty client in Router or not
     extraProperties.put(ConfigKeys.ROUTER_STORAGE_NODE_CLIENT_TYPE, getStorageNodeClientType());
-    extraProperties.put(ConfigKeys.ROUTER_HTTP2_R2_CLIENT_ENABLED, isHttp2Enabled());
     extraProperties.put(ConfigKeys.ROUTER_PER_NODE_CLIENT_ENABLED, true);
-    extraProperties.put(ConfigKeys.ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_ENABLED, !isR2Client);
+    extraProperties.put(ConfigKeys.ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_ENABLED, true);
     extraProperties.put(ConfigKeys.ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_SLEEP_INTERVAL_MS, 1);
     extraProperties.put(ConfigKeys.ROUTER_MULTI_KEY_ROUTING_STRATEGY, HELIX_ASSISTED_ROUTING.name());
     extraProperties.put(ConfigKeys.ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN, "zone");
     extraProperties.put(ConfigKeys.ROUTER_HTTP_CLIENT5_SKIP_CIPHER_CHECK_ENABLED, "true");
     extraProperties.put(ConfigKeys.ROUTER_HTTP2_INBOUND_ENABLED, isRouterHttp2Enabled());
+    extraProperties.put(ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED, true);
 
     veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 1, 2, 100, true, false, extraProperties);
     routerAddr = veniceCluster.getRandomRouterSslURL();
@@ -342,11 +338,11 @@ public abstract class TestRead {
           "Connection lease max latency should be positive");
       assertEquals(
           getAggregateRouterMetricValue(".connection_pool--total_active_connection_count.LambdaStat"),
-          0,
+          0.0d,
           "Active connection count should be 0 since test queries are finished");
       assertEquals(
           getAggregateRouterMetricValue(".connection_pool--total_pending_connection_request_count.LambdaStat"),
-          0,
+          0.0d,
           "Pending connection request count should be 0 since test queries are finished");
       Assert.assertTrue(
           getAggregateRouterMetricValue(".connection_pool--total_idle_connection_count.LambdaStat") > 0,
@@ -357,11 +353,11 @@ public abstract class TestRead {
           "Max connection count must be positive");
       assertEquals(
           getAggregateRouterMetricValue(".localhost--active_connection_count.Gauge"),
-          0,
+          0.0d,
           "Active connection count should be 0 since test queries are finished");
       assertEquals(
           getAggregateRouterMetricValue(".localhost--pending_connection_request_count.Gauge"),
-          0,
+          0.0d,
           "Pending connection request count should be 0 since test queries are finished");
       Assert.assertTrue(
           getAggregateRouterMetricValue(".localhost--idle_connection_count.Gauge") > 0,
@@ -384,7 +380,7 @@ public abstract class TestRead {
         .assertEquals(getAggregateRouterMetricValue(".total--read_quota_usage_kps.Total"), expectedLookupCount, 0.0001);
 
     // following 2 asserts fails with HTTP/2 probably due to http2 frames, needs to validate on venice-p
-    if (!isHttp2Enabled()) {
+    if (!isRouterHttp2ClientEnabled()) {
       Assert.assertEquals(getMaxServerMetricValue(".total--multiget_request_part_count.Max"), 1.0);
       Assert.assertEquals(getMaxServerMetricValue(".total--compute_request_part_count.Max"), 1.0);
     }

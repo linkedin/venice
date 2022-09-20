@@ -53,8 +53,6 @@ import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelector;
 import com.linkedin.venice.router.httpclient.ApacheHttpAsyncStorageNodeClient;
 import com.linkedin.venice.router.httpclient.HttpClient5StorageNodeClient;
-import com.linkedin.venice.router.httpclient.NettyStorageNodeClient;
-import com.linkedin.venice.router.httpclient.R2StorageNodeClient;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.AdminOperationsStats;
 import com.linkedin.venice.router.stats.AggHostHealthStats;
@@ -82,17 +80,14 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.netty.channel.AbstractChannel;
-import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.MultithreadEventLoopGroup;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollServerSocketChannel;
-import io.netty.channel.epoll.EpollSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
-import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.net.InetSocketAddress;
@@ -180,15 +175,6 @@ public class RouterServer extends AbstractVeniceService {
    * Thread number used to monitor the listening port;
    */
   private static final int ROUTER_BOSS_THREAD_NUM = 1;
-  /**
-   * How many threads should be used by router for directly handling requests
-   */
-  private static final int ROUTER_IO_THREAD_NUM = Runtime.getRuntime().availableProcessors();
-  /**
-   * How big should the thread pool used by the router be.  This is the number of threads used for handling
-   * requests plus the threads used by the boss thread pool per bound socket (ie 1 for SSL and 1 for non-SSL)
-   */
-  private static final int ROUTER_THREAD_POOL_SIZE = 2 * (ROUTER_IO_THREAD_NUM + ROUTER_BOSS_THREAD_NUM);
   private VeniceJVMStats jvmStats;
 
   private final AggHostHealthStats aggHostHealthStats;
@@ -206,7 +192,7 @@ public class RouterServer extends AbstractVeniceService {
     LOGGER.info("Cluster: " + props.getString(ConfigKeys.CLUSTER_NAME));
     LOGGER.info("Port: " + props.getInt(ConfigKeys.LISTENER_PORT));
     LOGGER.info("SSL Port: " + props.getInt(ConfigKeys.LISTENER_SSL_PORT));
-    LOGGER.info("Thread count: " + ROUTER_THREAD_POOL_SIZE);
+    LOGGER.info("IO worker count: " + props.getInt(ConfigKeys.ROUTER_IO_WORKER_COUNT));
 
     Optional<SSLFactory> sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
     RouterServer server = new RouterServer(props, new ArrayList<>(), Optional.empty(), sslFactory, null);
@@ -382,9 +368,7 @@ public class RouterServer extends AbstractVeniceService {
     // No need to call schemaRepository.refresh() since it will do nothing.
     registry = new ResourceRegistry();
     workerExecutor = registry.factory(ShutdownableExecutors.class)
-        .newFixedThreadPool(
-            config.getNettyClientEventLoopThreads(),
-            new DefaultThreadFactory("RouterThread", true, Thread.MAX_PRIORITY));
+        .newCachedThreadPool(new DefaultThreadFactory("RouterThread", true, Thread.MAX_PRIORITY));
     /**
      * Use TreeMap inside TimeoutProcessor; the other option ConcurrentSkipList has performance issue.
      *
@@ -394,37 +378,25 @@ public class RouterServer extends AbstractVeniceService {
 
     Optional<SSLFactory> sslFactoryForRequests = config.isSslToStorageNodes() ? sslFactory : Optional.empty();
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository, metadataRepository);
-    Class<? extends Channel> channelClass;
     Class<? extends AbstractChannel> serverSocketChannelClass;
     boolean useEpoll = true;
     try {
-      workerEventLoopGroup = new EpollEventLoopGroup(config.getNettyClientEventLoopThreads(), workerExecutor);
-      channelClass = EpollSocketChannel.class;
       serverEventLoopGroup = new EpollEventLoopGroup(ROUTER_BOSS_THREAD_NUM);
+      workerEventLoopGroup = new EpollEventLoopGroup(config.getRouterIOWorkerCount(), workerExecutor);
       serverSocketChannelClass = EpollServerSocketChannel.class;
     } catch (LinkageError error) {
       useEpoll = false;
       LOGGER.info("Epoll is only supported on Linux; switching to NIO");
-      workerEventLoopGroup = new NioEventLoopGroup(config.getNettyClientEventLoopThreads(), workerExecutor);
-      channelClass = NioSocketChannel.class;
       serverEventLoopGroup = new NioEventLoopGroup(ROUTER_BOSS_THREAD_NUM);
+      workerEventLoopGroup = new NioEventLoopGroup(config.getRouterIOWorkerCount(), workerExecutor);
       serverSocketChannelClass = NioServerSocketChannel.class;
     }
 
     switch (config.getStorageNodeClientType()) {
-      case NETTY_4_CLIENT:
-        LOGGER.info("Router will use NETTY_4_CLIENT");
-        storageNodeClient =
-            new NettyStorageNodeClient(config, sslFactoryForRequests, routerStats, workerEventLoopGroup, channelClass);
-        break;
       case APACHE_HTTP_ASYNC_CLIENT:
         LOGGER.info("Router will use Apache_Http_Async_Client");
         storageNodeClient =
             new ApacheHttpAsyncStorageNodeClient(config, sslFactoryForRequests, metricsRepository, liveInstanceMonitor);
-        break;
-      case R2_CLIENT:
-        LOGGER.info("Router will use R2 client in per node client mode");
-        storageNodeClient = new R2StorageNodeClient(sslFactoryForRequests, config);
         break;
       case HTTP_CLIENT_5_CLIENT:
         LOGGER.info("Router will use HTTP CLIENT5");

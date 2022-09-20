@@ -31,7 +31,7 @@ public class TestReadForHttpClient5 extends TestRead {
   }
 
   @Override
-  protected boolean isHttp2Enabled() {
+  protected boolean isRouterHttp2ClientEnabled() {
     return true;
   }
 
@@ -64,7 +64,6 @@ public class TestReadForHttpClient5 extends TestRead {
     // Don't setup the request timeout
 
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
-    doReturn(true).when(config).isRouterHTTP2ClientEnabled();
     doReturn(1).when(config).getHttpClient5PoolSize();
     doReturn(2).when(config).getHttpClient5TotalIOThreadCount();
     doReturn(1).when(config).getHttpClient5PoolSize();
