@@ -79,4 +79,13 @@ The following talks have been given about Venice:
 
 Keep in mind that older content reflects an earlier phase of the project and may not be entirely correct anymore.
 
+Community Resources
+===================
+
+Feel free to engage with the community using our:
+- [Slack workspace](https://join.slack.com/t/venicedb/shared_invite/zt-1dz75yvlh-nXj9wIA7RVyQY7bMDUlZog)
+- [LinkedIn group](https://www.linkedin.com/groups/14129519/)
+- [Twitter handle](https://twitter.com/VeniceDataBase)
+- GitHub [issues](https://github.com/linkedin/venice/issues) and [discussions](https://github.com/linkedin/venice/discussions)
+
 [//]: # (TODO: Add link to setup and execution guide)
