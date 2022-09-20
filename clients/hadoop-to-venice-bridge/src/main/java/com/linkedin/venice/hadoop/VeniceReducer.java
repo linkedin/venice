@@ -407,18 +407,20 @@ public class VeniceReducer extends AbstractMapReduceTask
       // Mapping rate measurement
       long mrFrameworkRate = (long) (telemetryMessageInterval / timeSinceLastMeasurementInSeconds);
       LOGGER.info(
-          "MR Framework records processed: " + messageSent + ", total time spent: "
-              + Utils.makeTimePretty(aggregateTimeOfInBetweenReduceInvocationsInNS) + ", current throughput: "
-              + Utils.makeLargeNumberPretty(mrFrameworkRate) + " rec/s");
+          "MR Framework records processed: {}, total time spent: {}, current throughput: {} rec/s",
+          messageSent,
+          Utils.makeTimePretty(aggregateTimeOfInBetweenReduceInvocationsInNS),
+          Utils.makeLargeNumberPretty(mrFrameworkRate));
 
       // Produce rate measurement
       long newMessageCompletedCount = messageCompleted.get();
       long messagesProducedSinceLastLog = newMessageCompletedCount - lastMessageCompletedCount;
       long produceRate = (long) (messagesProducedSinceLastLog / timeSinceLastMeasurementInSeconds);
       LOGGER.info(
-          "Kafka records produced: " + newMessageCompletedCount + ", total time spent: "
-              + Utils.makeTimePretty(aggregateTimeOfReduceExecutionInNS) + ", current throughput: "
-              + Utils.makeLargeNumberPretty(produceRate) + " rec/s");
+          "Kafka records produced: {}, total time spent: {}, current throughput: {} rec/s",
+          newMessageCompletedCount,
+          Utils.makeTimePretty(aggregateTimeOfReduceExecutionInNS),
+          Utils.makeLargeNumberPretty(produceRate));
 
       // Bookkeeping for the next measurement iteration
       lastTimeThroughputWasLoggedInNS = System.nanoTime();
@@ -548,11 +550,10 @@ public class VeniceReducer extends AbstractMapReduceTask
 
   private void logMessageProgress() {
     LOGGER.info(
-        String.format(
-            "Message sent: %d, message completed: %d, message errored: %d",
-            messageSent,
-            messageCompleted.get(),
-            messageErrored.get()));
+        "Message sent: {}, message completed: {}, message errored: {}",
+        messageSent,
+        messageCompleted.get(),
+        messageErrored.get());
   }
 
   // Visible for testing

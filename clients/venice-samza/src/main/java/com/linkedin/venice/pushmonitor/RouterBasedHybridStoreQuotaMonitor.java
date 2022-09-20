@@ -104,7 +104,7 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
 
     @Override
     public void run() {
-      LOGGER.info("Running " + this.getClass().getSimpleName());
+      LOGGER.info("Running {}", this.getClass().getSimpleName());
       while (isRunning.get()) {
         try {
           // Get hybrid store quota status
@@ -113,24 +113,24 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
           HybridStoreQuotaStatusResponse quotaStatusResponse =
               mapper.readValue(response.getBody(), HybridStoreQuotaStatusResponse.class);
           if (quotaStatusResponse.isError()) {
-            LOGGER.error("Router was not able to get hybrid quota status: " + quotaStatusResponse.getError());
+            LOGGER.error("Router was not able to get hybrid quota status: {}", quotaStatusResponse.getError());
             continue;
           }
           hybridStoreQuotaMonitorService.setCurrentStatus(quotaStatusResponse.getQuotaStatus());
           switch (quotaStatusResponse.getQuotaStatus()) {
             case QUOTA_VIOLATED:
-              LOGGER.info("Hybrid job failed with quota violation for store: " + storeName);
+              LOGGER.info("Hybrid job failed with quota violation for store: {}", storeName);
               break;
             default:
-              LOGGER.info(
-                  "Current hybrid job state: " + quotaStatusResponse.getQuotaStatus() + " for store: " + storeName);
+              LOGGER
+                  .info("Current hybrid job state: {} for store: {}", quotaStatusResponse.getQuotaStatus(), storeName);
           }
 
           Utils.sleep(POLL_CYCLE_DELAY_MS);
         } catch (Exception e) {
           if (isRunning.get() && !ExceptionUtils.recursiveClassEquals(e, InterruptedException.class)) {
             // Only worth logging if we're actually supposed to be running.
-            LOGGER.error("Error when polling push status from router for store version: " + storeName, e);
+            LOGGER.error("Error when polling push status from router for store version: {}", storeName, e);
           } else {
             break;
           }

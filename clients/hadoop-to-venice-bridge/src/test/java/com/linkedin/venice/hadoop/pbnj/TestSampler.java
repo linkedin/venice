@@ -48,8 +48,7 @@ public class TestSampler {
 
   @Test(dataProvider = "samplingRatios")
   public void testSampler(long totalRecords, double expectedRatio) {
-    LOGGER.info("totalRecords: " + totalRecords + ", expectedRatio: " + expectedRatio);
-
+    LOGGER.info("totalRecords: {], expectedRatio: {}", totalRecords, expectedRatio);
     long skippedRecords = 0, queriedRecords = 0;
 
     Sampler sampler = new Sampler(expectedRatio);

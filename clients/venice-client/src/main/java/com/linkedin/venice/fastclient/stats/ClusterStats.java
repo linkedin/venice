@@ -82,7 +82,7 @@ public class ClusterStats extends AbstractVeniceStats {
         URL url = new URL(instanceUrl);
         instanceName = url.getHost() + "_" + url.getPort();
       } catch (MalformedURLException e) {
-        LOGGER.error("Invalid instance url: " + instanceUrl);
+        LOGGER.error("Invalid instance url: {}", instanceUrl);
       }
       return new RouteStats(getMetricsRepository(), storeName, instanceName);
     });

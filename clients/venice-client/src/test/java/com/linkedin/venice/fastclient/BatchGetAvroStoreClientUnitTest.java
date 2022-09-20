@@ -344,7 +344,7 @@ public class BatchGetAvroStoreClientUnitTest {
     fastClient.streamingBatchGet(keyValues.keySet(), new StreamingCallback<String, Utf8>() {
       @Override
       public void onRecordReceived(String key, Utf8 value) {
-        LOGGER.info("Record received " + key + ":" + value);
+        LOGGER.info("Record received {}:{}", key, value);
         if ("nonExisting".equals(key)) {
           Assert.assertNull(value);
         } else {
