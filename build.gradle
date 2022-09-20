@@ -86,7 +86,7 @@ ext.libraries = [
     routerApi: 'com.linkedin.dds-storage-core:dds-storage-router-api:' + ddsStorageCoreVersion,
     routerImpl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:' + ddsStorageCoreVersion,
     routerLnkd: 'com.linkedin.dds-storage-core:dds-storage-router-lnkd:' + ddsStorageCoreVersion,
-    samzaApi: 'org.apache.samza:samza-api:1.5.0',
+    samzaApi: 'org.apache.samza:samza-api:1.5.1',
     spark: 'com.sparkjava:spark-core:2.9.4',
     spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
     tehuti: 'io.tehuti:tehuti:0.9.1',
