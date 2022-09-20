@@ -217,16 +217,16 @@ public class VeniceServer {
         AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
     storeVersionStateSchemaReader.ifPresent(storeVersionStateSerializer::setSchemaReader);
 
-    // verify the current version of the PARTITION_STATE schema is registered in ZK before moving ahead
-    if (serverConfig.isSchemaPresenceCheckEnabled() && partitionStateSchemaReader.isPresent()) {
-      new SchemaPresenceChecker(partitionStateSchemaReader.get(), AvroProtocolDefinition.PARTITION_STATE)
-          .verifySchemaVersionPresentOrExit();
-    }
+    // Verify the current version of PARTITION_STATE and STORE_VERSION_STATE schema is registered in ZK before moving
+    // ahead.
+    if (serverConfig.isSchemaPresenceCheckEnabled()) {
+      partitionStateSchemaReader.ifPresent(
+          schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.PARTITION_STATE)
+              .verifySchemaVersionPresentOrExit());
 
-    // verify the current version of the STORE_VERSION_STATE schema is registered in ZK before moving ahead
-    if (serverConfig.isSchemaPresenceCheckEnabled() && storeVersionStateSchemaReader.isPresent()) {
-      new SchemaPresenceChecker(storeVersionStateSchemaReader.get(), AvroProtocolDefinition.STORE_VERSION_STATE)
-          .verifySchemaVersionPresentOrExit();
+      storeVersionStateSchemaReader.ifPresent(
+          schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.STORE_VERSION_STATE)
+              .verifySchemaVersionPresentOrExit());
     }
 
     // Create and add Offset Service.
@@ -538,7 +538,7 @@ public class VeniceServer {
   /**
    * Method which closes VeniceServer, shuts down its resources, and exits the
    * JVM.
-   * @throws Exception
+   * @throws VeniceException
    * */
   public void shutdown() throws VeniceException {
     List<Exception> exceptions = new ArrayList<>();

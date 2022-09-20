@@ -93,7 +93,7 @@ public class SystemStoreAclSynchronizationTask implements Runnable, Closeable {
         LOGGER.info("Task interrupted, closing");
         close();
       } catch (Exception e) {
-        LOGGER.error("Unexpected exception encountered", e);
+        LOGGER.error("Unexpected exception encountered, isRunning = " + isRunning, e);
       }
     }
     LOGGER.info("Stopped " + SystemStoreAclSynchronizationTask.class.getSimpleName());

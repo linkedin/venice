@@ -336,6 +336,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
   }
 
+  @Override
   public void close() {
     close(true);
   }
@@ -347,10 +348,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   /**
    * Call flush on the internal {@link KafkaProducerWrapper}.
    */
+  @Override
   public void flush() {
     producer.flush();
   }
 
+  @Override
   public String toString() {
     return this.getClass().getSimpleName() + "{topicName: " + topicName + ", producerGUID: " + producerGUID
         + ", numberOfPartitions: " + numberOfPartitions + "}";
@@ -363,6 +366,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   /**
    * @return the Kafka topic name that this {@link VeniceWriter} instance writes into.
    */
+  @Override
   public String getTopicName() {
     return topicName;
   }

@@ -47,25 +47,6 @@ public class AvroComputeRequestBuilderV4<K> extends AvroComputeRequestBuilderV3<
       AvroGenericReadComputeStoreClient storeClient,
       Optional<ClientStats> stats,
       Optional<ClientStats> streamingStats,
-      boolean reuseObjects,
-      BinaryEncoder reusedEncoder,
-      ByteArrayOutputStream reusedOutputStream) {
-    this(
-        latestValueSchema,
-        storeClient,
-        stats,
-        streamingStats,
-        new SystemTime(),
-        reuseObjects,
-        reusedEncoder,
-        reusedOutputStream);
-  }
-
-  public AvroComputeRequestBuilderV4(
-      Schema latestValueSchema,
-      AvroGenericReadComputeStoreClient storeClient,
-      Optional<ClientStats> stats,
-      Optional<ClientStats> streamingStats,
       Time time,
       boolean reuseObjects,
       BinaryEncoder reusedEncoder,

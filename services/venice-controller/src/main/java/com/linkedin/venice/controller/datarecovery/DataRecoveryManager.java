@@ -160,8 +160,7 @@ public class DataRecoveryManager implements Closeable {
     if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
     }
-    Optional<Version> optionalVersion = store.getVersion(versionNumber);
-    if (optionalVersion.isPresent()) {
+    if (store.getVersion(versionNumber).isPresent()) {
       throw new VeniceException("Previous store version metadata still exists");
     }
     String kafkaTopic = Version.composeKafkaTopic(storeName, versionNumber);
