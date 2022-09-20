@@ -5,13 +5,16 @@ import static com.linkedin.venice.controller.VeniceHelixAdmin.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
@@ -26,6 +29,8 @@ import org.testng.annotations.Test;
 
 
 public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTestVeniceHelixAdmin {
+  private static final long TEST_TIMEOUT = 30 * Time.MS_PER_SECOND;
+
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
     setupCluster();
@@ -36,7 +41,7 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
     cleanupCluster();
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testClusterLevelActiveActiveReplicationConfigForNewHybridStores() throws IOException {
     TopicManagerRepository originalTopicManagerRepository = prepareCluster(true, false, false);
     String storeNameHybrid = Utils.getUniqueString("test-store-hybrid");
@@ -83,7 +88,7 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
     veniceAdmin.setTopicManagerRepository(originalTopicManagerRepository);
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testClusterLevelActiveActiveReplicationConfigForNewIncrementalPushStores() throws IOException {
     TopicManagerRepository originalTopicManagerRepository = prepareCluster(false, true, false);
     String storeNameIncremental = Utils.getUniqueString("test-store-incremental");
@@ -131,7 +136,7 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
     veniceAdmin.setTopicManagerRepository(originalTopicManagerRepository);
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testClusterLevelActiveActiveReplicationConfigForNewBatchOnlyStores() throws IOException {
     TopicManagerRepository originalTopicManagerRepository = prepareCluster(false, false, true);
     String storeNameBatchOnly = Utils.getUniqueString("test-store-batch-only");
@@ -218,6 +223,16 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
     veniceAdmin.setTopicManagerRepository(mockedTopicManageRepository);
     TestUtils
         .waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> veniceAdmin.isLeaderControllerFor(clusterName));
+    Object createParticipantStoreFromProp = controllerProperties.get(PARTICIPANT_MESSAGE_STORE_ENABLED);
+    if (createParticipantStoreFromProp != null && Boolean.parseBoolean(createParticipantStoreFromProp.toString())) {
+      // Wait for participant store to finish materializing
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        Store store =
+            veniceAdmin.getStore(clusterName, VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName));
+        Assert.assertNotNull(store);
+        Assert.assertEquals(store.getCurrentVersion(), 1);
+      });
+    }
     return originalTopicManagerRepository;
   }
 
