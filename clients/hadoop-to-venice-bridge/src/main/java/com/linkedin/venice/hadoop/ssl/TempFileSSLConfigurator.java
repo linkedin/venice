@@ -36,7 +36,7 @@ public class TempFileSSLConfigurator implements SSLConfigurator {
             new Text(properties.getProperty(VenicePushJob.SSL_KEY_STORE_PROPERTY_NAME)));
         LOGGER.info("Found key store cert from credentials.");
         String keyStoreLocation = writeToTempFile(keyStoreCert);
-        LOGGER.info("Write key store cert to file: " + keyStoreLocation);
+        LOGGER.info("Write key store cert to file: {}", keyStoreLocation);
         properties.put(SSL_KEYSTORE_LOCATION, keyStoreLocation);
         // Setup truststore certification
         byte[] truestStoreCert = getCertification(
@@ -44,7 +44,7 @@ public class TempFileSSLConfigurator implements SSLConfigurator {
             new Text(properties.getProperty(VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME)));
         LOGGER.info("Found trust store cert from credentials.");
         String trustStoreLocation = writeToTempFile(truestStoreCert);
-        LOGGER.info("Write trust store cert to file: " + trustStoreLocation);
+        LOGGER.info("Write trust store cert to file: {}", trustStoreLocation);
         properties.put(SSL_TRUSTSTORE_LOCATION, trustStoreLocation);
 
         // Setup keystore password.

@@ -78,7 +78,7 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
     int fileIdx = inputIdx.get();
     if (fileIdx != VeniceFileInputSplit.MAPPER_BUILD_DICTIONARY_KEY) {
       // process input files
-      LOGGER.info("Input File index to be processed is : " + fileIdx);
+      LOGGER.info("Input File index to be processed is : {}", fileIdx);
 
       if (fileIdx >= fileStatuses.length) {
         MRJobCounterHelper.incrMapperInvalidInputIdxCount(reporter, 1);
@@ -87,14 +87,15 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
       }
 
       FileStatus fileStatus = fileStatuses[fileIdx];
-      LOGGER.info("Input File to be processed is : " + fileStatus.getPath().toString());
+      LOGGER.info("Input File to be processed is : {}", fileStatus.getPath().toString());
 
       if (fileStatus.isDirectory()) {
         // Map-reduce job will fail if the input directory has sub-directory
         MRJobCounterHelper.incrMapperInvalidInputFileCount(reporter, 1);
         LOGGER.error(
-            "Error while trying to validate schema: Input directory: " + fileStatus.getPath().getParent().getName()
-                + " should not have sub directory: " + fileStatus.getPath().getName());
+            "Error while trying to validate schema: Input directory: {}  should not have sub directory: {}",
+            fileStatus.getPath().getParent().getName(),
+            fileStatus.getPath().getName());
         return false;
       }
 
@@ -105,12 +106,11 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
         if (!newSchema.equals(inputDataInfo.getSchemaInfo().getAvroSchema())) {
           MRJobCounterHelper.incrMapperSchemaInconsistencyFailureCount(reporter, 1);
           LOGGER.error(
-              String.format(
-                  "Error while trying to validate schema: Inconsistent file Avro schema found. "
-                      + "File: %s.\n Expected file schema: %s.\n Real File schema: %s.",
-                  fileStatus.getPath().getName(),
-                  inputDataInfo.getSchemaInfo().getAvroSchema(),
-                  newSchema));
+              "Error while trying to validate schema: Inconsistent file Avro schema found. File: {}. \n"
+                  + "Expected file schema: {}.\n Real File schema: {}.",
+              fileStatus.getPath().getName(),
+              inputDataInfo.getSchemaInfo().getAvroSchema(),
+              newSchema);
           return false;
         }
       } else {
@@ -120,12 +120,11 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
         if (!newSchema.equals(inputDataInfo.getSchemaInfo().getVsonSchema())) {
           MRJobCounterHelper.incrMapperSchemaInconsistencyFailureCount(reporter, 1);
           LOGGER.error(
-              String.format(
-                  "Error while trying to validate schema: Inconsistent file vson schema found. "
-                      + "File: %s.\n Expected file schema: %s.\n Real File schema: %s.",
-                  fileStatus.getPath().getName(),
-                  inputDataInfo.getSchemaInfo().getVsonSchema(),
-                  newSchema));
+              "Error while trying to validate schema: Inconsistent file vson schema found. File: {}. "
+                  + "Expected file schema: {}. Real File schema: {}.",
+              fileStatus.getPath().getName(),
+              inputDataInfo.getSchemaInfo().getVsonSchema(),
+              newSchema);
           return false;
         }
       }
@@ -135,8 +134,8 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
       if (buildDictionary) {
         if (inputDataInfo.hasRecords()) {
           LOGGER.info(
-              "Creating ZSTD compression dictionary using " + inputDataInfoProvider.pushJobZstdConfig.getFilledSize()
-                  + " bytes of samples");
+              "Creating ZSTD compression dictionary using {}  bytes of samples",
+              inputDataInfoProvider.pushJobZstdConfig.getFilledSize());
           byte[] dict;
           try {
             dict = inputDataInfoProvider.getZstdDictTrainSamples();
@@ -149,15 +148,15 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
                 e);
             return false;
           }
-          LOGGER.info("Zstd compression dictionary size = " + dict.length + " bytes");
+          LOGGER.info("Zstd compression dictionary size = {} bytes", dict.length);
         } else {
           LOGGER.info("No compression dictionary is generated as the input data doesn't contain any records");
         }
       } else {
         LOGGER.info(
-            "No compression dictionary is generated with the strategy " + storeSetting.compressionStrategy
-                + " and compressionMetricCollectionEnabled is "
-                + (pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled"));
+            "No compression dictionary is generated with the strategy {} and compressionMetricCollectionEnabled is {}",
+            storeSetting.compressionStrategy,
+            (pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled"));
       }
     }
     return true;
@@ -176,16 +175,14 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
     long lastModificationTime = inputDataInfoProvider.getInputLastModificationTime(inputDirectory);
     if (lastModificationTime > inputModificationTime) {
       LOGGER.error(
-          "Error while " + errorString
-              + ": Because Dataset changed during the push job. Rerun the job without dataset change"
-              + ((exception != null) ? (" :" + exception) : ""));
+          "Error while {}: Because Dataset changed during the push job. Rerun the job without dataset change.",
+          errorString,
+          exception);
       if (reporter != null) {
         MRJobCounterHelper.incrMapperErrorDataModifiedDuringPushJobCount(reporter, 1);
       }
     } else {
-      LOGGER.error(
-          "Error while " + errorString + ": Maybe because Dataset changed during the push job"
-              + ((exception != null) ? (" :" + exception) : ""));
+      LOGGER.error("Error while {}: Maybe because Dataset changed during the push job.", errorString, exception);
     }
   }
 

@@ -58,13 +58,13 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
             -1));
 
     if (versionCreationResponse.isError()) {
-      LOGGER.warn(
-          "Got error in [heartbeat store: " + heartbeatStoreName + "] VersionCreationResponse: "
-              + versionCreationResponse);
+    LOGGER.warn(
+          "Got error in [heartbeat store: {}] VersionCreationResponse: {}",
+          heartbeatStoreName,
+          versionCreationResponse);
       throw new VeniceException(versionCreationResponse.getError());
     }
-    LOGGER
-        .info("Got [heartbeat store: " + heartbeatStoreName + "] VersionCreationResponse: " + versionCreationResponse);
+    LOGGER.info("Got [heartbeat store: {}] VersionCreationResponse: {}", heartbeatStoreName, versionCreationResponse);
     String heartbeatKafkaTopicName = versionCreationResponse.getKafkaTopic();
     VeniceWriter<byte[], byte[], byte[]> veniceWriter = getVeniceWriter(
         versionCreationResponse,
@@ -92,7 +92,8 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
             HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG.getConfigName(),
             HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG.getDefaultValue()));
     LOGGER.info(
-        "Successfully created a default push job heartbeat sender with heartbeat store name " + heartbeatStoreName);
+        "Successfully created a default push job heartbeat sender with heartbeat store name {}",
+        heartbeatStoreName);
     return defaultPushJobHeartbeatSender;
   }
 
@@ -122,8 +123,7 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
       String heartbeatStoreName) {
     SchemaResponse keySchemaResponse =
         ControllerClient.retryableRequest(controllerClient, retryAttempts, c -> c.getKeySchema(heartbeatStoreName));
-    LOGGER
-        .info("Got [heartbeat store: " + heartbeatStoreName + "] SchemaResponse for key schema: " + keySchemaResponse);
+    LOGGER.info("Got [heartbeat store: {}] SchemaResponse for key schema: {}", heartbeatStoreName, keySchemaResponse);
     return Schema.parse(keySchemaResponse.getSchemaStr());
   }
 

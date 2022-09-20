@@ -213,7 +213,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
           }
         }, deserializationExecutor);
       } catch (Exception e) {
-        LOGGER.error("Received exception while sending request to route: " + route, e);
+        LOGGER.error("Received exception while sending request to route: {}", route, e);
         routeRequestFuture.complete(HttpStatus.S_503_SERVICE_UNAVAILABLE);
       }
     }

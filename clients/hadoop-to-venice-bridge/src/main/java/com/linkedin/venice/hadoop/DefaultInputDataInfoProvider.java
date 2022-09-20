@@ -111,7 +111,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
 
     if (!pushJobSetting.isIncrementalPush && !pushJobSetting.useMapperToBuildDict) {
       if (this.storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-        LOGGER.info("Zstd compression enabled for " + pushJobSetting.storeName);
+        LOGGER.info("Zstd compression enabled for {}", pushJobSetting.storeName);
         initZstdConfig(fileStatuses.length);
       }
     }
@@ -282,7 +282,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
   }
 
   private Map<String, String> getMetadataFromSequenceFile(FileSystem fs, Path path, boolean buildDictionary) {
-    LOGGER.debug("path:" + path.toUri().getPath());
+    LOGGER.debug("path:{}", path.toUri().getPath());
     VeniceVsonRecordReader recordReader = getVeniceVsonRecordReader(fs, path);
 
     if (!pushJobSetting.isIncrementalPush) {
@@ -352,9 +352,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     }
 
     LOGGER.debug(
-        String.format(
-            "Read %s to build dictionary. Reached EOF.",
-            ByteUtils.generateHumanReadableByteCountString(fileSampleSize)));
+        "Read {} to build dictionary. Reached EOF.",
+        ByteUtils.generateHumanReadableByteCountString(fileSampleSize));
   }
 
   @Override
@@ -414,7 +413,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
   }
 
   protected Pair<Schema, Schema> getAvroFileHeader(FileSystem fs, Path path, boolean buildDictionary) {
-    LOGGER.debug("path:" + path.toUri().getPath());
+    LOGGER.debug("path:{}", path.toUri().getPath());
     VeniceAvroRecordReader recordReader = getVeniceAvroRecordReader(fs, path);
 
     if (!pushJobSetting.isIncrementalPush) {

@@ -137,7 +137,7 @@ public class BatchGetAvroStoreClientTest {
       Assert.assertEquals(value.get(VALUE_FIELD_NAME), i);
     }
     ClientStats stats = clientConfig.getStats(RequestType.MULTI_GET);
-    LOGGER.info("STATS: " + stats.buildSensorStatSummary("multiget_healthy_request_latency"));
+    LOGGER.info("STATS: {}", stats.buildSensorStatSummary("multiget_healthy_request_latency"));
   }
 
   @Test
@@ -174,7 +174,7 @@ public class BatchGetAvroStoreClientTest {
     genericFastClient.streamingBatchGet(keys, new StreamingCallback<String, GenericRecord>() {
       @Override
       public void onRecordReceived(String key, GenericRecord value) {
-        LOGGER.info("Record received " + key + ":" + value);
+        LOGGER.info("Record received {}:{}", key, value);
         if ("nonExisting".equals(key)) {
           Assert.assertNull(value);
         } else {
@@ -188,7 +188,7 @@ public class BatchGetAvroStoreClientTest {
 
       @Override
       public void onCompletion(Optional<Exception> exception) {
-        LOGGER.info("Exception received " + exception);
+        LOGGER.info("Exception received {}", exception);
         Assert.assertEquals(exception, Optional.empty());
         isComplete.set(true);
         completeLatch.countDown();
@@ -222,8 +222,10 @@ public class BatchGetAvroStoreClientTest {
     Assert.assertEquals(metricValues.get(0), 101.0);
     metricValues = stats.getMetricValues("multiget_success_request_key_count", "Avg");
     Assert.assertEquals(metricValues.get(0), 100.0);
+
     LOGGER.info(
-        "STATS: latency -> " + stats.buildSensorStatSummary("multiget_healthy_request_latency", "99thPercentile"));
+        "STATS: latency -> {}",
+        stats.buildSensorStatSummary("multiget_healthy_request_latency", "99thPercentile"));
     printAllStats();
   }
 
@@ -470,8 +472,8 @@ public class BatchGetAvroStoreClientTest {
     }
     valMetrics.sort(Comparator.naturalOrder());
     noValMetrics.sort(Comparator.naturalOrder());
-    LOGGER.info("STATS: Metrics with values -> \n    " + String.join("\n    ", valMetrics));
-    LOGGER.info("STATS: Metrics with noValues -> \n    " + String.join("\n    ", noValMetrics));
+    LOGGER.info("STATS: Metrics with values -> \n    {}", String.join("\n    ", valMetrics));
+    LOGGER.info("STATS: Metrics with noValues -> \n    {}", String.join("\n    ", noValMetrics));
   }
 
   @AfterClass(alwaysRun = true)

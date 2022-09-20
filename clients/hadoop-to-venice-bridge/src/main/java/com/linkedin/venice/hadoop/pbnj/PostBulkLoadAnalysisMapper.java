@@ -291,8 +291,8 @@ public class PostBulkLoadAnalysisMapper
       pbnj.badRecords.incrementAndGet();
       String exceptionMessage = "Records don't match for key: " + data.keyDatum.toString();
       LOGGER.error(exceptionMessage);
-      LOGGER.error("Value read from HDFS: " + data.valueDatumFromHdfs);
-      LOGGER.error("Value read from Venice: " + data.valueFromVenice);
+      LOGGER.error("Value read from HDFS: {}", data.valueDatumFromHdfs);
+      LOGGER.error("Value read from Venice: {}", data.valueFromVenice);
       pbnj.sendException.set(new VeniceException(exceptionMessage));
     }
   }

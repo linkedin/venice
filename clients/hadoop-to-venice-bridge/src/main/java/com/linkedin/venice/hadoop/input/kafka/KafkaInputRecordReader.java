@@ -101,8 +101,10 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
     this.consumer.subscribe(topicPartition.topic(), topicPartition.partition(), currentOffset);
     this.reporter = reporter;
     LOGGER.info(
-        "KafkaInputRecordReader started for TopicPartition: " + this.topicPartition + " starting offset: "
-            + this.startingOffset + " ending offset: " + this.endingOffset);
+        "KafkaInputRecordReader started for TopicPartition: {} starting offset: {} ending offset: {}",
+        this.topicPartition,
+        this.startingOffset,
+        this.endingOffset);
   }
 
   /**
@@ -169,8 +171,9 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
         long recordCount = MRJobCounterHelper.getTotalPutOrDeleteRecordsCount(reporter);
         if (recordCount % LOG_RECORD_INTERVAL == 0) {
           LOGGER.info(
-              "KafkaInputRecordReader for TopicPartition: " + this.topicPartition + " has processed " + recordCount
-                  + " records");
+              "KafkaInputRecordReader for TopicPartition: {} has processed {} records",
+              this.topicPartition,
+              recordCount);
         }
         return true;
       } else {

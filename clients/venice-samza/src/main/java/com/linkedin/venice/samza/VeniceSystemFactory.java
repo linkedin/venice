@@ -110,7 +110,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
     systemProducerStatues = new VeniceConcurrentHashMap<>();
     int totalNumberOfFactory = FACTORY_INSTANCE_NUMBER.incrementAndGet();
     if (totalNumberOfFactory > 1) {
-      LOGGER.warn("There are " + totalNumberOfFactory + " VeniceSystemProducer factory instances in one process.");
+      LOGGER.warn("There are {} VeniceSystemProducer factory instances in one process.", totalNumberOfFactory);
     }
   }
 
@@ -223,18 +223,18 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
 
     Optional<String> partitioners = Optional.ofNullable(config.get(VENICE_PARTITIONERS));
 
-    LOGGER.info("Configs for " + systemName + " producer: ");
-    LOGGER.info(prefix + VENICE_STORE + ": " + storeName);
-    LOGGER.info(prefix + VENICE_AGGREGATE + ": " + veniceAggregate);
-    LOGGER.info(prefix + VENICE_PUSH_TYPE + ": " + venicePushType);
-    LOGGER.info(VENICE_PARENT_D2_ZK_HOSTS + ": " + veniceParentZKHosts);
-    LOGGER.info(D2_ZK_HOSTS_PROPERTY + ": " + localVeniceZKHosts);
+    LOGGER.info("Configs for {} producer: ", systemName);
+    LOGGER.info("{}{}: {}", prefix, VENICE_STORE, storeName);
+    LOGGER.info("{}{}: {}", prefix, VENICE_AGGREGATE, veniceAggregate);
+    LOGGER.info("{}{}: {}", prefix, VENICE_PUSH_TYPE, venicePushType);
+    LOGGER.info("{}{}: {}", prefix, VENICE_PARENT_D2_ZK_HOSTS, veniceParentZKHosts);
+    LOGGER.info("{}: {}", D2_ZK_HOSTS_PROPERTY, localVeniceZKHosts);
 
     String runningFabric = config.get(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION);
-    LOGGER.info("Running Fabric from config: " + runningFabric);
+    LOGGER.info("Running Fabric from config: {}", runningFabric);
     if (runningFabric == null) {
       runningFabric = System.getProperty(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION);
-      LOGGER.info("Running Fabric from environment: " + runningFabric);
+      LOGGER.info("Running Fabric from environment: {}", runningFabric);
       if (runningFabric != null) {
         runningFabric = runningFabric.toLowerCase();
       }
@@ -242,7 +242,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
     if (runningFabric != null && runningFabric.contains("corp")) {
       runningFabric = NATIVE_REPLICATION_DEFAULT_SOURCE_FABRIC;
     }
-    LOGGER.info("Final Running Fabric: " + runningFabric);
+    LOGGER.info("Final Running Fabric: {}", runningFabric);
 
     String veniceD2ZKHost;
     String veniceD2Service;
@@ -253,7 +253,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
       veniceD2ZKHost = localVeniceZKHosts;
       veniceD2Service = VENICE_LOCAL_D2_SERVICE;
     }
-    LOGGER.info("Will use the following Venice D2 ZK hosts: " + veniceD2ZKHost);
+    LOGGER.info("Will use the following Venice D2 ZK hosts: {}", veniceD2ZKHost);
 
     boolean verifyLatestProtocolPresent = config.getBoolean(VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION, false);
     SystemProducer systemProducer = createSystemProducer(

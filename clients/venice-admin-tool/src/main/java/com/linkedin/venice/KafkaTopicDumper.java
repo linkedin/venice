@@ -103,7 +103,7 @@ public class KafkaTopicDumper implements AutoCloseable {
     } else {
       this.keySchemaStr = controllerClient.getKeySchema(storeName).getSchemaStr();
       MultiSchemaResponse.Schema[] schemas = controllerClient.getAllValueSchema(storeName).getSchemas();
-      LOGGER.info("Found " + schemas.length + " value schemas for store " + storeName);
+      LOGGER.info("Found {} value schemas for store {}", schemas.length, storeName);
       this.latestValueSchemaStr = schemas[schemas.length - 1].getSchemaStr();
       allValueSchemas = new Schema[schemas.length];
       int i = 0;
@@ -119,11 +119,11 @@ public class KafkaTopicDumper implements AutoCloseable {
     consumer.assign(partitions);
     Map<TopicPartition, Long> partitionToBeginningOffset = consumer.beginningOffsets(partitions);
     long computedStartingOffset = Math.max(partitionToBeginningOffset.get(partition), startingOffset);
-    LOGGER.info("Starting from offset: " + computedStartingOffset);
+    LOGGER.info("Starting from offset: {}", computedStartingOffset);
     consumer.seek(partition, computedStartingOffset);
     Map<TopicPartition, Long> partitionToEndOffset = consumer.endOffsets(partitions);
     this.endOffset = partitionToEndOffset.get(partition);
-    LOGGER.info("End offset for partition " + partition.partition() + " is " + this.endOffset);
+    LOGGER.info("End offset for partition {} is {}", partition.partition(), this.endOffset);
     if (messageCount < 0) {
       this.messageCount = this.endOffset;
     } else {
@@ -242,7 +242,7 @@ public class KafkaTopicDumper implements AutoCloseable {
           leaderMetadata == null ? "-" : leaderMetadata.upstreamOffset,
           leaderMetadata == null ? "-" : leaderMetadata.upstreamKafkaClusterId);
     } catch (Exception e) {
-      LOGGER.error("Failed when building record for offset " + record.offset(), e);
+      LOGGER.error("Failed when building record for offset {}", record.offset(), e);
     }
   }
 
@@ -303,7 +303,7 @@ public class KafkaTopicDumper implements AutoCloseable {
       }
       dataFileWriter.append(convertedRecord);
     } catch (Exception e) {
-      LOGGER.error("Failed when building record for offset " + record.offset(), e);
+      LOGGER.error("Failed when building record for offset {}", record.offset(), e);
     }
   }
 

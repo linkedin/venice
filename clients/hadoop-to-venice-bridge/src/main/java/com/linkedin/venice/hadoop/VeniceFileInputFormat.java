@@ -45,7 +45,7 @@ public class VeniceFileInputFormat implements InputFormat<IntWritable, NullWrita
     try {
       return new VeniceFileInputRecordReader(split, job);
     } catch (Exception e) {
-      LOGGER.error("Unable to retrieve VeniceFileInputRecordReader : " + e);
+      LOGGER.error("Unable to retrieve VeniceFileInputRecordReader : ", e);
       throw e;
     }
   }

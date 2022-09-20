@@ -197,7 +197,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
           }
 
           if (throwable != null) {
-            LOGGER.error("Received unexpected exception from replica request future: " + throwable);
+            LOGGER.error("Received unexpected exception from replica request future: ", throwable);
             return;
           }
           clientStats.recordRequest(instance);

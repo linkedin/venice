@@ -39,8 +39,8 @@ public class UserCredentialsFactory {
 
   private static void verifyCredentials(Credentials credentials) {
     if (credentials.numberOfSecretKeys() < REQUIRED_SECRET_KEY_COUNT) {
-      LOGGER.info("Number of tokens found: " + credentials.numberOfTokens()); // Currently is 4
-      LOGGER.warn("Number of secret keys found: " + credentials.numberOfSecretKeys()); // Currently should be 4
+      LOGGER.info("Number of tokens found: {}", credentials.numberOfTokens()); // Currently is 4
+      LOGGER.warn("Number of secret keys found: {}", credentials.numberOfSecretKeys()); // Currently should be 4
       LOGGER.warn(
           "The current credentials does not contain required secret keys which are required by enabling Kafka SSL.");
     }

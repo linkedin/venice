@@ -48,13 +48,13 @@ public class InstanceHealthMonitor implements Closeable {
       pendingRequestCounterMap.compute(instance, (k, v) -> {
         if (v == null) {
           LOGGER.error(
-              "Pending request counter for instance: " + instance
-                  + " doesn't exist when trying to reset for a completed request");
+              "Pending request counter for instance: {} doesn't exist when trying to reset for a completed request",
+              instance);
           return 0;
         } else if (v == 0) {
           LOGGER.error(
-              "Pending request counter for instance: " + instance
-                  + " is 0 when trying to reset for a completed request");
+              "Pending request counter for instance: {} is 0 when trying to reset for a completed request",
+              instance);
           return 0;
         }
         return v - 1;
@@ -125,11 +125,11 @@ public class InstanceHealthMonitor implements Closeable {
       }
       if (unhealthyInstance) {
         if (unhealthyInstanceSet.add(instance)) {
-          LOGGER.info("Marked instance: " + instance + " as unhealthy because of error response");
+          LOGGER.info("Marked instance: {} as unhealthy because of error response", instance);
         }
       } else {
         if (unhealthyInstanceSet.remove(instance)) {
-          LOGGER.info("Marked instance: " + instance + " as healthy because of good response");
+          LOGGER.info("Marked instance: {} as healthy because of good response", instance);
         }
       }
     });

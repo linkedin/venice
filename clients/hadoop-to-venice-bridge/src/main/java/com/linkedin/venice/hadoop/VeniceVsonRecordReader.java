@@ -73,7 +73,7 @@ public class VeniceVsonRecordReader extends AbstractVeniceRecordReader<BytesWrit
             .forEach((key, value) -> metadataMap.put(key.toString(), value.toString()));
         setupSchema(metadataMap.get(FILE_KEY_SCHEMA), metadataMap.get(FILE_VALUE_SCHEMA));
       } catch (IOException e) {
-        LOGGER.info("Path: " + hdfsPath.getName() + " is not a sequence file.");
+        LOGGER.info("Path: {} is not a sequence file.", hdfsPath.getName());
       }
     }
   }
@@ -171,9 +171,9 @@ public class VeniceVsonRecordReader extends AbstractVeniceRecordReader<BytesWrit
         currentKey = (BytesWritable) fileReader.getKeyClass().newInstance();
         currentValue = (BytesWritable) fileReader.getValueClass().newInstance();
       } catch (IllegalAccessException e) {
-        LOGGER.warn("Unable to access class constructor through reflection. Exception: " + e.toString());
+        LOGGER.warn("Unable to access class constructor through reflection. Exception: {}", e.toString());
       } catch (InstantiationException e) {
-        LOGGER.warn("Class cannot be instantiated. Exception: " + e.toString());
+        LOGGER.warn("Class cannot be instantiated. Exception: {}", e.toString());
       }
     }
 

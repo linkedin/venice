@@ -105,7 +105,7 @@ public class ClientStats extends com.linkedin.venice.client.stats.ClientStats {
         URL url = new URL(instanceUrl);
         instanceName = url.getHost() + "_" + url.getPort();
       } catch (MalformedURLException e) {
-        LOGGER.error("Invalid instance url: " + instanceUrl);
+        LOGGER.error("Invalid instance url: {}", instanceUrl);
       }
       return new RouteStats(getMetricsRepository(), storeName, instanceName);
     });

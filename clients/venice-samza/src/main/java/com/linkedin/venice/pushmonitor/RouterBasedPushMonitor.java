@@ -100,7 +100,7 @@ public class RouterBasedPushMonitor implements Closeable {
 
     @Override
     public void run() {
-      LOGGER.info("Running " + this.getClass().getSimpleName());
+      LOGGER.info("Running {}", this.getClass().getSimpleName());
       while (isRunning.get()) {
         try {
           // Get push status
@@ -108,14 +108,14 @@ public class RouterBasedPushMonitor implements Closeable {
           TransportClientResponse response = responseFuture.get(POLL_TIMEOUT_MS, TimeUnit.MILLISECONDS);
           PushStatusResponse pushStatusResponse = MAPPER.readValue(response.getBody(), PushStatusResponse.class);
           if (pushStatusResponse.isError()) {
-            LOGGER.error("Router was not able to get push status: " + pushStatusResponse.getError());
+            LOGGER.error("Router was not able to get push status: {}", pushStatusResponse.getError());
             continue;
           }
           pushMonitorService.setCurrentStatus(pushStatusResponse.getExecutionStatus());
           switch (pushStatusResponse.getExecutionStatus()) {
             case END_OF_PUSH_RECEIVED:
             case COMPLETED:
-              LOGGER.info("Samza stream reprocessing has finished successfully for store version: " + topicName);
+              LOGGER.info("Samza stream reprocessing has finished successfully for store version: {}", topicName);
               factory.endStreamReprocessingSystemProducer(producer, true);
               /**
                * If there is no more active samza producer, check whether all the stream reprocessing jobs succeed;
@@ -153,19 +153,20 @@ public class RouterBasedPushMonitor implements Closeable {
               }
               return;
             case ERROR:
-              LOGGER.info("Stream reprocessing job failed for store version: " + topicName);
+              LOGGER.info("Stream reprocessing job failed for store version: {}", topicName);
               factory.endStreamReprocessingSystemProducer(producer, false);
               // Stop polling
               return;
             default:
               LOGGER.info(
-                  "Current stream reprocessing job state: " + pushStatusResponse.getExecutionStatus()
-                      + " for store version: " + topicName);
+                  "Current stream reprocessing job state: {} for store version: {}",
+                  pushStatusResponse.getExecutionStatus(),
+                  topicName);
           }
 
           Utils.sleep(POLL_CYCLE_DELAY_MS);
         } catch (Exception e) {
-          LOGGER.error("Error when polling push status from router for store version: " + topicName, e);
+          LOGGER.error("Error when polling push status from router for store version: {}", topicName, e);
         }
       }
     }

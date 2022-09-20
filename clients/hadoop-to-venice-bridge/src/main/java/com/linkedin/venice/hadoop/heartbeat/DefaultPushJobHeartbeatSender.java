@@ -104,12 +104,11 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
     this.storeVersion = storeVersion;
     this.heartbeatStartTime = Instant.now();
     LOGGER.info(
-        String.format(
-            "Start sending liveness heartbeats for [store=%s, version=%s] with initial delay %d ms and interval %d ms...",
-            this.storeName,
-            this.storeVersion,
-            this.initialDelay.toMillis(),
-            this.interval.toMillis()));
+        "Start sending liveness heartbeats for [store={}, version={}] with initial delay {} ms and interval {} ms...",
+        this.storeName,
+        this.storeVersion,
+        this.initialDelay.toMillis(),
+        this.interval.toMillis());
     executorService.scheduleAtFixedRate(this, initialDelay.toMillis(), interval.toMillis(), TimeUnit.MILLISECONDS);
   }
 
@@ -128,14 +127,13 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
     LOGGER.info("Closing the heartbeat VeniceWriter");
     veniceWriter.close();
     LOGGER.info(
-        String.format(
-            "Liveness heartbeat stopped for [store=%s, version=%s] "
-                + "with %d successful heartbeat(s) and %d failed heartbeat(s) and in total took %d second(s)",
-            this.storeName,
-            this.storeVersion,
-            successfulHeartbeatCount,
-            failedHeartbeatCount,
-            Duration.between(this.heartbeatStartTime, Instant.now()).getSeconds()));
+        "Liveness heartbeat stopped for [store={}, version={}] with {} successful heartbeat(s) and {} "
+            + "failed heartbeat(s) and in total took {} second(s)",
+        this.storeName,
+        this.storeVersion,
+        successfulHeartbeatCount,
+        failedHeartbeatCount,
+        Duration.between(this.heartbeatStartTime, Instant.now()).getSeconds());
   }
 
   @Override
@@ -186,13 +184,13 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
       Duration sendDuration = Duration.between(sendStartTime, Instant.now());
       if (exception == null) {
         successfulHeartbeatCount++;
-        LOGGER.info("Sending one heartbeat event successfully. Took: " + sendDuration.toMillis() + " ms");
+        LOGGER.info("Sending one heartbeat event successfully. Took: {} ms", sendDuration.toMillis());
       } else {
         failedHeartbeatCount++;
         if (firstSendHeartbeatException == null) {
           firstSendHeartbeatException = exception;
         }
-        LOGGER.info("Failed to send one heartbeat event after " + sendDuration.toMillis() + " ms", exception);
+        LOGGER.info("Failed to send one heartbeat event after {} ms", sendDuration.toMillis(), exception);
       }
       sendComplete.countDown();
     };
@@ -206,8 +204,7 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
 
     try {
       if (!sendComplete.await(sendTimeout.toMillis(), TimeUnit.MILLISECONDS)) {
-        LOGGER.warn(
-            "Liveness heartbeat sent did not get ack-ed by remote server after " + sendTimeout.toMillis() + " ms");
+        LOGGER.warn("Liveness heartbeat sent did not get ack-ed by remote server after {} ms", sendTimeout.toMillis());
       }
     } catch (InterruptedException e) {
       LOGGER.warn("Liveness heartbeat sent was interrupted", e);
