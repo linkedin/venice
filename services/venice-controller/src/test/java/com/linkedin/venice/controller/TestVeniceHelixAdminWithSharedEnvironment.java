@@ -64,6 +64,8 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.model.IdealState;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -78,6 +80,7 @@ import org.testng.annotations.Test;
  */
 public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVeniceHelixAdmin {
   private final MetricsRepository metricsRepository = new MetricsRepository();
+  private final static Logger LOGGER = LogManager.getLogger(TestVeniceHelixAdminWithSharedEnvironment.class);
 
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
