@@ -232,12 +232,12 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     File databaseDir = new File(rocksDBPath);
     if (databaseDir.exists() && databaseDir.isDirectory()) {
       String[] storeDirs = databaseDir.list();
-      LOGGER.info("Found the following RocksDB databases: " + Arrays.toString(storeDirs));
+      LOGGER.info("Found the following RocksDB databases: {}", Arrays.toString(storeDirs));
       if (storeDirs != null) {
         return new HashSet<>(Arrays.asList(storeDirs));
       }
     } else {
-      LOGGER.info("RocksDB dir: " + databaseDir + " doesn't exist, so nothing to restore");
+      LOGGER.info("RocksDB dir: {} doesn't exist, so nothing to restore", databaseDir);
     }
     return new HashSet<>();
   }
@@ -264,12 +264,12 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     verifyPersistenceType(engine);
     final String storeName = engine.getStoreName();
     if (storageEngineMap.containsKey(storeName)) {
-      LOGGER.info("Started removing RocksDB storage engine for store: " + storeName);
+      LOGGER.info("Started removing RocksDB storage engine for store: {}", storeName);
       storageEngineMap.get(storeName).drop();
       storageEngineMap.remove(storeName);
-      LOGGER.info("Finished removing RocksDB storage engine for store: " + storeName);
+      LOGGER.info("Finished removing RocksDB storage engine for store: {}", storeName);
     } else {
-      LOGGER.info("RocksDB store: " + storeName + " doesn't exist");
+      LOGGER.info("RocksDB store: {} doesn't exist", storeName);
     }
   }
 
@@ -278,12 +278,12 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     verifyPersistenceType(engine);
     final String storeName = engine.getStoreName();
     if (storageEngineMap.containsKey(storeName)) {
-      LOGGER.info("Started closing RocksDB storage engine for store: " + storeName);
+      LOGGER.info("Started closing RocksDB storage engine for store: {}", storeName);
       storageEngineMap.get(storeName).close();
       storageEngineMap.remove(storeName);
-      LOGGER.info("Finished closing RocksDB storage engine for store: " + storeName);
+      LOGGER.info("Finished closing RocksDB storage engine for store: {}", storeName);
     } else {
-      LOGGER.info("RocksDB store: " + storeName + " doesn't exist");
+      LOGGER.info("RocksDB store: {} doesn't exist", storeName);
     }
   }
 

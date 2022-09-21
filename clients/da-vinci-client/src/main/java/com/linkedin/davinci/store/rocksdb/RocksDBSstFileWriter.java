@@ -314,12 +314,14 @@ public class RocksDBSstFileWriter {
       boolean result = Arrays.equals(finalChecksum, checksumToMatch);
       if (!result) {
         LOGGER.error(
-            "verifyChecksum: failure. SSTFile recordCount: " + recordCount + " expectedChecksum: "
-                + ByteUtils.toHexString(checksumToMatch) + " actualChecksum: " + ByteUtils.toHexString(finalChecksum));
+            "Checksum mismatch in SSTFile. recordCount: {} expectedChecksum: {}, actualChecksum: {}",
+            recordCount,
+            ByteUtils.toHexString(checksumToMatch),
+            ByteUtils.toHexString(finalChecksum));
       }
       return result;
     } catch (Exception e) {
-      throw new VeniceChecksumException("verifyChecksum: failure. Exception in rocksdb:", e);
+      throw new VeniceChecksumException("Checksum mismatch in SST files.", e);
     } finally {
       /**
        * close the iterator first before closing the reader, otherwise iterator is not closed at all, based on implementation
@@ -342,7 +344,7 @@ public class RocksDBSstFileWriter {
     for (String path: files) {
       File file = new File(path);
       if (file.length() != 0) {
-        LOGGER.error("Non-empty sst found when validating batch ingestion: " + path);
+        LOGGER.error("Non-empty sst found when validating batch ingestion: {}", path);
         return false;
       }
     }
