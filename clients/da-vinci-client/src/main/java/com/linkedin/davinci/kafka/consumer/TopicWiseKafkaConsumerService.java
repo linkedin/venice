@@ -31,7 +31,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
    */
   private final Map<String, SharedKafkaConsumer> versionTopicToConsumerMap = new VeniceConcurrentHashMap<>();
   private final Map<SharedKafkaConsumer, Set<String>> consumerToStoresMap = new VeniceConcurrentHashMap<>();
-  private final Logger logger;
+  private final Logger LOGGER;
 
   TopicWiseKafkaConsumerService(
       final KafkaClientFactory consumerFactory,
@@ -63,7 +63,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
         liveConfigBasedKafkaThrottlingEnabled,
         time,
         stats);
-    logger = LogManager.getLogger(TopicWiseKafkaConsumerService.class + " [" + kafkaUrl + "]");
+    LOGGER = LogManager.getLogger(TopicWiseKafkaConsumerService.class + " [" + kafkaUrl + "]");
   }
 
   /**
@@ -82,7 +82,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
     // Check whether this version topic has been subscribed before or not.
     SharedKafkaConsumer chosenConsumer = versionTopicToConsumerMap.get(versionTopic);
     if (chosenConsumer != null) {
-      logger.info(
+      LOGGER.info(
           "The version topic: {} has been subscribed previously, so this function will return the previously assigned shared consumer directly",
           versionTopic);
     } else {
@@ -97,7 +97,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
          * To simplify the logic here, we ensure that one consumer consumes from only one version topic of a specific store.
          */
         if (checkWhetherConsumerHasSubscribedSameStore(consumer, versionTopic)) {
-          logger.info(
+          LOGGER.info(
               "Current consumer has already subscribed the same store as the new topic: {}, will skip it and try next consumer in consumer pool",
               versionTopic);
           continue;
@@ -123,7 +123,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
                 + " the existing consumers have subscribed the same store, and that might be caused by a bug or resource leaking");
       }
       if (freshConsumer) {
-        logger.info(
+        LOGGER.info(
             "Assigned a shared consumer with index of {} for topic: {} with least # of partitions assigned ({})"
                 + " and subscribed it to {}",
             consumerToConsumptionTask.indexOf(chosenConsumer),
@@ -131,7 +131,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
             minAssignmentPerConsumer,
             topicPartition);
       } else {
-        logger.info(
+        LOGGER.info(
             "Assigned a shared consumer with index of {} for topic: {} without any partitions assigned"
                 + " and subscribed it to {}",
             consumerToConsumptionTask.indexOf(chosenConsumer),
@@ -160,7 +160,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
   public synchronized void unsubscribeAll(String versionTopic) {
     SharedKafkaConsumer sharedKafkaConsumer = versionTopicToConsumerMap.get(versionTopic);
     if (sharedKafkaConsumer == null) {
-      logger.warn("No assigned shared consumer found for this version topic: " + versionTopic);
+      LOGGER.warn("No assigned shared consumer found for this version topic: {}", versionTopic);
       return;
     }
     removeTopicFromConsumer(versionTopic, sharedKafkaConsumer);

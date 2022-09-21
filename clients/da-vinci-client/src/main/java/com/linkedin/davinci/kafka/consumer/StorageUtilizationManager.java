@@ -174,10 +174,12 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     versionIsOnline = isVersionOnline(version.get());
     if (this.storeQuotaInBytes != store.getStorageQuotaInByte() || !store.isHybridStoreDiskQuotaEnabled()) {
       LOGGER.info(
-          "Store: " + this.storeName + " changed, updated quota from " + this.storeQuotaInBytes + " to "
-              + store.getStorageQuotaInByte() + " and store quota is "
-              + (store.isHybridStoreDiskQuotaEnabled() ? "" : "not ")
-              + "enabled, so we reset the store quota and resume all partitions.");
+          "Store: {} changed, updated quota from {} to {} and store quota is {}enabled, "
+              + "so we reset the store quota and resume all partitions.",
+          this.storeName,
+          this.storeQuotaInBytes,
+          store.getStorageQuotaInByte(),
+          store.isHybridStoreDiskQuotaEnabled() ? "" : "not ");
       resumeAllPartitions();
     }
 
@@ -280,8 +282,10 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       boolean shouldLogQuotaExceeded = !REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier);
       if (shouldLogQuotaExceeded) {
         LOGGER.info(
-            "Quota exceeded for store " + storeName + " partition " + partition + ", paused this partition."
-                + versionTopic);
+            "Quota exceeded for store {} partition {}, paused this partition. {}",
+            storeName,
+            partition,
+            versionTopic);
       }
     } else { /** we have free space for this partition */
       /**
@@ -290,7 +294,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       statusReportAdapter.reportQuotaNotViolated(pcs);
       if (isPartitionPausedIngestion(partition)) {
         resumePartition(partition, consumingTopic);
-        LOGGER.info("Quota available for store " + storeName + " partition " + partition + ", resumed this partition.");
+        LOGGER.info("Quota available for store {} partition {}, resumed this partition.", storeName, partition);
       }
     }
   }

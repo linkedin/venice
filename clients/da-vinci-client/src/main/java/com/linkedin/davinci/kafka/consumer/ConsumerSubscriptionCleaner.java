@@ -126,7 +126,7 @@ public class ConsumerSubscriptionCleaner {
     }
     Set<String> topicsToUnsubscribe = new HashSet<>(nonExistingTopics);
     if (!nonExistingTopics.isEmpty()) {
-      LOGGER.error("Detected the following non-existing topics: " + nonExistingTopics);
+      LOGGER.error("Detected the following non-existing topics: {}", nonExistingTopics);
       for (String topic: nonExistingTopics) {
         long firstDetectedTimestamp = nonExistingTopicDiscoverTimestampMap.getLong(topic);
         if (firstDetectedTimestamp == nonExistingTopicDiscoverTimestampMap.defaultReturnValue()) {
@@ -141,8 +141,8 @@ public class ConsumerSubscriptionCleaner {
         long diff = currentTimestamp - firstDetectedTimestamp;
         if (diff >= nonExistingTopicCleanupDelayMS) {
           LOGGER.error(
-              "The non-existing topic hasn't showed up after " + diff
-                  + " ms, so we will fail the attached ingestion task");
+              "The non-existing topic hasn't showed up after {} ms, so we will fail the attached ingestion task",
+              diff);
           nonExistingTopicDiscoverTimestampMap.removeLong(topic);
         } else {
           /**

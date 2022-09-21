@@ -132,8 +132,7 @@ public class HttpClientTransport implements AutoCloseable {
       } catch (VeniceException e) {
         retryCount++;
         if (retryCount != maxAttempt) {
-          LOGGER.warn(
-              "Encounter exception when sending request, will retry for " + retryCount + "/" + maxAttempt + " time.");
+          LOGGER.warn("Encounter exception when sending request, will retry for {} / {} time.", retryCount, maxAttempt);
         } else {
           long totalTimeInMs = System.currentTimeMillis() - startTimeIsMs;
           throw new VeniceException(

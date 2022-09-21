@@ -68,7 +68,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
 
   private final ExecutorService consumerExecutor;
   protected final String kafkaUrl;
-  private final Logger logger;
+  private final Logger LOGGER;
 
   protected KafkaConsumerServiceStats stats;
   protected final IndexedMap<SharedKafkaConsumer, ConsumptionTask> consumerToConsumptionTask;
@@ -94,7 +94,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       final Time time,
       final KafkaConsumerServiceStats statsOverride) {
     this.kafkaUrl = consumerProperties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
-    this.logger = LogManager.getLogger(KafkaConsumerService.class.getSimpleName() + " [" + kafkaUrl + "]");
+    this.LOGGER = LogManager.getLogger(KafkaConsumerService.class.getSimpleName() + " [" + kafkaUrl + "]");
 
     // Initialize consumers and consumerExecutor
     consumerExecutor = Executors.newFixedThreadPool(
@@ -154,7 +154,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       consumerToConsumptionTask.putByIndex(newConsumer, consumptionTask, i);
     }
 
-    logger.info("KafkaConsumerService was initialized with " + numOfConsumersPerKafkaCluster + " consumers.");
+    LOGGER.info("KafkaConsumerService was initialized with {} consumers.", numOfConsumersPerKafkaCluster);
   }
 
   /** May be overridden to clean up state in sub-classes */
@@ -251,7 +251,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   public boolean startInner() {
     consumerToConsumptionTask.values().forEach(consumerExecutor::submit);
     consumerExecutor.shutdown();
-    logger.info("KafkaConsumerService started for " + kafkaUrl);
+    LOGGER.info("KafkaConsumerService started for {}", kafkaUrl);
     return true;
   }
 
@@ -264,9 +264,9 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
     boolean gracefulShutdownSuccess = consumerExecutor.awaitTermination(timeOutInSeconds, TimeUnit.SECONDS);
     long gracefulShutdownDuration = System.currentTimeMillis() - gracefulShutdownBeginningTime;
     if (gracefulShutdownSuccess) {
-      logger.info("consumerExecutor terminated gracefully in {} ms.", gracefulShutdownDuration);
+      LOGGER.info("consumerExecutor terminated gracefully in {} ms.", gracefulShutdownDuration);
     } else {
-      logger.warn(
+      LOGGER.warn(
           "consumerExecutor timed out after {} ms while awaiting graceful termination. Will force shutdown.",
           gracefulShutdownDuration);
       long forcefulShutdownBeginningTime = System.currentTimeMillis();
@@ -274,9 +274,9 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       boolean forcefulShutdownSuccess = consumerExecutor.awaitTermination(timeOutInSeconds, TimeUnit.SECONDS);
       long forcefulShutdownDuration = System.currentTimeMillis() - forcefulShutdownBeginningTime;
       if (forcefulShutdownSuccess) {
-        logger.info("consumerExecutor terminated forcefully in {} ms.", forcefulShutdownDuration);
+        LOGGER.info("consumerExecutor terminated forcefully in {} ms.", forcefulShutdownDuration);
       } else {
-        logger.warn(
+        LOGGER.warn(
             "consumerExecutor timed out after {} ms while awaiting forceful termination.",
             forcefulShutdownDuration);
       }
@@ -319,7 +319,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       String slowestTaskIdString = kafkaUrl + slowestTaskId;
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(slowestTaskIdString)) {
         // log the slowest consumer id if it couldn't make any progress in a minute!
-        logger.warn(
+        LOGGER.warn(
             "Shared consumer ({} - task {}) couldn't make any progress for over {} ms!",
             kafkaUrl,
             slowestTaskId,

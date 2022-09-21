@@ -426,10 +426,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       // offsets went backwards, raise an alert!
       hostLevelIngestionStats.recordOffsetRegressionDCRError();
       aggVersionedIngestionStats.recordOffsetRegressionDCRError(storeName, versionNumber);
-      LOGGER.error(
-          String.format(
-              "Offset vector found to have gone backwards!! New invalid replication metadata result:%s",
-              rmdRecord));
+      LOGGER
+          .error("Offset vector found to have gone backwards!! New invalid replication metadata result: {}", rmdRecord);
     }
 
     // TODO: This comparison doesn't work well for write compute+schema evolution (can spike up). VENG-8129
@@ -443,9 +441,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         hostLevelIngestionStats.recordTimestampRegressionDCRError();
         aggVersionedIngestionStats.recordTimestampRegressionDCRError(storeName, versionNumber);
         LOGGER.error(
-            String.format(
-                "Timestamp found to have gone backwards!! Invalid replication metadata result:%s",
-                mergeConflictResult.getRmdRecord()));
+            "Timestamp found to have gone backwards!! Invalid replication metadata result: {}",
+            mergeConflictResult.getRmdRecord());
       }
     }
   }
@@ -635,8 +632,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     if (shouldNewLeaderSwitchToRemoteConsumption(partitionConsumptionState)) {
       partitionConsumptionState.setConsumeRemotely(true);
       LOGGER.info(
-          consumerTaskId + " enabled remote consumption from topic " + offsetRecord.getLeaderTopic() + " partition "
-              + partition);
+          "{} enabled remote consumption from topic {} partition {}",
+          consumerTaskId,
+          offsetRecord.getLeaderTopic(),
+          partition);
     }
 
     partitionConsumptionState.setLeaderFollowerState(LEADER);
@@ -646,13 +645,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     leaderSourceKafkaURLs
         .forEach(kafkaURL -> leaderOffsetByKafkaURL.put(kafkaURL, partitionConsumptionState.getLeaderOffset(kafkaURL)));
     LOGGER.info(
-        String.format(
-            "%s is promoted to leader for partition %d and it is going to start consuming from "
-                + "topic %s with offset by Kafka URL mapping %s",
-            consumerTaskId,
-            partition,
-            leaderTopic,
-            leaderOffsetByKafkaURL));
+        "{} is promoted to leader for partition {} and it is going to start consuming from "
+            + "topic {} with offset by Kafka URL mapping {}",
+        consumerTaskId,
+        partition,
+        leaderTopic,
+        leaderOffsetByKafkaURL);
 
     // subscribe to the new upstream
     leaderOffsetByKafkaURL.forEach((kafkaURL, leaderStartOffset) -> {
@@ -666,12 +664,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     syncConsumedUpstreamRTOffsetMapIfNeeded(partitionConsumptionState, leaderOffsetByKafkaURL);
 
     LOGGER.info(
-        String.format(
-            "%s, as a leader, started consuming from topic %s partition %d with offset by Kafka URL mapping %s",
-            consumerTaskId,
-            offsetRecord.getLeaderTopic(),
-            partition,
-            leaderOffsetByKafkaURL));
+        "{}, as a leader, started consuming from topic {} partition {} with offset by Kafka URL mapping {}",
+        consumerTaskId,
+        offsetRecord.getLeaderTopic(),
+        partition,
+        leaderOffsetByKafkaURL);
   }
 
   private long calculateRewindStartTime(PartitionConsumptionState partitionConsumptionState) {
@@ -721,12 +718,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         if (topicSwitch.rewindStartTimestamp == REWIND_TIME_DECIDED_BY_SERVER) {
           rewindStartTimestamp = calculateRewindStartTime(partitionConsumptionState);
           LOGGER.info(
-              String.format(
-                  "%s leader calculated rewindStartTimestamp %d for topic %s partition %d",
-                  consumerTaskId,
-                  rewindStartTimestamp,
-                  newSourceTopicName,
-                  sourceTopicPartition));
+              "{} leader calculated rewindStartTimestamp {} for topic {} partition {}",
+              consumerTaskId,
+              rewindStartTimestamp,
+              newSourceTopicName,
+              sourceTopicPartition);
         } else {
           rewindStartTimestamp = topicSwitch.rewindStartTimestamp;
         }
@@ -751,12 +747,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             unreachableBrokerList.add(sourceKafkaURL);
             upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
             LOGGER.error(
-                String.format(
-                    "Failed contacting broker %s when processing topic switch! for topic %s partition %d. Setting upstream start offset to %d",
-                    sourceKafkaURL,
-                    newSourceTopicName,
-                    sourceTopicPartition,
-                    upstreamStartOffset));
+                "Failed contacting broker {} when processing topic switch! for topic {} partition {}. Setting upstream start offset to {}",
+                sourceKafkaURL,
+                newSourceTopicName,
+                sourceTopicPartition,
+                upstreamStartOffset);
             hostLevelIngestionStats.recordIngestionFailure();
 
             // Add to repair queue
@@ -807,13 +802,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         || (!Objects.equals(topicSwitch.sourceKafkaServers.get(0).toString(), localKafkaServer))) {
       partitionConsumptionState.setConsumeRemotely(true);
       LOGGER.info(
-          String.format(
-              "%s enabled remote consumption and switch to topic %s partition %d with offset "
-                  + "by Kafka URL mapping %s",
-              consumerTaskId,
-              newSourceTopicName,
-              sourceTopicPartition,
-              upstreamOffsetsByKafkaURLs));
+          "{} enabled remote consumption and switch to topic {} partition {} with offset by Kafka URL mapping {}",
+          consumerTaskId,
+          newSourceTopicName,
+          sourceTopicPartition,
+          upstreamOffsetsByKafkaURLs);
     }
 
     partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopicName);
@@ -823,9 +816,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     if (unreachableBrokerList.size() > 0) {
       LOGGER.warn(
-          String.format(
-              "Failed to reach broker urls %s, will schedule retry to compute upstream offset and resubscribe!",
-              unreachableBrokerList.toString()));
+          "Failed to reach broker urls {}, will schedule retry to compute upstream offset and resubscribe!",
+          unreachableBrokerList.toString());
       // We won't attempt to resubscribe for brokers we couldn't compute an upstream offset accurately for. We'll
       // reattempt subscription later
       // Queue up repair here:
@@ -844,14 +836,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     syncConsumedUpstreamRTOffsetMapIfNeeded(partitionConsumptionState, upstreamOffsetsByKafkaURLs);
     LOGGER.info(
-        String.format(
-            "%s leader successfully switch feed topic from %s to %s on partition %d with offset by "
-                + "Kafka URL mapping %s",
-            consumerTaskId,
-            currentLeaderTopic,
-            newSourceTopicName,
-            partition,
-            upstreamOffsetsByKafkaURLs));
+        "{} leader successfully switch feed topic from {} to {} on partition {} with offset by Kafka URL mapping {}",
+        consumerTaskId,
+        currentLeaderTopic,
+        newSourceTopicName,
+        partition,
+        upstreamOffsetsByKafkaURLs);
 
     // In case new topic is empty and leader can never become online
     defaultReadyToServeChecker.apply(partitionConsumptionState);
@@ -869,7 +859,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
      * Hence, before processing TopicSwitch message, we need to force downgrade other subPartitions into FOLLOWER.
      */
     if (isLeader(partitionConsumptionState) && !amplificationFactorAdapter.isLeaderSubPartition(partition)) {
-      LOGGER.info("SubPartition: " + partitionConsumptionState.getPartition() + " is demoted from LEADER to STANDBY.");
+      LOGGER.info("SubPartition: {} is demoted from LEADER to STANDBY.", partitionConsumptionState.getPartition());
       String currentLeaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
       consumerUnSubscribe(currentLeaderTopic, partitionConsumptionState);
 
@@ -904,12 +894,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         if (topicSwitch.rewindStartTimestamp == REWIND_TIME_DECIDED_BY_SERVER) {
           rewindStartTimestamp = calculateRewindStartTime(partitionConsumptionState);
           LOGGER.info(
-              String.format(
-                  "%s leader calculated rewindStartTimestamp %d for topic %s partition %d",
-                  consumerTaskId,
-                  rewindStartTimestamp,
-                  newSourceTopicName,
-                  newSourceTopicPartition));
+              "{} leader calculated rewindStartTimestamp {} for topic {} partition {}",
+              consumerTaskId,
+              rewindStartTimestamp,
+              newSourceTopicName,
+              newSourceTopicPartition);
         } else {
           rewindStartTimestamp = topicSwitch.rewindStartTimestamp;
         }
@@ -922,11 +911,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           } catch (Exception e) {
             // TODO: Catch more specific Exception?
             LOGGER.error(
-                String.format(
-                    "Failed to reach broker %s when trying to get partitionOffsetByTime for topic %s partitions %s",
-                    sourceKafkaURL.toString(),
-                    newSourceTopicName,
-                    newSourceTopicPartition));
+                "Failed to reach broker {} when trying to get partitionOffsetByTime for topic {} partitions {}",
+                sourceKafkaURL.toString(),
+                newSourceTopicName,
+                newSourceTopicPartition);
           }
           if (upstreamStartOffset != OffsetRecord.LOWEST_OFFSET) {
             upstreamStartOffset -= 1;
@@ -1289,11 +1277,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       syncConsumedUpstreamRTOffsetMapIfNeeded(pcs, urlToOffsetMap);
 
       LOGGER.info(
-          String.format(
-              "Successfully repaired consumption and subscribed to topic %s partition %s subscribed to offset %d",
-              newSourceTopicName,
-              sourceTopicPartition,
-              upstreamOffset));
+          "Successfully repaired consumption and subscribed to topic {} partition {} subscribed to offset {}",
+          newSourceTopicName,
+          sourceTopicPartition,
+          upstreamOffset);
     };
   }
 }

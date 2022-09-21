@@ -80,7 +80,7 @@ public class RemoteIngestionRepairService extends AbstractVeniceService {
       try {
         task.run();
       } catch (Exception e) {
-        LOGGER.error("Failed to repair partition for ingestion task for store: " + taskEntry.getKey());
+        LOGGER.error("Failed to repair partition for ingestion task for store: {}", taskEntry.getKey());
         taskQueue.add(task);
       }
     }

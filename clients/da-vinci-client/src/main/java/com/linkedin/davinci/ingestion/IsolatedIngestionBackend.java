@@ -80,8 +80,8 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     } catch (Exception e) {
       throw new VeniceException("Unable to start ingestion report listener.", e);
     }
-    LOGGER.info(
-        "Created isolated ingestion backend with service port: " + servicePort + ", listener port: " + listenerPort);
+    LOGGER
+        .info("Created isolated ingestion backend with service port: {}, listener port: {}", servicePort, listenerPort);
   }
 
   @Override
@@ -91,13 +91,15 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       Optional<LeaderFollowerStateType> leaderState) {
     if (isTopicPartitionInLocal(storeConfig.getStoreVersionName(), partition)) {
       LOGGER.info(
-          "Start consumption of topic: " + storeConfig.getStoreVersionName() + ", partition: " + partition
-              + " in main process.");
+          "Start consumption of topic: {}, partition: {} in main process.",
+          storeConfig.getStoreVersionName(),
+          partition);
       super.startConsumption(storeConfig, partition, leaderState);
     } else {
       LOGGER.info(
-          "Sending consumption request of topic: " + storeConfig.getStoreVersionName() + ", partition: " + partition
-              + " to fork process.");
+          "Sending consumption request of topic: {}, partition: {} to fork process.",
+          storeConfig.getStoreVersionName(),
+          partition);
       mainIngestionMonitorService.addVersionPartitionToIngestionMap(storeConfig.getStoreVersionName(), partition);
       mainIngestionRequestClient.startConsumption(storeConfig.getStoreVersionName(), partition);
     }
@@ -131,15 +133,15 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       boolean removeEmptyStorageEngine) {
     String topicName = storeConfig.getStoreVersionName();
     if (isTopicPartitionInLocal(topicName, partition)) {
-      LOGGER.info("Dropping partition: " + partition + " of topic: " + topicName + " in main process.");
+      LOGGER.info("Dropping partition: {} of topic: {} in main process.", partition, topicName);
       super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, removeEmptyStorageEngine);
     } else {
-      LOGGER.info("Dropping partition: " + partition + " of topic: " + topicName + " in forked ingestion process.");
+      LOGGER.info("Dropping partition: {} of topic: {} in forked ingestion process.", partition, topicName);
       mainIngestionRequestClient.unsubscribeTopicPartition(topicName, partition);
     }
     mainIngestionMonitorService.cleanupTopicPartitionState(topicName, partition);
     if (mainIngestionMonitorService.getTopicPartitionCount(topicName) == 0) {
-      LOGGER.info("No serving partitions exist for topic: " + topicName + ", dropping the topic storage.");
+      LOGGER.info("No serving partitions exist for topic: {}, dropping the topic storage.", topicName);
       mainIngestionRequestClient.removeStorageEngine(topicName);
       mainIngestionMonitorService.cleanupTopicState(topicName);
     }
@@ -174,8 +176,8 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       }
       if (!messageCompleted) {
         LOGGER.info(
-            "Leader promotion message rejected by remote ingestion server, will retry in " + RETRY_WAIT_TIME_IN_MS
-                + " ms.");
+            "Leader promotion message rejected by remote ingestion server, will retry in {} ms.",
+            RETRY_WAIT_TIME_IN_MS);
         try {
           Thread.sleep(RETRY_WAIT_TIME_IN_MS);
         } catch (InterruptedException e) {
@@ -202,8 +204,8 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       }
       if (!messageCompleted) {
         LOGGER.info(
-            "Leader demotion message rejected by remote ingestion server, will retry in " + RETRY_WAIT_TIME_IN_MS
-                + " ms.");
+            "Leader demotion message rejected by remote ingestion server, will retry in {} ms.",
+            RETRY_WAIT_TIME_IN_MS);
         try {
           Thread.sleep(RETRY_WAIT_TIME_IN_MS);
         } catch (InterruptedException e) {
@@ -272,7 +274,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       mainIngestionRequestClient.close();
       super.close();
     } catch (Exception e) {
-      LOGGER.info("Unable to close " + getClass().getSimpleName(), e);
+      LOGGER.info("Unable to close {}", getClass().getSimpleName(), e);
     }
   }
 
