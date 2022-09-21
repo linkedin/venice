@@ -69,7 +69,7 @@ public class AdminExecutionTask implements Callable<Void> {
    * This logger is intended to be passed from the {@link AdminConsumptionTask} in order to produce logs with the
    * tag AdminConsumptionTask#CONSUMER_TASK_ID_FORMAT.
    */
-  private final Logger logger;
+  private final Logger LOGGER;
   private final String clusterName;
   private final String storeName;
   private final Queue<AdminOperationWrapper> internalTopic;
@@ -81,7 +81,7 @@ public class AdminExecutionTask implements Callable<Void> {
   private final long lastPersistedExecutionId;
 
   AdminExecutionTask(
-      Logger logger,
+      Logger LOGGER,
       String clusterName,
       String storeName,
       ConcurrentHashMap<String, Long> lastSucceededExecutionIdMap,
@@ -91,7 +91,7 @@ public class AdminExecutionTask implements Callable<Void> {
       ExecutionIdAccessor executionIdAccessor,
       boolean isParentController,
       AdminConsumptionStats stats) {
-    this.logger = logger;
+    this.LOGGER = LOGGER;
     this.clusterName = clusterName;
     this.storeName = storeName;
     this.lastSucceededExecutionIdMap = lastSucceededExecutionIdMap;
@@ -142,10 +142,10 @@ public class AdminExecutionTask implements Callable<Void> {
         if (e instanceof VeniceRetriableException) {
           // These retriable exceptions are expected, therefore logging at the info level should be sufficient.
           stats.recordFailedRetriableAdminConsumption();
-          logger.info("Retriable exception thrown " + logMessage, e);
+          LOGGER.info("Retriable exception thrown {}", logMessage, e);
         } else {
           stats.recordFailedAdminConsumption();
-          logger.error("Error " + logMessage, e);
+          LOGGER.error("Error {}", logMessage, e);
         }
         throw e;
       }
@@ -162,9 +162,11 @@ public class AdminExecutionTask implements Callable<Void> {
        * {@link #lastSucceededExecutionId} is monotonically increasing, and being persisted to Zookeeper after processing
        * each message, so it is safe to filter out all the processed messages.
        */
-      logger.warn(
-          "Execution id of message: " + adminOperation + " for store " + storeName
-              + " is smaller than last succeeded execution id: " + lastSucceededExecutionId + ", so will skip it");
+      LOGGER.warn(
+          "Execution id of message: {} for store {} is smaller than last succeeded execution id: {}, so will skip it",
+          adminOperation,
+          storeName,
+          lastSucceededExecutionId);
       return;
     }
     try {
@@ -256,9 +258,11 @@ public class AdminExecutionTask implements Callable<Void> {
           throw new VeniceException("Unknown admin operation type: " + adminOperation.operationType);
       }
     } catch (VeniceUnsupportedOperationException e) {
-      logger.info(
-          "Ignoring the " + e.getClass().getSimpleName() + " caught when processing "
-              + AdminMessageType.valueOf(adminOperation).toString() + "with detailed message: " + e.getMessage());
+      LOGGER.info(
+          "Ignoring the {} caught when processing {} with detailed message: {}",
+          e.getClass().getSimpleName(),
+          AdminMessageType.valueOf(adminOperation),
+          e.getMessage());
     }
     executionIdAccessor.updateLastSucceededExecutionIdMap(clusterName, storeName, adminOperation.executionId);
     lastSucceededExecutionIdMap.put(storeName, adminOperation.executionId);
@@ -274,7 +278,7 @@ public class AdminExecutionTask implements Callable<Void> {
     // Check whether the store exists or not, the duplicate message could be
     // introduced by Kafka retry
     if (admin.hasStore(clusterName, storeName)) {
-      logger.info("Adding store: " + storeName + ", which already exists, so just skip this message: " + message);
+      LOGGER.info("Adding store: {}, which already exists, so just skip this message: {}", storeName, message);
     } else {
       // Adding store
       admin.createStore(
@@ -284,7 +288,7 @@ public class AdminExecutionTask implements Callable<Void> {
           keySchema,
           valueSchema,
           VeniceSystemStoreUtils.isSystemStore(storeName));
-      logger.info("Added store: " + storeName + " to cluster: " + clusterName);
+      LOGGER.info("Added store: {} to cluster: {}", storeName, clusterName);
     }
   }
 
@@ -297,7 +301,7 @@ public class AdminExecutionTask implements Callable<Void> {
 
     SchemaEntry valueSchemaEntry =
         admin.addValueSchema(clusterName, storeName, schemaStr, schemaId, doUpdateSupersetSchemaID);
-    logger.info(
+    LOGGER.info(
         "Added value schema {} to store {} in cluster {} with schema ID {} and "
             + "[update_superset_schema_ID_with_value_schema_ID == {}]",
         schemaStr,
@@ -315,13 +319,12 @@ public class AdminExecutionTask implements Callable<Void> {
     int derivedSchemaId = message.derivedSchemaId;
 
     admin.addDerivedSchema(clusterName, storeName, valueSchemaId, derivedSchemaId, derivedSchemaStr);
-    logger.info(
-        String.format(
-            "Added derived schema:\n %s\n to store: %s, value schema id: %d, derived schema id: %d",
-            derivedSchemaStr,
-            storeName,
-            valueSchemaId,
-            derivedSchemaId));
+    LOGGER.info(
+        "Added derived schema:\n {}\n to store: {}, value schema id: {}, derived schema id: {}",
+        derivedSchemaStr,
+        storeName,
+        valueSchemaId,
+        derivedSchemaId);
   }
 
   private void handleSupersetSchemaCreation(SupersetSchemaCreation message) {
@@ -333,14 +336,13 @@ public class AdminExecutionTask implements Callable<Void> {
     int supersetSchemaId = message.supersetSchemaId;
 
     admin.addSupersetSchema(clusterName, storeName, valueSchemaStr, valueSchemaId, supersetSchemaStr, supersetSchemaId);
-    logger.info(
-        String.format(
-            "Added value schema:\n %s\n to store: %s, value schema id: %d, also added superset schema: %s, superset schema id: %d",
-            valueSchemaStr,
-            storeName,
-            valueSchemaId,
-            supersetSchemaStr,
-            supersetSchemaId));
+    LOGGER.info(
+        "Added value schema:\n {}\n to store: {}, value schema id: {}, also added superset schema: {}, superset schema id: {}",
+        valueSchemaStr,
+        storeName,
+        valueSchemaId,
+        supersetSchemaStr,
+        supersetSchemaId);
   }
 
   private void handleDisableStoreWrite(PauseStore message) {
@@ -348,7 +350,7 @@ public class AdminExecutionTask implements Callable<Void> {
     String storeName = message.storeName.toString();
     admin.setStoreWriteability(clusterName, storeName, false);
 
-    logger.info("Disabled store to write: " + storeName + " in cluster: " + clusterName);
+    LOGGER.info("Disabled store to write: {} in cluster: {}", storeName, clusterName);
   }
 
   private void handleEnableStoreWrite(ResumeStore message) {
@@ -356,7 +358,7 @@ public class AdminExecutionTask implements Callable<Void> {
     String storeName = message.storeName.toString();
     admin.setStoreWriteability(clusterName, storeName, true);
 
-    logger.info("Enabled store to write: " + storeName + " in cluster: " + clusterName);
+    LOGGER.info("Enabled store to write: {} in cluster: {}", storeName, clusterName);
   }
 
   private void handleDisableStoreRead(DisableStoreRead message) {
@@ -364,14 +366,14 @@ public class AdminExecutionTask implements Callable<Void> {
     String storeName = message.storeName.toString();
     admin.setStoreReadability(clusterName, storeName, false);
 
-    logger.info("Disabled store to read: " + storeName + " in cluster: " + clusterName);
+    LOGGER.info("Disabled store to read: {} in cluster: {}", storeName, clusterName);
   }
 
   private void handleEnableStoreRead(EnableStoreRead message) {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
     admin.setStoreReadability(clusterName, storeName, true);
-    logger.info("Enabled store to read: " + storeName + " in cluster: " + clusterName);
+    LOGGER.info("Enabled store to read: {} in cluster: {}", storeName, clusterName);
   }
 
   private void handleKillOfflinePushJob(KillOfflinePushJob message) {
@@ -383,14 +385,14 @@ public class AdminExecutionTask implements Callable<Void> {
     String kafkaTopic = message.kafkaTopic.toString();
     admin.killOfflinePush(clusterName, kafkaTopic, false);
 
-    logger.info("Killed job with topic: " + kafkaTopic + " in cluster: " + clusterName);
+    LOGGER.info("Killed job with topic: {} in cluster: {}", kafkaTopic, clusterName);
   }
 
   private void handleDeleteAllVersions(DeleteAllVersions message) {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
     admin.deleteAllVersionsInStore(clusterName, storeName);
-    logger.info("Deleted all of version in store:" + storeName + " in cluster: " + clusterName);
+    LOGGER.info("Deleted all of version in store: {} in cluster: {}", storeName, clusterName);
   }
 
   private void handleDeleteOldVersion(DeleteOldVersion message) {
@@ -399,7 +401,7 @@ public class AdminExecutionTask implements Callable<Void> {
     int versionNum = message.versionNum;
     // Delete an old version for a Venice store.
     admin.deleteOldVersionInStore(clusterName, storeName, versionNum);
-    logger.info("Deleted version: " + versionNum + " in store:" + storeName + " in cluster: " + clusterName);
+    LOGGER.info("Deleted version: {} in store: {} in cluster: {}", versionNum, storeName, clusterName);
   }
 
   private void handleSetStoreCurrentVersion(SetStoreCurrentVersion message) {
@@ -408,7 +410,7 @@ public class AdminExecutionTask implements Callable<Void> {
     int version = message.currentVersion;
     admin.setStoreCurrentVersion(clusterName, storeName, version);
 
-    logger.info("Set store: " + storeName + " version to" + version + " in cluster: " + clusterName);
+    LOGGER.info("Set store: {} version to {} in cluster: {}", storeName, version, clusterName);
   }
 
   private void handleSetStoreOwner(SetStoreOwner message) {
@@ -417,7 +419,7 @@ public class AdminExecutionTask implements Callable<Void> {
     String owner = message.owner.toString();
     admin.setStoreOwner(clusterName, storeName, owner);
 
-    logger.info("Set store: " + storeName + " owner to " + owner + " in cluster: " + clusterName);
+    LOGGER.info("Set store: {} owner to {} in cluster: {}", storeName, owner, clusterName);
   }
 
   private void handleSetStorePartitionCount(SetStorePartitionCount message) {
@@ -426,7 +428,7 @@ public class AdminExecutionTask implements Callable<Void> {
     int partitionNum = message.partitionNum;
     admin.setStorePartitionCount(clusterName, storeName, partitionNum);
 
-    logger.info("Set store: " + storeName + " partition number to " + partitionNum + " in cluster: " + clusterName);
+    LOGGER.info("Set store: {} partition number to {} in cluster: {}", storeName, partitionNum, clusterName);
   }
 
   private void handleSetStore(UpdateStore message) {
@@ -550,7 +552,7 @@ public class AdminExecutionTask implements Callable<Void> {
 
     admin.updateStore(clusterName, storeName, finalParams);
 
-    logger.info("Set store: " + storeName + " in cluster: " + clusterName);
+    LOGGER.info("Set store: {} in cluster: {}", storeName, clusterName);
   }
 
   private void handleDeleteStore(DeleteStore message) {
@@ -573,7 +575,7 @@ public class AdminExecutionTask implements Callable<Void> {
       admin.deleteStore(clusterName, storeName, largestUsedVersionNumber, true);
     }
 
-    logger.info("Deleted store: " + storeName + " in cluster: " + clusterName);
+    LOGGER.info("Deleted store: {} in cluster: {}", storeName, clusterName);
   }
 
   private void handleStoreMigration(MigrateStore message) {
@@ -712,9 +714,9 @@ public class AdminExecutionTask implements Callable<Void> {
         valueSchemaId,
         replicationMetadataVersionId,
         replicationMetadataSchemaStr);
-    logger.info(
-        "Added replication metadata schema for store {}, value schema ID {}, replication metadata version ID {}, and "
-            + "the added replication metadata schema: {}",
+    LOGGER.info(
+        "Added replication metadata schema for store {}, value schema ID {}, "
+            + "replication metadata version ID {}, and the added replication metadata schema: {}",
         storeName,
         valueSchemaId,
         replicationMetadataVersionId,

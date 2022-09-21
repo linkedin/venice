@@ -169,12 +169,12 @@ public class TopicCleanupService extends AbstractVeniceService {
           cleanupReplicaStatusesFromMetaSystemStore(topic);
         } catch (Exception e) {
           LOGGER.error(
-              "Received exception while trying to clean up replica statuses from meta system store for topic: " + topic
-                  + ", but topic deletion will continue");
+              "Received exception while trying to clean up replica statuses from meta system store for topic: {}, but topic deletion will continue",
+              topic);
         }
         getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
       } catch (ExecutionException e) {
-        LOGGER.warn("ExecutionException caught when trying to delete topic: " + topic);
+        LOGGER.warn("ExecutionException caught when trying to delete topic: {}", topic);
         // No op, will try again in the next cleanup cycle.
       }
 
@@ -358,9 +358,13 @@ public class TopicCleanupService extends AbstractVeniceService {
       for (int i = 0; i < partitionCount; ++i) {
         metaStoreWriter.deleteStoreReplicaStatus(clusterName, storeName, version, i);
       }
-      logger.info(
-          "Successfully removed store replica status from meta system store for store: " + storeName + ", version: "
-              + version + " with partition count: " + partitionCount + " in cluster: " + clusterName);
+      LOGGER.info(
+          "Successfully removed store replica status from meta system store for store: {} , "
+              + "version: {} with partition count: {} in cluster: {}",
+          storeName,
+          version,
+          partitionCount,
+          clusterName);
       return true;
     }
     return false;

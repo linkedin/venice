@@ -118,7 +118,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * any particular store */
   private static final String STORAGE_PERSONA_MAP_KEY = "STORAGE_PERSONA";
 
-  private final Logger logger;
+  private final Logger LOGGER;
 
   private final String clusterName;
   private final String topic;
@@ -243,7 +243,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.clusterName = clusterName;
     this.topic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, this.topic);
-    this.logger = LogManager.getLogger(consumerTaskId);
+    this.LOGGER = LogManager.getLogger(consumerTaskId);
     this.admin = admin;
     this.isParentController = isParentController;
     this.deserializer = new AdminOperationSerializer();
@@ -288,7 +288,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   @Override
   public void run() {
-    logger.info("Running " + this.getClass().getSimpleName());
+    LOGGER.info("Running {}", this.getClass().getSimpleName());
     long lastLogTime = 0;
     while (isRunning.get()) {
       try {
@@ -302,16 +302,19 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             // Topic was not created by this process, so we make sure it has the right retention.
             makeSureAdminTopicUsingInfiniteRetentionPolicy(topic);
           } else {
-            String logMessage = "Admin topic: " + topic + " hasn't been created yet. ";
+            String logMessageFormat = "Admin topic: {} hasn't been created yet. {}";
             if (!isParentController) {
               // To reduce log bloat, only log once per minute
               if (System.currentTimeMillis() - lastLogTime > 60 * Time.MS_PER_SECOND) {
-                logger.info(logMessage + "Since this is a child controller, it will not be created by this process.");
+                LOGGER.info(
+                    logMessageFormat,
+                    topic,
+                    "Since this is a child controller, it will not be created by this process.");
                 lastLogTime = System.currentTimeMillis();
               }
               continue;
             }
-            logger.info(logMessage + "Since this is the parent controller, it will be created it now.");
+            LOGGER.info(logMessageFormat, topic, "Since this is the parent controller, it will be created now.");
             admin.getTopicManager()
                 .createTopic(
                     topic,
@@ -320,7 +323,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                     true,
                     false,
                     Optional.of(adminTopicReplicationFactor - 1));
-            logger.info("Admin topic {} is created.", topic);
+            LOGGER.info("Admin topic {} is created.", topic);
           }
           subscribe();
         }
@@ -329,10 +332,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         if (undelegatedRecords.isEmpty()) {
           ConsumerRecords records = consumer.poll(READ_CYCLE_DELAY_MS);
           if (records == null || records.isEmpty()) {
-            logger.debug("Received null or no records");
+            LOGGER.debug("Received null or no records");
           } else {
-            logger
-                .info("Consumed " + records.count() + " admin messages from kafka. Will queue them up for processing");
+            LOGGER.info("Consumed {} admin messages from kafka. Will queue them up for processing", records.count());
             recordsIterator = records.iterator();
             while (recordsIterator.hasNext()) {
               ConsumerRecord<KafkaKey, KafkaMessageEnvelope> newRecord = recordsIterator.next();
@@ -341,9 +343,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             }
           }
         } else {
-          logger.info(
-              "There are " + undelegatedRecords.size() + " admin messages in the undelegated message queue. "
-                  + "Will consume from the undelegated queue first before polling the admin topic.");
+          LOGGER.info(
+              "There are {} admin messages in the undelegated message queue. "
+                  + "Will consume from the undelegated queue first before polling the admin topic.",
+              undelegatedRecords.size());
         }
 
         while (!undelegatedRecords.isEmpty()) {
@@ -355,17 +358,18 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             undelegatedRecords.remove();
           } catch (DataValidationException dve) {
             // Very unlikely but DataValidationException could be thrown here.
-            logger.error(
-                "Admin consumption task is blocked due to DataValidationException with offset "
-                    + undelegatedRecords.peek().offset(),
+            LOGGER.error(
+                "Admin consumption task is blocked due to DataValidationException with offset {}",
+                undelegatedRecords.peek().offset(),
                 dve);
             failingOffset = undelegatedRecords.peek().offset();
             stats.recordFailedAdminConsumption();
             stats.recordAdminTopicDIVErrorReportCount();
             break;
           } catch (Exception e) {
-            logger.error(
-                "Admin consumption task is blocked due to Exception with offset " + undelegatedRecords.peek().offset(),
+            LOGGER.error(
+                "Admin consumption task is blocked due to Exception with offset {}",
+                undelegatedRecords.peek().offset(),
                 e);
             failingOffset = undelegatedRecords.peek().offset();
             stats.recordFailedAdminConsumption();
@@ -381,7 +385,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         executeMessagesAndCollectResults();
         stats.setAdminConsumptionFailedOffset(failingOffset);
       } catch (Exception e) {
-        logger.error("Exception thrown while running admin consumption task", e);
+        LOGGER.error("Exception thrown while running admin consumption task", e);
         // Unsubscribe and resubscribe in the next cycle to start over and avoid missing messages from poll.
         unSubscribe();
       }
@@ -402,7 +406,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       lastOffset = lastPersistedOffset;
       lastDelegatedExecutionId = lastPersistedExecutionId;
     } else {
-      logger.info("Admin topic metadata is empty, will resume consumption from the starting offset");
+      LOGGER.info("Admin topic metadata is empty, will resume consumption from the starting offset");
       lastOffset = UNASSIGNED_VALUE;
       lastDelegatedExecutionId = UNASSIGNED_VALUE;
     }
@@ -411,9 +415,12 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     // Subscribe the admin topic
     consumer.subscribe(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, lastOffset);
     isSubscribed = true;
-    logger.info(
-        "Subscribed to topic name: " + topic + ", with offset: " + lastOffset + " and execution id: "
-            + lastPersistedExecutionId + ". Remote consumption flag: " + remoteConsumptionEnabled);
+    LOGGER.info(
+        "Subscribed to topic name: {}, with offset: {} and execution id: {}. Remote consumption flag: {}",
+        topic,
+        lastOffset,
+        lastPersistedExecutionId,
+        remoteConsumptionEnabled);
   }
 
   private void unSubscribe() {
@@ -433,9 +440,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       stats.recordStoresWithPendingAdminMessagesCount(UNASSIGNED_VALUE);
       resetConsumptionLag();
       isSubscribed = false;
-      logger.info(
-          "Unsubscribed from topic name: " + topic + ". Remote consumption flag before unsubscription: "
-              + remoteConsumptionEnabled);
+      LOGGER.info(
+          "Unsubscribed from topic name: {}. Remote consumption flag before unsubscription: {}",
+          topic,
+          remoteConsumptionEnabled);
     }
   }
 
@@ -462,7 +470,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         }
         tasks.add(
             new AdminExecutionTask(
-                logger,
+                LOGGER,
                 clusterName,
                 entry.getKey(),
                 lastSucceededExecutionIdMap,
@@ -512,7 +520,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               long newLastSucceededId = newLastSucceededExecutionIdMap.getOrDefault(storeName, -1L);
 
               if (lastSucceededId == -1) {
-                logger.error("Could not find last successful execution ID for store " + storeName);
+                LOGGER.error("Could not find last successful execution ID for store {}", storeName);
               }
 
               if (lastSucceededId == newLastSucceededId && perStorePendingMessagesCount > 0) {
@@ -521,7 +529,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                     "Could not finish processing admin message for store " + storeName + " in time");
                 errorInfo.offset = storeAdminOperationsMapWithOffset.get(storeName).peek().getOffset();
                 problematicStores.put(storeName, errorInfo);
-                logger.warn(errorInfo.exception.getMessage());
+                LOGGER.warn(errorInfo.exception.getMessage());
               }
             } else {
               errorInfo.exception = e;
@@ -570,13 +578,16 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     executorService.shutdownNow();
     try {
       if (!executorService.awaitTermination(processingCycleTimeoutInMs, TimeUnit.MILLISECONDS)) {
-        logger
-            .warn("Unable to shutdown worker executor thread pool in admin consumption task in time " + consumerTaskId);
+        LOGGER.warn(
+            "consumer Task Id {}: Unable to shutdown worker executor thread pool in admin consumption task in time",
+            consumerTaskId);
       }
     } catch (InterruptedException e) {
-      logger.warn("Interrupted while waiting for worker executor thread pool to shutdown " + consumerTaskId);
+      LOGGER.warn(
+          "consumer Task Id {}: Interrupted while waiting for worker executor thread pool to shutdown",
+          consumerTaskId);
     }
-    logger.info("Closed consumer for admin topic: " + topic);
+    LOGGER.info("Closed consumer for admin topic: {}", topic);
     consumer.close();
   }
 
@@ -599,7 +610,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     } else {
       admin.getTopicManager().updateTopicRetention(topicName, Long.MAX_VALUE);
     }
-    logger.info("Admin topic: " + topic + " has been updated to use infinite retention policy");
+    LOGGER.info("Admin topic: {} has been updated to use infinite retention policy", topic);
   }
 
   /**
@@ -618,7 +629,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     KafkaKey kafkaKey = record.key();
     KafkaMessageEnvelope kafkaValue = record.value();
     if (kafkaKey.isControlMessage()) {
-      logger.debug("Received control message: " + kafkaValue);
+      LOGGER.debug("Received control message: {}", kafkaValue);
       return UNASSIGNED_VALUE;
     }
     // check message type
@@ -631,15 +642,15 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     long executionId = adminOperation.executionId;
     try {
       checkAndValidateMessage(adminOperation, record);
-      logger.info("Received admin message: " + adminOperation + " offset: " + record.offset());
+      LOGGER.info("Received admin message: {} offset: {}", adminOperation, record.offset());
       consecutiveDuplicateMessageCount = 0;
     } catch (DuplicateDataException e) {
       // Previously processed message, safe to skip
       if (consecutiveDuplicateMessageCount < MAX_DUPLICATE_MESSAGE_LOGS) {
         consecutiveDuplicateMessageCount++;
-        logger.info(e.getMessage());
+        LOGGER.info(e.getMessage());
       } else if (consecutiveDuplicateMessageCount == MAX_DUPLICATE_MESSAGE_LOGS) {
-        logger.info(
+        LOGGER.info(
             "It appears that controller is consuming from a low offset and encounters many admin messages that "
                 + "have already been processed. Will stop logging duplicate messages until a fresh admin message.");
       }
@@ -727,7 +738,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         }
         throw new MissingDataException(exceptionString);
       } else {
-        logger.info("Ignoring " + exceptionString + " Cross-reference with producerInfo passed. " + producerInfoString);
+        LOGGER.info("Ignoring {} Cross-reference with producerInfo passed. {}", exceptionString, producerInfoString);
         updateProducerInfo(record.value().producerMetadata);
         lastDelegatedExecutionId = incomingExecutionId;
       }
@@ -834,7 +845,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private boolean checkOffsetToSkip(long offset, boolean reset) {
     boolean skip = false;
     if (offset == offsetToSkip) {
-      logger.warn("Skipping admin message with offset " + offset + " as instructed");
+      LOGGER.warn("Skipping admin message with offset {} as instructed", offset);
       if (reset) {
         resetOffsetToSkip();
       }
@@ -846,7 +857,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private boolean checkOffsetToSkipDIV(long offset) {
     boolean skip = false;
     if (offset == offsetToSkipDIV) {
-      logger.warn("Skipping DIV for admin message with offset " + offset + " as instructed");
+      LOGGER.warn("Skipping DIV for admin message with offset {} as instructed", offset);
       offsetToSkipDIV = UNASSIGNED_VALUE;
       skip = true;
     }
@@ -894,8 +905,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     long recordOffset = record.offset();
     // check offset
     if (lastOffset >= recordOffset) {
-      logger.error(
-          "Current record has been processed, last known offset: " + lastOffset + ", current offset: " + recordOffset);
+      LOGGER.error(
+          "Current record has been processed, last known offset: {}, current offset: {}",
+          lastOffset,
+          recordOffset);
       return false;
     }
 
@@ -922,7 +935,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       }
       stats.setMaxAdminConsumptionOffsetLag(sourceAdminTopicEndOffset - lastPersistedOffset);
     } catch (Exception e) {
-      logger.error(
+      LOGGER.error(
           "Error when emitting admin consumption lag metrics; only log for warning; admin channel will continue to work.");
     }
   }

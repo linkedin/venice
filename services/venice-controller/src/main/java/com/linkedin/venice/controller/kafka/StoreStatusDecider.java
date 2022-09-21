@@ -34,8 +34,9 @@ public class StoreStatusDecider {
         // TODO: Determine if it makes sense to mark stores with no versions in them as UNAVAILABLE...? That seems
         // ambiguous.
         LOGGER.warn(
-            "Store:" + store.getName() + " is unavailable because current version: " + store.getCurrentVersion()
-                + " does not exist ");
+            "Store: {} is unavailable because current version: {} does not exist.",
+            store.getName(),
+            store.getCurrentVersion());
         storeStatusMap.put(store.getName(), StoreStatus.UNAVAILABLE.toString());
         continue;
       }
@@ -43,7 +44,7 @@ public class StoreStatusDecider {
       if (currentVersionAssignment.getAssignedNumberOfPartitions() < currentVersionAssignment
           .getExpectedNumberOfPartitions()) {
         // One or more partition is unavailable.
-        LOGGER.warn("Store: " + store.getName() + " is unavailable because missing one or more partitions.");
+        LOGGER.warn("Store: {} is unavailable because missing one or more partitions.", store.getName());
         storeStatusMap.put(store.getName(), StoreStatus.DEGRADED.toString());
         continue;
       }
@@ -56,8 +57,9 @@ public class StoreStatusDecider {
           // Once one partition is unavailable we say this store is unavailable, do not need to continue.
           status = StoreStatus.DEGRADED;
           LOGGER.warn(
-              "Store: " + store.getName() + " is unavailable because partition: " + partition.getId()
-                  + " has 0 ONLINE replicas.");
+              "Store: {} is unavailable because partition: {} has 0 ONLINE replicas.",
+              store.getName(),
+              partition.getId());
           break;
         } else if (onlineReplicasCount < replicationFactor) {
           // One partition is under replicated, degrade store status from fully replicated to under replicated.
