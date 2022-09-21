@@ -30,7 +30,7 @@ public class StoreBackend {
   private VersionBackend daVinciFutureVersion;
 
   StoreBackend(DaVinciBackend backend, String storeName) {
-    LOGGER.info("Opening local store " + storeName);
+    LOGGER.info("Opening local store {}", storeName);
     this.backend = backend;
     this.storeName = storeName;
     this.config =
@@ -48,12 +48,12 @@ public class StoreBackend {
 
   synchronized void close() {
     if (subscription.isEmpty()) {
-      LOGGER.info("Closing empty local store " + storeName);
+      LOGGER.info("Closing empty local store {}", storeName);
       delete();
       return;
     }
 
-    LOGGER.info("Closing local store " + storeName);
+    LOGGER.info("Closing local store {}", storeName);
     subscription.clear();
     daVinciCurrentVersionRef.clear();
 
@@ -73,7 +73,7 @@ public class StoreBackend {
   }
 
   synchronized void delete() {
-    LOGGER.info("Deleting local store " + storeName);
+    LOGGER.info("Deleting local store {}", storeName);
     config.delete();
     subscription.clear();
     daVinciCurrentVersionRef.clear();
@@ -109,7 +109,7 @@ public class StoreBackend {
   }
 
   private synchronized void setDaVinciCurrentVersion(VersionBackend version) {
-    LOGGER.info("Switching to new version " + version + ", currentVersion=" + daVinciCurrentVersion);
+    LOGGER.info("Switching to new version {}, currentVersion {}", version, daVinciCurrentVersion);
     daVinciCurrentVersion = version;
     daVinciCurrentVersionRef.set(version);
     stats.recordCurrentVersion(version);
@@ -146,7 +146,7 @@ public class StoreBackend {
               + ", desiredVersion=" + bootstrapVersion.get().kafkaTopicName());
     }
 
-    LOGGER.info("Subscribing to partitions " + partitions + " of " + storeName);
+    LOGGER.info("Subscribing to partitions {} of store {}", partitions, storeName);
     if (subscription.isEmpty() && !partitions.isEmpty()) {
       // Recreate store config that was potentially deleted by unsubscribe.
       config.store();
@@ -172,16 +172,16 @@ public class StoreBackend {
     }).whenComplete((v, e) -> {
       synchronized (this) {
         if (e == null) {
-          LOGGER.info("Ready to serve partitions " + subscription + " of " + daVinciCurrentVersion);
+          LOGGER.info("Ready to serve partitions {} of {}", subscription, daVinciCurrentVersion);
         } else {
-          LOGGER.warn("Failed to subscribe to partitions " + subscription + " of " + savedVersion, e);
+          LOGGER.warn("Failed to subscribe to partitions {} of {}", subscription, savedVersion, e);
         }
       }
     });
   }
 
   public synchronized void unsubscribe(ComplementSet<Integer> partitions) {
-    LOGGER.info("Unsubscribing from partitions " + partitions + " of " + storeName);
+    LOGGER.info("Unsubscribing from partitions {} of {}", partitions, storeName);
     subscription.removeAll(partitions);
 
     if (daVinciCurrentVersion != null) {
@@ -227,7 +227,7 @@ public class StoreBackend {
     } else {
       return;
     }
-    LOGGER.info("Subscribing to future version " + targetVersion.kafkaTopicName());
+    LOGGER.info("Subscribing to future version {}", targetVersion.kafkaTopicName());
     setDaVinciFutureVersion(new VersionBackend(backend, targetVersion, stats));
     daVinciFutureVersion.subscribe(subscription).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
   }

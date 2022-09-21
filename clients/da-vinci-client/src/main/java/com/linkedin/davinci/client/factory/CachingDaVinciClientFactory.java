@@ -57,8 +57,9 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
       Optional<Set<String>> managedClients,
       ICProvider icProvider) {
     LOGGER.info(
-        "Creating client factory, managedClients=" + managedClients + "existingMetrics="
-            + metricsRepository.metrics().keySet());
+        "Creating client factory, managedClients={}, existingMetrics={}",
+        managedClients,
+        metricsRepository.metrics().keySet());
     this.d2Client = d2Client;
     this.metricsRepository = metricsRepository;
     this.backendConfig = backendConfig;
@@ -76,18 +77,18 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
 
     List<DaVinciClient> clients = new ArrayList<>(sharedClients.values());
     clients.addAll(isolatedClients);
-    LOGGER.info("Closing client factory, clientCount=" + clients.size());
+    LOGGER.info("Closing client factory, clientCount={}", clients.size());
     for (DaVinciClient client: clients) {
       try {
         client.close();
       } catch (Throwable e) {
-        LOGGER.error("Unable to close a client, storeName=" + client.getStoreName(), e);
+        LOGGER.error("Unable to close a client, storeName={}", client.getStoreName(), e);
       }
     }
     sharedClients.clear();
     isolatedClients.clear();
     configs.clear();
-    LOGGER.info("Client factory is closed successfully, clientCount=" + clients.size());
+    LOGGER.info("Client factory is closed successfully, clientCount={}", clients.size());
   }
 
   @Override

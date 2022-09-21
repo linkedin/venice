@@ -114,7 +114,7 @@ public class VeniceClusterConfig {
         .getSizeInBytes(KAFKA_FETCH_PARTITION_MAX_SIZE_PER_SEC, ConsumerConfig.DEFAULT_MAX_PARTITION_FETCH_BYTES);
 
     this.regionName = RegionUtils.getLocalRegionName(clusterProps, false);
-    LOGGER.info("Final region name for this node: " + this.regionName);
+    LOGGER.info("Final region name for this node: {}", this.regionName);
 
     String kafkaSecurityProtocolString =
         clusterProps.getString(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name());
@@ -217,9 +217,11 @@ public class VeniceClusterConfig {
     }
 
     LOGGER.info(
-        "Derived kafka cluster mapping: kafkaClusterIdToUrlMap: " + tmpKafkaClusterIdToUrlMap
-            + ", kafkaClusterUrlToIdMap: " + tmpKafkaClusterUrlToIdMap + ", kafkaClusterIdToAliasMap: "
-            + tmpKafkaClusterIdToAliasMap + ", kafkaClusterAliasToIdMap: " + tmpKafkaClusterAliasToIdMap);
+        "Derived kafka cluster mapping: kafkaClusterIdToUrlMap: {}, kafkaClusterUrlToIdMap: {}, kafkaClusterIdToAliasMap: {}, kafkaClusterAliasToIdMap: {}",
+        tmpKafkaClusterIdToUrlMap,
+        tmpKafkaClusterUrlToIdMap,
+        tmpKafkaClusterIdToAliasMap,
+        tmpKafkaClusterAliasToIdMap);
     this.clusterProperties = clusterProps;
     this.kafkaClusterMap = kafkaClusterMap;
   }
