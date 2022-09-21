@@ -72,7 +72,7 @@ public class AdminCommandExecution {
         this.updateCommandStatusForFabric(fabric, AdminCommandExecutionStatus.PROCESSING);
       }
     } catch (Exception e) {
-      LOGGER.error("Can not get status from fabric: " + fabric, e);
+      LOGGER.error("Can not get status from fabric: {}", fabric, e);
       this.updateCommandStatusForFabric(fabric, AdminCommandExecutionStatus.UNKNOWN);
     }
   }

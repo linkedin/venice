@@ -183,7 +183,7 @@ public class ControllerTransport implements AutoCloseable {
     int statusCode = response.getStatusLine().getStatusCode();
     ContentType contentType = ContentType.getOrDefault(response.getEntity());
     if (!contentType.getMimeType().equals(ContentType.APPLICATION_JSON.getMimeType())) {
-      LOGGER.warn("Bad controller response, request=" + request + ", response=" + response + ", content=" + content);
+      LOGGER.warn("Bad controller response, request={}, response={}, content={}", request, response, content);
       throw new VeniceHttpException(
           statusCode,
           "Controller returned unsupported content-type: " + contentType + " with content: " + content,
@@ -194,7 +194,7 @@ public class ControllerTransport implements AutoCloseable {
     try {
       result = OBJECT_MAPPER.readValue(content, responseType);
     } catch (Exception e) {
-      LOGGER.warn("Bad controller response, request=" + request + ", response=" + response + ", content=" + content);
+      LOGGER.warn("Bad controller response, request={}, response={}, content={}", request, response, content);
       throw new VeniceHttpException(statusCode, "Unable to deserialize controller response", e);
     }
 
@@ -203,7 +203,7 @@ public class ControllerTransport implements AutoCloseable {
     }
 
     if (statusCode != HttpStatus.SC_OK) {
-      LOGGER.warn("Bad controller response, request=" + request + ", response=" + response + ", content=" + content);
+      LOGGER.warn("Bad controller response, request={}, response={}, content={}", request, response, content);
       throw new VeniceHttpException(statusCode, "Controller returned unexpected status");
     }
     return result;

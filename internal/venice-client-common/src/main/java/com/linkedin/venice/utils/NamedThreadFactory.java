@@ -40,7 +40,7 @@ public class NamedThreadFactory implements ThreadFactory {
   public Thread newThread(Runnable runnable) {
     Thread thread = new Thread(runnable, this.threadName + "-" + this.threadSequenceNum);
     thread.setUncaughtExceptionHandler((t, e) -> {
-      LOGGER.error("Thread " + t.getName() + " throws uncaught exception. ", e);
+      LOGGER.error("Thread {} throws uncaught exception. ", t.getName(), e);
       if (uncaughtExceptionHook != null) {
         uncaughtExceptionHook.run();
       }

@@ -51,7 +51,7 @@ public class SchemaEntry {
             "Avro 1.9 and newer version enforces stricter schema validation during parsing, will treat failed value schema as deprecated old value schema and ignore it. Error trace: ",
             e);
       } else {
-        LOGGER.error("Failed to parse schema: " + schemaStr + " with exception: ", e);
+        LOGGER.error("Failed to parse schema: {} with exception: ", schemaStr, e);
         throw new SchemaParseException(e);
       }
     }
@@ -143,9 +143,11 @@ public class SchemaEntry {
           this.schema);
       if (backwardCompatibility.getType() == INCOMPATIBLE) {
         LOGGER.info(
-            "New schema (id " + newSchemaEntry.getId()
-                + ") is not backward compatible with (i.e.: cannot read data written by) existing schema (id " + this.id
-                + "), Full message:\n" + backwardCompatibility.getDescription());
+            "New schema (id {}) is not backward compatible with (i.e.: cannot read data written by)"
+                + " existing schema (id {}), Full message:\n{}",
+            newSchemaEntry.getId(),
+            this.id,
+            backwardCompatibility.getDescription());
         return false;
       }
     }
@@ -158,9 +160,11 @@ public class SchemaEntry {
           newSchemaEntry.schema);
       if (forwardCompatibility.getType() == INCOMPATIBLE) {
         LOGGER.info(
-            "New schema id (" + newSchemaEntry.getId()
-                + ") is not forward compatible with (i.e.: cannot have its written data read by) existing schema id ("
-                + this.id + "), Full message:\n" + forwardCompatibility.getDescription());
+            "New schema id ({}) is not forward compatible with (i.e.: cannot have its written data read by)"
+                + " existing schema id ({}), Full message:\n{}",
+            newSchemaEntry.getId(),
+            this.id,
+            forwardCompatibility.getDescription());
         return false;
       }
     }

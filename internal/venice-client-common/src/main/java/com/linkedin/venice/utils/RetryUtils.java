@@ -242,10 +242,9 @@ public class RetryUtils {
 
   private static <T> void logAttemptWithFailure(ExecutionAttemptedEvent<T> executionAttemptedEvent) {
     LOGGER.error(
-        String.format(
-            "Execution failed with message %s on attempt count %d",
-            executionAttemptedEvent.getLastFailure().getMessage(),
-            executionAttemptedEvent.getAttemptCount()));
+        "Execution failed with message {} on attempt count {}",
+        executionAttemptedEvent.getLastFailure().getMessage(),
+        executionAttemptedEvent.getAttemptCount());
   }
 
   private static <T> void doNotLog(ExecutionAttemptedEvent<T> executionAttemptedEvent) {
