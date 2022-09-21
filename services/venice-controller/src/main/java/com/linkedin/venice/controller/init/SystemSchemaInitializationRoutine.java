@@ -74,10 +74,13 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
         String currSystemStoreCluster = clusterNameAndD2.getFirst();
         if (!currSystemStoreCluster.equals(intendedCluster)) {
           LOGGER.warn(
-              "The system store for '" + protocolDefinition.name() + "' already exists in cluster '"
-                  + currSystemStoreCluster + "', which is inconsistent with the config '"
-                  + CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME + "' which specifies that it should be in cluster '"
-                  + intendedCluster + "'. Will abort the initialization routine.");
+              "The system store for '{}' already exists in cluster '{}', "
+                  + "which is inconsistent with the config '{}' which specifies that it "
+                  + "should be in cluster '{}'. Will abort the initialization routine.",
+              protocolDefinition.name(),
+              currSystemStoreCluster,
+              CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME,
+              intendedCluster);
           return;
         }
 
@@ -107,29 +110,33 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
           storeMetadataUpdate.ifPresent(
               updateStoreQueryParams -> admin.updateStore(clusterToInit, systemStoreName, updateStoreQueryParams));
 
-          LOGGER.info("System store '" + systemStoreName + "' has been created.");
+          LOGGER.info("System store '{}' has been created.", systemStoreName);
         } else {
           /**
            * Unexpected, but should not be a problem, so we can still continue with the verification that
            * schemas are properly registered...
            */
           LOGGER.info(
-              "Unexpected: The system store '" + systemStoreName + "' was not found in cluster discovery but"
-                  + " it was then found when querying directly for it...");
+              "Unexpected: The system store '{}' was not found in cluster discovery but"
+                  + " it was then found when querying directly for it...",
+              systemStoreName);
         }
       }
 
       if (keySchema.isPresent()) {
         /**
-         * Only verify the key schema if it is explicitly specified by the caller, and we don't care about the dummy key schema.
+         * Only verify the key schema if it is explicitly specified by the caller, and we don't care
+         * about the dummy key schema.
          */
         SchemaEntry keySchemaEntry = admin.getKeySchema(clusterToInit, systemStoreName);
         if (!keySchemaEntry.getSchema().equals(keySchema.get())) {
           LOGGER.error(
-              "Key Schema of '" + systemStoreName + "' in cluster: " + clusterToInit
-                  + " is already registered but it is INCONSISTENT with the local definition.\n"
-                  + "Already registered: " + keySchemaEntry.getSchema().toString(true) + "\n" + "Local definition: "
-                  + keySchema.get().toString(true));
+              "Key Schema of '{}' in cluster: {} is already registered but it is "
+                  + "INCONSISTENT with the local definition.\n" + "Already registered: {}\n" + "Local definition: {}",
+              systemStoreName,
+              clusterToInit,
+              keySchemaEntry.getSchema().toString(true),
+              keySchema.get().toString(true));
         }
       }
 
@@ -165,22 +172,27 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
                 false);
           } catch (Exception e) {
             LOGGER.error(
-                "Caught Exception when attempting to register '" + protocolDefinition.name() + "' schema version '"
-                    + valueSchemaVersion + "'. Will bubble up.");
+                "Caught Exception when attempting to register '{}' schema version '{}'. Will bubble up.",
+                protocolDefinition.name(),
+                valueSchemaVersion,
+                e);
             throw e;
           }
-          LOGGER.info("Added new schema v" + valueSchemaVersion + " to '" + systemStoreName + "'.");
+          LOGGER.info("Added new schema v{} to system store '{}'.", valueSchemaVersion, systemStoreName);
         } else {
           if (knownSchema.equals(schemaInLocalResources)) {
             LOGGER.info(
-                "Schema v" + valueSchemaVersion + " in '" + systemStoreName
-                    + "' is already registered and consistent with the local definition.");
+                "Schema v{} in system store '{}' is already registered and consistent with the local definition.",
+                valueSchemaVersion,
+                systemStoreName);
           } else {
             LOGGER.warn(
-                "Schema v" + valueSchemaVersion + " in '" + systemStoreName
-                    + "' is already registered but it is INCONSISTENT with the local definition.\n"
-                    + "Already registered: " + knownSchema.toString(true) + "\n" + "Local definition: "
-                    + schemaInLocalResources.toString(true));
+                "Schema v{} in system store '{}' is already registered but it is INCONSISTENT with the local definition.\n"
+                    + "Already registered: {}\n" + "Local definition: {}",
+                valueSchemaVersion,
+                systemStoreName,
+                knownSchema.toString(true),
+                schemaInLocalResources.toString(true));
           }
         }
         if (autoRegisterDerivedComputeSchema) {
@@ -197,13 +209,16 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
               admin.addDerivedSchema(clusterToInit, systemStoreName, valueSchemaVersion, writeComputeSchema);
             } catch (Exception e) {
               LOGGER.error(
-                  "Caught Exception when attempting to register the derived compute schema for '"
-                      + protocolDefinition.name() + "' schema version '" + valueSchemaVersion + "'. Will bubble up.");
+                  "Caught Exception when attempting to register the derived compute schema for '{}' schema version '{}'. Will bubble up.",
+                  protocolDefinition.name(),
+                  valueSchemaVersion,
+                  e);
               throw e;
             }
             LOGGER.info(
-                "Added the derived compute schema for the new schema v" + valueSchemaVersion + " to '" + systemStoreName
-                    + "'.");
+                "Added the derived compute schema for the new schema v{} to system store '{}'.",
+                valueSchemaVersion,
+                systemStoreName);
           }
         }
       }

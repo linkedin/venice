@@ -49,7 +49,7 @@ public class InternalRTStoreInitializationRoutine implements ClusterLeaderInitia
         throw new VeniceException("Unable to create or fetch store " + storeName);
       }
     } else {
-      LOGGER.info("Internal store " + storeName + " already exists in cluster " + clusterName);
+      LOGGER.info("Internal store {} already exists in cluster {}", storeName, clusterName);
     }
 
     if (!store.isHybrid()) {
@@ -77,7 +77,7 @@ public class InternalRTStoreInitializationRoutine implements ClusterLeaderInitia
       if (store.getVersions().isEmpty()) {
         throw new VeniceException("Unable to initialize a version for store " + storeName);
       }
-      LOGGER.info("Created a version for internal store " + storeName + " in cluster " + clusterName);
+      LOGGER.info("Created a version for internal store {} in cluster {}", storeName, clusterName);
     }
   }
 }

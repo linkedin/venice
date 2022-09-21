@@ -39,8 +39,9 @@ public class LatestVersionPromoteToCurrentTimestampCorrectionRoutine implements 
           });
 
           LOGGER.info(
-              "Correct the latest version promote to current timestamp to: " + createdTime + Time.MS_PER_DAY
-                  + " for store: " + storeName);
+              "Correct the latest version promote to current timestamp to: {} for store: {}",
+              createdTime + Time.MS_PER_DAY,
+              storeName);
         }
       }
     }
