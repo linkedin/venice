@@ -10,6 +10,8 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.List;
 import java.util.Optional;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -18,6 +20,8 @@ import java.util.Optional;
  */
 
 public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
+  private static final Logger LOGGER = LogManager.getLogger(PartitionStatusBasedPushMonitor.class);
+
   public PartitionStatusBasedPushMonitor(
       String clusterName,
       OfflinePushAccessor offlinePushAccessor,
@@ -66,9 +70,10 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
       PartitionAssignment partitionAssignment) {
     Pair<ExecutionStatus, Optional<String>> status = checkPushStatus(offlinePushStatus, partitionAssignment);
     if (status.getFirst().isTerminal()) {
-      logger.info(
-          "Found a offline pushes could be terminated: " + offlinePushStatus.getKafkaTopic() + " status: "
-              + status.getFirst());
+      LOGGER.info(
+          "Found a offline pushes could be terminated: {} status: {}",
+          offlinePushStatus.getKafkaTopic(),
+          status.getFirst());
       handleOfflinePushUpdate(offlinePushStatus, status.getFirst(), status.getSecond());
     }
   }

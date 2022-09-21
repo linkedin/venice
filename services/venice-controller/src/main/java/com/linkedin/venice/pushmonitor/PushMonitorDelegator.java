@@ -90,10 +90,10 @@ public class PushMonitorDelegator implements PushMonitor {
 
   @Override
   public void loadAllPushes() {
-    LOGGER.info("Load all pushes started for cluster " + clusterName + "'s " + getClass().getSimpleName());
+    LOGGER.info("Load all pushes started for cluster {}'s {}", clusterName, getClass().getSimpleName());
     try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       partitionStatusBasedPushStatusMonitor.loadAllPushes();
-      LOGGER.info("Load all pushes finished for cluster " + clusterName + "'s " + getClass().getSimpleName());
+      LOGGER.info("Load all pushes finished for cluster {}'s {}", clusterName, getClass().getSimpleName());
     }
   }
 
@@ -113,14 +113,12 @@ public class PushMonitorDelegator implements PushMonitor {
 
   @Override
   public void stopAllMonitoring() {
-    LOGGER.info("Stopping all monitoring for cluster " + clusterName + "'s " + getClass().getSimpleName());
+    LOGGER.info("Stopping all monitoring for cluster {}'s {}", clusterName, getClass().getSimpleName());
     try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       partitionStatusBasedPushStatusMonitor.stopAllMonitoring();
-      LOGGER
-          .info("Successfully stopped all monitoring for cluster " + clusterName + "'s " + getClass().getSimpleName());
+      LOGGER.info("Successfully stopped all monitoring for cluster {}'s {}", clusterName, getClass().getSimpleName());
     } catch (Exception e) {
-      LOGGER
-          .error("Error when stopping all monitoring for cluster " + clusterName + "'s " + getClass().getSimpleName());
+      LOGGER.error("Error when stopping all monitoring for cluster {}'s {}", clusterName, getClass().getSimpleName());
     }
   }
 

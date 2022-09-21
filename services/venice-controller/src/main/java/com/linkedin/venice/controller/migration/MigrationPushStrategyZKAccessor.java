@@ -55,7 +55,7 @@ public class MigrationPushStrategyZKAccessor {
           "Invalid push strategy: " + pushStrategyStr + ", should be one of the following: ["
               + MigrationPushStrategy.getAllEnumString() + "]");
     }
-    LOGGER.info("Setup push strategy: " + pushStrategyStr + " for Voldemort store: " + voldemortStoreName);
+    LOGGER.info("Setup push strategy: {} for Voldemort store: {}", pushStrategyStr, voldemortStoreName);
 
     HelixUtils.compareAndUpdate(zkAccessor, MIGRATION_PUSH_STRATEGY_PATH, oldData -> {
       if (oldData == null) {

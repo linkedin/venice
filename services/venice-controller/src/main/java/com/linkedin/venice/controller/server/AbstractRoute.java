@@ -69,21 +69,19 @@ public class AbstractRoute {
       if (!aclCheckFunction.apply(certificate, storeName, accessController.get())) {
         // log the abused users
         LOGGER.warn(
-            String.format(
-                "Client %s [host:%s IP:%s] doesn't have access to store %s",
-                certificate.getSubjectX500Principal().toString(),
-                request.host(),
-                request.ip(),
-                storeName));
+            "Client {} [host:{} IP:{}] doesn't have access to store {}",
+            certificate.getSubjectX500Principal().toString(),
+            request.host(),
+            request.ip(),
+            storeName);
         return false;
       }
     } catch (AclException e) {
       LOGGER.error(
-          String.format(
-              "Error while parsing certificate from client %s [host:%s IP:%s]",
-              certificate.getSubjectX500Principal().toString(),
-              request.host(),
-              request.ip()),
+          "Error while parsing certificate from client {} [host:{} IP:{}]",
+          certificate.getSubjectX500Principal().toString(),
+          request.host(),
+          request.ip(),
           e);
       return false;
     }

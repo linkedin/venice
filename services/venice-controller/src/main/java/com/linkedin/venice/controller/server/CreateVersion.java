@@ -203,20 +203,24 @@ public class CreateVersion extends AbstractRoute {
 
         if (sourceGridFabric.isPresent() && !isActiveActiveReplicationEnabledInAllRegion.get()) {
           LOGGER.info(
-              "Ignoring config " + SOURCE_GRID_FABRIC + " : " + sourceGridFabric.get() + ", as store " + storeName
-                  + " is not set up for Active/Active replication in all regions");
+              "Ignoring config {} : {}, as store {} is not set up for Active/Active replication in all regions",
+              SOURCE_GRID_FABRIC,
+              sourceGridFabric.get(),
+              storeName);
           sourceGridFabric = Optional.empty();
         }
         Optional<String> emergencySourceRegion = admin.getEmergencySourceRegion();
         if (emergencySourceRegion.isPresent() && !isActiveActiveReplicationEnabledInAllRegion.get()) {
           LOGGER.info(
-              "Ignoring config " + EMERGENCY_SOURCE_REGION + " : " + emergencySourceRegion.get() + ", as store "
-                  + storeName + " is not set up for Active/Active replication in all regions");
-          emergencySourceRegion = Optional.empty();
+              "Ignoring config {} : {}, as store {} is not set up for Active/Active replication in all regions",
+              EMERGENCY_SOURCE_REGION,
+              emergencySourceRegion.get(),
+              storeName);
         }
         LOGGER.info(
-            "requestTopicForPushing: source grid fabric: " + sourceGridFabric.orElse("") + ", emergency source region: "
-                + emergencySourceRegion.orElse(""));
+            "requestTopicForPushing: source grid fabric: {}, emergency source region: {}",
+            sourceGridFabric.orElse(""),
+            emergencySourceRegion.orElse(""));
 
         /**
          * Version-level rewind time override, and it is only valid for hybrid stores.
@@ -338,8 +342,9 @@ public class CreateVersion extends AbstractRoute {
                   }
                   responseObject.setKafkaBootstrapServers(sourceKafkaBootstrapServers);
                   LOGGER.info(
-                      "Incremental Push to RT Policy job source region is being overridden with: "
-                          + overRideSourceRegion.get() + " address:" + sourceKafkaBootstrapServers);
+                      "Incremental Push to RT Policy job source region is being overridden with: {} address: {}",
+                      overRideSourceRegion.get(),
+                      sourceKafkaBootstrapServers);
                 }
               } else if (version.isNativeReplicationEnabled()) {
                 Optional<String> aggregateRealTimeTopicSourceKafkaServers =
@@ -348,8 +353,8 @@ public class CreateVersion extends AbstractRoute {
                     .ifPresent(source -> responseObject.setKafkaBootstrapServers(source));
               }
               LOGGER.info(
-                  "Incremental Push to RT Policy job final source region address is: "
-                      + responseObject.getKafkaBootstrapServers());
+                  "Incremental Push to RT Policy job final source region address is: {}",
+                  responseObject.getKafkaBootstrapServers());
             }
             break;
           case STREAM:
@@ -373,8 +378,9 @@ public class CreateVersion extends AbstractRoute {
                   throw new VeniceException("Store is not in aggregate mode!  Cannot push data to parent topic!!");
                 } else {
                   LOGGER.info(
-                      "Store: " + storeName
-                          + " samza job running in Aggregate mode, Store config is in Non-Aggregate mode, AA is enabled in all regions, letting the job continue");
+                      "Store: {} samza job running in Aggregate mode, Store config is in Non-Aggregate mode, "
+                          + "AA is enabled in all regions, letting the job continue",
+                      storeName);
                 }
               }
             } else {
@@ -383,8 +389,9 @@ public class CreateVersion extends AbstractRoute {
                   throw new VeniceException("Store is in aggregate mode!  Cannot push data to child topic!!");
                 } else {
                   LOGGER.info(
-                      "Store: " + storeName
-                          + " samza job running in Non-Aggregate mode, Store config is in Aggregate mode, AA is enabled in the local region, letting the job continue");
+                      "Store: {} samza job running in Non-Aggregate mode, Store config is in Aggregate mode, "
+                          + "AA is enabled in the local region, letting the job continue",
+                      storeName);
                 }
               }
             }
@@ -625,7 +632,7 @@ public class CreateVersion extends AbstractRoute {
       } catch (Throwable e) {
         // Clean up on failed push.
         if (version != null && clusterName != null) {
-          LOGGER.warn("Cleaning up failed Empty push of " + version.kafkaTopicName());
+          LOGGER.warn("Cleaning up failed Empty push of {}", version.kafkaTopicName());
           admin.killOfflinePush(clusterName, version.kafkaTopicName(), true);
         }
         responseObject.setError(e);
