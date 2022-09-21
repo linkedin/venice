@@ -84,7 +84,7 @@ public abstract class StateModelIngestionProgressNotifier implements VeniceNotif
       stateModelToSuccessMap.put(getStateModelID(resourceName, partitionId), true);
       ingestionCompleteFlag.countDown();
     } else {
-      logger.info("No ingestion complete flag is found for resource:" + resourceName + " partition:" + partitionId);
+      logger.info("No ingestion complete flag is found for resource: {} partition: {}", resourceName, partitionId);
     }
   }
 
@@ -94,7 +94,7 @@ public abstract class StateModelIngestionProgressNotifier implements VeniceNotif
     if (ingestionCompleteFlag != null) {
       ingestionCompleteFlag.countDown();
     } else {
-      logger.info("No ingestion complete flag is found for resource:" + resourceName + " partition:" + partitionId);
+      logger.info("No ingestion complete flag is found for resource: {} partition: {}", resourceName, partitionId);
     }
   }
 
@@ -110,7 +110,7 @@ public abstract class StateModelIngestionProgressNotifier implements VeniceNotif
     if (ingestionCompleteFlag != null) {
       ingestionCompleteFlag.countDown();
     } else {
-      logger.info("No ingestion complete flag is found for resource:" + resourceName + " partition:" + partitionId);
+      logger.info("No ingestion complete flag is found for resource: {} partition: {}", resourceName, partitionId);
     }
   }
 }

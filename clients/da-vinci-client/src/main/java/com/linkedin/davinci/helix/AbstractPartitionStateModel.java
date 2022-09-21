@@ -109,16 +109,28 @@ public abstract class AbstractPartitionStateModel extends StateModel {
 
   private void logEntry(String from, String to, Message message, NotificationContext context, boolean rollback) {
     logger.info(
-        getStorePartitionDescription() + " " + (rollback ? "rolling back" : "initiating") + " transition from " + from
-            + " to " + to + " for resource: " + getStoreConfig().getStoreVersionName() + " Partition " + partition
-            + " invoked with Message " + message + " and context " + context);
+        "{} {} transition from {} to {} for resource: {}, partition: {} invoked with message {} and context {}",
+        getStorePartitionDescription(),
+        rollback ? "rolling back" : "initiating",
+        from,
+        to,
+        getStoreConfig().getStoreVersionName(),
+        partition,
+        message,
+        context);
   }
 
   private void logCompletion(String from, String to, Message message, NotificationContext context, boolean rollback) {
     logger.info(
-        getStorePartitionDescription() + " " + (rollback ? "rolled back" : "completed") + " transition from " + from
-            + " to " + to + " for resource: " + getStoreConfig().getStoreVersionName() + " Partition " + partition
-            + " invoked with Message " + message + " and context " + context);
+        "{} {} transition from {} to {} for resource: {}, partition: {} invoked with message {} and context {}",
+        getStorePartitionDescription(),
+        rollback ? "rolled back" : "completed",
+        from,
+        to,
+        getStoreConfig().getStoreVersionName(),
+        partition,
+        message,
+        context);
   }
 
   /**
@@ -129,8 +141,8 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   public void rollbackOnError(Message message, NotificationContext context, StateTransitionError error) {
     executeStateTransition(message, context, () -> {
       logger.info(
-          getStorePartitionDescription()
-              + " met an error during state transition. Stop the running consumption. Caused by:",
+          "{} met an error during state transition. Stop the running consumption.",
+          getStorePartitionDescription(),
           error.getException());
       /**
        * When state transition fails, we shouldn't remove the corresponding database here since the database could
@@ -162,8 +174,10 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     try {
       stopConsumption();
     } catch (Exception e) {
-      logger
-          .error("Error when trying to stop any ongoing consumption during reset for: " + storePartitionDescription, e);
+      logger.error(
+          "Error when trying to stop any ongoing consumption during reset for: {}",
+          storePartitionDescription,
+          e);
     }
     try {
       waitPartitionPushStatusAccessor();
@@ -196,8 +210,10 @@ public abstract class AbstractPartitionStateModel extends StateModel {
       // TODO Evaluate if debugLoggingEnabled config can be removed, as logging level can be changed at run time.
       if (storeConfig.isDebugLoggingEnabled()) {
         logger.info(
-            "Completed waiting for partition push status accessor for resource " + storeConfig.getStoreVersionName()
-                + " partition " + partition + ". Total elapsed time: " + elapsedTimeInMs + " ms");
+            "Completed waiting for partition push status accessor for resource {}, partition {}. Total elapsed time: {} ms",
+            storeConfig.getStoreVersionName(),
+            partition,
+            elapsedTimeInMs);
       }
     };
 
@@ -218,8 +234,10 @@ public abstract class AbstractPartitionStateModel extends StateModel {
       // TODO Evaluate if debugLoggingEnabled config can be removed, as logging level can be changed at run time.
       if (storeConfig.isDebugLoggingEnabled()) {
         logger.info(
-            "Completed starting the consumption for resource " + storeConfig.getStoreVersionName() + " partition "
-                + partition + ". Total elapsed time: " + elapsedTimeInMs + " ms");
+            "Completed starting the consumption for resource {} partition {}. Total elapsed time: {} ms",
+            storeConfig.getStoreVersionName(),
+            partition,
+            elapsedTimeInMs);
       }
     };
     try (Timer t = Timer.run(setupTimeLogging)) {
@@ -242,9 +260,9 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     // Delete this replica from meta system store if necessary
     Optional<MetaSystemStoreReplicaStatusNotifier> metaSystemStoreReplicaStatusNotifier =
         ingestionBackend.getStoreIngestionService().getMetaSystemStoreReplicaStatusNotifier();
-    if (metaSystemStoreReplicaStatusNotifier.isPresent()) {
-      metaSystemStoreReplicaStatusNotifier.get().drop(storeConfig.getStoreVersionName(), partition);
-    }
+    metaSystemStoreReplicaStatusNotifier.ifPresent(
+        systemStoreReplicaStatusNotifier -> systemStoreReplicaStatusNotifier
+            .drop(storeConfig.getStoreVersionName(), partition));
   }
 
   /**
@@ -265,26 +283,24 @@ public abstract class AbstractPartitionStateModel extends StateModel {
       while (!isSuccess && attempt <= RETRY_COUNT) {
         attempt++;
         if (attempt > 1) {
-          logger.info("Wait " + RETRY_DURATION_MS + "ms to retry.");
+          logger.info("Wait {} ms to retry.", RETRY_DURATION_MS);
           Utils.sleep(RETRY_DURATION_MS);
           logger.info(
-              String.format(
-                  "Attempt #%s in removing customized state for store: %s, partition: %s, on instance: %s",
-                  attempt,
-                  storeName,
-                  partition,
-                  instanceName));
+              "Attempt #{} in removing customized state for store: {}, partition: {}, on instance: {}",
+              attempt,
+              storeName,
+              partition,
+              instanceName);
         }
         try {
           partitionPushStatusAccessor.deleteReplicaStatus(storeName, partition);
           isSuccess = true;
         } catch (Exception e) {
           logger.error(
-              String.format(
-                  "Error in removing customized state for store: %s, partition: %s, on instance: %s",
-                  storeName,
-                  partition,
-                  instanceName),
+              "Error in removing customized state for store: {}, partition: {}, on instance: {}",
+              storeName,
+              partition,
+              instanceName,
               e);
         }
       }
@@ -310,8 +326,9 @@ public abstract class AbstractPartitionStateModel extends StateModel {
                 .getBootstrapToOnlineTimeoutInHours();
       } catch (Exception e) {
         logger.warn(
-            "Failed to fetch bootstrapToOnlineTimeoutInHours from store config for resource " + resourceName
-                + ", using the default value of " + Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS + " hours instead");
+            "Failed to fetch bootstrapToOnlineTimeoutInHours from store config for resource {}, using the default value of {} hours instead",
+            resourceName,
+            Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
         bootstrapToOnlineTimeoutInHours = Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
       }
       notifier.waitConsumptionCompleted(

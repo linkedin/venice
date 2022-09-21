@@ -230,7 +230,7 @@ public class DaVinciBackend implements Closeable {
   protected synchronized void bootstrap(Optional<Set<String>> managedClients) {
     List<AbstractStorageEngine> storageEngines =
         storageService.getStorageEngineRepository().getAllLocalStorageEngines();
-    LOGGER.info("Starting bootstrap, storageEngines=" + storageEngines + ", managedClients=" + managedClients);
+    LOGGER.info("Starting bootstrap, storageEngines: {}, managedClients: {}", storageEngines, managedClients);
     Map<String, Set<Integer>> expectedBootstrapVersions = new HashMap<>();
     Map<String, Version> storeNameToBootstrapVersionMap = new HashMap<>();
     Map<String, List<Integer>> storeNameToPartitionListMap = new HashMap<>();
@@ -243,14 +243,14 @@ public class DaVinciBackend implements Closeable {
         StoreBackend storeBackend = getStoreOrThrow(storeName); // throws VeniceNoStoreException
         if (managedClients.isPresent() && !managedClients.get().contains(storeName) && storeBackend.isManaged()) {
           // If the store is not-managed, all its versions will be removed.
-          LOGGER.info("Deleting unused managed version " + kafkaTopicName);
+          LOGGER.info("Deleting unused managed version: {}", kafkaTopicName);
           unusedStores.add(storeName);
           storageService.removeStorageEngine(kafkaTopicName);
           continue;
         }
       } catch (VeniceNoStoreException e) {
         // The store does not exist in Venice anymore, so it will be deleted.
-        LOGGER.info("Deleting invalid local version " + kafkaTopicName);
+        LOGGER.info("Store does not exist, deleting invalid local version: {}", kafkaTopicName);
         unusedStores.add(storeName);
         storageService.removeStorageEngine(kafkaTopicName);
         continue;
@@ -269,7 +269,7 @@ public class DaVinciBackend implements Closeable {
       int versionNumber = Version.parseVersionFromKafkaTopicName(kafkaTopicName);
       // The version is no longer valid (stale version), it will be deleted.
       if (!expectedBootstrapVersions.get(storeName).contains(versionNumber)) {
-        LOGGER.info("Deleting obsolete local version " + kafkaTopicName);
+        LOGGER.info("Deleting obsolete local version: {}", kafkaTopicName);
         storageService.removeStorageEngine(kafkaTopicName);
         continue;
       }

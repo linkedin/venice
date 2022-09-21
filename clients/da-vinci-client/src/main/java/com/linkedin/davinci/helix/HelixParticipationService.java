@@ -227,7 +227,8 @@ public class HelixParticipationService extends AbstractVeniceService
         LOGGER.info("Disconnected Helix Manager.");
       } catch (Exception e) {
         LOGGER.error(
-            "Swallowed an exception while trying to disconnect the " + helixManager.getClass().getSimpleName(),
+            "Swallowed an exception while trying to disconnect the {}",
+            helixManager.getClass().getSimpleName(),
             e);
       }
     } else {
@@ -258,16 +259,17 @@ public class HelixParticipationService extends AbstractVeniceService
       HelixUtils.checkClusterSetup(admin, clusterName, MAX_RETRY, RETRY_INTERVAL_SEC);
       List<String> instances = admin.getInstancesInCluster(clusterName);
       if (instances.contains(instance.getNodeId())) {
-        LOGGER.info(instance.getNodeId() + " is not a new node to cluster: " + clusterName + ", skip the cleaning up.");
+        LOGGER.info("{} is not a new node to cluster: {}, skip the cleaning up.", instance.getNodeId(), clusterName);
         return;
       }
       // Could not get instance from helix cluster. So it's a new machine or the machine which had been removed from
       // this cluster. In order to prevent resource leaking, we need to clean up all legacy stores.
       LOGGER.info(
-          instance.getNodeId() + " is a new node or had been removed from cluster: " + clusterName
-              + " start cleaning up local storage.");
+          "{} is a new node or had been removed from cluster: {} start cleaning up local storage.",
+          instance.getNodeId(),
+          clusterName);
       storageService.cleanupAllStores(veniceConfigLoader);
-      LOGGER.info("Cleaning up complete, " + instance.getNodeId() + " can now join cluster:" + clusterName);
+      LOGGER.info("Cleaning up complete, {} can now join cluster: {}", instance.getNodeId(), clusterName);
     } finally {
       admin.close();
     }
@@ -351,12 +353,13 @@ public class HelixParticipationService extends AbstractVeniceService
     if (ingestionService.containsRunningConsumption(storeConfig)) {
       // push is failed, stop consumption.
       LOGGER.info(
-          "Receive the message to kill consumption for topic:" + message.getKafkaTopic() + ", msgId: "
-              + message.getMessageId());
+          "Receive the message to kill consumption for topic: {}, msgId: {}",
+          message.getKafkaTopic(),
+          message.getMessageId());
       ingestionService.killConsumptionTask(storeConfig.getStoreVersionName());
-      LOGGER.info("Killed Consumption for topic:" + message.getKafkaTopic() + ", msgId: " + message.getMessageId());
+      LOGGER.info("Killed Consumption for topic: {}, msgId: {}", message.getKafkaTopic(), message.getMessageId());
     } else {
-      LOGGER.info("Ignore the kill message for topic:" + message.getKafkaTopic());
+      LOGGER.info("Ignore the kill message for topic: {}", message.getKafkaTopic());
     }
   }
 }

@@ -41,7 +41,7 @@ public class LeaderFollowerPartitionStateModelFactory extends AbstractStateModel
 
   @Override
   public LeaderFollowerPartitionStateModel createNewStateModel(String resourceName, String partitionName) {
-    logger.info("Creating LeaderFollowerParticipantModel handler for partition: " + partitionName);
+    logger.info("Creating LeaderFollowerParticipantModel handler for partition: {}", partitionName);
     return new LeaderFollowerPartitionStateModel(
         getIngestionBackend(),
         getConfigService().getStoreConfig(HelixUtils.getResourceName(partitionName)),

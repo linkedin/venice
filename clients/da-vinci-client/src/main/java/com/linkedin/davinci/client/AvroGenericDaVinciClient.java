@@ -119,7 +119,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       VeniceProperties backendConfig,
       Optional<Set<String>> managedClients,
       ICProvider icProvider) {
-    logger.info("Creating client, storeName=" + clientConfig.getStoreName() + ", daVinciConfig=" + daVinciConfig);
+    logger.info("Creating client, storeName={}, daVinciConfig={}", clientConfig.getStoreName(), daVinciConfig);
     this.daVinciConfig = daVinciConfig;
     this.clientConfig = clientConfig;
     this.backendConfig = backendConfig;
@@ -189,8 +189,9 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       notSubscribedPartitions.removeAll(subscription);
       if (!notSubscribedPartitions.isEmpty()) {
         logger.warn(
-            "Partitions " + notSubscribedPartitions + " of " + getStoreName()
-                + " are not subscribed, ignoring unsubscribe request.");
+            "Partitions {} of {} are not subscribed, ignoring unsubscribe request.",
+            notSubscribedPartitions,
+            getStoreName());
         partitions = ComplementSet.newSet(partitions);
         partitions.removeAll(notSubscribedPartitions);
       }
@@ -205,8 +206,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   }
 
   // TODO: This is 'almost' the same logic for the batchGet path. We could probably wrap this function and adapt it to
-  // the
-  // Batch-get api (where sometimes the Batch-get is just for a single key). Advantages would be to remove duplicate
+  // the batch-get api (where sometimes the Batch-get is just for a single key). Advantages would be to remove duplicate
   // code.
   private CompletableFuture<V> readFromLocalStorage(K key, V reusableValue) {
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
@@ -581,9 +581,11 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       D2ServiceDiscovery serviceDiscovery = new D2ServiceDiscovery();
       D2ServiceDiscoveryResponseV2 response = serviceDiscovery.find((D2TransportClient) client, getStoreName());
       logger.info(
-          "Venice service discovered" + ", clusterName=" + response.getCluster() + ", zkAddress="
-              + response.getZkAddress() + ", kafkaZkAddress=" + response.getKafkaZkAddress()
-              + ", kafkaBootstrapServers=" + response.getKafkaBootstrapServers());
+          "Venice service discovered, clusterName={}, zkAddress={}, kafkaZkAddress={}, kafkaBootstrapServers={}",
+          response.getCluster(),
+          response.getZkAddress(),
+          response.getKafkaZkAddress(),
+          response.getKafkaBootstrapServers());
       return response;
     } catch (Throwable e) {
       throw new ServiceDiscoveryException("Failed to discover Venice service, storeName=" + getStoreName(), e);
