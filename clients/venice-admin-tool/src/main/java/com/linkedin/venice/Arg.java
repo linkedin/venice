@@ -223,7 +223,8 @@ public enum Arg {
       "Type of system store to backfill. Supported types are davinci_push_status_store and meta_store"
   ), RETRY("retry", "r", false, "Retry this operation"),
   DISABLE_LOG("disable-log", "dl", false, "Disable logs from internal classes. Only print command output on console"),
-  STORAGE_PERSONA("storage-persona", "sp", true, "Name of Storage Persona");
+  STORAGE_PERSONA("storage-persona", "sp", true, "Name of Storage Persona"),
+  STORE_VIEW_CONFIGS("storage-view-configs", "svc", true, "Config that describes views to be added for a store");
 
   private final String argName;
   private final String first;

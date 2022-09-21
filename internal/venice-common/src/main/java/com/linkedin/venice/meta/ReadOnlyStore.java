@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 
@@ -491,6 +492,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public Set<ViewConfig> getViewConfigs() {
+      return this.delegate.getViewConfigs().stream().map(ReadOnlyViewConfig::new).collect(Collectors.toSet());
+    }
+
+    @Override
+    public void setViewConfig(Set<ViewConfig> viewConfigList) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public boolean isUseVersionLevelHybridConfig() {
       return this.delegate.isUseVersionLevelHybridConfig();
     }
@@ -817,6 +828,16 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setHybridStoreConfig(HybridStoreConfig hybridStoreConfig) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public Set<ViewConfig> getViewConfigs() {
+    return this.delegate.getViewConfigs().stream().map(ReadOnlyViewConfig::new).collect(Collectors.toSet());
+  }
+
+  @Override
+  public void setViewConfig(Set<ViewConfig> viewConfigList) {
     throw new UnsupportedOperationException();
   }
 

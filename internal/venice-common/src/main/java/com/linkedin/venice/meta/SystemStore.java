@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 
 /**
@@ -266,6 +267,16 @@ public class SystemStore extends AbstractStore {
   @Override
   public void setHybridStoreConfig(HybridStoreConfig hybridStoreConfig) {
     throwUnsupportedOperationException("setHybridStoreConfig");
+  }
+
+  @Override
+  public Set<ViewConfig> getViewConfigs() {
+    return zkSharedStore.getViewConfigs();
+  }
+
+  @Override
+  public void setViewConfig(Set<ViewConfig> viewConfigList) {
+    throwUnsupportedOperationException("setViewConfig");
   }
 
   @Override

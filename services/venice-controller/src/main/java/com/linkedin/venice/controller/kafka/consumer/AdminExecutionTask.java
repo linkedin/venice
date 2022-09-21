@@ -58,6 +58,7 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import org.apache.avro.specific.SpecificRecordBase;
 import org.apache.logging.log4j.Logger;
 
 
@@ -487,7 +488,9 @@ public class AdminExecutionTask implements Callable<Void> {
         .setAutoSchemaPushJobEnabled(message.schemaAutoRegisterFromPushJobEnabled)
         .setHybridStoreDiskQuotaEnabled(message.hybridStoreDiskQuotaEnabled)
         .setReplicationFactor(message.replicationFactor)
-        .setMigrationDuplicateStore(message.migrationDuplicateStore);
+        .setMigrationDuplicateStore(message.migrationDuplicateStore)
+        // TODO: This probably needs to be a bit more robust, for now this is fine.
+        .setStoreViews(message.views.stream().map(SpecificRecordBase::toString).collect(Collectors.toSet()));
 
     if (message.ETLStoreConfig != null) {
       params.setRegularVersionETLEnabled(message.ETLStoreConfig.regularVersionETLEnabled)

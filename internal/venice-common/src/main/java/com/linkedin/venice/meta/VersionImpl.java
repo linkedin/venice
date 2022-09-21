@@ -8,6 +8,8 @@ import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import com.linkedin.venice.utils.AvroCompatibilityUtils;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 
 /**
@@ -292,6 +294,17 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public Set<ViewConfig> getViewConfigs() {
+    return this.storeVersion.views.stream().map(ViewConfigImpl::new).collect(Collectors.toSet());
+  }
+
+  @Override
+  public void setViewConfig(Set<ViewConfig> viewConfigList) {
+    this.storeVersion.views =
+        viewConfigList.stream().map(viewConfig -> viewConfig.dataModel()).collect(Collectors.toList());
+  }
+
+  @Override
   public boolean isUseVersionLevelHybridConfig() {
     return this.storeVersion.useVersionLevelHybridConfig;
   }
@@ -413,6 +426,7 @@ public class VersionImpl implements Version {
     clonedVersion.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
     clonedVersion.setRmdVersionId(getRmdVersionId());
     clonedVersion.setVersionSwapDeferred(isVersionSwapDeferred());
+    clonedVersion.setViewConfig(getViewConfigs());
     return clonedVersion;
   }
 

@@ -12,6 +12,7 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 
 /**
@@ -160,6 +161,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   HybridStoreConfig getHybridStoreConfig();
 
   void setHybridStoreConfig(HybridStoreConfig hybridConfig);
+
+  Set<ViewConfig> getViewConfigs();
+
+  void setViewConfig(Set<ViewConfig> viewConfigList);
 
   boolean isUseVersionLevelHybridConfig();
 

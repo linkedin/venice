@@ -151,6 +151,27 @@
               "default": null
             },
             {
+              "name": "views",
+              "doc": "A list of views which describe and configure a downstream view of a venice store.",
+              "type": {
+                "type": "array",
+                "items": {
+                  "name": "StoreViewConfig",
+                  "type": "record",
+                  "doc": "A configuration for a particular view.  This config should inform Venice leaders how to transform and transmit data to destination views.",
+                  "fields": [
+                    {
+                      "name": "viewType",
+                      "type": "int",
+                      "doc": "This informs what kind of view we are materializing.  This then informs what kind of parameters are passed to parse this input. Defaults to CHANGE_CAPTURE",
+                      "default": 0
+                    }
+                  ]
+                }
+              },
+              "default": []
+            },
+            {
               "name": "accessControlled",
               "type": "boolean",
               "doc": "Store-level ACL switch. When disabled, Venice Router should accept every request.",
@@ -560,7 +581,16 @@
                       "doc": "Properties related to data recovery mode behavior for this version. If absent (null), then the version never went go through data recovery.",
                       "default": null
                     },
-                    {"name": "deferVersionSwap", "type": "boolean", "default": false, "doc": "flag that informs venice controller to defer marking this version as the serving version after instances report ready to serve.  This version must be marked manually as the current version in order to serve traffic from it."}
+                    {"name": "deferVersionSwap", "type": "boolean", "default": false, "doc": "flag that informs venice controller to defer marking this version as the serving version after instances report ready to serve.  This version must be marked manually as the current version in order to serve traffic from it."},
+                    {
+                      "name": "views",
+                      "doc": "A list of views which describe and configure a downstream view of a venice store.",
+                      "type": {
+                        "type": "array",
+                        "items": "com.linkedin.venice.systemstore.schemas.StoreViewConfig"
+                      },
+                      "default": []
+                    }
                   ]
                 }
               },

@@ -65,6 +65,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -1834,7 +1835,9 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     veniceAdmin.updateStore(
         clusterName,
         storeName,
-        new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1).setHybridRewindSeconds(1));
+        new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1)
+            .setHybridRewindSeconds(1)
+            .setStoreViews(new HashSet<>(Arrays.asList("SOMETHING"))));
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     TestUtils.waitForNonDeterministicCompletion(
         TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,

@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.avro.util.Utf8;
 
@@ -446,6 +447,24 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
       this.storeProperties.hybridConfig = null;
     } else {
       this.storeProperties.hybridConfig = hybridStoreConfig.dataModel();
+    }
+  }
+
+  @Override
+  public Set<ViewConfig> getViewConfigs() {
+    if (this.storeProperties.views == null) {
+      return null;
+    }
+    return this.storeProperties.views.stream().map(ViewConfigImpl::new).collect(Collectors.toSet());
+  }
+
+  @Override
+  public void setViewConfig(Set<ViewConfig> viewConfigList) {
+    if (viewConfigList == null) {
+      this.storeProperties.views = new ArrayList<>();
+    } else {
+      this.storeProperties.views =
+          viewConfigList.stream().map(DataModelBackedStructure::dataModel).collect(Collectors.toList());
     }
   }
 

@@ -891,6 +891,7 @@ public class AdminTool {
     genericParam(cmd, Arg.ETLED_PROXY_USER_ACCOUNT, s -> s, p -> params.setEtledProxyUserAccount(p), argSet);
     booleanParam(cmd, Arg.NATIVE_REPLICATION_ENABLED, p -> params.setNativeReplicationEnabled(p), argSet);
     genericParam(cmd, Arg.PUSH_STREAM_SOURCE_ADDRESS, s -> s, p -> params.setPushStreamSourceAddress(p), argSet);
+    stringSetParam(cmd, Arg.STORE_VIEW_CONFIGS, p -> params.setStoreViews(p), argSet);
     longParam(
         cmd,
         Arg.BACKUP_VERSION_RETENTION_DAY,

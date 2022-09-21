@@ -1,54 +1,6 @@
 package com.linkedin.venice.controllerapi;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_CONTROLLED;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACTIVE_ACTIVE_REPLICATION_ENABLED;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.AMPLIFICATION_FACTOR;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_STRATEGY;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_VERSION_RETENTION_MS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_GET_LIMIT;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.BUFFER_REPLAY_POLICY;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.CHUNKING_ENABLED;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLIENT_DECOMPRESSION_ENABLED;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPRESSION_STRATEGY;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.DATA_REPLICATION_POLICY;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_DAVINCI_PUSH_STATUS_STORE;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_META_STORE;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_READS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_OVERHEAD_BYPASS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.LEADER_FOLLOWER_MODEL_ENABLED;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION_DUPLICATE_STORE;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_ENABLED;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_SOURCE_FABRIC;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.NUM_VERSIONS_TO_PRESERVE;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET_LAG_TO_GO_ONLINE;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONER_CLASS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONER_PARAMS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_COUNT;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_NAME;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_STREAM_SOURCE_ADDRESS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_COMPUTATION_ENABLED;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_QUOTA_IN_CU;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGIONS_FILTER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGULAR_VERSION_ETL_ENABLED;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATE_ALL_CONFIGS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_FACTOR;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_PROTOCOL_VERSION_ID;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPDATED_CONFIGS_LIST;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -61,12 +13,15 @@ import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 
 public class UpdateStoreQueryParams extends QueryParams {
@@ -118,7 +73,8 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setReplicationFactor(srcStore.getReplicationFactor())
             .setAutoSchemaPushJobEnabled(srcStore.isSchemaAutoRegisterFromPushJobEnabled())
             .setStorageQuotaInByte(srcStore.getStorageQuotaInByte())
-            .setWriteComputationEnabled(srcStore.isWriteComputationEnabled());
+            .setWriteComputationEnabled(srcStore.isWriteComputationEnabled())
+            .setStoreViews(srcStore.getViewConfigs().stream().map(ViewConfig::toString).collect(Collectors.toSet()));
 
     if (srcStore.getReplicationMetadataVersionId() != -1) {
       updateStoreQueryParams.setReplicationMetadataVersionID(srcStore.getReplicationMetadataVersionId());
@@ -435,6 +391,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public UpdateStoreQueryParams setNativeReplicationEnabled(boolean nativeReplicationEnabled) {
     return putBoolean(NATIVE_REPLICATION_ENABLED, nativeReplicationEnabled);
+  }
+
+  public UpdateStoreQueryParams setStoreViews(Set<String> viewSet) {
+    return (UpdateStoreQueryParams) putStringSet(STORE_VIEW, viewSet);
+  }
+
+  public Optional<Set<String>> getStoreViews() {
+    return getStringSet(STORE_VIEW);
   }
 
   public UpdateStoreQueryParams setPushStreamSourceAddress(String pushStreamSourceAddress) {
