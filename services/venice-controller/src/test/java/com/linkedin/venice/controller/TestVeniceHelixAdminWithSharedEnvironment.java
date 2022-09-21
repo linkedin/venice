@@ -1377,7 +1377,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
       }
       activeVersions.add(secondActiveVersion);
 
-      logger.info("Active versions for '" + storeName + "': " + activeVersions);
+      LOGGER.info("Active versions for '{}': {}", storeName, activeVersions);
 
       // Create ten topics and keep track of the active versions in the Store instance
       for (int versionNumber = 1; versionNumber <= NUMBER_OF_VERSIONS; versionNumber++) {

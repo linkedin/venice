@@ -91,7 +91,7 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
     Map<String, PriorityQueue<Integer>> storeToVersions = new HashMap<>();
     for (String storeVersion: storeVersions) {
       if (!Version.isVersionTopic(storeVersion)) {
-        LOGGER.warn("Found an invalid push status path: " + storeVersion);
+        LOGGER.warn("Found an invalid push status path: {}", storeVersion);
         continue;
       }
       int version = Version.parseVersionFromKafkaTopicName(storeVersion);
@@ -154,8 +154,10 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
                * Don't stop the service for one single store
                */
               LOGGER.error(
-                  storeName + " doesn't exist in metadata repo in cluster " + clusterName + " but has leaked push "
-                      + "status: " + Version.composeKafkaTopic(storeName, versions.iterator().next()));
+                  "{} doesn't exist in metadata repo in cluster {} but has leaked push status: {}",
+                  storeName,
+                  clusterName,
+                  Version.composeKafkaTopic(storeName, versions.iterator().next()));
               aggPushStatusCleanUpStats.recordFailedLeakedPushStatusCleanUpCount(storeName, leakedPushStatuses.size());
             }
           }

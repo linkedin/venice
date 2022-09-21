@@ -64,11 +64,11 @@ public class JobRoutesTest {
     long consumed = response.getMessagesConsumed();
 
     Map<String, String> extraInfo = response.getExtraInfo();
-    LOGGER.info("extraInfo: " + extraInfo);
+    LOGGER.info("extraInfo: {}", extraInfo);
     Assert.assertNotNull(extraInfo);
 
     Map<String, String> extraDetails = response.getExtraDetails();
-    LOGGER.info("extraDetails: " + extraDetails);
+    LOGGER.info("extraDetails: {}", extraDetails);
     Assert.assertNotNull(extraDetails);
 
     Assert.assertTrue(

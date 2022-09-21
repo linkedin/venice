@@ -95,8 +95,7 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
 
   protected void reportUnderReplicatedPartition(String version, int underReplicatedPartitions) {
     if (underReplicatedPartitions > 0) {
-      LOGGER.warn(
-          "Version: " + version + " has " + underReplicatedPartitions + " partitions which are under replicated.");
+      LOGGER.warn("Version: {} has {} partitions which are under replicated.", version, underReplicatedPartitions);
       totalStats.recordUnderReplicatePartition(underReplicatedPartitions);
       getStoreStats(version).recordUnderReplicatePartition(underReplicatedPartitions);
     }

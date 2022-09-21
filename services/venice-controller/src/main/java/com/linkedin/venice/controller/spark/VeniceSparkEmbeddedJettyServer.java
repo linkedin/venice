@@ -36,7 +36,7 @@ public class VeniceSparkEmbeddedJettyServer implements EmbeddedServer {
   private final Handler handler;
   private Server server;
 
-  private final Logger logger = LogManager.getLogger(this.getClass());
+  private static final Logger LOGGER = LogManager.getLogger(VeniceSparkEmbeddedJettyServer.class);
 
   private Map<String, WebSocketHandlerWrapper> webSocketHandlers;
   private Optional<Long> webSocketIdleTimeoutMillis;
@@ -82,7 +82,7 @@ public class VeniceSparkEmbeddedJettyServer implements EmbeddedServer {
       try (ServerSocket s = new ServerSocket(0)) {
         port = s.getLocalPort();
       } catch (IOException e) {
-        logger.error("Could not get first available port (port set to 0), using default: {}", SPARK_DEFAULT_PORT);
+        LOGGER.error("Could not get first available port (port set to 0), using default: {}", SPARK_DEFAULT_PORT);
         port = SPARK_DEFAULT_PORT;
       }
     }
@@ -145,11 +145,11 @@ public class VeniceSparkEmbeddedJettyServer implements EmbeddedServer {
       server.setHandler(handlers);
     }
 
-    logger.info("== {} has ignited ...", NAME);
+    LOGGER.info("== {} has ignited ...", NAME);
     if (hasCustomizedConnectors) {
-      logger.info(">> Listening on Custom Server ports!");
+      LOGGER.info(">> Listening on Custom Server ports!");
     } else {
-      logger.info(">> Listening on {}:{}", host, port);
+      LOGGER.info(">> Listening on {}:{}", host, port);
     }
 
     server.start();
@@ -169,16 +169,16 @@ public class VeniceSparkEmbeddedJettyServer implements EmbeddedServer {
    */
   @Override
   public void extinguish() {
-    logger.info(">>> {} shutting down ...", NAME);
+    LOGGER.info(">>> {} shutting down ...", NAME);
     try {
       if (server != null) {
         server.stop();
       }
     } catch (Exception e) {
-      logger.error("stop failed", e);
+      LOGGER.error("stop failed", e);
       System.exit(100); // NOSONAR
     }
-    logger.info("done");
+    LOGGER.info("done");
   }
 
   @Override

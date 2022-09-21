@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.SSLConfig.*;
 
 import com.linkedin.venice.VeniceStateModel;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
@@ -48,7 +47,7 @@ class AbstractTestVeniceHelixAdmin {
   static String NODE_ID = "localhost_9985";
   static int SERVER_LISTENING_PORT = 9985;
 
-  final Logger logger = LogManager.getLogger(getClass().getSimpleName());
+  private final static Logger LOGGER = LogManager.getLogger(AbstractTestVeniceHelixAdmin.class);
 
   VeniceHelixAdmin veniceAdmin;
   String clusterName;
@@ -118,7 +117,7 @@ class AbstractTestVeniceHelixAdmin {
       veniceAdmin.stop(clusterName);
       veniceAdmin.close();
     } catch (Exception e) {
-      logger.warn(e);
+      LOGGER.warn(e);
     }
     zkServerWrapper.close();
     kafkaBrokerWrapper.close();

@@ -173,13 +173,12 @@ public class JobRoutes extends AbstractRoute {
 
         if (pushJobDetails.sendLivenessHeartbeatFailureDetails != null) {
           LOGGER.warn(
-              String.format(
-                  "Sending push job liveness heartbeats for store %s with version %d failed due to "
-                      + "%s. Push job ID is: %s",
-                  storeName,
-                  versionNumber,
-                  pushJobDetails.failureDetails.toString(),
-                  pushJobDetails.pushId.toString()));
+              "Sending push job liveness heartbeats for store {} with version {} failed due to "
+                  + "{}. Push job ID is: {}",
+              storeName,
+              versionNumber,
+              pushJobDetails.failureDetails.toString(),
+              pushJobDetails.pushId.toString());
         }
 
       } catch (Throwable e) {
