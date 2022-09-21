@@ -24,7 +24,7 @@ public class TestFileDescriptorLeak {
   @Test(invocationCount = 25000, groups = { "flaky" })
   public void testZookeeperLeak() {
     try (ZkServerWrapper zkServerWrapper = ServiceFactory.getZkServer()) {
-      LOGGER.info("Created ZkServerWrapper: " + zkServerWrapper.getAddress());
+      LOGGER.info("Created ZkServerWrapper: {}", zkServerWrapper.getAddress());
     }
   }
 
@@ -32,14 +32,14 @@ public class TestFileDescriptorLeak {
   public void testKafkaBrokerLeak() {
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer)) {
-      LOGGER.info("Created KafkaBrokerWrapper: " + kafkaBrokerWrapper.getAddress());
+      LOGGER.info("Created KafkaBrokerWrapper: {}", kafkaBrokerWrapper.getAddress());
     }
   }
 
   @Test(invocationCount = 20, groups = { "flaky" })
   public void testVeniceClusterLeak() {
     try (VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster()) {
-      LOGGER.info("Created VeniceClusterWrapper: " + veniceClusterWrapper.getClusterName());
+      LOGGER.info("Created VeniceClusterWrapper: {}", veniceClusterWrapper.getClusterName());
     }
   }
 
@@ -76,9 +76,9 @@ public class TestFileDescriptorLeak {
       Consumer<Integer> removeFunction,
       int toleratedFDsLeakPerInstance) {
     UnixOperatingSystemMXBean osMXBean = ((UnixOperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean());
-    LOGGER.info("Max FD Count: " + osMXBean.getMaxFileDescriptorCount());
+    LOGGER.info("Max FD Count: {}", osMXBean.getMaxFileDescriptorCount());
     long startFDsCount = osMXBean.getOpenFileDescriptorCount();
-    LOGGER.info("Start FD Count: " + startFDsCount);
+    LOGGER.info("Start FD Count: {}", startFDsCount);
     List<T> instances = new ArrayList<>();
     int numberOfInstances = 10;
     for (int i = 0; i < numberOfInstances; i++) {
@@ -86,11 +86,11 @@ public class TestFileDescriptorLeak {
     }
     instances.stream().forEach(instance -> removeFunction.accept(instance.getPort()));
     long endFDsCount = osMXBean.getOpenFileDescriptorCount();
-    LOGGER.info("End FD Count (without explicit GC): " + endFDsCount);
+    LOGGER.info("End FD Count (without explicit GC): {}", endFDsCount);
     if (FORCE_GC) {
       System.gc();
       endFDsCount = osMXBean.getOpenFileDescriptorCount();
-      LOGGER.info("End FD Count (after explicit GC): " + endFDsCount);
+      LOGGER.info("End FD Count (after explicit GC): {}", endFDsCount);
     }
     int toleratedLeaks = numberOfInstances * toleratedFDsLeakPerInstance;
     Assert.assertTrue(

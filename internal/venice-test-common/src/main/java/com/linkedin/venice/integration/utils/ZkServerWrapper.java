@@ -93,7 +93,7 @@ public class ZkServerWrapper extends ProcessWrapper {
   }
 
   private static ZkServerWrapper createRealZkServerWrapper(String serviceName, int port, File dir) {
-    LOGGER.info("Creating ZkServerWrapper on port: " + port);
+    LOGGER.info("Creating ZkServerWrapper on port: {}", port);
     Properties startupProperties = new Properties();
 
     // Static configs
@@ -237,7 +237,7 @@ public class ZkServerWrapper extends ProcessWrapper {
         throw new VeniceException("ZooKeeper failed to start.", zkThread.exception);
       }
 
-      LOGGER.info("ZK is running: " + zkServer.isRunning());
+      LOGGER.info("ZK is running: {}", zkServer.isRunning());
     }
   }
 

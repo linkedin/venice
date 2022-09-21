@@ -340,7 +340,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           Arrays.asList("-Xms64m", "-Xmx128m"),
           true,
           Optional.of(serverName));
-      LOGGER.info("VeniceServer " + serverName + " is started!");
+      LOGGER.info("VeniceServer {} is started!", serverName);
     }
   }
 
@@ -382,7 +382,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
   public static void main(String args[]) throws Exception {
     // parse the inputs
-    LOGGER.info("VeniceServer args: " + Arrays.toString(args));
+    LOGGER.info("VeniceServer args: {}", Arrays.toString(args));
     Options options = new Options();
     options.addOption(new Option("cn", "clusterName", true, "cluster name"));
     options.addOption(new Option("lp", "listenPort", true, "listening port for server"));

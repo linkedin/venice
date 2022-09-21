@@ -185,7 +185,7 @@ public class TestMetadataOperationInMultiCluster {
           () -> controllerClient.getStore((String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
               .getStore()
               .getCurrentVersion() == expectedVersionNumber);
-      LOGGER.info("**TIME** H2V {} takes {}ms.", expectedVersionNumber, (System.currentTimeMillis() - h2vStart));
+      LOGGER.info("**TIME** H2V {} takes {} ms.", expectedVersionNumber, (System.currentTimeMillis() - h2vStart));
     }
   }
 }

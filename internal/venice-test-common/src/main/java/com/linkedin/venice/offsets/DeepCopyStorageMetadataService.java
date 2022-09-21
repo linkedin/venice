@@ -36,8 +36,9 @@ public class DeepCopyStorageMetadataService extends DeepCopyOffsetManager implem
   @Override
   public void put(String topicName, StoreVersionState record) throws VeniceException {
     LOGGER.info(
-        "DeepCopyStorageMetadataService.put(StoreVersionState) called with topicName: " + topicName + ", record: "
-            + record);
+        "DeepCopyStorageMetadataService.put(StoreVersionState) called with topicName: {}, record: {}",
+        topicName,
+        record);
     StoreVersionState deepCopy =
         storeVersionStateSerializer.deserialize(topicName, storeVersionStateSerializer.serialize(topicName, record));
     delegateStorageMetadataService.put(topicName, deepCopy);
@@ -50,7 +51,7 @@ public class DeepCopyStorageMetadataService extends DeepCopyOffsetManager implem
    */
   @Override
   public void clearStoreVersionState(String topicName) {
-    LOGGER.info("DeepCopyStorageMetadataService.clearStoreVersionState called with topicName: " + topicName);
+    LOGGER.info("DeepCopyStorageMetadataService.clearStoreVersionState called with topicName: {}", topicName);
     delegateStorageMetadataService.clearStoreVersionState(topicName);
 
   }
@@ -65,8 +66,9 @@ public class DeepCopyStorageMetadataService extends DeepCopyOffsetManager implem
   public Optional<StoreVersionState> getStoreVersionState(String topicName) throws VeniceException {
     Optional<StoreVersionState> recordToReturn = delegateStorageMetadataService.getStoreVersionState(topicName);
     LOGGER.info(
-        "DeepCopyStorageMetadataService.getStoreVersionState called with topicName: " + topicName + ", recordToReturn: "
-            + recordToReturn);
+        "DeepCopyStorageMetadataService.getStoreVersionState called with topicName: {}, recordToReturn: {}",
+        topicName,
+        recordToReturn);
     return recordToReturn;
   }
 }

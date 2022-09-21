@@ -243,9 +243,9 @@ public class ReplicaFailoverTest {
         if (outlierRequests.get() > KEY_COUNT * (1 - requestPercentile / 100.0)) {
           Assert.fail(
               outlierRequests.get() + " out of " + completedRequests.get() + " single-get requests exceeded "
-                  + maxConcurrentLatency + "ms, " + "average outlier latency is "
-                  + totalOutlierLatency.get() / Math.max(1, outlierRequests.get()) + "ms, " + "average latency is "
-                  + totalLatency.get() / Math.max(1, completedRequests.get()) + "ms");
+                  + maxConcurrentLatency + " ms, " + "average outlier latency is "
+                  + totalOutlierLatency.get() / Math.max(1, outlierRequests.get()) + " ms, " + "average latency is "
+                  + totalLatency.get() / Math.max(1, completedRequests.get()) + " ms");
         }
       }
 
@@ -258,7 +258,7 @@ public class ReplicaFailoverTest {
 
     } finally {
       LOGGER.info(
-          "{} out of {} single-get requests exceeded {}ms, average outlier latency is {}ms, average latency is {}ms",
+          "{} out of {} single-get requests exceeded {} ms, average outlier latency is {} ms, average latency is {} ms",
           outlierRequests.get(),
           completedRequests.get(),
           maxConcurrentLatency,

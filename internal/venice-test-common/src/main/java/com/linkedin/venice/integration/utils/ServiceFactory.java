@@ -787,26 +787,28 @@ public class ServiceFactory {
         wrapper = serviceProvider.get(serviceName);
 
         if (wrapper instanceof ProcessWrapper) {
-          LOGGER.info("Starting ProcessWrapper: " + serviceName);
+          LOGGER.info("Starting ProcessWrapper: {}", serviceName);
 
           // N.B.: The contract for start() is that it should block until the wrapped service is fully started.
           ProcessWrapper processWrapper = (ProcessWrapper) wrapper;
           processWrapper.start();
 
-          LOGGER.info("Started ProcessWrapper: " + serviceName);
+          LOGGER.info("Started ProcessWrapper: {}", serviceName);
         }
         return wrapper;
       } catch (NoSuchMethodError e) {
         LOGGER.error(
-            "Got a " + e.getClass().getSimpleName() + " while trying to start " + serviceName
-                + ". Will print the jar containing the bad class and then bubble up.");
+            "Got a {} while trying to start {}. Will print the jar containing the bad class and then bubble up.",
+            e.getClass().getSimpleName(),
+            serviceName);
         ReflectUtils.printJarContainingBadClass(e);
         Utils.closeQuietlyWithErrorLogged(wrapper);
         throw e;
       } catch (LinkageError e) {
         LOGGER.error(
-            "Got a " + e.getClass().getSimpleName() + " while trying to start " + serviceName
-                + ". Will print the classpath and then bubble up.");
+            "Got a {} while trying to start {}. Will print the classpath and then bubble up.",
+            e.getClass().getSimpleName(),
+            serviceName);
         ReflectUtils.printClasspath();
         Utils.closeQuietlyWithErrorLogged(wrapper);
         throw e;
@@ -822,8 +824,15 @@ public class ServiceFactory {
           throw new VeniceException("Too many open files!\nVM args: " + VM_ARGS + "\n$ ulimit -a\n" + ULIMIT, e);
         }
         lastException = e;
-        errorMessage = "Got " + e.getClass().getSimpleName() + " while trying to start " + serviceName + ". Attempt #"
-            + attempt + "/" + maxAttempt + ".";
+        errorMessage = new StringBuilder("Got ").append(e.getClass().getSimpleName())
+            .append(" while trying to start ")
+            .append(serviceName)
+            .append(". Attempt #")
+            .append(attempt)
+            .append("/")
+            .append(maxAttempt)
+            .append(".")
+            .toString();
         LOGGER.warn(errorMessage, e);
         // We don't throw for other exception types, since we want to retry.
       }

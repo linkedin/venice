@@ -105,10 +105,10 @@ public abstract class ProcessWrapper implements Closeable {
       isStarted = true;
       long startTime = System.currentTimeMillis();
       internalStart();
-      LOGGER.info(String.format("%s startup took %d ms.", serviceName, System.currentTimeMillis() - startTime));
+      LOGGER.info("{} startup took {} ms.", serviceName, System.currentTimeMillis() - startTime);
       isRunning = true;
     } else {
-      LOGGER.info(serviceName + " service has already started.");
+      LOGGER.info("{} service has already started.", serviceName);
     }
   }
 
@@ -126,11 +126,11 @@ public abstract class ProcessWrapper implements Closeable {
     if (isStarted) {
       long startTime = System.currentTimeMillis();
       internalStop();
-      LOGGER.info(String.format("%s shutdown took %d ms.", serviceName, System.currentTimeMillis() - startTime));
+      LOGGER.info("{} shutdown took {} ms.", serviceName, System.currentTimeMillis() - startTime);
       isRunning = false;
       isStarted = false;
     } else {
-      LOGGER.info(serviceName + " service has already been stopped.");
+      LOGGER.info("{} service has already been stopped.", serviceName);
     }
   }
 
@@ -158,7 +158,9 @@ public abstract class ProcessWrapper implements Closeable {
   public synchronized void close() {
     if (closeCalled) {
       LOGGER.error(
-          "Ignore duplicate attempt to close " + serviceName + " service running at " + getAddressForLogging(),
+          "Ignore duplicate attempt to close {} service running at {}",
+          serviceName,
+          getAddressForLogging(),
           new VeniceException("Duplicate close attempt."));
       return;
     }
@@ -168,14 +170,14 @@ public abstract class ProcessWrapper implements Closeable {
       Runtime.getRuntime().removeShutdownHook(shutdownHook);
     } catch (Throwable e) {
       closeThrowable = e;
-      LOGGER.error("Failed to shutdown " + serviceName + " service running at " + getAddressForLogging(), e);
+      LOGGER.error("Failed to shutdown {} service running at {}", serviceName, getAddressForLogging(), e);
     }
     try {
       if (dataDirectory != null) {
         FileUtils.deleteDirectory(dataDirectory);
       }
     } catch (IOException e) {
-      LOGGER.error("Failed to delete " + serviceName + "'s data directory: " + dataDirectory.getAbsolutePath(), e);
+      LOGGER.error("Failed to delete {}'s data directory: {}", serviceName, dataDirectory.getAbsolutePath(), e);
     }
   }
 
