@@ -52,7 +52,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   private static final Logger LOGGER = LogManager.getLogger(AbstractStorageEngine.class);
 
   private static final byte[] VERSION_METADATA_KEY = "VERSION_METADATA".getBytes();
-  private static final byte[] METADATA_MIGRATION_KEY = "METADATA_MIGRATION".getBytes();
   private static final String PARTITION_METADATA_PREFIX = "P_";
 
   // Using a large positive number for metadata partition id instead of -1 can avoid database naming issues.
@@ -143,14 +142,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     restoreStoragePartitions(true, true);
   }
 
-  public boolean isMetadataMigrationCompleted() {
-    return isMetadataMigrationCompleted(this.metadataPartition);
-  }
-
-  private boolean isMetadataMigrationCompleted(Partition someMetadataPartition) {
-    return someMetadataPartition.get(METADATA_MIGRATION_KEY, false) != null;
-  }
-
   // For testing purpose only.
   public AbstractStoragePartition getMetadataPartition() {
     return metadataPartition;
@@ -158,7 +149,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
   public synchronized void preparePartitionForReading(int partitionId) {
     if (!containsPartition(partitionId)) {
-      LOGGER.warn("Partition " + storeName + "_" + partitionId + " was removed before reopening.");
+      LOGGER.warn("Partition {}_{} was removed before reopening.", storeName, partitionId);
       return;
     }
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
@@ -169,7 +160,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
   public void warmUpStoragePartition(int partitionId) {
     if (!containsPartition(partitionId)) {
-      LOGGER.warn("Partition " + storeName + "_" + partitionId + " doesn't exist.");
+      LOGGER.warn("Partition {}_{} doesn't exist.", storeName, partitionId);
       return;
     }
     AbstractStoragePartition storagePartition = getPartitionOrThrow(partitionId);
@@ -185,11 +176,11 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     int partitionId = partitionConfig.getPartitionId();
     AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
     if (partition.verifyConfig(partitionConfig)) {
-      LOGGER.info("No adjustment needed for store name: " + getStoreName() + ", partition id: " + partitionId);
+      LOGGER.info("No adjustment needed for store name: {}, partition id: {}", getStoreName(), partitionId);
       return;
     }
     // Need to re-open storage partition according to the provided partition config
-    LOGGER.info("Reopen database with storage partition config: " + partitionConfig);
+    LOGGER.info("Reopen database with storage partition config: {}", partitionConfig);
     rwLockForStoragePartitionAdjustment.writeLock().lock();
     try {
       closePartition(partitionId);
@@ -204,7 +195,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    */
   public void reopenStoragePartition(int partitionId) {
     if (!containsPartition(partitionId)) {
-      LOGGER.warn("Partition " + storeName + "_" + partitionId + " doesn't exist.");
+      LOGGER.warn("Partition {}_{} doesn't exist.", storeName, partitionId);
       return;
     }
     AbstractStoragePartition storagePartition = getPartitionOrThrow(partitionId);
@@ -225,8 +216,9 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
     if (containsPartition(partitionId)) {
       LOGGER.error(
-          "Failed to add a storage partition for partitionId: " + partitionId + " Store " + this.getStoreName()
-              + " . This partition already exists!");
+          "Failed to add a storage partition for partitionId: {} Store {}. This partition already exists!",
+          partitionId,
+          this.getStoreName());
       throw new StorageInitializationException(
           "Partition " + partitionId + " of store " + this.getStoreName() + " already exists.");
     }
@@ -238,12 +230,12 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   public synchronized void closePartition(int partitionId) {
     AbstractStoragePartition partition = this.partitionList.remove(partitionId);
     if (partition == null) {
-      LOGGER.error("Failed to close a non existing partition: " + partitionId + " Store " + this.getStoreName());
+      LOGGER.error("Failed to close a non existing partition: {} Store {}", partitionId, getStoreName());
       return;
     }
     partition.close();
     if (getNumberOfPartitions() == 0) {
-      LOGGER.info("All Partitions closed for store " + this.getStoreName());
+      LOGGER.info("All Partitions closed for store {} ", getStoreName());
     }
   }
 
@@ -268,10 +260,10 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
      *    Else there can be situations where the data is consumed from Kafka and not persisted.
      */
     if (!containsPartition(partitionId)) {
-      LOGGER.error("Failed to remove a non existing partition: " + partitionId + " Store " + this.getStoreName());
+      LOGGER.error("Failed to remove a non existing partition: {} Store {}", partitionId, getStoreName());
       return;
     }
-    LOGGER.info("Removing Partition: " + partitionId + " Store " + this.getStoreName());
+    LOGGER.info("Removing Partition: {} Store {}", partitionId, getStoreName());
 
     /**
      * Partition offset should be cleared by StorageEngine drops the corresponding partition. Here we may not be able to
@@ -286,7 +278,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     partition.drop();
 
     if (getNumberOfPartitions() == 0) {
-      LOGGER.info("All Partitions deleted for Store " + this.getStoreName());
+      LOGGER.info("All Partitions deleted for Store {}", getStoreName());
       /**
        * The reason to invoke {@link #drop} here is that storage engine might need to do some cleanup
        * in the store level.
@@ -312,7 +304,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       return;
     }
 
-    LOGGER.info("Started dropping store: " + getStoreName());
+    LOGGER.info("Started dropping store: {}", getStoreName());
     // partitionList is implementation of SparseConcurrentList which sets element to null on `remove`. So its fine
     // to call size() while removing elements from the list.
     for (int partitionId = 0; partitionId < partitionList.size(); partitionId++) {
@@ -322,13 +314,13 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       dropPartition(partitionId);
     }
     dropMetadataPartition();
-    LOGGER.info("Finished dropping store: " + getStoreName());
+    LOGGER.info("Finished dropping store: {}", getStoreName());
   }
 
   public synchronized Map<String, String> sync(int partitionId) {
     AbstractStoragePartition partition = partitionList.get(partitionId);
     if (partition == null) {
-      LOGGER.warn("Partition " + partitionId + " doesn't exist, no sync operation will be executed");
+      LOGGER.warn("Partition {} doesn't exist, no sync operation will be executed", partitionId);
       return Collections.emptyMap();
     }
     return partition.sync();
@@ -339,7 +331,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     long startTime = System.currentTimeMillis();
     List<Partition> tmpList = new ArrayList<>();
     // SparseConcurrentList does not support parallelStream, copy to a tmp list.
-    partitionList.forEach(p -> tmpList.add(p));
+    tmpList.addAll(partitionList);
     tmpList.parallelStream().forEach(Partition::close);
     LOGGER.info(
         "Closing {} rockDB partitions of store {} took {} ms",
@@ -360,8 +352,9 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       Map<String, String> checkpointedInfo,
       Optional<Supplier<byte[]>> checksumSupplier) {
     LOGGER.info(
-        "Begin batch write for storage partition config: " + storagePartitionConfig + " with checkpointed info: "
-            + checkpointedInfo);
+        "Begin batch write for storage partition config: {}  with checkpoint info: {}",
+        storagePartitionConfig,
+        checkpointedInfo);
     /**
      * We want to adjust the storage partition first since it will possibly re-open the underlying database in
      * different mode.
@@ -374,7 +367,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    * @return true if the storage engine successfully returned to normal mode
    */
   public synchronized void endBatchWrite(StoragePartitionConfig storagePartitionConfig) {
-    LOGGER.info("End batch write for storage partition config: " + storagePartitionConfig);
+    LOGGER.info("End batch write for storage partition config: {}", storagePartitionConfig);
     AbstractStoragePartition partition = getPartitionOrThrow(storagePartitionConfig.getPartitionId());
     partition.endBatchWrite();
     /**

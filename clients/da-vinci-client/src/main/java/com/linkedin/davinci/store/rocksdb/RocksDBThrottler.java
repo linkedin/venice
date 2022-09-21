@@ -46,7 +46,7 @@ public class RocksDBThrottler {
     throttlerLock.lock();
     try {
       while (currentOngoingOpenOperations >= allowedMaxOpenOperationsInParallel) {
-        LOGGER.info("RocksDB database open operation is being throttled for db path: " + dbPath);
+        LOGGER.info("RocksDB database open operation is being throttled for db path: {}", dbPath);
         hasBandwidth.await();
       }
       ++currentOngoingOpenOperations;
@@ -55,7 +55,7 @@ public class RocksDBThrottler {
     }
     RocksDB db;
     try {
-      LOGGER.info("Opening RocksDB database: " + dbPath);
+      LOGGER.info("Opening RocksDB database: {}", dbPath);
       db = rocksDBSupplier.get();
     } catch (RocksDBException e) {
       throw e;

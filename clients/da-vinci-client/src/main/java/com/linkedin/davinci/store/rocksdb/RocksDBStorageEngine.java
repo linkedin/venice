@@ -63,13 +63,13 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
     File storeDbDir = new File(storeDbPath);
     if (!storeDbDir.exists()) {
       storeDbDir.mkdirs();
-      LOGGER.info("Created RocksDb dir for store: " + getStoreName());
+      LOGGER.info("Created RocksDb dir for store: {}", getStoreName());
     } else {
       if (storeConfig.isRocksDbStorageEngineConfigCheckEnabled()) {
         // We only validate it when re-opening the storage engine.
         if (hasConflictPersistedStoreEngineConfig()) {
           try {
-            LOGGER.info("Removing store directory: " + storeDbDir.getAbsolutePath());
+            LOGGER.info("Removing store directory: {}", storeDbDir.getAbsolutePath());
             FileUtils.deleteDirectory(storeDbDir);
           } catch (IOException e) {
             throw new VeniceException("Encounter IO exception when removing RocksDB engine folder.", e);
@@ -97,7 +97,7 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
   protected Set<Integer> getPersistedPartitionIds() {
     File storeDbDir = new File(storeDbPath);
     if (!storeDbDir.exists()) {
-      LOGGER.info("Store dir: " + storeDbPath + " doesn't exist");
+      LOGGER.info("Store dir: {} doesn't exist", storeDbPath);
       return Collections.emptySet();
     }
     if (!storeDbDir.isDirectory()) {
@@ -144,11 +144,11 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
       // Remove store db dir
       File storeDbDir = new File(storeDbPath);
       if (storeDbDir.exists()) {
-        LOGGER.info("Started removing database dir: " + storeDbPath + " for store: " + getStoreName());
+        LOGGER.info("Started removing database dir: {} for store: {}", storeDbPath, getStoreName());
         if (!storeDbDir.delete()) {
-          LOGGER.warn("Failed to remove dir: " + storeDbDir);
+          LOGGER.warn("Failed to remove dir: {}.", storeDbDir);
         } else {
-          LOGGER.info("Finished removing database dir: " + storeDbPath + " for store: " + getStoreName());
+          LOGGER.info("Finished removing database dir: {} for store {}", storeDbPath, getStoreName());
         }
       }
     }
@@ -163,7 +163,7 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
       try {
         partition = super.getPartitionOrThrow(i);
       } catch (VeniceException e) {
-        LOGGER.warn("Could not find partition " + i + " for store " + super.getStoreName());
+        LOGGER.warn("Could not find partition {} for store {}", i, super.getStoreName());
         continue;
       }
       diskUsage += partition.getRmdByteUsage();
@@ -189,18 +189,19 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
     String configPath = getRocksDbEngineConfigPath();
     File storeEngineConfig = new File(configPath);
     if (storeEngineConfig.exists()) {
-      LOGGER.info("RocksDB storage engine config found at " + configPath);
+      LOGGER.info("RocksDB storage engine config found at {}", configPath);
       try {
         VeniceProperties persistedStorageEngineConfig = Utils.parseProperties(storeEngineConfig);
-        LOGGER.info("Found storage engine configs: " + persistedStorageEngineConfig.toString(true));
+        LOGGER.info("Found storage engine configs: {}", persistedStorageEngineConfig.toString(true));
         boolean usePlainTableFormat = persistedStorageEngineConfig.getBoolean(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, true);
         if (usePlainTableFormat != rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
           String existingTableFormat = usePlainTableFormat ? "PlainTable" : "BlockBasedTable";
           String newTableFormat =
               rocksDBServerConfig.isRocksDBPlainTableFormatEnabled() ? "PlainTable" : "BlockBasedTable";
           LOGGER.warn(
-              "Tried to open an existing " + existingTableFormat + " RocksDB format engine with table format option: "
-                  + newTableFormat + ". Will remove the content and recreate the folder.");
+              "Tried to open an existing {} RocksDB format engine with table format option: {}. Will remove the content and recreate the folder.",
+              existingTableFormat,
+              newTableFormat);
           return true;
         }
       } catch (IOException e) {
@@ -209,7 +210,7 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
     } else {
       // If no existing config is found, we will by default skip the checking as not enough information is given to
       // enforce the check.
-      LOGGER.warn("RocksDB storage engine config not found for store" + getStoreName() + " skipping the validation.");
+      LOGGER.warn("RocksDB storage engine config not found for store {} skipping the validation.", getStoreName());
     }
     return false;
   }

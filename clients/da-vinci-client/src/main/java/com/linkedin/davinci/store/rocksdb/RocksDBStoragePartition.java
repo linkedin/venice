@@ -224,9 +224,11 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
     registerDBStats();
     LOGGER.info(
-        "Opened RocksDB for store: " + storeName + ", partition id: " + partitionId + " in "
-            + (this.readOnly ? "read-only" : "read-write") + " mode and "
-            + (this.deferredWrite ? "deferred write" : "non-deferred write") + " mode");
+        "Opened RocksDB for store: {}, partition: {}, in {} and {} mode",
+        storeName,
+        partitionId,
+        this.readOnly ? "read-only" : "read-write",
+        this.deferredWrite ? "deferred write" : "non-deferred write");
   }
 
   public RocksDBStoragePartition(
@@ -444,9 +446,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         return null;
       } else if (size > valueToBePopulated.capacity()) {
         LOGGER.warn(
-            "Will allocate a new ByteBuffer because a value of " + size
-                + " bytes was retrieved, which is larger than valueToBePopulated.capacity(): "
-                + valueToBePopulated.capacity());
+            "Reallocating a new ByteBuffer of size {}, previous size was {}",
+            size,
+            valueToBePopulated.capacity());
         valueToBePopulated = ByteBuffer.allocate(size);
         size = rocksDB.get(getReadOptions(skipCache), key, valueToBePopulated.array());
       }
@@ -564,7 +566,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   public synchronized Map<String, String> sync() {
     makeSureRocksDBIsStillOpen();
     if (!deferredWrite) {
-      LOGGER.debug("Flush memtable to disk for store: " + storeName + ", partition id: " + partitionId);
+      LOGGER.debug("Flush memtable to disk for store: {}, partition id: {}", storeName, partitionId);
 
       if (this.readOnly) {
         /**
@@ -600,12 +602,12 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       // Remove the files inside first
       Arrays.stream(dir.list()).forEach(file -> {
         if (!(new File(fullPath, file).delete())) {
-          LOGGER.warn("Failed to remove file: " + file + " in dir: " + fullPath);
+          LOGGER.warn("Failed to remove file: {} in dir: {}", file, fullPath);
         }
       });
       // Remove file directory
       if (!dir.delete()) {
-        LOGGER.warn("Failed to remove dir: " + fullPath);
+        LOGGER.warn("Failed to remove dir: {}", fullPath);
       }
     }
   }
@@ -618,7 +620,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       RocksDB.destroyDB(fullPathForPartitionDB, storeOptions);
       storeOptions.close();
     } catch (RocksDBException e) {
-      LOGGER.error("Failed to destroy DB for store: " + storeName + ", partition id: " + partitionId);
+      LOGGER.error("Failed to destroy DB for store: {}, partition: {}", storeName, partitionId);
     }
     /**
      * To avoid resource leaking, we will clean up all the database files anyway.
@@ -627,7 +629,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     deleteSSTFiles(fullPathForTempSSTFileDir);
     // Remove partition directory
     removeDirWithTwoLayers(fullPathForPartitionDB);
-    LOGGER.info("RocksDB for store: " + storeName + ", partition: " + partitionId + " was dropped");
+    LOGGER.info("RocksDB for store: {}, partition: {} was dropped.", storeName, partitionId);
   }
 
   public void deleteSSTFiles(String fullPathForTempSSTFile) {
@@ -636,12 +638,12 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       // Remove the files inside first
       Arrays.stream(dir.list()).forEach(file -> {
         if (!(new File(fullPathForTempSSTFile, file).delete())) {
-          LOGGER.warn("Failed to remove file: " + file + " in dir: " + fullPathForTempSSTFile);
+          LOGGER.warn("Failed to remove file: {} in dir: {} ", file, fullPathForTempSSTFile);
         }
       });
       // Remove file directory
       if (!dir.delete()) {
-        LOGGER.warn("Failed to remove dir: " + fullPathForTempSSTFile);
+        LOGGER.warn("Failed to remove dir: {}", fullPathForTempSSTFile);
       }
     }
   }
@@ -802,12 +804,14 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         rocksDB.get(iterator.key(), value);
         iterator.next();
         if (++entryCnt % 100000 == 0) {
-          LOGGER.info("Scanned " + entryCnt + " entries from database: " + storeName + ",  partition: " + partitionId);
+          LOGGER.info("Scanned {} entries from database: {}, partition: {}", entryCnt, storeName, partitionId);
         }
       }
       LOGGER.info(
-          "Scanned " + entryCnt + " entries from database: " + storeName + ",  partition: " + partitionId
-              + " during cache warmup");
+          "Scanned {} entries from database: {}, partition: {} during cache warmup",
+          entryCnt,
+          storeName,
+          partitionId);
     } catch (RocksDBException e) {
       throw new VeniceException("Encountered RocksDBException while warming up cache", e);
     } finally {
@@ -831,7 +835,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
      */
     Thread dbCompactThread = new Thread(() -> {
       try {
-        LOGGER.info("Start the manual compaction for database: " + storeName + ", partition: " + partitionId);
+        LOGGER.info("Start the manual compaction for database: {}, partition: {}", storeName, partitionId);
         rocksDB.compactRange();
         synchronized (this) {
           /**
@@ -845,10 +849,11 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         }
         dbCompactFuture.complete(null);
         LOGGER.info(
-            "Manual compaction for database: " + storeName + ", partition: " + partitionId
-                + " is done, and the database was re-opened with auto compaction enabled");
+            "Manual compaction for database: {}, partition: {} is done, and the database was re-opened with auto compaction enabled",
+            storeName,
+            partitionId);
       } catch (Exception e) {
-        LOGGER.error("Failed to compact database: " + storeName + ", partition: " + partitionId, e);
+        LOGGER.error("Failed to compact database: {}, partition {}", storeName, partitionId, e);
         dbCompactFuture.completeExceptionally(e);
       }
     });
