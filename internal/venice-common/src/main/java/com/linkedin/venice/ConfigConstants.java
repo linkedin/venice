@@ -39,7 +39,7 @@ public class ConfigConstants {
       Conscrypt.checkAvailability();
       return "org.apache.kafka.common.security.ssl.BoringSslContextProvider";
     } catch (UnsatisfiedLinkError e) {
-      LOGGER.warn("Conscrypt is not available, falling back to " + SslConfigs.DEFAULT_SSL_CONTEXT_PROVIDER_CLASS, e);
+      LOGGER.warn("Conscrypt is not available, falling back to {}", SslConfigs.DEFAULT_SSL_CONTEXT_PROVIDER_CLASS, e);
       return SslConfigs.DEFAULT_SSL_CONTEXT_PROVIDER_CLASS;
     }
   }).get();

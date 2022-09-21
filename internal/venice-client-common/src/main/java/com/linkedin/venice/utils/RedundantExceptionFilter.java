@@ -5,12 +5,9 @@ import java.util.BitSet;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 
 public class RedundantExceptionFilter {
-  private static final Logger LOGGER = LogManager.getLogger(RedundantExceptionFilter.class);
   public static final int DEFAULT_BITSET_SIZE = 8 * 1024 * 1024 * 16; // 16MB
   public static final long DEFAULT_NO_REDUNDANT_EXCEPTION_DURATION_MS = TimeUnit.SECONDS.toMillis(60); // 60s
 

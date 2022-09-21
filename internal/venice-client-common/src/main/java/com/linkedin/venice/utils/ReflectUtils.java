@@ -95,7 +95,8 @@ public class ReflectUtils {
     String className = rawMessage.substring(0, methodBoundary);
     Class klass = loadClass(className);
     LOGGER.info(
-        "Class '" + klass.getSimpleName() + "' is loaded from: "
-            + klass.getProtectionDomain().getCodeSource().getLocation().toString());
+        "Class '{}' is loaded from: {}",
+        klass.getSimpleName(),
+        klass.getProtectionDomain().getCodeSource().getLocation());
   }
 }

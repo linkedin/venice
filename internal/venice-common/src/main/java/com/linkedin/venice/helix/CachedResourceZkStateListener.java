@@ -66,28 +66,29 @@ public class CachedResourceZkStateListener implements IZkStateListener {
           int attempt = 1;
           while (attempt <= retryLoadAttempts) {
             logger.info(
-                "Attempt #" + attempt + " of " + retryLoadAttempts
-                    + ": Refresh resource after connection is reconnected.");
+                "Attempt #{} of {}: Refresh resource after connection is reconnected.",
+                attempt,
+                retryLoadAttempts);
             try {
               resource.refresh();
-              logger.info("Attempt #" + attempt + " of " + retryLoadAttempts + ": Refresh completed.");
+              logger.info("Attempt #{} of {}: Refresh completed.", attempt, retryLoadAttempts);
               return;
             } catch (Exception e) {
               logger.error("Can not refresh resource correctly after client is reconnected", e);
               if (attempt < retryLoadAttempts) {
-                logger.info("Will retry after " + retryLoadIntervalInMs + " ms");
+                logger.info("Will retry after {} ms", retryLoadIntervalInMs);
                 Utils.sleep(retryLoadIntervalInMs);
               }
               attempt++;
             }
-            logger.fatal("Could not refresh resource correctly after " + attempt + " attempts.");
+            logger.fatal("Could not refresh resource correctly after {} attempts.", attempt);
           }
         }
       } else {
         logger.info("ZK connection is connected for the first time for resource. Not going to refresh.");
       }
     } else {
-      logger.error("handleStateChanged() called with an unexpected state: " + state.toString());
+      logger.error("handleStateChanged() called with an unexpected state: {}", state);
     }
   }
 
@@ -98,7 +99,7 @@ public class CachedResourceZkStateListener implements IZkStateListener {
 
   @Override
   public void handleSessionEstablishmentError(Throwable error) throws Exception {
-    logger.info("handleSessionEstablishmentError() called.", error);
+    logger.error("handleSessionEstablishmentError() called.", error);
   }
 
   protected boolean isDisconnected() {

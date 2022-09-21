@@ -160,7 +160,7 @@ public class SslUtils {
     try (FileInputStream inputStream = new FileInputStream(configFilePath)) {
       props.load(inputStream);
     } catch (IOException e) {
-      LOGGER.error("Could not load ssl config file from path: " + configFilePath, e);
+      LOGGER.error("Could not load ssl config file from path: {}", configFilePath, e);
       throw e;
     }
     return props;

@@ -146,10 +146,10 @@ public class ControllerClient implements Closeable {
           String leaderControllerUrl =
               transport.request(url, ControllerRoute.MASTER_CONTROLLER, newParams(), LeaderControllerResponse.class)
                   .getUrl();
-          LOGGER.info("Discovered leader controller " + leaderControllerUrl + " from " + url);
+          LOGGER.info("Discovered leader controller {} from {}", leaderControllerUrl, url);
           return leaderControllerUrl;
         } catch (Exception e) {
-          LOGGER.warn("Unable to discover leader controller from " + url);
+          LOGGER.warn("Unable to discover leader controller from {}", url);
           lastException = e;
         }
       }
@@ -533,8 +533,10 @@ public class ControllerClient implements Closeable {
         return response;
       } else {
         LOGGER.warn(
-            "Error on attempt " + currentAttempt + "/" + totalAttempts + " of querying the Controller: "
-                + response.getError());
+            "Error on attempt {}/{} of querying the Controller: {}",
+            currentAttempt,
+            totalAttempts,
+            response.getError());
         currentAttempt++;
         Utils.sleep(2000);
       }
@@ -969,7 +971,7 @@ public class ControllerClient implements Closeable {
             return transport.executeGet(url, routerPath, new QueryParams(), D2ServiceDiscoveryResponse.class);
           }
         } catch (Exception e) {
-          LOGGER.warn("Unable to discover cluster for store " + storeName + " from " + url);
+          LOGGER.warn("Unable to discover cluster for store {} from {}", storeName, url);
           lastException = e;
         }
       }
@@ -1166,9 +1168,14 @@ public class ControllerClient implements Closeable {
 
         if (attempt < maxAttempts) {
           LOGGER.info(
-              "Retrying controller request" + ", attempt = " + attempt + "/" + maxAttempts + ", controller = "
-                  + this.leaderControllerUrl + ", route = " + route.getPath() + ", params = "
-                  + params.getNameValuePairs() + ", timeout = " + timeoutMs,
+              "Retrying controller request, attempt = {}/{}, controller = {}, route = {}, params = {}, timeout = {}",
+              attempt,
+              maxAttempts,
+              timeoutMs,
+              this.leaderControllerUrl,
+              route.getPath(),
+              params.getNameValuePairs(),
+              timeoutMs,
               lastException);
           Utils.sleep(5 * Time.MS_PER_SECOND);
         }
@@ -1193,7 +1200,7 @@ public class ControllerClient implements Closeable {
       response.setError(message, exception);
       return response;
     } catch (InstantiationException | IllegalAccessException e) {
-      LOGGER.error("Unable to instantiate controller response " + responseType.getName(), e);
+      LOGGER.error("Unable to instantiate controller response {}", responseType.getName(), e);
       throw new VeniceException(message, exception);
     }
   }
