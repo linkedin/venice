@@ -285,8 +285,9 @@ public class ClientConfig<T extends SpecificRecord> {
     if (batchDeserializerType.equals(BatchDeserializerType.ONE_FUTURE_PER_RECORD)
         || batchDeserializerType.equals(BatchDeserializerType.ALWAYS_ON_MULTI_THREADED_PIPELINE)) {
       LOGGER.info(
-          "The " + batchDeserializerType + " BatchDeserializerType is deprecated. Will instead use: "
-              + BatchDeserializerType.BLOCKING + ".");
+          "The {} BatchDeserializerType is deprecated. Will instead use: {}",
+          batchDeserializerType,
+          BatchDeserializerType.BLOCKING);
     }
     this.batchDeserializerType = batchDeserializerType;
     return this;
@@ -295,32 +296,26 @@ public class ClientConfig<T extends SpecificRecord> {
   @Deprecated
   public ClientConfig<T> setMultiGetEnvelopeIterableImpl(
       AvroGenericDeserializer.IterableImpl multiGetEnvelopeIterableImpl) {
-    LOGGER.info(
-        ClientConfig.class.getSimpleName() + "'s multiGetEnvelopeIterableImpl is deprecated and will be ignored.");
+    LOGGER.warn("multiGetEnvelopeIterableImpl is deprecated and will be ignored.");
     return this;
   }
 
   @Deprecated
   public ClientConfig<T> setOnDemandDeserializerNumberOfRecordsPerThread(
       int onDemandDeserializerNumberOfRecordsPerThread) {
-    LOGGER.info(
-        ClientConfig.class.getSimpleName()
-            + "'s onDemandDeserializerNumberOfRecordsPerThread is deprecated and will be ignored.");
+    LOGGER.warn("onDemandDeserializerNumberOfRecordsPerThread is deprecated and will be ignored.");
     return this;
   }
 
   @Deprecated
   public ClientConfig<T> setAlwaysOnDeserializerNumberOfThreads(int alwaysOnDeserializerNumberOfThreads) {
-    LOGGER.info(
-        ClientConfig.class.getSimpleName()
-            + "'s alwaysOnDeserializerNumberOfThreads is deprecated and will be ignored.");
+    LOGGER.warn("alwaysOnDeserializerNumberOfThreads is deprecated and will be ignored.");
     return this;
   }
 
   @Deprecated
   public ClientConfig<T> setAlwaysOnDeserializerQueueCapacity(int alwaysOnDeserializerQueueCapacity) {
-    LOGGER.info(
-        ClientConfig.class.getSimpleName() + "'s alwaysOnDeserializerQueueCapacity is deprecated and will be ignored.");
+    LOGGER.warn("alwaysOnDeserializerQueueCapacity is deprecated and will be ignored.");
     return this;
   }
 

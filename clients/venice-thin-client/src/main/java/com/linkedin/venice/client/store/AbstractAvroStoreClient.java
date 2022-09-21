@@ -128,7 +128,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     COMPUTE_HEADER_MAP_FOR_STREAMING_V3.put(HttpConstants.VENICE_STREAMING, "1");
 
     AvroVersion version = AvroCompatibilityHelper.getRuntimeAvroVersion();
-    LOGGER.info("Detected: " + version.toString() + " on the classpath.");
+    LOGGER.info("Detected: {} on the classpath.", version);
   }
 
   private final CompletableFuture<Map<K, V>> COMPLETABLE_FUTURE_FOR_EMPTY_KEY_IN_BATCH_GET =
@@ -499,28 +499,32 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         checksumHex = Hex.encodeHexString(valueChecksum);
       } catch (Exception e2) {
         checksumHex = "failed to compute value checksum";
-        LOGGER.error(checksumHex + " for logging purposes...", e2);
+        LOGGER.error("{} ...", checksumHex, e2);
       }
 
       try {
         keyHex = Hex.encodeHexString(keySerializer.serialize(key, AvroSerializer.REUSE.get()));
       } catch (Exception e3) {
         keyHex = "failed to serialize key and encode it as hex";
-        LOGGER.error(keyHex + " for logging purposes...", e3);
+        LOGGER.error("{} ...", keyHex, e3);
       }
 
       try {
         latestSchemaId = schemaReader.getLatestValueSchemaId().toString();
       } catch (Exception e4) {
         latestSchemaId = "failed to retrieve latest value schema ID";
-        LOGGER.error(latestSchemaId + " for logging purposes...", e4);
+        LOGGER.error("{} ...", latestSchemaId, e4);
       }
 
       LOGGER.error(
-          "Caught a " + VeniceSerializationException.class.getSimpleName() + ", will bubble up.\n"
-              + "RecordDeserializer: " + dataDeserializer.getClass().getSimpleName() + "\n" + "Writer schema ID: "
-              + (writerSchemaId == -1 ? "N/A" : writerSchemaId) + "\n" + "Latest schema ID: " + latestSchemaId + "\n"
-              + "Value (md5/hex): " + checksumHex + "\n" + "Key (hex): " + keyHex);
+          "Caught a {}, will bubble up."
+              + "RecordDeserializer: {}\nWriter schema ID: {}\nLatest schema ID: {}\nValue (md5/hex): {}\nKey (hex): {}",
+          VeniceSerializationException.class.getSimpleName(),
+          dataDeserializer.getClass().getSimpleName(),
+          (writerSchemaId == -1 ? "N/A" : writerSchemaId),
+          latestSchemaId,
+          checksumHex,
+          keyHex);
       throw e;
     }
 

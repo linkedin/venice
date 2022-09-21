@@ -177,7 +177,7 @@ public class AvroGenericStoreClientImplTest {
     String multiValueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(multiValueSchemaPath, multiValueSchemaResponse);
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
-      LOGGER.info("Execute test for transport client: " + entry.getKey());
+      LOGGER.info("Execute test for transport client: {}", entry.getKey());
       Assert.assertEquals(entry.getValue().getKeySchema(), Schema.parse(defaultKeySchemaStr));
       Assert.assertEquals(entry.getValue().getLatestValueSchema(), Schema.parse(valueSchemaStr));
     }
@@ -188,7 +188,7 @@ public class AvroGenericStoreClientImplTest {
       throws VeniceClientException, ExecutionException, InterruptedException, IOException {
     String keySchemaPath = RouterBackedSchemaReader.TYPE_KEY_SCHEMA + "/" + storeName;
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
-      LOGGER.info("Execute test for transport client: " + entry.getKey());
+      LOGGER.info("Execute test for transport client: {}", entry.getKey());
       byte[] byteResponse = ((InternalAvroStoreClient<String, Object>) entry.getValue()).getRaw(keySchemaPath).get();
       SchemaResponse ret = OBJECT_MAPPER.readValue(byteResponse, SchemaResponse.class);
       Assert.assertEquals(ret.getName(), storeName);
@@ -202,7 +202,7 @@ public class AvroGenericStoreClientImplTest {
       throws VeniceClientException, ExecutionException, InterruptedException, IOException {
     String nonExistingPath = "sdfwirwoer";
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
-      LOGGER.info("Execute test for transport client: " + entry.getKey());
+      LOGGER.info("Execute test for transport client: {}", entry.getKey());
       byte[] byteResponse = ((InternalAvroStoreClient<String, Object>) entry.getValue()).getRaw(nonExistingPath).get();
       Assert.assertNull(byteResponse);
     }
@@ -259,7 +259,7 @@ public class AvroGenericStoreClientImplTest {
   public void getByStoreKeyTestWithNonExistingKey() throws Throwable {
     String key = "test_key";
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
-      LOGGER.info("Execute test for transport client: " + entry.getKey());
+      LOGGER.info("Execute test for transport client: {}", entry.getKey());
       Object value = entry.getValue().get(key).get();
       Assert.assertNull(value);
     }
@@ -290,7 +290,7 @@ public class AvroGenericStoreClientImplTest {
     String storeRequestPath = "/" + someStoreClient.getRequestPathByKey(keyStr);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
-      LOGGER.info("Execute test for transport client: " + entry.getKey());
+      LOGGER.info("Execute test for transport client: {}", entry.getKey());
       try {
         entry.getValue().get(keyStr).get();
       } catch (ExecutionException e) {
@@ -328,9 +328,9 @@ public class AvroGenericStoreClientImplTest {
     String storeRequestPath = "/" + someStoreClient.getRequestPathByKey(keyStr);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
     for (int i = 0; i < TEST_ITERATIONS; i++) {
-      LOGGER.info("Iteration: " + i);
+      LOGGER.info("Iteration: {}", i);
       for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
-        LOGGER.trace("Execute test for transport client: " + entry.getKey());
+        LOGGER.trace("Execute test for transport client: {}", entry.getKey());
         try {
           entry.getValue().get(keyStr).get();
         } catch (ExecutionException e) {
@@ -340,8 +340,8 @@ public class AvroGenericStoreClientImplTest {
               cause.getMessage().contains("Failed to get latest value schema for store: test_store");
           if (!causeOfCorrectType || !correctMessage) {
             LOGGER.error(
-                "Received ExecutionException, as expected, but it doesn't have the right characteristics. Logging stacktrace. Client: "
-                    + entry.getKey(),
+                "Received ExecutionException, as expected, but it doesn't have the right characteristics. Logging stacktrace. Client: {}",
+                entry.getKey(),
                 e);
           }
           Assert.assertTrue(
@@ -353,7 +353,7 @@ public class AvroGenericStoreClientImplTest {
                   + cause.getMessage());
           continue;
         } catch (Throwable t) {
-          LOGGER.error("Received a Throwable other than an ExecutionException from " + entry.getKey(), t);
+          LOGGER.error("Received a Throwable other than an ExecutionException from {}", entry.getKey(), t);
           Assert.fail("Received a Throwable other than an ExecutionException! Type: " + t.getClass().getSimpleName());
         }
         Assert.fail(
@@ -376,7 +376,7 @@ public class AvroGenericStoreClientImplTest {
     String storeRequestPath = "/" + someStoreClient.getRequestPathByKey(keyStr);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
-      LOGGER.info("Execute test for transport client: " + entry.getKey());
+      LOGGER.info("Execute test for transport client: {}", entry.getKey());
       try {
         entry.getValue().get(keyStr).get();
       } catch (ExecutionException e) {
@@ -441,7 +441,7 @@ public class AvroGenericStoreClientImplTest {
     routerServer.addResponseForUri(storeRequestPath2, valueResponse2);
 
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
-      LOGGER.info("Execute test for transport client: " + entry.getKey());
+      LOGGER.info("Execute test for transport client: {}", entry.getKey());
 
       // Query value 1 while not having encountered any schema yet.
       // The current logic will always pull all the value schemas if no schema is available yet.
@@ -516,7 +516,7 @@ public class AvroGenericStoreClientImplTest {
     routerServer.addResponseForUri("/" + AbstractAvroStoreClient.TYPE_STORAGE + "/" + storeName, httpResponse);
 
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
-      LOGGER.info("Execute test for transport client: " + entry.getKey());
+      LOGGER.info("Execute test for transport client: {}", entry.getKey());
       Map<String, Object> result = entry.getValue().batchGet(keys).get();
       Assert.assertFalse(result.containsKey("key0"));
       Assert.assertFalse(result.containsKey("key2"));
@@ -598,7 +598,7 @@ public class AvroGenericStoreClientImplTest {
     routerServer.addResponseForUri("/" + AbstractAvroStoreClient.TYPE_STORAGE + "/" + storeName, httpResponse);
 
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
-      LOGGER.info("Execute test for transport client: " + entry.getKey());
+      LOGGER.info("Execute test for transport client: {}", entry.getKey());
       try {
         Map<String, Object> result = entry.getValue().batchGet(keys).get(10, TimeUnit.SECONDS);
         Assert.fail("Should receive exception here because of non-existing data schema id");
@@ -635,7 +635,7 @@ public class AvroGenericStoreClientImplTest {
     routerServer.addResponseForUri("/" + AbstractAvroStoreClient.TYPE_STORAGE + "/" + storeName, httpResponse);
 
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
-      LOGGER.info("Execute test for transport client: " + entry.getKey());
+      LOGGER.info("Execute test for transport client: {}", entry.getKey());
       Map<String, Object> result = entry.getValue().batchGet(keys).get();
       // Batch get request with empty key set shouldn't be sent to server side
       Assert.assertTrue(result.isEmpty());

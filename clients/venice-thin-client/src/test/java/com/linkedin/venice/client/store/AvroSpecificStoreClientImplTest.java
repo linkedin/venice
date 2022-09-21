@@ -28,7 +28,7 @@ import org.testng.annotations.Test;
 
 
 public class AvroSpecificStoreClientImplTest {
-  private static Logger logger = LogManager.getLogger(AvroSpecificStoreClientImplTest.class);
+  private static final Logger LOGGER = LogManager.getLogger(AvroSpecificStoreClientImplTest.class);
   private MockD2ServerWrapper routerServer;
   private String routerHost;
   private int port;
@@ -137,7 +137,7 @@ public class AvroSpecificStoreClientImplTest {
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
 
     for (Map.Entry<String, AvroSpecificStoreClient<TestKeyRecord, TestValueRecord>> entry: storeClients.entrySet()) {
-      logger.info("Execute test for transport client: " + entry.getKey());
+      LOGGER.info("Execute test for transport client: {}", entry.getKey());
       TestValueRecord actual = entry.getValue().get(testKey).get();
       Assert.assertEquals(actual.long_field, testValue.long_field);
       Assert.assertEquals(actual.string_field.toString(), testValue.string_field);
@@ -184,7 +184,7 @@ public class AvroSpecificStoreClientImplTest {
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
 
     for (Map.Entry<String, AvroSpecificStoreClient<TestKeyRecord, TestValueRecord>> entry: storeClients.entrySet()) {
-      logger.info("Execute test for transport client: " + entry.getKey());
+      LOGGER.info("Execute test for transport client: {}", entry.getKey());
       TestValueRecord actual = entry.getValue().get(testKey).get();
       Assert.assertEquals(actual.long_field, testValue.long_field);
       Assert.assertEquals(actual.string_field.toString(), testValue.string_field);
