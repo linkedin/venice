@@ -405,7 +405,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
           Thread.sleep(pollIntervalMs);
           responseFutureMap.forEach((requestId, responseFuture) -> {
             if (System.currentTimeMillis() - responseFuture.requestTime >= cleanupThresholdMs) {
-              LOGGER.warn("Cleaning up the leaked response future: " + responseFuture);
+              LOGGER.warn("Cleaning up the leaked response future: {}", responseFuture);
               responseFuture.completeExceptionally(new VeniceException("Leaking response future"));
               aggHostHealthStats.recordLeakedPendingRequestCount(responseFuture.hostName);
             }

@@ -149,7 +149,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
             URI uri = new URI(request.uri());
             uri = new URI("d2", d2Service, uri.getPath(), uri.getQuery(), uri.getFragment());
             String redirectUri = uri.toString();
-            LOGGER.info("redirect the request to " + redirectUri);
+            LOGGER.info("redirect the request to {}", redirectUri);
             response.setStatus(MOVED_PERMANENTLY);
             response.headers().set(HttpHeaderNames.LOCATION, redirectUri);
           } else {
@@ -245,7 +245,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         LOGGER.debug("request is rejected by storage node because quota is exceeded");
         stats.recordThrottledRequest(storeName, latency);
       } else {
-        LOGGER.debug("Unhealthy request detected, latency: " + latency + "ms, response status: " + responseStatus);
+        LOGGER.debug("Unhealthy request detected, latency: {}ms, response status: {}", latency, responseStatus);
         stats.recordUnhealthyRequest(storeName, latency);
       }
     }

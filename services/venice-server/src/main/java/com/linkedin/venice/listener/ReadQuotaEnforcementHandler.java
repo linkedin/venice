@@ -154,8 +154,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       // If this happens it is probably due to a short-lived race condition
       // of the resource being allocated before the bucket is allocated.
       LOGGER.warn(
-          "Request for resource " + request.getResourceName()
-              + " but no TokenBucket for that resource.  Not yet enforcing quota");
+          "Request for resource: {} but no TokenBucket for that resource. Not yet enforcing quota",
+          request.getResourceName());
       // TODO: We could consider initializing a bucket. Would need to carefully consider this case.
       noBucketStores.add(request.getResourceName()); // So that we only log this once every 30 seconds
     }
@@ -194,8 +194,9 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
         return request.getKeyCount();
       default:
         LOGGER.error(
-            "Unknown request type " + request.getRequestType().toString() + ", request for resource: "
-                + request.getResourceName());
+            "Unknown request type: {}, request for resource: {}",
+            request.getRequestType(),
+            request.getResourceName());
         return Integer.MAX_VALUE;
     }
   }
@@ -247,15 +248,15 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     String topic = partitionAssignment.getTopic();
     if (partitionAssignment.getAllPartitions().isEmpty()) {
       LOGGER.warn(
-          "QuotaEnforcementHandler updated with an empty partition map for topic: " + topic
-              + ".  Skipping update process");
+          "QuotaEnforcementHandler updated with an empty partition map for topic: {}. Skipping update process",
+          topic);
       return;
     }
     double thisNodeQuotaResponsibility = getNodeResponsibilityForQuota(partitionAssignment, thisNodeId);
     if (thisNodeQuotaResponsibility <= 0) {
       LOGGER.warn(
-          "Routing data changed on quota enforcement handler with 0 replicas assigned to this node, removing quota for resource: "
-              + topic);
+          "Routing data changed on quota enforcement handler with 0 replicas assigned to this node, removing quota for resource: {}",
+          topic);
       storeVersionBuckets.remove(topic);
       return;
     }

@@ -79,8 +79,7 @@ public class RouterSslVerificationHandler extends SimpleChannelInboundHandler<Ht
       return;
     }
 
-    LOGGER.info("Could not set up connection from: " + ctx.channel().remoteAddress());
-    LOGGER.warn(event);
+    LOGGER.warn("Could not set up connection from: {}. Event:{}", ctx.channel().remoteAddress(), event);
     stats.recordSslError();
     NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
     ctx.pipeline().remove(this);

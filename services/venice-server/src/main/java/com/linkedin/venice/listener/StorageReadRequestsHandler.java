@@ -241,7 +241,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
                           "No storage exists for: " + ((VeniceNoStoreException) e).getStoreName(),
                           HttpResponseStatus.BAD_REQUEST));
                 } else {
-                  LOGGER.error("Exception thrown in parallel batch get for " + request.getResourceName(), e);
+                  LOGGER.error("Exception thrown in parallel batch get for {}", request.getResourceName(), e);
                   context.writeAndFlush(
                       new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
                 }
@@ -287,7 +287,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
         } catch (VeniceRequestEarlyTerminationException e) {
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), e.getHttpResponseStatus()));
         } catch (Exception e) {
-          LOGGER.error("Exception thrown for " + request.getResourceName(), e);
+          LOGGER.error("Exception thrown for {}", request.getResourceName(), e);
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
         }
       });

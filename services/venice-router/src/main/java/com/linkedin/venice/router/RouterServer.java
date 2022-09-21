@@ -188,11 +188,11 @@ public class RouterServer extends AbstractVeniceService {
       throw new VeniceException("No config file parameter found", e);
     }
 
-    LOGGER.info("Zookeeper: " + props.getString(ConfigKeys.ZOOKEEPER_ADDRESS));
-    LOGGER.info("Cluster: " + props.getString(ConfigKeys.CLUSTER_NAME));
-    LOGGER.info("Port: " + props.getInt(ConfigKeys.LISTENER_PORT));
-    LOGGER.info("SSL Port: " + props.getInt(ConfigKeys.LISTENER_SSL_PORT));
-    LOGGER.info("IO worker count: " + props.getInt(ConfigKeys.ROUTER_IO_WORKER_COUNT));
+    LOGGER.info("Zookeeper: {}", props.getString(ConfigKeys.ZOOKEEPER_ADDRESS));
+    LOGGER.info("Cluster: {}", props.getString(ConfigKeys.CLUSTER_NAME));
+    LOGGER.info("Port: {}", props.getInt(ConfigKeys.LISTENER_PORT));
+    LOGGER.info("SSL Port: {}", props.getInt(ConfigKeys.LISTENER_SSL_PORT));
+    LOGGER.info("IO worker count: {}", props.getInt(ConfigKeys.ROUTER_IO_WORKER_COUNT));
 
     Optional<SSLFactory> sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
     RouterServer server = new RouterServer(props, new ArrayList<>(), Optional.empty(), sslFactory, null);
@@ -707,11 +707,11 @@ public class RouterServer extends AbstractVeniceService {
   @Override
   public void stopInner() throws Exception {
     for (D2Server d2Server: d2ServerList) {
-      LOGGER.info("Stopping d2 announcer: " + d2Server);
+      LOGGER.info("Stopping d2 announcer: {}", d2Server);
       try {
         d2Server.notifyShutdown();
       } catch (RuntimeException e) {
-        LOGGER.error("D2 announcer " + d2Server + " failed to shutdown properly", e);
+        LOGGER.error("D2 announcer {} failed to shutdown properly", d2Server, e);
       }
     }
     // Graceful shutdown
@@ -823,10 +823,10 @@ public class RouterServer extends AbstractVeniceService {
           LOGGER.info("Not connecting to Helix because the HelixManager is null (the test constructor was used)");
         } else {
           HelixUtils.connectHelixManager(manager, 30, 1);
-          LOGGER.info(this.toString() + " finished connectHelixManager()");
+          LOGGER.info("{} finished connectHelixManager()", this);
         }
       } catch (VeniceException ve) {
-        LOGGER.error(this.toString() + " got an exception while trying to connectHelixManager()", ve);
+        LOGGER.error("{} got an exception while trying to connectHelixManager()", this, ve);
         handleExceptionInStartServices(ve, async);
       }
       // Should refresh after Helix cluster is setup
@@ -911,19 +911,19 @@ public class RouterServer extends AbstractVeniceService {
       }
 
       for (D2Server d2Server: d2ServerList) {
-        LOGGER.info("Starting d2 announcer: " + d2Server);
+        LOGGER.info("Starting d2 announcer: {}", d2Server);
         d2Server.forceStart();
       }
 
       try {
         if (router.isPresent()) {
           int port = ((InetSocketAddress) serverFuture.get()).getPort();
-          LOGGER.info(this.toString() + " started on non-ssl port: " + port);
+          LOGGER.info("{} started on non-ssl port: {}", this, port);
         }
         int sslPort = ((InetSocketAddress) secureServerFuture.get()).getPort();
-        LOGGER.info(this.toString() + " started on ssl port: " + sslPort);
+        LOGGER.info("{} started on ssl port: {}", this, sslPort);
       } catch (Exception e) {
-        LOGGER.error("Exception while waiting for " + this.toString() + " to start", e);
+        LOGGER.error("Exception while waiting for {} to start", this, e);
         serviceState.set(ServiceState.STOPPED);
         handleExceptionInStartServices(new VeniceException(e), async);
       }

@@ -67,7 +67,7 @@ public class VenicePathParserHelper {
             URLDecoder.decode(pair.substring(idx + 1), "UTF-8"));
       }
     } catch (UnsupportedEncodingException | URISyntaxException ex) {
-      LOGGER.warn("Failed to parse uri query string: " + request.uri(), ex);
+      LOGGER.warn("Failed to parse uri query string: {}", request.uri(), ex);
     }
     return queryPairs;
   }
@@ -92,7 +92,7 @@ public class VenicePathParserHelper {
         }
       }
     } catch (URISyntaxException e) {
-      LOGGER.warn("Failed to parse uri: " + uri);
+      LOGGER.warn("Failed to parse uri: {}", uri);
     }
   }
 

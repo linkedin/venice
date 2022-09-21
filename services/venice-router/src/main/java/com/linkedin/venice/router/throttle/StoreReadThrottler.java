@@ -123,8 +123,11 @@ public class StoreReadThrottler {
 
     if (addedOrUpdated[0] != 0 || deleted != 0) {
       LOGGER.info(
-          "Added or Updated throttlers for " + addedOrUpdated[0] + " storage nodes.  Deleted: " + deleted
-              + " throttlers for storage nodes. Store: " + storeName + " currentVersion:" + currentVersion);
+          "Added or updated throttlers for {} storage nodes. Deleted: {} throttlers for storage nodes. Store: {} currentVersion: {}",
+          addedOrUpdated[0],
+          deleted,
+          storeName,
+          currentVersion);
     }
   }
 

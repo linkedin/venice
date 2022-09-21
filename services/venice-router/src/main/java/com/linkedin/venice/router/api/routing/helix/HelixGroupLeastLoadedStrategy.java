@@ -123,8 +123,10 @@ public class HelixGroupLeastLoadedStrategy implements HelixGroupSelectionStrateg
         timeoutFuturePair.getSecond().cancel();
       } else {
         LOGGER.info(
-            "Request with id: " + requestId + " has timed out with threshold: " + timeoutInMS
-                + "ms, and the counter of group: " + groupId + " will be reset for this request");
+            "Request with id: {} has timed out with threshold: {}ms, and the counter of group: {} will be reset for this request",
+            requestId,
+            timeoutInMS,
+            groupId);
       }
       requestTimeoutFutureMap.remove(requestId);
     }

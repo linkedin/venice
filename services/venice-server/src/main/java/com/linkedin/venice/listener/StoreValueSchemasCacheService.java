@@ -161,8 +161,10 @@ public class StoreValueSchemasCacheService extends AbstractVeniceService impleme
         storeValueSchemas.valueSchemaMap.get(latestValueSchema.getId());
     if (latestValueSchemaEntryInValueSchemaMap == null) {
       LOGGER.warn(
-          "For store: " + storeName + ", the latest value schema: " + latestValueSchema.getId()
-              + " is not part of all the value schemas: " + storeValueSchemas.valueSchemaMap.keySet());
+          "For store: {}, the latest value schema: {} is not part of all the value schemas: {}",
+          storeName,
+          latestValueSchema.getId(),
+          storeValueSchemas.valueSchemaMap.keySet());
       storeValueSchemas.latestValueSchema = latestValueSchema;
     } else {
       /**
@@ -233,7 +235,7 @@ public class StoreValueSchemasCacheService extends AbstractVeniceService impleme
       try {
         refreshStoreValueSchemas(store.getName());
       } catch (Exception e) {
-        LOGGER.error("Got exception while refreshing value schemas for store: " + store.getName());
+        LOGGER.error("Got exception while refreshing value schemas for store: {}", store.getName());
       }
     }
   }

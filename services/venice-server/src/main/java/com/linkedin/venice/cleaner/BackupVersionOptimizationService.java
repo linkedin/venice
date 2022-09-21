@@ -70,7 +70,7 @@ public class BackupVersionOptimizationService extends AbstractVeniceService impl
     }
   }
 
-  private static Logger LOGGER = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger(BackupVersionOptimizationService.class);
 
   private final ReadOnlyStoreRepository storeRepository;
   private final StorageEngineRepository storageEngineRepository;
@@ -154,9 +154,7 @@ public class BackupVersionOptimizationService extends AbstractVeniceService impl
               engine.reopenStoragePartition(partitionId);
               stats.recordBackupVersionDatabaseOptimization();
             } catch (Exception e) {
-              LOGGER.error(
-                  "Failed to optimize database for resource: " + resourceName + ", partition: " + partitionId,
-                  e);
+              LOGGER.error("Failed to optimize database for resource: {}, partition: {}", resourceName, partitionId, e);
               errored = true;
             }
           }

@@ -65,7 +65,7 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
       /**
        * Zero available host issue is handled by {@link VeniceDelegateMode} by checking whether there is any 'offline request'.
        */
-      LOGGER.warn("No ready-to-serve host for resource " + resourceName + " with partition " + partitionName);
+      LOGGER.warn("No ready-to-serve host for resource:{} with partition: {}", resourceName, partitionName);
       return hosts;
     }
     /**
@@ -106,12 +106,14 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
       }
     }
     final int hostCount = newHosts.size();
+    if (hostCount == 0) {
+      LOGGER.warn(
+          "All host(s) for resource: {} with partition: {} are not healthy: {}",
+          resourceName,
+          partitionName,
+          hosts);
+    }
     if (hostCount <= 1) {
-      if (hostCount == 0) {
-        LOGGER.warn(
-            "All host(s) for resource " + resourceName + " with partition " + partitionName + " are not healthy: "
-                + hosts);
-      }
       return newHosts;
     }
 
