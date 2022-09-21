@@ -146,11 +146,11 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
                   "Resource: {} doesn't have either the corresponding version stored in ZK, or a running ingestion task, so it will be cleaned up.",
                   resourceName);
               storageService.removeStorageEngine(resourceName);
-              LOGGER.info("Resource: " + resourceName + " has been cleaned up.");
+              LOGGER.info("Resource: {} has been cleaned up.", resourceName);
               stats.recordLeakedVersion();
             }
           } catch (Exception e) {
-            LOGGER.error("Received exception while verifying/cleaning up resource: {} error {}", resourceName, e);
+            LOGGER.error("Received exception while verifying/cleaning up resource: {}", resourceName, e);
           }
         } // ~for
       } // ~while

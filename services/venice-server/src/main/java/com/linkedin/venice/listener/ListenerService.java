@@ -137,7 +137,7 @@ public class ListenerService extends AbstractVeniceService {
   @Override
   public boolean startInner() throws Exception {
     serverFuture = bootstrap.bind(port).sync();
-    LOGGER.info("Listener service started on port: " + port);
+    LOGGER.info("Listener service started on port: {}", port);
 
     // There is no async process in this function, so we are completely finished with the start up process.
     return true;

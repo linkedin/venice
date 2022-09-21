@@ -117,19 +117,23 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
               accessController.getPrincipalId(clientCert) + " does not have access to admin operation: " + adminTask);
         }
       } catch (AclException e) {
-        String client = ctx.channel().remoteAddress().toString(); // ip and port
-        String errLine = String.format("%s requested %s %s", client, method, req.uri());
-
-        LOGGER.warn("Exception occurred! Access rejected: " + errLine + "\n" + e);
+        LOGGER.warn(
+            "Exception occurred! Access rejected: {} requestedMethod: {} uri:{}. ",
+            ctx.channel().remoteAddress(),
+            method,
+            req.uri(),
+            e);
         sendErrorResponse(HttpResponseStatus.FORBIDDEN, "Access Rejected", ctx);
         return;
       }
     }
 
     LOGGER.info(
-        "Received admin operation request from " + ctx.channel().remoteAddress() + ". Method: " + method + " Task: "
-            + adminTask + " Action: " + pathHelper.getKey());
-
+        "Received admin operation request from {} - method: {} task: {} action: {}",
+        ctx.channel().remoteAddress(),
+        method,
+        adminTask,
+        pathHelper.getKey());
     if (HttpMethod.GET.equals(method)) {
       handleGet(pathHelper, ctx);
     } else if (HttpMethod.POST.equals(method)) {
@@ -146,7 +150,9 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
     String remoteAddr = sockAddr.getHostName() + ":" + sockAddr.getPort();
     if (!EXCEPTION_FILTER.isRedundantException(sockAddr.getHostName(), e)) {
       LOGGER.error(
-          "Got exception while handling admin operation request from " + remoteAddr + ", and error: " + e.getMessage());
+          "Got exception while handling admin operation request from {}, and error: {}",
+          remoteAddr,
+          e.getMessage());
     }
     setupResponseAndFlush(INTERNAL_SERVER_ERROR, EMPTY_BYTES, false, ctx);
     ctx.close();

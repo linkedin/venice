@@ -175,7 +175,7 @@ public class VeniceVersionFinder {
         try {
           partitionAssignment = routingDataRepository.getAllInstances(kafkaTopic, partitionId).toString();
         } catch (Exception e) {
-          LOGGER.warn("Failed to get partition assignment for logging purposes for resource: " + kafkaTopic, e);
+          LOGGER.warn("Failed to get partition assignment for resource: {}", kafkaTopic, e);
           partitionAssignment = "unknown";
         }
         String message = "No online replica exists for partition " + partitionId + " of " + kafkaTopic

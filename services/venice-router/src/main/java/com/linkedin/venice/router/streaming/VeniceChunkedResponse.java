@@ -280,8 +280,9 @@ public class VeniceChunkedResponse {
           if (!responseCompression.get().equals(compression)) {
             // Defensive code, not expected
             LOGGER.error(
-                "Received inconsistent compression for the new write: " + compression + ", and previous compression: "
-                    + responseCompression.get());
+                "Received inconsistent compression for the new write: {}, and previous compression: {}",
+                compression,
+                responseCompression.get());
             /**
              * Skip the write with wrong compression.
              * {@link VeniceResponseAggregator#buildStreamingResponse} will perform the same check
@@ -373,7 +374,7 @@ public class VeniceChunkedResponse {
    * Finish the response with an error
     */
   private void finishWithError(FullHttpResponse errorResponse, StreamingCallback<Long> callback) {
-    LOGGER.debug("Finishing the chunked transfer response with status: " + errorResponse.status());
+    LOGGER.debug("Finishing the chunked transfer response with status: {}", errorResponse.status());
 
     StreamingFooterRecordV1 footerRecord = new StreamingFooterRecordV1();
     footerRecord.status = errorResponse.status().code();
@@ -397,7 +398,7 @@ public class VeniceChunkedResponse {
       footerResponse = Unpooled.wrappedBuffer(COMPUTE_RESPONSE_SERIALIZER.serialize(record, reusableObjects));
     } else {
       // not possible
-      LOGGER.error("Received unsupported request type: " + requestType + " for streaming response");
+      LOGGER.error("Received unsupported request type: {} for streaming response", requestType);
       return;
     }
 
@@ -407,8 +408,7 @@ public class VeniceChunkedResponse {
       reportResponseSize();
       chunkedWriteHandler.resumeTransfer();
     } else {
-      LOGGER.error(
-          "Couldn't add last chunk with error status: " + errorResponse.status() + " to the internal chunk queue");
+      LOGGER.error("Couldn't add last chunk with error status: {} to the internal chunk queue", errorResponse.status());
     }
   }
 
@@ -424,9 +424,9 @@ public class VeniceChunkedResponse {
   private synchronized void handleChannelWriteFailure(Throwable cause, boolean propagateErrorIfRequired) {
     String msg = "Encountered a throwable on channel write failure on channel: ";
     if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-      LOGGER.error(msg + ctx.channel(), cause);
+      LOGGER.error("{}{}", msg, ctx.channel(), cause);
     } else {
-      LOGGER.error(msg + ctx.channel());
+      LOGGER.error("{}{}", msg, ctx.channel());
     }
 
     Exception exception;
@@ -441,11 +441,7 @@ public class VeniceChunkedResponse {
     }
     if (!responseCompleteCalled) {
       responseCompleteCalled = true;
-      if (LOGGER.isDebugEnabled()) {
-        LOGGER.debug(
-            "Finished responding to current request on channel: " + ctx.channel() + " with exception: ",
-            exception);
-      }
+      LOGGER.debug("Finished responding to current request on channel: {} with exception: ", ctx.channel(), exception);
     }
     if (!writeFuture.isDone()) {
       writeFuture.setFailure(exception);

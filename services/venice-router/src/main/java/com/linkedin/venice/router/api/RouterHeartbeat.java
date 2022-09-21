@@ -96,16 +96,16 @@ public class RouterHeartbeat extends AbstractVeniceService {
               }
               int code = response.getStatusCode();
               if (code != SC_OK) {
-                LOGGER.warn("Heartbeat returns " + code + " for " + instanceUrl);
+                LOGGER.warn("Heartbeat returns {} for {}", code, instanceUrl);
                 health.setHostAsUnhealthy(instance);
               } else {
                 health.setHostAsHealthy(instance);
               }
             } catch (ExecutionException e) {
-              LOGGER.warn("Failed to execute heartbeat on " + instanceUrl, e.getCause());
+              LOGGER.warn("Failed to execute heartbeat on {} ", instanceUrl, e.getCause());
               health.setHostAsUnhealthy(instance);
             } catch (TimeoutException e) {
-              LOGGER.warn("Heartbeat timeout for " + instanceUrl);
+              LOGGER.warn("Heartbeat timeout for {}", instanceUrl);
               health.setHostAsUnhealthy(instance);
             }
           }

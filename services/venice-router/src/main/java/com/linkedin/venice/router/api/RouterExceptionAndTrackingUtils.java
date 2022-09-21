@@ -58,11 +58,11 @@ public class RouterExceptionAndTrackingUtils {
     String name = storeName.isPresent() ? storeName.get() : "";
     if (!EXCEPTION_FILTER.isRedundantException(name, String.valueOf(e.code()))) {
       if (responseStatus == BAD_REQUEST) {
-        LOGGER.debug(BAD_REQUEST + " for store: " + name, e);
+        LOGGER.debug("{} for store: {}", BAD_REQUEST, name, e);
       } else if (failureType == FailureType.RESOURCE_NOT_FOUND) {
-        LOGGER.error("Could not find resources for store: " + name, e);
+        LOGGER.error("Could not find resources for store: {} ", name, e);
       } else {
-        LOGGER.warn("Got an exception for store: " + name, e);
+        LOGGER.warn("Got an exception for store: {} ", name, e);
       }
     }
     return e;
@@ -100,7 +100,7 @@ public class RouterExceptionAndTrackingUtils {
       e.setStackTrace(emptyStackTrace);
     }
     if (!EXCEPTION_FILTER.isRedundantException(name, e)) {
-      LOGGER.warn("Got an exception for store:" + name, e);
+      LOGGER.warn("Got an exception for store: {}", name, e);
     }
     return e;
   }

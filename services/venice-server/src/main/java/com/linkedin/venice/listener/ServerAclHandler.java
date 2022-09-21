@@ -73,7 +73,7 @@ public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
     } else {
       String client = ctx.channel().remoteAddress().toString(); // ip and port
       String errLine = String.format("%s requested %s %s", client, method, req.uri());
-      LOGGER.debug("Unauthorized access rejected: " + errLine);
+      LOGGER.debug("Unauthorized access rejected: {}", errLine);
       NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
     }
   }

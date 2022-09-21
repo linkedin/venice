@@ -130,7 +130,7 @@ public class RouterThrottleHandler extends SimpleChannelInboundHandler<HttpReque
     InetSocketAddress sockAddr = (InetSocketAddress) (ctx.channel().remoteAddress());
     String remoteAddr = sockAddr.getHostName() + ":" + sockAddr.getPort();
     if (!EXCEPTION_FILTER.isRedundantException(sockAddr.getHostName(), e)) {
-      LOGGER.error("Got exception while throttling request from " + remoteAddr + ": ", e);
+      LOGGER.error("Got exception while throttling request from {}. ", remoteAddr, e);
     }
     setupResponseAndFlush(INTERNAL_SERVER_ERROR, EMPTY_BYTES, false, ctx);
   }

@@ -165,8 +165,10 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     responseObject.setCluster(clusterName);
     responseObject.setUrl(routingDataRepository.getLeaderController().getUrl());
     LOGGER.info(
-        "For cluster " + responseObject.getCluster() + ", the leader controller url is " + responseObject.getUrl()
-            + ", last refreshed at " + routingDataRepository.getLeaderControllerChangeTimeMs());
+        "For cluster: {}, the leader controller url: {}, last refreshed at {}",
+        responseObject.getCluster(),
+        responseObject.getUrl(),
+        routingDataRepository.getLeaderControllerChangeTimeMs());
     setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
   }
 
@@ -486,7 +488,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     InetSocketAddress sockAddr = (InetSocketAddress) (ctx.channel().remoteAddress());
     String remoteAddr = sockAddr.getHostName() + ":" + sockAddr.getPort();
     if (!EXCEPTION_FILTER.isRedundantException(sockAddr.getHostName(), e)) {
-      LOGGER.error("Got exception while handling meta data request from " + remoteAddr + ": ", e);
+      LOGGER.error("Got exception while handling meta data request from {}. ", remoteAddr, e);
     }
 
     try {
