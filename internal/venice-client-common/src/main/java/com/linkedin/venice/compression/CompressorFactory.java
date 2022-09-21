@@ -54,8 +54,10 @@ public class CompressorFactory implements Closeable, AutoCloseable {
         previousCompressor.close();
       } catch (IOException e) {
         LOGGER.warn(
-            "Previous compressor with strategy " + previousCompressor.getCompressionStrategy() + " for " + kafkaTopic
-                + " exists but it could not be closed due to IO Exception: " + e.toString());
+            "Previous compressor with strategy {} for {} exists but it could not be closed due to IO Exception: {}",
+            previousCompressor.getCompressionStrategy(),
+            kafkaTopic,
+            e);
       }
     }
   }

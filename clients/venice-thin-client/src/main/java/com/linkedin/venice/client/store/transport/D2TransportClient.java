@@ -182,7 +182,7 @@ public class D2TransportClient extends TransportClient {
             @Override
             public synchronized void onDataAvailable(ByteString data) {
               if (isDone) {
-                LOGGER.warn("Received data after completion and data length: " + data.length());
+                LOGGER.warn("Received data after completion and data length: {}", data.length());
                 return;
               } else {
                 callback.onDataReceived(data.asByteBuffer());
@@ -267,7 +267,7 @@ public class D2TransportClient extends TransportClient {
                 URI uri = new URI(locationHeader);
                 // update d2 service
                 d2ServiceName = uri.getAuthority();
-                LOGGER.info("update d2ServiceName to " + d2ServiceName);
+                LOGGER.info("update d2ServiceName to {}", d2ServiceName);
                 RestRequest redirectedRequest = request.builder().setURI(uri).build();
                 /**
                  * Don't include VENICE_ALLOW_REDIRECT in request headers.
@@ -314,7 +314,7 @@ public class D2TransportClient extends TransportClient {
                 URI uri = new URI(locationHeader);
                 // update d2 service
                 d2ServiceName = uri.getAuthority();
-                LOGGER.info("update d2ServiceName to " + d2ServiceName);
+                LOGGER.info("update d2ServiceName to {}", d2ServiceName);
                 StreamRequest redirectedRequest = request.builder().setURI(uri).build(request.getEntityStream());
                 /**
                  * Don't include VENICE_ALLOW_REDIRECT in request headers.

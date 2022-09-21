@@ -132,14 +132,15 @@ public class StoreClientPerfTest {
             LOGGER.info("Warm up finished. Beginning real tests now.\n\n");
           }
           LOGGER.info("\n\n");
-          LOGGER.info("Test " + testNumber + "/" + totalTests + "\n\n");
+          LOGGER.info("Test {}/{}\n\n", testNumber, totalTests);
           resultsContainers.add(clientStressTest(newClientConfig, concurrentCallsPerBatch, compute));
           testNumber++;
           LOGGER.info("\n\n");
           LOGGER.info(
-              "Finished " + (compute ? "compute" : "batch get") + " requests" + " with" + (fastAvro ? "" : "out")
-                  + " fast-avro" + " at " + concurrentCallsPerBatch + " concurrentCallsPerBatch."
-                  + " All results so far:\n\n");
+              "Finished {} requests with{} fast-avro at {} concurrentCallsPerBatch. All results so far:\n\n",
+              (compute ? "compute" : "batch get"),
+              (fastAvro ? "" : "out"),
+              concurrentCallsPerBatch);
           printCSV(resultsContainers);
         }
       }
@@ -250,7 +251,7 @@ public class StoreClientPerfTest {
       RecordDeserializer<Object> computeResultDeserializer =
           SerializerDeserializerFactory.getAvroGenericDeserializer(computeResultSchema);
       List<ComputeResponseRecordV1> computeRecords = new ArrayList<>();
-      LOGGER.debug("computeResultSchema : \n" + computeResultSchema.toString(true));
+      LOGGER.debug("computeResultSchema : \n{}", computeResultSchema.toString(true));
 
       for (int k = 0; k < 1000; k++) {
         MultiGetResponseRecordV1 dataRecord = new MultiGetResponseRecordV1();
@@ -266,7 +267,7 @@ public class StoreClientPerfTest {
             TestPushUtils.getRecordWithFloatArray(computeResultSchema, k, valueSizeInBytes);
         computeResultRecord.put(VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME, new HashMap<String, String>());
         if (k == 0) {
-          LOGGER.debug("computeResultRecord: " + computeResultRecord.toString());
+          LOGGER.debug("computeResultRecord: {}", computeResultRecord.toString());
         }
         computeRecord.value = ByteBuffer.wrap(computeResultSerializer.serialize(computeResultRecord));
         computeRecords.add(computeRecord);
@@ -309,12 +310,12 @@ public class StoreClientPerfTest {
 
       LOGGER.info("");
       LOGGER.info("=============================================================================================");
-      LOGGER.info("Request Type:           " + r.put(compute ? "compute" : "batch-get"));
-      LOGGER.info("Fast Avro:              " + r.put(clientConfig.isUseFastAvro()));
-      LOGGER.info("Max concurrent queries: " + r.put(numberOfConcurrentCallsPerBatch));
-      LOGGER.info("Total queries:          " + r.put(numberOfCalls));
-      LOGGER.info("keys/query:             " + keysPerCall);
-      LOGGER.info("bytes/value:            " + valueSizeInBytes);
+      LOGGER.info("Request Type:           {}", r.put(compute ? "compute" : "batch-get"));
+      LOGGER.info("Fast Avro:              {}", r.put(clientConfig.isUseFastAvro()));
+      LOGGER.info("Max concurrent queries: {}", r.put(numberOfConcurrentCallsPerBatch));
+      LOGGER.info("Total queries:          {}", r.put(numberOfCalls));
+      LOGGER.info("keys/query:             {}", keysPerCall);
+      LOGGER.info("bytes/value:            {}", valueSizeInBytes);
       LOGGER.info("");
 
       ComputeRequestBuilder<String> computeRequestBuilder = client.compute().project(fieldNames);
@@ -403,41 +404,48 @@ public class StoreClientPerfTest {
         DecimalFormat decimalFormat = new DecimalFormat("0.0");
 
         LOGGER.info(
-            "Throughput: " + r.put((decimalFormat.format(numberOfCalls / (totalQueryTime / 1000.0)))) + " queries/sec");
+            "Throughput: {} queries/sec",
+            r.put((decimalFormat.format(numberOfCalls / (totalQueryTime / 1000.0)))));
         LOGGER.info("");
         LOGGER.info(
-            "Request serialization time                       (Avg, p50, p99) : "
-                + r.round(requestSerializationTimeMetric) + " ms, \t" + r.round(requestSerializationTimeMetric50)
-                + " ms, \t" + r.round(requestSerializationTimeMetric99) + " ms.");
+            "Request serialization time                       (Avg, p50, p99) : {} ms, \t{} ms, \t{} ms.",
+            r.round(requestSerializationTimeMetric),
+            r.round(requestSerializationTimeMetric50),
+            r.round(requestSerializationTimeMetric99));
         LOGGER.info(
-            "Request submission to response time              (Avg, p50, p99) : "
-                + r.round(requestSubmissionToResponseHandlingTimeMetric) + " ms, \t"
-                + r.round(requestSubmissionToResponseHandlingTimeMetric50) + " ms, \t"
-                + r.round(requestSubmissionToResponseHandlingTimeMetric99) + " ms.");
+            "Request submission to response time              (Avg, p50, p99) : {} ms, \t{} ms, \t{} ms.",
+            r.round(requestSubmissionToResponseHandlingTimeMetric),
+            r.round(requestSubmissionToResponseHandlingTimeMetric50),
+            r.round(requestSubmissionToResponseHandlingTimeMetric99));
         LOGGER.info(
-            "Response deserialization time                    (Avg, p50, p99) : "
-                + r.round(responseDeserializationTimeMetric) + " ms, \t" + r.round(responseDeserializationTimeMetric50)
-                + " ms, \t" + r.round(responseDeserializationTimeMetric99) + " ms.");
+            "Response deserialization time                    (Avg, p50, p99) : {} ms, \t{} ms, \t{} ms.",
+            r.round(responseDeserializationTimeMetric),
+            r.round(responseDeserializationTimeMetric50),
+            r.round(responseDeserializationTimeMetric99));
         LOGGER.info(
-            "Response envelope deserialization time           (Avg, p50, p99) : "
-                + r.round(responseEnvelopeDeserializationTimeMetric) + " ms, \t"
-                + r.round(responseEnvelopeDeserializationTimeMetric50) + " ms, \t"
-                + r.round(responseEnvelopeDeserializationTimeMetric99) + " ms.");
+            "Response envelope deserialization time           (Avg, p50, p99) : {} ms, \t{} ms, \t{} ms.",
+            r.round(responseEnvelopeDeserializationTimeMetric),
+            r.round(responseEnvelopeDeserializationTimeMetric50),
+            r.round(responseEnvelopeDeserializationTimeMetric99));
         LOGGER.info(
-            "Response records deserialization time            (Avg, p50, p99) : "
-                + r.round(responseRecordsDeserializationTimeMetric) + " ms, \t"
-                + r.round(responseRecordsDeserializationTimeMetric50) + " ms, \t"
-                + r.round(responseRecordsDeserializationTimeMetric99) + " ms.");
+            "Response records deserialization time            (Avg, p50, p99) : {} ms, \t{} ms, \t{} ms.",
+            r.round(responseRecordsDeserializationTimeMetric),
+            r.round(responseRecordsDeserializationTimeMetric50),
+            r.round(responseRecordsDeserializationTimeMetric99));
         LOGGER.info(
-            "Response records deserialization submission time (Avg, p50, p99) : "
-                + r.round(responseRecordsDeserializationSubmissionToStartTime) + " ms, \t"
-                + r.round(responseRecordsDeserializationSubmissionToStartTime50) + " ms, \t"
-                + r.round(responseRecordsDeserializationSubmissionToStartTime99) + " ms.");
+            "Response records deserialization submission time (Avg, p50, p99) : {} ms, \t{} ms, \t{} ms.",
+            r.round(responseRecordsDeserializationSubmissionToStartTime),
+            r.round(responseRecordsDeserializationSubmissionToStartTime50),
+            r.round(responseRecordsDeserializationSubmissionToStartTime99));
         LOGGER.info(
-            "Latency                    (Avg, p50, p77, p90, p95, p99, p99.9) : " + r.round(latencyMetricAvg)
-                + " ms, \t" + r.round(latencyMetric50) + " ms, \t" + r.round(latencyMetric77) + " ms, \t"
-                + r.round(latencyMetric90) + " ms, \t" + r.round(latencyMetric95) + " ms, \t" + r.round(latencyMetric99)
-                + " ms, \t" + r.round(latencyMetric999) + " ms.");
+            "Latency                    (Avg, p50, p77, p90, p95, p99, p99.9) : {} ms, \t{} ms, \t{} ms, \t{} ms, \t{} ms, \t{} ms, \t{} ms.",
+            r.round(latencyMetricAvg),
+            r.round(latencyMetric50),
+            r.round(latencyMetric77),
+            r.round(latencyMetric90),
+            r.round(latencyMetric95),
+            r.round(latencyMetric99),
+            r.round(latencyMetric999));
         LOGGER.info("");
 
         return r;

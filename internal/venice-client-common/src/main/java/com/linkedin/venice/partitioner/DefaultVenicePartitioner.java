@@ -77,7 +77,7 @@ public class DefaultVenicePartitioner extends VenicePartitioner {
     int partition = Math.abs(ps.modulo % numPartitions);
 
     if (LOGGER.isDebugEnabled()) {
-      LOGGER.debug("Choose partitionId " + partition + " out of " + numPartitions);
+      LOGGER.debug("Choose partitionId {} out of {}", partition, numPartitions);
     }
 
     ps.md.reset();

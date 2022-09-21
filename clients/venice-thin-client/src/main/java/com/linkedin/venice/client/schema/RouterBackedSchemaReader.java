@@ -101,7 +101,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
     valueSchema = valueSchemaMap.get(id);
     if (valueSchema == null) {
-      LOGGER.info("Got null value schema from Venice for store: " + storeName + " and id: " + id);
+      LOGGER.warn("Got null value schema from Venice for store: {} and id: {}", storeName, id);
     }
     return valueSchema;
   }
@@ -164,7 +164,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
           Duration.ofNanos(1),
           Arrays.asList(ExecutionException.class));
       if (response == null) {
-        LOGGER.info("Requested schema doesn't exist for request path: " + requestPath);
+        LOGGER.warn("Requested schema doesn't exist for request path: {}", requestPath);
         return null;
       }
       SchemaResponse schemaResponse = OBJECT_MAPPER.readValue(response, SchemaResponse.class);
@@ -210,7 +210,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
           Duration.ofNanos(1),
           Arrays.asList(ExecutionException.class));
       if (response == null) {
-        LOGGER.info("Got null for request path: " + requestPath);
+        LOGGER.info("Got null for request path: {}", requestPath);
         return;
       }
       MultiSchemaResponse schemaResponse = OBJECT_MAPPER.readValue(response, MultiSchemaResponse.class);
@@ -272,8 +272,12 @@ public class RouterBackedSchemaReader implements SchemaReader {
     try {
       if (AvroSchemaUtils.schemaResolveHasErrors(writerSchema, readerSchemaCopy)) {
         LOGGER.info(
-            "Schema error detected during preemptive schema check for store " + storeName + " with writer schema id "
-                + schemaId + " Reader schema: " + readerSchemaCopy.toString() + " Writer schema: " + writerSchemaStr);
+            "Schema error detected during preemptive schema check for store {} "
+                + "with writer schema id {} Reader schema: {} Writer schema: {}",
+            storeName,
+            schemaId,
+            readerSchemaCopy,
+            writerSchemaStr);
         alternativeWriterSchema =
             AvroSchemaUtils.generateSchemaWithNamespace(writerSchemaStr, readerSchemaCopy.getNamespace());
         if (AvroSchemaUtils.schemaResolveHasErrors(alternativeWriterSchema, readerSchemaCopy)) {
@@ -281,8 +285,10 @@ public class RouterBackedSchemaReader implements SchemaReader {
           alternativeWriterSchema = writerSchema;
         } else {
           LOGGER.info(
-              "Schema error can be resolved with writer schema namespace fix. Replacing writer schema for store "
-                  + storeName + " and schema id " + schemaId);
+              "Schema error can be resolved with writer schema namespace fix."
+                  + " Replacing writer schema for store {} and schema id {}",
+              storeName,
+              schemaId);
         }
       }
     } catch (Exception e) {

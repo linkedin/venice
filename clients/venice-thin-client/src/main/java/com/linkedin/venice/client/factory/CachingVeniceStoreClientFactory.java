@@ -61,9 +61,9 @@ public class CachingVeniceStoreClientFactory implements VeniceStoreClientFactory
           throw new VeniceClientException("Cannot convert Avro store to Vson store");
         }
 
-        LOGGER.info("Will create a VSON store client for store: " + storeName);
+        LOGGER.info("Will create a VSON store client for store: {}", storeName);
       } else {
-        LOGGER.info("Created a new AvroGenericStoreClient for " + storeName);
+        LOGGER.info("Created a new AvroGenericStoreClient for store: {}", storeName);
       }
 
       return ClientFactory.getAndStartGenericAvroClient(updatedClientConfig);
@@ -87,7 +87,7 @@ public class CachingVeniceStoreClientFactory implements VeniceStoreClientFactory
     checkDupStoreClient(storeName, updatedClientConfig);
 
     return specificStoreClientMap.computeIfAbsent(storeName, name -> {
-      LOGGER.info("Created a new AvroSpecificStoreClient for " + storeName);
+      LOGGER.info("Created a new AvroSpecificStoreClient for store: {}", storeName);
       return ClientFactory.getAndStartSpecificAvroClient(updatedClientConfig);
     });
   }

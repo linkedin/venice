@@ -81,11 +81,11 @@ public class D2ClientUtils {
 
     try {
       future.get(timeoutInMs, TimeUnit.MILLISECONDS);
-      LOGGER.info("D2 client shutdown took " + (System.currentTimeMillis() - startTime) + "ms.");
+      LOGGER.info("D2 client shutdown took {} ms.", System.currentTimeMillis() - startTime);
     } catch (ExecutionException e) {
       LOGGER.warn("D2 client shutdown failed.", e.getCause());
     } catch (TimeoutException e) {
-      LOGGER.warn("D2 client shutdown timed out after " + (System.currentTimeMillis() - startTime) + "ms.");
+      LOGGER.warn("D2 client shutdown timed out after {} ms.", System.currentTimeMillis() - startTime);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     }
