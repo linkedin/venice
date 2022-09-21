@@ -118,7 +118,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   @Override
   public boolean startInner() throws Exception {
     serverFuture = bootstrap.bind(applicationPort).sync();
-    LOGGER.info("Report listener service started on port: " + applicationPort);
+    LOGGER.info("Report listener service started on port: {}", applicationPort);
     heartbeatTimeoutMs = configLoader.getCombinedProperties()
         .getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 60 * Time.MS_PER_SECOND);
     setupMetricsCollection();
@@ -233,8 +233,8 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
         return val;
       });
     } else {
-      LOGGER.error(
-          "Topic partition not found in ongoing ingestion tasks: " + topicName + ", partition id: " + partitionId);
+      LOGGER
+          .error("Topic partition not found in ongoing ingestion tasks: {}, partition id: {}", topicName, partitionId);
     }
   }
 
@@ -286,8 +286,8 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
       return;
     }
     LOGGER.warn(
-        "Lost connection to forked ingestion process since timestamp " + latestHeartbeatTimestamp
-            + ", restarting forked process.");
+        "Lost connection to forked ingestion process since timestamp {}, restarting forked process.",
+        latestHeartbeatTimestamp);
     heartbeatStats.recordForkedProcessRestart();
     try (MainIngestionRequestClient client = new MainIngestionRequestClient(sslFactory, servicePort)) {
       /**
@@ -310,14 +310,14 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
 
   private void resumeOngoingIngestionTasks() {
     try (MainIngestionRequestClient client = new MainIngestionRequestClient(sslFactory, servicePort)) {
-      LOGGER.info("Start to recover ongoing ingestion tasks: " + topicNameToPartitionSetMap);
+      LOGGER.info("Start to recover ongoing ingestion tasks: {}", topicNameToPartitionSetMap);
       // Open metadata partitions in child process for all previously subscribed topics.
       topicNameToPartitionSetMap.keySet().forEach(client::openStorageEngine);
       // All previously subscribed topics are stored in the keySet of this topic partition map.
       topicNameToPartitionSetMap.forEach((topicName, partitionSet) -> {
         partitionSet.forEach(partitionId -> {
           client.startConsumption(topicName, partitionId);
-          LOGGER.info("Recovered ingestion task for topic: " + topicName + ", partition: " + partitionId);
+          LOGGER.info("Recovered ingestion task for topic: {}, partition: {}", topicName, partitionId);
         });
       });
       LOGGER.info("All ongoing ingestion tasks has resumed.");
@@ -334,18 +334,20 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private void checkHeartbeatTimeout() {
     long currentTimeMillis = System.currentTimeMillis();
     LOGGER.info(
-        "Checking heartbeat timeout at " + currentTimeMillis + ", latest heartbeat received: "
-            + latestHeartbeatTimestamp);
+        "Checking heartbeat timeout at {}, latest heartbeat received: {}",
+        currentTimeMillis,
+        latestHeartbeatTimestamp);
     if (heartbeatClient.sendHeartbeatRequest()) {
       // Update heartbeat time.
       latestHeartbeatTimestamp = System.currentTimeMillis();
       heartbeatStats.recordHeartbeatAge(0);
-      LOGGER.info("Received isolated ingestion server heartbeat at: " + latestHeartbeatTimestamp);
+      LOGGER.info("Received isolated ingestion server heartbeat at: {}", latestHeartbeatTimestamp);
     } else {
       heartbeatStats.recordHeartbeatAge(currentTimeMillis - latestHeartbeatTimestamp);
       LOGGER.warn(
-          "Failed to connect to forked ingestion process at " + currentTimeMillis + ", last successful timestamp: "
-              + latestHeartbeatTimestamp);
+          "Failed to connect to forked ingestion process at {}, last successful timestamp: {}",
+          currentTimeMillis,
+          latestHeartbeatTimestamp);
     }
 
     if (latestHeartbeatTimestamp != -1) {
@@ -360,7 +362,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     try {
       if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
         scheduler.shutdownNow();
-        LOGGER.info(schedulerName + " scheduler has been shutdown.");
+        LOGGER.info("{} scheduler has been shutdown.", schedulerName);
       }
     } catch (InterruptedException e) {
       currentThread().interrupt();

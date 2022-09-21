@@ -157,7 +157,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
     @Override
     public void run() {
-      LOGGER.info("Starting StoreBufferDrainer Thread for drainer: " + drainerIndex + "....");
+      LOGGER.info("Starting StoreBufferDrainer Thread for drainer: {}....", drainerIndex);
       QueueNode node = null;
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = null;
       LeaderProducedRecordContext leaderProducedRecordContext = null;
@@ -200,7 +200,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
               .compute(topicPartition, (K, V) -> (V == null ? 0 : V) + System.currentTimeMillis() - startTime);
         } catch (Throwable e) {
           if (e instanceof InterruptedException) {
-            LOGGER.error("Drainer " + drainerIndex + " received InterruptedException, will exit");
+            LOGGER.error("Drainer {} received InterruptedException, will exit", drainerIndex);
             break;
           }
           StringBuilder logBuilder = new StringBuilder().append("Drainer ").append(drainerIndex);
@@ -246,7 +246,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
           }
         }
       }
-      LOGGER.info("Current StoreBufferDrainer" + drainerIndex + " stopped");
+      LOGGER.info("Current StoreBufferDrainer {} stopped", drainerIndex);
     }
   }
 
@@ -348,8 +348,10 @@ public class StoreBufferService extends AbstractStoreBufferService {
     while (cur++ < retryNum) {
       if (!blockingQueue.contains(fakeNode)) {
         LOGGER.info(
-            "The blocking queue of store writer thread: " + workerIndex + " doesn't contain any record for topic: "
-                + topic + " partition: " + partition);
+            "The blocking queue of store writer thread: {} doesn't contain any record for topic: {} partition: {}",
+            workerIndex,
+            topic,
+            partition);
         return;
       }
       Thread.sleep(sleepIntervalInMS);
@@ -439,11 +441,16 @@ public class StoreBufferService extends AbstractStoreBufferService {
         int finalIndex = index;
         slowestEntries.forEach(
             entry -> LOGGER.info(
-                "In drainer number " + finalIndex + ", time spent on topic " + entry.getKey().topic() + ", partition "
-                    + entry.getKey().partition() + " : " + entry.getValue() + " ms"));
+                "In drainer number {}, time spent on topic {}, partition {} : {} ms",
+                finalIndex,
+                entry.getKey().topic(),
+                entry.getKey().partition(),
+                entry.getValue()));
         LOGGER.info(
-            "Drainer number " + index + " hosting " + drainer.topicToTimeSpent.size()
-                + " partitions, has memory usage of " + queue.getMemoryUsage());
+            "Drainer number {} hosting {} partitions, has memory usage of {}",
+            index,
+            drainer.topicToTimeSpent.size(),
+            queue.getMemoryUsage());
       }
       drainer.topicToTimeSpent.clear();
     }

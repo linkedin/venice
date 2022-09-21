@@ -154,7 +154,7 @@ class ConsumptionTask implements Runnable {
         stats.recordPollError();
       }
     }
-    logger.info("Shared consumer thread: " + Thread.currentThread().getName() + " exited");
+    logger.info("Shared consumer thread: {} exited", Thread.currentThread().getName());
   }
 
   void stop() {

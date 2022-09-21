@@ -52,7 +52,7 @@ public class KafkaClusterBasedRecordThrottler {
       } catch (QuotaExceededException quotaExceededException) {
         String msgIdentifier = kafkaUrl + "_records_quota_exceeded";
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier)) {
-          LOGGER.info("Ingestion quota exceeded for Kafka URL " + kafkaUrl);
+          LOGGER.info("Ingestion quota exceeded for Kafka URL {}", kafkaUrl);
         }
 
         kafkaUrlToThrottledRecords.put(kafkaUrl, consumerRecords);

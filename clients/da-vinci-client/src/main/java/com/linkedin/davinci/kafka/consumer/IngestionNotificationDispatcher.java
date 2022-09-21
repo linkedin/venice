@@ -22,7 +22,7 @@ class IngestionNotificationDispatcher {
   public static long PROGRESS_REPORT_INTERVAL = TimeUnit.MILLISECONDS.convert(10, TimeUnit.MINUTES);
   public static long QUOTA_REPORT_INTERVAL = TimeUnit.MILLISECONDS.convert(10, TimeUnit.MINUTES);
 
-  private final Logger logger;
+  private final Logger LOGGER;
   private final Queue<VeniceNotifier> notifiers;
   private final String topic;
   private final BooleanSupplier isCurrentVersion;
@@ -35,7 +35,7 @@ class IngestionNotificationDispatcher {
       Queue<VeniceNotifier> notifiers,
       String topic,
       BooleanSupplier isCurrentVersion) {
-    this.logger =
+    this.LOGGER =
         LogManager.getLogger(IngestionNotificationDispatcher.class.getSimpleName() + " for [ Topic: " + topic + " ] ");
     this.notifiers = notifiers;
     this.topic = topic;
@@ -61,7 +61,7 @@ class IngestionNotificationDispatcher {
       NotifierFunction function,
       PreNotificationCheck preCheck) {
     if (pcs == null) {
-      logger.info("Partition has been unsubscribed, no need to report " + reportType);
+      LOGGER.info("Partition has been unsubscribed, no need to report {}", reportType);
       return;
     }
     if (!preCheck.apply()) {
@@ -72,12 +72,11 @@ class IngestionNotificationDispatcher {
       try {
         function.apply(notifier);
       } catch (Exception ex) {
-        logger.error("Error reporting status to notifier " + notifier.getClass(), ex);
+        LOGGER.error("Error reporting status to notifier {}", notifier.getClass(), ex);
       }
     }
 
-    logger.info(
-        "Reported " + reportType + " to " + notifiers.size() + " notifiers for PartitionConsumptionState: " + pcs);
+    LOGGER.info("Reported {} to {} notifiers for PartitionConsumptionState: {}", reportType, notifiers.size(), pcs);
   }
 
   void report(
@@ -139,19 +138,21 @@ class IngestionNotificationDispatcher {
       if (pcs.isErrorReported()) {
         // Notifiers will not be sent a completion notification, they should only
         // receive the previously-sent error notification.
-        logger.error(
-            "Processing completed WITH ERRORS for Partition: " + pcs.getUserPartition() + ", Last Offset: "
-                + pcs.getLatestProcessedLocalVersionTopicOffset());
+        LOGGER.error(
+            "Processing completed WITH ERRORS for Partition: {}, Last Offset: {}",
+            pcs.getUserPartition(),
+            pcs.getLatestProcessedLocalVersionTopicOffset());
         return false;
       }
       if (!forceCompletion && !pcs.isComplete()) {
-        logger.error(
+        LOGGER.error(
             "Unexpected! Received a request to report completion "
-                + "but the PartitionConsumptionState says it is incomplete: " + pcs);
+                + "but the PartitionConsumptionState says it is incomplete: {}",
+            pcs);
         return false;
       }
       if (pcs.isCompletionReported()) {
-        logger.info("Received a request to report completion, but it has already been reported. Skipping.");
+        LOGGER.info("Received a request to report completion, but it has already been reported. Skipping.");
         return false;
       }
       return true;
@@ -210,12 +211,11 @@ class IngestionNotificationDispatcher {
 
           if (!isCurrentVersion.getAsBoolean() && // The currently-active version should always report progress.
           (!pcs.isStarted() || pcs.isEndOfPushReceived() || pcs.isErrorReported())) {
-            if (logger.isDebugEnabled()) {
-              logger.debug(
-                  "Can not report progress for topic '" + topic
-                      + "', because it has not been started or has already been terminated. partitionConsumptionState: "
-                      + pcs.toString());
-            }
+            LOGGER.debug(
+                "Can not report progress for topic '{}', because it has not been started or has already been terminated. "
+                    + "partitionConsumptionState: {}",
+                topic,
+                pcs);
             return false;
           }
 
@@ -278,12 +278,11 @@ class IngestionNotificationDispatcher {
       try {
         notifier.error(topic, partition, message, consumerEx);
       } catch (Exception ex) {
-        logger.error("Error reporting status to notifier " + notifier.getClass(), ex);
+        LOGGER.error("Error reporting status to notifier {}", notifier.getClass(), ex);
       }
     }
 
-    logger.info(
-        "Reported " + ExecutionStatus.ERROR + " to " + notifiers.size() + " notifiers for partition: " + partition);
+    LOGGER.info("Reported {} to {} notifiers for partition: {}", ExecutionStatus.ERROR, notifiers.size(), partition);
   }
 
   void reportError(Collection<PartitionConsumptionState> pcsList, String message, Exception consumerEx) {
@@ -292,20 +291,21 @@ class IngestionNotificationDispatcher {
         notifier.error(topic, pcs.getUserPartition(), message, consumerEx);
         pcs.errorReported();
       }, () -> {
-        String logMessage = "Partition: " + pcs.getUserPartition() + " has already been ";
+        StringBuilder logMessage = new StringBuilder();
+        logMessage.append("Partition: ").append(pcs.getUserPartition()).append(" has already been ");
         boolean report = true;
 
         if (pcs.isComplete()) {
-          logMessage += "marked as completed so an error will not be reported.";
+          logMessage.append("marked as completed so an error will not be reported.");
           report = false;
         }
         if (pcs.isErrorReported()) {
-          logMessage += "reported as an error before so it will not be reported again.";
+          logMessage.append("reported as an error before so it will not be reported again.");
           report = false;
         }
 
         if (!report) {
-          logger.info(logMessage);
+          LOGGER.info(logMessage.toString());
         }
         return report;
       });
@@ -323,14 +323,14 @@ class IngestionNotificationDispatcher {
         pcs.errorReported();
       }, () -> {
         if (pcs.isErrorReported()) {
-          logger.warn("Partition:" + pcs.getUserPartition() + " has been reported as error before.");
+          LOGGER.warn("Partition: {} has been reported as error before.", pcs.getUserPartition());
           return false;
         }
         // Once a replica is completed, there is not need to kill the state transition.
         if (pcs.isCompletionReported()) {
-          logger.warn(
-              "Partition:" + pcs.getUserPartition()
-                  + " has been marked as completed, so an error will not be reported...");
+          LOGGER.warn(
+              "Partition: {} has been marked as completed, so an error will not be reported...",
+              pcs.getUserPartition());
           return false;
         }
         return true;

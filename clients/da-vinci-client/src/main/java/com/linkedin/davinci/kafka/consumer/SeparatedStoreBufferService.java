@@ -37,8 +37,10 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
         serverConfig.getStoreWriterBufferMemoryCapacity(),
         serverConfig.getStoreWriterBufferNotifyDelta());
     LOGGER.info(
-        "Created separated store buffer service with " + sortedPoolSize + " sorted drainers and " + unsortedPoolSize
-            + " unsorted drainers queues with capacity of " + serverConfig.getStoreWriterBufferMemoryCapacity());
+        "Created separated store buffer service with {} sorted drainers and {} unsorted drainers queues with capacity of {}",
+        sortedPoolSize,
+        unsortedPoolSize,
+        serverConfig.getStoreWriterBufferMemoryCapacity());
   }
 
   @Override
@@ -65,8 +67,9 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
         // If there is a change in deferredWrite mode, drain the buffers
         if (currentState != sortedInput) {
           LOGGER.info(
-              "Switching drainer buffer for topic " + consumerRecord.topic() + " to use "
-                  + (sortedInput ? "sorted queue." : "unsorted queue."));
+              "Switching drainer buffer for topic {} to use {}",
+              consumerRecord.topic(),
+              sortedInput ? "sorted queue." : "unsorted queue.");
           drainBufferedRecordsFromTopicPartition(
               consumerRecord.topic(),
               partitionConsumptionState.get().getPartition());

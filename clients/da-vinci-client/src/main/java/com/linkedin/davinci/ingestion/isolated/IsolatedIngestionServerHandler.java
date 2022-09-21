@@ -73,7 +73,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
       IngestionAction action = getIngestionActionFromRequest(msg);
       byte[] result = getDummyContent();
       if (LOGGER.isDebugEnabled()) {
-        LOGGER.debug("Received " + action.name() + " message: " + msg);
+        LOGGER.debug("Received {} message: {}", action.name(), msg);
       }
       if (!isolatedIngestionServer.isInitiated()) {
         throw new VeniceException("Isolated ingestion server is not initialized yet!");
@@ -150,10 +150,10 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           ReadOnlyStoreRepository storeRepository = isolatedIngestionServer.getStoreRepository();
           // For subscription based store repository, we will need to subscribe to the store explicitly.
           if (storeRepository instanceof SubscriptionBasedReadOnlyStoreRepository) {
-            LOGGER.info("Ingestion Service subscribing to store: " + storeName);
+            LOGGER.info("Ingestion Service subscribing to store: {}", storeName);
             ((SubscriptionBasedReadOnlyStoreRepository) storeRepository).subscribe(storeName);
           }
-          LOGGER.info("Start ingesting partition: " + partitionId + " of topic: " + topicName);
+          LOGGER.info("Start ingesting partition: {} of topic: {}", partitionId, topicName);
           isolatedIngestionServer.setPartitionToBeSubscribed(topicName, partitionId);
           isolatedIngestionServer.getIngestionBackend().startConsumption(storeConfig, partitionId);
           break;
@@ -196,7 +196,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           storeConfig.setRestoreDataPartitions(false);
           storeConfig.setRestoreMetadataPartition(true);
           isolatedIngestionServer.getStorageService().openStore(storeConfig);
-          LOGGER.info("Metadata partition of topic: " + ingestionTaskCommand.topicName.toString() + " restored.");
+          LOGGER.info("Metadata partition of topic: {} restored.", ingestionTaskCommand.topicName);
           break;
         case PROMOTE_TO_LEADER:
           // This is to avoid the race condition. When partition is being unsubscribed, we should not add it to the
@@ -210,8 +210,9 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           } else {
             report.isPositive = false;
             LOGGER.info(
-                "Partition " + partitionId + " of topic: " + topicName
-                    + " is being unsubscribed, reject leader promotion request");
+                "Partition {} of topic: {} is being unsubscribed, reject leader promotion request",
+                partitionId,
+                topicName);
           }
           break;
         case DEMOTE_TO_STANDBY:
@@ -224,8 +225,9 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           } else {
             report.isPositive = false;
             LOGGER.info(
-                "Partition " + partitionId + " of topic: " + topicName
-                    + " is being unsubscribed, reject leader demotion request");
+                "Partition {} of topic: {} is being unsubscribed, reject leader demotion request",
+                partitionId,
+                topicName);
           }
           break;
         default:
@@ -239,8 +241,11 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
     }
     long executionTimeInMs = System.currentTimeMillis() - startTimeInMs;
     LOGGER.info(
-        "Completed ingestion command " + ingestionCommandType + " for topic: " + topicName + ", partition: "
-            + partitionId + " in millis: " + executionTimeInMs);
+        "Completed ingestion command {} for topic: {}, partition: {} in ms: {}",
+        ingestionCommandType,
+        topicName,
+        partitionId,
+        executionTimeInMs);
     return report;
   }
 

@@ -251,7 +251,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       sharedKafkaProducerService = null;
     }
     LOGGER.info(
-        "Shared kafka producer service is " + (serverConfig.isSharedKafkaProducerEnabled() ? "enabled" : "disabled"));
+        "Shared kafka producer service is {}",
+        serverConfig.isSharedKafkaProducerEnabled() ? "enabled" : "disabled");
 
     VeniceWriterFactory veniceWriterFactory =
         new VeniceWriterFactory(veniceWriterProperties, Optional.ofNullable(sharedKafkaProducerService));
@@ -352,7 +353,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           String storeName = store.getName();
           if (VeniceSystemStoreType.META_STORE.equals(VeniceSystemStoreType.getSystemStoreType(storeName))) {
             metaStoreWriter.removeMetaStoreWriter(storeName);
-            LOGGER.info("MetaSystemWriter for meta store: " + storeName + " got removed.");
+            LOGGER.info("MetaSystemWriter for meta store: {} got removed.", storeName);
           }
         }
       });
@@ -437,8 +438,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     } else {
       cacheWarmingExecutorService = null;
     }
-    LOGGER
-        .info("Cache warming is " + (serverConfig.isCacheWarmingBeforeReadyToServeEnabled() ? "enabled" : "disabled"));
+    LOGGER.info("Cache warming is {}", serverConfig.isCacheWarmingBeforeReadyToServeEnabled() ? "enabled" : "disabled");
 
     /**
      * Use the same diskUsage instance for all ingestion tasks; so that all the ingestion tasks can update the same
@@ -541,7 +541,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       try {
         return versionNumber == metadataRepo.getStoreOrThrow(storeName).getCurrentVersion();
       } catch (VeniceNoStoreException e) {
-        LOGGER.warn("Unable to find store meta-data for " + veniceStoreVersionConfig.getStoreVersionName(), e);
+        LOGGER.warn("Unable to find store meta-data for {}", veniceStoreVersionConfig.getStoreVersionName(), e);
         return false;
       }
     };
@@ -641,8 +641,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         versionedIngestionStats.setIngestionTask(topic, consumerTask);
         if (!isRunning()) {
           LOGGER.info(
-              "Ignoring Start consumption message as service is stopping. Topic " + topic + " Partition "
-                  + partitionId);
+              "Ignoring Start consumption message as service is stopping. Topic {} Partition {}",
+              topic,
+              partitionId);
           return;
         }
         ingestionExecutorService.submit(consumerTask);
@@ -660,9 +661,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int maxVersionNumberFromMetadataRepo = getStoreMaximumVersionNumber(storeName);
       if (maxVersionNumberFromTopicName > maxVersionNumberFromMetadataRepo) {
         LOGGER.warn(
-            "Got stale info from metadataRepo. maxVersionNumberFromTopicName: " + maxVersionNumberFromTopicName
-                + ", maxVersionNumberFromMetadataRepo: " + maxVersionNumberFromMetadataRepo
-                + ". Will rely on the topic name's version.");
+            "Got stale info from metadataRepo. maxVersionNumberFromTopicName: {}, maxVersionNumberFromMetadataRepo: {}. "
+                + "Will rely on the topic name's version.",
+            maxVersionNumberFromTopicName,
+            maxVersionNumberFromMetadataRepo);
       }
       /**
        * Notice that the version push for maxVersionNumberFromMetadataRepo might be killed already (this code path will
@@ -673,7 +675,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
       consumerTask.subscribePartition(topic, partitionId, leaderState);
     }
-    LOGGER.info("Started Consuming - Kafka Partition: " + topic + "-" + partitionId + ".");
+    LOGGER.info("Started Consuming - Kafka Partition: {}-{}.", topic, partitionId);
   }
 
   @Override
@@ -688,7 +690,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       if (consumerTask != null && consumerTask.isRunning()) {
         consumerTask.promoteToLeader(topic, partitionId, checker);
       } else {
-        LOGGER.warn("Ignoring standby to leader transition message for Topic " + topic + " Partition " + partitionId);
+        LOGGER.warn("Ignoring standby to leader transition message for Topic {} Partition {}", topic, partitionId);
       }
     }
   }
@@ -705,7 +707,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       if (consumerTask != null && consumerTask.isRunning()) {
         consumerTask.demoteToStandby(topic, partitionId, checker);
       } else {
-        LOGGER.warn("Ignoring leader to standby transition message for Topic " + topic + " Partition " + partitionId);
+        LOGGER.warn("Ignoring leader to standby transition message for Topic {} Partition {}", topic, partitionId);
       }
     }
   }
@@ -798,7 +800,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       if (consumerTask != null && consumerTask.isRunning()) {
         consumerTask.unSubscribePartition(topic, partitionId);
       } else {
-        LOGGER.warn("Ignoring stop consumption message for Topic " + topic + " Partition " + partitionId);
+        LOGGER.warn("Ignoring stop consumption message for Topic {} Partition {}", topic, partitionId);
       }
     }
   }
@@ -822,15 +824,18 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       for (int i = 0; i < numRetries; i++) {
         if (!isPartitionConsuming(veniceStore, partitionId)) {
           LOGGER.info(
-              "Partition: " + partitionId + " of store: " + veniceStore.getStoreVersionName()
-                  + " has stopped consumption.");
+              "Partition:{} of store: {} has stopped consumption.",
+              partitionId,
+              veniceStore.getStoreVersionName());
           return;
         }
         sleep((long) sleepSeconds * Time.MS_PER_SECOND);
       }
       LOGGER.error(
-          "Partition: " + partitionId + " of store: " + veniceStore.getStoreVersionName()
-              + " is still consuming after waiting for it to stop for " + numRetries * sleepSeconds + " seconds.");
+          "Partition: {} of store: {} is still consuming after waiting for it to stop for {} seconds.",
+          partitionId,
+          veniceStore.getStoreVersionName(),
+          numRetries * sleepSeconds);
     } catch (InterruptedException e) {
       LOGGER.warn("Waiting for partition to stop consumption was interrupted", e);
       currentThread().interrupt();
@@ -849,7 +854,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     if (consumerTask != null && consumerTask.isRunning()) {
       consumerTask.resetPartitionConsumptionOffset(topic, partitionId);
     }
-    LOGGER.info("Offset reset to beginning - Kafka Partition: " + topic + "-" + partitionId + ".");
+    LOGGER.info("Offset reset to beginning - Kafka Partition: {}-{}.", topic, partitionId);
   }
 
   /**
@@ -868,7 +873,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topicName)) {
       StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topicName);
       if (consumerTask == null) {
-        LOGGER.info("Ignoring kill request for not-existing consumption task " + topicName);
+        LOGGER.info("Ignoring kill request for not-existing consumption task {}", topicName);
         return false;
       }
 
@@ -876,9 +881,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         consumerTask.kill();
         compressorFactory.removeVersionSpecificCompressor(topicName);
         killed = true;
-        LOGGER.info("Killed consumption task for topic " + topicName);
+        LOGGER.info("Killed consumption task for topic {}", topicName);
       } else {
-        LOGGER.warn("Ignoring kill request for stopped consumption task " + topicName);
+        LOGGER.warn("Ignoring kill request for stopped consumption task {}", topicName);
       }
       // cleanup the map regardless if the task was running or not to prevent mem leak when failed tasks lingers
       // in the map since isRunning is set to false already.
@@ -949,7 +954,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         // Include topics that may have their corresponding store deleted already
         result.add(topic);
       } catch (Exception e) {
-        LOGGER.error("Unexpected exception while fetching ongoing ingestion topics, topic: " + topic, e);
+        LOGGER.error("Unexpected exception while fetching ongoing ingestion topics, topic: {}", topic, e);
       }
     }
     return result;

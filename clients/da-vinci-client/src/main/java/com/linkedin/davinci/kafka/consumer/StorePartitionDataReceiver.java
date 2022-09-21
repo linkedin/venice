@@ -19,7 +19,7 @@ public class StorePartitionDataReceiver
   private final TopicPartition topicPartition;
   private final String kafkaUrl;
   private final int kafkaClusterId;
-  private final Logger logger;
+  private final Logger LOGGER;
 
   private long receivedRecordsCount;
 
@@ -32,7 +32,7 @@ public class StorePartitionDataReceiver
     this.topicPartition = Validate.notNull(topicPartition);
     this.kafkaUrl = Validate.notNull(kafkaUrl);
     this.kafkaClusterId = kafkaClusterId;
-    this.logger = LogManager.getLogger(this.getClass().getSimpleName() + " [" + kafkaUrl + "]");
+    this.LOGGER = LogManager.getLogger(this.getClass().getSimpleName() + " [" + kafkaUrl + "]");
     this.receivedRecordsCount = 0L;
   }
 
@@ -102,7 +102,7 @@ public class StorePartitionDataReceiver
          * {@link StoreIngestionTask#close()} here, but in the interest of keeping the shutdown flow
          * simpler, we will avoid doing this for now.
          */
-        logger.warn(
+        LOGGER.warn(
             "Unexpected: got interrupted prior to the {} getting closed.",
             storeIngestionTask.getClass().getSimpleName());
       }
@@ -113,9 +113,9 @@ public class StorePartitionDataReceiver
        */
       throw e;
     }
-    logger.error(
-        "Received exception when StoreIngestionTask is processing the polled consumer record for topic: "
-            + topicPartition,
+    LOGGER.error(
+        "Received exception when StoreIngestionTask is processing the polled consumer record for topic: {}",
+        topicPartition,
         e);
     storeIngestionTask.setLastConsumerException(e);
   }

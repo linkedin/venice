@@ -43,19 +43,21 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
       VeniceStoreVersionConfig storeConfig,
       int partition,
       Optional<LeaderFollowerStateType> leaderState) {
-    LOGGER.info("Retrieving storage engine for store " + storeConfig.getStoreVersionName() + " partition " + partition);
+    LOGGER.info("Retrieving storage engine for store {} partition {}", storeConfig.getStoreVersionName(), partition);
     Utils.waitStoreVersionOrThrow(storeConfig.getStoreVersionName(), getStoreIngestionService().getMetadataRepo());
     AbstractStorageEngine storageEngine = getStorageService().openStoreForNewPartition(storeConfig, partition);
     if (topicStorageEngineReferenceMap.containsKey(storeConfig.getStoreVersionName())) {
       topicStorageEngineReferenceMap.get(storeConfig.getStoreVersionName()).set(storageEngine);
     }
     LOGGER.info(
-        "Retrieved storage engine for store " + storeConfig.getStoreVersionName() + " partition " + partition
-            + ". Starting consumption in ingestion service");
+        "Retrieved storage engine for store {} partition {}. Starting consumption in ingestion service",
+        storeConfig.getStoreVersionName(),
+        partition);
     getStoreIngestionService().startConsumption(storeConfig, partition, leaderState);
     LOGGER.info(
-        "Completed starting consumption in ingestion service for store " + storeConfig.getStoreVersionName()
-            + " partition " + partition);
+        "Completed starting consumption in ingestion service for store {} partition {}",
+        storeConfig.getStoreVersionName(),
+        partition);
   }
 
   @Override
@@ -83,15 +85,14 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
       long startTimeInMs = System.currentTimeMillis();
       getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, 1, timeoutInSeconds);
       LOGGER.info(
-          String.format(
-              "Partition: %d of topic: %s has stopped consumption in %d ms.",
-              partition,
-              storeConfig.getStoreVersionName(),
-              LatencyUtils.getElapsedTimeInMs(startTimeInMs)));
+          "Partition: {} of topic: {} has stopped consumption in {} ms.",
+          partition,
+          storeConfig.getStoreVersionName(),
+          LatencyUtils.getElapsedTimeInMs(startTimeInMs));
     }
     getStoreIngestionService().resetConsumptionOffset(storeConfig, partition);
     getStorageService().dropStorePartition(storeConfig, partition, removeEmptyStorageEngine);
-    LOGGER.info("Partition: " + partition + " of topic: " + storeConfig.getStoreVersionName() + " has been dropped.");
+    LOGGER.info("Partition: {} of topic: {} has been dropped.", partition, storeConfig.getStoreVersionName());
   }
 
   @Override
@@ -99,8 +100,7 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
       VeniceStoreVersionConfig storeConfig,
       int partition,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
-    LOGGER
-        .info("Promoting partition: " + partition + " of topic: " + storeConfig.getStoreVersionName() + " to leader.");
+    LOGGER.info("Promoting partition: {} of topic: {} to leader.", partition, storeConfig.getStoreVersionName());
     getStoreIngestionService().promoteToLeader(storeConfig, partition, leaderSessionIdChecker);
   }
 
@@ -109,8 +109,7 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
       VeniceStoreVersionConfig storeConfig,
       int partition,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
-    LOGGER
-        .info("Demoting partition: " + partition + " of topic: " + storeConfig.getStoreVersionName() + " to standby.");
+    LOGGER.info("Demoting partition: {} of topic: {} to standby.", partition, storeConfig.getStoreVersionName());
     getStoreIngestionService().demoteToStandby(storeConfig, partition, leaderSessionIdChecker);
   }
 
