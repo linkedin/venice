@@ -27,8 +27,10 @@ public class DeepCopyOffsetManager implements OffsetManager {
   @Override
   public void put(String topicName, int partitionId, OffsetRecord record) throws VeniceException {
     LOGGER.info(
-        "OffsetManager.put(OffsetRecord) called with topicName: " + topicName + ", partitionId: " + partitionId
-            + ", record: " + record);
+        "OffsetManager.put(OffsetRecord) called with topicName: {}, partitionId: {}, record: {}",
+        topicName,
+        partitionId,
+        record);
 
     // Doing a deep copy, otherwise Mockito keeps a handle on the reference only, which can mutate and lead to confusing
     // verify() semantics
@@ -38,7 +40,7 @@ public class DeepCopyOffsetManager implements OffsetManager {
 
   @Override
   public void clearOffset(String topicName, int partitionId) {
-    LOGGER.info("OffsetManager.clearOffset called with topicName: " + topicName + ", partitionId: " + partitionId);
+    LOGGER.info("OffsetManager.clearOffset called with topicName: {}, partitionId: {}", topicName, partitionId);
     delegate.clearOffset(topicName, partitionId);
   }
 
@@ -46,8 +48,10 @@ public class DeepCopyOffsetManager implements OffsetManager {
   public OffsetRecord getLastOffset(String topicName, int partitionId) throws VeniceException {
     OffsetRecord recordToReturn = delegate.getLastOffset(topicName, partitionId);
     LOGGER.info(
-        "OffsetManager.getLastOffset called with topicName: " + topicName + ", partitionId: " + partitionId
-            + ", recordToReturn: " + recordToReturn);
+        "OffsetManager.getLastOffset called with topicName: {}, partitionId: {}, recordToReturn: {}",
+        topicName,
+        partitionId,
+        recordToReturn);
     return recordToReturn;
   }
 }

@@ -69,7 +69,7 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
       sslConfig.entrySet().stream().forEach(entry -> configMap.put((String) entry.getKey(), entry.getValue()));
       KafkaConfig kafkaConfig = new KafkaConfig(configMap, true);
       KafkaServer kafkaServer = instantiateNewKafkaServer(kafkaConfig, mockTime);
-      LOGGER.info("KafkaBroker URL: " + kafkaServer.config().hostName() + ":" + kafkaServer.config().port());
+      LOGGER.info("KafkaBroker URL: {}:{}", kafkaServer.config().hostName(), kafkaServer.config().port());
       return new KafkaBrokerWrapper(kafkaConfig, kafkaServer, dir, zkServerWrapper, mockTime, sslPort);
     };
   }
@@ -161,7 +161,7 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
           "kafka_mx4jenable should not be set! kafka_mx4jenable = " + properties.getProperty("kafka_mx4jenable"));
     }
     kafkaServer.startup();
-    LOGGER.info("Start kafka broker listen on port: " + getPort() + " and ssl port: " + getSslPort());
+    LOGGER.info("Start kafka broker listen on port: {} and ssl port: {}", getPort(), getSslPort());
   }
 
   @Override

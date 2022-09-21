@@ -304,7 +304,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
             });
           }
         } catch (Throwable e) {
-          LOGGER.error("Caught Throwable while creating the " + VeniceClusterWrapper.class.getSimpleName(), e);
+          LOGGER.error("Caught Throwable while creating the {}", VeniceClusterWrapper.class.getSimpleName(), e);
           Utils.closeQuietlyWithErrorLogged(veniceClusterWrapper);
           throw e;
         }
@@ -324,7 +324,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       throws IOException, InterruptedException {
     if (veniceClusterProcess != null) {
       LOGGER.warn(
-          "Received a request to spawn a venice cluster in another process for testing"
+          "Received a request to spawn a venice cluster in another process for testing "
               + "but one has already been running. Will not spawn a new one.");
       return;
     }
@@ -985,11 +985,11 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       propertyBuilder.put(FORKED_PROCESS_ZK_ADDRESS, veniceClusterWrapper.getZk().getAddress());
       // Store properties into config file.
       propertyBuilder.build().storeFlattened(configFile);
-      LOGGER.info("Configs are stored into: " + clusterInfoConfigPath);
+      LOGGER.info("Configs are stored into: {}", clusterInfoConfigPath);
     } catch (Exception e) {
       propertyBuilder.put(FORKED_PROCESS_EXCEPTION, ExceptionUtils.stackTraceToString(e));
       propertyBuilder.build().storeFlattened(configFile);
-      LOGGER.info("Exception stored into: " + clusterInfoConfigPath);
+      LOGGER.info("Exception stored into: {}", clusterInfoConfigPath);
       throw new VeniceException(e);
     }
   }

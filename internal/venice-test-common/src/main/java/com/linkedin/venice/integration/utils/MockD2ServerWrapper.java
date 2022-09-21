@@ -38,7 +38,7 @@ public class MockD2ServerWrapper extends MockHttpServerWrapper {
     try {
       d2Server.notifyShutdown();
     } catch (RuntimeException e) {
-      LOGGER.error("D2 announcer " + d2Server + " failed to shutdown properly", e);
+      LOGGER.error("D2 announcer {} failed to shutdown properly", d2Server, e);
     }
 
     zkServer.close();

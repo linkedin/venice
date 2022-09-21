@@ -1289,7 +1289,7 @@ public abstract class TestBatch {
             Utils.round(responseEnvelopeDeserializationTimeMetric50.value(), 1),
             Utils.round(responseEnvelopeDeserializationTimeMetric99.value(), 1));
         LOGGER.info(
-            "Response records deserialization time            (Avg, p50, p99) : {}ms, \t{}ms, \t{}ms.",
+            "Response records deserialization time            (Avg, p50, p99) : {} ms, \t{} ms, \t{} ms.",
             Utils.round(responseRecordsDeserializationTimeMetric.value(), 9),
             Utils.round(responseRecordsDeserializationTimeMetric50.value(), 9),
             Utils.round(responseRecordsDeserializationTimeMetric99.value(), 9));

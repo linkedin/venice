@@ -69,6 +69,7 @@ public class HelixAsAServiceWrapper extends ProcessWrapper {
 
   private void createClusterIfAbsent() {
     if (admin.getClusters().contains(HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME)) {
+      // Not using log interpolation as this string will be created at compile time
       LOGGER.info("Helix cluster " + HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME + " already exists.");
       return;
     }
@@ -97,6 +98,7 @@ public class HelixAsAServiceWrapper extends ProcessWrapper {
         manager.connect();
       }
     } catch (Exception e) {
+      // Not using log interpolation as this string will be created at compile time
       String errorMessage = "Encountered error starting the Helix controllers for cluster " + HELIX_SUPER_CLUSTER_NAME;
       LOGGER.error(errorMessage, e);
       throw new VeniceException(errorMessage, e);

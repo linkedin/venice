@@ -17,7 +17,7 @@ public class InMemoryAdminTopicMetadataAccessor extends AdminTopicMetadataAccess
   @Override
   public void updateMetadata(String clusterName, Map<String, Long> metadata) {
     inMemoryMetadata = metadata;
-    LOGGER.info("Persisted admin topic metadata map for cluster: " + clusterName + ", map: " + metadata);
+    LOGGER.info("Persisted admin topic metadata map for cluster: {}, map: {}", clusterName, metadata);
   }
 
   @Override

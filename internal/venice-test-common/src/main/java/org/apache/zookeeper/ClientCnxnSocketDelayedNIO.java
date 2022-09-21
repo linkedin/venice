@@ -78,7 +78,7 @@ public class ClientCnxnSocketDelayedNIO extends ClientCnxnSocketNIO {
           (long) (Math.random() * (socketIoDelayUpperBoundMS - socketIoDelayLowerBoundMS) + socketIoDelayLowerBoundMS);
       try {
         TimeUnit.MILLISECONDS.sleep(socketIoDelay);
-        LOGGER.debug("Delayed: " + socketIoDelay + "ms");
+        LOGGER.debug("Delayed: {} ms", socketIoDelay);
       } catch (InterruptedException e) {
         LOGGER.error("Delay is interrupted, io operation will continue to be executed.", e);
       }

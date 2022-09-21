@@ -193,9 +193,11 @@ public class VeniceControllerWrapper extends ProcessWrapper {
                   childController.getKafkaBootstrapServers(sslToKafka));
               builder.put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + dcName, childController.getKafkaZkAddress());
               LOGGER.info(
-                  "ControllerConfig: " + CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + dcName + " KafkaUrl: "
-                      + childController.getKafkaBootstrapServers(sslToKafka) + " kafkaZk: "
-                      + childController.getKafkaZkAddress());
+                  "ControllerConfig: {}.{} KafkaUrl: {} kafkaZk: {}",
+                  CHILD_DATA_CENTER_KAFKA_URL_PREFIX,
+                  dcName,
+                  childController.getKafkaBootstrapServers(sslToKafka),
+                  childController.getKafkaZkAddress());
             }
           }
         }

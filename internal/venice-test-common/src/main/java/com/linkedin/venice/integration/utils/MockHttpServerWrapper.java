@@ -156,7 +156,7 @@ public class MockHttpServerWrapper extends ProcessWrapper {
         // stripe URI scheme, host and port
         String uriStr = uri.getPath();
         uriStr = uri.getQuery() == null ? uriStr : uriStr + "?" + uri.getQuery();
-        LOGGER.trace("Receive request uri: " + uriStr);
+        LOGGER.trace("Receive request uri: {}", uriStr);
 
         if (responseMap.containsKey(uriStr)) {
           LOGGER.trace("Found matched response");
@@ -165,7 +165,7 @@ public class MockHttpServerWrapper extends ProcessWrapper {
           for (Map.Entry<String, FullHttpResponse> entry: uriPatternToResponseMap.entrySet()) {
             String uriPattern = entry.getKey();
             if (uriStr.matches(uriPattern)) {
-              LOGGER.trace("Found matched response by uri pattern: " + uriPattern);
+              LOGGER.trace("Found matched response by uri pattern: {}", uriPattern);
               ctx.writeAndFlush(entry.getValue().copy()).addListener(ChannelFutureListener.CLOSE);
               return;
             }
@@ -174,7 +174,7 @@ public class MockHttpServerWrapper extends ProcessWrapper {
           ctx.writeAndFlush(notFoundResponse.copy()).addListener(ChannelFutureListener.CLOSE);
         }
       } else {
-        throw new RuntimeException("Unknown message type:" + msg.getClass());
+        throw new RuntimeException("Unknown message type: " + msg.getClass());
       }
     }
 
