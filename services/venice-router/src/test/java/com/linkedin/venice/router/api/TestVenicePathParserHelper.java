@@ -4,7 +4,7 @@ import static com.linkedin.venice.router.api.VenicePathParser.*;
 import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
 import static com.linkedin.venice.router.utils.VeniceRouterUtils.*;
 
-import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
+import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 import java.util.Map;

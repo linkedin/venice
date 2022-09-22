@@ -1,6 +1,6 @@
 package com.linkedin.venice.router.stats;
 
-import com.linkedin.ddsstorage.router.monitoring.ScatterGatherStats;
+import com.linkedin.alpini.router.monitoring.ScatterGatherStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceHttpStats;
 import com.linkedin.venice.stats.LambdaStat;

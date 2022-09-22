@@ -6,7 +6,7 @@ import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
 import static com.linkedin.venice.utils.NettyUtils.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
-import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
+import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.router.stats.RouterThrottleStats;

@@ -1,6 +1,6 @@
 package com.linkedin.venice.router.httpclient;
 
-import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.router.api.path.VenicePath;
 import java.io.Closeable;

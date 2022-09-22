@@ -2,7 +2,7 @@ package com.linkedin.venice.router.api.path;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
-import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.meta.Version;

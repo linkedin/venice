@@ -185,7 +185,7 @@ public class VeniceChunkedResponse {
     public void onCompletion(T result, Exception exception) {
       if (exception != null) {
         /**
-         * For failure scenario, we will allow {@link com.linkedin.ddsstorage.netty4.handlers.AsyncFullHttpRequestHandler#channelRead0}
+         * For failure scenario, we will allow {@link com.linkedin.alpini.netty4.handlers.AsyncFullHttpRequestHandler#channelRead0}
          * to release the message to avoid double free issue.
          */
         promise.setFailure(exception);
@@ -204,7 +204,7 @@ public class VeniceChunkedResponse {
      * In the high-level, there will be three kinds of messages to be writen here:
      *  1. Response meta data with 'OK' status;
      *  2. {@link ChunkDispenser} to dispense all the chunks;
-     *  3. Final Response sent by {@link com.linkedin.ddsstorage.netty4.handlers.AsyncFullHttpRequestHandler};
+     *  3. Final Response sent by {@link com.linkedin.alpini.netty4.handlers.AsyncFullHttpRequestHandler};
      *
      *  For 1st type, it is the response meta for streaming response, and its type will be {@link StreamingResponseMeta},
      *  and the write should be forwarded to the downstream handler.

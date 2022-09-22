@@ -1,6 +1,6 @@
 package com.linkedin.venice.fastclient.meta;
 
-import com.linkedin.ddsstorage.base.concurrency.TimeoutProcessor;
+import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.restli.common.HttpStatus;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;

@@ -1,9 +1,9 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.alpini.netty4.handlers.BasicHttpServerCodec;
+import com.linkedin.alpini.netty4.http2.Http2PipelineInitializer;
+import com.linkedin.alpini.netty4.ssl.SslInitializer;
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.ddsstorage.netty4.handlers.BasicHttpServerCodec;
-import com.linkedin.ddsstorage.netty4.http2.Http2PipelineInitializer;
-import com.linkedin.ddsstorage.netty4.ssl.SslInitializer;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.exceptions.VeniceException;

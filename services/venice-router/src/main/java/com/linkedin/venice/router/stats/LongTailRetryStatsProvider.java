@@ -1,6 +1,6 @@
 package com.linkedin.venice.router.stats;
 
-import com.linkedin.ddsstorage.router.monitoring.ScatterGatherStats;
+import com.linkedin.alpini.router.monitoring.ScatterGatherStats;
 import com.linkedin.venice.router.api.path.VenicePath;
 import java.util.function.Function;
 

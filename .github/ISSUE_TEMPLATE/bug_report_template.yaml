@@ -88,6 +88,8 @@ body:
           required: false
         - label: "`Da Vinci Client`: This is an embedded, stateful client that materializes store data locally."
           required: false
+        - label: "`Alpini`: This is the framework that fast-client and routers use to route requests to the storage nodes that have the data."
+          required: false
         - label: "`Samza`: This is the library users use to make nearline updates to store data."
           required: false
         - label: "`Admin Tool`: This is the stand-alone client used for ad-hoc operations on Venice."

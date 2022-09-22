@@ -2,7 +2,7 @@ package com.linkedin.venice.router.api;
 
 import static com.linkedin.venice.router.api.VenicePathParser.*;
 
-import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
+import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import io.netty.handler.codec.http.HttpRequest;
 import java.io.UnsupportedEncodingException;

@@ -2,8 +2,8 @@ package com.linkedin.venice.utils;
 
 import static com.linkedin.venice.CommonConfigKeys.*;
 
-import com.linkedin.ddsstorage.base.ssl.SslFactory;
-import com.linkedin.ddsstorage.netty4.ssl.SSLEngineFactoryImpl;
+import com.linkedin.alpini.base.ssl.SslFactory;
+import com.linkedin.alpini.netty4.ssl.SSLEngineFactoryImpl;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.security.DefaultSSLFactory;
 import com.linkedin.venice.security.SSLConfig;
@@ -113,13 +113,13 @@ public class SslUtils {
 
   public static SslFactory toAlpiniSSLFactory(SSLFactory sslFactory) {
     try {
-      return new SSLEngineFactoryImpl(toAlpiniSslConfig(sslFactory.getSSLConfig()));
+      return new SSLEngineFactoryImpl(toAlpiniSSLConfig(sslFactory.getSSLConfig()));
     } catch (Exception e) {
       throw new VeniceException("Unable to create SSL factory", e);
     }
   }
 
-  public static SSLEngineFactoryImpl.Config toAlpiniSslConfig(SSLConfig sslConfig) {
+  public static SSLEngineFactoryImpl.Config toAlpiniSSLConfig(SSLConfig sslConfig) {
     SSLEngineFactoryImpl.Config config = new SSLEngineFactoryImpl.Config();
     config.setSslEnabled(sslConfig.getSslEnabled());
     config.setKeyStoreType(sslConfig.getKeyStoreType());

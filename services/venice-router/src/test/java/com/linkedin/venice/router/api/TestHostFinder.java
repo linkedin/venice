@@ -4,7 +4,7 @@ import static com.linkedin.venice.router.api.TestRouterHeartbeat.*;
 import static org.apache.commons.httpclient.HttpStatus.*;
 import static org.mockito.Mockito.*;
 
-import com.linkedin.ddsstorage.router.api.HostHealthMonitor;
+import com.linkedin.alpini.router.api.HostHealthMonitor;
 import com.linkedin.venice.integration.utils.MockHttpServerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.meta.Instance;

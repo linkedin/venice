@@ -1,6 +1,6 @@
 package com.linkedin.venice.router.streaming;
 
-import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
+import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.venice.exceptions.VeniceException;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;

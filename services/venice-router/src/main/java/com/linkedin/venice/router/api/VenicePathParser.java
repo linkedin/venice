@@ -4,10 +4,10 @@ import static com.linkedin.venice.read.RequestType.*;
 import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
 import static io.netty.handler.codec.rtsp.RtspResponseStatuses.*;
 
-import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
-import com.linkedin.ddsstorage.netty4.misc.BasicHttpRequest;
-import com.linkedin.ddsstorage.router.api.ExtendedResourcePathParser;
-import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
+import com.linkedin.alpini.netty4.misc.BasicHttpRequest;
+import com.linkedin.alpini.router.api.ExtendedResourcePathParser;
+import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;

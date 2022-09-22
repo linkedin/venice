@@ -1,7 +1,7 @@
 package com.linkedin.davinci.ingestion.isolated;
 
+import com.linkedin.alpini.netty4.ssl.SslInitializer;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
-import com.linkedin.ddsstorage.netty4.ssl.SslInitializer;
 import com.linkedin.venice.listener.VerifySslHandler;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.SslUtils;

@@ -1,6 +1,6 @@
 package com.linkedin.venice.utils;
 
-import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.alpini.router.api.RouterException;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;

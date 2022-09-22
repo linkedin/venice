@@ -23,7 +23,6 @@ if (project.hasProperty('overrideBuildEnvironment')) {
 
 def avroVersion = '1.9.2'
 def avroUtilVersion = '0.2.108'
-def ddsStorageCoreVersion = '15.0.0'
 def kafkaGroup = 'com.linkedin.kafka'
 def kafkaVersion = '2.3.0.43'
 def log4j2Version = '2.17.1'
@@ -50,8 +49,6 @@ ext.libraries = [
     d2: 'com.linkedin.pegasus:d2:' + pegasusVersion,
     restliCommon: 'com.linkedin.pegasus:restli-common:' + pegasusVersion,
     r2: 'com.linkedin.pegasus:r2:' + pegasusVersion,
-    ddsNettyBase: 'com.linkedin.dds-storage-core:dds-storage-netty4-base:' + ddsStorageCoreVersion,
-    ddsStorageCommonBase: 'com.linkedin.dds-storage-core:dds-storage-common-base:' + ddsStorageCoreVersion,
     failsafe: 'net.jodah:failsafe:2.4.0',
     fastUtil: 'it.unimi.dsi:fastutil:8.3.0',
     hadoopCommon: 'org.apache.hadoop:hadoop-common:2.3.0',
@@ -66,27 +63,28 @@ ext.libraries = [
     jacksonAnnotations: 'com.fasterxml.jackson.core:jackson-annotations:' + jacksonVersion,
     jacksonDatabind: 'com.fasterxml.jackson.core:jackson-databind:' + jacksonVersion,
     javax: 'javax.servlet:javax.servlet-api:3.1.0',
+    javaxActivation: 'com.sun.activation:javax.activation:1.2.0',
     jdom: 'org.jdom:jdom:1.1',
     jmhCore: 'org.openjdk.jmh:jmh-core:1.28',
     jmhGenerator: 'org.openjdk.jmh:jmh-generator-annprocess:1.28',
+    jna: 'net.java.dev.jna:jna:4.5.1',
+    jsr305: 'com.google.code.findbugs:jsr305:3.0.2',
     joptSimple: 'net.sf.jopt-simple:jopt-simple:3.2',
     kafka: kafkaGroup + ':kafka_2.12:' + kafkaVersion,
     kafkaClients: kafkaGroup + ':kafka-clients:' + kafkaVersion,
     kafkaClientsTest: kafkaGroup + ':kafka-clients:' + kafkaVersion + ':test',
     log4j2api: 'org.apache.logging.log4j:log4j-api:' + log4j2Version,
     log4j2core: 'org.apache.logging.log4j:log4j-core:' + log4j2Version,
+    mail: 'javax.mail:mail:1.4.4',
     mapreduceClientCore: 'org.apache.hadoop:hadoop-mapreduce-client-core:2.3.0',
     mapreduceClientJobClient: 'org.apache.hadoop:hadoop-mapreduce-client-jobclient:2.3.0',
     mockito: 'org.mockito:mockito-core:3.3.3',
-    routerNetty4: 'com.linkedin.dds-storage-core:dds-storage-netty4-base:' + ddsStorageCoreVersion,
     netty: 'io.netty:netty-all:4.1.52.Final',
     oss: 'org.sonatype.oss:oss-parent:7',
     r2: 'com.linkedin.pegasus:r2:' + pegasusVersion,
     rocksdbjni: 'org.rocksdb:rocksdbjni:7.0.3',
-    routerApi: 'com.linkedin.dds-storage-core:dds-storage-router-api:' + ddsStorageCoreVersion,
-    routerBase: 'com.linkedin.dds-storage-core:dds-storage-router-base:' + ddsStorageCoreVersion,
-    routerImpl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:' + ddsStorageCoreVersion,
     samzaApi: 'org.apache.samza:samza-api:1.5.1',
+    snappy: 'org.iq80.snappy:snappy:0.4',
     spark: 'com.sparkjava:spark-core:2.9.4',
     spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
     tehuti: 'io.tehuti:tehuti:0.9.1',
@@ -119,8 +117,7 @@ subprojects {
       exclude group: 'com.linkedin.container'
       exclude group: 'com.linkedin.container-core'
       exclude group: 'com.linkedin.security'
-      exclude group: 'com.linkedin.dds-storage-core', module: 'dds-storage-netty4-lnkd'
-      exclude group: 'com.linkedin.dds-storage-core', module: 'dds-storage-router-lnkd'
+      exclude group: 'com.linkedin.dds-storage-core'
       exclude group: 'com.linkedin.linkedin-kafka-clients'
       exclude group: 'com.linkedin.util', module: 'util-sql'
       exclude group: 'org.slf4j', module: 'slf4j-log4j12'
@@ -255,6 +252,8 @@ subprojects {
     }
   }
 
+  def ALPINI_TEST_FILTER = "com.linkedin.alpini.*"
+
   tasks.withType(Test) {
     mustRunAfter tasks.withType(SpotBugsTask)
 
@@ -282,6 +281,11 @@ subprojects {
       println "jvmArgs=$allJvmArgs"
     }
 
+    filter {
+      excludeTestsMatching ALPINI_TEST_FILTER
+      setFailOnNoMatchingTests(false)
+    }
+
     useTestNG {
       excludeGroups 'flaky'
       listeners = ['com.linkedin.venice.testng.VeniceSuiteListener']
@@ -304,6 +308,15 @@ subprojects {
     useTestNG {
       includeGroups 'flaky'
     }
+  }
+
+  task alpiniTest(type: Test) {
+    filter {
+      includeTestsMatching ALPINI_TEST_FILTER
+      setFailOnNoMatchingTests(false)
+    }
+
+    useTestNG()
   }
 
   tasks.withType(Jar) {

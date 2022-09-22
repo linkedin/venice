@@ -1,0 +1,6 @@
+dependencies {
+  compile project(':internal:alpini:router:router-base')
+  compileOnly project(':internal:alpini:netty4:netty4-base')
+  testCompile libraries.testng
+  testCompile project(':internal:alpini:netty4:netty4-base')
+}

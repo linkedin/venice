@@ -13,12 +13,12 @@ dependencies {
   implementation project(':services:venice-router')
   implementation project(':internal:venice-client-common')
   implementation project(':clients:venice-thin-client')
+  implementation project(':internal:alpini:common:common-base')
+  implementation project(':internal:alpini:router:router-api')
 
-  implementation libraries.ddsStorageCommonBase
   implementation libraries.fastUtil
   implementation libraries.restliCommon
   implementation libraries.r2
-  implementation libraries.routerApi
 
   testImplementation project(':internal:venice-common')
   testImplementation project(':internal:venice-test-common')

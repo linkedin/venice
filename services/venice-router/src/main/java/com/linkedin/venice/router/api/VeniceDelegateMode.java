@@ -3,15 +3,15 @@ package com.linkedin.venice.router.api;
 import static com.linkedin.venice.read.RequestType.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
-import com.linkedin.ddsstorage.base.misc.Metrics;
-import com.linkedin.ddsstorage.router.api.HostFinder;
-import com.linkedin.ddsstorage.router.api.HostHealthMonitor;
-import com.linkedin.ddsstorage.router.api.PartitionFinder;
-import com.linkedin.ddsstorage.router.api.ResourcePath;
-import com.linkedin.ddsstorage.router.api.RouterException;
-import com.linkedin.ddsstorage.router.api.Scatter;
-import com.linkedin.ddsstorage.router.api.ScatterGatherMode;
-import com.linkedin.ddsstorage.router.api.ScatterGatherRequest;
+import com.linkedin.alpini.base.misc.Metrics;
+import com.linkedin.alpini.router.api.HostFinder;
+import com.linkedin.alpini.router.api.HostHealthMonitor;
+import com.linkedin.alpini.router.api.PartitionFinder;
+import com.linkedin.alpini.router.api.ResourcePath;
+import com.linkedin.alpini.router.api.RouterException;
+import com.linkedin.alpini.router.api.Scatter;
+import com.linkedin.alpini.router.api.ScatterGatherMode;
+import com.linkedin.alpini.router.api.ScatterGatherRequest;
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
@@ -43,13 +43,13 @@ import javax.annotation.Nonnull;
  * In {@link #scatter} function, only {@link RouterException} is expected, otherwise, the netty buffer leaking issue
  * will happen.
  * This vulnerability is related to DDS lib since {@link ScatterGatherMode#scatter} only catches {@link RouterException} to
- * return the exceptional future, otherwise, that function will throw exception to miss the release operation in {@text com.linkedin.ddsstorage.router.ScatterGatherRequestHandlerImpl#prepareRetry}.
+ * return the exceptional future, otherwise, that function will throw exception to miss the release operation in {@text com.linkedin.alpini.router.ScatterGatherRequestHandlerImpl#prepareRetry}.
  * Here are the details:
  * 1. If the current implementation of {@link #scatter} throws other exceptions than {@link RouterException}, {@link ScatterGatherMode#scatter}
  *    will rethrow the exception instead of returning an exceptional future.
- * 2. For long-tail retry, {@text com.linkedin.ddsstorage.router.ScatterGatherRequestHandlerImpl#prepareRetry} will retain the request
+ * 2. For long-tail retry, {@text com.linkedin.alpini.router.ScatterGatherRequestHandlerImpl#prepareRetry} will retain the request
  *    every time, and it will try to release the request in the handling function of "_scatterGatherHelper.scatter" in
- *    {@text com.linkedin.ddsstorage.router.ScatterGatherRequestHandlerImpl#prepareRetry}.
+ *    {@text com.linkedin.alpini.router.ScatterGatherRequestHandlerImpl#prepareRetry}.
  * 3. If #1 happens, the handling function mentioned in #2 won't be invoked, which means the release won't happen, and this
  *    is causing the request leaking.
  * TODO: maybe we should improve DDS lib to catch all kinds of exception in {@link ScatterGatherMode#scatter} to avoid

@@ -1,7 +1,7 @@
 package com.linkedin.venice.writer.update;
 
+import com.linkedin.alpini.io.IOUtils;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.ddsstorage.io.IOUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import java.nio.charset.StandardCharsets;

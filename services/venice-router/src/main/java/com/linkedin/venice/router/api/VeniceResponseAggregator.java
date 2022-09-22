@@ -1,14 +1,14 @@
 package com.linkedin.venice.router.api;
 
-import static com.linkedin.ddsstorage.router.api.MetricNames.*;
+import static com.linkedin.alpini.router.api.MetricNames.*;
 import static com.linkedin.venice.HttpConstants.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
-import com.linkedin.ddsstorage.base.misc.HeaderNames;
-import com.linkedin.ddsstorage.base.misc.Metrics;
-import com.linkedin.ddsstorage.base.misc.TimeValue;
-import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
-import com.linkedin.ddsstorage.router.api.ResponseAggregatorFactory;
+import com.linkedin.alpini.base.misc.HeaderNames;
+import com.linkedin.alpini.base.misc.Metrics;
+import com.linkedin.alpini.base.misc.TimeValue;
+import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
+import com.linkedin.alpini.router.api.ResponseAggregatorFactory;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -222,7 +222,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     HttpResponseStatus responseStatus = finalResponse.status();
     Map<String, TimeValue> allMetrics = metrics.getMetrics();
     /**
-     * All the metrics in {@link com.linkedin.ddsstorage.router.api.MetricNames} are supported in {@link Metrics}.
+     * All the metrics in {@link com.linkedin.alpini.router.api.MetricNames} are supported in {@link Metrics}.
      * We are not exposing the following metrics inside Venice right now.
      * 1. {@link ROUTER_PARSE_URI}
      * 2. {@link ROUTER_ROUTING_TIME}

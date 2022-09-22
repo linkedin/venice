@@ -1,0 +1,8 @@
+dependencies {
+  compile project(':internal:alpini:common:common-base')
+  compileOnly project(':internal:alpini:netty4:netty4-base')
+  testCompile libraries.testng
+  testCompile project(':internal:alpini:netty4:netty4-base')
+  //testCompile spec.external.'mockito-all'
+  //testCompile libraries.testng
+}
