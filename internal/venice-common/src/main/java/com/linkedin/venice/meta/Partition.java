@@ -92,7 +92,7 @@ public class Partition {
     }
 
     if (instances.size() > 1) {
-      LOGGER.error(String.format("Detect multiple leaders. Partition: %d", id));
+      LOGGER.error("Detect multiple leaders. Partition: {}", id);
     }
 
     return instances.get(0);
