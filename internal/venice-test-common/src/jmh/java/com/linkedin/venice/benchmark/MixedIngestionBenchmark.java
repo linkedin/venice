@@ -1,6 +1,6 @@
 package com.linkedin.venice.benchmark;
 
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;

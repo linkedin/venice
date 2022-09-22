@@ -1,6 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.router.api.VenicePathParser.*;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_RESOURCE_STATE;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;

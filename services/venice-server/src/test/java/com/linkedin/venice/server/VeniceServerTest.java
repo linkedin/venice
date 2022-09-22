@@ -1,6 +1,7 @@
 package com.linkedin.venice.server;
 
-import static com.linkedin.venice.integration.utils.VeniceServerWrapper.*;
+import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_ENABLE_SERVER_ALLOW_LIST;
+import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_IS_AUTO_JOIN;
 
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.controllerapi.ControllerClient;

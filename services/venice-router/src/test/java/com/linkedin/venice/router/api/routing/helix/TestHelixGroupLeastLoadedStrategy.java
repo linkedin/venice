@@ -1,6 +1,9 @@
 package com.linkedin.venice.router.api.routing.helix;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import org.testng.Assert;

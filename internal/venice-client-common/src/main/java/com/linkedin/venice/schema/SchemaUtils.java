@@ -1,6 +1,6 @@
 package com.linkedin.venice.schema;
 
-import static org.apache.avro.Schema.Type.*;
+import static org.apache.avro.Schema.Type.UNION;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;

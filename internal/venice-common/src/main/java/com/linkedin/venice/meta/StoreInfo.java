@@ -1,6 +1,7 @@
 package com.linkedin.venice.meta;
 
-import static com.linkedin.venice.meta.Store.*;
+import static com.linkedin.venice.meta.Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
+import static com.linkedin.venice.meta.Store.NUM_VERSION_PRESERVE_NOT_SET;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.linkedin.venice.compression.CompressionStrategy;

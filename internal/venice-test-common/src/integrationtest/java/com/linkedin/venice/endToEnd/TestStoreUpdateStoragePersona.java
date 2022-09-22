@@ -1,6 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.utils.TestPushUtils.*;
+import static com.linkedin.venice.utils.TestPushUtils.STRING_SCHEMA;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;

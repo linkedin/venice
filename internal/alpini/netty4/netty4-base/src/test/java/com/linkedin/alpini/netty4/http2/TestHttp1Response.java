@@ -1,6 +1,6 @@
 package com.linkedin.alpini.netty4.http2;
 
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertSame;
 
 import com.linkedin.alpini.netty4.misc.BasicHttpRequest;
 import com.linkedin.alpini.netty4.misc.BasicHttpResponse;

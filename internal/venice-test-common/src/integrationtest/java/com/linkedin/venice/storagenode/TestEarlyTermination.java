@@ -1,6 +1,6 @@
 package com.linkedin.venice.storagenode;
 
-import static com.linkedin.venice.meta.PersistenceType.*;
+import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;

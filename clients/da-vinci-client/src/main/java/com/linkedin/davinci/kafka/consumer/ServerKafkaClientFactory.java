@@ -1,8 +1,9 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.venice.ConfigConstants.*;
-import static com.linkedin.venice.ConfigKeys.*;
-import static org.apache.kafka.common.config.SslConfigs.*;
+import static com.linkedin.venice.ConfigConstants.DEFAULT_KAFKA_SSL_CONTEXT_PROVIDER_CLASS_NAME;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
+import static org.apache.kafka.common.config.SslConfigs.SSL_CONTEXT_PROVIDER_CLASS_CONFIG;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.SSLConfig;

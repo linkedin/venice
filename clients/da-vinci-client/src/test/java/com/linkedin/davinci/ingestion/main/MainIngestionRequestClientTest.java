@@ -1,6 +1,8 @@
 package com.linkedin.davinci.ingestion.main;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.ingestion.HttpClientTransport;
 import com.linkedin.venice.exceptions.VeniceException;

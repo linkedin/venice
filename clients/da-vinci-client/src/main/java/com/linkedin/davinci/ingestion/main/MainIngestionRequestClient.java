@@ -1,7 +1,9 @@
 package com.linkedin.davinci.ingestion.main;
 
-import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
-import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.*;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.buildAndSaveConfigsForForkedIngestionProcess;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.getDummyCommand;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.saveForkedIngestionKafkaClusterMapConfig;
+import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.START_CONSUMPTION;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.HttpClientTransport;

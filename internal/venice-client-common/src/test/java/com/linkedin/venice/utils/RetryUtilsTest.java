@@ -1,6 +1,11 @@
 package com.linkedin.venice.utils;
 
-import static org.mockito.BDDMockito.*;
+import static org.mockito.BDDMockito.doThrow;
+import static org.mockito.BDDMockito.mock;
+import static org.mockito.BDDMockito.reset;
+import static org.mockito.BDDMockito.times;
+import static org.mockito.BDDMockito.verify;
+import static org.mockito.BDDMockito.when;
 
 import java.time.Duration;
 import java.util.Arrays;

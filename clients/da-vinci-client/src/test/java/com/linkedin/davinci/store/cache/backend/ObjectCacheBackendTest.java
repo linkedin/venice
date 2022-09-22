@@ -1,6 +1,6 @@
 package com.linkedin.davinci.store.cache.backend;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.VeniceStoreCacheStorageEngine;

@@ -1,6 +1,8 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.ALLOW_CLUSTER_WIPE;
+import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
+import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_DELAY_FACTOR;
 
 import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.Arg;

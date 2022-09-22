@@ -1,6 +1,9 @@
 package com.linkedin.venice.controller.server;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;

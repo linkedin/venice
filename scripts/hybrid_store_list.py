@@ -19,8 +19,8 @@ ssh -nNT -L 2299:${VENICE_ZK_URL}:${VENICE_ZK_PORT} ${HOSTNAME}
 
 import click
 import json
-from kazoo.client import KazooClient
 import logging
+from kazoo.client import KazooClient
 
 system_store_signature = "system_store"
 

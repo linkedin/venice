@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller.init;
 
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
 
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;

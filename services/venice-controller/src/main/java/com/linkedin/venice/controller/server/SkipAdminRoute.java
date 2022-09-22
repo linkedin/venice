@@ -1,7 +1,9 @@
 package com.linkedin.venice.controller.server;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.SKIP_DIV;
+import static com.linkedin.venice.controllerapi.ControllerRoute.SKIP_ADMIN;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;

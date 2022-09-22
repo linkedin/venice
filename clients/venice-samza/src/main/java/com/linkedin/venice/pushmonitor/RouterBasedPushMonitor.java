@@ -1,6 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
-import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.VeniceConstants.TYPE_PUSH_STATUS;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.store.transport.D2TransportClient;

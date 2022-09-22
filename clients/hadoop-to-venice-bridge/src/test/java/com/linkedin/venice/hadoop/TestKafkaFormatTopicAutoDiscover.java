@@ -1,7 +1,17 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.hadoop.VenicePushJob.REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE;
+import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
+import static com.linkedin.venice.hadoop.VenicePushJob.SSL_KEY_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJob.SSL_KEY_STORE_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_URL_PROP;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;

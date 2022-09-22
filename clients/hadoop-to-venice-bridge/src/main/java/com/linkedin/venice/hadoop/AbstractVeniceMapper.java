@@ -1,6 +1,8 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_STRATEGY;
+import static com.linkedin.venice.hadoop.VenicePushJob.TOPIC_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.ZSTD_COMPRESSION_LEVEL;
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.venice.compression.CompressionStrategy;

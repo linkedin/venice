@@ -1,6 +1,9 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.utils.TestPushUtils.*;
+import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.common.VeniceSystemStoreType;

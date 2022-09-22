@@ -1,7 +1,10 @@
 package com.linkedin.venice.hadoop.heartbeat;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.*;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_INITIAL_DELAY_CONFIG;
+import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_INTERVAL_CONFIG;
+import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG;
+import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_STORE_NAME_CONFIG;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -58,7 +61,7 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
             -1));
 
     if (versionCreationResponse.isError()) {
-    LOGGER.warn(
+      LOGGER.warn(
           "Got error in [heartbeat store: {}] VersionCreationResponse: {}",
           heartbeatStoreName,
           versionCreationResponse);

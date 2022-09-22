@@ -1,7 +1,12 @@
 package com.linkedin.venice.schema.writecompute;
 
-import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.*;
-import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.*;
+import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.MAP_DIFF;
+import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.MAP_UNION;
+import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.SET_DIFF;
+import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.SET_UNION;
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.LIST_OPS;
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.MAP_OPS;
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.NO_OP_ON_FIELD;
 
 import com.linkedin.venice.schema.SchemaUtils;
 import java.util.HashMap;

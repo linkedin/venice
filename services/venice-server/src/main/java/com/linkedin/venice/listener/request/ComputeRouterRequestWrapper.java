@@ -1,6 +1,6 @@
 package com.linkedin.venice.listener.request;
 
-import static com.linkedin.venice.compute.ComputeRequestWrapper.*;
+import static com.linkedin.venice.compute.ComputeRequestWrapper.LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compute.ComputeRequestWrapper;

@@ -1,7 +1,14 @@
 package com.linkedin.venice.listener;
 
-import static com.linkedin.venice.router.api.VenicePathParser.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;

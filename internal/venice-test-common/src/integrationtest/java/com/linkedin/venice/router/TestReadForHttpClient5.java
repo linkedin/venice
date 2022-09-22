@@ -1,7 +1,8 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.venice.HttpConstants.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.HttpConstants.HTTP_GET;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.integration.utils.H2SSLUtils;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;

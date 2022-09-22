@@ -1,7 +1,9 @@
 package com.linkedin.venice.schema.rmd.v1;
 
-import static com.linkedin.venice.schema.rmd.RmdConstants.*;
-import static org.apache.avro.Schema.Type.*;
+import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
+import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
+import static org.apache.avro.Schema.Type.LONG;
+import static org.apache.avro.Schema.Type.RECORD;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;

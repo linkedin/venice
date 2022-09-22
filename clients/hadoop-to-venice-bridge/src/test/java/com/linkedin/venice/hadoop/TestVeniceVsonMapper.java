@@ -1,7 +1,12 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.FILE_KEY_SCHEMA;
+import static com.linkedin.venice.hadoop.VenicePushJob.FILE_VALUE_SCHEMA;
+import static com.linkedin.venice.hadoop.VenicePushJob.KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;

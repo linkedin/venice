@@ -1,8 +1,17 @@
 package com.linkedin.venice.controller.server;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
+import static com.linkedin.venice.controllerapi.ControllerRoute.NEW_STORE;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyBoolean;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;

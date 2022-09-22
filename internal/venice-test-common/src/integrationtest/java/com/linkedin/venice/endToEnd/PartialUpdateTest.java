@@ -1,8 +1,18 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.utils.TestPushUtils.*;
-import static com.linkedin.venice.utils.TestUtils.*;
-import static org.testng.Assert.*;
+import static com.linkedin.venice.utils.TestPushUtils.NESTED_SCHEMA_STRING;
+import static com.linkedin.venice.utils.TestPushUtils.NESTED_SCHEMA_STRING_V2;
+import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.getSamzaProducer;
+import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestPushUtils.loadFileAsString;
+import static com.linkedin.venice.utils.TestPushUtils.sendStreamingRecord;
+import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithStringToRecordSchema;
+import static com.linkedin.venice.utils.TestUtils.assertCommand;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTaskBackdoor;

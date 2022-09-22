@@ -1,9 +1,9 @@
 package com.linkedin.venice.writer;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.writer.ApacheKafkaProducer.*;
-import static org.apache.kafka.clients.producer.ProducerConfig.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.writer.ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX;
+import static org.apache.kafka.clients.producer.ProducerConfig.BUFFER_MEMORY_CONFIG;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;

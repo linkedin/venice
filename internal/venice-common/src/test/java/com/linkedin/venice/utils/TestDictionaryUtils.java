@@ -1,6 +1,6 @@
 package com.linkedin.venice.utils;
 
-import static com.linkedin.venice.kafka.TopicManager.*;
+import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.compression.CompressionStrategy;

@@ -1,6 +1,8 @@
 package com.linkedin.alpini.netty4.misc;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.alpini.base.misc.Time;
 import io.netty.buffer.ByteBuf;

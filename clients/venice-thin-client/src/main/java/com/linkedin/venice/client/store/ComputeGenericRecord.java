@@ -1,6 +1,6 @@
 package com.linkedin.venice.client.store;
 
-import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.HashMap;

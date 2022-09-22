@@ -1,6 +1,6 @@
 package com.linkedin.davinci.stats;
 
-import static com.linkedin.venice.stats.StatsErrorCode.*;
+import static com.linkedin.venice.stats.StatsErrorCode.INACTIVE_STORE_INGESTION_TASK;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;

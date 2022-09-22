@@ -1,10 +1,17 @@
 package com.linkedin.venice.client.store;
 
-import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.client.store.predicate.PredicateBuilder.*;
-import static com.linkedin.venice.compute.ComputeRequestWrapper.*;
-import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.VeniceConstants.COMPUTE_REQUEST_VERSION_V3;
+import static com.linkedin.venice.VeniceConstants.COMPUTE_REQUEST_VERSION_V4;
+import static com.linkedin.venice.VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME;
+import static com.linkedin.venice.client.store.predicate.PredicateBuilder.and;
+import static com.linkedin.venice.client.store.predicate.PredicateBuilder.equalTo;
+import static com.linkedin.venice.compute.ComputeRequestWrapper.LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST;
+import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.COSINE_SIMILARITY;
+import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.DOT_PRODUCT;
+import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.HADAMARD_PRODUCT;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.predicate.Predicate;

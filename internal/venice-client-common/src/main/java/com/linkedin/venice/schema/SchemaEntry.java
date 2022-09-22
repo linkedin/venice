@@ -1,8 +1,10 @@
 package com.linkedin.venice.schema;
 
-import static com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType.*;
-import static com.linkedin.venice.schema.avro.SchemaCompatibility.*;
-import static com.linkedin.venice.schema.avro.SchemaCompatibility.SchemaCompatibilityType.*;
+import static com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType.BACKWARD;
+import static com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType.FORWARD;
+import static com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType.FULL;
+import static com.linkedin.venice.schema.avro.SchemaCompatibility.SchemaCompatibilityType.INCOMPATIBLE;
+import static com.linkedin.venice.schema.avro.SchemaCompatibility.checkReaderWriterCompatibility;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.AvroVersion;

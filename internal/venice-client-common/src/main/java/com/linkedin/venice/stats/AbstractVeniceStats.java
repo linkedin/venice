@@ -1,6 +1,6 @@
 package com.linkedin.venice.stats;
 
-import static com.linkedin.venice.stats.AbstractVeniceAggStats.*;
+import static com.linkedin.venice.stats.AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT;
 
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MeasurableStat;

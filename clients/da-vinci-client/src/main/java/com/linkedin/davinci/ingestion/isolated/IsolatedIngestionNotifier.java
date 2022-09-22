@@ -1,6 +1,6 @@
 package com.linkedin.davinci.ingestion.isolated;
 
-import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.createIngestionTaskReport;
 
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;

@@ -1,6 +1,6 @@
 package io.netty.handler.codec.http2;
 
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
 
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;

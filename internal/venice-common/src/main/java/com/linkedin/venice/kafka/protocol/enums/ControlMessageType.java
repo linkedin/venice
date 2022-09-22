@@ -3,7 +3,15 @@ package com.linkedin.venice.kafka.protocol.enums;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
-import com.linkedin.venice.kafka.protocol.*;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
+import com.linkedin.venice.kafka.protocol.EndOfPush;
+import com.linkedin.venice.kafka.protocol.EndOfSegment;
+import com.linkedin.venice.kafka.protocol.StartOfBufferReplay;
+import com.linkedin.venice.kafka.protocol.StartOfIncrementalPush;
+import com.linkedin.venice.kafka.protocol.StartOfPush;
+import com.linkedin.venice.kafka.protocol.StartOfSegment;
+import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.utils.EnumUtils;
 import com.linkedin.venice.utils.VeniceEnumValue;
 

@@ -1,6 +1,6 @@
 package com.linkedin.davinci.stats;
 
-import static com.linkedin.venice.stats.StatsErrorCode.*;
+import static com.linkedin.venice.stats.StatsErrorCode.NULL_DIV_STATS;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.stats.Gauge;

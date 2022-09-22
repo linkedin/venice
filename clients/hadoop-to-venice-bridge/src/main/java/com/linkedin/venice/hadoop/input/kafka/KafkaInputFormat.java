@@ -1,7 +1,8 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.hadoop.input.kafka.KafkaInputUtils.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.hadoop.input.kafka.KafkaInputUtils.getConsumerFactory;
 
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.kafka.KafkaClientFactory;

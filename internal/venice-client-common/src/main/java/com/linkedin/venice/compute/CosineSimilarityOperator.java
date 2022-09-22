@@ -1,6 +1,6 @@
 package com.linkedin.venice.compute;
 
-import static com.linkedin.venice.compute.ComputeOperationUtils.*;
+import static com.linkedin.venice.compute.ComputeOperationUtils.CACHED_SQUARED_L2_NORM_KEY;
 
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.CosineSimilarity;

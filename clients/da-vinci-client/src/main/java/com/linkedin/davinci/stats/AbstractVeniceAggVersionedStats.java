@@ -1,6 +1,6 @@
 package com.linkedin.davinci.stats;
 
-import static com.linkedin.venice.meta.Store.*;
+import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;

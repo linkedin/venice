@@ -1,6 +1,7 @@
 package com.linkedin.davinci.ingestion;
 
-import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.deserializeIngestionActionResponse;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.serializeIngestionActionRequest;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;

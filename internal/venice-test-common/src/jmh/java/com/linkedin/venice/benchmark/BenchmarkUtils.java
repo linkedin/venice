@@ -1,6 +1,7 @@
 package com.linkedin.venice.benchmark;
 
-import static com.linkedin.venice.serializer.FastSerializerDeserializerFactory.*;
+import static com.linkedin.venice.serializer.FastSerializerDeserializerFactory.getAvroGenericSerializer;
+import static com.linkedin.venice.serializer.FastSerializerDeserializerFactory.getFastAvroGenericSerializer;
 
 import com.linkedin.avro.api.PrimitiveFloatList;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;

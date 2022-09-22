@@ -1,6 +1,7 @@
 package com.linkedin.venice.serialization.avro;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.SchemaReader;

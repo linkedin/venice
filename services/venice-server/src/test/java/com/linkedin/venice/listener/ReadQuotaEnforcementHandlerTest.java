@@ -1,8 +1,12 @@
 package com.linkedin.venice.listener;
 
-import static java.util.concurrent.TimeUnit.*;
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.meta.Instance;

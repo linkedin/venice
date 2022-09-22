@@ -1,6 +1,17 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.ALLOW_DUPLICATE_KEY;
+import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_STRATEGY;
+import static com.linkedin.venice.hadoop.VenicePushJob.KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.SCHEMA_STRING_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.SSL_CONFIGURATOR_CLASS_CONFIG;
+import static com.linkedin.venice.hadoop.VenicePushJob.SSL_KEY_STORE_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJob.STORAGE_ENGINE_OVERHEAD_RATIO;
+import static com.linkedin.venice.hadoop.VenicePushJob.STORAGE_QUOTA_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.TOPIC_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_SCHEMA_ID_PROP;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;

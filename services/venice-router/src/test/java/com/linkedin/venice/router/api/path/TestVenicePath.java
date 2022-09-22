@@ -1,6 +1,7 @@
 package com.linkedin.venice.router.api.path;
 
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.RouterKey;

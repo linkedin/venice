@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.client.store.ClientFactory.*;
+import static com.linkedin.venice.client.store.ClientFactory.getSchemaReader;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.SSLConfig;

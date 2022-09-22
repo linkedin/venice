@@ -1,7 +1,7 @@
 package com.linkedin.venice.router.api;
 
-import static com.linkedin.venice.HttpConstants.*;
-import static org.apache.http.HttpStatus.*;
+import static com.linkedin.venice.HttpConstants.HTTP_GET;
+import static org.apache.http.HttpStatus.SC_OK;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;

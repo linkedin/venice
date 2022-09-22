@@ -1,7 +1,7 @@
 package com.linkedin.alpini.netty4.handlers;
 
-import static io.netty.buffer.ByteBufUtil.*;
-import static io.netty.util.internal.StringUtil.*;
+import static io.netty.buffer.ByteBufUtil.appendPrettyHexDump;
+import static io.netty.util.internal.StringUtil.NEWLINE;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufHolder;

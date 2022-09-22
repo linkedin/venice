@@ -1,6 +1,6 @@
 package com.linkedin.venice.schema.writecompute;
 
-import static com.linkedin.venice.schema.rmd.RmdConstants.*;
+import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 
 import com.linkedin.venice.schema.SchemaUtils;
 import com.linkedin.venice.schema.merge.AvroCollectionElementComparator;

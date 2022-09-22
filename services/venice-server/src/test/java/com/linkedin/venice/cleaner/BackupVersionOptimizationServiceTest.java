@@ -1,7 +1,13 @@
 package com.linkedin.venice.cleaner;
 
-import static com.linkedin.venice.meta.VersionStatus.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.meta.VersionStatus.ONLINE;
+import static org.mockito.Mockito.after;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.store.AbstractStorageEngine;

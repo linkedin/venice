@@ -1,7 +1,5 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static org.testng.Assert.*;
-
 import com.linkedin.venice.exceptions.VeniceException;
 import org.mockito.Mockito;
 import org.testng.Assert;

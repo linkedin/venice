@@ -1,6 +1,7 @@
 package com.linkedin.venice.D2;
 
-import static com.linkedin.venice.HttpConstants.*;
+import static com.linkedin.venice.HttpConstants.HTTPS_POST;
+import static com.linkedin.venice.HttpConstants.HTTP_GET;
 
 import com.linkedin.common.callback.Callback;
 import com.linkedin.common.util.None;

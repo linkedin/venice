@@ -16,8 +16,10 @@ package io.netty.handler.codec.http;
  * under the License.
  */
 
-import static io.netty.handler.codec.http.HttpHeaderNames.*;
-import static io.netty.handler.codec.http.HttpUtil.*;
+import static io.netty.handler.codec.http.HttpHeaderNames.CONNECTION;
+import static io.netty.handler.codec.http.HttpHeaderNames.CONTENT_LENGTH;
+import static io.netty.handler.codec.http.HttpHeaderNames.EXPECT;
+import static io.netty.handler.codec.http.HttpUtil.getContentLength;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;

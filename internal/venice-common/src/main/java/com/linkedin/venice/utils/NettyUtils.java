@@ -1,8 +1,9 @@
 package com.linkedin.venice.utils;
 
-import static com.linkedin.venice.utils.ExceptionUtils.*;
-import static io.netty.handler.codec.http.HttpHeaderNames.*;
-import static io.netty.handler.codec.http.HttpVersion.*;
+import static com.linkedin.venice.utils.ExceptionUtils.logClassLoaderContent;
+import static io.netty.handler.codec.http.HttpHeaderNames.CONTENT_LENGTH;
+import static io.netty.handler.codec.http.HttpHeaderNames.CONTENT_TYPE;
+import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
 import com.linkedin.venice.HttpConstants;
 import io.netty.buffer.Unpooled;

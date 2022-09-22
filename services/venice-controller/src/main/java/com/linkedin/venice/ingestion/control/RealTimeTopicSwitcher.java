@@ -1,6 +1,6 @@
 package com.linkedin.venice.ingestion.control;
 
-import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;

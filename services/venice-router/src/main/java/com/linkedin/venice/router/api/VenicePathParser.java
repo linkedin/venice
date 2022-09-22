@@ -1,8 +1,10 @@
 package com.linkedin.venice.router.api;
 
-import static com.linkedin.venice.read.RequestType.*;
-import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
-import static io.netty.handler.codec.rtsp.RtspResponseStatuses.*;
+import static com.linkedin.venice.read.RequestType.SINGLE_GET;
+import static com.linkedin.venice.router.api.VenicePathParserHelper.parseRequest;
+import static io.netty.handler.codec.rtsp.RtspResponseStatuses.BAD_GATEWAY;
+import static io.netty.handler.codec.rtsp.RtspResponseStatuses.BAD_REQUEST;
+import static io.netty.handler.codec.rtsp.RtspResponseStatuses.MOVED_PERMANENTLY;
 
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.alpini.netty4.misc.BasicHttpRequest;

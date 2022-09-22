@@ -1,9 +1,13 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.venice.ConfigConstants.*;
-import static com.linkedin.venice.ConfigKeys.*;
-import static java.lang.Thread.*;
-import static org.apache.kafka.common.config.SslConfigs.*;
+import static com.linkedin.venice.ConfigConstants.DEFAULT_KAFKA_BATCH_SIZE;
+import static com.linkedin.venice.ConfigConstants.DEFAULT_KAFKA_LINGER_MS;
+import static com.linkedin.venice.ConfigConstants.DEFAULT_KAFKA_SSL_CONTEXT_PROVIDER_CLASS_NAME;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BATCH_SIZE;
+import static com.linkedin.venice.ConfigKeys.KAFKA_LINGER_MS;
+import static java.lang.Thread.currentThread;
+import static java.lang.Thread.sleep;
+import static org.apache.kafka.common.config.SslConfigs.SSL_CONTEXT_PROVIDER_CLASS_CONFIG;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;

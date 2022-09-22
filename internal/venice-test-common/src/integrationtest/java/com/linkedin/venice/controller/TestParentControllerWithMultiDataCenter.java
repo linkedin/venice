@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller;
 
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;

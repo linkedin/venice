@@ -1,7 +1,7 @@
 package io.netty.handler.codec.http2;
 
-import static io.netty.handler.codec.http2.Http2Error.*;
-import static io.netty.handler.codec.http2.Http2Exception.*;
+import static io.netty.handler.codec.http2.Http2Error.INTERNAL_ERROR;
+import static io.netty.handler.codec.http2.Http2Exception.connectionError;
 
 import com.linkedin.alpini.netty4.misc.Http2Utils;
 import com.linkedin.alpini.netty4.misc.NettyUtils;

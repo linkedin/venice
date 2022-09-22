@@ -1,7 +1,7 @@
 package com.linkedin.venice.controller.server;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
+import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_DISCOVERY;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;

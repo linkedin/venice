@@ -1,6 +1,6 @@
 package com.linkedin.venice.client.store;
 
-import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.VeniceConstants.COMPUTE_REQUEST_VERSION_V2;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;

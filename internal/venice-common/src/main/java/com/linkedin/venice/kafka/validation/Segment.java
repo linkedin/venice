@@ -1,8 +1,9 @@
 package com.linkedin.venice.kafka.validation;
 
-import static com.linkedin.venice.kafka.validation.SegmentStatus.*;
+import static com.linkedin.venice.kafka.validation.SegmentStatus.END_OF_FINAL_SEGMENT;
+import static com.linkedin.venice.kafka.validation.SegmentStatus.NOT_STARTED;
 
-import com.linkedin.venice.exceptions.validation.*;
+import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;

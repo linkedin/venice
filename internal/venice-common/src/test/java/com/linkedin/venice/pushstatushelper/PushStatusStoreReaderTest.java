@@ -1,9 +1,19 @@
 package com.linkedin.venice.pushstatushelper;
 
-import static com.linkedin.venice.common.PushStatusStoreUtils.*;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
+import static com.linkedin.venice.common.PushStatusStoreUtils.SERVER_INCREMENTAL_PUSH_PREFIX;
+import static com.linkedin.venice.common.PushStatusStoreUtils.getServerIncrementalPushKey;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anySet;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEqualsDeep;
+import static org.testng.Assert.assertNotEquals;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;

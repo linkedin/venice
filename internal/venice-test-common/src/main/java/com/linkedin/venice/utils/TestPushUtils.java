@@ -1,10 +1,28 @@
 package com.linkedin.venice.utils;
 
-import static com.linkedin.venice.CommonConfigKeys.*;
-import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.meta.Version.*;
-import static com.linkedin.venice.samza.VeniceSystemFactory.*;
+import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
+import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
+import static com.linkedin.venice.hadoop.VenicePushJob.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
+import static com.linkedin.venice.hadoop.VenicePushJob.INPUT_PATH_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.POLL_JOB_STATUS_INTERVAL_MS;
+import static com.linkedin.venice.hadoop.VenicePushJob.PUSH_JOB_STATUS_UPLOAD_ENABLE;
+import static com.linkedin.venice.hadoop.VenicePushJob.SSL_KEY_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJob.SSL_KEY_STORE_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_URL_PROP;
+import static com.linkedin.venice.meta.Version.PushType;
+import static com.linkedin.venice.samza.VeniceSystemFactory.D2_ZK_HOSTS_PROPERTY;
+import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
+import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
+import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.compression.CompressionStrategy;

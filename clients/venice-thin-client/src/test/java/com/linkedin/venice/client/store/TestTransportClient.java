@@ -1,6 +1,10 @@
 package com.linkedin.venice.client.store;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import com.linkedin.common.callback.Callback;
 import com.linkedin.d2.balancer.D2Client;

@@ -1,6 +1,6 @@
 package com.linkedin.davinci.helix;
 
-import static com.linkedin.davinci.helix.AbstractStateModelFactory.*;
+import static com.linkedin.davinci.helix.AbstractStateModelFactory.getStateModelID;
 
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;

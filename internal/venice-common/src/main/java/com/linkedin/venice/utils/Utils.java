@@ -1,6 +1,6 @@
 package com.linkedin.venice.utils;
 
-import static com.linkedin.venice.HttpConstants.*;
+import static com.linkedin.venice.HttpConstants.LOCALHOST;
 
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;

@@ -1,6 +1,6 @@
 package com.linkedin.venice;
 
-import static com.linkedin.venice.kafka.protocol.enums.MessageType.*;
+import static com.linkedin.venice.kafka.protocol.enums.MessageType.CONTROL_MESSAGE;
 
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;

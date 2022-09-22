@@ -1,6 +1,6 @@
 package com.linkedin.venice.listener;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;

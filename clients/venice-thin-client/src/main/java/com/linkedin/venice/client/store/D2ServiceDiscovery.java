@@ -1,6 +1,6 @@
 package com.linkedin.venice.client.store;
 
-import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.*;
+import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;

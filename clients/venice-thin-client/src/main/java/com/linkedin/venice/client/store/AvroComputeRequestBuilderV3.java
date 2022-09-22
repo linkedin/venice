@@ -1,7 +1,7 @@
 package com.linkedin.venice.client.store;
 
-import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.*;
+import static com.linkedin.venice.VeniceConstants.COMPUTE_REQUEST_VERSION_V3;
+import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.COUNT;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.stats.ClientStats;

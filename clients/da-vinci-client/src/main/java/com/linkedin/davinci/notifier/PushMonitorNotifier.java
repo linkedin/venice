@@ -1,6 +1,14 @@
 package com.linkedin.davinci.notifier;
 
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.DATA_RECOVERY_COMPLETED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_PUSH_RECEIVED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.PROGRESS;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.STARTED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.TOPIC_SWITCH_RECEIVED;
 
 import com.linkedin.venice.common.PushStatusStoreUtils;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;

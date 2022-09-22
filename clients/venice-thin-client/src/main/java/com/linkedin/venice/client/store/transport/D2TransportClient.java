@@ -1,6 +1,7 @@
 package com.linkedin.venice.client.store.transport;
 
-import static com.linkedin.venice.HttpConstants.*;
+import static com.linkedin.venice.HttpConstants.VENICE_ALLOW_REDIRECT;
+import static com.linkedin.venice.HttpConstants.VENICE_KEY_COUNT;
 
 import com.linkedin.common.callback.Callback;
 import com.linkedin.d2.balancer.D2Client;

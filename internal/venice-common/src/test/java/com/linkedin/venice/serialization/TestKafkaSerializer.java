@@ -1,8 +1,13 @@
 package com.linkedin.venice.serialization;
 
-import static com.linkedin.venice.writer.VeniceWriter.*;
+import static com.linkedin.venice.writer.VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+import static com.linkedin.venice.writer.VeniceWriter.VENICE_DEFAULT_VALUE_SCHEMA_ID;
 
-import com.linkedin.venice.kafka.protocol.*;
+import com.linkedin.venice.kafka.protocol.Delete;
+import com.linkedin.venice.kafka.protocol.GUID;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.ProducerMetadata;
+import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;

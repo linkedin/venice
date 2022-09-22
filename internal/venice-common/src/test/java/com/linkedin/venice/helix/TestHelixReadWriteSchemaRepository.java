@@ -1,6 +1,6 @@
 package com.linkedin.venice.helix;
 
-import static com.linkedin.venice.schema.SchemaData.*;
+import static com.linkedin.venice.schema.SchemaData.DUPLICATE_VALUE_SCHEMA_CODE;
 
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
 import com.linkedin.venice.exceptions.StoreKeySchemaExistException;

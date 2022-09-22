@@ -1,7 +1,10 @@
 package com.linkedin.venice.client.store;
 
-import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.*;
+import static com.linkedin.venice.VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME;
+import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.COSINE_SIMILARITY;
+import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.COUNT;
+import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.DOT_PRODUCT;
+import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.HADAMARD_PRODUCT;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;

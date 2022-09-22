@@ -1,6 +1,6 @@
 package com.linkedin.venice.benchmark;
 
-import static com.linkedin.venice.integration.utils.ServiceFactory.*;
+import static com.linkedin.venice.integration.utils.ServiceFactory.getVeniceCluster;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;

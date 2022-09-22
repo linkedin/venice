@@ -1,6 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;

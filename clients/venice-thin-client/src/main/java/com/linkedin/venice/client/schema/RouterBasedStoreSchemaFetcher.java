@@ -1,6 +1,6 @@
 package com.linkedin.venice.client.schema;
 
-import static com.linkedin.venice.schema.AvroSchemaParseUtils.*;
+import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;

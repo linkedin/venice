@@ -1,6 +1,6 @@
 package com.linkedin.venice.restart;
 
-import static com.linkedin.venice.utils.TestUtils.*;
+import static com.linkedin.venice.utils.TestUtils.generateInput;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;

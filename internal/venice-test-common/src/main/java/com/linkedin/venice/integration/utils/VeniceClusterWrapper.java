@@ -1,10 +1,20 @@
 package com.linkedin.venice.integration.utils;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.integration.utils.VeniceServerWrapper.*;
-import static com.linkedin.venice.utils.ByteUtils.*;
-import static com.linkedin.venice.utils.TestPushUtils.*;
-import static com.linkedin.venice.utils.TestUtils.*;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_KAFKA_OPENSSL;
+import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.integration.utils.VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER;
+import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_ENABLE_SERVER_ALLOW_LIST;
+import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_ENABLE_SERVER_WHITE_LIST;
+import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_ENABLE_SSL;
+import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_IS_AUTO_JOIN;
+import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_SSL_TO_KAFKA;
+import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_KB;
+import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
+import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestUtils.assertCommand;
+import static com.linkedin.venice.utils.TestUtils.writeBatchData;
 
 import com.github.luben.zstd.ZstdDictTrainer;
 import com.linkedin.venice.client.store.ClientConfig;

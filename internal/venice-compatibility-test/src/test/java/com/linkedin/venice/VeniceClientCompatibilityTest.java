@@ -1,6 +1,8 @@
 package com.linkedin.venice;
 
-import static com.linkedin.venice.VeniceClusterInitializer.*;
+import static com.linkedin.venice.VeniceClusterInitializer.ID_FIELD_PREFIX;
+import static com.linkedin.venice.VeniceClusterInitializer.KEY_PREFIX;
+import static com.linkedin.venice.VeniceClusterInitializer.ZK_ADDRESS_FIELD;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.AvroVersion;

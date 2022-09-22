@@ -1,6 +1,6 @@
 package com.linkedin.alpini.base.misc;
 
-import static io.netty.util.internal.MathUtil.*;
+import static io.netty.util.internal.MathUtil.isOutOfBounds;
 
 import com.linkedin.alpini.netty4.misc.NettyUtils;
 import io.netty.buffer.ByteBuf;

@@ -1,6 +1,6 @@
 package com.linkedin.alpini.router.api;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
 
 import com.linkedin.alpini.base.misc.CollectionUtil;
 import java.util.Collections;

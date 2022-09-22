@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.server;
 
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
 
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.controllerapi.ControllerClient;

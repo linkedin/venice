@@ -1,7 +1,8 @@
 package com.linkedin.venice.storagenode;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.router.api.VenicePathParser.*;
+import static com.linkedin.venice.ConfigKeys.SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME_MS;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.HttpConstants;

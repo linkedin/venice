@@ -1,9 +1,26 @@
 package io.netty.handler.codec.http2;
 
-import static io.netty.handler.codec.http2.Http2TestUtil.*;
-import static io.netty.util.ReferenceCountUtil.*;
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
+import static io.netty.handler.codec.http2.Http2TestUtil.anyChannelPromise;
+import static io.netty.handler.codec.http2.Http2TestUtil.anyHttp2Settings;
+import static io.netty.handler.codec.http2.Http2TestUtil.assertEqualsAndRelease;
+import static io.netty.handler.codec.http2.Http2TestUtil.bb;
+import static io.netty.util.ReferenceCountUtil.release;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyBoolean;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.anyShort;
+import static org.mockito.Mockito.argThat;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;

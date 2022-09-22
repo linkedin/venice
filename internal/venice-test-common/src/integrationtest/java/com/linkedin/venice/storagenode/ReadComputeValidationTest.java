@@ -1,6 +1,6 @@
 package com.linkedin.venice.storagenode;
 
-import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;

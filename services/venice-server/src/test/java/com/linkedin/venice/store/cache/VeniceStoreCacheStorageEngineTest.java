@@ -1,7 +1,5 @@
 package com.linkedin.venice.store.cache;
 
-import static org.testng.Assert.*;
-
 import org.testng.annotations.Test;
 
 

@@ -1,8 +1,8 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static java.util.Collections.reverseOrder;
-import static java.util.Comparator.*;
-import static java.util.stream.Collectors.*;
+import static java.util.Comparator.comparing;
+import static java.util.stream.Collectors.toList;
 
 import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.exceptions.VeniceChecksumException;

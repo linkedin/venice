@@ -1,6 +1,9 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA;
 
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.controller.VeniceControllerConfig;

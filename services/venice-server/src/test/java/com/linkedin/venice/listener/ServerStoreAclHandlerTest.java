@@ -1,7 +1,9 @@
 package com.linkedin.venice.listener;
 
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;

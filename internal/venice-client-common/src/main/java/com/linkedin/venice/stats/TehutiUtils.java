@@ -1,6 +1,8 @@
 package com.linkedin.venice.stats;
 
-import io.tehuti.metrics.*;
+import io.tehuti.metrics.JmxReporter;
+import io.tehuti.metrics.MeasurableStat;
+import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.Percentile;
 import io.tehuti.metrics.stats.Percentiles;
 import io.tehuti.metrics.stats.Rate;

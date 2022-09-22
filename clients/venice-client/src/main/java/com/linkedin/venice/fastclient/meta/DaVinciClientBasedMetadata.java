@@ -1,7 +1,11 @@
 package com.linkedin.venice.fastclient.meta;
 
-import static com.linkedin.venice.system.store.MetaStoreWriter.*;
-import static java.lang.Thread.*;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_CLUSTER_NAME;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_PARTITION_ID;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_SCHEMA_ID;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSION_NUMBER;
+import static java.lang.Thread.currentThread;
 
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.venice.client.exceptions.VeniceClientException;

@@ -1,6 +1,8 @@
 package com.linkedin.venice.utils;
 
-import static com.linkedin.venice.compression.CompressionStrategy.*;
+import static com.linkedin.venice.compression.CompressionStrategy.GZIP;
+import static com.linkedin.venice.compression.CompressionStrategy.NO_OP;
+import static com.linkedin.venice.compression.CompressionStrategy.ZSTD_WITH_DICT;
 
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;

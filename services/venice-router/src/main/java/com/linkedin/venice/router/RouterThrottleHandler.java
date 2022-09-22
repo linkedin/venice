@@ -1,10 +1,12 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.venice.HttpConstants.*;
-import static com.linkedin.venice.router.api.VenicePathParser.*;
-import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
-import static com.linkedin.venice.utils.NettyUtils.*;
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
+import static com.linkedin.venice.HttpConstants.VENICE_KEY_COUNT;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_COMPUTE;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
+import static com.linkedin.venice.router.api.VenicePathParserHelper.parseRequest;
+import static com.linkedin.venice.utils.NettyUtils.setupResponseAndFlush;
+import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
+import static io.netty.handler.codec.http.HttpResponseStatus.TOO_MANY_REQUESTS;
 
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.venice.exceptions.QuotaExceededException;

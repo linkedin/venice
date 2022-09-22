@@ -1,6 +1,7 @@
 package com.linkedin.venice.client.store.predicate;
 
-import static com.linkedin.venice.client.store.predicate.PredicateBuilder.*;
+import static com.linkedin.venice.client.store.predicate.PredicateBuilder.and;
+import static com.linkedin.venice.client.store.predicate.PredicateBuilder.equalTo;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import org.apache.avro.Schema;

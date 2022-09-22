@@ -1,7 +1,8 @@
 package com.linkedin.davinci.store.rocksdb;
 
-import static com.linkedin.davinci.store.AbstractStorageEngine.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;

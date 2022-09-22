@@ -1,6 +1,7 @@
 package com.linkedin.venice.fastclient;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.venice.client.exceptions.VeniceClientException;

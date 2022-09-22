@@ -1,6 +1,6 @@
 package com.linkedin.venice.kafka.validation;
 
-import static com.linkedin.venice.utils.RedundantExceptionFilter.*;
+import static com.linkedin.venice.utils.RedundantExceptionFilter.DEFAULT_NO_REDUNDANT_EXCEPTION_DURATION_MS;
 
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;

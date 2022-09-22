@@ -1,6 +1,7 @@
 package com.linkedin.davinci.repository;
 
-import static com.linkedin.venice.system.store.MetaStoreWriter.*;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_CLUSTER_NAME;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;

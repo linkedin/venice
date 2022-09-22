@@ -1,11 +1,13 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_ROUTES;
 
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.PropertyBuilder;
-import java.util.*;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 

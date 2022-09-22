@@ -1,11 +1,18 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.*;
-import static com.linkedin.venice.meta.HybridStoreConfigImpl.*;
-import static com.linkedin.venice.meta.Version.*;
-import static com.linkedin.venice.meta.VersionStatus.*;
-import static com.linkedin.venice.utils.AvroSchemaUtils.*;
+import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_DERIVED_SCHEMA_ID;
+import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX;
+import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.DEFAULT_META_SYSTEM_STORE_SIZE;
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
+import static com.linkedin.venice.meta.Version.PushType;
+import static com.linkedin.venice.meta.VersionStatus.ERROR;
+import static com.linkedin.venice.meta.VersionStatus.NOT_CREATED;
+import static com.linkedin.venice.meta.VersionStatus.ONLINE;
+import static com.linkedin.venice.meta.VersionStatus.PUSHED;
+import static com.linkedin.venice.meta.VersionStatus.STARTED;
+import static com.linkedin.venice.utils.AvroSchemaUtils.isValidAvroSchema;
 
 import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
 import com.linkedin.avroutil1.compatibility.RandomRecordGenerator;

@@ -1,7 +1,21 @@
 package com.linkedin.venice.controller.server;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.INSTANCE_VIEW;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_NODE_ID_LIST_SEPARATOR;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_STORAGE_NODE_IDS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_ID;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.ALLOW_LIST_ADD_NODE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.ClUSTER_HEALTH_INSTANCES;
+import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_NODES;
+import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_REPLICAS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.NODE_REMOVABLE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.NODE_REPLICAS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.NODE_REPLICAS_READINESS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_NODE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.WHITE_LIST_REMOVE_NODE;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;

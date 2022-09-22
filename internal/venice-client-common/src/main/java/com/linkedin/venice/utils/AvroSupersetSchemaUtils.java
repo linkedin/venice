@@ -1,6 +1,6 @@
 package com.linkedin.venice.utils;
 
-import static com.linkedin.venice.utils.AvroSchemaUtils.*;
+import static com.linkedin.venice.utils.AvroSchemaUtils.getFieldDefault;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.FieldBuilder;

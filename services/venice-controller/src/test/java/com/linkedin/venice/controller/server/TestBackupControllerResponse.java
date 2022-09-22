@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller.server;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.JOB;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REQUEST_TOPIC;
 

@@ -1,8 +1,9 @@
 package com.linkedin.venice.kafka;
 
-import static com.linkedin.venice.ConfigConstants.*;
-import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.kafka.TopicManager.*;
+import static com.linkedin.venice.ConfigConstants.DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS;
+import static com.linkedin.venice.VeniceConstants.SCALA_BASED_KAFKA_ADMIN_CLIENT_CLASS_NAME;
+import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
+import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;

@@ -1,7 +1,9 @@
 package com.linkedin.davinci.replication.merge;
 
-import static com.linkedin.venice.schema.rmd.RmdConstants.*;
-import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.*;
+import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
+import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
+import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.SET_DIFF;
+import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.SET_UNION;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;

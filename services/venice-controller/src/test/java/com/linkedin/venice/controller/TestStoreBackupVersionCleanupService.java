@@ -1,6 +1,10 @@
 package com.linkedin.venice.controller;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;

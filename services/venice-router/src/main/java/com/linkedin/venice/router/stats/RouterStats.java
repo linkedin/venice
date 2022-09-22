@@ -1,6 +1,10 @@
 package com.linkedin.venice.router.stats;
 
-import static com.linkedin.venice.read.RequestType.*;
+import static com.linkedin.venice.read.RequestType.COMPUTE;
+import static com.linkedin.venice.read.RequestType.COMPUTE_STREAMING;
+import static com.linkedin.venice.read.RequestType.MULTI_GET;
+import static com.linkedin.venice.read.RequestType.MULTI_GET_STREAMING;
+import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.RequestType;

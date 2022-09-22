@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
