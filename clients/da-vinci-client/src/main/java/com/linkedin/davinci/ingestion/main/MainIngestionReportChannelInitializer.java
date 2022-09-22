@@ -1,6 +1,6 @@
 package com.linkedin.davinci.ingestion.main;
 
-import com.linkedin.ddsstorage.netty4.ssl.SslInitializer;
+import com.linkedin.alpini.netty4.ssl.SslInitializer;
 import com.linkedin.venice.listener.VerifySslHandler;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.SslUtils;

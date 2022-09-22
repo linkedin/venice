@@ -30,4 +30,7 @@
       <Bug pattern="RCN_REDUNDANT_NULLCHECK_WOULD_HAVE_BEEN_A_NPE"/>
     </Or>
   </Match>
+  <Match>
+    <Source name="~.*internal/alpini/.*" />
+  </Match>
 </FindBugsFilter>

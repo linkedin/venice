@@ -5,8 +5,8 @@ import static com.linkedin.venice.compute.ComputeRequestWrapper.*;
 import static com.linkedin.venice.router.api.VenicePathParser.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
-import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
-import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
+import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compute.ComputeRequestWrapper;

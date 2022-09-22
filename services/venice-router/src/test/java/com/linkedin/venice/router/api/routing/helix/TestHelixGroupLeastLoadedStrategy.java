@@ -2,7 +2,7 @@ package com.linkedin.venice.router.api.routing.helix;
 
 import static org.mockito.Mockito.*;
 
-import com.linkedin.ddsstorage.base.concurrency.TimeoutProcessor;
+import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 

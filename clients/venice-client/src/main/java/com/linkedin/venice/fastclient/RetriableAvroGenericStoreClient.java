@@ -1,6 +1,6 @@
 package com.linkedin.venice.fastclient;
 
-import com.linkedin.ddsstorage.base.concurrency.TimeoutProcessor;
+import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.exceptions.VeniceException;

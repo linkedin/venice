@@ -1,7 +1,7 @@
 package com.linkedin.venice.router.api;
 
-import com.linkedin.ddsstorage.base.misc.Metrics;
-import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
+import com.linkedin.alpini.base.misc.Metrics;
+import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import java.util.function.Function;
 
 

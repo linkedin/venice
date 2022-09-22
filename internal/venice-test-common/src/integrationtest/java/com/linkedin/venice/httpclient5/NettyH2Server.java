@@ -1,6 +1,6 @@
 package com.linkedin.venice.httpclient5;
 
-import com.linkedin.ddsstorage.netty4.ssl.SslInitializer;
+import com.linkedin.alpini.netty4.ssl.SslInitializer;
 import com.linkedin.venice.integration.utils.H2SSLUtils;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.SslUtils;

@@ -2,8 +2,8 @@ package com.linkedin.venice.router.api.path;
 
 import static org.mockito.Mockito.*;
 
-import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
-import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
+import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.router.RouterThrottleHandler;

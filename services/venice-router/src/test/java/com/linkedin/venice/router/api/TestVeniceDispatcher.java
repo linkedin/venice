@@ -3,11 +3,11 @@ package com.linkedin.venice.router.api;
 import static com.linkedin.venice.HttpConstants.*;
 import static org.mockito.Mockito.*;
 
-import com.linkedin.ddsstorage.base.concurrency.AsyncPromise;
-import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
-import com.linkedin.ddsstorage.router.api.RouterException;
-import com.linkedin.ddsstorage.router.api.Scatter;
-import com.linkedin.ddsstorage.router.api.ScatterGatherRequest;
+import com.linkedin.alpini.base.concurrency.AsyncPromise;
+import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
+import com.linkedin.alpini.router.api.RouterException;
+import com.linkedin.alpini.router.api.Scatter;
+import com.linkedin.alpini.router.api.ScatterGatherRequest;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;

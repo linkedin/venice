@@ -22,7 +22,7 @@ The GitHub issue should contain the detailed problem statement.
 5. Open a pull request against the `master` branch of `linkedin/venice`. (Only in special cases would the PR be opened against other branches.)
 6. The PR title should usually be of the form `[component1]...[componentN]: Concise commit message`.
    * Valid component tags are: `[da-vinci]`, `[server]`, `[controller]`,
-      `[router]`, `[samza]`, `[vpj]`, `[fast-client]`, `[thin-client]`,
+      `[router]`, `[samza]`, `[vpj]`, `[fast-client]`, `[thin-client]`, `[alpini]`,
       `[admin-tool]`, `[test]`, `[build]`, `[doc]`, `[script]`
 7. If the pull request is still a work in progress, and so is not ready to be merged, but needs to be pushed to GitHub to facilitate review,
     then create the PR as a [draft](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/about-pull-requests#draft-pull-requests) PR

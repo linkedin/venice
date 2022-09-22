@@ -2,9 +2,9 @@ package com.linkedin.venice.router.api;
 
 import static com.linkedin.venice.read.RequestType.*;
 
-import com.linkedin.ddsstorage.router.api.HostFinder;
-import com.linkedin.ddsstorage.router.api.HostHealthMonitor;
-import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.alpini.router.api.HostFinder;
+import com.linkedin.alpini.router.api.HostHealthMonitor;
+import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.Version;

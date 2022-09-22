@@ -1,8 +1,8 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.alpini.netty4.handlers.Http2SettingsFrameLogger;
+import com.linkedin.alpini.netty4.http2.Http2PipelineInitializer;
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.ddsstorage.netty4.handlers.Http2SettingsFrameLogger;
-import com.linkedin.ddsstorage.netty4.http2.Http2PipelineInitializer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.handler.codec.http2.ActiveStreamsCountHandler;
 import io.netty.handler.codec.http2.Http2Settings;

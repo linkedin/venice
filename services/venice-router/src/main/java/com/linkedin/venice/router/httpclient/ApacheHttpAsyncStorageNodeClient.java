@@ -1,6 +1,6 @@
 package com.linkedin.venice.router.httpclient;
 
-import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.httpclient.CachedDnsResolver;
 import com.linkedin.venice.httpclient.HttpClientUtils;

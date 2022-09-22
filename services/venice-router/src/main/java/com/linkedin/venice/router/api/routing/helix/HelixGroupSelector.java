@@ -1,6 +1,6 @@
 package com.linkedin.venice.router.api.routing.helix;
 
-import com.linkedin.ddsstorage.base.concurrency.TimeoutProcessor;
+import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.router.stats.HelixGroupStats;

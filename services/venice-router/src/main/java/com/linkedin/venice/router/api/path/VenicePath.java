@@ -1,6 +1,6 @@
 package com.linkedin.venice.router.api.path;
 
-import com.linkedin.ddsstorage.router.api.ResourcePath;
+import com.linkedin.alpini.router.api.ResourcePath;
 import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.venice.HttpConstants;

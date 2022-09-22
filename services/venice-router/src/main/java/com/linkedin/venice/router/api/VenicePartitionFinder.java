@@ -1,6 +1,6 @@
 package com.linkedin.venice.router.api;
 
-import com.linkedin.ddsstorage.router.api.PartitionFinder;
+import com.linkedin.alpini.router.api.PartitionFinder;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;

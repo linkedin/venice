@@ -1,14 +1,14 @@
 package com.linkedin.venice.router;
 
-import com.linkedin.ddsstorage.base.concurrency.AsyncFuture;
-import com.linkedin.ddsstorage.base.concurrency.TimeoutProcessor;
-import com.linkedin.ddsstorage.base.concurrency.impl.SuccessAsyncFuture;
-import com.linkedin.ddsstorage.base.registry.ResourceRegistry;
-import com.linkedin.ddsstorage.base.registry.ShutdownableExecutors;
-import com.linkedin.ddsstorage.netty4.ssl.SslInitializer;
-import com.linkedin.ddsstorage.router.api.LongTailRetrySupplier;
-import com.linkedin.ddsstorage.router.api.ScatterGatherHelper;
-import com.linkedin.ddsstorage.router.impl.Router;
+import com.linkedin.alpini.base.concurrency.AsyncFuture;
+import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
+import com.linkedin.alpini.base.concurrency.impl.SuccessAsyncFuture;
+import com.linkedin.alpini.base.registry.ResourceRegistry;
+import com.linkedin.alpini.base.registry.ShutdownableExecutors;
+import com.linkedin.alpini.netty4.ssl.SslInitializer;
+import com.linkedin.alpini.router.api.LongTailRetrySupplier;
+import com.linkedin.alpini.router.api.ScatterGatherHelper;
+import com.linkedin.alpini.router.impl.Router;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.handler.StoreAclHandler;
@@ -516,7 +516,7 @@ public class RouterServer extends AbstractVeniceService {
 
     responseAggregator = new VeniceResponseAggregator(routerStats, metaStoreShadowReader);
     /**
-     * No need to setup {@link com.linkedin.ddsstorage.router.api.HostHealthMonitor} here since
+     * No need to setup {@link com.linkedin.alpini.router.api.HostHealthMonitor} here since
      * {@link VeniceHostFinder} will always do health check.
      */
     ScatterGatherHelper scatterGather = ScatterGatherHelper.builder()
@@ -729,7 +729,7 @@ public class RouterServer extends AbstractVeniceService {
      * For example, "executor" initialized in {@link #startInner()} could be shutdown earlier than
      * {@link #router} and {@link #secureRouter}, then the shutdown of {@link #router} and {@link #secureRouter}
      * would be blocked because of the following exception:
-     * 2018/08/21 17:55:40.855 ERROR [rejectedExecution] [shutdown-com.linkedin.ddsstorage.router.impl.netty4.Router4Impl$$Lambda$230/594142688@5a8fd55c]
+     * 2018/08/21 17:55:40.855 ERROR [rejectedExecution] [shutdown-com.linkedin.alpini.router.impl.netty4.Router4Impl$$Lambda$230/594142688@5a8fd55c]
      * [venice-router-war] [] Failed to submit a listener notification task. Event loop shut down?
      * java.util.concurrent.RejectedExecutionException: event executor terminated
      *

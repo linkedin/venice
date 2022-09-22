@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN" packages="com.linkedin.alpini.netty4">
+  <Appenders>
+    <Console name="STDOUT" target="SYSTEM_ERR">
+      <PatternLayout pattern="%d [%p] %c{1} – %m%n"/>
+    </Console>
+    <TestLogAppender name="resourceLeakLog"/>
+  </Appenders>
+  <Loggers>
+    <Logger name="io.netty.util.ResourceLeakDetector" additivity="true" level="error">
+      <AppenderRef ref="resourceLeakLog"/>
+    </Logger>
+    <Root level="trace">
+      <AppenderRef ref="STDOUT" level="INFO"/>
+    </Root>
+  </Loggers>
+</Configuration>

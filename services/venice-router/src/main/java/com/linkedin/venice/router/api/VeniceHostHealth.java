@@ -1,6 +1,6 @@
 package com.linkedin.venice.router.api;
 
-import com.linkedin.ddsstorage.router.api.HostHealthMonitor;
+import com.linkedin.alpini.router.api.HostHealthMonitor;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.router.VeniceRouterConfig;

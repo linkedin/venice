@@ -4,11 +4,11 @@ import static com.linkedin.venice.HttpConstants.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 import static org.mockito.Mockito.*;
 
-import com.linkedin.ddsstorage.base.misc.HeaderNames;
-import com.linkedin.ddsstorage.base.misc.Metrics;
-import com.linkedin.ddsstorage.base.misc.TimeValue;
-import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
-import com.linkedin.ddsstorage.router.api.MetricNames;
+import com.linkedin.alpini.base.misc.HeaderNames;
+import com.linkedin.alpini.base.misc.Metrics;
+import com.linkedin.alpini.base.misc.TimeValue;
+import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
+import com.linkedin.alpini.router.api.MetricNames;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;

@@ -1,7 +1,7 @@
 package com.linkedin.venice.router.api;
 
-import com.linkedin.ddsstorage.base.misc.Headers;
-import com.linkedin.ddsstorage.router.api.RoleFinder;
+import com.linkedin.alpini.base.misc.Headers;
+import com.linkedin.alpini.router.api.RoleFinder;
 import javax.annotation.Nonnull;
 
 

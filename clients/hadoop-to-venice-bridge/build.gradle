@@ -4,7 +4,7 @@ plugins {
 
 dependencies {
   implementation (project(':internal:venice-common')) {
-    exclude group: 'com.linkedin.dds-storage-core'
+    exclude module: ':internal:alpini'
   }
 
   implementation (libraries.avro) {
