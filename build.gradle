@@ -11,7 +11,12 @@ plugins {
   id 'org.gradle.test-retry' version '1.4.0' apply false
 }
 
-// TODO: remove this before open-sourcing
+/*
+ * This snippet allows the Gradle environment to be overridden with custom
+ * settings. This is useful in environments (such as a private company) where a
+ * third party wishes to use custom repositories, or inject certain
+ * functionality into the default Gradle build lifecycle.
+ */
 if (project.hasProperty('overrideBuildEnvironment')) {
   apply from: file(project.overrideBuildEnvironment)
   product {
