@@ -106,13 +106,15 @@ public abstract class NativeMetadataRepository
     // DaVinciClientMetaStoreBasedRepository > ThinClientMetadataStoreBasedRepository.
     if (backendConfig.getBoolean(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, false)) {
       LOGGER.info(
-          "Initializing " + NativeMetadataRepository.class.getSimpleName() + " with "
-              + DaVinciClientMetaStoreBasedRepository.class.getSimpleName());
+          "Initializing {} with {}",
+          NativeMetadataRepository.class.getSimpleName(),
+          DaVinciClientMetaStoreBasedRepository.class.getSimpleName());
       return new DaVinciClientMetaStoreBasedRepository(clientConfig, backendConfig);
     } else {
       LOGGER.info(
-          "Initializing " + NativeMetadataRepository.class.getSimpleName() + " with "
-              + ThinClientMetaStoreBasedRepository.class.getSimpleName());
+          "Initializing {} with {}",
+          NativeMetadataRepository.class.getSimpleName(),
+          ThinClientMetaStoreBasedRepository.class.getSimpleName());
       return new ThinClientMetaStoreBasedRepository(clientConfig, backendConfig, icProvider);
     }
   }
@@ -356,17 +358,17 @@ public abstract class NativeMetadataRepository
    */
   @Override
   public void refresh() {
-    LOGGER.debug("Refresh started for " + getClass().getSimpleName());
+    LOGGER.debug("Refresh started for {}", getClass().getSimpleName());
     for (String storeName: subscribedStoreMap.keySet()) {
       try {
         refreshOneStore(storeName);
       } catch (Exception e) {
         // Catch all exceptions here so the scheduled periodic refresh doesn't break and transient errors can be
         // retried.
-        LOGGER.warn("Caught an exception when trying to refresh " + getClass().getSimpleName(), e);
+        LOGGER.warn("Caught an exception when trying to refresh {}", getClass().getSimpleName(), e);
       }
     }
-    LOGGER.debug("Refresh finished for " + getClass().getSimpleName());
+    LOGGER.debug("Refresh finished for {}", getClass().getSimpleName());
   }
 
   /**
@@ -516,7 +518,7 @@ public abstract class NativeMetadataRepository
       try {
         listener.handleStoreCreated(store);
       } catch (Throwable e) {
-        LOGGER.error("Could not handle store creation event for store: " + store.getName(), e);
+        LOGGER.error("Could not handle store creation event for store: {}", store.getName(), e);
       }
     }
   }
@@ -526,7 +528,7 @@ public abstract class NativeMetadataRepository
       try {
         listener.handleStoreDeleted(store);
       } catch (Throwable e) {
-        LOGGER.error("Could not handle store deletion event for store: " + store.getName(), e);
+        LOGGER.error("Could not handle store deletion event for store: {}", store.getName(), e);
       }
     }
   }
@@ -536,7 +538,7 @@ public abstract class NativeMetadataRepository
       try {
         listener.handleStoreChanged(store);
       } catch (Throwable e) {
-        LOGGER.error("Could not handle store updating event for store: " + store.getName(), e);
+        LOGGER.error("Could not handle store updating event for store: {}", store.getName(), e);
       }
     }
   }
