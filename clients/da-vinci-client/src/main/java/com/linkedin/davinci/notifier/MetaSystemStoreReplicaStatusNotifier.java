@@ -42,10 +42,10 @@ public class MetaSystemStoreReplicaStatusNotifier implements VeniceNotifier {
     Store store = storeRepository.getStoreOrThrow(storeName);
     if (!store.isStoreMetaSystemStoreEnabled()) {
       // Meta system store is not enabled yet.
-      LOGGER.info("Meta system store for topic: " + kafkaTopic + " is not enabled yet");
+      LOGGER.info("Meta system store for topic: {} is not enabled yet", kafkaTopic);
       return;
     }
-    LOGGER.info("Report replica status: " + status + " for topic: " + kafkaTopic + ", partition: " + partitionId);
+    LOGGER.info("Report replica status: {} for topic: {}, partition: {}", status, kafkaTopic, partitionId);
     int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
     if (status.equals(ExecutionStatus.DROPPED)) {
       try {
@@ -56,8 +56,10 @@ public class MetaSystemStoreReplicaStatusNotifier implements VeniceNotifier {
          * Since store deletion is a infrequent event, no need to optimize it.
          */
         LOGGER.error(
-            "Encountered exception while trying to report `Dropped` status for store: " + storeName + ", partition: "
-                + partitionId + " in cluster: " + clusterName,
+            "Encountered exception while trying to report `Dropped` status for store: {}, partition: {} in cluster: {}",
+            storeName,
+            partitionId,
+            clusterName,
             e);
       }
     } else {

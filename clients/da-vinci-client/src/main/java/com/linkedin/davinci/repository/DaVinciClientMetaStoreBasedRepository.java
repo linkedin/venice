@@ -71,8 +71,7 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
         String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(store.getName());
         SystemStore existingMetaSystemStore = metaStoreMap.get(metaSystemStoreName);
         if (existingMetaSystemStore == null) {
-          LOGGER.warn(
-              "Meta system store: " + metaSystemStoreName + " is missing unexpectedly from internal metaStoreMap");
+          LOGGER.warn("Meta system store: {} is missing unexpectedly from internal metaStoreMap", metaSystemStoreName);
           return;
         }
         // Even if there's a rewind and we accidentally go back to a previous version it should be temporary.
@@ -288,10 +287,9 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
         throw new VeniceException("Failed to construct DaVinci client for the meta store of store: " + storeName, e);
       }
       LOGGER.info(
-          String.format(
-              "DaVinci client for the meta store of store: %s constructed, took: %s ms",
-              storeName,
-              System.currentTimeMillis() - metaStoreDVCStartTime));
+          "DaVinci client for the meta store of store: {} constructed, took: {} ms",
+          storeName,
+          System.currentTimeMillis() - metaStoreDVCStartTime);
       return client;
     });
   }
