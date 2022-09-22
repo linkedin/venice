@@ -1,6 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;

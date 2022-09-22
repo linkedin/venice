@@ -1,7 +1,10 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static org.testng.Assert.*;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.common.VeniceSystemStoreType;

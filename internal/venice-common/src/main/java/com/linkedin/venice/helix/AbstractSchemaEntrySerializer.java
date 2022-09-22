@@ -1,6 +1,6 @@
 package com.linkedin.venice.helix;
 
-import static com.linkedin.venice.helix.HelixSchemaAccessor.*;
+import static com.linkedin.venice.helix.HelixSchemaAccessor.MULTIPART_SCHEMA_VERSION_DELIMITER;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.VeniceSerializer;

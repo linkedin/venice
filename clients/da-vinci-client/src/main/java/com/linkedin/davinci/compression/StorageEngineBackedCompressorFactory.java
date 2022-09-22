@@ -1,6 +1,6 @@
 package com.linkedin.davinci.compression;
 
-import static com.linkedin.venice.compression.CompressionStrategy.*;
+import static com.linkedin.venice.compression.CompressionStrategy.ZSTD_WITH_DICT;
 
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.compression.CompressionStrategy;

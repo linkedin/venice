@@ -1,6 +1,7 @@
 package com.linkedin.venice.utils;
 
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.fail;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.nio.file.Files;

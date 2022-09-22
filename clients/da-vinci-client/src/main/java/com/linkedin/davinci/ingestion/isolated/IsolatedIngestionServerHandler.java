@@ -1,6 +1,11 @@
 package com.linkedin.davinci.ingestion.isolated;
 
-import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.buildHttpResponse;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.createIngestionTaskReport;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.deserializeIngestionActionRequest;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.getDummyContent;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.readHttpRequestContent;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.serializeIngestionActionResponse;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;

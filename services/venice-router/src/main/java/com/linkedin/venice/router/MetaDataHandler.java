@@ -1,11 +1,24 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.*;
-import static com.linkedin.venice.router.api.VenicePathParser.*;
-import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
-import static com.linkedin.venice.utils.NettyUtils.*;
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
+import static com.linkedin.venice.VeniceConstants.TYPE_PUSH_STATUS;
+import static com.linkedin.venice.VeniceConstants.TYPE_STORE_STATE;
+import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_HYBRID_STORE_QUOTA;
+import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA;
+import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_CLUSTER_DISCOVERY;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_KEY_SCHEMA;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_LEADER_CONTROLLER;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_LEADER_CONTROLLER_LEGACY;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_RESOURCE_STATE;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_UPDATE_SCHEMA;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_VALUE_SCHEMA;
+import static com.linkedin.venice.router.api.VenicePathParserHelper.parseRequest;
+import static com.linkedin.venice.utils.NettyUtils.setupResponseAndFlush;
+import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
+import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
+import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
+import static io.netty.handler.codec.http.HttpResponseStatus.OK;
+import static io.netty.handler.codec.http.HttpResponseStatus.UNAUTHORIZED;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;

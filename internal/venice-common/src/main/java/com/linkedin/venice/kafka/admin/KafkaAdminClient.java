@@ -1,7 +1,7 @@
 package com.linkedin.venice.kafka.admin;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.utils.Time.*;
+import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC;
+import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;

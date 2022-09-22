@@ -15,8 +15,10 @@
  */
 package io.netty.handler.codec.http;
 
-import static io.netty.buffer.Unpooled.*;
-import static io.netty.handler.codec.http.HttpConstants.*;
+import static io.netty.buffer.Unpooled.directBuffer;
+import static io.netty.buffer.Unpooled.unreleasableBuffer;
+import static io.netty.handler.codec.http.HttpConstants.CR;
+import static io.netty.handler.codec.http.HttpConstants.LF;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;

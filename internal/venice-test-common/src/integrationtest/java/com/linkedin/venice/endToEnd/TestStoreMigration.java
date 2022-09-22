@@ -1,9 +1,23 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.system.store.MetaStoreWriter.*;
-import static com.linkedin.venice.utils.TestPushUtils.*;
-import static org.testng.Assert.*;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
+import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_CLUSTER_NAME;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
+import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.getSamzaProducer;
+import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestPushUtils.sendStreamingRecord;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;

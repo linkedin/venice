@@ -1,6 +1,9 @@
 package com.linkedin.venice.controllerapi.routes;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 

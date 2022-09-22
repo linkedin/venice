@@ -15,7 +15,7 @@
  */
 package com.linkedin.alpini.base.safealloc;
 
-import static org.testng.AssertJUnit.*;
+import static org.testng.AssertJUnit.assertEquals;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.util.internal.PlatformDependent;

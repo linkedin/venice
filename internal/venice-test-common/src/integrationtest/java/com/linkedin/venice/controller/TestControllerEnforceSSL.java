@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;

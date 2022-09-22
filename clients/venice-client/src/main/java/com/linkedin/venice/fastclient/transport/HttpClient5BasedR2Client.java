@@ -1,6 +1,11 @@
 package com.linkedin.venice.fastclient.transport;
 
-import static com.linkedin.venice.CommonConfigKeys.*;
+import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_LOCATION;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_PASSWORD;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_TYPE;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
 
 import com.linkedin.common.callback.Callback;
 import com.linkedin.common.util.None;

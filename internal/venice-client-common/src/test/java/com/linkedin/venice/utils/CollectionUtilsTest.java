@@ -1,7 +1,9 @@
 package com.linkedin.venice.utils;
 
-import static org.apache.avro.Schema.*;
-import static org.testng.Assert.*;
+import static org.apache.avro.Schema.Type;
+import static org.apache.avro.Schema.create;
+import static org.apache.avro.Schema.createArray;
+import static org.testng.Assert.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;

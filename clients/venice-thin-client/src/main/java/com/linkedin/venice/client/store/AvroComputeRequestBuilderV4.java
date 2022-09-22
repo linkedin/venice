@@ -1,7 +1,7 @@
 package com.linkedin.venice.client.store;
 
-import static com.linkedin.venice.VeniceConstants.*;
-import static org.apache.avro.Schema.Type.*;
+import static com.linkedin.venice.VeniceConstants.COMPUTE_REQUEST_VERSION_V4;
+import static org.apache.avro.Schema.Type.RECORD;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;

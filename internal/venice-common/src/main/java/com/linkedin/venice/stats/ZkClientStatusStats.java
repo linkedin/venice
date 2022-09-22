@@ -1,6 +1,6 @@
 package com.linkedin.venice.stats;
 
-import static org.apache.zookeeper.Watcher.Event.*;
+import static org.apache.zookeeper.Watcher.Event.KeeperState;
 
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;

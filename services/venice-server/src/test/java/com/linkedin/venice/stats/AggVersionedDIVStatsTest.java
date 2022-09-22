@@ -1,7 +1,7 @@
 package com.linkedin.venice.stats;
 
 import static com.linkedin.venice.stats.StatsErrorCode.NULL_DIV_STATS;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.venice.meta.OfflinePushStrategy;

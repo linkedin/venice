@@ -1,8 +1,20 @@
 package com.linkedin.davinci.ingestion.utils;
 
-import static com.linkedin.venice.CommonConfigKeys.*;
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.*;
+import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_LOCATION;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_TYPE;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEY_PASSWORD;
+import static com.linkedin.venice.ConfigKeys.IDENTITY_PARSER_CLASS;
+import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_ACL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_PRINCIPAL_NAME;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SSL_ENABLED;
+import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.COMMAND;
+import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.HEARTBEAT;
+import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.METRIC;
+import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.REPORT;
+import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.SHUTDOWN_COMPONENT;
+import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.UPDATE_METADATA;
 
 import com.linkedin.common.callback.Callback;
 import com.linkedin.common.util.None;

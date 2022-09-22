@@ -1,7 +1,9 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.kafka.TopicManager.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;

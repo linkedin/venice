@@ -1,7 +1,8 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
-import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
+import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
+import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;

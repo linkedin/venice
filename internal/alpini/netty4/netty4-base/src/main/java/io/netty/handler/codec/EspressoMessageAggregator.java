@@ -15,8 +15,8 @@
  */
 package io.netty.handler.codec;
 
-import static io.netty.buffer.Unpooled.*;
-import static io.netty.util.internal.ObjectUtil.*;
+import static io.netty.buffer.Unpooled.EMPTY_BUFFER;
+import static io.netty.util.internal.ObjectUtil.checkPositiveOrZero;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufHolder;

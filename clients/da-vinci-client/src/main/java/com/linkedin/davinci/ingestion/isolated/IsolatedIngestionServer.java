@@ -1,7 +1,11 @@
 package com.linkedin.davinci.ingestion.isolated;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static java.lang.Thread.*;
+import static com.linkedin.venice.ConfigKeys.D2_CLIENT_ZK_HOSTS_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_STATS_CLASS_LIST;
+import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM;
+import static java.lang.Thread.currentThread;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;

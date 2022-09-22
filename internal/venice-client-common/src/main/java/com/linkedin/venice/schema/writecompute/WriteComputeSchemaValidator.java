@@ -1,7 +1,12 @@
 package com.linkedin.venice.schema.writecompute;
 
-import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.*;
-import static org.apache.avro.Schema.Type.*;
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.LIST_OPS;
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.MAP_OPS;
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.NO_OP_ON_FIELD;
+import static org.apache.avro.Schema.Type.ARRAY;
+import static org.apache.avro.Schema.Type.MAP;
+import static org.apache.avro.Schema.Type.RECORD;
+import static org.apache.avro.Schema.Type.UNION;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.List;

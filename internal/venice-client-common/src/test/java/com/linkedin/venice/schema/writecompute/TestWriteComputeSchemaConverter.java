@@ -1,7 +1,14 @@
 package com.linkedin.venice.schema.writecompute;
 
-import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.*;
-import static org.apache.avro.Schema.Type.*;
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.LIST_OPS;
+import static org.apache.avro.Schema.Type.ARRAY;
+import static org.apache.avro.Schema.Type.BOOLEAN;
+import static org.apache.avro.Schema.Type.FLOAT;
+import static org.apache.avro.Schema.Type.INT;
+import static org.apache.avro.Schema.Type.NULL;
+import static org.apache.avro.Schema.Type.RECORD;
+import static org.apache.avro.Schema.Type.STRING;
+import static org.apache.avro.Schema.Type.UNION;
 
 import java.util.Arrays;
 import org.apache.avro.Schema;

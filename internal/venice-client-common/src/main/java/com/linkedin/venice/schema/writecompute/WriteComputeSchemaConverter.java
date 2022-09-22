@@ -1,9 +1,14 @@
 package com.linkedin.venice.schema.writecompute;
 
-import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.*;
-import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.*;
-import static org.apache.avro.Schema.*;
-import static org.apache.avro.Schema.Type.*;
+import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.WRITE_COMPUTE_RECORD_SCHEMA_SUFFIX;
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.LIST_OPS;
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.MAP_OPS;
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.NO_OP_ON_FIELD;
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.PUT_NEW_FIELD;
+import static org.apache.avro.Schema.Field;
+import static org.apache.avro.Schema.Type;
+import static org.apache.avro.Schema.Type.RECORD;
+import static org.apache.avro.Schema.Type.UNION;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;

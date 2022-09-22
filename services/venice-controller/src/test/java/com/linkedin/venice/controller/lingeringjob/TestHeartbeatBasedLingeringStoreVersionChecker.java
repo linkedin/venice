@@ -1,7 +1,11 @@
 package com.linkedin.venice.controller.lingeringjob;
 
-import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.authorization.IdentityParser;

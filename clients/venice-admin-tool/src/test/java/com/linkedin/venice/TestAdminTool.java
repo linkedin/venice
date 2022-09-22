@@ -1,7 +1,6 @@
 package com.linkedin.venice;
 
-import static com.linkedin.venice.Arg.*;
-import static com.linkedin.venice.Command.*;
+import static com.linkedin.venice.Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
 
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;

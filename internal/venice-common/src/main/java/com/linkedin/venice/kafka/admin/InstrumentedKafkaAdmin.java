@@ -1,6 +1,17 @@
 package com.linkedin.venice.kafka.admin;
 
-import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.*;
+import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.CLOSE;
+import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.CONTAINS_TOPIC;
+import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.CONTAINS_TOPIC_WITH_RETRY;
+import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.CREATE_TOPIC;
+import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.DELETE_TOPIC;
+import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_ALL_TOPIC_RETENTIONS;
+import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_SOME_TOPIC_CONFIGS;
+import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_TOPIC_CONFIG;
+import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_TOPIC_CONFIG_WITH_RETRY;
+import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.IS_TOPIC_DELETION_UNDER_WAY;
+import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.LIST_ALL_TOPICS;
+import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.SET_TOPIC_CONFIG;
 
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.stats.KafkaAdminWrapperStats;

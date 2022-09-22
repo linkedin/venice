@@ -1,6 +1,7 @@
 package com.linkedin.venice.serialization.avro;
 
-import static com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer.*;
+import static com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer.MAX_ATTEMPTS_FOR_SCHEMA_READER;
+import static com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer.WAIT_TIME_BETWEEN_SCHEMA_READER_ATTEMPTS_IN_MS;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;

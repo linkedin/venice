@@ -1,6 +1,11 @@
 package com.linkedin.venice.pushmonitor;
 
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.ARCHIVED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_PUSH_RECEIVED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.PROGRESS;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.STARTED;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;

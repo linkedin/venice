@@ -1,6 +1,6 @@
 package com.linkedin.venice.throttle;
 
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.ROUTER_ENABLE_READ_THROTTLING;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;

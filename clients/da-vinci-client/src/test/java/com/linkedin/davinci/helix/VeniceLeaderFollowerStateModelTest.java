@@ -1,6 +1,9 @@
 package com.linkedin.davinci.helix;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.meta.Store;
 import java.util.concurrent.CompletableFuture;

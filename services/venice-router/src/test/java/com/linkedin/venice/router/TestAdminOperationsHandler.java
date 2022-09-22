@@ -1,8 +1,21 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.venice.router.AdminOperationsHandler.*;
-import static com.linkedin.venice.router.api.VenicePathParser.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.router.AdminOperationsHandler.EARLY_THROTTLE_ENABLED;
+import static com.linkedin.venice.router.AdminOperationsHandler.READ_THROTTLING_ENABLED;
+import static com.linkedin.venice.router.api.VenicePathParser.ACTION_DISABLE;
+import static com.linkedin.venice.router.api.VenicePathParser.ACTION_ENABLE;
+import static com.linkedin.venice.router.api.VenicePathParser.TASK_READ_QUOTA_THROTTLE;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_ADMIN;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyBoolean;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.acl.AccessController;

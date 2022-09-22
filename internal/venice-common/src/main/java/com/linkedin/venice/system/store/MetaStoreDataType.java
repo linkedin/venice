@@ -1,6 +1,10 @@
 package com.linkedin.venice.system.store;
 
-import static com.linkedin.venice.system.store.MetaStoreWriter.*;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_CLUSTER_NAME;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_PARTITION_ID;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_SCHEMA_ID;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSION_NUMBER;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;

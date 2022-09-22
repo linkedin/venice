@@ -1,9 +1,15 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.venice.router.api.VenicePathParser.*;
-import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
-import static com.linkedin.venice.utils.NettyUtils.*;
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
+import static com.linkedin.venice.router.api.VenicePathParser.ACTION_DISABLE;
+import static com.linkedin.venice.router.api.VenicePathParser.ACTION_ENABLE;
+import static com.linkedin.venice.router.api.VenicePathParser.TASK_READ_QUOTA_THROTTLE;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_ADMIN;
+import static com.linkedin.venice.router.api.VenicePathParserHelper.parseRequest;
+import static com.linkedin.venice.utils.NettyUtils.setupResponseAndFlush;
+import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
+import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
+import static io.netty.handler.codec.http.HttpResponseStatus.NOT_IMPLEMENTED;
+import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;

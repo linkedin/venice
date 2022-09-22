@@ -1,8 +1,13 @@
 package com.linkedin.venice.pushstatushelper;
 
-import static com.linkedin.venice.common.PushStatusStoreUtils.*;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.common.PushStatusStoreUtils.SERVER_INCREMENTAL_PUSH_PREFIX;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.common.PushStatusStoreUtils;
 import com.linkedin.venice.pushstatus.NoOp;

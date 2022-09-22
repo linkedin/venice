@@ -1,8 +1,21 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.MRJobCounterHelper.*;
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.hadoop.MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME;
+import static com.linkedin.venice.hadoop.MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJob.ALLOW_DUPLICATE_KEY;
+import static com.linkedin.venice.hadoop.VenicePushJob.DERIVED_SCHEMA_ID_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.ENABLE_WRITE_COMPUTE;
+import static com.linkedin.venice.hadoop.VenicePushJob.STORAGE_QUOTA_PROP;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.RecordTooLargeException;

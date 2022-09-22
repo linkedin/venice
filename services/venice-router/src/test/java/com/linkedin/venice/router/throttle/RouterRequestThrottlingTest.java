@@ -1,7 +1,9 @@
 package com.linkedin.venice.router.throttle;
 
-import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.LEAST_LOADED_ROUTING;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.alpini.base.misc.Metrics;
 import com.linkedin.alpini.router.api.HostFinder;

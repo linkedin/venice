@@ -1,8 +1,11 @@
 package com.linkedin.venice.router.api;
 
-import static com.linkedin.venice.router.api.VenicePathParser.*;
-import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
-import static com.linkedin.venice.router.utils.VeniceRouterUtils.*;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_KEY_SCHEMA;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_LEADER_CONTROLLER;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_VALUE_SCHEMA;
+import static com.linkedin.venice.router.api.VenicePathParserHelper.parseRequest;
+import static com.linkedin.venice.router.utils.VeniceRouterUtils.PATHPARSER_ATTRIBUTE_KEY;
 
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import io.netty.handler.codec.http.HttpMethod;

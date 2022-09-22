@@ -1,7 +1,9 @@
 package com.linkedin.venice.client.store;
 
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.testng.Assert.fail;
 
 import com.linkedin.venice.client.stats.ClientStats;
 import java.util.concurrent.CompletableFuture;

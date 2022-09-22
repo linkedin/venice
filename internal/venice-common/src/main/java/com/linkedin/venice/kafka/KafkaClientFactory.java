@@ -1,7 +1,7 @@
 package com.linkedin.venice.kafka;
 
-import static com.linkedin.venice.ConfigConstants.*;
-import static com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer.*;
+import static com.linkedin.venice.ConfigConstants.DEFAULT_KAFKA_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS;
+import static com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer.VENICE_SCHEMA_READER_CONFIG;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.kafka.admin.InstrumentedKafkaAdmin;

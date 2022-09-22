@@ -1,7 +1,7 @@
 package com.linkedin.davinci;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static java.lang.Thread.*;
+import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_DERIVED_SCHEMA_ID;
+import static java.lang.Thread.currentThread;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.StoreBackendConfig;

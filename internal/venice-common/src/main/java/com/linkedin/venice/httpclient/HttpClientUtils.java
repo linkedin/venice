@@ -1,6 +1,7 @@
 package com.linkedin.venice.httpclient;
 
-import static com.linkedin.venice.HttpConstants.*;
+import static com.linkedin.venice.HttpConstants.HTTP;
+import static com.linkedin.venice.HttpConstants.HTTPS;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.security.SSLFactory;

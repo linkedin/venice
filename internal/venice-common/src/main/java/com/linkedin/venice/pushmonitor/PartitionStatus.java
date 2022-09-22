@@ -1,6 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.NOT_CREATED;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.Collection;

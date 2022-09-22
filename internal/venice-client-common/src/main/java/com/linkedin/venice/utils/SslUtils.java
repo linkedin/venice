@@ -1,6 +1,16 @@
 package com.linkedin.venice.utils;
 
-import static com.linkedin.venice.CommonConfigKeys.*;
+import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYMANAGER_ALGORITHM;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_LOCATION;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_PASSWORD;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_TYPE;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEY_PASSWORD;
+import static com.linkedin.venice.CommonConfigKeys.SSL_SECURE_RANDOM_IMPLEMENTATION;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTMANAGER_ALGORITHM;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_TYPE;
 
 import com.linkedin.alpini.base.ssl.SslFactory;
 import com.linkedin.alpini.netty4.ssl.SSLEngineFactoryImpl;

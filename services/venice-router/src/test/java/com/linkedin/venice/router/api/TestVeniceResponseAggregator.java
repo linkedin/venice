@@ -1,8 +1,16 @@
 package com.linkedin.venice.router.api;
 
-import static com.linkedin.venice.HttpConstants.*;
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.HttpConstants.VENICE_COMPRESSION_STRATEGY;
+import static com.linkedin.venice.HttpConstants.VENICE_SCHEMA_ID;
+import static com.linkedin.venice.HttpConstants.VENICE_SUPPORTED_COMPRESSION_STRATEGY;
+import static io.netty.handler.codec.http.HttpResponseStatus.MOVED_PERMANENTLY;
+import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
+import static io.netty.handler.codec.http.HttpResponseStatus.OK;
+import static io.netty.handler.codec.http.HttpResponseStatus.TOO_MANY_REQUESTS;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.alpini.base.misc.HeaderNames;
 import com.linkedin.alpini.base.misc.Metrics;

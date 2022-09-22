@@ -1,7 +1,9 @@
 package com.linkedin.venice.router.streaming;
 
-import static com.linkedin.venice.router.api.VeniceResponseAggregator.*;
-import static com.linkedin.venice.streaming.StreamingConstants.*;
+import static com.linkedin.venice.router.api.VeniceResponseAggregator.COMPUTE_VALID_HEADER_MAP;
+import static com.linkedin.venice.router.api.VeniceResponseAggregator.MULTI_GET_VALID_HEADER_MAP;
+import static com.linkedin.venice.streaming.StreamingConstants.KEY_ID_FOR_STREAMING_FOOTER;
+import static com.linkedin.venice.streaming.StreamingConstants.STREAMING_FOOTER_SCHEMA_ID;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;

@@ -1,7 +1,16 @@
 package com.linkedin.venice.router.api;
 
-import static com.linkedin.venice.HttpConstants.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.HttpConstants.VENICE_COMPRESSION_STRATEGY;
+import static com.linkedin.venice.HttpConstants.VENICE_REQUEST_RCU;
+import static com.linkedin.venice.HttpConstants.VENICE_SUPPORTED_COMPRESSION_STRATEGY;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.alpini.base.concurrency.AsyncPromise;
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;

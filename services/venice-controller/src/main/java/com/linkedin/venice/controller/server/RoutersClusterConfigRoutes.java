@@ -1,7 +1,12 @@
 package com.linkedin.venice.controller.server;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXPECTED_ROUTER_COUNT;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STATUS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_MAX_CAPACITY_PROTECTION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_QUOTA_REBALANCED;
+import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_THROTTLING;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ROUTERS_CLUSTER_CONFIG;
 
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;

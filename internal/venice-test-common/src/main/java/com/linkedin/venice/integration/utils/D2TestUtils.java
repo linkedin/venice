@@ -1,6 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
-import static com.linkedin.venice.client.store.ClientConfig.*;
+import static com.linkedin.venice.client.store.ClientConfig.DEFAULT_D2_SERVICE_NAME;
 
 import com.linkedin.common.callback.Callback;
 import com.linkedin.common.util.None;

@@ -1,6 +1,33 @@
 package com.linkedin.venice.stats;
 
-import static org.rocksdb.TickerType.*;
+import static org.rocksdb.TickerType.BLOCK_CACHE_ADD;
+import static org.rocksdb.TickerType.BLOCK_CACHE_ADD_FAILURES;
+import static org.rocksdb.TickerType.BLOCK_CACHE_BYTES_READ;
+import static org.rocksdb.TickerType.BLOCK_CACHE_BYTES_WRITE;
+import static org.rocksdb.TickerType.BLOCK_CACHE_DATA_ADD;
+import static org.rocksdb.TickerType.BLOCK_CACHE_DATA_BYTES_INSERT;
+import static org.rocksdb.TickerType.BLOCK_CACHE_DATA_HIT;
+import static org.rocksdb.TickerType.BLOCK_CACHE_DATA_MISS;
+import static org.rocksdb.TickerType.BLOCK_CACHE_FILTER_ADD;
+import static org.rocksdb.TickerType.BLOCK_CACHE_FILTER_BYTES_EVICT;
+import static org.rocksdb.TickerType.BLOCK_CACHE_FILTER_BYTES_INSERT;
+import static org.rocksdb.TickerType.BLOCK_CACHE_FILTER_HIT;
+import static org.rocksdb.TickerType.BLOCK_CACHE_FILTER_MISS;
+import static org.rocksdb.TickerType.BLOCK_CACHE_HIT;
+import static org.rocksdb.TickerType.BLOCK_CACHE_INDEX_ADD;
+import static org.rocksdb.TickerType.BLOCK_CACHE_INDEX_BYTES_EVICT;
+import static org.rocksdb.TickerType.BLOCK_CACHE_INDEX_BYTES_INSERT;
+import static org.rocksdb.TickerType.BLOCK_CACHE_INDEX_HIT;
+import static org.rocksdb.TickerType.BLOCK_CACHE_INDEX_MISS;
+import static org.rocksdb.TickerType.BLOCK_CACHE_MISS;
+import static org.rocksdb.TickerType.BLOOM_FILTER_USEFUL;
+import static org.rocksdb.TickerType.GET_HIT_L0;
+import static org.rocksdb.TickerType.GET_HIT_L1;
+import static org.rocksdb.TickerType.GET_HIT_L2_AND_UP;
+import static org.rocksdb.TickerType.MEMTABLE_HIT;
+import static org.rocksdb.TickerType.MEMTABLE_MISS;
+import static org.rocksdb.TickerType.READ_AMP_ESTIMATE_USEFUL_BYTES;
+import static org.rocksdb.TickerType.READ_AMP_TOTAL_READ_BYTES;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import io.tehuti.metrics.MetricsRepository;

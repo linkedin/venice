@@ -1,6 +1,10 @@
 package com.linkedin.alpini.netty4.http2;
 
-import static org.testng.AssertJUnit.*;
+import static org.testng.AssertJUnit.assertEquals;
+import static org.testng.AssertJUnit.assertFalse;
+import static org.testng.AssertJUnit.assertNull;
+import static org.testng.AssertJUnit.assertSame;
+import static org.testng.AssertJUnit.assertTrue;
 
 import com.linkedin.alpini.base.misc.Time;
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;

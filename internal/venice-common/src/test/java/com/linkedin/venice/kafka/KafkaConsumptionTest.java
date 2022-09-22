@@ -1,8 +1,9 @@
 package com.linkedin.venice.kafka;
 
-import static com.linkedin.venice.kafka.TopicManager.*;
-import static com.linkedin.venice.utils.TestUtils.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
+import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicCompletion;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.linkedin.davinci.config.VeniceServerConfig;

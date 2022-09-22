@@ -1,8 +1,10 @@
 package com.linkedin.venice.writer;
 
-import static com.linkedin.venice.writer.ApacheKafkaProducer.*;
-import static com.linkedin.venice.writer.VeniceWriter.*;
-import static org.apache.kafka.clients.producer.ProducerConfig.*;
+import static com.linkedin.venice.writer.ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX;
+import static com.linkedin.venice.writer.VeniceWriter.CLOSE_TIMEOUT_MS;
+import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_CLOSE_TIMEOUT_MS;
+import static org.apache.kafka.clients.producer.ProducerConfig.BOOTSTRAP_SERVERS_CONFIG;
+import static org.apache.kafka.clients.producer.ProducerConfig.CLIENT_ID_CONFIG;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;

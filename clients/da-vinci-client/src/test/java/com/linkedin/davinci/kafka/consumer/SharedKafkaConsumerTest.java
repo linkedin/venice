@@ -1,6 +1,11 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;

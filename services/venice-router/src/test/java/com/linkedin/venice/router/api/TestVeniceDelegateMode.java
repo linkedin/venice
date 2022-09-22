@@ -1,7 +1,16 @@
 package com.linkedin.venice.router.api;
 
-import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.HELIX_ASSISTED_ROUTING;
+import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.LEAST_LOADED_ROUTING;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.alpini.base.misc.Metrics;

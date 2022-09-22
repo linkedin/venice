@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.PATH_FILTER;
+import static com.linkedin.venice.hadoop.VenicePushJob.PushJobSetting;
 
 import java.io.IOException;
 import org.apache.hadoop.conf.Configuration;

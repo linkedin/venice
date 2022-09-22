@@ -1,6 +1,7 @@
 package com.linkedin.venice.router.api.path;
 
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
+import static io.netty.handler.codec.http.HttpResponseStatus.BAD_GATEWAY;
+import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 
 import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.venice.exceptions.VeniceException;

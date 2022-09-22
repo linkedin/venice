@@ -1,6 +1,6 @@
 package com.linkedin.davinci.store.rocksdb;
 
-import static com.linkedin.davinci.store.AbstractStorageEngine.*;
+import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;

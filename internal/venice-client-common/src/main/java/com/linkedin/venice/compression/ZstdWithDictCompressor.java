@@ -1,6 +1,7 @@
 package com.linkedin.venice.compression;
 
-import static com.linkedin.venice.utils.ByteUtils.*;
+import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_KB;
+import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 
 import com.github.luben.zstd.ZstdCompressCtx;
 import com.github.luben.zstd.ZstdDictTrainer;

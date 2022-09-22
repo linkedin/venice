@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller.lingeringjob;
 
-import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.*;
+import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
 
 import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.common.VeniceSystemStoreType;

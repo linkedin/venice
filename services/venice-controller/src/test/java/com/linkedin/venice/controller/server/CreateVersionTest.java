@@ -1,10 +1,20 @@
 package com.linkedin.venice.controller.server;
 
-import static com.linkedin.venice.HttpConstants.*;
-import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.HttpConstants.HTTP_GET;
+import static com.linkedin.venice.VeniceConstants.CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.HOSTNAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_ID;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_TYPE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.REQUEST_TOPIC;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.acl.DynamicAccessController;

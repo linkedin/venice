@@ -1,7 +1,8 @@
 package com.linkedin.davinci.replication.merge;
 
-import static com.linkedin.venice.schema.rmd.RmdConstants.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;

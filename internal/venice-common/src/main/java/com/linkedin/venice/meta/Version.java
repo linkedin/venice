@@ -1,6 +1,6 @@
 package com.linkedin.venice.meta;
 
-import static java.lang.Character.*;
+import static java.lang.Character.isDigit;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;

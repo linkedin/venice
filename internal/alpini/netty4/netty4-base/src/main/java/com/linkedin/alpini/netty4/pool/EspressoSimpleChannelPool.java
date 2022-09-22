@@ -1,6 +1,6 @@
 package com.linkedin.alpini.netty4.pool;
 
-import static io.netty.util.internal.ObjectUtil.*;
+import static io.netty.util.internal.ObjectUtil.checkNotNull;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;

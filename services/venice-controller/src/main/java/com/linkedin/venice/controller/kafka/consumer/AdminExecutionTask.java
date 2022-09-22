@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
-import static com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask.*;
+import static com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask.IGNORED_CURRENT_VERSION;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;

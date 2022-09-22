@@ -1,8 +1,18 @@
 package com.linkedin.venice.router.api;
 
-import static com.linkedin.alpini.router.api.MetricNames.*;
-import static com.linkedin.venice.HttpConstants.*;
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
+import static com.linkedin.alpini.router.api.MetricNames.ROUTER_PARSE_URI;
+import static com.linkedin.alpini.router.api.MetricNames.ROUTER_RESPONSE_WAIT_TIME;
+import static com.linkedin.alpini.router.api.MetricNames.ROUTER_ROUTING_TIME;
+import static com.linkedin.alpini.router.api.MetricNames.ROUTER_SERVER_TIME;
+import static com.linkedin.venice.HttpConstants.VENICE_COMPRESSION_STRATEGY;
+import static com.linkedin.venice.HttpConstants.VENICE_REQUEST_RCU;
+import static io.netty.handler.codec.http.HttpResponseStatus.BAD_GATEWAY;
+import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
+import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
+import static io.netty.handler.codec.http.HttpResponseStatus.MOVED_PERMANENTLY;
+import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
+import static io.netty.handler.codec.http.HttpResponseStatus.OK;
+import static io.netty.handler.codec.http.HttpResponseStatus.TOO_MANY_REQUESTS;
 
 import com.linkedin.alpini.base.misc.HeaderNames;
 import com.linkedin.alpini.base.misc.Metrics;
@@ -222,7 +232,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     HttpResponseStatus responseStatus = finalResponse.status();
     Map<String, TimeValue> allMetrics = metrics.getMetrics();
     /**
-     * All the metrics in {@link com.linkedin.alpini.router.api.MetricNames} are supported in {@link Metrics}.
+     * All the metrics in {@link com.linkedin.ddsstorage.router.api.MetricNames} are supported in {@link Metrics}.
      * We are not exposing the following metrics inside Venice right now.
      * 1. {@link ROUTER_PARSE_URI}
      * 2. {@link ROUTER_ROUTING_TIME}

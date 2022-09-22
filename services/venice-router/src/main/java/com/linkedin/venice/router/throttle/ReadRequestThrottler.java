@@ -1,6 +1,6 @@
 package com.linkedin.venice.router.throttle;
 
-import static com.linkedin.venice.meta.Store.*;
+import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.QuotaExceededException;

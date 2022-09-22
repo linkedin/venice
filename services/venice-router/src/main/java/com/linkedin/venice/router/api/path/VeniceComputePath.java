@@ -1,9 +1,9 @@
 package com.linkedin.venice.router.api.path;
 
-import static com.linkedin.venice.HttpConstants.*;
-import static com.linkedin.venice.compute.ComputeRequestWrapper.*;
-import static com.linkedin.venice.router.api.VenicePathParser.*;
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
+import static com.linkedin.venice.HttpConstants.VENICE_COMPUTE_VALUE_SCHEMA_ID;
+import static com.linkedin.venice.compute.ComputeRequestWrapper.LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_COMPUTE;
+import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.alpini.router.api.RouterException;

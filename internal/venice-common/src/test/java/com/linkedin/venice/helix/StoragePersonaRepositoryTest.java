@@ -1,6 +1,10 @@
 package com.linkedin.venice.helix;
 
-import static com.linkedin.venice.utils.TestStoragePersonaUtils.*;
+import static com.linkedin.venice.utils.TestStoragePersonaUtils.OWNERS_DOES_NOT_EXIST_REGEX;
+import static com.linkedin.venice.utils.TestStoragePersonaUtils.PERSONA_DOES_NOT_EXIST_REGEX;
+import static com.linkedin.venice.utils.TestStoragePersonaUtils.QUOTA_FAILED_REGEX;
+import static com.linkedin.venice.utils.TestStoragePersonaUtils.STORES_FAILED_REGEX;
+import static com.linkedin.venice.utils.TestStoragePersonaUtils.createDefaultPersona;
 
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;

@@ -1,6 +1,6 @@
 package com.linkedin.venice.schema;
 
-import static com.linkedin.venice.serializer.SerializerDeserializerFactory.*;
+import static com.linkedin.venice.serializer.SerializerDeserializerFactory.getAvroGenericSerializer;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;

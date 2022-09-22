@@ -1,6 +1,7 @@
 package com.linkedin.venice.consumer;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.guid.GuidUtils;

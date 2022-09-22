@@ -1,6 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.davinci.kafka.consumer.StoreIngestionTask.*;
+import static com.linkedin.davinci.kafka.consumer.StoreIngestionTask.REDUNDANT_LOGGING_FILTER;
 
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;

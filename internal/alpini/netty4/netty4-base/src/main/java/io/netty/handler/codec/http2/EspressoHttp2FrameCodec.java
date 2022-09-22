@@ -1,6 +1,6 @@
 package io.netty.handler.codec.http2;
 
-import static io.netty.handler.codec.http2.Http2CodecUtil.*;
+import static io.netty.handler.codec.http2.Http2CodecUtil.DEFAULT_PRIORITY_WEIGHT;
 
 import com.linkedin.alpini.base.misc.ClassUtil;
 import io.netty.buffer.ByteBuf;

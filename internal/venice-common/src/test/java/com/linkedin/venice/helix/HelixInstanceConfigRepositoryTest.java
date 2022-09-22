@@ -1,6 +1,6 @@
 package com.linkedin.venice.helix;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
 
 import java.util.ArrayList;
 import java.util.List;

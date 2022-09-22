@@ -1,7 +1,16 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.STORAGE_ENGINE_OVERHEAD_RATIO;
+import static com.linkedin.venice.hadoop.VenicePushJob.STORAGE_QUOTA_PROP;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;

@@ -1,7 +1,7 @@
 package com.linkedin.venice.router.api.path;
 
-import static com.linkedin.venice.router.api.VenicePathParser.*;
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
+import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.alpini.router.api.RouterException;

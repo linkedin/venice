@@ -1,6 +1,6 @@
 package com.linkedin.venice.offsets;
 
-import static com.linkedin.venice.writer.VeniceWriter.*;
+import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_UPSTREAM_OFFSET;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;

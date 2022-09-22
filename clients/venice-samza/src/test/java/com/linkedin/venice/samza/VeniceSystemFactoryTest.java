@@ -1,7 +1,10 @@
 package com.linkedin.venice.samza;
 
-import static com.linkedin.venice.utils.TestPushUtils.*;
-import static org.testng.Assert.*;
+import static com.linkedin.venice.utils.TestPushUtils.getSamzaProducerConfig;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertThrows;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;

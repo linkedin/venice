@@ -1,7 +1,15 @@
 package com.linkedin.alpini.netty4.pool;
 
-import static com.linkedin.alpini.netty4.pool.Http2AwareChannelPool.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.alpini.netty4.pool.Http2AwareChannelPool.HTTP2_CONNECTION;
+import static com.linkedin.alpini.netty4.pool.Http2AwareChannelPool.HTTP2_STREAM_CHANNEL_AVAILABLE_FOR_REUSE;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.when;
 
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;

@@ -1,8 +1,8 @@
 package com.linkedin.venice.controller.server;
 
-import static com.linkedin.venice.HttpConstants.*;
-import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.HttpConstants.HTTP_GET;
+import static com.linkedin.venice.VeniceConstants.CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;

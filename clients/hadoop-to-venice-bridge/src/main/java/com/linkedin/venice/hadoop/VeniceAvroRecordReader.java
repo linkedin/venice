@@ -1,6 +1,12 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJob.ETL_VALUE_SCHEMA_TRANSFORMATION;
+import static com.linkedin.venice.hadoop.VenicePushJob.EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJob.KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.SCHEMA_STRING_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.TOPIC_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.etl.ETLUtils;

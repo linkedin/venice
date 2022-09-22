@@ -1,6 +1,7 @@
 package com.linkedin.venice.writer;
 
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.INSTANCE_ID;
+import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.annotation.Threadsafe;

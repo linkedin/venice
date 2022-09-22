@@ -1,6 +1,6 @@
 package com.linkedin.venice.router;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;

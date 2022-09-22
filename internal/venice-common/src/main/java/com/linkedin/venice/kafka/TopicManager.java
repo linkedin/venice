@@ -1,6 +1,6 @@
 package com.linkedin.venice.kafka;
 
-import static com.linkedin.venice.ConfigConstants.*;
+import static com.linkedin.venice.ConfigConstants.DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;

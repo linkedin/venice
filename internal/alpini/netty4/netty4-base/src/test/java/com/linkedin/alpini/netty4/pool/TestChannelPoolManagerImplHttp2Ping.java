@@ -1,6 +1,9 @@
 package com.linkedin.alpini.netty4.pool;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.withSettings;
 
 import com.linkedin.alpini.base.monitoring.CallTrackerImpl;
 import com.linkedin.alpini.base.monitoring.NullCallTracker;

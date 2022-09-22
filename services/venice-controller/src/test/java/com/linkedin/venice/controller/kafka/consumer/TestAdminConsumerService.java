@@ -1,7 +1,14 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_SOURCE_REGION;
+import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_ALLOWLIST;
+import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
+import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_ZK_PREFIX;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
+import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_WHITELIST;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;

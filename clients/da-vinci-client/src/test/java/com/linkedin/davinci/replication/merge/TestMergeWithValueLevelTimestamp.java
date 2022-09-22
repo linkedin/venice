@@ -1,6 +1,7 @@
 package com.linkedin.davinci.replication.merge;
 
-import static com.linkedin.venice.schema.rmd.RmdConstants.*;
+import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
+import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 
 import com.linkedin.avro.fastserde.coldstart.ColdPrimitiveLongList;
 import com.linkedin.avro.fastserde.primitive.PrimitiveLongArrayList;

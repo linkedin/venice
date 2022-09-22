@@ -1,7 +1,10 @@
 package com.linkedin.venice.router.api;
 
-import static com.linkedin.venice.read.RequestType.*;
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
+import static com.linkedin.venice.read.RequestType.COMPUTE_STREAMING;
+import static com.linkedin.venice.read.RequestType.MULTI_GET_STREAMING;
+import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
+import static io.netty.handler.codec.http.HttpResponseStatus.SERVICE_UNAVAILABLE;
+import static io.netty.handler.codec.http.HttpResponseStatus.TOO_MANY_REQUESTS;
 
 import com.linkedin.alpini.base.misc.Metrics;
 import com.linkedin.alpini.router.api.HostFinder;

@@ -1,6 +1,6 @@
 package com.linkedin.venice.helix;
 
-import static com.linkedin.venice.helix.ResourceAssignment.*;
+import static com.linkedin.venice.helix.ResourceAssignment.ResourceAssignmentChanges;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;

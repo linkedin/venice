@@ -1,6 +1,9 @@
 package com.linkedin.venice.pushmonitor;
 
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.NOT_CREATED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;

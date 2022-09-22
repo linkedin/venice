@@ -1,7 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
-import static com.linkedin.venice.utils.RedundantExceptionFilter.*;
+import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
+import static com.linkedin.venice.utils.RedundantExceptionFilter.getRedundantExceptionFilter;
 
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.utils.StoragePartitionDiskUsage;

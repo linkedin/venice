@@ -1,8 +1,17 @@
 package com.linkedin.venice.router.api;
 
-import static com.linkedin.venice.router.api.TestRouterHeartbeat.*;
-import static org.apache.commons.httpclient.HttpStatus.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.router.api.TestRouterHeartbeat.mockVeniceRouterConfig;
+import static org.apache.commons.httpclient.HttpStatus.SC_BAD_REQUEST;
+import static org.apache.commons.httpclient.HttpStatus.SC_OK;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.alpini.router.api.HostHealthMonitor;
 import com.linkedin.venice.integration.utils.MockHttpServerWrapper;

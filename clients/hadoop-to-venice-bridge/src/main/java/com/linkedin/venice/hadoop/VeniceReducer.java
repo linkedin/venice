@@ -1,6 +1,14 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.ALLOW_DUPLICATE_KEY;
+import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_IS_DUPLICATED_KEY_ALLOWED;
+import static com.linkedin.venice.hadoop.VenicePushJob.DERIVED_SCHEMA_ID_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.ENABLE_WRITE_COMPUTE;
+import static com.linkedin.venice.hadoop.VenicePushJob.STORAGE_QUOTA_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.TELEMETRY_MESSAGE_INTERVAL;
+import static com.linkedin.venice.hadoop.VenicePushJob.TOPIC_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_SCHEMA_ID_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.VSON_PUSH;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;

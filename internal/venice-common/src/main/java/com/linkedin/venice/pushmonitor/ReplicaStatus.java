@@ -1,6 +1,11 @@
 package com.linkedin.venice.pushmonitor;
 
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_PUSH_RECEIVED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.PROGRESS;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.STARTED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.TOPIC_SWITCH_RECEIVED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.isIncrementalPushStatus;
 
 import java.time.LocalDateTime;
 import java.util.Iterator;

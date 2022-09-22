@@ -1,7 +1,7 @@
 package com.linkedin.davinci.ingestion.main;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static java.lang.Thread.*;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS;
+import static java.lang.Thread.currentThread;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;

@@ -1,8 +1,9 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.router.httpclient.StorageNodeClientType.*;
-import static org.testng.Assert.*;
+import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
+import static com.linkedin.venice.router.httpclient.StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.transport.http.common.HttpProtocolVersion;

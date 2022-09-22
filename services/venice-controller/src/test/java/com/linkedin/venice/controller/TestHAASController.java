@@ -1,8 +1,15 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.utils.TestUtils.*;
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
+import static com.linkedin.venice.utils.TestUtils.assertCommand;
+import static com.linkedin.venice.utils.TestUtils.shutdownExecutor;
+import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
+import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicCompletion;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;

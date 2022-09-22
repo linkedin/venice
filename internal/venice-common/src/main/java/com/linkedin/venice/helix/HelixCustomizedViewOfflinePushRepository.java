@@ -1,7 +1,7 @@
 package com.linkedin.venice.helix;
 
-import static com.linkedin.venice.helix.ResourceAssignment.*;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
+import static com.linkedin.venice.helix.ResourceAssignment.ResourceAssignmentChanges;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;

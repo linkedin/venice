@@ -1,6 +1,6 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.utils.ByteUtils.*;
+import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 
 import com.github.luben.zstd.ZstdDictTrainer;
 import com.linkedin.venice.compression.CompressionStrategy;

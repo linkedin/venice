@@ -1,9 +1,23 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.controller.VeniceHelixAdmin.*;
-import static com.linkedin.venice.meta.BufferReplayPolicy.*;
-import static com.linkedin.venice.meta.HybridStoreConfigImpl.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
+import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyBoolean;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;

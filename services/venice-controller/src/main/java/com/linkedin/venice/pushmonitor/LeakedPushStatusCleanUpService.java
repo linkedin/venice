@@ -1,6 +1,8 @@
 package com.linkedin.venice.pushmonitor;
 
-import static com.linkedin.venice.pushmonitor.PushStatusCleanUpServiceState.*;
+import static com.linkedin.venice.pushmonitor.PushStatusCleanUpServiceState.FAILED;
+import static com.linkedin.venice.pushmonitor.PushStatusCleanUpServiceState.RUNNING;
+import static com.linkedin.venice.pushmonitor.PushStatusCleanUpServiceState.STOPPED;
 
 import com.linkedin.venice.controller.HelixVeniceClusterResources;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;

@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.common.VeniceSystemStoreType.*;
+import static com.linkedin.venice.common.VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE;
+import static com.linkedin.venice.common.VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE;
 
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.authorization.Resource;

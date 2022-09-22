@@ -1,7 +1,18 @@
 package com.linkedin.venice;
 
-import static com.linkedin.venice.CommonConfigKeys.*;
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYMANAGER_ALGORITHM;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_LOCATION;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_PASSWORD;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_TYPE;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEY_PASSWORD;
+import static com.linkedin.venice.CommonConfigKeys.SSL_NEEDS_CLIENT_CERT;
+import static com.linkedin.venice.CommonConfigKeys.SSL_SECURE_RANDOM_IMPLEMENTATION;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTMANAGER_ALGORITHM;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_TYPE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;

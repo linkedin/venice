@@ -1,9 +1,12 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.kafka.TopicManager.*;
-import static com.linkedin.venice.meta.Version.*;
-import static com.linkedin.venice.utils.TestPushUtils.*;
-import static org.testng.Assert.*;
+import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
+import static com.linkedin.venice.meta.Version.composeRealTimeTopic;
+import static com.linkedin.venice.utils.TestPushUtils.getSamzaProducer;
+import static com.linkedin.venice.utils.TestPushUtils.makeStoreHybrid;
+import static com.linkedin.venice.utils.TestPushUtils.sendStreamingRecord;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.fail;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;

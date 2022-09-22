@@ -1,7 +1,13 @@
 package com.linkedin.venice.controller.server;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_RETENTION_IN_MS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
+import static com.linkedin.venice.controllerapi.ControllerRoute.LEADER_CONTROLLER;
+import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_CHILD_CLUSTERS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_LOG_COMPACTION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_RETENTION;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;

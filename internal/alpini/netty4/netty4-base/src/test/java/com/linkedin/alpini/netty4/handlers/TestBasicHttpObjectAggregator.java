@@ -15,8 +15,14 @@
  */
 package com.linkedin.alpini.netty4.handlers;
 
-import static io.netty.util.AsciiString.*;
-import static org.testng.Assert.*;
+import static io.netty.util.AsciiString.of;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.alpini.netty4.misc.BasicHttpRequestDecoder;

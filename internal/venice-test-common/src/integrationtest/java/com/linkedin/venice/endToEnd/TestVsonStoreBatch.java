@@ -1,8 +1,22 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.utils.TestPushUtils.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.hadoop.VenicePushJob.KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
+import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_URL_PROP;
 import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestPushUtils.writeComplexVsonFile;
+import static com.linkedin.venice.utils.TestPushUtils.writeMultiLevelVsonFile;
+import static com.linkedin.venice.utils.TestPushUtils.writeMultiLevelVsonFile2;
+import static com.linkedin.venice.utils.TestPushUtils.writeSimpleVsonFile;
+import static com.linkedin.venice.utils.TestPushUtils.writeSimpleVsonFileWithUserSchema;
+import static com.linkedin.venice.utils.TestPushUtils.writeVsonByteAndShort;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;

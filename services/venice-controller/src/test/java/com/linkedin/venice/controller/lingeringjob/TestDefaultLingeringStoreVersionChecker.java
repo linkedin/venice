@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.lingeringjob;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.meta.Store;

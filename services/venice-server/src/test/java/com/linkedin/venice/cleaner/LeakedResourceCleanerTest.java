@@ -1,6 +1,11 @@
 package com.linkedin.venice.cleaner;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.verify;
 
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.storage.StorageEngineRepository;

@@ -1,7 +1,8 @@
 package com.linkedin.venice.router.api;
 
-import static com.linkedin.venice.HttpConstants.*;
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
+import static com.linkedin.venice.HttpConstants.VENICE_SUPPORTED_COMPRESSION_STRATEGY;
+import static io.netty.handler.codec.http.HttpResponseStatus.BAD_GATEWAY;
+import static io.netty.handler.codec.http.HttpResponseStatus.SERVICE_UNAVAILABLE;
 
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.venice.compression.CompressionStrategy;

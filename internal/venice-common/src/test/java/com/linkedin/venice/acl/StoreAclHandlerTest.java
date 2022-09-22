@@ -1,6 +1,13 @@
 package com.linkedin.venice.acl;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.argThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.acl.handler.StoreAclHandler;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;

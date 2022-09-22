@@ -19,10 +19,9 @@ ssh -nNT -L 2299:${VENICE_ZK_URL}:${VENICE_ZK_PORT} ${HOSTNAME}
 '''
 
 import click
-import json
+import logging
 from kazoo.client import KazooClient
 from kazoo.exceptions import NoNodeError
-import logging
 
 # a list of Venice clusters
 common_zk_path = ['AdminTopicOffsetRecord', 'CONFIGS', 'CONTROLLER', 'EXTERNALVIEW', 'IDEALSTATES', 'INSTANCES',

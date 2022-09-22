@@ -1,13 +1,28 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
-import static com.linkedin.venice.CommonConfigKeys.*;
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.*;
-import static com.linkedin.venice.samza.VeniceSystemFactory.*;
-import static com.linkedin.venice.utils.TestPushUtils.*;
-import static com.linkedin.venice.utils.TestUtils.*;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
+import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
+import static com.linkedin.venice.ConfigKeys.LF_MODEL_DEPENDENCY_CHECK_DISABLED;
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
+import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
+import static com.linkedin.venice.samza.VeniceSystemFactory.D2_ZK_HOSTS_PROPERTY;
+import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
+import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
+import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
+import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestPushUtils.sendStreamingDeleteRecord;
+import static com.linkedin.venice.utils.TestPushUtils.sendStreamingRecord;
+import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
+import static com.linkedin.venice.utils.TestUtils.generateInput;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;

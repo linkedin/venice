@@ -1,6 +1,15 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.venice.pushmonitor.SubPartitionStatus.*;
+import static com.linkedin.venice.pushmonitor.SubPartitionStatus.CATCH_UP_BASE_TOPIC_OFFSET_LAG;
+import static com.linkedin.venice.pushmonitor.SubPartitionStatus.COMPLETED;
+import static com.linkedin.venice.pushmonitor.SubPartitionStatus.DATA_RECOVERY_COMPLETED;
+import static com.linkedin.venice.pushmonitor.SubPartitionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED;
+import static com.linkedin.venice.pushmonitor.SubPartitionStatus.END_OF_PUSH_RECEIVED;
+import static com.linkedin.venice.pushmonitor.SubPartitionStatus.PROGRESS;
+import static com.linkedin.venice.pushmonitor.SubPartitionStatus.RESTARTED;
+import static com.linkedin.venice.pushmonitor.SubPartitionStatus.STARTED;
+import static com.linkedin.venice.pushmonitor.SubPartitionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED;
+import static com.linkedin.venice.pushmonitor.SubPartitionStatus.TOPIC_SWITCH_RECEIVED;
 
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
 import com.linkedin.venice.pushmonitor.SubPartitionStatus;

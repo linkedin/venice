@@ -1,6 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertFalse;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.Admin;

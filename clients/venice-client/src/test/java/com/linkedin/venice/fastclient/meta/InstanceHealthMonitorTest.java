@@ -1,7 +1,10 @@
 package com.linkedin.venice.fastclient.meta;
 
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.restli.common.HttpStatus;
 import com.linkedin.venice.fastclient.ClientConfig;

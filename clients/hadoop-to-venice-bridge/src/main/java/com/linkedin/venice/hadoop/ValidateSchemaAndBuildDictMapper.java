@@ -1,6 +1,15 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_METRIC_COLLECTION_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_STRATEGY;
+import static com.linkedin.venice.hadoop.VenicePushJob.ETL_VALUE_SCHEMA_TRANSFORMATION;
+import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
+import static com.linkedin.venice.hadoop.VenicePushJob.INPUT_PATH_LAST_MODIFIED_TIME;
+import static com.linkedin.venice.hadoop.VenicePushJob.PATH_FILTER;
+import static com.linkedin.venice.hadoop.VenicePushJob.PushJobSetting;
+import static com.linkedin.venice.hadoop.VenicePushJob.StoreSetting;
+import static com.linkedin.venice.hadoop.VenicePushJob.USE_MAPPER_TO_BUILD_DICTIONARY;
+import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;

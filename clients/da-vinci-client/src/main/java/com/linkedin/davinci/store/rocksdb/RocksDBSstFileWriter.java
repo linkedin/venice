@@ -1,6 +1,7 @@
 package com.linkedin.davinci.store.rocksdb;
 
-import static com.linkedin.venice.store.rocksdb.RocksDBUtils.*;
+import static com.linkedin.venice.store.rocksdb.RocksDBUtils.extractTempSSTFileNo;
+import static com.linkedin.venice.store.rocksdb.RocksDBUtils.isTempSSTFile;
 
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;

@@ -1,10 +1,15 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.*;
-import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
-import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.*;
-import static com.linkedin.venice.writer.VeniceWriter.*;
-import static java.util.concurrent.TimeUnit.*;
+import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.LEADER_TO_STANDBY;
+import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.STANDBY_TO_LEADER;
+import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.IN_TRANSITION_FROM_STANDBY_TO_LEADER;
+import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
+import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER;
+import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
+import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF_PUSH;
+import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;

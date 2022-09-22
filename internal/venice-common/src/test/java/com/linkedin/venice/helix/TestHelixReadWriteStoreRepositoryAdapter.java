@@ -1,6 +1,9 @@
 package com.linkedin.venice.helix;
 
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.integration.utils.ServiceFactory;

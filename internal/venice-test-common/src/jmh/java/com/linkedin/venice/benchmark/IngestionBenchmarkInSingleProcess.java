@@ -1,6 +1,6 @@
 package com.linkedin.venice.benchmark;
 
-import static com.linkedin.venice.integration.utils.ServiceFactory.*;
+import static com.linkedin.venice.integration.utils.ServiceFactory.getGenericAvroDaVinciClient;
 
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.venice.exceptions.VeniceException;

@@ -1,6 +1,9 @@
 package com.linkedin.venice.kafka.validation;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.venice.guid.GuidUtils;

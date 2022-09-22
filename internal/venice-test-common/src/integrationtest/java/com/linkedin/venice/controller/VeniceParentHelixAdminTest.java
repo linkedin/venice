@@ -1,9 +1,22 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.controller.SchemaConstants.*;
-import static com.linkedin.venice.utils.TestUtils.*;
-import static org.testng.Assert.*;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
+import static com.linkedin.venice.ConfigKeys.REPLICATION_METADATA_VERSION_ID;
+import static com.linkedin.venice.ConfigKeys.TERMINAL_STATE_TOPIC_CHECK_DELAY_MS;
+import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
+import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V1;
+import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V2;
+import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V3;
+import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V4;
+import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V5;
+import static com.linkedin.venice.utils.TestUtils.assertCommand;
+import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
+import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicPushCompletion;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.common.VeniceSystemStoreType;

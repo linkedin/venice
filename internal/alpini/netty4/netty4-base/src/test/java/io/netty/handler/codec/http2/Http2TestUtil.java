@@ -14,11 +14,20 @@
  */
 package io.netty.handler.codec.http2;
 
-import static io.netty.handler.codec.http2.Http2CodecUtil.*;
-import static io.netty.util.ReferenceCountUtil.*;
-import static java.lang.Math.*;
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
+import static io.netty.handler.codec.http2.Http2CodecUtil.MAX_HEADER_LIST_SIZE;
+import static io.netty.handler.codec.http2.Http2CodecUtil.MAX_HEADER_TABLE_SIZE;
+import static io.netty.util.ReferenceCountUtil.release;
+import static java.lang.Math.min;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyBoolean;
+import static org.mockito.Mockito.anyByte;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.anyShort;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;

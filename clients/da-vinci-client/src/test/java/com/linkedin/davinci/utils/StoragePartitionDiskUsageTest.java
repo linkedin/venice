@@ -1,6 +1,6 @@
 package com.linkedin.davinci.utils;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import org.testng.Assert;

@@ -1,6 +1,6 @@
 package com.linkedin.venice.helix;
 
-import static com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor.*;
+import static com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor.OFFLINE_PUSH_SUB_PATH;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.ZkDataAccessException;

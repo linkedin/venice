@@ -1,6 +1,6 @@
 package com.linkedin.venice.helix;
 
-import static com.linkedin.venice.utils.TestUtils.*;
+import static com.linkedin.venice.utils.TestUtils.getRandomStore;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;

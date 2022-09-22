@@ -1,6 +1,9 @@
 package com.linkedin.venice.controllerapi;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_NAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_OWNERS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_QUOTA;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_STORES;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.persona.StoragePersona;

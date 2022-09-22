@@ -1,6 +1,6 @@
 package com.linkedin.davinci.replication.merge;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;

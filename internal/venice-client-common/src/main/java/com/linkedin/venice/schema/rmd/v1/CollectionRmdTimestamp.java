@@ -1,6 +1,7 @@
 package com.linkedin.venice.schema.rmd.v1;
 
-import static org.apache.avro.Schema.Type.*;
+import static org.apache.avro.Schema.Type.INT;
+import static org.apache.avro.Schema.Type.LONG;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import java.util.Arrays;

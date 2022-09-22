@@ -1,9 +1,14 @@
 package com.linkedin.davinci.replication.merge;
 
-import static com.linkedin.davinci.replication.merge.TestMergeConflictSchemaConstants.*;
+import static com.linkedin.davinci.replication.merge.TestMergeConflictSchemaConstants.PERSON_SCHEMA_STR_V1;
+import static com.linkedin.davinci.replication.merge.TestMergeConflictSchemaConstants.PERSON_SCHEMA_STR_V2;
+import static com.linkedin.davinci.replication.merge.TestMergeConflictSchemaConstants.PERSON_SCHEMA_STR_V3;
+import static com.linkedin.davinci.replication.merge.TestMergeConflictSchemaConstants.VALUE_RECORD_SCHEMA_STR_V1;
+import static com.linkedin.davinci.replication.merge.TestMergeConflictSchemaConstants.VALUE_RECORD_SCHEMA_STR_V2;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.serialization.avro.MapOrderingPreservingSerDeFactory;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;

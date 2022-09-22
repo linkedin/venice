@@ -1,7 +1,13 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.*;
-import static java.util.concurrent.TimeUnit.*;
+import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.RESET_OFFSET;
+import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
+import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
+import static java.util.concurrent.TimeUnit.HOURS;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.linkedin.avroutil1.compatibility.shaded.org.apache.commons.lang3.Validate;
 import com.linkedin.davinci.config.VeniceServerConfig;

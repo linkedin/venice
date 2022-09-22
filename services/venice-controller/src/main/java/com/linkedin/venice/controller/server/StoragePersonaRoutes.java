@@ -1,7 +1,14 @@
 package com.linkedin.venice.controller.server;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_NAME;
+import static com.linkedin.venice.controllerapi.ControllerRoute.CREATE_STORAGE_PERSONA;
+import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_STORAGE_PERSONA;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_CLUSTER_STORAGE_PERSONAS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORAGE_PERSONA;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORAGE_PERSONA_ASSOCIATED_WITH_STORE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORAGE_PERSONA;
 
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;

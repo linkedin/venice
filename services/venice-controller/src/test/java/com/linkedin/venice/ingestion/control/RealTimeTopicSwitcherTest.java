@@ -1,8 +1,14 @@
 package com.linkedin.venice.ingestion.control;
 
-import static com.linkedin.venice.meta.BufferReplayPolicy.*;
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
+import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_EOP;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.kafka.TopicManager;

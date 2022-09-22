@@ -1,6 +1,9 @@
 package com.linkedin.davinci.ingestion.main;
 
-import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.buildHttpResponse;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.deserializeIngestionActionRequest;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.getDummyContent;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.readHttpRequestContent;
 
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;

@@ -1,7 +1,9 @@
 package com.linkedin.davinci.storage.chunking;
 
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.storage.StorageMetadataService;

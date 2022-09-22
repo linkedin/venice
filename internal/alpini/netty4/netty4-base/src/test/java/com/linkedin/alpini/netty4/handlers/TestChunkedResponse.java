@@ -1,6 +1,6 @@
 package com.linkedin.alpini.netty4.handlers;
 
-import static io.netty.handler.codec.http.HttpMethod.*;
+import static io.netty.handler.codec.http.HttpMethod.GET;
 
 import com.linkedin.alpini.netty4.misc.BasicFullHttpResponse;
 import com.linkedin.alpini.netty4.misc.ChunkedHttpResponse;

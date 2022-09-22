@@ -1,8 +1,17 @@
 package com.linkedin.davinci.ingestion;
 
-import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.INGESTION_ISOLATION_CONFIG_PREFIX;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.buildAndSaveConfigsForForkedIngestionProcess;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.executeShellCommand;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.D2_CLIENT_ZK_HOSTS_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
+import static com.linkedin.venice.ConfigKeys.SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.VeniceConstants.SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer;

@@ -1,6 +1,8 @@
 package com.linkedin.venice.pushmonitor;
 
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.STARTED;
 
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.Instance;

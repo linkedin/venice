@@ -1,6 +1,6 @@
 package com.linkedin.venice.kafka.partitionoffset;
 
-import static com.linkedin.venice.offsets.OffsetRecord.*;
+import static com.linkedin.venice.offsets.OffsetRecord.LOWEST_OFFSET;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;

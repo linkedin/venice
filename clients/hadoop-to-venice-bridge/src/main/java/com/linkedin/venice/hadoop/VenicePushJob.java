@@ -1,12 +1,17 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.CommonConfigKeys.*;
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.*;
-import static com.linkedin.venice.utils.ByteUtils.*;
-import static org.apache.hadoop.mapreduce.MRJobConfig.*;
-import static org.apache.hadoop.security.UserGroupInformation.*;
+import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
+import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
+import static com.linkedin.venice.ConfigKeys.AMPLIFICATION_FACTOR;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
+import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
+import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
+import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_STORE_NAME_CONFIG;
+import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
+import static org.apache.hadoop.mapreduce.MRJobConfig.MAPREDUCE_JOB_CLASSLOADER;
+import static org.apache.hadoop.mapreduce.MRJobConfig.MAPREDUCE_JOB_CREDENTIALS_BINARY;
+import static org.apache.hadoop.security.UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION;
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;

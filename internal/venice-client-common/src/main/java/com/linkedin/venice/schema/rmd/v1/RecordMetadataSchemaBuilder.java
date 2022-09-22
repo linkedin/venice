@@ -1,7 +1,11 @@
 package com.linkedin.venice.schema.rmd.v1;
 
-import static com.linkedin.venice.schema.rmd.v1.RmdSchemaGeneratorV1.*;
-import static org.apache.avro.Schema.Type.*;
+import static com.linkedin.venice.schema.rmd.v1.RmdSchemaGeneratorV1.LONG_TYPE_TIMESTAMP_SCHEMA;
+import static org.apache.avro.Schema.Type.ARRAY;
+import static org.apache.avro.Schema.Type.MAP;
+import static org.apache.avro.Schema.Type.NULL;
+import static org.apache.avro.Schema.Type.RECORD;
+import static org.apache.avro.Schema.Type.STRING;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;

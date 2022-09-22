@@ -1,6 +1,8 @@
 package com.linkedin.davinci;
 
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;

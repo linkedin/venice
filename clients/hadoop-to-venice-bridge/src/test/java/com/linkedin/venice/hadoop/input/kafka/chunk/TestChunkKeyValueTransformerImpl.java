@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop.input.kafka.chunk;
 
-import static com.linkedin.venice.hadoop.input.kafka.chunk.TestChunkingUtils.*;
+import static com.linkedin.venice.hadoop.input.kafka.chunk.TestChunkingUtils.createChunkBytes;
+import static com.linkedin.venice.hadoop.input.kafka.chunk.TestChunkingUtils.createChunkedKeySuffix;
 
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.ChunkedKeySuffixSerializer;

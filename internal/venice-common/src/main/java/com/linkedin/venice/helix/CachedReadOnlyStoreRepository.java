@@ -1,6 +1,6 @@
 package com.linkedin.venice.helix;
 
-import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
+import static com.linkedin.venice.common.VeniceSystemStoreUtils.getZkStoreName;
 
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStore;

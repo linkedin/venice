@@ -1,8 +1,14 @@
 package com.linkedin.venice.kafka;
 
-import static com.linkedin.venice.kafka.TopicManager.*;
-import static com.linkedin.venice.offsets.OffsetRecord.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
+import static com.linkedin.venice.kafka.TopicManager.MAX_TOPIC_DELETE_RETRIES;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.linkedin.venice.exceptions.VeniceException;

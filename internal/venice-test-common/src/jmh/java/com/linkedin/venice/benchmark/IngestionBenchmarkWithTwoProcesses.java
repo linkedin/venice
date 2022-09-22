@@ -1,9 +1,11 @@
 package com.linkedin.venice.benchmark;
 
-import static com.linkedin.davinci.kafka.consumer.KafkaConsumerService.*;
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.integration.utils.ServiceFactory.*;
-import static org.testng.Assert.*;
+import static com.linkedin.davinci.kafka.consumer.KafkaConsumerService.ConsumerAssignmentStrategy;
+import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
+import static com.linkedin.venice.ConfigKeys.SORTED_INPUT_DRAINER_SIZE;
+import static com.linkedin.venice.ConfigKeys.UNSORTED_INPUT_DRAINER_SIZE;
+import static com.linkedin.venice.integration.utils.ServiceFactory.getGenericAvroDaVinciClientWithRetries;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;

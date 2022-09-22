@@ -1,7 +1,9 @@
 package com.linkedin.venice.multicluster;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
-import static com.linkedin.venice.utils.TestPushUtils.*;
+import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;

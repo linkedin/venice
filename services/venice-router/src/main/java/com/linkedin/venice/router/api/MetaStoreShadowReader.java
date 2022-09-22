@@ -1,7 +1,8 @@
 package com.linkedin.venice.router.api;
 
-import static io.netty.handler.codec.http.HttpHeaders.Names.*;
-import static io.netty.handler.codec.http.HttpVersion.*;
+import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_LENGTH;
+import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
+import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.common.VeniceSystemStoreType;

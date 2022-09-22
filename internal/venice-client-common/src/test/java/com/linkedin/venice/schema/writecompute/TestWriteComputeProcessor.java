@@ -1,7 +1,10 @@
 package com.linkedin.venice.schema.writecompute;
 
-import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.*;
-import static org.apache.avro.Schema.Type.*;
+import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.MAP_DIFF;
+import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.MAP_UNION;
+import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.SET_DIFF;
+import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.SET_UNION;
+import static org.apache.avro.Schema.Type.INT;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.schema.merge.CollectionTimestampMergeRecordHelper;

@@ -1,6 +1,8 @@
 package com.linkedin.venice.schema.merge;
 
-import static org.apache.avro.Schema.Type.*;
+import static org.apache.avro.Schema.Type.ARRAY;
+import static org.apache.avro.Schema.Type.MAP;
+import static org.apache.avro.Schema.Type.UNION;
 
 import com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp;
 import com.linkedin.venice.utils.IndexedHashMap;

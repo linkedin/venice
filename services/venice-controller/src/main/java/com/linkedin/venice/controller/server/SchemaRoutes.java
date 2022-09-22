@@ -1,7 +1,20 @@
 package com.linkedin.venice.controller.server;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.DERIVED_SCHEMA;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.DERIVED_SCHEMA_ID;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_ID;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
+import static com.linkedin.venice.controllerapi.ControllerRoute.ADD_DERIVED_SCHEMA;
+import static com.linkedin.venice.controllerapi.ControllerRoute.ADD_VALUE_SCHEMA;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_REPLICATION_METADATA_SCHEMAS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_VALUE_SCHEMA;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_KEY_SCHEMA;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_VALUE_OR_DERIVED_SCHEMA_ID;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_VALUE_SCHEMA;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_VALUE_SCHEMA_ID;
+import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_DERIVED_SCHEMA;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;

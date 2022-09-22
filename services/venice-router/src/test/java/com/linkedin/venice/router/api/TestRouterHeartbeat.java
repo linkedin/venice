@@ -1,7 +1,12 @@
 package com.linkedin.venice.router.api;
 
-import static org.apache.http.HttpStatus.*;
-import static org.mockito.Mockito.*;
+import static org.apache.http.HttpStatus.SC_BAD_REQUEST;
+import static org.apache.http.HttpStatus.SC_FORBIDDEN;
+import static org.apache.http.HttpStatus.SC_OK;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.integration.utils.MockHttpServerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
