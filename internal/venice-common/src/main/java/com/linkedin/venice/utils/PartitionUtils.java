@@ -20,11 +20,11 @@ import org.apache.logging.log4j.Logger;
 
 
 public class PartitionUtils {
-  private static final Logger LOGGER = LogManager.getLogger(PartitionUtils.class);
+  private static final Logger LOGGER = LogManager.getLogger();
 
   /**
    * Calculate partition count for new version. If the version is the first one of the given store,
-   * calculate the number by given store size and partition size. Otherwise use the number from the current active
+   * calculate the number by given store size and partition size. Otherwise, use the number from the current active
    * version.
    */
   public static int calculatePartitionCount(
@@ -198,23 +198,22 @@ public class PartitionUtils {
       ReadOnlyStoreRepository readOnlyStoreRepository,
       String storeName,
       int versionNumber) {
-    int amplifcationFactor = 1;
+    int amplificationFactor = 1;
     if (readOnlyStoreRepository == null) {
-      return amplifcationFactor;
+      return amplificationFactor;
     }
     try {
       Optional<Version> version = readOnlyStoreRepository.getStore(storeName).getVersion(versionNumber);
       if (version.isPresent()) {
-        amplifcationFactor = version.get().getPartitionerConfig().getAmplificationFactor();
+        amplificationFactor = version.get().getPartitionerConfig().getAmplificationFactor();
       } else {
-        LOGGER.warn("Version " + versionNumber + " does not exist.");
-        amplifcationFactor =
+        LOGGER.warn("Version {} does not exist.", versionNumber);
+        amplificationFactor =
             readOnlyStoreRepository.getStore(storeName).getPartitionerConfig().getAmplificationFactor();
       }
     } catch (Exception e) {
-      LOGGER.warn("Failed to fetch amplificationFactor from for store " + storeName + ". Using default value 1.");
-      amplifcationFactor = 1;
+      LOGGER.warn("Failed to fetch amplificationFactor from for store {}. Using default value 1.", storeName);
     }
-    return amplifcationFactor;
+    return amplificationFactor;
   }
 }

@@ -49,7 +49,7 @@ public class PushStatusStoreWriter implements AutoCloseable {
     PushStatusValue pushStatusValue = new PushStatusValue();
     pushStatusValue.reportTimestamp = System.currentTimeMillis();
     pushStatusValue.instances = Collections.emptyMap();
-    LOGGER.info("Sending heartbeat of " + instanceName);
+    LOGGER.info("Sending heartbeat of {}", instanceName);
     writer.put(
         pushStatusKey,
         pushStatusValue,
@@ -86,8 +86,12 @@ public class PushStatusStoreWriter implements AutoCloseable {
     writeComputeRecord.instances = instances;
     writeComputeRecord.reportTimestamp = new NoOp();
     LOGGER.info(
-        "Updating pushStatus of " + instanceName + " to " + status.toString() + ". storeName: " + storeName
-            + " , version: " + version + " , partition: " + partitionId);
+        "Updating pushStatus of {} to {}. Store: {}, version: {}, partition: {}",
+        instanceName,
+        status,
+        storeName,
+        version,
+        partitionId);
     writer.update(
         pushStatusKey,
         writeComputeRecord,
@@ -117,7 +121,7 @@ public class PushStatusStoreWriter implements AutoCloseable {
     writeComputeRecord.instances = incrementalPushes;
     writeComputeRecord.reportTimestamp = new NoOp();
     LOGGER.info(
-        "Adding incremental push version:{} to ongoingIncrementalPushes of store:{} from instance:{}",
+        "Adding incremental push version: {} to ongoingIncrementalPushes of store: {} from instance: {}",
         incrementalPushVersion,
         storeName,
         instanceName);
@@ -142,7 +146,7 @@ public class PushStatusStoreWriter implements AutoCloseable {
     writeComputeRecord.instances = incrementalPushes;
     writeComputeRecord.reportTimestamp = new NoOp();
     LOGGER.info(
-        "Removing incremental push version:{} from ongoingIncrementalPushes of store:{} from instance:{}",
+        "Removing incremental push version: {} from ongoingIncrementalPushes of store: {} from instance: {}",
         incrementalPushVersion,
         storeName,
         instanceName);

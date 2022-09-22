@@ -60,7 +60,7 @@ public class MetaStoreWriter implements Closeable {
   public static final String KEY_STRING_VERSION_NUMBER = "KEY_VERSION_NUMBER";
   public static final String KEY_STRING_PARTITION_ID = "KEY_PARTITION_ID";
   public static final String KEY_STRING_SCHEMA_ID = "KEY_SCHEMA_ID";
-  private static final Logger LOGGER = LogManager.getLogger(MetaStoreWriter.class);
+  private static final Logger LOGGER = LogManager.getLogger();
 
   private final Map<String, VeniceWriter> metaStoreWriterMap = new VeniceConcurrentHashMap<>();
   private final TopicManager topicManager;
@@ -323,7 +323,7 @@ public class MetaStoreWriter implements Closeable {
        */
       closeVeniceWriter(metaStoreName, writer, true);
       metaStoreWriterMap.remove(metaStoreName);
-      LOGGER.info("Removed the venice writer for meta store: " + metaStoreName);
+      LOGGER.info("Removed the venice writer for meta store: {}", metaStoreName);
     }
   }
 
@@ -417,14 +417,14 @@ public class MetaStoreWriter implements Closeable {
     /**
      * Check whether the RT topic exists or not before closing Venice Writer since closing VeniceWriter will try
      * to write a Control Message to the RT topic, and it could hang if the topic doesn't exist.
-     *
      * This check is a best-effort since the race condition is still there between topic check and closing VeniceWriter.
      */
     String rtTopic = Version.composeRealTimeTopic(metaStoreName);
     if (!topicManager.containsTopicAndAllPartitionsAreOnline(rtTopic)) {
       LOGGER.info(
-          "RT topic: " + rtTopic + " for meta system store: " + metaStoreName + " doesn't exist, so here "
-              + " will only close the internal producer without sending END_OF_SEGMENT control messages");
+          "RT topic: {} for meta system store: {} doesn't exist, will only close the internal producer without sending END_OF_SEGMENT control messages",
+          rtTopic,
+          metaStoreName);
       veniceWriter.close(false);
     } else {
       veniceWriter.close();
@@ -436,7 +436,7 @@ public class MetaStoreWriter implements Closeable {
     // Close VeniceWrites in parallel to reduce the time to shut down the server.
     try (Timer ignore = Timer.run(
         elapsedTimeInMs -> LOGGER.info(
-            "MetaStoreWriter takes {} ms to close {} VeniceWriters in parallel",
+            "MetaStoreWriter takes {}ms to close {} VeniceWriters in parallel",
             elapsedTimeInMs,
             metaStoreWriterMap.size()))) {
       metaStoreWriterMap.entrySet()

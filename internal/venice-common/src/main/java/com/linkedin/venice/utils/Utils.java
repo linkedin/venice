@@ -66,7 +66,7 @@ import org.apache.logging.log4j.Logger;
  * Helper functions
  */
 public class Utils {
-  private static final Logger LOGGER = LogManager.getLogger(Utils.class);
+  private static final Logger LOGGER = LogManager.getLogger();
 
   public static final String WILDCARD_MATCH_ANY = "*";
   public static final String NEW_LINE_CHAR = System.lineSeparator();
@@ -355,8 +355,8 @@ public class Utils {
       }
       String schemaString = IOUtils.toString(inputStream);
       Schema schema = Schema.parse(schemaString);
-      LOGGER.info("Loaded schema from resource path '" + resourcePath + "'");
-      LOGGER.debug("Schema literal:\n" + schema.toString(true));
+      LOGGER.info("Loaded schema from resource path: {}", resourcePath);
+      LOGGER.debug("Schema literal:\n{}", schema.toString(true));
       return schema;
     }
   }
@@ -811,7 +811,7 @@ public class Utils {
       if (store != null) {
         return store.getCurrentVersion() == version;
       } else {
-        LOGGER.error("Store " + storeName + " is not in store repository.");
+        LOGGER.error("Store {} is not in store repository.", storeName);
         // If a store doesn't exist, it doesn't have current version
         return false;
       }
@@ -827,7 +827,7 @@ public class Utils {
 
       Store store = metadataRepo.getStore(storeName);
       if (store == null) {
-        LOGGER.warn("Store " + storeName + " is not in store repository.");
+        LOGGER.warn("Store {} is not in store repository.", storeName);
         // If a store doesn't exist, it is not a future version
         return false;
       }
