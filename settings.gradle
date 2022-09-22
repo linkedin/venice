@@ -1,16 +1,11 @@
 pluginManagement {
   repositories {
-    // TODO: remove this before open-sourcing
-    ivy {
-      url 'http://artifactory.corp.linkedin.com:8081/artifactory/release/'
-      allowInsecureProtocol = true
-      patternLayout {
-        ivy '[organisation]/[module]/[revision]/[module]-[revision].ivy'
-        artifact '[organisation]/[module]/[revision]/[artifact]-[revision](-[classifier]).[ext]'
-        m2compatible = true
-      }
-      metadataSources.ignoreGradleMetadataRedirection = true
+    mavenLocal()
+    mavenCentral()
+    maven {
+      url  "https://linkedin.jfrog.io/artifactory/open-source"
     }
+    gradlePluginPortal()
   }
 }
 
@@ -20,10 +15,18 @@ plugins {
 
 gradleEnterprise {
   server = System.getProperty('buildScanServer', 'Set systemProp.buildScanServer in ~/.gradle/gradle.properties')
+  def stdout = new ByteArrayOutputStream()
+
+  exec {
+    commandLine = ['git', 'diff', '--name-status', 'origin/master']
+    standardOutput = stdout
+  }
+
+  def status = "$stdout";
   buildScan {
     value 'GIT_BRANCH', 'git rev-parse --abbrev-ref HEAD'.execute().text.trim()
     value 'GIT_COMMIT', 'git rev-parse --verify HEAD'.execute().text.trim()
-    def status = 'git diff --name-status origin/master'.execute().text.trim()
+    value 'GIT_COMMIT_TITLE', 'git log --format=%s -1 HEAD'.execute().text.trim()
     if (status) {
       tag 'dirty'
       value 'GIT_STATUS', status
