@@ -31,8 +31,8 @@ import org.apache.logging.log4j.Logger;
  * throttle Bytes read or written, number of entries scanned, etc.
  */
 public class EventThrottler {
-  private static final Logger LOGGER = LogManager.getLogger(EventThrottler.class);
-  private static final long DEFAULT_CHECK_INTERVAL_MS = TimeUnit.SECONDS.toMillis(30); // 30 sec
+  private static final Logger LOGGER = LogManager.getLogger();
+  private static final long DEFAULT_CHECK_INTERVAL_MS = TimeUnit.SECONDS.toMillis(30);
   private static final String THROTTLER_NAME = "event-throttler";
   private static final String UNIT_POSTFIX = " event/sec";
 
@@ -168,10 +168,7 @@ public class EventThrottler {
     if (maxRatePerSecond >= 0) {
       initialize(maxRatePerSecond);
     }
-
-    if (LOGGER.isDebugEnabled()) {
-      LOGGER.debug("EventThrottler constructed with maxRatePerSecond = " + getMaxRatePerSecond());
-    }
+    LOGGER.debug("EventThrottler constructed with maxRatePerSecond: {}", getMaxRatePerSecond());
   }
 
   /**
@@ -207,18 +204,23 @@ public class EventThrottler {
       } else {
         sleepTimeMs = Math.round(excessRate / quota * Time.MS_PER_SECOND);
       }
-      if (LOGGER.isDebugEnabled()) {
-        LOGGER.debug(
-            "Throttler: " + throttlerName + " quota exceeded:\n" + "currentRate \t= " + currentRate + UNIT_POSTFIX
-                + "\n" + "maxRatePerSecond \t= " + quota + UNIT_POSTFIX + "\n" + "excessRate \t= " + excessRate
-                + UNIT_POSTFIX + "\n" + "sleeping for \t" + sleepTimeMs + " ms to compensate.\n"
-                + "rateConfig.timeWindowMs() = " + timeWindowMS);
-      }
+      LOGGER.debug(
+          "Throttler: {} quota exceeded:\ncurrentRate \t={}{}\nmaxRatePerSecond \t= {}{}\nexcessRate \t= {}{}\nsleeping for \t {} ms to compensate.\nrateConfig.timeWindowMs = {}",
+          throttlerName,
+          currentRate,
+          UNIT_POSTFIX,
+          quota,
+          UNIT_POSTFIX,
+          excessRate,
+          UNIT_POSTFIX,
+          sleepTimeMs,
+          timeWindowMS);
       if (sleepTimeMs > timeWindowMS) {
         LOGGER.warn(
-            "Throttler: " + throttlerName + " sleep time(" + sleepTimeMs + "ms) exceeds " + "window size ("
-                + timeWindowMS + " ms). This will likely "
-                + "result in not being able to honor the rate limit accurately.");
+            "Throttler: {} sleep time ({} ms) exceeds window size ({} ms). This will likely result in not being able to honor the rate limit accurately.",
+            throttlerName,
+            sleepTimeMs,
+            timeWindowMS);
       }
       time.sleep(sleepTimeMs);
     }

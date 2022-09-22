@@ -91,10 +91,9 @@ public class OfflinePushStatus {
       if (this.currentStatus.equals(newStatus)) {
         // State change is redundant. Just log the event, no need to throw a whole trace.
         LOGGER.warn(
-            String.format(
-                "Redundant push state status received for state %s.  New state details: %s",
-                newStatus,
-                newStatusDetails.orElse("not specified!!")));
+            "Redundant push state status received for state {}.  New state details: {}",
+            newStatus,
+            newStatusDetails.orElse("not specified!!"));
       } else {
         throw new VeniceException(
             "Can not transit status from: " + currentStatus + " to " + newStatus + " for topic " + kafkaTopic

@@ -19,7 +19,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class DictionaryUtils {
-  private static final Logger LOGGER = LogManager.getLogger(DictionaryUtils.class);
+  private static final Logger LOGGER = LogManager.getLogger();
 
   private static Properties getKafkaConsumerProps() {
     Properties props = new Properties();
@@ -45,7 +45,7 @@ public class DictionaryUtils {
    * Start Of Push message.
    */
   public static ByteBuffer readDictionaryFromKafka(String topicName, KafkaConsumerWrapper kafkaConsumerWrapper) {
-    LOGGER.info("Consuming from topic: " + topicName + " till StartOfPush");
+    LOGGER.info("Consuming from topic: {} till StartOfPush", topicName);
     kafkaConsumerWrapper.subscribe(topicName, 0, 0);
     boolean startOfPushReceived = false;
     ByteBuffer compressionDictionary = null;
@@ -58,23 +58,27 @@ public class DictionaryUtils {
           ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
           ControlMessageType type = ControlMessageType.valueOf(controlMessage);
           LOGGER.info(
-              "Consumed ControlMessage: " + type.name() + " from topic = " + record.topic() + " and partition = "
-                  + record.partition());
+              "Consumed ControlMessage: {} from topic: {}, partition: {}",
+              type.name(),
+              record.topic(),
+              record.partition());
           if (type == ControlMessageType.START_OF_PUSH) {
             startOfPushReceived = true;
             compressionDictionary = ((StartOfPush) controlMessage.controlMessageUnion).compressionDictionary;
             if (compressionDictionary == null || !compressionDictionary.hasRemaining()) {
               LOGGER.warn(
-                  "No dictionary present in Start of Push message from topic = " + record.topic() + " and partition = "
-                      + record.partition());
+                  "No dictionary present in Start of Push message from topic: {}, partition: {}",
+                  record.topic(),
+                  record.partition());
               return null;
             }
             break;
           }
         } else {
           LOGGER.error(
-              "Consumed non Control Message before Start of Push from topic = " + record.topic() + " and partition = "
-                  + record.partition());
+              "Consumed non Control Message before Start of Push from topic: {}, partition: {}",
+              record.topic(),
+              record.partition());
           return null;
         }
       }

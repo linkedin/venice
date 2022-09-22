@@ -22,10 +22,10 @@ public class RegionUtils {
       String regionNameFromEnv = null;
       try {
         regionNameFromEnv = System.getenv(ENVIRONMENT_CONFIG_KEY_FOR_REGION_NAME);
-        LOGGER.info("Region name from environment config: " + regionNameFromEnv);
+        LOGGER.info("Region name from environment config: {}", regionNameFromEnv);
         if (regionNameFromEnv == null) {
           regionNameFromEnv = System.getProperty(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION);
-          LOGGER.info("Region name from System property: " + regionNameFromEnv);
+          LOGGER.info("Region name from System property: {}", regionNameFromEnv);
         }
       } catch (Exception e) {
         LOGGER.warn(

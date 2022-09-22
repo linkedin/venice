@@ -49,7 +49,6 @@ public class Partition {
    *
    * TODO: remove this API once we've fully migrate to L/F model.
    */
-  @Deprecated
   public List<Instance> getReadyToServeInstances() {
     return getInstancesInState(ExecutionStatus.COMPLETED.name()).size() > getInstancesInState(HelixState.ONLINE_STATE)
         .size() ? getInstancesInState(ExecutionStatus.COMPLETED.name()) : getReadyInstances();

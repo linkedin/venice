@@ -40,8 +40,9 @@ public class PushStatusStoreReader implements Closeable {
       new VeniceConcurrentHashMap<>();
   private final D2Client d2Client;
   private final long heartbeatExpirationTimeInSeconds;
-  private static final int PUSH_STATUS_READER_BATCH_GET_LIMIT = 100; // if store limit is less than this then batchGet
-                                                                     // will fail
+
+  // if store limit is less than this then batchGet will fail
+  private static final int PUSH_STATUS_READER_BATCH_GET_LIMIT = 100;
 
   public PushStatusStoreReader(D2Client d2Client, long heartbeatExpirationTimeInSeconds) {
     this.d2Client = d2Client;
@@ -70,7 +71,7 @@ public class PushStatusStoreReader implements Closeable {
       if (pushStatusValue == null) {
         return Collections.emptyMap();
       } else {
-        LOGGER.info(storeName + "/" + partitionId + " Instance Statuses: " + pushStatusValue.instances);
+        LOGGER.info(" {}/{} Instance status: {}", storeName, partitionId, pushStatusValue.instances);
         return pushStatusValue.instances;
       }
     } catch (Exception e) {

@@ -29,7 +29,7 @@ public class PushStatusStoreRecordDeleter implements AutoCloseable {
       Optional<String> incrementalPushVersion,
       int partitionCount) {
     VeniceWriter writer = veniceWriterCache.prepareVeniceWriter(storeName);
-    LOGGER.info("Deleting pushStatus of storeName: " + storeName + " , version: " + version);
+    LOGGER.info("Deleting pushStatus of storeName: {}, version: {}", storeName, version);
     for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
       PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion);
       writer.delete(pushStatusKey, null);
@@ -58,12 +58,13 @@ public class PushStatusStoreRecordDeleter implements AutoCloseable {
   }
 
   public void removePushStatusStoreVeniceWriter(String storeName) {
-    LOGGER.info("Removing push status store writer for store " + storeName);
+    LOGGER.info("Removing push status store writer for store {}", storeName);
     long veniceWriterRemovingStartTimeInNs = System.nanoTime();
     veniceWriterCache.removeVeniceWriter(storeName);
     LOGGER.info(
-        "Removed push status store writer for store " + storeName + " in "
-            + LatencyUtils.getLatencyInMS(veniceWriterRemovingStartTimeInNs) + "ms.");
+        "Removed push status store writer for store {} in {}ms.",
+        storeName,
+        LatencyUtils.getLatencyInMS(veniceWriterRemovingStartTimeInNs));
   }
 
   @Override
@@ -71,6 +72,6 @@ public class PushStatusStoreRecordDeleter implements AutoCloseable {
     LOGGER.info("Closing VeniceWriter cache");
     long cacheClosingStartTimeInNs = System.nanoTime();
     veniceWriterCache.close();
-    LOGGER.info("Closed VeniceWriter cache in " + LatencyUtils.getLatencyInMS(cacheClosingStartTimeInNs) + "ms.");
+    LOGGER.info("Closed VeniceWriter cache in {}ms.", LatencyUtils.getLatencyInMS(cacheClosingStartTimeInNs));
   }
 }

@@ -23,7 +23,7 @@ import org.apache.logging.log4j.Logger;
  * risk of blowing past the disk full threshold and actually reaching 100% disk usage.
  */
 public class DiskUsage {
-  private static final Logger LOGGER = LogManager.getLogger(DiskUsage.class);
+  private static final Logger LOGGER = LogManager.getLogger();
   private final String diskPath;
   private final long totalSpaceBytes;
   private final long freeSpaceBytesRequired; // less than this means disk full (over threshold)
@@ -57,7 +57,7 @@ public class DiskUsage {
     try {
       freeSpaceBytes = disk.getUsableSpace();
     } catch (IOException e) {
-      LOGGER.error("Failed to get usable space for disk: " + diskPath, e);
+      LOGGER.error("Failed to get usable space for disk: {}", diskPath, e);
       freeSpaceBytes = totalSpaceBytes; // If we can't query status for some reason, then let the system continue
                                         // operating
     }
@@ -74,7 +74,7 @@ public class DiskUsage {
    */
   public boolean isDiskFull(long bytesWritten) {
     // Here we're using -1 to subtract the newly written data from the reserve space remaining.
-    // If the reserve space remaining is still greater than 0, report disk not full. Otherwise
+    // If the reserve space remaining is still greater than 0, report disk not full. Otherwise,
     // check the actual state of the disk.
     if (reserveSpaceBytesRemaining.addAndGet(-1 * bytesWritten) > 0) {
       return false; // disk not full, don't need to actually check again

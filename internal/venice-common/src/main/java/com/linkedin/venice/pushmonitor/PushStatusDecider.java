@@ -56,7 +56,7 @@ public abstract class PushStatusDecider {
     // If there are not enough partitions assigned, push could not be completed.
     // Continue to decide whether push is failed or not.
     if (partitionAssignment.isMissingAssignedPartitions()) {
-      logger.warn("There no not enough partitions assigned to resource: " + pushStatus.getKafkaTopic());
+      logger.warn("There are no enough partitions assigned to resource: {}", pushStatus.getKafkaTopic());
       isAllPartitionCompleted = false;
     }
     for (Partition partition: partitionAssignment.getAllPartitions()) {
@@ -64,30 +64,31 @@ public abstract class PushStatusDecider {
       int errorReplicasCount = partition.getErrorInstances().size();
       int completedReplicasCount = partition.getReadyToServeInstances().size();
       int assignedReplicasCount = partition.getAllInstances().size();
-      if (logger.isDebugEnabled()) {
-        logger.debug(
-            "Checking Push status for offline push for topic:" + pushStatus.getKafkaTopic() + "Partition:"
-                + partition.getId() + " has " + assignedReplicasCount + " assigned replicas including "
-                + errorReplicasCount + " error replicas, " + completedReplicasCount + " completed replicas.");
-      }
+      logger.debug(
+          "Checking Push status for offline push for topic: {} Partition: {} has {} assigned replicas including {} error replicas, {} completed replicas.",
+          pushStatus.getKafkaTopic(),
+          partition.getId(),
+          assignedReplicasCount,
+          errorReplicasCount,
+          completedReplicasCount);
 
       // Is push failed due to there is enough number of error replicas.
       if (!hasEnoughReplicasForOnePartition(replicationFactor - errorReplicasCount, replicationFactor)) {
-        String statusDetails = "too many ERROR replicas (" + errorReplicasCount + "/" + replicationFactor
-            + ") in partition " + partition.getId() + " for OfflinePushStrategy:" + getStrategy();
-        logger.warn("Push for topic:" + pushStatus.getKafkaTopic() + " should fail because of " + statusDetails);
+        String statusDetails = "Too many ERROR replicas " + errorReplicasCount + "/" + replicationFactor
+            + " in partition " + partition.getId() + " under strategy:" + getStrategy();
+        logger.warn("Push for topic: {} should fail because of {}", pushStatus.getKafkaTopic(), statusDetails);
         return new Pair<>(ERROR, Optional.of(statusDetails));
       }
 
       // Is the partition has enough number of completed replicas.
       if (!hasEnoughReplicasForOnePartition(completedReplicasCount, replicationFactor)) {
-        if (logger.isDebugEnabled()) {
-          logger.debug(
-              "Push for topic:" + pushStatus.getKafkaTopic() + " can not terminated because the partition:"
-                  + partition.getId() + " does not have enough COMPLETED replicas. Completed replicas:"
-                  + completedReplicasCount + " replicationFactor:" + replicationFactor + " under strategy:"
-                  + getStrategy());
-        }
+        logger.debug(
+            "Push for topic: {} can not terminated because partition: {} does not have enough COMPLETED replicas. Completed replicas: {} replicationFactor: {} under strategy: {}.",
+            pushStatus.getKafkaTopic(),
+            partition.getId(),
+            completedReplicasCount,
+            replicationFactor,
+            getStrategy());
         isAllPartitionCompleted = false;
       }
     }
@@ -106,7 +107,7 @@ public abstract class PushStatusDecider {
       PartitionAssignment partitionAssignment) {
     // Sanity check
     if (partitionAssignment == null || partitionAssignment.isMissingAssignedPartitions()) {
-      logger.warn("partitionAssignment not ready: " + partitionAssignment);
+      logger.warn("partitionAssignment not ready: {}", partitionAssignment);
       return new Pair<>(NOT_CREATED, Optional.empty());
     }
 

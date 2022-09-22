@@ -7,11 +7,11 @@ import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.meta.Instance;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import org.apache.helix.AccessOption;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.PropertyKey;
@@ -31,7 +31,7 @@ import org.apache.logging.log4j.Logger;
  * Helper functions for Helix.
  */
 public class HelixUtils {
-  private static final Logger LOGGER = LogManager.getLogger(HelixUtils.class);
+  private static final Logger LOGGER = LogManager.getLogger();
 
   /**
    * Retry 3 times for each helix operation in case of getting the error by default.
@@ -101,7 +101,7 @@ public class HelixUtils {
       List<String> childrenNames = dataAccessor.getChildNames(path, AccessOption.PERSISTENT);
       int expectedCount = 0;
       if (childrenNames == null) {
-        LOGGER.warn("Get child names for path: " + path + " return null.");
+        LOGGER.warn("Get child names for path: {} return null.", path);
       } else {
         expectedCount = childrenNames.size();
       }
@@ -110,9 +110,13 @@ public class HelixUtils {
         // Data is inconsistent
         if (attempt < retryCount) {
           LOGGER.info(
-              "dataAccessor.getChildNames() did not return the expected number of elements from path: " + path
-                  + "\nExpected: " + expectedCount + ", but got: " + children.size() + ". Attempt:" + attempt + "/"
-                  + retryCount + ", will sleep " + retryInterval + " and retry.");
+              "dataAccessor.getChildNames() did not return the expected number of elements from path: {}\nExpected: {}, but got {}. Attempt:{}/{}, will sleep {} and retry.",
+              path,
+              expectedCount,
+              children.size(),
+              attempt,
+              retryCount,
+              retryInterval);
           Utils.sleep(retryInterval);
         }
       } else {
@@ -127,7 +131,7 @@ public class HelixUtils {
       List<String> paths = dataAccessor.getChildNames(path, AccessOption.PERSISTENT);
       return paths == null ? Collections.emptyList() : paths;
     } catch (Exception e) {
-      LOGGER.error("Error when listing contents in path " + path, e);
+      LOGGER.error("Error when listing contents in path: {}", path, e);
       throw e;
     }
   }
@@ -249,10 +253,13 @@ public class HelixUtils {
       } catch (Exception e) {
         if (attempt <= maxRetries) {
           LOGGER.warn(
-              "failed to connect " + manager.toString() + " on attempt " + attempt + "/" + maxRetries
-                  + ". Will retry in " + sleepTimeSeconds + " seconds.");
+              "Failed to connect {} on attempt {}/{}. Will retry in {} seconds.",
+              manager.toString(),
+              attempt,
+              maxRetries,
+              sleepTimeSeconds);
           attempt++;
-          Utils.sleep(sleepTimeSeconds * 1000);
+          Utils.sleep(TimeUnit.SECONDS.toMillis(sleepTimeSeconds));
         } else {
           throw new VeniceException(
               "Error connecting to Helix Manager for Cluster '" + manager.getClusterName() + "' after " + maxRetries
@@ -277,10 +284,11 @@ public class HelixUtils {
       } else {
         if (attempt <= maxRetry) {
           LOGGER.warn(
-              "Cluster has not been initialized by controller. attempt: " + attempt + ". Will retry in "
-                  + retryIntervalSec + " seconds.");
+              "Cluster has not been initialized by controller. Attempt: {}. Will retry in {} seconds.",
+              attempt,
+              retryIntervalSec);
           attempt++;
-          Utils.sleep(retryIntervalSec * Time.MS_PER_SECOND);
+          Utils.sleep(TimeUnit.SECONDS.toMillis(retryIntervalSec));
         } else {
           throw new VeniceException("Cluster has not been initialized by controller after attempted: " + attempt);
         }
@@ -299,7 +307,8 @@ public class HelixUtils {
 
       String instanceDomainKey = InstanceConfig.InstanceConfigProperty.DOMAIN.name();
 
-      Map<String, String> currentDomainValue = admin.getConfig(instanceScope, Arrays.asList(instanceDomainKey));
+      Map<String, String> currentDomainValue =
+          admin.getConfig(instanceScope, Collections.singletonList(instanceDomainKey));
       if (currentDomainValue == null || !currentDomainValue.containsKey(instanceDomainKey)) {
         Map<String, String> instanceProperties = new HashMap<>();
         instanceProperties.put(instanceDomainKey, TOPOLOGY_CONSTRAINT + "=" + instanceId);
@@ -319,7 +328,7 @@ public class HelixUtils {
     // Get session id at first then get current states of given instance and give session.
     LiveInstance instance = accessor.getProperty(keyBuilder.liveInstance(instanceId));
     if (instance == null) {
-      LOGGER.info("Instance:" + instanceId + " is not a live instance");
+      LOGGER.info("Instance: {} is not a live instance", instanceId);
       return false;
     } else {
       return true;
