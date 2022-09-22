@@ -180,6 +180,9 @@ public class RouterServer extends AbstractVeniceService {
   private final AggHostHealthStats aggHostHealthStats;
 
   public static void main(String args[]) throws Exception {
+    if (args.length != 1) {
+      Utils.exit("USAGE: java -jar venice-router-all.jar <router_config_file_path>");
+    }
     VeniceProperties props;
     try {
       String routerConfigFilePath = args[0];
@@ -195,7 +198,7 @@ public class RouterServer extends AbstractVeniceService {
     LOGGER.info("IO worker count: {}", props.getInt(ConfigKeys.ROUTER_IO_WORKER_COUNT));
 
     Optional<SSLFactory> sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
-    RouterServer server = new RouterServer(props, new ArrayList<>(), Optional.empty(), sslFactory, null);
+    RouterServer server = new RouterServer(props, new ArrayList<>(), Optional.empty(), sslFactory);
     server.start();
 
     Runtime.getRuntime().addShutdownHook(new Thread() {

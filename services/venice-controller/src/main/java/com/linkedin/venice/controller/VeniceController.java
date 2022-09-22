@@ -1,6 +1,10 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.d2.balancer.D2ClientBuilder;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
@@ -13,9 +17,12 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.KafkaClientStats;
 import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
@@ -231,5 +238,49 @@ public class VeniceController {
    */
   public VeniceControllerService getVeniceControllerService() {
     return controllerService;
+  }
+
+  public static void main(String args[]) {
+    if (args.length != 2) {
+      Utils.exit("USAGE: java -jar venice-controller-all.jar <cluster_config_file_path> <controller_config_file_path>");
+    }
+    VeniceProperties controllerProps = null;
+    try {
+      VeniceProperties clusterProps = Utils.parseProperties(args[0]);
+      VeniceProperties controllerBaseProps = Utils.parseProperties(args[1]);
+
+      controllerProps =
+          new PropertyBuilder().put(clusterProps.toProperties()).put(controllerBaseProps.toProperties()).build();
+    } catch (Exception e) {
+      String errorMessage = "Can not load configuration from file.";
+      LOGGER.error(errorMessage, e);
+      Utils.exit(errorMessage + e.getMessage());
+    }
+
+    D2Client d2Client =
+        new D2ClientBuilder().setZkHosts(controllerProps.getString(ZOOKEEPER_ADDRESS)).setIsSSLEnabled(false).build();
+    D2ClientUtils.startClient(d2Client);
+    VeniceController controller = new VeniceController(
+        Arrays.asList(new VeniceProperties[] { controllerProps }),
+        new ArrayList<>(),
+        Optional.empty(),
+        d2Client);
+    controller.start();
+    addShutdownHook(controller, d2Client);
+  }
+
+  private static void addShutdownHook(VeniceController controller, D2Client d2Client) {
+    Runtime.getRuntime().addShutdownHook(new Thread() {
+      @Override
+      public void run() {
+        controller.stop();
+        D2ClientUtils.shutdownClient(d2Client);
+      }
+    });
+    try {
+      Thread.currentThread().join();
+    } catch (InterruptedException e) {
+      LOGGER.error("Unable to join thread in shutdown hook. ", e);
+    }
   }
 }

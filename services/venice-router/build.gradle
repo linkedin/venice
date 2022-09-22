@@ -1,9 +1,10 @@
 plugins {
   id 'application'
+  id 'com.github.johnrengelman.shadow'
 }
 
 application {
-  mainClass = 'com.linkedin.venice.router.RouterServer'
+  mainClassName = 'com.linkedin.venice.router.RouterServer'
 }
 installDist.dependsOn test
 

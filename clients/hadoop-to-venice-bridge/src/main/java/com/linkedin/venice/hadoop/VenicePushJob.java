@@ -69,6 +69,7 @@ import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import java.io.FileReader;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -2938,6 +2939,29 @@ public class VenicePushJob implements AutoCloseable {
 
     String getErrorMessage() {
       return errorMessage;
+    }
+  }
+
+  public static void main(String[] args) {
+
+    if (args.length != 1) {
+      Utils.exit("USAGE: java -jar hadoop-to-venice-bridge-all.jar <VPJ_config_file_path>");
+    }
+    Properties properties = new Properties();
+    try {
+      properties.load(new FileReader(args[0]));
+    } catch (IOException e) {
+      e.printStackTrace();
+      Utils.exit("Unable to read config file");
+    }
+
+    runPushJob("Venice Push Job", properties);
+    Utils.exit("Venice Push Job Completed");
+  }
+
+  public static void runPushJob(String jobId, Properties props) {
+    try (VenicePushJob job = new VenicePushJob(jobId, props)) {
+      job.run();
     }
   }
 }
