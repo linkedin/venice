@@ -1,9 +1,10 @@
 plugins {
   id 'application'
+  id 'com.github.johnrengelman.shadow'
 }
 
 application {
-  mainClass = 'com.linkedin.venice.controller.VeniceController'
+  mainClassName = 'com.linkedin.venice.controller.VeniceController'
 }
 installDist.dependsOn test
 

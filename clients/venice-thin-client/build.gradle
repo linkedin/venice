@@ -1,3 +1,7 @@
+plugins {
+  id 'com.github.johnrengelman.shadow'
+}
+
 dependencies {
   api (libraries.avro) {
     exclude group: 'org.jboss.netty' // older version of netty3 causes transitive conflicts with the router
@@ -24,4 +28,18 @@ dependencies {
   testImplementation libraries.kafkaClientsTest
   testImplementation libraries.kafkaClients
   testImplementation libraries.netty
+}
+
+artifacts {
+  archives shadowJar
+}
+
+jar {
+  manifest {
+    attributes = [
+        'Implementation-Title': 'Venice Thin Client',
+        'Implementation-Version': project.version,
+        'Main-Class': 'com.linkedin.venice.client.store.QueryTool'
+    ]
+  }
 }

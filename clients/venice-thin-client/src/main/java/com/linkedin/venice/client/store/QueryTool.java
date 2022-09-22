@@ -17,6 +17,7 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumReader;
+import org.apache.commons.lang.StringUtils;
 
 
 /**
@@ -41,10 +42,11 @@ public class QueryTool {
     String url = removeQuotes(args[URL]);
     boolean isVsonStore = Boolean.parseBoolean(removeQuotes(args[IS_VSON_STORE]));
     String sslConfigFilePath = removeQuotes(args[SSL_CONFIG_FILE_PATH]);
+    Optional<String> sslConfigFilePathArgs =
+        StringUtils.isEmpty(sslConfigFilePath) ? Optional.empty() : Optional.of(sslConfigFilePath);
     System.out.println();
 
-    Map<String, String> outputMap =
-        queryStoreForKey(store, keyString, url, isVsonStore, Optional.of(sslConfigFilePath));
+    Map<String, String> outputMap = queryStoreForKey(store, keyString, url, isVsonStore, sslConfigFilePathArgs);
     outputMap.entrySet().stream().forEach(System.out::println);
   }
 
