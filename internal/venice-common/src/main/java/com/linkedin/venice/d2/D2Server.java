@@ -1,6 +1,7 @@
 package com.linkedin.venice.d2;
 
 import com.linkedin.d2.balancer.servers.ZooKeeperAnnouncer;
+import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
@@ -9,7 +10,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class D2Server {
+public class D2Server implements ServiceDiscoveryAnnouncer {
   private static final Logger LOG = LogManager.getLogger(D2Server.class);
 
   private final D2ServerManager _d2ServerManager;
@@ -160,5 +161,15 @@ public class D2Server {
   // get a list of sorted announcer ID strings
   private List<String> sortAnnouncerIDs(ZooKeeperAnnouncer[] announcers) {
     return Arrays.stream(announcers).map(this::getAnnouncerID).sorted().collect(Collectors.toList());
+  }
+
+  @Override
+  public void register() {
+    this.forceStart();
+  }
+
+  @Override
+  public void unregister() {
+    this.notifyShutdown();
   }
 }

@@ -15,7 +15,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.d2.D2Server;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
@@ -31,6 +30,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.router.RouterServer;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -114,7 +114,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
 
     return (serviceName, dataDirectory) -> {
       int port = Utils.getFreePort();
-      List<D2Server> d2ServerList;
+      List<ServiceDiscoveryAnnouncer> d2ServerList;
       if (StringUtils.isEmpty(zkAddress)) {
         d2ServerList = new ArrayList<>();
       } else {

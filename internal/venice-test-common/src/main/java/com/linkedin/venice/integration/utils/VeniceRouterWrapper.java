@@ -21,13 +21,13 @@ import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
 
-import com.linkedin.venice.d2.D2Server;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.router.RouterServer;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
+import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.tehuti.MetricsAware;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
@@ -105,7 +105,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
 
       VeniceProperties routerProperties = builder.build();
       boolean https = routerProperties.getBoolean(ROUTER_HTTP2_INBOUND_ENABLED, false);
-      List<D2Server> d2Servers;
+      List<ServiceDiscoveryAnnouncer> d2Servers;
       if (!D2TestUtils.DEFAULT_TEST_SERVICE_NAME.equals(d2)) {
         D2TestUtils.setupD2Config(zkAddress, https, d2, d2, false);
         d2Servers = D2TestUtils
@@ -164,7 +164,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
 
   @Override
   protected void newProcess() {
-    List<D2Server> d2Servers =
+    List<ServiceDiscoveryAnnouncer> d2Servers =
         D2TestUtils.getD2Servers(zkAddress, "http://localhost:" + getPort(), "https://localhost:" + getSslPort());
     service =
         new RouterServer(properties, d2Servers, Optional.empty(), Optional.of(SslUtils.getVeniceLocalSslFactory()));

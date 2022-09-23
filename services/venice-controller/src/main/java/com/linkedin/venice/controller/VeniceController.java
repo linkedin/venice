@@ -12,9 +12,9 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.server.AdminSparkServer;
-import com.linkedin.venice.d2.D2Server;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.stats.KafkaClientStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -45,7 +45,7 @@ public class VeniceController {
   private final boolean sslEnabled;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final MetricsRepository metricsRepository;
-  private final List<D2Server> d2ServerList;
+  private final List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
   private final Optional<DynamicAccessController> accessController;
   private final Optional<AuthorizerService> authorizerService;
   private final D2Client d2Client;
@@ -60,13 +60,13 @@ public class VeniceController {
    */
   public VeniceController(
       List<VeniceProperties> propertiesList,
-      List<D2Server> d2ServerList,
+      List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
       Optional<AuthorizerService> authorizerService,
       D2Client d2Client) {
     this(
         propertiesList,
         TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME),
-        d2ServerList,
+        serviceDiscoveryAnnouncers,
         Optional.empty(),
         authorizerService,
         d2Client,
@@ -76,7 +76,7 @@ public class VeniceController {
   public VeniceController(
       List<VeniceProperties> propertiesList,
       MetricsRepository metricsRepository,
-      List<D2Server> d2ServerList,
+      List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
       Optional<DynamicAccessController> accessController,
       Optional<AuthorizerService> authorizerService,
       D2Client d2Client,
@@ -84,7 +84,7 @@ public class VeniceController {
     this(
         propertiesList,
         metricsRepository,
-        d2ServerList,
+        serviceDiscoveryAnnouncers,
         accessController,
         authorizerService,
         d2Client,
@@ -99,8 +99,8 @@ public class VeniceController {
    *        config properties coming from {@link com.linkedin.venice.ConfigKeys}.
    * @param metricsRepository
    *        a metric repository to emit metrics.
-   * @param d2ServerList
-   *        a list of {@code D2Server} for service discovery announcement. Can be empty.
+   * @param serviceDiscoveryAnnouncers
+   *        a list of {@code ServiceDiscoveryAnnouncer} for service discovery announcement. Can be empty.
    * @param accessController
    *        an optional {@link DynamicAccessController} for auth/auth. Deprecated, use authorizerService instead.
    * @param authorizerService
@@ -115,7 +115,7 @@ public class VeniceController {
   public VeniceController(
       List<VeniceProperties> propertiesList,
       MetricsRepository metricsRepository,
-      List<D2Server> d2ServerList,
+      List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
       Optional<DynamicAccessController> accessController,
       Optional<AuthorizerService> authorizerService,
       D2Client d2Client,
@@ -123,7 +123,7 @@ public class VeniceController {
       Optional<ICProvider> icProvider) {
     this.multiClusterConfigs = new VeniceControllerMultiClusterConfig(propertiesList);
     this.metricsRepository = metricsRepository;
-    this.d2ServerList = d2ServerList;
+    this.serviceDiscoveryAnnouncers = serviceDiscoveryAnnouncers;
     Optional<SSLConfig> sslConfig = multiClusterConfigs.getSslConfig();
     this.sslEnabled = sslConfig.isPresent() && sslConfig.get().isControllerSSLEnabled();
     this.accessController = accessController;
@@ -199,8 +199,10 @@ public class VeniceController {
    */
   public void start() {
     LOGGER.info(
-        "Starting controller: " + multiClusterConfigs.getControllerName() + " for clusters: "
-            + multiClusterConfigs.getClusters().toString() + " with ZKAddress: " + multiClusterConfigs.getZkAddress());
+        "Starting controller: {} for clusters: {} with ZKAddress: {}",
+        multiClusterConfigs.getControllerName(),
+        multiClusterConfigs.getClusters(),
+        multiClusterConfigs.getZkAddress());
     controllerService.start();
     adminServer.start();
     if (sslEnabled) {
@@ -208,10 +210,10 @@ public class VeniceController {
     }
     topicCleanupService.start();
     storeBackupVersionCleanupService.ifPresent(s -> s.start());
-    // start d2 service at the end
-    d2ServerList.forEach(d2Server -> {
-      d2Server.forceStart();
-      LOGGER.info("Started d2 announcer: " + d2Server);
+    // register with service discovery at the end
+    serviceDiscoveryAnnouncers.forEach(serviceDiscoveryAnnouncer -> {
+      serviceDiscoveryAnnouncer.register();
+      LOGGER.info("Registered to service discovery: {}", serviceDiscoveryAnnouncer);
     });
     LOGGER.info("Controller is started.");
   }
@@ -220,10 +222,10 @@ public class VeniceController {
    * Causes venice controller and its associated services to stop executing.
    */
   public void stop() {
-    // stop d2 service first
-    d2ServerList.forEach(d2Server -> {
-      d2Server.notifyShutdown();
-      LOGGER.info("Stopped d2 announcer: " + d2Server);
+    // unregister from service discovery first
+    serviceDiscoveryAnnouncers.forEach(serviceDiscoveryAnnouncer -> {
+      serviceDiscoveryAnnouncer.unregister();
+      LOGGER.info("Unregistered from service discovery: {}", serviceDiscoveryAnnouncer);
     });
     // TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
     Utils.closeQuietlyWithErrorLogged(topicCleanupService);

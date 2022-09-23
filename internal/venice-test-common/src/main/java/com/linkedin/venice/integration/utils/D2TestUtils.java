@@ -18,6 +18,7 @@ import com.linkedin.venice.d2.D2Server;
 import com.linkedin.venice.d2.D2ServerManager;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.utils.SslUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -144,8 +145,8 @@ public class D2TestUtils {
    * @param localUris varags if we want to announce on multiple uris (for example on an http port and https port)
    * @return
    */
-  public static List<D2Server> getD2Servers(String zkHosts, String... localUris) {
-    List<D2Server> d2List = new ArrayList<>();
+  public static List<ServiceDiscoveryAnnouncer> getD2Servers(String zkHosts, String... localUris) {
+    List<ServiceDiscoveryAnnouncer> d2List = new ArrayList<>();
     for (String localUri: localUris) {
       D2Server d2 = getD2Server(zkHosts, localUri);
       d2List.add(d2);
@@ -153,8 +154,8 @@ public class D2TestUtils {
     return d2List;
   }
 
-  public static List<D2Server> getD2Servers(String zkHosts, String[] localUris, String clusterName) {
-    List<D2Server> d2List = new ArrayList<>();
+  public static List<ServiceDiscoveryAnnouncer> getD2Servers(String zkHosts, String[] localUris, String clusterName) {
+    List<ServiceDiscoveryAnnouncer> d2List = new ArrayList<>();
     for (String localUri: localUris) {
       D2Server d2 = getD2Server(zkHosts, localUri, clusterName);
       d2List.add(d2);
