@@ -60,7 +60,7 @@ public class MetaStoreWriter implements Closeable {
   public static final String KEY_STRING_VERSION_NUMBER = "KEY_VERSION_NUMBER";
   public static final String KEY_STRING_PARTITION_ID = "KEY_PARTITION_ID";
   public static final String KEY_STRING_SCHEMA_ID = "KEY_SCHEMA_ID";
-  private static final Logger LOGGER = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger(MetaStoreWriter.class);
 
   private final Map<String, VeniceWriter> metaStoreWriterMap = new VeniceConcurrentHashMap<>();
   private final TopicManager topicManager;

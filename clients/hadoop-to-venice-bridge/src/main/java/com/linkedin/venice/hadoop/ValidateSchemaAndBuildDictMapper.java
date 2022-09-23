@@ -42,7 +42,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
     implements Mapper<IntWritable, NullWritable, NullWritable, NullWritable> {
-  private static final Logger LOGGER = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger(ValidateSchemaAndBuildDictMapper.class);
   protected InputDataInfoProvider inputDataInfoProvider = null;
   protected InputDataInfoProvider.InputDataInfo inputDataInfo;
   protected PushJobSetting pushJobSetting = new PushJobSetting();

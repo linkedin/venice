@@ -19,7 +19,7 @@ import org.apache.logging.log4j.Logger;
  * @version $Revision: $
  */
 public class D2ServerManager {
-  private static final Logger LOGGER = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger(D2ServerManager.class);
 
   private final ZooKeeperConnectionManager _manager;
   private final long _startupTimeoutMillis;

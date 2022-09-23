@@ -19,7 +19,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class DictionaryUtils {
-  private static final Logger LOGGER = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger(DictionaryUtils.class);
 
   private static Properties getKafkaConsumerProps() {
     Properties props = new Properties();

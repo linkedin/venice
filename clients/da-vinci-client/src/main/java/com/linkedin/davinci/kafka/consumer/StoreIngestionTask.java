@@ -138,7 +138,7 @@ import org.apache.logging.log4j.Logger;
  */
 public abstract class StoreIngestionTask implements Runnable, Closeable {
   // TODO: Make this LOGGER prefix everything with the CONSUMER_TASK_ID_FORMAT
-  private static final Logger LOGGER = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger(StoreIngestionTask.class);
 
   private static final String CONSUMER_TASK_ID_FORMAT = StoreIngestionTask.class.getSimpleName() + " for [ Topic: %s ]";
   public static long SCHEMA_POLLING_DELAY_MS = SECONDS.toMillis(5);

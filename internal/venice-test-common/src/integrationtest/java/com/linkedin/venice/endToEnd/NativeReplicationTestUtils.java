@@ -16,7 +16,7 @@ import org.testng.Assert;
 
 
 public class NativeReplicationTestUtils {
-  private static final Logger LOGGER = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger(NativeReplicationTestUtils.class);
 
   public static void verifyDCConfigNativeRepl(
       List<ControllerClient> controllerClients,

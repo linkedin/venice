@@ -37,7 +37,7 @@ public class UserSystemStoreLifeCycleHelper {
       new VeniceSystemStoreType[] { VeniceSystemStoreType.META_STORE, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE };
   private static final Set<VeniceSystemStoreType> aclRequiredSystemStoresSet =
       new HashSet<>(Arrays.asList(aclRequiredSystemStores));
-  private static final Logger LOGGER = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger(UserSystemStoreLifeCycleHelper.class);
 
   private final Map<String, Set<VeniceSystemStoreType>> clusterToAutoCreateEnabledSystemStoresMap = new HashMap<>();
   private final VeniceParentHelixAdmin parentAdmin;

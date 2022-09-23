@@ -23,7 +23,7 @@ import org.apache.logging.log4j.Logger;
  * risk of blowing past the disk full threshold and actually reaching 100% disk usage.
  */
 public class DiskUsage {
-  private static final Logger LOGGER = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger(DiskUsage.class);
   private final String diskPath;
   private final long totalSpaceBytes;
   private final long freeSpaceBytesRequired; // less than this means disk full (over threshold)

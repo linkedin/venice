@@ -20,7 +20,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class PartitionUtils {
-  private static final Logger LOGGER = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger(PartitionUtils.class);
 
   /**
    * Calculate partition count for new version. If the version is the first one of the given store,
