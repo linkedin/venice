@@ -55,7 +55,7 @@ import org.testng.annotations.Test;
 
 
 public class ParticipantStoreTest {
-  private static final Logger LOGGER = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger(ParticipantStoreTest.class);
 
   private VeniceClusterWrapper venice;
   private VeniceControllerWrapper parentController;

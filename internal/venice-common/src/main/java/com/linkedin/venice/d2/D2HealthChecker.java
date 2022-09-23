@@ -28,7 +28,7 @@ import org.apache.logging.log4j.Logger;
  * @author Xialin Zhu
  */
 public class D2HealthChecker {
-  private static final Logger LOGGER = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger(D2HealthChecker.class);
   private final ScheduledExecutorService _scheduledExecutorService;
   private final long _intervalMs;
   private final ZooKeeperConnectionManager _zkManager;

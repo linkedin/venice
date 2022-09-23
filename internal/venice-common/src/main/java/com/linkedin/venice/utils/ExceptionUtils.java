@@ -16,7 +16,7 @@ import org.apache.logging.log4j.Logger;
  * https://github.com/voldemort/voldemort/blob/ea37ef67fa7724180608510c6d4237167b78dd63/src/java/voldemort/utils/ExceptionUtils.java
  */
 public class ExceptionUtils {
-  private static final Logger LOGGER = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger(ExceptionUtils.class);
 
   /**
    * Inspects a given {@link Throwable} as well as its nested causes, in order to look

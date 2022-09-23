@@ -49,7 +49,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
-  private static final Logger LOGGER = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger(VeniceTwoLayerMultiColoMultiClusterWrapper.class);
   public static final String SERVICE_NAME = "VeniceTwoLayerMultiCluster";
   private final List<VeniceMultiClusterWrapper> clusters;
   private final List<VeniceControllerWrapper> parentControllers;

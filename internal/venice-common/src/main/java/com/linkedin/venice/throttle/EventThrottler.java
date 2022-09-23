@@ -31,7 +31,7 @@ import org.apache.logging.log4j.Logger;
  * throttle Bytes read or written, number of entries scanned, etc.
  */
 public class EventThrottler {
-  private static final Logger LOGGER = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger(EventThrottler.class);
   private static final long DEFAULT_CHECK_INTERVAL_MS = TimeUnit.SECONDS.toMillis(30);
   private static final String THROTTLER_NAME = "event-throttler";
   private static final String UNIT_POSTFIX = " event/sec";

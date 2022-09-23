@@ -66,7 +66,7 @@ import org.apache.logging.log4j.Logger;
  * Helper functions
  */
 public class Utils {
-  private static final Logger LOGGER = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger(Utils.class);
 
   public static final String WILDCARD_MATCH_ANY = "*";
   public static final String NEW_LINE_CHAR = System.lineSeparator();

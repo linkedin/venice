@@ -10,7 +10,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class D2Server {
-  private static final Logger LOG = LogManager.getLogger();
+  private static final Logger LOG = LogManager.getLogger(D2Server.class);
 
   private final D2ServerManager _d2ServerManager;
 

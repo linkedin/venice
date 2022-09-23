@@ -34,7 +34,7 @@ import org.apache.logging.log4j.Logger;
  * sub-partitions have reported the status.
  */
 public class StatusReportAdapter {
-  private static final Logger LOGGER = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger(StatusReportAdapter.class);
   private final AmplificationFactorAdapter amplificationFactorAdapter;
   private final IngestionNotificationDispatcher dispatcher;
   private final Map<Integer, PartitionReportStatus> partitionReportStatus = new VeniceConcurrentHashMap<>();

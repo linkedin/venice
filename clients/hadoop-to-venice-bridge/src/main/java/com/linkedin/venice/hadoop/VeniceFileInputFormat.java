@@ -22,7 +22,7 @@ import org.apache.logging.log4j.Logger;
  * 3. Add a sentinel record at the end to build dictionary if needed: n files => n+1 records
  */
 public class VeniceFileInputFormat implements InputFormat<IntWritable, NullWritable> {
-  private static final Logger LOGGER = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger(VeniceFileInputFormat.class);
 
   /**
    * Number of splits is set to be always 1: which will invoke only 1 mapper to handle all the files.

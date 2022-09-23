@@ -20,7 +20,7 @@ import org.testng.annotations.Test;
 
 
 public class UpdateBuilderImplTest {
-  private static final Logger LOGGER = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger(UpdateBuilderImplTest.class);
   private static final Schema VALUE_SCHEMA =
       AvroCompatibilityHelper.parse(loadFileAsString("TestWriteComputeBuilder.avsc"));
   private static final Schema UPDATE_SCHEMA =

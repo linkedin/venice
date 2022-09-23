@@ -15,7 +15,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class AggVersionedIngestionStats
     extends AbstractVeniceAggVersionedStats<IngestionStats, IngestionStatsReporter> {
-  private static final Logger LOGGER = LogManager.getLogger();
+  private static final Logger LOGGER = LogManager.getLogger(AggVersionedIngestionStats.class);
 
   public AggVersionedIngestionStats(
       MetricsRepository metricsRepository,
