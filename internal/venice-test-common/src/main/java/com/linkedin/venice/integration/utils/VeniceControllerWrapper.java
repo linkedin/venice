@@ -58,6 +58,7 @@ import com.linkedin.venice.d2.D2Server;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -94,7 +95,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   private final int port;
   private final int securePort;
   private final String zkAddress;
-  private final List<D2Server> d2ServerList;
+  private final List<ServiceDiscoveryAnnouncer> d2ServerList;
   private final MetricsRepository metricsRepository;
 
   private VeniceControllerWrapper(
@@ -104,7 +105,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       int port,
       int securePort,
       List<VeniceProperties> configs,
-      List<D2Server> d2ServerList,
+      List<ServiceDiscoveryAnnouncer> d2ServerList,
       String zkAddress,
       MetricsRepository metricsRepository) {
     super(serviceName, dataDirectory);
@@ -287,7 +288,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         propertiesList.add(props);
       }
 
-      List<D2Server> d2ServerList = new ArrayList<>();
+      List<ServiceDiscoveryAnnouncer> d2ServerList = new ArrayList<>();
       if (d2Enabled) {
         d2ServerList.add(createD2Server(zkAddress, adminPort, false));
         if (sslEnabled) {
