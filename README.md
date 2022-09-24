@@ -59,6 +59,10 @@ There are two main client modes for accessing Venice data:
 - **Classical Venice**: perform remote queries against Venice's distributed backend service. In this mode, read compute queries are pushed down to the backend and only the computation results are returned to the client. 
 - **Da Vinci**: eagerly load some or all partitions of the dataset and perform queries against the resulting local cache. Future updates to the data continue to be streamed in and applied to the local cache.
 
+Getting Started
+===============
+Refer [Venice quickstart](https://github.com/linkedin/venice/tree/master/quickstart) to create your own Venice cluster and play around with some features like creating a data store, batch push, incremental push, and single get.
+
 Previously Published Content
 ============================
 
