@@ -87,7 +87,7 @@ Community Resources
 ===================
 
 Feel free to engage with the community using our:
-- [Slack workspace](https://join.slack.com/t/venicedb/shared_invite/zt-1dz75yvlh-nXj9wIA7RVyQY7bMDUlZog)
+- [Slack workspace](https://join.slack.com/t/venicedb/shared_invite/zt-1gppaxfas-KxNjBQzq4_EUM_NGMGMQ3Q)
 - [LinkedIn group](https://www.linkedin.com/groups/14129519/)
 - [Twitter handle](https://twitter.com/VeniceDataBase)
 - GitHub [issues](https://github.com/linkedin/venice/issues) and [discussions](https://github.com/linkedin/venice/discussions)
