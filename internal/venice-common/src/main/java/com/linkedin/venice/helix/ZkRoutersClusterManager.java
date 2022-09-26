@@ -369,19 +369,15 @@ public class ZkRoutersClusterManager
   }
 
   @Override
-  public void handleStateChanged(Watcher.Event.KeeperState keeperState) throws Exception {
+  public void handleStateChanged(Watcher.Event.KeeperState keeperState) {
     if (keeperState.getIntValue() != 3 && keeperState.getIntValue() != 5 && keeperState.getIntValue() != 6) {
       // Looks like we're disconnected. Lets update our connection state and freeze our internal state
-      LOGGER.warn(
-          "zkclient is disconnected and is in state: {}.",
-          Watcher.Event.KeeperState.fromInt(keeperState.getIntValue()));
+      LOGGER.warn("zkclient is disconnected and is in state: {}.", keeperState);
       this.isConnected.set(false);
     } else {
       // Now we are in a connected state. Unfreeze things and refresh data
       this.isConnected.set(true);
-      LOGGER.info(
-          "zkclient is connected and is in state: {}.",
-          Watcher.Event.KeeperState.fromInt(keeperState.getIntValue()));
+      LOGGER.info("zkclient is connected and is in state: {}.", keeperState);
       this.refresh();
     }
   }

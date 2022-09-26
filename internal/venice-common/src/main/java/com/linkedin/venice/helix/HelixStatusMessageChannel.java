@@ -171,7 +171,7 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
       }
     }
     if (isSuccessful) {
-      LOGGER.info(numMsgSent + " messages have been send and processed. Message: {}.", message.toString());
+      LOGGER.info("{} messages have been send and processed. Message: {}.", numMsgSent, message.toString());
     } else {
       // We have printed the detail error information before for each of message.
       throw new VeniceException(
@@ -301,7 +301,7 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
         getHandler(msg.getClass()).handleMessage(msg);
       } catch (Exception e) {
         // Log the message content in case of handing failure
-        LOGGER.error("Handle message {} failed. Venice message content: {}.", _message.getId(), msg.toString(), e);
+        LOGGER.error("Handle message {} failed. Venice message content: {}.", _message.getId(), msg, e);
         // re-throw exception to helix.
         throw e;
       }

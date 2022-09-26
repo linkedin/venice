@@ -58,7 +58,7 @@ public class HelixInstanceConfigRepository implements VeniceResource, InstanceCo
       manager.addInstanceConfigChangeListener(this);
       LOGGER.info("Setup InstanceConfigChangeListener in {}.", this.getClass().getSimpleName());
     } catch (Exception e) {
-      throw new VeniceException("Failed to refresh {}" + this.getClass().getSimpleName(), e);
+      throw new VeniceException("Failed to refresh " + this.getClass().getSimpleName(), e);
     }
   }
 
