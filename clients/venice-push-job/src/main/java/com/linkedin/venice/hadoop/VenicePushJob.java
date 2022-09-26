@@ -2213,6 +2213,10 @@ public class VenicePushJob implements AutoCloseable {
                 + sourceVersion.getCompressionStrategy() + ", new version: " + newVersion.getNumber() + " is using: "
                 + newVersion.getCompressionStrategy());
       }
+      if (!sourceVersion.isChunkingEnabled() && storeSetting.isChunkingEnabled) {
+        throw new VeniceException(
+            "Store " + setting.storeName + " is chunked enabled but source version is not chunked.");
+      }
 
       // Chunked source version cannot be repushed if new version is not chunking enabled.
       if (sourceVersion.isChunkingEnabled() && !newVersion.isChunkingEnabled()) {
