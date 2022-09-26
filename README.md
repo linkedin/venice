@@ -9,7 +9,7 @@ Venice is a derived data storage platform, providing the following characteristi
 4. Multi-cluster support within each region with operator-driven cluster assignment.
 5. Multi-tenancy, horizontal scalability and elasticity within each cluster.
 
-The above makes Venice particularly suitable as the stateful component backing a Feature Store, such as [Feathr](https://github.com/linkedin/feathr). AI applications feed the output of their ML training jobs into Venice and then query the data for use during online inference workloads.
+The above makes Venice particularly suitable as the stateful component backing a Feature Store, such as [Feathr](https://github.com/feathr-ai/feathr). AI applications feed the output of their ML training jobs into Venice and then query the data for use during online inference workloads.
 
 Write Path
 ----------
@@ -61,7 +61,7 @@ There are two main client modes for accessing Venice data:
 
 Getting Started
 ===============
-Refer [Venice quickstart](https://github.com/linkedin/venice/tree/master/quickstart) to create your own Venice cluster and play around with some features like creating a data store, batch push, incremental push, and single get.
+Refer to the [Venice quickstart](./quickstart/README.md) to create your own Venice cluster and play around with some features like creating a data store, batch push, incremental push, and single get.
 
 Previously Published Content
 ============================
@@ -74,6 +74,7 @@ The following blog posts have previously been published about Venice:
 - 2018: [Venice Performance Optimization](https://engineering.linkedin.com/blog/2018/04/venice-performance-optimization)
 - 2021: [Taming memory fragmentation in Venice with Jemalloc](https://engineering.linkedin.com/blog/2021/taming-memory-fragmentation-in-venice-with-jemalloc)
 - 2022: [Supporting large fanout use cases at scale in Venice](https://engineering.linkedin.com/blog/2022/supporting-large-fanout-use-cases-at-scale-in-venice)
+- 2022: [Open Sourcing Venice – LinkedIn’s Derived Data Platform](https://engineering.linkedin.com/blog/2022/open-sourcing-venice--linkedin-s-derived-data-platform)
 
 The following talks have been given about Venice:
 
@@ -87,9 +88,10 @@ Community Resources
 ===================
 
 Feel free to engage with the community using our:
-- [Slack workspace](https://join.slack.com/t/venicedb/shared_invite/zt-1gppaxfas-KxNjBQzq4_EUM_NGMGMQ3Q)
+- [Slack workspace](https://communityinviter.com/apps/venicedb/venice)
 - [LinkedIn group](https://www.linkedin.com/groups/14129519/)
 - [Twitter handle](https://twitter.com/VeniceDataBase)
 - GitHub [issues](https://github.com/linkedin/venice/issues) and [discussions](https://github.com/linkedin/venice/discussions)
+- The [contributor's guide](./CONTRIBUTING.md).
 
 [//]: # (TODO: Add link to setup and execution guide)
