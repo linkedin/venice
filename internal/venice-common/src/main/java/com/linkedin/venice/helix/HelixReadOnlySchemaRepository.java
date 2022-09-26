@@ -461,7 +461,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   private void populateSchemaMap(String storeName) {
     schemaMap.computeIfAbsent(getZkStoreName(storeName), k -> {
       // Gradually warm up
-      logger.info("Try to fetch schema data for store: " + storeName);
+      logger.info("Try to fetch schema data for store: {}.", storeName);
       // If the local cache doesn't have the schema entry for this store,
       // it could be added recently, and we need to add/monitor it locally
       SchemaData schemaData = new SchemaData(storeName);
@@ -515,7 +515,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       if (!schemaMap.containsKey(getZkStoreName(storeName))) {
         return;
       }
-      logger.info("Remove schema for store locally: " + storeName);
+      logger.info("Remove schema for store locally: {}.", storeName);
       schemaMap.remove(getZkStoreName(storeName));
       accessor.unsubscribeKeySchemaCreationChange(storeName, keySchemaChildListener);
       accessor.unsubscribeValueSchemaCreationChange(storeName, valueSchemaChildListener);
@@ -641,7 +641,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     public void handleChildChange(String parentPath, List<String> currentChildren) {
       String storeName = extractStoreNameFromSchemaPath(parentPath);
       if (storeName == null) {
-        logger.error("Invalid schema path: " + parentPath);
+        logger.error("Invalid schema path: {}.", parentPath);
         return;
       }
 
@@ -656,7 +656,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
           handleSchemaChanges(storeName, currentChildren);
         } else {
           // Should not happen, since we will add the store entry locally when subscribe its child change
-          logger.error("Local schemaMap is missing store entry: " + storeName + ", which should not happen");
+          logger.error("Local schemaMap is missing store entry: {}, which should not happen.", storeName);
         }
       } finally {
         schemaLock.writeLock().unlock();

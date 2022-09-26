@@ -78,9 +78,9 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
       attempt++;
       if (attempt > 1) {
         // only wait and print the log of the retry.
-        LOGGER.info("Wait " + retryDurationMs + "ms to retry.");
+        LOGGER.info("Wait {}ms to retry.", retryDurationMs);
         Utils.sleep(retryDurationMs);
-        LOGGER.info("Attempt #" + attempt + ": Sending message to controller.");
+        LOGGER.info("Attempt #{}: Sending message to controller.", attempt);
         // Use a new message Id, otherwise controller will not handle the retry message because it think it had already
         // failed.
         // It a new issue introduced by new helix version 0.6.6.1
@@ -91,7 +91,7 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
         // Send and wait until getting response or time out.
         int numMsg = messageService.sendAndWait(criteria, helixMessage, callBack, sendMessageTimeOut);
         if (numMsg == 0) {
-          LOGGER.error("No controller could be found to send messages " + message.getMessageId());
+          LOGGER.error("No controller could be found to send messages {}.", message.getMessageId());
           continue;
         }
         if (callBack.isTimeOut) {
@@ -148,7 +148,7 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
       // this scenario could be introduced by two cases: wrong resource or no storage node.
       // TODO: need to think a better way to handle those two different scenarios.
     } else {
-      LOGGER.info("Sent " + numMsgSent + " messages to storage nodes. Message:" + message.toString());
+      LOGGER.info("Sent {} messages to storage nodes. Message: {}.", numMsgSent, message.toString());
     }
 
     stats.recordToStorageNodesMessageCount(numMsgSent);
@@ -166,12 +166,12 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
       String result = replyMessage.getResultMap().get("SUCCESS");
       if (!Boolean.valueOf(result)) {
         // message is not processed by storage node successfully.
-        LOGGER.error("Message is not processed successfully by instance:" + replyMessage.getMsgSrc());
+        LOGGER.error("Message is not processed successfully by instance: {}.", replyMessage.getMsgSrc());
         isSuccessful = false;
       }
     }
     if (isSuccessful) {
-      LOGGER.info(numMsgSent + " messages have been send and processed. Message:" + message.toString());
+      LOGGER.info(numMsgSent + " messages have been send and processed. Message: {}.", message.toString());
     } else {
       // We have printed the detail error information before for each of message.
       throw new VeniceException(
@@ -191,7 +191,7 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
   public <T extends StatusMessage> void unRegisterHandler(Class<T> clazz, StatusMessageHandler<T> handler) {
     if (!handlers.containsKey(clazz.getName())) {
       // If no listener is found by given class, just skip this un-register request.
-      LOGGER.info("Can not find any handler for given message type:" + clazz.toGenericString());
+      LOGGER.info("Can not find any handler for given message type: {}.", clazz.toGenericString());
       return;
     }
     if (handler.equals(this.handlers.get(clazz.getName()))) {
@@ -301,7 +301,7 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
         getHandler(msg.getClass()).handleMessage(msg);
       } catch (Exception e) {
         // Log the message content in case of handing failure
-        LOGGER.error("Handle message " + _message.getId() + " failed. Venice message content:" + msg.toString(), e);
+        LOGGER.error("Handle message {} failed. Venice message content: {}.", _message.getId(), msg.toString(), e);
         // re-throw exception to helix.
         throw e;
       }
@@ -311,7 +311,7 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
 
     @Override
     public void onError(Exception e, ErrorCode code, ErrorType type) {
-      LOGGER.error("Message handling pipeline met error for message:" + _message.getMsgId(), e);
+      LOGGER.error("Message handling pipeline met error for message: {}.", _message.getMsgId(), e);
     }
   }
 

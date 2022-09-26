@@ -66,7 +66,7 @@ import org.apache.logging.log4j.Logger;
  * ZK.
  */
 public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository {
-  private final Logger logger = LogManager.getLogger(HelixReadWriteSchemaRepository.class);
+  private static final Logger logger = LogManager.getLogger(HelixReadWriteSchemaRepository.class);
 
   private final HelixSchemaAccessor accessor;
 
@@ -328,11 +328,11 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
           newValueSchemaEntry,
           DirectionalSchemaCompatibilityType.FULL);
       if (dupSchemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
-        logger.info("Value schema already exists. Skipping adding it to the schema repository. Schema: " + schemaStr);
+        logger.info("Value schema already exists. Skipping adding it to the schema repository. Schema: {}.", schemaStr);
       } else { // there is some doc field update
         newValueSchemaEntry = new SchemaEntry(dupSchemaId, schemaStr);
         accessor.addValueSchema(storeName, newValueSchemaEntry);
-        logger.info("Adding similar schema to the schema repository for doc field update. Schema: " + schemaStr);
+        logger.info("Adding similar schema to the schema repository for doc field update. Schema: {}.", schemaStr);
       }
     } else {
       accessor.addValueSchema(storeName, newValueSchemaEntry);
@@ -415,7 +415,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     DerivedSchemaEntry newDerivedSchemaEntry = new DerivedSchemaEntry(valueSchemaId, derivedSchemaId, schemaStr);
 
     if (derivedSchemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
-      logger.info("derived schema is already existing. Skip adding it to repository. Schema: " + schemaStr);
+      logger.info("derived schema is already existing. Skip adding it to repository. Schema: {}.", schemaStr);
     } else {
       accessor.addDerivedSchema(storeName, newDerivedSchemaEntry);
     }
@@ -430,8 +430,9 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
 
     if (derivedSchemaEntry == null) {
       logger.info(
-          "ignore removing derived schema for store: " + storeName + " id pair: " + idPairStr
-              + " because it doesn't exist");
+          "Ignore removing derived schema for store: {} id pair: {}, because it doesn't exist.",
+          storeName,
+          idPairStr);
       return null;
     }
 
@@ -536,8 +537,8 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
 
     if (replicationMetadataVersionId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
       logger.info(
-          "Replication metadata schema already exists. Skip adding it to repository. Schema: "
-              + replicationMetadataSchemaStr);
+          "Replication metadata schema already exists. Skip adding it to repository. Schema: {}.",
+          replicationMetadataSchemaStr);
     } else {
       accessor.addReplicationMetadataSchema(storeName, rmdSchemaEntry);
     }

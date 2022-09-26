@@ -13,7 +13,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class HelixReadWriteLiveClusterConfigRepository extends HelixReadOnlyLiveClusterConfigRepository
     implements ReadWriteLiveClusterConfigRepository {
-  private final Logger logger = LogManager.getLogger(HelixReadWriteLiveClusterConfigRepository.class);
+  private static final Logger logger = LogManager.getLogger(HelixReadWriteLiveClusterConfigRepository.class);
 
   public HelixReadWriteLiveClusterConfigRepository(
       ZkClient zkClient,
@@ -24,13 +24,13 @@ public class HelixReadWriteLiveClusterConfigRepository extends HelixReadOnlyLive
 
   @Override
   public void updateConfigs(LiveClusterConfig clusterConfig) {
-    logger.info("Updating cluster configs to:\n" + clusterConfig);
+    logger.info("Updating cluster configs to:\n{}.", clusterConfig);
     HelixUtils.update(zkDataAccessor, clusterConfigZkPath, clusterConfig);
   }
 
   @Override
   public void deleteConfigs() {
-    logger.info("Deleting dynamic cluster configs:");
+    logger.info("Deleting dynamic cluster configs.");
     HelixUtils.remove(zkDataAccessor, clusterConfigZkPath);
   }
 }

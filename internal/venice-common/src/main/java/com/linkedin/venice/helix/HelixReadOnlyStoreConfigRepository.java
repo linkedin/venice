@@ -76,7 +76,7 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
     accessor.subscribeStoreConfigAddedOrDeletedListener(storeConfigAddedOrDeletedListener);
     List<StoreConfig> configList =
         accessor.getAllStoreConfigs(refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
-    LOGGER.info("Found " + configList.size() + " store configs.");
+    LOGGER.info("Found {} store configs.", configList.size());
     Map<String, StoreConfig> configMap = new HashMap<>();
     for (StoreConfig config: configList) {
       configMap.put(config.getStoreName(), config);
@@ -155,8 +155,9 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
         Set<String> deletedStores = new HashSet<>(map.keySet());
         currentChildren.forEach(deletedStores::remove);
         LOGGER.info(
-            "Store configs list is changed. " + newStores.size() + " new configs. And will delete "
-                + deletedStores.size() + " configs.");
+            "Store configs list is changed. {} new configs. And will delete {} configs.",
+            newStores.size(),
+            deletedStores.size());
         // New added store configs
         List<StoreConfig> newConfigs = accessor.getStoreConfigs(newStores);
         for (StoreConfig config: newConfigs) {
