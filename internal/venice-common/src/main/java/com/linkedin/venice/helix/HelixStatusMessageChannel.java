@@ -142,13 +142,12 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
     // Send and wait until getting response or time out.
     int numMsgSent = messageService.sendAndWait(criteria, helixMessage, callBack, sendMessageTimeOut, retryCount);
     if (numMsgSent == 0) {
-      String errorMsg = "No storage node is found to send message to. Message:" + message.toString();
-      LOGGER.error(errorMsg);
+      LOGGER.error("No storage node is found to send message to. Message: {}", message);
       // Not throwing exception for now,
       // this scenario could be introduced by two cases: wrong resource or no storage node.
       // TODO: need to think a better way to handle those two different scenarios.
     } else {
-      LOGGER.info("Sent {} messages to storage nodes. Message: {}.", numMsgSent, message.toString());
+      LOGGER.info("Sent {} messages to storage nodes. Message: {}.", numMsgSent, message);
     }
 
     stats.recordToStorageNodesMessageCount(numMsgSent);
@@ -171,11 +170,10 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
       }
     }
     if (isSuccessful) {
-      LOGGER.info("{} messages have been send and processed. Message: {}.", numMsgSent, message.toString());
+      LOGGER.info("{} messages have been send and processed. Message: {}.", numMsgSent, message);
     } else {
       // We have printed the detail error information before for each of message.
-      throw new VeniceException(
-          "Some of storage node did not process message successfully. Message:" + message.toString());
+      throw new VeniceException("Some of storage node did not process message successfully. Message:" + message);
     }
   }
 

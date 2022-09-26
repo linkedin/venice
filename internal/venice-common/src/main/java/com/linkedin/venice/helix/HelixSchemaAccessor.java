@@ -118,7 +118,7 @@ public class HelixSchemaAccessor {
 
   public void createKeySchema(String storeName, SchemaEntry schemaEntry) {
     HelixUtils.create(schemaAccessor, getKeySchemaPath(storeName), schemaEntry);
-    logger.info("Set up key schema: {} for store: {}.", schemaEntry.toString(), storeName);
+    logger.info("Set up key schema: {} for store: {}.", schemaEntry, storeName);
   }
 
   public void addValueSchema(String storeName, SchemaEntry schemaEntry) {
