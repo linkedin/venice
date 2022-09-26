@@ -47,7 +47,7 @@ public class ListenerManager<T> {
 
   public synchronized void unsubscribe(String key, T listener) {
     if (!listenerMap.containsKey(key)) {
-      LOGGER.debug("Not listeners are found for given key:" + key);
+      LOGGER.debug("Not listeners are found for given key: {}", key);
     } else {
       listenerMap.get(key).remove(listener);
       if (listenerMap.get(key).isEmpty()) {

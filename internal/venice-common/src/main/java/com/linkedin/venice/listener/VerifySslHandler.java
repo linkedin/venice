@@ -39,8 +39,11 @@ public class VerifySslHandler extends SimpleChannelInboundHandler<HttpRequest> {
       // Log that we got an unexpected non-ssl request
       String remote = ctx.channel().remoteAddress().toString(); // ip and port
       String method = req.method().name();
-      String errLine = remote + " requested " + method + " " + req.uri();
-      LOGGER.error("Got a non-ssl request on what should be an ssl only port: " + errLine);
+      LOGGER.error(
+          "Got a non-ssl request on what should be an ssl only port: {} requested {}, {}",
+          remote,
+          method,
+          req.uri());
       ctx.writeAndFlush(new HttpShortcutResponse("SSL Required", HttpResponseStatus.FORBIDDEN));
       ctx.close();
     }

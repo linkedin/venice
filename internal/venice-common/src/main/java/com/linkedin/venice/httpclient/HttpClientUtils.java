@@ -108,8 +108,8 @@ public class HttpClientUtils {
     }
     if (isIdleConnectionToServerCleanupEnabled) {
       LOGGER.info(
-          "Idle connection to server cleanup is enabled, and the idle threshold is "
-              + idleConnectionCleanupThresholdMins + " mins");
+          "Idle connection to server cleanup is enabled, and the idle threshold is {} mins",
+          idleConnectionCleanupThresholdMins);
       reapIdleConnections(
           connectionManager,
           10,
@@ -205,10 +205,10 @@ public class HttpClientUtils {
       private static void logSessionFailure(String remoteHost, Exception e, String failureType) {
         if (e != null) {
           if (!EXCEPTION_FILTER.isRedundantException(remoteHost, e)) {
-            LOGGER.warn("Session request to " + remoteHost + " " + failureType + ": ", e);
+            LOGGER.warn("Session request to {} {}: ", remoteHost, failureType, e);
           }
         } else {
-          LOGGER.warn("Session request to " + remoteHost + " " + failureType);
+          LOGGER.warn("Session request to {} {}", remoteHost, failureType);
         }
       }
     }

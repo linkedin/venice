@@ -205,8 +205,11 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
 
       if (topicDescription.partitions().size() <= partitionID) {
         LOGGER.warn(
-            topic + " is trying to check partitionID " + partitionID + ", but total partitions count "
-                + topicDescription.partitions().size() + " Will carry on assuming the topic doesn't exist.");
+            "{} is trying to check partitionID {}, but total partitions count is {}. "
+                + "Will carry on assuming the topic doesn't exist.",
+            topic,
+            partitionID,
+            topicDescription.partitions().size());
         return false;
       }
       return true;

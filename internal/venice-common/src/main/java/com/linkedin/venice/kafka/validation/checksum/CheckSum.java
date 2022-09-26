@@ -151,7 +151,8 @@ public abstract class CheckSum {
     } else {
       // TODO: Consider throwing exception here, instead.
       LOGGER.warn(
-          "CheckSum.getInstance(type, encodedState) called for a type which does not support checkpointing: " + type);
+          "CheckSum.getInstance(type, encodedState) called for a type which does not support checkpointing: {}",
+          type);
       // Not a very big deal since the default checksumming strategy is MD5 anyway.
       return Optional.empty();
     }

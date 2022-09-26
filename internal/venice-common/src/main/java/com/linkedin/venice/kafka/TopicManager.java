@@ -115,16 +115,18 @@ public class TopicManager implements Closeable {
     this.kafkaReadOnlyAdmin = Lazy.of(() -> {
       KafkaAdminWrapper kafkaReadOnlyAdmin = kafkaClientFactory.getReadOnlyKafkaAdmin(optionalMetricsRepository);
       logger.info(
-          this.getClass().getSimpleName() + " is using kafka read-only admin client of class: "
-              + kafkaReadOnlyAdmin.getClassName());
+          "{} is using kafka read-only admin client of class: {}",
+          this.getClass().getSimpleName(),
+          kafkaReadOnlyAdmin.getClassName());
       return kafkaReadOnlyAdmin;
     });
 
     this.kafkaWriteOnlyAdmin = Lazy.of(() -> {
       KafkaAdminWrapper kafkaWriteOnlyAdmin = kafkaClientFactory.getWriteOnlyKafkaAdmin(optionalMetricsRepository);
       logger.info(
-          this.getClass().getSimpleName() + " is using kafka write-only admin client of class: "
-              + kafkaWriteOnlyAdmin.getClassName());
+          "{} is using kafka write-only admin client of class: {}",
+          this.getClass().getSimpleName(),
+          kafkaWriteOnlyAdmin.getClassName());
       return kafkaWriteOnlyAdmin;
     });
 
@@ -269,7 +271,7 @@ public class TopicManager implements Closeable {
     long deadlineMs =
         startTime + (useFastKafkaOperationTimeout ? FAST_KAFKA_OPERATION_TIMEOUT_MS : kafkaOperationTimeoutMs);
 
-    logger.info("Creating topic: " + topicName + " partitions: " + numPartitions + " replication: " + replication);
+    logger.info("Creating topic: {} partitions: {} replication: {}", topicName, numPartitions, replication);
     Properties topicProperties = new Properties();
     topicProperties.put(TopicConfig.RETENTION_MS_CONFIG, Long.toString(retentionTimeMs));
     if (logCompaction) {
@@ -295,10 +297,10 @@ public class TopicManager implements Closeable {
           CREATE_TOPIC_RETRIABLE_EXCEPTIONS);
     } catch (Exception e) {
       if (ExceptionUtils.recursiveClassEquals(e, TopicExistsException.class)) {
-        logger.info("Topic: " + topicName + " already exists, will update retention policy.");
+        logger.info("Topic: {} already exists, will update retention policy.", topicName);
         waitUntilTopicCreated(topicName, numPartitions, deadlineMs);
         updateTopicRetention(topicName, retentionTimeMs);
-        logger.info("Updated retention policy to be " + retentionTimeMs + "ms for topic: " + topicName);
+        logger.info("Updated retention policy to be {}ms for topic: {}", retentionTimeMs, topicName);
         return;
       } else {
         throw new VeniceOperationAgainstKafkaTimedOut(
@@ -309,7 +311,7 @@ public class TopicManager implements Closeable {
     }
     waitUntilTopicCreated(topicName, numPartitions, deadlineMs);
     boolean eternal = retentionTimeMs == ETERNAL_TOPIC_RETENTION_POLICY_MS;
-    logger.info("Successfully created " + (eternal ? "eternal " : "") + "topic: " + topicName);
+    logger.info("Successfully created {}topic: {}", eternal ? "eternal " : "", topicName);
   }
 
   protected void waitUntilTopicCreated(String topicName, int partitionCount, long deadlineMs) {
@@ -331,7 +333,7 @@ public class TopicManager implements Closeable {
    */
   private Future<Void> ensureTopicIsDeletedAsync(String topicName) {
     // TODO: Stop using Kafka APIs which depend on ZK.
-    logger.info("Deleting topic: " + topicName);
+    logger.info("Deleting topic: {}", topicName);
     return kafkaWriteOnlyAdmin.get().deleteTopic(topicName);
   }
 
@@ -366,8 +368,10 @@ public class TopicManager implements Closeable {
       topicProperties.put(TopicConfig.RETENTION_MS_CONFIG, Long.toString(retentionInMS));
       kafkaWriteOnlyAdmin.get().setTopicConfig(topicName, topicProperties);
       logger.info(
-          "Updated topic: " + topicName + " with retention.ms: " + retentionInMS + " in cluster ["
-              + this.kafkaBootstrapServers + "]");
+          "Updated topic: {} with retention.ms: {} in cluster [{}]",
+          topicName,
+          retentionInMS,
+          this.kafkaBootstrapServers);
       return true;
     }
     // Retention time has already been updated for this topic before
@@ -404,9 +408,12 @@ public class TopicManager implements Closeable {
     if (needToUpdateTopicConfig) {
       kafkaWriteOnlyAdmin.get().setTopicConfig(topicName, topicProperties);
       logger.info(
-          "Kafka compaction policy for topic: " + topicName + " has been updated from " + currentCompactionPolicy
-              + " to " + expectedCompactionPolicy + ", min compaction lag updated from " + currentMinLogCompactionLagMs
-              + " to " + expectedCompactionPolicy);
+          "Kafka compaction policy for topic: {} has been updated from {} to {}, min compaction lag updated from {} to {}",
+          topicName,
+          currentCompactionPolicy,
+          expectedCompactionPolicy,
+          currentMinLogCompactionLagMs,
+          expectedCompactionPolicy);
     }
   }
 
@@ -544,7 +551,7 @@ public class TopicManager implements Closeable {
         throw new VeniceOperationAgainstKafkaTimedOut(
             "Failed to delete kafka topic: " + topicName + " after " + kafkaOperationTimeoutMs);
       }
-      logger.info("Topic: " + topicName + " has been deleted");
+      logger.info("Topic: {} has been deleted", topicName);
       // TODO: Remove the checks below once we have fully migrated to use the Kafka admin client.
       return;
     }
@@ -577,7 +584,7 @@ public class TopicManager implements Closeable {
         }
       }
       if (isTopicFullyDeleted(topicName, closeAndRecreateConsumer)) {
-        logger.info("Topic: " + topicName + " has been deleted after polling " + current + " times");
+        logger.info("Topic: {} has been deleted after polling {} times", topicName, current);
         return;
       }
     }
@@ -597,25 +604,23 @@ public class TopicManager implements Closeable {
       } catch (VeniceOperationAgainstKafkaTimedOut e) {
         attempts++;
         logger.warn(
-            String.format(
-                "Topic deletion for topic %s timed out!  Retry attempt %d / %d",
-                topicName,
-                attempts,
-                MAX_TOPIC_DELETE_RETRIES));
+            "Topic deletion for topic {} timed out!  Retry attempt {} / {}",
+            topicName,
+            attempts,
+            MAX_TOPIC_DELETE_RETRIES);
         if (attempts == MAX_TOPIC_DELETE_RETRIES) {
-          logger.error(String.format("Topic deletion for topic %s timed out! Giving up!!", topicName), e);
+          logger.error("Topic deletion for topic {} timed out! Giving up!!", topicName, e);
           throw e;
         }
       } catch (ExecutionException e) {
         attempts++;
         logger.warn(
-            String.format(
-                "Topic deletion for topic %s errored out!  Retry attempt %d / %d",
-                topicName,
-                attempts,
-                MAX_TOPIC_DELETE_RETRIES));
+            "Topic deletion for topic {} errored out!  Retry attempt {} / {}",
+            topicName,
+            attempts,
+            MAX_TOPIC_DELETE_RETRIES);
         if (attempts == MAX_TOPIC_DELETE_RETRIES) {
-          logger.error(String.format("Topic deletion for topic %s errored out! Giving up!!", topicName), e);
+          logger.error("Topic deletion for topic {} errored out! Giving up!!", topicName, e);
           throw e;
         }
       }
@@ -679,27 +684,31 @@ public class TopicManager implements Closeable {
     }
     List<PartitionInfo> partitionInfoList = partitionOffsetFetcher.partitionsFor(topic);
     if (partitionInfoList == null) {
-      logger.warn("getConsumer().partitionsFor() returned null for topic: " + topic);
+      logger.warn("getConsumer().partitionsFor() returned null for topic: {}", topic);
       return false;
     }
 
     if (expectedPartitionCount != null && partitionInfoList.size() != expectedPartitionCount) {
       // Unexpected. Should perhaps even throw...
       logger.error(
-          "getConsumer().partitionsFor() returned the wrong number of partitions for topic: " + topic
-              + ", expectedPartitionCount: " + expectedPartitionCount + ", actual size: " + partitionInfoList.size()
-              + ", partitionInfoList: " + Arrays.toString(partitionInfoList.toArray()));
+          "getConsumer().partitionsFor() returned the wrong number of partitions for topic: {}, "
+              + "expectedPartitionCount: {}, actual size: {}, partitionInfoList: {}",
+          topic,
+          expectedPartitionCount,
+          partitionInfoList.size(),
+          Arrays.toString(partitionInfoList.toArray()));
       return false;
     }
 
     boolean allPartitionsHaveAnInSyncReplica =
         partitionInfoList.stream().allMatch(partitionInfo -> partitionInfo.inSyncReplicas().length > 0);
     if (allPartitionsHaveAnInSyncReplica) {
-      logger.trace("The following topic has the at least one in-sync replica for each partition: " + topic);
+      logger.trace("The following topic has the at least one in-sync replica for each partition: {}", topic);
     } else {
       logger.info(
-          "getConsumer().partitionsFor() returned some partitionInfo with no in-sync replica for topic: " + topic
-              + ", partitionInfoList: " + Arrays.toString(partitionInfoList.toArray()));
+          "getConsumer().partitionsFor() returned some partitionInfo with no in-sync replica for topic: {}, partitionInfoList: {}",
+          topic,
+          Arrays.toString(partitionInfoList.toArray()));
     }
     return allPartitionsHaveAnInSyncReplica;
   }
@@ -712,13 +721,13 @@ public class TopicManager implements Closeable {
    */
   private synchronized boolean isTopicFullyDeleted(String topic, boolean closeAndRecreateConsumer) {
     if (containsTopic(topic)) {
-      logger.info("containsTopicInKafkaZK() returned true, meaning that the ZK path still exists for topic: " + topic);
+      logger.info("containsTopicInKafkaZK() returned true, meaning that the ZK path still exists for topic: {}", topic);
       return false;
     }
 
     List<PartitionInfo> partitionInfoList = getRawBytesConsumer(closeAndRecreateConsumer).partitionsFor(topic);
     if (partitionInfoList == null) {
-      logger.trace("getConsumer().partitionsFor() returned null for topic: " + topic);
+      logger.trace("getConsumer().partitionsFor() returned null for topic: {}", topic);
       return true;
     }
 
@@ -726,11 +735,13 @@ public class TopicManager implements Closeable {
         partitionInfoList.stream().noneMatch(partitionInfo -> partitionInfo.replicas().length > 0);
     if (noPartitionStillHasAnyReplica) {
       logger.trace(
-          "getConsumer().partitionsFor() returned no partitionInfo still containing a replica for topic: " + topic);
+          "getConsumer().partitionsFor() returned no partitionInfo still containing a replica for topic: {}",
+          topic);
     } else {
       logger.info(
-          "The following topic still has at least one replica in at least one partition: " + topic
-              + ", partitionInfoList: " + Arrays.toString(partitionInfoList.toArray()));
+          "The following topic still has at least one replica in at least one partition: {}, partitionInfoList: {}",
+          topic,
+          Arrays.toString(partitionInfoList.toArray()));
     }
     return noPartitionStillHasAnyReplica;
   }
