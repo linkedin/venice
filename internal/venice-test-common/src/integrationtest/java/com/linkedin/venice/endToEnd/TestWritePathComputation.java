@@ -6,6 +6,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.utils.TestUtils;
@@ -20,7 +21,11 @@ public class TestWritePathComputation {
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testFeatureFlagSingleDC() {
-    try (VeniceMultiClusterWrapper multiClusterWrapper = ServiceFactory.getVeniceMultiClusterWrapper(1, 1, 1, 0)) {
+    VeniceMultiClusterCreateOptions options = new VeniceMultiClusterCreateOptions.Builder(1).numberOfControllers(1)
+        .numberOfServers(1)
+        .numberOfRouters(0)
+        .build();
+    try (VeniceMultiClusterWrapper multiClusterWrapper = ServiceFactory.getVeniceMultiClusterWrapper(options)) {
       String clusterName = multiClusterWrapper.getClusterNames()[0];
       String storeName = "test-store0";
 
