@@ -40,9 +40,10 @@ public class SchemaPresenceChecker {
                   + SchemaReader.class.getSimpleName() + " for " + avroProtocolDefinition.name());
         }
         LOGGER.info(
-            "Discovered new protocol version '" + protocolVersion + "', and successfully retrieved it for protocol "
-                + avroProtocolDefinition.name());
-        LOGGER.debug("Schema:\n" + newProtocolSchema.toString(true));
+            "Discovered new protocol version: {}, and successfully retrieved it for protocol: {}",
+            protocolVersion,
+            avroProtocolDefinition.name());
+        LOGGER.debug("Schema: {}", newProtocolSchema.toString(true));
         break;
       } catch (Exception e) {
         if (attempt == MAX_ATTEMPTS_FOR_SCHEMA_READER || !retry) {
@@ -52,10 +53,13 @@ public class SchemaPresenceChecker {
               e);
         }
         LOGGER.error(
-            "Caught an exception while trying to fetch a new protocol schema version (protocol: "
-                + avroProtocolDefinition.name() + ", version: " + protocolVersion + "). Attempt #" + attempt + "/"
-                + MAX_ATTEMPTS_FOR_SCHEMA_READER + ". Will sleep " + WAIT_TIME_BETWEEN_SCHEMA_READER_ATTEMPTS_IN_MS
-                + " ms and try again.",
+            "Caught an exception while trying to fetch a new protocol schema version (protocol: {}, version: {})."
+                + " Attempt #{}/{}. Will sleep {} ms and try again.",
+            avroProtocolDefinition.name(),
+            protocolVersion,
+            attempt,
+            MAX_ATTEMPTS_FOR_SCHEMA_READER,
+            WAIT_TIME_BETWEEN_SCHEMA_READER_ATTEMPTS_IN_MS,
             e);
         Utils.sleep(WAIT_TIME_BETWEEN_SCHEMA_READER_ATTEMPTS_IN_MS);
       }
@@ -74,8 +78,9 @@ public class SchemaPresenceChecker {
     try {
       verifySchemaIsPresent(version, retry);
       LOGGER.info(
-          "SchemaPresenceChecker: The schema " + avroProtocolDefinition.name() + " current version " + version
-              + " is found");
+          "SchemaPresenceChecker: The schema {} current version {} is found",
+          avroProtocolDefinition.name(),
+          version);
     } catch (VeniceException e) {
       String errorMsg = "SchemaVersionNotFound: The schema " + avroProtocolDefinition.name() + " current version "
           + version + " is not present in ZK, exiting application";

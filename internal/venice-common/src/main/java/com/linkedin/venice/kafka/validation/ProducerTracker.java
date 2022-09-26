@@ -109,10 +109,13 @@ public class ProducerTracker {
     try {
       if (segments.containsKey(partition)) {
         logger.info(
-            this.toString() + " will overwrite previous state for partition: " + partition + "\nPrevious state: "
-                + segments.get(partition) + "\nNew state: " + segment);
+            "{} will overwrite previous state for partition: {}, Previous state: {}, New state: {}",
+            this,
+            partition,
+            segments.get(partition),
+            segment);
       } else {
-        logger.info(this.toString() + " will set state for partition: " + partition + "\nNew state: " + segment);
+        logger.info("{} will set state for partition: {}, New state: {}", this, partition, segment);
       }
       segments.put(partition, segment);
     } finally {
@@ -344,7 +347,7 @@ public class ProducerTracker {
       String errorMsgIdentifier = consumerRecord.topic() + "-" + consumerRecord.partition() + "-"
           + DataFaultType.UNREGISTERED_PRODUCER.toString();
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMsgIdentifier)) {
-        logger.warn("Will " + extraInfo);
+        logger.warn("Will {}", extraInfo);
       }
     } else {
       throw DataFaultType.UNREGISTERED_PRODUCER
@@ -592,8 +595,8 @@ public class ProducerTracker {
          * messages within a segment are compacted; START_OF_SEGMENT and END_OF_SEGMENT messages should still be there.
          */
         logger.error(
-            "Encountered a missing segment. This is unacceptable even if log compaction kicks in. Error msg:\n"
-                + missingSegment.getMessage());
+            "Encountered a missing segment. This is unacceptable even if log compaction kicks in. Error msg: {}",
+            missingSegment.getMessage());
         if (errorMetricCallback.isPresent()) {
           errorMetricCallback.get().execute(missingSegment);
         }

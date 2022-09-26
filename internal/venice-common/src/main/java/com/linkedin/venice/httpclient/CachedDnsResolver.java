@@ -55,8 +55,10 @@ public class CachedDnsResolver implements DnsResolver, Closeable {
     if (host.matches(cachedHostPattern)) {
       cachedDnsEntries.putIfAbsent(host, socketAddresses);
       LOGGER.info(
-          "Put [host:" + host + ", socket addresses:" + Arrays.toString(socketAddresses)
-              + "] to the cache, and cache size: " + cachedDnsEntries.size());
+          "Put [host:{}, socket addresses:{}] to the cache, and cache size: {}",
+          host,
+          Arrays.toString(socketAddresses),
+          cachedDnsEntries.size());
     }
     return socketAddresses;
   }
@@ -76,7 +78,7 @@ public class CachedDnsResolver implements DnsResolver, Closeable {
     long dnsLookupLatency = System.currentTimeMillis() - dnsLookupStartTs;
     if (dnsLookupLatency > 50) {
       // Log a warn message if the fetch latency exceeds 50ms
-      LOGGER.warn("System DNS resolver took " + dnsLookupLatency + "ms to resolve host: " + host);
+      LOGGER.warn("System DNS resolver took {}ms to resolve host: {}", dnsLookupLatency, host);
     }
     stats.recordLookupLatency(dnsLookupLatency);
     return socketAddresses;
@@ -107,18 +109,20 @@ public class CachedDnsResolver implements DnsResolver, Closeable {
             InetAddress[] cachedSocketAddresses = cachedDnsEntries.get(host);
             if (cachedSocketAddresses == null) {
               LOGGER.error(
-                  "Get null entry from DNS cache for host: " + host
-                      + ", which is impossible.. But DnsCacheRefreshingTask will udpate it by address: "
-                      + Arrays.toString(socketAddresses));
+                  "Get null entry from DNS cache for host: {}, which is impossible.. But DnsCacheRefreshingTask will update it by address: {}",
+                  host,
+                  Arrays.toString(socketAddresses));
               cachedDnsEntries.put(host, socketAddresses);
             } else if (!Arrays.equals(cachedSocketAddresses, socketAddresses)) {
               LOGGER.info(
-                  "Dns entry for host: " + host + " gets updated, previous: " + Arrays.toString(cachedSocketAddresses)
-                      + ", current: " + Arrays.toString(socketAddresses));
+                  "Dns entry for host: {} gets updated, previous: {}, current: {}",
+                  host,
+                  Arrays.toString(cachedSocketAddresses),
+                  Arrays.toString(socketAddresses));
               cachedDnsEntries.put(host, socketAddresses);
             }
           } catch (UnknownHostException e) {
-            LOGGER.error("Received exception when refreshing dns entry for host: " + host, e);
+            LOGGER.error("Received exception when refreshing dns entry for host: {}", host, e);
           }
         }
       }

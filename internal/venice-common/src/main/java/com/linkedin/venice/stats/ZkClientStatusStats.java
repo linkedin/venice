@@ -74,13 +74,13 @@ public class ZkClientStatusStats extends AbstractVeniceStats implements IZkState
 
   @Override
   public void handleNewSession(String s) {
-    LOGGER.info("New session established for '" + getName() + "', current KeeperState: " + clientState);
+    LOGGER.info("New session established for '{}', current KeeperState: {}", getName(), clientState);
     zkClientNewSessionSensor.record();
   }
 
   @Override
   public void handleSessionEstablishmentError(Throwable error) {
-    LOGGER.info("Session establishment error for '" + getName() + "', current KeeperState: " + clientState, error);
+    LOGGER.error("Session establishment error for '{}', current KeeperState: {}", getName(), clientState, error);
     zkClientSessionEstablishmentErrorSensor.record();
   }
 }
