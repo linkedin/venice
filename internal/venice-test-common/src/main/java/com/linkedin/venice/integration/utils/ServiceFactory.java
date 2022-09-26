@@ -10,7 +10,6 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_MAX_ATTEMPT;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARTITION_SIZE_BYTES;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_REPLICATION_FACTOR;
-import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_SSL_TO_STORAGE_NODES;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_WAIT_TIME_FOR_CLUSTER_START_S;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 
@@ -57,7 +56,7 @@ import org.apache.logging.log4j.Logger;
  * used in integration tests.
  */
 public class ServiceFactory {
-  private static final Logger LOGGER = LogManager.getLogger(ZkServerWrapper.class);
+  private static final Logger LOGGER = LogManager.getLogger(ServiceFactory.class);
   private static final VeniceProperties EMPTY_VENICE_PROPS = new VeniceProperties();
   private static final String ULIMIT;
   private static final String VM_ARGS;
@@ -318,38 +317,12 @@ public class ServiceFactory {
         authorizerService);
   }
 
-  /**
-   * Get a running admin spark server with a passed-in {@link Admin}, good for tests that want to provide a mock admin
-   * @param admin
-   * @return
-   */
-  public static AdminSparkServer getMockAdminSparkServer(Admin admin, String cluster) {
-    return getService("MockAdminSparkServer", (serviceName) -> {
-      Set<String> clusters = new HashSet<String>();
-      clusters.add(cluster);
-      AdminSparkServer server = new AdminSparkServer(
-          Utils.getFreePort(),
-          admin,
-          new MetricsRepository(),
-          clusters,
-          false,
-          Optional.empty(),
-          false,
-          Optional.empty(),
-          Collections.emptyList(),
-          null,
-          false);
-      server.start();
-      return server;
-    });
-  }
-
   public static AdminSparkServer getMockAdminSparkServer(
       Admin admin,
       String cluster,
       List<ControllerRoute> bannedRoutes) {
     return getService("MockAdminSparkServer", (serviceName) -> {
-      Set<String> clusters = new HashSet<String>();
+      Set<String> clusters = new HashSet<>();
       clusters.add(cluster);
       AdminSparkServer server = new AdminSparkServer(
           Utils.getFreePort(),
@@ -581,119 +554,8 @@ public class ServiceFactory {
     return getVeniceCluster(options);
   }
 
-  public static VeniceMultiClusterWrapper getVeniceMultiClusterWrapper(
-      int numberOfClusters,
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters) {
-    return getService(
-        VeniceMultiClusterWrapper.SERVICE_NAME,
-        VeniceMultiClusterWrapper.generateService(
-            "",
-            numberOfClusters,
-            numberOfControllers,
-            numberOfServers,
-            numberOfRouters,
-            DEFAULT_REPLICATION_FACTOR,
-            DEFAULT_PARTITION_SIZE_BYTES,
-            false,
-            false,
-            DEFAULT_DELAYED_TO_REBALANCE_MS,
-            DEFAULT_REPLICATION_FACTOR - 1,
-            DEFAULT_SSL_TO_STORAGE_NODES,
-            true,
-            false,
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            false,
-            false,
-            Collections.emptyMap()));
-  }
-
-  public static VeniceMultiClusterWrapper getVeniceMultiClusterWrapper(
-      String coloName,
-      KafkaBrokerWrapper kafkaBrokerWrapper,
-      ZkServerWrapper zkServerWrapper,
-      int numberOfClusters,
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters,
-      int replicationFactor,
-      boolean randomizeClusterName,
-      boolean multiColoSetup,
-      boolean multiD2,
-      Optional<Properties> childControllerProperties,
-      Optional<VeniceProperties> veniceProperties,
-      boolean forkServer,
-      Map<String, Map<String, String>> kafkaClusterMap) {
-    return getService(
-        VeniceMultiClusterWrapper.SERVICE_NAME,
-        VeniceMultiClusterWrapper.generateService(
-            coloName,
-            numberOfClusters,
-            numberOfControllers,
-            numberOfServers,
-            numberOfRouters,
-            replicationFactor,
-            DEFAULT_PARTITION_SIZE_BYTES,
-            false,
-            false,
-            DEFAULT_DELAYED_TO_REBALANCE_MS,
-            replicationFactor - 1,
-            DEFAULT_SSL_TO_STORAGE_NODES,
-            randomizeClusterName,
-            multiColoSetup,
-            Optional.of(zkServerWrapper),
-            Optional.of(kafkaBrokerWrapper),
-            childControllerProperties,
-            veniceProperties,
-            multiD2,
-            forkServer,
-            kafkaClusterMap));
-  }
-
-  /**
-   * Predictable cluster name
-   */
-  public static VeniceMultiClusterWrapper getVeniceMultiClusterWrapper(
-      String coloName,
-      int numberOfClusters,
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters,
-      int replicationFactor,
-      boolean randomizeClusterName,
-      boolean multiColoSetup,
-      boolean multiD2,
-      Optional<Properties> childControllerProperties,
-      Optional<VeniceProperties> veniceProperties,
-      boolean forkServer) {
-    return getService(
-        VeniceMultiClusterWrapper.SERVICE_NAME,
-        VeniceMultiClusterWrapper.generateService(
-            coloName,
-            numberOfClusters,
-            numberOfControllers,
-            numberOfServers,
-            numberOfRouters,
-            replicationFactor,
-            DEFAULT_PARTITION_SIZE_BYTES,
-            false,
-            false,
-            DEFAULT_DELAYED_TO_REBALANCE_MS,
-            replicationFactor - 1,
-            DEFAULT_SSL_TO_STORAGE_NODES,
-            randomizeClusterName,
-            multiColoSetup,
-            Optional.empty(),
-            Optional.empty(),
-            childControllerProperties,
-            veniceProperties,
-            multiD2,
-            forkServer,
-            Collections.emptyMap()));
+  public static VeniceMultiClusterWrapper getVeniceMultiClusterWrapper(VeniceMultiClusterCreateOptions options) {
+    return getService(VeniceMultiClusterWrapper.SERVICE_NAME, VeniceMultiClusterWrapper.generateService(options));
   }
 
   public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(

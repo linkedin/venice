@@ -12,11 +12,9 @@ import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -49,45 +47,26 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
     this.clientConfigD2Client = clientConfigD2Client;
   }
 
-  static ServiceProvider<VeniceMultiClusterWrapper> generateService(
-      String coloName,
-      int numberOfClusters,
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters,
-      int replicationFactor,
-      int partitionSize,
-      boolean enableAllowlist,
-      boolean enableAutoJoinAllowlist,
-      long rebalanceDelayMs,
-      int minActiveReplica,
-      boolean sslToStorageNodes,
-      boolean randomizeClusterName,
-      boolean multiColoSetup,
-      Optional<ZkServerWrapper> optionalZkServerWrapper,
-      Optional<KafkaBrokerWrapper> optionalKafkaBrokerWrapper,
-      Optional<Properties> childControllerProperties,
-      Optional<VeniceProperties> veniceProperties,
-      boolean multiD2,
-      boolean forkServer,
-      Map<String, Map<String, String>> kafkaClusterMap) {
-    ZkServerWrapper zkServerWrapper = null;
-    KafkaBrokerWrapper kafkaBrokerWrapper = null;
+  static ServiceProvider<VeniceMultiClusterWrapper> generateService(VeniceMultiClusterCreateOptions options) {
     Map<String, VeniceClusterWrapper> clusterWrapperMap = new HashMap<>();
     Map<Integer, VeniceControllerWrapper> controllerMap = new HashMap<>();
+    ZkServerWrapper zkServerWrapper = options.getZkServerWrapper();
+    KafkaBrokerWrapper kafkaBrokerWrapper = options.getKafkaBrokerWrapper();
 
     try {
-      zkServerWrapper =
-          optionalZkServerWrapper.isPresent() ? optionalZkServerWrapper.get() : ServiceFactory.getZkServer();
-      kafkaBrokerWrapper = optionalKafkaBrokerWrapper.isPresent()
-          ? optionalKafkaBrokerWrapper.get()
-          : ServiceFactory.getKafkaBroker(zkServerWrapper);
+      if (zkServerWrapper == null) {
+        zkServerWrapper = ServiceFactory.getZkServer();
+      }
+      if (kafkaBrokerWrapper == null) {
+        kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
+      }
       String clusterToD2 = "";
-      String[] clusterNames = new String[numberOfClusters];
-      for (int i = 0; i < numberOfClusters; i++) {
-        String clusterName = randomizeClusterName ? Utils.getUniqueString("venice-cluster" + i) : "venice-cluster" + i;
+      String[] clusterNames = new String[options.getNumberOfClusters()];
+      for (int i = 0; i < options.getNumberOfClusters(); i++) {
+        String clusterName =
+            options.isRandomizeClusterName() ? Utils.getUniqueString("venice-cluster" + i) : "venice-cluster" + i;
         clusterNames[i] = clusterName;
-        if (multiD2) {
+        if (options.isMultiD2()) {
           clusterToD2 += clusterName + ":venice-" + i + ",";
         } else {
           clusterToD2 += TestUtils.getClusterToDefaultD2String(clusterName) + ",";
@@ -96,18 +75,14 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       clusterToD2 = clusterToD2.substring(0, clusterToD2.length() - 1);
 
       // Create controllers for multi-cluster
-      Properties controllerProperties;
-      if (!childControllerProperties.isPresent()) {
-        controllerProperties = new Properties();
-      } else {
-        controllerProperties = childControllerProperties.get();
-      }
-      if (multiColoSetup && !controllerProperties.containsKey(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD)) {
+      Properties controllerProperties = options.getChildControllerProperties();
+      if (options.isMultiColoSetup()
+          && !controllerProperties.containsKey(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD)) {
         // In multi-colo setup, we don't allow batch push to each individual child colo, but just parent colo
         controllerProperties.put(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, "false");
       }
-      if (coloName != null) {
-        controllerProperties.setProperty(LOCAL_REGION_NAME, coloName);
+      if (options.getColoName() != null) {
+        controllerProperties.setProperty(LOCAL_REGION_NAME, options.getColoName());
       }
 
       // Setup D2 for controller
@@ -124,14 +99,14 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
           ClientConfig.defaultGenericClientConfig("")
               .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
               .setD2Client(clientConfigD2Client));
-      for (int i = 0; i < numberOfControllers; i++) {
+      for (int i = 0; i < options.getNumberOfControllers(); i++) {
         VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceChildController(
             clusterNames,
             kafkaBrokerWrapper,
-            replicationFactor,
-            partitionSize,
-            rebalanceDelayMs,
-            minActiveReplica,
+            options.getReplicationFactor(),
+            options.getPartitionSize(),
+            options.getRebalanceDelayMs(),
+            options.getMinActiveReplica(),
             clusterToD2,
             false,
             true,
@@ -139,33 +114,34 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
         controllerMap.put(controllerWrapper.getPort(), controllerWrapper);
       }
       // Specify the system store cluster name
-      Properties extraProperties = veniceProperties.map(VeniceProperties::toProperties).orElse(new Properties());
+      Properties extraProperties = options.getVeniceProperties().toProperties();
       extraProperties.put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterNames[0]);
       extraProperties.putAll(KafkaSSLUtils.getLocalCommonKafkaSSLConfig());
-      VeniceClusterCreateOptions.Builder vvcBuilder = new VeniceClusterCreateOptions.Builder().coloName(coloName)
-          .standalone(false)
-          .zkServerWrapper(zkServerWrapper)
-          .kafkaBrokerWrapper(kafkaBrokerWrapper)
-          .clusterToD2(clusterToD2)
-          .numberOfControllers(0)
-          .numberOfServers(numberOfServers)
-          .numberOfRouters(numberOfRouters)
-          .replicationFactor(replicationFactor)
-          .partitionSize(partitionSize)
-          .enableAllowlist(enableAllowlist)
-          .enableAutoJoinAllowlist(enableAutoJoinAllowlist)
-          .rebalanceDelayMs(rebalanceDelayMs)
-          .minActiveReplica(minActiveReplica)
-          .sslToStorageNodes(sslToStorageNodes)
-          .extraProperties(extraProperties)
-          .forkServer(forkServer)
-          .kafkaClusterMap(kafkaClusterMap);
+      VeniceClusterCreateOptions.Builder vccBuilder =
+          new VeniceClusterCreateOptions.Builder().coloName(options.getColoName())
+              .standalone(false)
+              .zkServerWrapper(zkServerWrapper)
+              .kafkaBrokerWrapper(kafkaBrokerWrapper)
+              .clusterToD2(clusterToD2)
+              .numberOfControllers(0)
+              .numberOfServers(options.getNumberOfServers())
+              .numberOfRouters(options.getNumberOfRouters())
+              .replicationFactor(options.getReplicationFactor())
+              .partitionSize(options.getPartitionSize())
+              .enableAllowlist(options.isEnableAllowlist())
+              .enableAutoJoinAllowlist(options.isEnableAutoJoinAllowlist())
+              .rebalanceDelayMs(options.getRebalanceDelayMs())
+              .minActiveReplica(options.getMinActiveReplica())
+              .sslToStorageNodes(options.isSslToStorageNodes())
+              .extraProperties(extraProperties)
+              .forkServer(options.isForkServer())
+              .kafkaClusterMap(options.getKafkaClusterMap());
 
-      for (int i = 0; i < numberOfClusters; i++) {
+      for (int i = 0; i < options.getNumberOfClusters(); i++) {
         // Create a wrapper for cluster without controller.
-        vvcBuilder.clusterName(clusterNames[i]);
-        VeniceClusterWrapper clusterWrapper = ServiceFactory.getVeniceCluster(vvcBuilder.build());
-        controllerMap.values().stream().forEach(clusterWrapper::addVeniceControllerWrapper);
+        vccBuilder.clusterName(clusterNames[i]);
+        VeniceClusterWrapper clusterWrapper = ServiceFactory.getVeniceCluster(vccBuilder.build());
+        controllerMap.values().forEach(clusterWrapper::addVeniceControllerWrapper);
         clusterWrapperMap.put(clusterWrapper.getClusterName(), clusterWrapper);
         clusterWrapper.setExternalControllerDiscoveryURL(
             controllerMap.values()

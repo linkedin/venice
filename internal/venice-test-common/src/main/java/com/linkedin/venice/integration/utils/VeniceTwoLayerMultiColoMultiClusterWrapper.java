@@ -217,30 +217,32 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       Map<String, Map<String, String>> kafkaClusterMap =
           addKafkaClusterIDMappingToServerConfigs(serverProperties, childColoNames, allKafkaBrokers);
 
+      VeniceMultiClusterCreateOptions.Builder builder =
+          new VeniceMultiClusterCreateOptions.Builder(numberOfClustersInEachColo)
+              .numberOfControllers(numberOfControllers)
+              .numberOfServers(numberOfServers)
+              .numberOfRouters(numberOfRouters)
+              .replicationFactor(replicationFactor)
+              .randomizeClusterName(false)
+              .multiColoSetup(true)
+              .multiD2(multiD2)
+              .childControllerProperties(finalChildControllerProperties)
+              .veniceProperties(serverProperties.orElse(null))
+              .forkServer(forkServer)
+              .kafkaClusterMap(kafkaClusterMap);
       // Create multi-clusters
       for (int i = 0; i < numberOfColos; i++) {
         String coloName = childColoNames.get(i);
-        VeniceMultiClusterWrapper multiClusterWrapper = ServiceFactory.getVeniceMultiClusterWrapper(
-            coloName,
-            kafkaBrokerByColoName.get(coloName),
-            zkServerByColoName.get(coloName),
-            numberOfClustersInEachColo,
-            numberOfControllers,
-            numberOfServers,
-            numberOfRouters,
-            replicationFactor,
-            false,
-            true,
-            multiD2,
-            Optional.of(finalChildControllerProperties),
-            serverProperties,
-            forkServer,
-            kafkaClusterMap);
+        builder.coloName(coloName)
+            .kafkaBrokerWrapper(kafkaBrokerByColoName.get(coloName))
+            .zkServerWrapper(zkServerByColoName.get(coloName));
+        VeniceMultiClusterWrapper multiClusterWrapper = ServiceFactory.getVeniceMultiClusterWrapper(builder.build());
         multiClusters.add(multiClusterWrapper);
       }
 
-      VeniceControllerWrapper[] childControllers =
-          multiClusters.stream().map(cluster -> cluster.getRandomController()).toArray(VeniceControllerWrapper[]::new);
+      VeniceControllerWrapper[] childControllers = multiClusters.stream()
+          .map(VeniceMultiClusterWrapper::getRandomController)
+          .toArray(VeniceControllerWrapper[]::new);
 
       // Setup D2 for parent controller
       D2TestUtils.setupD2Config(
