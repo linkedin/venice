@@ -138,7 +138,7 @@ public class ZkExecutionIdAccessor implements ExecutionIdAccessor {
         }
         return executionIdMap;
       } catch (Exception e) {
-        LOGGER.warn("Could not get the execution id map from ZK with: " + path + ". Will retry the query.", e);
+        LOGGER.warn("Could not get the execution id map from ZK with: {}. Will retry the query.", path, e);
         retry--;
       }
     }
@@ -166,7 +166,7 @@ public class ZkExecutionIdAccessor implements ExecutionIdAccessor {
         }
         return Long.valueOf(lastSucceedExecutionId);
       } catch (Exception e) {
-        LOGGER.warn("Could not get the execution id from ZK from: " + path + ". Will retry the query.", e);
+        LOGGER.warn("Could not get the execution id from ZK from: {}. Will retry the query.", path, e);
         retry--;
       }
     }
@@ -185,7 +185,7 @@ public class ZkExecutionIdAccessor implements ExecutionIdAccessor {
         zkclient.writeData(path, executionId.toString());
       } catch (Exception e) {
         e.printStackTrace();
-        LOGGER.warn("Could not update the execution id to ZK in: " + path + ". Will retry the query.", e);
+        LOGGER.warn("Could not update the execution id to ZK in: {}. Will retry the query.", path, e);
         retry--;
       }
     }

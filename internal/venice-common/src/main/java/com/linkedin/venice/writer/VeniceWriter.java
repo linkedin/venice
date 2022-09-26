@@ -332,7 +332,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       producer.close(topicName, closeTimeOut, gracefulClose);
       OPEN_VENICE_WRITER_COUNT.decrementAndGet();
     } catch (Exception e) {
-      logger.warn("Swallowed an exception while trying to close the VeniceWriter for " + topicName, e);
+      logger.warn("Swallowed an exception while trying to close the VeniceWriter for topic: {}", topicName, e);
       VENICE_WRITER_CLOSE_FAILED_COUNT.incrementAndGet();
     }
   }
@@ -944,7 +944,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
                     "Chunking enabled config shouldn't be updated after VeniceWriter has explicitly produced a regular or chunked message");
               }
               logger.info(
-                  "Chunking enabled config is updated from " + this.isChunkingEnabled + " to " + startOfPush.chunked);
+                  "Chunking enabled config is updated from {} to {}",
+                  this.isChunkingEnabled,
+                  startOfPush.chunked);
               if (this.isChunkingEnabled != startOfPush.chunked) {
                 this.isChunkingEnabled = startOfPush.chunked;
               }
@@ -962,7 +964,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   public void closePartition(int partition) {
     if (segmentsMap.containsKey(partition)) {
-      logger.info("Closing partition: " + partition + " in VeniceWriter.");
+      logger.info("Closing partition: {} in VeniceWriter.", partition);
       endSegment(partition, true);
     }
   }
@@ -1334,8 +1336,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       sendControlMessage(controlMessage, partition, debugInfo, null, DEFAULT_LEADER_METADATA_WRAPPER);
     }
     logger.info(
-        "Successfully broadcasted " + ControlMessageType.valueOf(controlMessage) + " Control Message for topic '"
-            + topicName + "'.");
+        "Successfully broadcast {} Control Message for topic: {}",
+        ControlMessageType.valueOf(controlMessage),
+        topicName);
   }
 
   private Map<CharSequence, CharSequence> getDebugInfo(Map<String, String> debugInfoToAdd) {
@@ -1351,9 +1354,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       CharSequence defaultValue = debugInfo.get(k);
       if (defaultValue != null && !defaultValue.equals(new Utf8(v))) {
         logger.warn(
-            "Debug info key '" + k + "' will be omitted because it is already part of the default "
-                + this.getClass().getSimpleName() + " debug info. " + "Default value: '" + defaultValue + "', "
-                + "supplied (omitted) value: '" + v + "'.");
+            "Debug info key: '{}' will be omitted because it is already part of the default {} debug info. Default value: '{}', "
+                + "supplied (omitted) value: '{}'",
+            k,
+            this.getClass().getSimpleName(),
+            defaultValue,
+            v);
       } else {
         debugInfo.put(k, v);
       }
@@ -1419,8 +1425,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             if (attempt < maxAttemptsWhenTopicMissing) {
               attempt++;
               updateCheckSum = false; // checksum has already been updated, and should not be updated again for retries
-              logger
-                  .warn(errorMessage + ", will sleep " + sleepTimeMsWhenTopicMissing + " ms before the next attempt.");
+              logger.warn("{}, will sleep {} ms before the next attempt.", errorMessage, sleepTimeMsWhenTopicMissing);
             } else {
               throw new VeniceException(errorMessage + ", will bubble up.");
             }
@@ -1629,11 +1634,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     synchronized (this.partitionLocks[partition]) {
       Segment currentSegment = segmentsMap.get(partition);
       if (currentSegment == null) {
-        logger.warn("endSegment(partition " + partition + ") called but currentSegment == null. Ignoring.");
+        logger.warn("endSegment(partition {}) called but currentSegment == null. Ignoring.", partition);
       } else if (!currentSegment.isStarted()) {
-        logger.warn("endSegment(partition " + partition + ") called but currentSegment.begun == false. Ignoring.");
+        logger.warn("endSegment(partition {}) called but currentSegment.begun == false. Ignoring.", partition);
       } else if (currentSegment.isEnded()) {
-        logger.warn("endSegment(partition " + partition + ") called but currentSegment.ended == true. Ignoring.");
+        logger.warn("endSegment(partition {}) called but currentSegment.ended == true. Ignoring.", partition);
       } else {
         sendEndOfSegment(
             partition,

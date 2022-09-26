@@ -65,13 +65,16 @@ public class VeniceLock {
         lockStats.failedLockAcquisition.record();
         if (attempt == 1) {
           LOGGER.warn(
-              "Failed to acquire the lock: " + lock.getClass().getSimpleName() + " with description: " + lockDescription
-                  + " within the reporting threshold of " + reportingThresholdMs + " ms. Will keep retrying.");
+              "Failed to acquire the lock: {} with description: {} within the reporting threshold of {} ms. Will keep retrying.",
+              lock.getClass().getSimpleName(),
+              lockDescription,
+              reportingThresholdMs);
         }
       } catch (InterruptedException e) {
-        LOGGER.info(
-            "Interrupted while trying to acquire the lock: " + lock.getClass().getSimpleName() + " with description: "
-                + lockDescription);
+        LOGGER.warn(
+            "Interrupted while trying to acquire the lock: {} with description: {}",
+            lock.getClass().getSimpleName(),
+            lockDescription);
       }
     }
   }
@@ -90,8 +93,11 @@ public class VeniceLock {
       lockStats.lockRetentionTimeMs.record(lockRetentionTimeMs);
       if (lockRetentionTimeMs > reportingThresholdMs) {
         LOGGER.warn(
-            "Lock: " + lock.getClass().getSimpleName() + " with description: " + lockDescription + " held the lock for "
-                + lockRetentionTimeMs + " ms which exceeded the reporting threshold of " + reportingThresholdMs);
+            "Lock: {} with description: {} held the lock for {} ms which exceeded the reporting threshold of {}",
+            lock.getClass().getSimpleName(),
+            lockDescription,
+            lockRetentionTimeMs,
+            reportingThresholdMs);
       }
     }
   }

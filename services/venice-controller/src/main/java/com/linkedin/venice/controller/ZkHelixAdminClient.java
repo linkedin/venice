@@ -264,9 +264,9 @@ public class ZkHelixAdminClient implements HelixAdminClient {
       idealState.setMinActiveReplicas(replicationFactor - 1);
       idealState.setRebalanceStrategy(config.getHelixRebalanceAlg());
       helixAdmin.setResourceIdealState(clusterName, kafkaTopic, idealState);
-      LOGGER.info("Enabled delayed re-balance for resource:" + kafkaTopic);
+      LOGGER.info("Enabled delayed re-balance for resource: {}", kafkaTopic);
       helixAdmin.rebalance(clusterName, kafkaTopic, replicationFactor);
-      LOGGER.info("Added " + kafkaTopic + " as a resource to cluster: " + clusterName);
+      LOGGER.info("Added {} as a resource to cluster: {}", kafkaTopic, clusterName);
     } else {
       String errorMessage = "Resource:" + kafkaTopic + " already exists, Can not add it to Helix.";
       LOGGER.warn(errorMessage);

@@ -402,7 +402,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.systemStoreAclSynchronizationDelayMs =
         props.getLong(CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS, TimeUnit.HOURS.toMillis(1));
     this.regionName = RegionUtils.getLocalRegionName(props, parent);
-    LOGGER.info("Final region name for this node: " + this.regionName);
+    LOGGER.info("Final region name for this node: {}", this.regionName);
     this.disabledRoutes = parseControllerRoutes(props, CONTROLLER_DISABLED_ROUTES, Collections.emptyList());
     this.adminTopicRemoteConsumptionEnabled = props.getBoolean(ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED, false);
     if (adminTopicRemoteConsumptionEnabled && childDataCenterKafkaUrlMap.isEmpty()) {
@@ -437,18 +437,18 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
     } else if (this.activeActiveEnabledOnController) {
       LOGGER.info(
-          String.format(
-              "A/A is enabled on a child controller and %s == %s",
-              ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST,
-              this.activeActiveRealTimeSourceFabrics));
+          "A/A is enabled on a child controller and {} == {}",
+          ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST,
+          this.activeActiveRealTimeSourceFabrics);
     } else {
       LOGGER.info(
-          "A/A is not enabled on child controller." + (!this.activeActiveRealTimeSourceFabrics.isEmpty()
+          "A/A is not enabled on child controller. {}",
+          !this.activeActiveRealTimeSourceFabrics.isEmpty()
               ? String.format(
                   " But %s is still set to %s.",
                   ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST,
                   this.activeActiveRealTimeSourceFabrics)
-              : ""));
+              : "");
     }
   }
 

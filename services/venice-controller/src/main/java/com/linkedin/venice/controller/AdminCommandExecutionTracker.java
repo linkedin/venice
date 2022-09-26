@@ -67,8 +67,9 @@ public class AdminCommandExecutionTracker {
   public synchronized void startTrackingExecution(AdminCommandExecution execution) {
     idToExecutionMap.put(execution.getExecutionId(), execution);
     LOGGER.info(
-        "Add Execution: " + execution.getExecutionId() + " for operation: " + execution.getOperation()
-            + " into tracker.");
+        "Add Execution: {} for operation: {} into tracker.",
+        execution.getExecutionId(),
+        execution.getOperation());
     // Try to Collect executions which live longer than TTL.
     int collectedCount = 0;
     Iterator<AdminCommandExecution> iterator = idToExecutionMap.values().iterator();
@@ -88,8 +89,9 @@ public class AdminCommandExecutionTracker {
       }
     }
     LOGGER.info(
-        "Collected " + collectedCount + " executions which succeed and were executed before the earliest time to keep:"
-            + earliestStartTimeToKeep.toString());
+        "Collected {} executions which succeed and were executed before the earliest time to keep: {}",
+        collectedCount,
+        earliestStartTimeToKeep);
   }
 
   /**
@@ -100,11 +102,11 @@ public class AdminCommandExecutionTracker {
     if (execution == null) {
       return null;
     }
-    LOGGER.info("Sending query to remote fabrics to check status of execution: " + id);
+    LOGGER.info("Sending query to remote fabrics to check status of execution: {}", id);
     for (Map.Entry<String, ControllerClient> entry: fabricToControllerClientsMap.entrySet()) {
       execution.checkAndUpdateStatusForRemoteFabric(entry.getKey(), entry.getValue());
     }
-    LOGGER.info("Updated statuses in remote fabrics for execution: " + id);
+    LOGGER.info("Updated statuses in remote fabrics for execution: {}", id);
     return execution;
   }
 

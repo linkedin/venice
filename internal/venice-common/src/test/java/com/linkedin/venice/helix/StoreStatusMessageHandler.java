@@ -26,7 +26,7 @@ public class StoreStatusMessageHandler implements StatusMessageHandler<StoreStat
     if (message == null) {
       throw new IllegalArgumentException(" Parameter message is null");
     }
-    LOGGER.info("Processing Message " + message);
+    LOGGER.info("Processing Message {}", message);
     statusMap.put(message.getKafkaTopic(), message);
   }
 

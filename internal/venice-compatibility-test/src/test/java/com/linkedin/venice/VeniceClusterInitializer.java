@@ -89,7 +89,7 @@ public class VeniceClusterInitializer implements AutoCloseable {
     routerProperties.put(ConfigKeys.LISTENER_PORT, Integer.toString(routerPort));
     this.veniceCluster.addVeniceRouter(routerProperties);
     String routerAddr = "http://" + veniceCluster.getVeniceRouters().get(0).getAddress();
-    LOGGER.info("Router address: " + routerAddr);
+    LOGGER.info("Router address: {}", routerAddr);
 
     this.storeName = storeName;
     // Create test store
@@ -240,7 +240,7 @@ public class VeniceClusterInitializer implements AutoCloseable {
    * @param args
    */
   public static void main(String[] args) {
-    LOGGER.info("Avro version in VeniceClusterInitializer: " + AvroCompatibilityHelper.getRuntimeAvroVersion());
+    LOGGER.info("Avro version in VeniceClusterInitializer: {}", AvroCompatibilityHelper.getRuntimeAvroVersion());
     Assert.assertEquals(AvroCompatibilityHelper.getRuntimeAvroVersion(), AvroVersion.AVRO_1_9);
     Assert.assertEquals(args.length, 2, "Store name and router port arguments are expected");
 

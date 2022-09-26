@@ -65,7 +65,7 @@ public class ClassPathSupplierForVeniceCluster implements Supplier<String> {
   }
 
   private File extractAvro192JarFileBasedOnExistingAvroJarFile(File existingAvroJarFile) {
-    LOGGER.info("Existing avro jar file: " + existingAvroJarFile.getAbsolutePath());
+    LOGGER.info("Existing avro jar file: {}", existingAvroJarFile.getAbsolutePath());
     if (existingAvroJarFile.getName().equals(AVRO_192_JAR_FILE)) {
       return existingAvroJarFile;
     }
@@ -79,7 +79,7 @@ public class ClassPathSupplierForVeniceCluster implements Supplier<String> {
     Collection<File> jarFiles = FileUtils.listFiles(avroRootDir, new String[] { "jar" }, true);
     for (File jarFile: jarFiles) {
       if (jarFile.getName().equals(AVRO_192_JAR_FILE)) {
-        LOGGER.info("Found the jar file: " + jarFile.getAbsolutePath() + " for " + AVRO_192_JAR_FILE);
+        LOGGER.info("Found the jar file: {} for {}", jarFile.getAbsolutePath(), AVRO_192_JAR_FILE);
         return jarFile;
       }
     }

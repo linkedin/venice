@@ -44,7 +44,7 @@ public class GuidUtilsTest {
 
   @Test(dataProvider = "byteArrays")
   public void testCharSeqToGuidConversionAndBack(ByteArray arrayUnderTest) {
-    LOGGER.info("array: " + arrayUnderTest);
+    LOGGER.info("array: {}", arrayUnderTest);
     CharSequence originalCharSequence = new String(arrayUnderTest.get(), GuidUtils.CHARSET);
     GUID convertedGuid = GuidUtils.getGuidFromCharSequence(originalCharSequence);
     CharSequence resultingCharSequence = GuidUtils.getCharSequenceFromGuid(convertedGuid);
@@ -56,7 +56,7 @@ public class GuidUtilsTest {
 
   @Test(dataProvider = "byteArrays")
   public void testGuidToCharSeqConversionAndBack(ByteArray arrayUnderTest) {
-    LOGGER.info("ByteArray: " + arrayUnderTest);
+    LOGGER.info("ByteArray: {}", arrayUnderTest);
     GUID originalGuid = new GUID();
     originalGuid.bytes(arrayUnderTest.get());
     CharSequence convertedCharSequence = GuidUtils.getCharSequenceFromGuid(originalGuid);

@@ -49,7 +49,7 @@ public class SystemStoreAclSynchronizationTask implements Runnable, Closeable {
    */
   @Override
   public void run() {
-    LOGGER.info("Running " + SystemStoreAclSynchronizationTask.class.getSimpleName());
+    LOGGER.info("Running {}", SystemStoreAclSynchronizationTask.class.getSimpleName());
     isRunning.set(true);
     while (isRunning.get()) {
       try {
@@ -84,7 +84,8 @@ public class SystemStoreAclSynchronizationTask implements Runnable, Closeable {
               }
             } catch (Exception e) {
               LOGGER.error(
-                  "Unexpected exception occurred while trying to synchronize acl for store: " + storeInList.getName(),
+                  "Unexpected exception occurred while trying to synchronize acl for store: {}",
+                  storeInList.getName(),
                   e);
             }
           }
@@ -93,10 +94,10 @@ public class SystemStoreAclSynchronizationTask implements Runnable, Closeable {
         LOGGER.info("Task interrupted, closing");
         close();
       } catch (Exception e) {
-        LOGGER.error("Unexpected exception encountered, isRunning = " + isRunning, e);
+        LOGGER.error("Unexpected exception encountered, isRunning = {}", isRunning, e);
       }
     }
-    LOGGER.info("Stopped " + SystemStoreAclSynchronizationTask.class.getSimpleName());
+    LOGGER.info("Stopped {}", SystemStoreAclSynchronizationTask.class.getSimpleName());
   }
 
   private void synchronizeAclForSystemStore(

@@ -121,7 +121,7 @@ public class VeniceControllerService extends AbstractVeniceService {
     for (String clusterName: multiClusterConfigs.getClusters()) {
       admin.initStorageCluster(clusterName);
       consumerServicesByClusters.get(clusterName).start();
-      LOGGER.info("started cluster: " + clusterName);
+      LOGGER.info("started cluster: {}", clusterName);
     }
     LOGGER.info("Started Venice controller.");
     // There is no async process in this function, so we are completely finished with the start up process.
@@ -142,7 +142,7 @@ public class VeniceControllerService extends AbstractVeniceService {
       } catch (Exception e) {
         LOGGER.error("Got exception when stop AdminConsumerService", e);
       }
-      LOGGER.info("Stopped cluster: " + clusterName);
+      LOGGER.info("Stopped cluster: {}", clusterName);
     }
     // TODO merge or differentiate the difference between close() and stopVeniceController() explicitly.
     admin.stopVeniceController();
