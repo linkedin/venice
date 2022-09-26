@@ -43,6 +43,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Version;
@@ -54,7 +55,6 @@ import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
@@ -98,13 +98,13 @@ public class PushJobDetailsTest {
     controllerProperties.setProperty(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, "true");
     controllerProperties.setProperty(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE, "true");
     controllerProperties.setProperty(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY_STORE, "true");
-    parentController = ServiceFactory.getVeniceParentController(
-        venice.getClusterName(),
-        zkWrapper.getAddress(),
-        venice.getKafka(),
-        new VeniceControllerWrapper[] { venice.getLeaderVeniceController() },
-        new VeniceProperties(controllerProperties),
-        false);
+    parentController = ServiceFactory.getVeniceController(
+        new VeniceControllerCreateOptions.Builder(venice.getClusterName(), venice.getKafka())
+            .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
+            .extraProperties(controllerProperties)
+            .parent(true)
+            .zkAddress(zkWrapper.getAddress())
+            .build());
     parentControllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
     venice.useControllerClient(
         controllerClient -> TestUtils.waitForNonDeterministicPushCompletion(

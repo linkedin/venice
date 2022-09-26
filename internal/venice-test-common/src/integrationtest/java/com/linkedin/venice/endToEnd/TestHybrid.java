@@ -54,6 +54,7 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -170,12 +171,12 @@ public class TestHybrid {
         VeniceClusterWrapper venice =
             ServiceFactory.getVeniceCluster(1, 2, 1, 1, 1000000, false, false, extraProperties);
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
-        VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(
-            venice.getClusterName(),
-            parentZk.getAddress(),
-            venice.getKafka(),
-            new VeniceControllerWrapper[] { venice.getLeaderVeniceController() },
-            false);
+        VeniceControllerWrapper parentController = ServiceFactory.getVeniceController(
+            new VeniceControllerCreateOptions.Builder(venice.getClusterName(), venice.getKafka())
+                .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
+                .parent(true)
+                .zkAddress(parentZk.getAddress())
+                .build());
         ControllerClient controllerClient =
             new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
         TopicManager topicManager = new TopicManager(

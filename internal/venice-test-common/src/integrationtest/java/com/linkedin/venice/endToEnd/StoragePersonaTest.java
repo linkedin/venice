@@ -16,6 +16,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
@@ -49,12 +50,12 @@ public class StoragePersonaTest {
     Properties extraProperties = new Properties();
     venice = ServiceFactory.getVeniceCluster(1, 1, 1, 2, 1000000, false, false, extraProperties);
     parentZk = ServiceFactory.getZkServer();
-    parentController = ServiceFactory.getVeniceParentController(
-        venice.getClusterName(),
-        parentZk.getAddress(),
-        venice.getKafka(),
-        new VeniceControllerWrapper[] { venice.getLeaderVeniceController() },
-        false);
+    parentController = ServiceFactory.getVeniceController(
+        new VeniceControllerCreateOptions.Builder(venice.getClusterName(), venice.getKafka())
+            .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
+            .parent(true)
+            .zkAddress(parentZk.getAddress())
+            .build());
     controllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
   }
 

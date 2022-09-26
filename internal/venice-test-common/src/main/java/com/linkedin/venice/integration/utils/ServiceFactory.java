@@ -1,23 +1,16 @@
 package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.D2_CLIENT_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
-import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
-import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_DELAYED_TO_REBALANCE_MS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_MAX_ATTEMPT;
-import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARTITION_SIZE_BYTES;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_REPLICATION_FACTOR;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_WAIT_TIME_FOR_CLUSTER_START_S;
-import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.AvroGenericDaVinciClient;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
-import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.server.AdminSparkServer;
@@ -57,7 +50,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class ServiceFactory {
   private static final Logger LOGGER = LogManager.getLogger(ServiceFactory.class);
-  private static final VeniceProperties EMPTY_VENICE_PROPS = new VeniceProperties();
   private static final String ULIMIT;
   private static final String VM_ARGS;
   /**
@@ -133,188 +125,8 @@ public class ServiceFactory {
         KafkaBrokerWrapper.generateService(zkServerWrapper, mockTime));
   }
 
-  /**
-   * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService} with all default settings
-   */
-  public static VeniceControllerWrapper getVeniceChildController(
-      String clusterName,
-      KafkaBrokerWrapper kafkaBrokerWrapper) {
-    return getVeniceChildController(clusterName, kafkaBrokerWrapper, false);
-  }
-
-  /**
-   * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService}
-   */
-  public static VeniceControllerWrapper getVeniceChildController(
-      String clusterName,
-      KafkaBrokerWrapper kafkaBrokerWrapper,
-      boolean sslToKafka) {
-    return getVeniceChildController(
-        clusterName,
-        kafkaBrokerWrapper,
-        DEFAULT_REPLICATION_FACTOR,
-        DEFAULT_PARTITION_SIZE_BYTES,
-        DEFAULT_DELAYED_TO_REBALANCE_MS,
-        DEFAULT_REPLICATION_FACTOR,
-        sslToKafka);
-  }
-
-  /**
-   * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService}
-   */
-  public static VeniceControllerWrapper getVeniceChildController(
-      String clusterName,
-      KafkaBrokerWrapper kafkaBrokerWrapper,
-      int replicaFactor,
-      int partitionSize,
-      long delayToRebalanceMS,
-      int minActiveReplica,
-      boolean sslToKafka) {
-    return getVeniceChildController(
-        new String[] { clusterName },
-        kafkaBrokerWrapper,
-        replicaFactor,
-        partitionSize,
-        delayToRebalanceMS,
-        minActiveReplica,
-        null,
-        sslToKafka,
-        false,
-        new Properties());
-  }
-
-  public static VeniceControllerWrapper getVeniceChildController(
-      String[] clusterNames,
-      KafkaBrokerWrapper kafkaBrokerWrapper,
-      int replicationFactor,
-      int partitionSize,
-      long delayToRebalanceMS,
-      int minActiveReplica,
-      String clusterToD2,
-      boolean sslToKafka,
-      boolean d2Enabled,
-      Properties properties) {
-    return getStatefulService(
-        VeniceControllerWrapper.SERVICE_NAME,
-        VeniceControllerWrapper.generateService(
-            clusterNames,
-            kafkaBrokerWrapper.getZkAddress(),
-            kafkaBrokerWrapper,
-            false,
-            replicationFactor,
-            partitionSize,
-            delayToRebalanceMS,
-            minActiveReplica,
-            null,
-            properties,
-            clusterToD2,
-            sslToKafka,
-            d2Enabled));
-  }
-
-  /**
-   * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService}, which will be working in parent mode.
-   */
-  public static VeniceControllerWrapper getVeniceParentController(
-      String clusterName,
-      String zkAddress,
-      KafkaBrokerWrapper kafkaBrokerWrapper,
-      VeniceControllerWrapper[] childControllers,
-      boolean sslToKafka) {
-    return getVeniceParentController(
-        clusterName,
-        zkAddress,
-        kafkaBrokerWrapper,
-        childControllers,
-        EMPTY_VENICE_PROPS,
-        sslToKafka);
-  }
-
-  public static VeniceControllerWrapper getVeniceParentController(
-      String clusterName,
-      String zkAddress,
-      KafkaBrokerWrapper kafkaBrokerWrapper,
-      VeniceControllerWrapper[] childControllers,
-      VeniceProperties properties,
-      boolean sslToKafka) {
-    return getVeniceParentController(
-        new String[] { clusterName },
-        zkAddress,
-        kafkaBrokerWrapper,
-        childControllers,
-        null,
-        sslToKafka,
-        DEFAULT_REPLICATION_FACTOR,
-        properties,
-        Optional.empty());
-  }
-
-  /**
-   * All function overloads of "getVeniceParentController" should end up calling the below function.
-   */
-  public static VeniceControllerWrapper getVeniceParentController(
-      String[] clusterNames,
-      String zkAddress,
-      KafkaBrokerWrapper kafkaBrokerWrapper,
-      VeniceControllerWrapper[] childControllers,
-      String clusterToD2,
-      boolean sslToKafka,
-      int replicationFactor,
-      VeniceProperties properties,
-      Optional<AuthorizerService> authorizerService) {
-    /**
-     * Add parent fabric name into the controller config.
-     */
-    Properties props = properties.toProperties();
-    props.setProperty(LOCAL_REGION_NAME, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
-
-    if (!props.containsKey(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE)) {
-      props.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, "true");
-    }
-
-    if (!props.containsKey(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE)) {
-      props.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, "true");
-    }
-    return getStatefulService(
-        VeniceControllerWrapper.SERVICE_NAME,
-        VeniceControllerWrapper.generateService(
-            clusterNames,
-            zkAddress,
-            kafkaBrokerWrapper,
-            true,
-            replicationFactor,
-            DEFAULT_PARTITION_SIZE_BYTES,
-            DEFAULT_DELAYED_TO_REBALANCE_MS,
-            replicationFactor > 1 ? replicationFactor - 1 : replicationFactor,
-            childControllers,
-            props,
-            clusterToD2,
-            sslToKafka,
-            (clusterToD2 != null),
-            authorizerService));
-  }
-
-  /**
-   * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService} which takes an authorizerService
-   * and which will be working in parent mode.
-   */
-  public static VeniceControllerWrapper getVeniceParentController(
-      String clusterName,
-      String zkAddress,
-      KafkaBrokerWrapper kafkaBrokerWrapper,
-      VeniceControllerWrapper[] childControllers,
-      boolean sslToKafka,
-      Optional<AuthorizerService> authorizerService) {
-    return getVeniceParentController(
-        new String[] { clusterName },
-        zkAddress,
-        kafkaBrokerWrapper,
-        childControllers,
-        null,
-        sslToKafka,
-        DEFAULT_REPLICATION_FACTOR,
-        EMPTY_VENICE_PROPS,
-        authorizerService);
+  public static VeniceControllerWrapper getVeniceController(VeniceControllerCreateOptions options) {
+    return getStatefulService(VeniceControllerWrapper.SERVICE_NAME, VeniceControllerWrapper.generateService(options));
   }
 
   public static AdminSparkServer getMockAdminSparkServer(

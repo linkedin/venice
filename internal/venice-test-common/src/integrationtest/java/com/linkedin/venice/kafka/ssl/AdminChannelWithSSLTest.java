@@ -4,6 +4,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.SslUtils;
@@ -26,15 +27,21 @@ public class AdminChannelWithSSLTest {
     String clusterName = "test-cluster";
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
-        VeniceControllerWrapper childControllerWrapper =
-            ServiceFactory.getVeniceChildController(clusterName, kafkaBrokerWrapper, 1, 10, 0, 1, true);
+        VeniceControllerWrapper childControllerWrapper = ServiceFactory.getVeniceController(
+            new VeniceControllerCreateOptions.Builder(clusterName, kafkaBrokerWrapper).replicationFactor(1)
+                .partitionSize(10)
+                .rebalanceDelayMs(0)
+                .minActiveReplica(1)
+                .sslToKafka(true)
+                .build());
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
-        VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceParentController(
-            clusterName,
-            parentZk.getAddress(),
-            kafkaBrokerWrapper,
-            new VeniceControllerWrapper[] { childControllerWrapper },
-            true)) {
+
+        VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(
+            new VeniceControllerCreateOptions.Builder(clusterName, kafkaBrokerWrapper).parent(true)
+                .zkAddress(parentZk.getAddress())
+                .childControllers(new VeniceControllerWrapper[] { childControllerWrapper })
+                .sslToKafka(true)
+                .build())) {
       String secureControllerUrl = controllerWrapper.getSecureControllerUrl();
       // Adding store
       String storeName = "test_store";

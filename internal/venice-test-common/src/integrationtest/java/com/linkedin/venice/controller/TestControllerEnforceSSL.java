@@ -9,6 +9,7 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.SslUtils;
@@ -38,17 +39,14 @@ public class TestControllerEnforceSSL {
 
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
-        VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceChildController(
-            new String[] { CLUSTER_NAME },
-            kafkaBrokerWrapper,
-            1,
-            10,
-            0,
-            1,
-            null,
-            true,
-            false,
-            extraProperties);
+        VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(
+            new VeniceControllerCreateOptions.Builder(CLUSTER_NAME, kafkaBrokerWrapper).replicationFactor(1)
+                .partitionSize(10)
+                .rebalanceDelayMs(0)
+                .minActiveReplica(1)
+                .sslToKafka(true)
+                .extraProperties(extraProperties)
+                .build());
         ControllerClient controllerClient =
             ControllerClient.constructClusterControllerClient(CLUSTER_NAME, controllerWrapper.getControllerUrl());
         ControllerClient secureControllerClient = ControllerClient.constructClusterControllerClient(

@@ -251,19 +251,18 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
           D2TestUtils.CONTROLLER_CLUSTER_NAME,
           VeniceSystemFactory.VENICE_PARENT_D2_SERVICE,
           false);
+      VeniceControllerCreateOptions options =
+          new VeniceControllerCreateOptions.Builder(clusterNames, parentKafka).zkAddress(parentKafka.getZkAddress())
+              .parent(true)
+              .replicationFactor(replicationFactor)
+              .childControllers(childControllers)
+              .extraProperties(finalParentControllerProperties)
+              .clusterToD2(clusterToD2)
+              .build();
       // Create parentControllers for multi-cluster
       for (int i = 0; i < numberOfParentControllers; i++) {
         // random controller from each multi-cluster, in reality this should include all controllers, not just one
-        VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(
-            clusterNames,
-            parentKafka.getZkAddress(),
-            parentKafka,
-            childControllers,
-            clusterToD2,
-            false,
-            replicationFactor,
-            new VeniceProperties(finalParentControllerProperties),
-            Optional.empty());
+        VeniceControllerWrapper parentController = ServiceFactory.getVeniceController(options);
         parentControllers.add(parentController);
       }
 

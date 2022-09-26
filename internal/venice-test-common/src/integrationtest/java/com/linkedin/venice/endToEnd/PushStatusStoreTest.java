@@ -39,6 +39,7 @@ import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
@@ -98,13 +99,13 @@ public class PushStatusStoreTest {
     reader = new PushStatusStoreReader(d2Client, TimeUnit.MINUTES.toSeconds(10));
     extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(true));
     parentZkServer = ServiceFactory.getZkServer();
-    parentController = ServiceFactory.getVeniceParentController(
-        cluster.getClusterName(),
-        parentZkServer.getAddress(),
-        cluster.getKafka(),
-        cluster.getVeniceControllers().toArray(new VeniceControllerWrapper[0]),
-        new VeniceProperties(extraProperties),
-        false);
+    parentController = ServiceFactory.getVeniceController(
+        new VeniceControllerCreateOptions.Builder(cluster.getClusterName(), cluster.getKafka())
+            .childControllers(cluster.getVeniceControllers().toArray(new VeniceControllerWrapper[0]))
+            .extraProperties(extraProperties)
+            .zkAddress(parentZkServer.getAddress())
+            .parent(true)
+            .build());
   }
 
   @AfterClass

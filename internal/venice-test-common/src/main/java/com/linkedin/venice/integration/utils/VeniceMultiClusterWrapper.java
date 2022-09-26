@@ -99,18 +99,19 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
           ClientConfig.defaultGenericClientConfig("")
               .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
               .setD2Client(clientConfigD2Client));
+      VeniceControllerCreateOptions controllerCreateOptions =
+          new VeniceControllerCreateOptions.Builder(clusterNames, kafkaBrokerWrapper)
+              .replicationFactor(options.getReplicationFactor())
+              .partitionSize(options.getPartitionSize())
+              .rebalanceDelayMs(options.getRebalanceDelayMs())
+              .minActiveReplica(options.getMinActiveReplica())
+              .clusterToD2(clusterToD2)
+              .sslToKafka(false)
+              .d2Enabled(true)
+              .extraProperties(controllerProperties)
+              .build();
       for (int i = 0; i < options.getNumberOfControllers(); i++) {
-        VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceChildController(
-            clusterNames,
-            kafkaBrokerWrapper,
-            options.getReplicationFactor(),
-            options.getPartitionSize(),
-            options.getRebalanceDelayMs(),
-            options.getMinActiveReplica(),
-            clusterToD2,
-            false,
-            true,
-            controllerProperties);
+        VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(controllerCreateOptions);
         controllerMap.put(controllerWrapper.getPort(), controllerWrapper);
       }
       // Specify the system store cluster name

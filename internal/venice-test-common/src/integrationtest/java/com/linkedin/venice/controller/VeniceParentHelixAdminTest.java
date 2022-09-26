@@ -10,6 +10,7 @@ import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WR
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V3;
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V4;
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V5;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.*;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicPushCompletion;
@@ -31,6 +32,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.ETLStoreConfig;
@@ -43,7 +45,6 @@ import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -85,13 +86,13 @@ public class VeniceParentHelixAdminTest {
     properties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
     properties.setProperty(TERMINAL_STATE_TOPIC_CHECK_DELAY_MS, String.valueOf(1000L));
     try (
-        VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(
-            venice.getClusterName(),
-            zkServerWrapper.getAddress(),
-            venice.getKafka(),
-            new VeniceControllerWrapper[] { venice.getLeaderVeniceController() },
-            new VeniceProperties(properties),
-            false);
+        VeniceControllerWrapper parentController = ServiceFactory.getVeniceController(
+            new VeniceControllerCreateOptions.Builder(venice.getClusterName(), venice.getKafka())
+                .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
+                .zkAddress(zkServerWrapper.getAddress())
+                .extraProperties(properties)
+                .parent(true)
+                .build());
         ControllerClient parentControllerClient =
             new ControllerClient(venice.getClusterName(), parentController.getControllerUrl())) {
       String storeName = Utils.getUniqueString("testStore");
@@ -116,13 +117,13 @@ public class VeniceParentHelixAdminTest {
     Properties properties = new Properties();
     properties.setProperty(REPLICATION_METADATA_VERSION_ID, String.valueOf(1));
     try (
-        VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceParentController(
-            venice.getClusterName(),
-            zkServerWrapper.getAddress(),
-            venice.getKafka(),
-            new VeniceControllerWrapper[] { venice.getLeaderVeniceController() },
-            new VeniceProperties(properties),
-            false);
+        VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceController(
+            new VeniceControllerCreateOptions.Builder(venice.getClusterName(), venice.getKafka())
+                .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
+                .zkAddress(zkServerWrapper.getAddress())
+                .extraProperties(properties)
+                .parent(true)
+                .build());
         ControllerClient parentControllerClient =
             new ControllerClient(venice.getClusterName(), parentControllerWrapper.getControllerUrl())) {
       // Adding store
@@ -239,13 +240,13 @@ public class VeniceParentHelixAdminTest {
     properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(false));
     properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(false));
     try (
-        VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(
-            venice.getClusterName(),
-            zkServerWrapper.getAddress(),
-            venice.getKafka(),
-            new VeniceControllerWrapper[] { venice.getLeaderVeniceController() },
-            new VeniceProperties(properties),
-            false);
+        VeniceControllerWrapper parentController = ServiceFactory.getVeniceController(
+            new VeniceControllerCreateOptions.Builder(venice.getClusterName(), venice.getKafka())
+                .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
+                .zkAddress(zkServerWrapper.getAddress())
+                .extraProperties(properties)
+                .parent(true)
+                .build());
         ControllerClient parentControllerClient =
             new ControllerClient(venice.getClusterName(), parentController.getControllerUrl())) {
       String storeName = Utils.getUniqueString("testStore");
@@ -301,12 +302,12 @@ public class VeniceParentHelixAdminTest {
 
   @Test(timeOut = DEFAULT_TEST_TIMEOUT_MS)
   public void testHybridAndETLStoreConfig() {
-    try (VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceParentController(
-        venice.getClusterName(),
-        zkServerWrapper.getAddress(),
-        venice.getKafka(),
-        new VeniceControllerWrapper[] { venice.getLeaderVeniceController() },
-        false)) {
+    try (VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceController(
+        new VeniceControllerCreateOptions.Builder(venice.getClusterName(), venice.getKafka())
+            .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
+            .parent(true)
+            .zkAddress(zkServerWrapper.getAddress())
+            .build())) {
       String controllerUrl = parentControllerWrapper.getControllerUrl();
 
       // Adding store
@@ -400,16 +401,19 @@ public class VeniceParentHelixAdminTest {
 
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
-        VeniceControllerWrapper childControllerWrapper =
-            ServiceFactory.getVeniceChildController(clusterName, kafkaBrokerWrapper, isControllerSslEnabled);
+        VeniceControllerWrapper childControllerWrapper = ServiceFactory.getVeniceController(
+            new VeniceControllerCreateOptions.Builder(clusterName, kafkaBrokerWrapper)
+                .sslToKafka(isControllerSslEnabled)
+                .build());
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
-        VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceParentController(
-            clusterName,
-            parentZk.getAddress(),
-            kafkaBrokerWrapper,
-            new VeniceControllerWrapper[] { childControllerWrapper },
-            new VeniceProperties(properties),
-            isControllerSslEnabled)) {
+        VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceController(
+            new VeniceControllerCreateOptions.Builder(clusterName, kafkaBrokerWrapper)
+                .childControllers(new VeniceControllerWrapper[] { childControllerWrapper })
+                .zkAddress(parentZk.getAddress())
+                .extraProperties(properties)
+                .parent(true)
+                .sslToKafka(isControllerSslEnabled)
+                .build())) {
       String childControllerUrl = isControllerSslEnabled
           ? childControllerWrapper.getSecureControllerUrl()
           : childControllerWrapper.getControllerUrl();
