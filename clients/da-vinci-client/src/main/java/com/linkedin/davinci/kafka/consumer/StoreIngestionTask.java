@@ -3619,14 +3619,4 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected void setPartitionConsumptionState(int partition, PartitionConsumptionState pcs) {
     partitionConsumptionStateMap.put(partition, pcs);
   }
-
-  public void blockOnDrainerCapacity() {
-    while (storeBufferService.getTotalRemainingMemory() < 1000) {
-      try {
-        Thread.sleep(emptyPollSleepMs);
-      } catch (InterruptedException e) {
-        throw new VeniceException("Thread sleep interrupted while waiting for drainer queue to free up!", e);
-      }
-    }
-  }
 }

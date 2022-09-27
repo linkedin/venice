@@ -561,9 +561,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           beforeProcessingRecordTimestamp);
     } else {
       int valueLen = updatedValueBytes.remaining();
-
-      // Make sure there is capacity in the drainer queue before occupying space in the transient record cache
-      blockOnDrainerCapacity();
       partitionConsumptionState.setTransientRecord(
           kafkaClusterId,
           consumerRecord.offset(),

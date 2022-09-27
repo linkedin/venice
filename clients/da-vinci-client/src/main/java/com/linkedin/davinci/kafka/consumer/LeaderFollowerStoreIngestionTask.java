@@ -2546,7 +2546,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * received from RT. Messages received from VT have been persisted to disk already before switching to RT topic.
          */
         if (isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()) {
-          blockOnDrainerCapacity();
           partitionConsumptionState.setTransientRecord(
               kafkaClusterId,
               consumerRecord.offset(),
@@ -2731,7 +2730,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         // either. So, there is no need to tell the follower replica to do anything.
       }
     } else {
-      blockOnDrainerCapacity();
       partitionConsumptionState.setTransientRecord(
           kafkaClusterId,
           consumerRecord.offset(),
