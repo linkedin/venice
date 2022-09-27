@@ -61,9 +61,9 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
         props.getInt(CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG, CONSUMER_POLL_RETRY_BACKOFF_MS_DEFAULT);
     this.topicPartitionsOffsetsTracker =
         isKafkaConsumerOffsetCollectionEnabled ? Optional.of(new TopicPartitionsOffsetsTracker()) : Optional.empty();
-    LOGGER.info("Consumer poll retry times: " + this.consumerPollRetryTimes);
-    LOGGER.info("Consumer poll retry back off in ms: " + this.consumerPollRetryBackoffMs);
-    LOGGER.info("Consumer offset collection enabled: " + isKafkaConsumerOffsetCollectionEnabled);
+    LOGGER.info("Consumer poll retry times: {}", this.consumerPollRetryTimes);
+    LOGGER.info("Consumer poll retry back off in ms: {}", this.consumerPollRetryBackoffMs);
+    LOGGER.info("Consumer offset collection enabled: {}", isKafkaConsumerOffsetCollectionEnabled);
   }
 
   private void seekNextOffset(TopicPartition topicPartition, long lastReadOffset) {
@@ -94,11 +94,10 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
       topicPartitionList.add(topicPartition);
       kafkaConsumer.assign(topicPartitionList);
       seekNextOffset(topicPartition, lastReadOffset);
-      LOGGER.info("Subscribed to Topic: " + topic + " Partition: " + partition + " Offset: " + lastReadOffset);
+      LOGGER.info("Subscribed to Topic: {} Partition: {} Offset: {}", topic, partition, lastReadOffset);
     } else {
-      LOGGER.warn(
-          "Already subscribed on Topic: " + topic + " Partition: " + partition
-              + ", ignore the request of subscription.");
+      LOGGER
+          .warn("Already subscribed on Topic: {} Partition: {}, ignore the request of subscription.", topic, partition);
     }
   }
 
@@ -147,8 +146,9 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
         break;
       } catch (RetriableException e) {
         LOGGER.warn(
-            "Retriable exception thrown when attempting to consume records from kafka, attempt " + attemptCount + "/"
-                + consumerPollRetryTimes,
+            "Retriable exception thrown when attempting to consume records from kafka, attempt {}/{}",
+            attemptCount,
+            consumerPollRetryTimes,
             e);
         if (attemptCount == consumerPollRetryTimes) {
           throw e;
@@ -228,7 +228,7 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
       try {
         kafkaConsumer.close(Duration.ZERO);
       } catch (Exception e) {
-        LOGGER.warn(kafkaConsumer.getClass().getSimpleName() + " threw an exception while closing.", e);
+        LOGGER.warn("{} threw an exception while closing.", kafkaConsumer.getClass().getSimpleName(), e);
       }
     }
   }

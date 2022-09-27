@@ -97,7 +97,7 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
 
   @Override
   public List<OfflinePushStatus> loadOfflinePushStatusesAndPartitionStatuses() {
-    LOGGER.info("Start loading all offline pushes statuses from ZK in cluster:" + clusterName);
+    LOGGER.info("Start loading all offline pushes statuses from ZK in cluster: {}.", clusterName);
     List<OfflinePushStatus> offlinePushStatuses = HelixUtils.getChildren(
         offlinePushStatusAccessor,
         offlinePushStatusParentPath,
@@ -107,7 +107,7 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
     while (iterator.hasNext()) {
       OfflinePushStatus pushStatus = iterator.next();
       if (pushStatus == null) {
-        LOGGER.warn("Found null push status in cluster: " + clusterName);
+        LOGGER.warn("Found null push status in cluster: {}.", clusterName);
         iterator.remove();
         continue;
       }
@@ -117,21 +117,23 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
         pushStatus.setPartitionStatuses(partitionStatuses);
       } else {
         LOGGER.info(
-            "Found invalid push statues:" + pushStatus.getCurrentStatus() + " for topic:" + pushStatus.getKafkaTopic()
-                + "in cluster:" + clusterName + ". Will delete it from ZK.");
+            "Found invalid push statues: {} for topic: {} in cluster: {}. Will delete it from ZK.",
+            pushStatus.getCurrentStatus(),
+            pushStatus.getKafkaTopic(),
+            clusterName);
         HelixUtils.remove(offlinePushStatusAccessor, getOfflinePushStatusPath(pushStatus.getKafkaTopic()));
         iterator.remove();
       }
     }
-    LOGGER.info("Loaded " + offlinePushStatuses.size() + " offline pushes statuses from ZK in cluster:" + clusterName);
+    LOGGER.info("Loaded {} offline pushes statuses from ZK in cluster: {}.", offlinePushStatuses.size(), clusterName);
     return offlinePushStatuses;
   }
 
   @Override
   public List<String> loadOfflinePushStatusPaths() {
-    LOGGER.info("Start listing all offline pushes paths from ZK in cluster (only list path names): " + clusterName);
+    LOGGER.info("Start listing all offline pushes paths from ZK in cluster (only list path names): {}.", clusterName);
     List<String> paths = HelixUtils.listPathContents(offlinePushStatusAccessor, offlinePushStatusParentPath);
-    LOGGER.info("Listed " + paths.size() + " offline pushes statuses path names from ZK in cluster:" + clusterName);
+    LOGGER.info("Listed {} offline pushes statuses path names from ZK in cluster: {}.", paths.size(), clusterName);
     return paths;
   }
 
@@ -151,14 +153,18 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
   public void updateOfflinePushStatus(OfflinePushStatus pushStatus) {
     HelixUtils.update(offlinePushStatusAccessor, getOfflinePushStatusPath(pushStatus.getKafkaTopic()), pushStatus);
     LOGGER.info(
-        "Updated push status for topic " + pushStatus.getKafkaTopic() + " in cluster:" + clusterName + " to status:"
-            + pushStatus.getCurrentStatus());
+        "Updated push status for topic {} in cluster: {} to status: {}.",
+        pushStatus.getKafkaTopic(),
+        clusterName,
+        pushStatus.getCurrentStatus());
   }
 
   @Override
   public synchronized void createOfflinePushStatusAndItsPartitionStatuses(OfflinePushStatus pushStatus) {
     LOGGER.info(
-        "Start creating offline push status for topic:" + pushStatus.getKafkaTopic() + " in cluster:" + clusterName);
+        "Start creating offline push status for topic: {} in cluster: {}.",
+        pushStatus.getKafkaTopic(),
+        clusterName);
     HelixUtils.create(offlinePushStatusAccessor, getOfflinePushStatusPath(pushStatus.getKafkaTopic()), pushStatus);
     LOGGER.info("Created offline push status ZNode. Start creating partition statuses.");
     List<String> partitionPaths = new ArrayList<>(pushStatus.getNumberOfPartition());
@@ -169,15 +175,16 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
     }
     HelixUtils.updateChildren(partitionStatusAccessor, partitionPaths, partitionStatuses);
     LOGGER.info(
-        "Created " + pushStatus.getNumberOfPartition() + " partition status Znodes for topic : "
-            + pushStatus.getKafkaTopic());
+        "Created {} partition status Znodes for topic: {}.",
+        pushStatus.getNumberOfPartition(),
+        pushStatus.getKafkaTopic());
   }
 
   @Override
   public void deleteOfflinePushStatusAndItsPartitionStatuses(String kafkaTopic) {
-    LOGGER.info("Start deleting offline push status for topic: " + kafkaTopic + " in cluster: " + clusterName);
+    LOGGER.info("Start deleting offline push status for topic: {} in cluster: {}.", kafkaTopic, clusterName);
     HelixUtils.remove(offlinePushStatusAccessor, getOfflinePushStatusPath(kafkaTopic));
-    LOGGER.info("Deleted offline push status for topic: " + kafkaTopic + " in cluster: " + clusterName);
+    LOGGER.info("Deleted offline push status for topic: {} in cluster: {}.", kafkaTopic, clusterName);
   }
 
   @Override
@@ -228,7 +235,10 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
       return;
     }
     LOGGER.info(
-        "Start update replica status for topic:" + topic + " partition:" + partitionId + " in cluster:" + clusterName);
+        "Start update replica status for topic: {}, partition: {} in cluster: {}.",
+        topic,
+        partitionId,
+        clusterName);
     HelixUtils.compareAndUpdate(partitionStatusAccessor, getPartitionStatusPath(topic, partitionId), currentData -> {
 
       // currentData can be null if the path read out of zk is blank to start with (as current data is read and passed
@@ -250,8 +260,11 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
       return currentData;
     });
     LOGGER.info(
-        "Updated replica status for topic:" + topic + " partition:" + partitionId + " status: " + status
-            + " in cluster:" + clusterName);
+        "Updated replica status for topic: {} partition: {} status: {} in cluster: {}.",
+        topic,
+        partitionId,
+        status,
+        clusterName);
   }
 
   @Override
@@ -297,8 +310,8 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
   protected PartitionStatus getPartitionStatus(String topic, int partitionId) {
     PartitionStatus partitionStatus =
         partitionStatusAccessor.get(getPartitionStatusPath(topic, partitionId), null, AccessOption.PERSISTENT);
-    LOGGER.debug(
-        "Read partition status for topic:" + topic + " in partition:" + partitionId + " in cluster:" + clusterName);
+    LOGGER
+        .debug("Read partition status for topic: {} in partition: {} in cluster: {}.", topic, partitionId, clusterName);
     return partitionStatus;
   }
 
@@ -311,14 +324,13 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
    * The returned partition status list is ordered by partition Id.
    */
   protected List<PartitionStatus> getPartitionStatuses(String topic, int partitionCount) {
-    LOGGER.debug("Start reading partition status from ZK for topic:" + topic + " in cluster:" + clusterName);
+    LOGGER.debug("Start reading partition status from ZK for topic: {} in cluster: {}.", topic, clusterName);
     List<PartitionStatus> zkResult = HelixUtils.getChildren(
         partitionStatusAccessor,
         getOfflinePushStatusPath(topic),
         refreshAttemptsForZkReconnect,
         refreshIntervalForZkReconnectInMs);
-    LOGGER.debug(
-        "Read " + zkResult.size() + " partition status from ZK for topic:" + topic + " in cluster:" + clusterName);
+    LOGGER.debug("Read {} partition status from ZK for topic: {} in cluster: {}.", zkResult.size(), topic, clusterName);
 
     if (zkResult.isEmpty()) {
       // Partition status list is empty means that partition status node hasn't been fully created yet.
@@ -368,7 +380,7 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
 
   private boolean pushStatusExists(String topic) {
     if (!partitionStatusAccessor.exists(getOfflinePushStatusPath(topic), AccessOption.PERSISTENT)) {
-      LOGGER.warn("Push status does not exist, ignore the subsequent operation. Topic: " + topic);
+      LOGGER.warn("Push status does not exist, ignore the subsequent operation. Topic: {}.", topic);
       return false;
     }
     return true;
@@ -404,7 +416,7 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
 
     @Override
     public void handleDataDeleted(String dataPath) {
-      LOGGER.error("Partition status should not be deleted while monitoring the push status. path:" + dataPath);
+      LOGGER.error("Partition status should not be deleted while monitoring the push status. Path: {}.", dataPath);
     }
   }
 }

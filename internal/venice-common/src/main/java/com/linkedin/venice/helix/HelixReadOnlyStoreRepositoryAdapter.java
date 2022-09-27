@@ -199,14 +199,15 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
      */
     public void handleStoreCreated(Store store) {
       LOGGER.info(
-          "Received a new zk shared store creation: " + store.getName() + ", and current repository will do nothing");
+          "Received a new zk shared store creation: {}, and current repository will do nothing.",
+          store.getName());
     }
 
     /**
      * No need to handle zk shared store deletion since the system store will be populated on the fly.
      */
     public void handleStoreDeleted(String storeName) {
-      LOGGER.info("Received a zk shared store deletion: " + storeName + ", and current repository will do nothing");
+      LOGGER.info("Received a zk shared store deletion: {}, and current repository will do nothing", storeName);
     }
 
     /**
@@ -231,8 +232,9 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
                 listener.handleStoreChanged(metaSystemStore);
               } catch (Throwable t) {
                 LOGGER.error(
-                    "Received exception while invoking `handleStoreChanged` of listener: " + listener.getClass()
-                        + " with system store: " + metaSystemStore.getName(),
+                    "Received exception while invoking `handleStoreChanged` of listener: {} with system store: {}.",
+                    listener.getClass(),
+                    metaSystemStore.getName(),
                     t);
               }
             });
@@ -251,15 +253,16 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
                 listener.handleStoreChanged(daVinciPushStatusSystemStore);
               } catch (Throwable t) {
                 LOGGER.error(
-                    "Received exception while invoking `handleStoreChanged` of listener: " + listener.getClass()
-                        + " with system store: " + daVinciPushStatusSystemStore.getName(),
+                    "Received exception while invoking `handleStoreChanged` of listener: {} with system store: {}.",
+                    listener.getClass(),
+                    daVinciPushStatusSystemStore.getName(),
                     t);
               }
             });
           }
         }
       } else {
-        LOGGER.info("Received zk shared store change for store: " + zkSharedStoreName + ", will be ignored");
+        LOGGER.info("Received zk shared store change for store: {}, will be ignored.", zkSharedStoreName);
       }
     }
   }
@@ -281,8 +284,9 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
           listener.handleStoreCreated(store);
         } catch (Throwable t) {
           LOGGER.error(
-              "Received exception while invoking `handleStoreCreated` of listener: " + listener.getClass()
-                  + " with store: " + store.getName(),
+              "Received exception while invoking `handleStoreCreated` of listener: {} with store: {}.",
+              listener.getClass(),
+              store.getName(),
               t);
         }
       });
@@ -298,8 +302,9 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
             listener.handleStoreCreated(metaSystemStore);
           } catch (Throwable t) {
             LOGGER.error(
-                "Received exception while invoking `handleStoreCreated` of listener: " + listener.getClass()
-                    + " with system store: " + metaSystemStoreName,
+                "Received exception while invoking `handleStoreCreated` of listener: {} with system store: {}.",
+                listener.getClass(),
+                metaSystemStoreName,
                 t);
           }
         });
@@ -317,8 +322,9 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
             listener.handleStoreCreated(daVinciPushStatusSystemStore);
           } catch (Throwable t) {
             LOGGER.error(
-                "Received exception while invoking `handleStoreCreated` of listener: " + listener.getClass()
-                    + " with system store: " + daVinciPushStatusSystemStoreName,
+                "Received exception while invoking `handleStoreCreated` of listener: {} with system store: {}",
+                listener.getClass(),
+                daVinciPushStatusSystemStoreName,
                 t);
           }
         });
@@ -339,8 +345,9 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
           listener.handleStoreDeleted(store);
         } catch (Throwable t) {
           LOGGER.error(
-              "Received exception while invoking `handleStoreDeleted` of listener: " + listener.getClass()
-                  + " with store: " + storeName,
+              "Received exception while invoking `handleStoreDeleted` of listener: {} with store: {}.",
+              listener.getClass(),
+              storeName,
               t);
         }
         String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
@@ -355,8 +362,9 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
           listener.handleStoreDeleted(metaSystemStore);
         } catch (Throwable t) {
           LOGGER.error(
-              "Received exception while invoking `handleStoreDeleted` of listener: " + listener.getClass()
-                  + " with system store: " + metaSystemStoreName,
+              "Received exception while invoking `handleStoreDeleted` of listener: {} with system store: {}.",
+              listener.getClass(),
+              metaSystemStoreName,
               t);
         }
         if (store.isDaVinciPushStatusStoreEnabled()) {
@@ -367,8 +375,9 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
             listener.handleStoreDeleted(daVinciPushStatusSystemStoreName);
           } catch (Throwable t) {
             LOGGER.error(
-                "Received exception while invoking `handleStoreDeleted` of listener: " + listener.getClass()
-                    + " with system store: " + daVinciPushStatusSystemStoreName,
+                "Received exception while invoking `handleStoreDeleted` of listener: {} with system store: {}.",
+                listener.getClass(),
+                daVinciPushStatusSystemStoreName,
                 t);
           }
         }
@@ -388,8 +397,9 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
           listener.handleStoreChanged(store);
         } catch (Throwable t) {
           LOGGER.error(
-              "Received exception while invoking `handleStoreChanged` of listener: " + listener.getClass()
-                  + " with store: " + store.getName(),
+              "Received exception while invoking `handleStoreChanged` of listener: {} with store: {}.",
+              listener.getClass(),
+              store.getName(),
               t);
         }
         // Notify the meta system store change
@@ -412,8 +422,9 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
             listener.handleStoreChanged(metaSystemStore);
           } catch (Throwable t) {
             LOGGER.error(
-                "Received exception while invoking `handleStoreDeleted` of listener: " + listener.getClass()
-                    + " with system store: " + metaSystemStoreName,
+                "Received exception while invoking `handleStoreDeleted` of listener: {}  with system store: {}.",
+                listener.getClass(),
+                metaSystemStoreName,
                 t);
           }
         }
@@ -429,8 +440,9 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
             listener.handleStoreChanged(daVinciPushStatusSystemStore);
           } catch (Throwable t) {
             LOGGER.error(
-                "Received exception while invoking `handleStoreDeleted` of listener: " + listener.getClass()
-                    + " with system store: " + daVinciPushStatusSystemStoreName,
+                "Received exception while invoking `handleStoreDeleted` of listener: {} with system store: {}.",
+                listener.getClass(),
+                daVinciPushStatusSystemStoreName,
                 t);
           }
         }

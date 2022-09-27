@@ -13,6 +13,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -37,14 +38,19 @@ public class TestMetadataOperationInMultiCluster {
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testCreateStoreAndVersionForMultiCluster() {
-    int numberOfController = 3;
-    int numberOfCluster = 2;
     String keySchema = "\"string\"";
     String valSchema = "\"string\"";
-    try (VeniceMultiClusterWrapper multiClusterWrapper =
-        ServiceFactory.getVeniceMultiClusterWrapper(numberOfCluster, numberOfController, 1, 1)) {
+
+    VeniceMultiClusterCreateOptions options = new VeniceMultiClusterCreateOptions.Builder(2).numberOfControllers(3)
+        .numberOfServers(1)
+        .numberOfRouters(1)
+        .build();
+    try (VeniceMultiClusterWrapper multiClusterWrapper = ServiceFactory.getVeniceMultiClusterWrapper(options)) {
       String[] clusterNames = multiClusterWrapper.getClusterNames();
-      Assert.assertEquals(clusterNames.length, numberOfCluster, "Should created " + numberOfCluster + " clusters.");
+      Assert.assertEquals(
+          clusterNames.length,
+          options.getNumberOfClusters(),
+          "Should created " + options.getNumberOfClusters() + " clusters.");
 
       String clusterName = clusterNames[0];
       String secondCluster = clusterNames[1];
@@ -125,10 +131,11 @@ public class TestMetadataOperationInMultiCluster {
 
   @Test
   public void testRunH2VInMultiCluster() throws Exception {
-    int numberOfController = 3;
-    int numberOfCluster = 2;
-    try (VeniceMultiClusterWrapper multiClusterWrapper =
-        ServiceFactory.getVeniceMultiClusterWrapper(numberOfCluster, numberOfController, 1, 1)) {
+    VeniceMultiClusterCreateOptions options = new VeniceMultiClusterCreateOptions.Builder(2).numberOfControllers(3)
+        .numberOfServers(1)
+        .numberOfRouters(1)
+        .build();
+    try (VeniceMultiClusterWrapper multiClusterWrapper = ServiceFactory.getVeniceMultiClusterWrapper(options)) {
       String[] clusterNames = multiClusterWrapper.getClusterNames();
       String storeNameSuffix = "-testStore";
       File inputDir = getTempDataDirectory();

@@ -35,7 +35,7 @@ public abstract class AbstractVeniceService implements Closeable {
     }
 
     try {
-      logger.info("Starting " + getName());
+      logger.info("Starting {}", getName());
       long startTime = System.currentTimeMillis();
       if (startInner()) {
         serviceState.set(ServiceState.STARTED);
@@ -44,9 +44,9 @@ public abstract class AbstractVeniceService implements Closeable {
          * N.B.: It is the Service implementer's responsibility to set {@link #serviceState} to
          * {@link ServiceState#STARTED} upon completion of the async work.
          */
-        logger.info("Service " + getName() + " may not be done starting. The process will finish asynchronously.");
+        logger.info("Service {} may not be done starting. The process will finish asynchronously.", getName());
       }
-      logger.info(String.format("%s startup took %d ms.", getName(), System.currentTimeMillis() - startTime));
+      logger.info("{} startup took {}ms.", getName(), System.currentTimeMillis() - startTime);
     } catch (Exception e) {
       String msg = "Unable to start " + getName();
       logger.error(msg, e);
@@ -56,13 +56,13 @@ public abstract class AbstractVeniceService implements Closeable {
 
   public synchronized void stop() throws Exception {
     if (isRunning()) {
-      logger.info("Stopping " + getName());
+      logger.info("Stopping {}", getName());
       long startTime = System.currentTimeMillis();
       stopInner();
       serviceState.set(ServiceState.STOPPED);
-      logger.info(String.format("%s shutdown took %d ms.", getName(), System.currentTimeMillis() - startTime));
+      logger.info("{} shutdown took {}ms.", getName(), System.currentTimeMillis() - startTime);
     } else {
-      logger.info(getName() + " service has already been stopped.");
+      logger.info("{} service has already been stopped.", getName());
     }
   }
 

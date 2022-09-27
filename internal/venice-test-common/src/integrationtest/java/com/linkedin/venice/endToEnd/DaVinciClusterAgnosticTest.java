@@ -26,6 +26,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -90,19 +91,15 @@ public class DaVinciClusterAgnosticTest {
         ClientConfig.defaultGenericClientConfig("")
             .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
             .setD2Client(d2Client));
-    multiClusterVenice = ServiceFactory.getVeniceMultiClusterWrapper(
-        "",
-        2,
-        1,
-        3,
-        1,
-        3,
-        true,
-        false,
-        true,
-        Optional.of(testProperties),
-        Optional.of(new VeniceProperties(testProperties)),
-        false);
+    VeniceMultiClusterCreateOptions options = new VeniceMultiClusterCreateOptions.Builder(2).numberOfControllers(1)
+        .numberOfServers(3)
+        .numberOfRouters(1)
+        .replicationFactor(3)
+        .multiD2(true)
+        .childControllerProperties(testProperties)
+        .veniceProperties(new VeniceProperties(testProperties))
+        .build();
+    multiClusterVenice = ServiceFactory.getVeniceMultiClusterWrapper(options);
     clusterNames = multiClusterVenice.getClusterNames();
     Collection<VeniceControllerWrapper> childControllers = multiClusterVenice.getControllers().values();
     parentController = ServiceFactory.getVeniceParentController(

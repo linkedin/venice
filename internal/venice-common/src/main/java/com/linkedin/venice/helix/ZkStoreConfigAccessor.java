@@ -57,7 +57,7 @@ public class ZkStoreConfigAccessor {
         .filter(storeConfig -> storeConfig != null)
         .collect(Collectors.toList());
 
-    LOGGER.info("Read " + configs.size() + " store configs from path:" + ROOT_PATH);
+    LOGGER.info("Read {} store configs from path: {}.", configs.size(), ROOT_PATH);
     return configs;
   }
 

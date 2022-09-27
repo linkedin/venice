@@ -140,18 +140,16 @@ public abstract class KafkaClientFactory {
           String.format("%s_%s_%s", statsNamePrefix, kafkaAdminClientClass, kafkaBootstrapServers);
       adminWrapper = new InstrumentedKafkaAdmin(adminWrapper, optionalMetricsRepository.get(), kafkaAdminStatsName);
       LOGGER.info(
-          String.format(
-              "Created instrumented Kafka admin client of class %s for Kafka cluster with bootstrap "
-                  + "server %s and has stats name prefix %s",
-              kafkaAdminClientClass,
-              kafkaBootstrapServers,
-              statsNamePrefix));
+          "Created instrumented Kafka admin client of class {} for Kafka cluster with bootstrap "
+              + "server {} and has stats name prefix {}",
+          kafkaAdminClientClass,
+          kafkaBootstrapServers,
+          statsNamePrefix);
     } else {
       LOGGER.info(
-          String.format(
-              "Created non-instrumented Kafka admin client of class %s for Kafka cluster with bootstrap server %s",
-              kafkaAdminClientClass,
-              kafkaBootstrapServers));
+          "Created non-instrumented Kafka admin client of class {} for Kafka cluster with bootstrap server {}",
+          kafkaAdminClientClass,
+          kafkaBootstrapServers);
     }
     return adminWrapper;
   }

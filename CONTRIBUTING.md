@@ -28,10 +28,6 @@ If you have any feature request, please create a new GitHub issue and the commun
 
 If you have any user feedback, please create a new GitHub issue and the community will collect your feedback and work on it.
 
-## Pull Request Guideline
-
-Detailed Pull Request guideline is at [Venice Pull Request Guideline](./docs/dev_guide/pull_request_guideline.md)
-
 ## For New Contributors
 
 Please follow [Venice Workspace Setup](./docs/dev_guide/workspace_setup.md) and
