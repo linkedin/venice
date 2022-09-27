@@ -3620,7 +3620,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     partitionConsumptionStateMap.put(partition, pcs);
   }
 
-  public void blockOnDrainerCapacity() {
+  public void maybeBlockOnDrainerCapacity() {
     while (storeBufferService.getTotalRemainingMemory() < 1000) {
       try {
         Thread.sleep(emptyPollSleepMs);
