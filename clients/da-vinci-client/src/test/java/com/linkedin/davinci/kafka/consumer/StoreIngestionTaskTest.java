@@ -715,7 +715,7 @@ public abstract class StoreIngestionTaskTest {
     mockWriterFactory = mock(VeniceWriterFactory.class);
     doReturn(null).when(mockWriterFactory).createBasicVeniceWriter(any());
     StorageMetadataService offsetManager;
-    LOGGER.info("mockStorageMetadataService: " + mockStorageMetadataService.getClass().getName());
+    LOGGER.info("mockStorageMetadataService: {}", mockStorageMetadataService.getClass().getName());
     final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
     if (mockStorageMetadataService.getClass() != InMemoryStorageMetadataService.class) {
@@ -1535,7 +1535,7 @@ public abstract class StoreIngestionTaskTest {
     long lastOffset = getOffset(veniceWriterForDataAfterPush.put(putKeyBar, putValue, SCHEMA_ID));
     veniceWriterForDataAfterPush.close();
 
-    LOGGER.info("lastOffsetBeforeEOP: " + lastOffsetBeforeEOP + ", lastOffset: " + lastOffset);
+    LOGGER.info("lastOffsetBeforeEOP: {}, lastOffset: {}", lastOffsetBeforeEOP, lastOffset);
 
     try {
       runTest(Utils.setOf(PARTITION_BAR), () -> {
@@ -1612,7 +1612,7 @@ public abstract class StoreIngestionTaskTest {
         new RandomPollStrategy(),
         Utils.setOf(new Pair(new TopicPartition(topic, PARTITION_FOO), fooOffsetToSkip)));
 
-    LOGGER.info("lastOffsetBeforeEOP: " + lastOffsetBeforeEOP + ", lastOffset: " + lastOffset);
+    LOGGER.info("lastOffsetBeforeEOP: {}, lastOffset: {}", lastOffsetBeforeEOP, lastOffset);
 
     runTest(pollStrategy, Utils.setOf(PARTITION_FOO), () -> {}, () -> {
       for (Object[] args: mockNotifierError) {
@@ -1858,7 +1858,7 @@ public abstract class StoreIngestionTaskTest {
             LOGGER.info("Received null OffsetRecord!");
           } else if (messagesConsumedSoFar.incrementAndGet()
               % (totalNumberOfMessages / totalNumberOfConsumptionRestarts) == 0) {
-            LOGGER.info("Restarting consumer after consuming " + messagesConsumedSoFar.get() + " messages so far.");
+            LOGGER.info("Restarting consumer after consuming {} messages so far.", messagesConsumedSoFar.get());
             relevantPartitions.stream()
                 .forEach(partition -> storeIngestionTaskUnderTest.unSubscribePartition(topic, partition));
             relevantPartitions.stream()
@@ -1866,8 +1866,9 @@ public abstract class StoreIngestionTaskTest {
                     partition -> storeIngestionTaskUnderTest.subscribePartition(topic, partition, Optional.empty()));
           } else {
             LOGGER.info(
-                "TopicPartition: " + topicPartitionOffsetRecordPair.getFirst() + ", Offset: "
-                    + topicPartitionOffsetRecordPair.getSecond());
+                "TopicPartition: {}, Offset: {}",
+                topicPartitionOffsetRecordPair.getFirst(),
+                topicPartitionOffsetRecordPair.getSecond());
           }
         });
 
@@ -1879,8 +1880,7 @@ public abstract class StoreIngestionTaskTest {
           .forEach(entry -> {
             int partition = entry.getKey();
             long offset = entry.getValue();
-            LOGGER.info(
-                "Verifying completed was called for partition " + partition + " and offset " + offset + " or greater.");
+            LOGGER.info("Verifying completed was called for partition {} and offset {} or greater.", partition, offset);
             verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
                 .completed(eq(topic), eq(partition), LongEqualOrGreaterThanMatcher.get(offset));
           });

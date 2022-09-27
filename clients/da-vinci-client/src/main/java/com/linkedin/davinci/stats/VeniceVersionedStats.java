@@ -82,8 +82,9 @@ public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceSt
     STATS stats = versionedStats.get(version);
     if (stats == null) {
       LOGGER.warn(
-          "Stats has not been created while trying to set it as current version. " + "Store: " + storeName
-              + " version: " + version);
+          "Stats has not been created while trying to set it as current version. Store: {}, version: {}",
+          storeName,
+          version);
       stats = addVersion(version);
     }
     return stats;
@@ -100,9 +101,8 @@ public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceSt
 
   public synchronized void removeVersion(int version) {
     if (versionedStats.remove(version) == null) {
-      LOGGER.warn(
-          "Stats has already been removed. Something might be wrong. " + "Store: " + storeName + " version: "
-              + version);
+      LOGGER
+          .warn("Stats has already been removed. Something might be wrong. Store: {}, version: {}", storeName, version);
     }
   }
 }
