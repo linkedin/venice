@@ -56,11 +56,11 @@ public class StorageEngineRepository {
     VeniceException lastException = null;
     for (AbstractStorageEngine store: localStorageEngines.values()) {
       String storeName = store.getStoreName();
-      LOGGER.info("Closing storage engine for " + storeName);
+      LOGGER.info("Closing storage engine for store: {}", storeName);
       try {
         store.close();
       } catch (VeniceException e) {
-        LOGGER.error("Error closing storage engine for store" + storeName, e);
+        LOGGER.error("Error closing storage engine for store: {}", storeName, e);
         lastException = e;
       }
     }

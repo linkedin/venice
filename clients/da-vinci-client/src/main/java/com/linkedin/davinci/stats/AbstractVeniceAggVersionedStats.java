@@ -122,8 +122,8 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
       if (status == VersionStatus.STARTED || status == VersionStatus.PUSHED) {
         if (futureVersion != NON_EXISTING_VERSION) {
           LOGGER.warn(
-              "Multiple versions have been marked as STARTED PUSHING. " + "There might be a parallel push. Store: "
-                  + storeName);
+              "Multiple versions have been marked as STARTED PUSHING. There might be a parallel push. Store: {}",
+              storeName);
         }
 
         // in case there is a parallel push, record the largest version as future version
@@ -134,7 +134,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
         // check past version
         if (status == VersionStatus.ONLINE && versionNum != newCurrentVersion) {
           if (backupVersion != 0) {
-            LOGGER.warn("There are more than 1 backup versions. Something might be wrong." + "Store: " + storeName);
+            LOGGER.warn("There are more than 1 backup versions. Something might be wrong. Store: {}", storeName);
           }
 
           backupVersion = versionNum;
