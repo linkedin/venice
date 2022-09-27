@@ -81,7 +81,7 @@ public class HelixLiveInstanceMonitor implements IZkChildListener, VeniceResourc
   public synchronized void handleChildChange(String parentPath, List<String> currentChildren) throws Exception {
     Set<Instance> previousLiveInstanceSet = liveInstanceSet;
     liveInstanceSet = convertToInstance(currentChildren);
-    LOGGER.info("Received new live instance set: " + liveInstanceSet);
+    LOGGER.info("Received new live instance set: {}.", liveInstanceSet);
     // trigger live instance change listeners
     Set<Instance> newInstances = new HashSet<>();
     Set<Instance> deletedInstances = new HashSet<>();

@@ -91,7 +91,7 @@ public abstract class HelixBaseRoutingRepository
    */
   public void refresh() {
     try {
-      LOGGER.info("Refresh started for cluster " + manager.getClusterName() + "'s" + getClass().getSimpleName());
+      LOGGER.info("Refresh started for cluster {}'s {}.", manager.getClusterName(), getClass().getSimpleName());
       // After adding the listener, helix will initialize the callback which will get the entire external view
       // and trigger the external view change event. In other words, venice will read the newest external view
       // immediately.
@@ -115,7 +115,7 @@ public abstract class HelixBaseRoutingRepository
       }
       // TODO subscribe zk state change event after we can get zk client from HelixManager
       // (Should be fixed by Helix team soon)
-      LOGGER.info("Refresh finished for cluster" + manager.getClusterName() + "'s" + getClass().getSimpleName());
+      LOGGER.info("Refresh finished for cluster {}'s {}.", manager.getClusterName(), getClass().getSimpleName());
     } catch (Exception e) {
       String errorMessage = "Cannot refresh routing table from Helix for cluster " + manager.getClusterName();
       LOGGER.error(errorMessage, e);
@@ -237,7 +237,7 @@ public abstract class HelixBaseRoutingRepository
       // Finalized notification, listener will be removed.
       return;
     }
-    LOGGER.info("Got notification type:" + changeContext.getType() + ". Leader controller is changed.");
+    LOGGER.info("Got notification type: {}. Leader controller is changed.", changeContext.getType());
     LiveInstance leader = manager.getHelixDataAccessor().getProperty(keyBuilder.controllerLeader());
     this.leaderControllerChangeTimeMs = System.currentTimeMillis();
     if (leader == null) {
@@ -245,7 +245,7 @@ public abstract class HelixBaseRoutingRepository
       LOGGER.error("Cluster do not have leader controller now!");
     } else {
       this.leaderController = createInstanceFromLiveInstance(leader);
-      LOGGER.info("New leader controller is:" + leaderController.getHost() + ":" + leaderController.getPort());
+      LOGGER.info("New leader controller is: {}:{} ", leaderController.getHost(), leaderController.getPort());
     }
   }
 
@@ -310,7 +310,7 @@ public abstract class HelixBaseRoutingRepository
         onCustomizedViewDataChange(routingTableSnapshot);
         break;
       default:
-        LOGGER.warn("Received Helix routing table change on invalid type " + helixPropertyType);
+        LOGGER.warn("Received Helix routing table change on invalid type: {}.", helixPropertyType);
     }
   }
 

@@ -114,9 +114,9 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
 
       if (!resourceToPartitionCountMapSnapshot.keySet().containsAll(resourcesInCustomizedView)) {
         LOGGER.info(
-            "Found the inconsistent data between customized view and ideal state of cluster: "
-                + manager.getClusterName() + ". Reading the latest ideal state from zk.");
-
+            "Found the inconsistent data between customized view and ideal state of cluster: {}."
+                + " Reading the latest ideal state from zk.",
+            manager.getClusterName());
         List<PropertyKey> keys = customizedViewCollection.stream()
             .map(cv -> keyBuilder.idealStates(cv.getResourceName()))
             .collect(Collectors.toList());
@@ -127,8 +127,8 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
           LOGGER.info("Ideal state of cluster: " + manager.getClusterName() + " is updated from zk");
         } catch (HelixMetaDataAccessException e) {
           LOGGER.error(
-              "Failed to update the ideal state of cluster: " + manager.getClusterName()
-                  + " because we could not access to zk.",
+              "Failed to update the ideal state of cluster: {}. Because we could not access to zk.",
+              manager.getClusterName(),
               e);
           return;
         }
@@ -138,9 +138,9 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
         String resourceName = customizedView.getResourceName();
         if (!resourceToPartitionCountMapSnapshot.containsKey(resourceName)) {
           LOGGER.warn(
-              "Could not find resource: " + resourceName + " in ideal state. Ideal state is up to date,"
-                  + " so the resource has been deleted from ideal state or could not read " + "from "
-                  + "zk. Ignore its customized view update.");
+              "Could not find resource: {} in ideal state. Ideal state is up to date, so the resource has been"
+                  + " deleted from ideal state or could not read from zk. Ignore its customized view update.",
+              resourceName);
           continue;
         }
         PartitionAssignment partitionAssignment =
@@ -159,12 +159,12 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
               try {
                 status = ExecutionStatus.valueOf(instanceState);
               } catch (Exception e) {
-                LOGGER.warn("Instance:" + instanceName + " unrecognized status:" + instanceState);
+                LOGGER.warn("Instance: {} unrecognized status: {}.", instanceName, instanceState);
                 continue;
               }
               stateToInstanceMap.computeIfAbsent(status.toString(), s -> new ArrayList<>()).add(instance);
             } else {
-              LOGGER.warn("Cannot find instance '" + instanceName + "' in /LIVEINSTANCES");
+              LOGGER.warn("Cannot find instance '{}' in /LIVEINSTANCES", instanceName);
             }
           }
           // Update partitionAssignment of customized state
@@ -196,8 +196,9 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
         LOGGER.info("Updated resource assignment and live instances for .");
       }
       LOGGER.info(
-          "Customized view is changed. The number of active resources is " + resourcesInCustomizedView.size()
-              + ", and the deleted resources are " + updates.getDeletedResource());
+          "Customized view is changed. The number of active resources is {}, and the deleted resources are {}.",
+          resourcesInCustomizedView.size(),
+          updates.getDeletedResource());
       // Notify listeners that listen on customized view data change
       for (String kafkaTopic: updates.getUpdatedResources()) {
         PartitionAssignment partitionAssignment;

@@ -81,7 +81,7 @@ public class HelixReadOnlyLiveClusterConfigRepository implements ReadOnlyLiveClu
 
     @Override
     public void handleDataDeleted(String dataPath) {
-      LOGGER.info(dataPath + " ZNode deleted. Resetting configs to default.");
+      LOGGER.info("{} ZNode deleted. Resetting configs to default.", dataPath);
       liveClusterConfig = DEFAULT_LIVE_CLUSTER_CONFIG;
     }
   }

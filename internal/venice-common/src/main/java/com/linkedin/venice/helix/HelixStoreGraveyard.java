@@ -23,7 +23,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class HelixStoreGraveyard implements StoreGraveyard {
-  private static final Logger LOGGER = LogManager.getLogger(StoreGraveyard.class);
+  private static final Logger LOGGER = LogManager.getLogger(HelixStoreGraveyard.class);
 
   public static final String STORE_GRAVEYARD_PATH = "/StoreGraveyard";
 
@@ -63,8 +63,9 @@ public class HelixStoreGraveyard implements StoreGraveyard {
     List<Store> stores = getStoreFromAllClusters(storeName);
     if (stores.isEmpty()) {
       LOGGER.info(
-          "Store: " + storeName + " does NOT exist in the store graveyard. Will initialize the new store at version: "
-              + Store.NON_EXISTING_VERSION);
+          "Store: {} does NOT exist in the store graveyard. Will initialize the new store at version: {}.",
+          storeName,
+          Store.NON_EXISTING_VERSION);
       // If store does NOT existing in graveyard, it means store has never been deleted, return 0 which is the default
       // value of largestUsedVersionNumber for a new store.
       return Store.NON_EXISTING_VERSION;
@@ -77,8 +78,9 @@ public class HelixStoreGraveyard implements StoreGraveyard {
     }
 
     LOGGER.info(
-        "Found store: " + storeName + " in the store graveyard. Will initialize the new store at version: "
-            + largestUsedVersionNumber);
+        "Found store: {} in the store graveyard. Will initialize the new store at version: {}.",
+        storeName,
+        largestUsedVersionNumber);
     return largestUsedVersionNumber;
   }
 
@@ -90,8 +92,10 @@ public class HelixStoreGraveyard implements StoreGraveyard {
     List<Store> deletedStores = getStoreFromAllClusters(userStoreName);
     if (deletedStores.isEmpty()) {
       LOGGER.info(
-          "User store: " + userStoreName + " does NOT exist in the store graveyard. Hence, no largest used version for "
-              + "its system store: " + userStoreName);
+          "User store: {} does NOT exist in the store graveyard. Hence, no largest used version for "
+              + "its system store: {}.",
+          userStoreName,
+          systemStoreName);
       return Store.NON_EXISTING_VERSION;
     }
     int largestUsedVersionNumber = Store.NON_EXISTING_VERSION;
@@ -106,7 +110,7 @@ public class HelixStoreGraveyard implements StoreGraveyard {
     }
 
     if (largestUsedVersionNumber == Store.NON_EXISTING_VERSION) {
-      LOGGER.info("Can not find largest used version number for " + systemStoreName);
+      LOGGER.info("Can not find largest used version number for {}.", systemStoreName);
     }
     return largestUsedVersionNumber;
   }
@@ -140,8 +144,10 @@ public class HelixStoreGraveyard implements StoreGraveyard {
        */
       if (largestUsedVersionNumber > store.getLargestUsedVersionNumber()) {
         LOGGER.info(
-            "Increased largestUsedVersionNumber for migrating store " + store.getName() + " from "
-                + store.getLargestUsedVersionNumber() + " to " + largestUsedVersionNumber);
+            "Increased largestUsedVersionNumber for migrating store {} from {} to {}.",
+            store.getName(),
+            store.getLargestUsedVersionNumber(),
+            largestUsedVersionNumber);
         store.setLargestUsedVersionNumber(largestUsedVersionNumber);
       }
     } else if (store.getLargestUsedVersionNumber() < largestUsedVersionNumber) {
@@ -156,7 +162,9 @@ public class HelixStoreGraveyard implements StoreGraveyard {
     // update the ZNode.
     HelixUtils.update(dataAccessor, getClusterDeletedStorePath(clusterName, store.getName()), store);
     LOGGER.info(
-        "Put store: " + store.getName() + " into graveyard with largestUsedVersionNumber " + largestUsedVersionNumber);
+        "Put store: {} into graveyard with largestUsedVersionNumber {}.",
+        store.getName(),
+        largestUsedVersionNumber);
   }
 
   public void removeStoreFromGraveyard(String clusterName, String storeName) {
@@ -164,7 +172,7 @@ public class HelixStoreGraveyard implements StoreGraveyard {
     Store store = dataAccessor.get(path, null, AccessOption.PERSISTENT);
     if (store != null) {
       HelixUtils.remove(dataAccessor, path);
-      LOGGER.info("Removed store: " + storeName + " from graveyard");
+      LOGGER.info("Removed store: {} from graveyard.", storeName);
     }
   }
 

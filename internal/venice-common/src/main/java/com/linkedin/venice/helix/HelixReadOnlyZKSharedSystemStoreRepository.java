@@ -10,8 +10,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -21,8 +19,6 @@ import org.apache.logging.log4j.Logger;
  * will be constrained by the healthiness of system store cluster.
  */
 public class HelixReadOnlyZKSharedSystemStoreRepository extends HelixReadOnlyStoreRepository {
-  private static final Logger LOGGER = LogManager.getLogger(HelixReadOnlyZKSharedSystemStoreRepository.class);
-
   /**
    * This set is used to keep all the zk shared stores the current repo will monitor.
    */
