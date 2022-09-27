@@ -39,7 +39,7 @@ public class StorageEngineMetadataService extends AbstractVeniceService implemen
   public void clearOffset(String topicName, int partitionId) {
     AbstractStorageEngine<?> storageEngine = this.storageEngineRepository.getLocalStorageEngine(topicName);
     if (storageEngine == null) {
-      LOGGER.info("Store " + topicName + " could not be located, ignoring the reset partition message.");
+      LOGGER.info("Store: {} could not be located, ignoring the reset partition message.", topicName);
       return;
     }
     storageEngine.clearPartitionOffset(partitionId);

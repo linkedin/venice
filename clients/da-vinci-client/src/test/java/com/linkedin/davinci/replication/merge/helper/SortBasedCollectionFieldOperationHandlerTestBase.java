@@ -64,7 +64,7 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
       builder.addOperation(collectionOperation);
     }
     List<List<CollectionOperation>> allOpSequences = builder.build();
-    LOGGER.info("All operation sequences: " + allOpSequences);
+    LOGGER.info("All operation sequences: {}", allOpSequences);
 
     GenericRecord currValueRecord = new GenericData.Record(VALUE_SCHEMA);
     CollectionTimestampBuilder collectionTimestampBuilder =
@@ -87,12 +87,12 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
       GenericRecord currValueRecordCopy = GenericData.get().deepCopy(VALUE_SCHEMA, currValueRecord);
       CollectionRmdTimestamp<?> collectionRmdCopy = new CollectionRmdTimestamp<>(collectionMetadata);
       List<CollectionOperation> opSequence = allOpSequences.get(i);
-      LOGGER.info("Applying operation sequence: " + opSequence);
+      LOGGER.info("Applying operation sequence: {}", opSequence);
 
       for (CollectionOperation op: opSequence) {
         applyOperationOnValue(op, collectionRmdCopy, handlerToTest, currValueRecordCopy);
       }
-      LOGGER.info("Post-merge value record: " + currValueRecordCopy);
+      LOGGER.info("Post-merge value record: {}", currValueRecordCopy);
       final String listFieldName = expectedCollectionResults.getListFieldName();
       final String mapFieldName = expectedCollectionResults.getMapFieldName();
 

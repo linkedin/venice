@@ -85,7 +85,7 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
             try {
               total += dbPartition.getRocksDBStatValue(metric);
             } catch (VeniceException e) {
-              LOGGER.warn(String.format("Could not get rocksDB metric %s with error:", metric), e);
+              LOGGER.warn("Could not get rocksDB metric {} with error:", metric, e);
               continue;
             }
             if (INSTANCE_METRIC_DOMAINS.contains(metric)) {

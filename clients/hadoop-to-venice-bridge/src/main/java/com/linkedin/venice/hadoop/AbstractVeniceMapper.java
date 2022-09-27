@@ -77,8 +77,8 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE> extends Abstr
     }
     MRJobCounterHelper.incrMapperSprayAllPartitionsTriggeredCount(reporter, 1);
     LOGGER.info(
-        "Map Task ID " + TASK_ID_WHICH_SHOULD_SPRAY_ALL_PARTITIONS
-            + " successfully sprayed all partitions, to ensure that all Reducers come up.");
+        "Map Task ID {} successfully sprayed all partitions, to ensure that all Reducers come up.",
+        TASK_ID_WHICH_SHOULD_SPRAY_ALL_PARTITIONS);
   }
 
   /**

@@ -89,7 +89,7 @@ public class StatusReportAdapterTest {
       try {
         for (ExecutionStatus executionStatus: executionStatusList) {
           Thread.sleep(random.nextInt(100));
-          LOGGER.info("Sending report status: " + executionStatus + " to partition " + pcs.getPartition());
+          LOGGER.info("Sending report status: {} to partition {}", executionStatus, pcs.getPartition());
           switch (executionStatus) {
             case STARTED:
               adapter.reportStarted(pcs);
@@ -133,6 +133,6 @@ public class StatusReportAdapterTest {
 
   private void recordStatus(ExecutionStatus status) {
     recordStatusList.add(status);
-    LOGGER.info("Write push status: " + status + " to mocked push monitor.");
+    LOGGER.info("Write push status: {} to mocked push monitor.", status);
   }
 }

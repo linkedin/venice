@@ -29,7 +29,7 @@ public class AggVersionedStorageEngineStats extends
 
   public void setStorageEngine(String topicName, AbstractStorageEngine storageEngine) {
     if (!Version.isVersionTopicOrStreamReprocessingTopic(topicName)) {
-      LOGGER.warn("Invalid topic name: " + topicName);
+      LOGGER.warn("Invalid topic name: {}", topicName);
       return;
     }
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
@@ -37,13 +37,13 @@ public class AggVersionedStorageEngineStats extends
     try {
       getStats(storeName, version).setStorageEngine(storageEngine);
     } catch (Exception e) {
-      LOGGER.warn("Failed to setup StorageEngine for store: " + storeName + ", version: " + version);
+      LOGGER.warn("Failed to setup StorageEngine for store: {}, version: {}", storeName, version);
     }
   }
 
   public void recordRocksDBOpenFailure(String topicName) {
     if (!Version.isVersionTopicOrStreamReprocessingTopic(topicName)) {
-      LOGGER.warn("Invalid topic name: " + topicName);
+      LOGGER.warn("Invalid topic name: {}", topicName);
       return;
     }
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
@@ -51,7 +51,7 @@ public class AggVersionedStorageEngineStats extends
     try {
       getStats(storeName, version).recordRocksDBOpenFailure();
     } catch (Exception e) {
-      LOGGER.warn("Failed to record open failure for store: " + storeName + ", version: " + version);
+      LOGGER.warn("Failed to record open failure for store: {}, version: {}", storeName, version);
     }
   }
 

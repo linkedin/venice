@@ -31,7 +31,7 @@ public class AggVersionedIngestionStats
 
   public void setIngestionTask(String storeVersionTopic, StoreIngestionTask ingestionTask) {
     if (!Version.isVersionTopicOrStreamReprocessingTopic(storeVersionTopic)) {
-      LOGGER.warn("Invalid store version topic name: " + storeVersionTopic);
+      LOGGER.warn("Invalid store version topic name: {}", storeVersionTopic);
       return;
     }
     String storeName = Version.parseStoreFromKafkaTopicName(storeVersionTopic);
@@ -47,8 +47,7 @@ public class AggVersionedIngestionStats
         registerConditionalStats(storeName);
       }
     } catch (Exception e) {
-      LOGGER
-          .warn("Failed to set up versioned storage ingestion stats of store: " + storeName + ", version: " + version);
+      LOGGER.warn("Failed to set up versioned storage ingestion stats of store: {}, version: {}", storeName, version);
     }
   }
 

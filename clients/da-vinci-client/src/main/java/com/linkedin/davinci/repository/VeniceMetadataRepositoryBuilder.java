@@ -102,8 +102,8 @@ public class VeniceMetadataRepositoryBuilder {
     boolean useSystemStore = veniceProperties.getBoolean(ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY, false);
     if (useSystemStore) {
       LOGGER.info(
-          "Initializing meta system store based store repository with "
-              + NativeMetadataRepository.class.getSimpleName());
+          "Initializing meta system store based store repository with {}",
+          NativeMetadataRepository.class.getSimpleName());
       NativeMetadataRepository systemStoreBasedRepository =
           NativeMetadataRepository.getInstance(clientConfig, veniceProperties, icProvider);
       systemStoreBasedRepository.refresh();
@@ -113,7 +113,8 @@ public class VeniceMetadataRepositoryBuilder {
       liveClusterConfigRepo = null;
     } else {
       LOGGER.info(
-          "Initializing ZK based store repository with " + SubscriptionBasedStoreRepository.class.getSimpleName());
+          "Initializing ZK based store repository with {}",
+          SubscriptionBasedStoreRepository.class.getSimpleName());
 
       // Create ZkClient
       HelixAdapterSerializer adapter = new HelixAdapterSerializer();
