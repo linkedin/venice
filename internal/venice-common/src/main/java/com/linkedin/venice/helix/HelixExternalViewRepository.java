@@ -88,8 +88,7 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
         manager.getClusterManagmentTool().getResourceExternalView(manager.getClusterName(), resource);
     if (resourceExternalView == null) {
       // We'll have to assume this resource is deleted and move on
-      LOGGER.warn(
-          String.format("Could not refresh routing data for resource %s as no external view was reachable", resource));
+      LOGGER.warn("Could not refresh routing data for resource {} as no external view was reachable.", resource);
       return;
     }
     // TODO: Figure out notification implications of this call. One concern is between this and the on data change
@@ -108,7 +107,7 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
   protected void onExternalViewDataChange(RoutingTableSnapshot routingTableSnapshot) {
     if (routingTableSnapshot.getExternalViews() == null || routingTableSnapshot.getExternalViews().size() <= 0) {
       LOGGER.info("Ignore the empty external view.");
-      // Update live instances even if there is nonthing in the external view.
+      // Update live instances even if there is nothing in the external view.
       try (AutoCloseableLock ignored = AutoCloseableLock.of(this.liveInstancesMapLock)) {
         liveInstancesMap = convertLiveInstances(routingTableSnapshot.getLiveInstances());
       }
@@ -126,8 +125,9 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
         externalViewCollection.stream().map(ExternalView::getResourceName).collect(Collectors.toSet());
     if (!resourceToPartitionCountMapSnapshot.keySet().containsAll(resourcesInExternalView)) {
       LOGGER.info(
-          "Found the inconsistent data between the external view and ideal state of cluster: "
-              + manager.getClusterName() + ". Reading the latest ideal state from zk.");
+          "Found the inconsistent data between the external view and ideal state of cluster: {}."
+              + " Reading the latest ideal state from zk.",
+          manager.getClusterName());
 
       List<PropertyKey> keys = externalViewCollection.stream()
           .map(ev -> keyBuilder.idealStates(ev.getResourceName()))
@@ -136,11 +136,11 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
         List<IdealState> idealStates = manager.getHelixDataAccessor().getProperty(keys);
         refreshResourceToIdealPartitionCountMap(idealStates);
         resourceToPartitionCountMapSnapshot = resourceToIdealPartitionCountMap;
-        LOGGER.info("Ideal state of cluster: " + manager.getClusterName() + " is updated from zk");
+        LOGGER.info("Ideal state of cluster: {} is updated from zk.", manager.getClusterName());
       } catch (HelixMetaDataAccessException e) {
         LOGGER.error(
-            "Failed to update the ideal state of cluster: " + manager.getClusterName()
-                + " because we could not access to zk.",
+            "Failed to update the ideal state of cluster: {}, because we could not access to zk.",
+            manager.getClusterName(),
             e);
         return;
       }
@@ -150,8 +150,9 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
       String resourceName = externalView.getResourceName();
       if (!resourceToPartitionCountMapSnapshot.containsKey(resourceName)) {
         LOGGER.warn(
-            "Could not find resource: " + resourceName + " in ideal state. Ideal state is up to date,"
-                + " so the resource has been deleted from ideal state or could not read from zk. Ignore its external view update.");
+            "Could not find resource: {} in ideal state. Ideal state is up to date, so the resource has been "
+                + "deleted from ideal state or could not read from zk. Ignore its external view update.",
+            resourceName);
         continue;
       }
       PartitionAssignment partitionAssignment =
@@ -169,7 +170,7 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
             try {
               state = HelixState.valueOf(instanceState);
             } catch (Exception e) {
-              LOGGER.warn("Instance:" + instanceName + " unrecognized state:" + instanceState);
+              LOGGER.warn("Instance: {} unrecognized state: {}.", instanceName, instanceState);
               continue;
             }
             if (!stateToInstanceMap.containsKey(state.toString())) {
@@ -177,7 +178,7 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
             }
             stateToInstanceMap.get(state.toString()).add(instance);
           } else {
-            LOGGER.warn("Cannot find instance '" + instanceName + "' in /LIVEINSTANCES");
+            LOGGER.warn("Cannot find instance '{}' in /LIVEINSTANCES", instanceName);
           }
         }
         int partitionId = HelixUtils.getPartitionId(partitionName);

@@ -45,7 +45,7 @@ public class HelixInstanceConfigRepository implements VeniceResource, InstanceCo
     this.manager = manager;
     this.keyBuilder = new PropertyKey.Builder(manager.getClusterName());
     this.virtualGroupFieldName = useGroupFieldInDomain ? GROUP_FIELD_NAME_IN_DOMAIN : ZONE_FIELD_NAME_IN_DOMAIN;
-    LOGGER.info("Will use '" + this.virtualGroupFieldName + "' as the virtual group field in Helix domain");
+    LOGGER.info("Will use '{}' as the virtual group field in Helix domain.", this.virtualGroupFieldName);
   }
 
   @Override
@@ -56,7 +56,7 @@ public class HelixInstanceConfigRepository implements VeniceResource, InstanceCo
        * an initialized callback will be triggered even there is no instance config changed.
        */
       manager.addInstanceConfigChangeListener(this);
-      LOGGER.info("Setup InstanceConfigChangeListener in " + this.getClass().getSimpleName());
+      LOGGER.info("Setup InstanceConfigChangeListener in {}.", this.getClass().getSimpleName());
     } catch (Exception e) {
       throw new VeniceException("Failed to refresh " + this.getClass().getSimpleName(), e);
     }
@@ -65,7 +65,7 @@ public class HelixInstanceConfigRepository implements VeniceResource, InstanceCo
   @Override
   public void clear() {
     manager.removeListener(keyBuilder.instanceConfigs(), this);
-    LOGGER.info("Removed InstanceConfigChangeListener in " + this.getClass().getSimpleName());
+    LOGGER.info("Removed InstanceConfigChangeListener in {}.", this.getClass().getSimpleName());
   }
 
   public int getInstanceGroupId(String instanceId) {
@@ -80,8 +80,9 @@ public class HelixInstanceConfigRepository implements VeniceResource, InstanceCo
        */
       if (unknownInstanceCall.incrementAndGet() % 100 == 1) {
         LOGGER.warn(
-            "Couldn't find group id for instance: " + instanceId + ", and we need to look into this issue to understand"
-                + " how it happens and come up with the right mitigation/solution since it will affect the scatter-gathering perf");
+            "Couldn't find group id for instance: {}, and we need to look into this issue to understand how it"
+                + " happens and come up with the right mitigation/solution since it will affect the scatter-gathering perf.",
+            instanceId);
       }
       return DEFAULT_INSTANCE_GROUP_ID;
     }
@@ -102,7 +103,7 @@ public class HelixInstanceConfigRepository implements VeniceResource, InstanceCo
       LOGGER.warn("Received empty instance configs, so will skip it");
       return;
     }
-    LOGGER.info("Received instance configs: " + instanceConfigs);
+    LOGGER.info("Received instance configs: {}.", instanceConfigs);
     Map<String, Integer> newInstanceGroupIdMapping = new VeniceConcurrentHashMap<>();
     Map<String, Integer> groupIdMapping = new HashMap<>();
     final AtomicInteger groupIdCnt = new AtomicInteger(0);
@@ -121,7 +122,7 @@ public class HelixInstanceConfigRepository implements VeniceResource, InstanceCo
     }
     instanceGroupIdMapping = newInstanceGroupIdMapping;
     groupCount = groupIdCnt.get();
-    LOGGER.info("New instance group id mapping: " + instanceGroupIdMapping);
-    LOGGER.info("The total number of groups: " + groupCount);
+    LOGGER.info("New instance group id mapping: {}.", instanceGroupIdMapping);
+    LOGGER.info("The total number of groups: {}.", groupCount);
   }
 }

@@ -61,8 +61,10 @@ public class HelixPartitionStatusAccessor extends HelixPartitionStateAccessor {
       super.deleteReplicaStatus(HelixPartitionState.OFFLINE_PUSH, topic, getPartitionNameFromId(topic, partitionId));
     } catch (NullPointerException e) {
       LOGGER.warn(
-          "The partition " + partitionId + " doesn't exist in resource " + topic
-              + " , cannot delete a non-existent partition state for " + HelixPartitionState.OFFLINE_PUSH.name());
+          "The partition {} doesn't exist in resource {}, cannot delete a non-existent partition state for {}.",
+          partitionId,
+          topic,
+          HelixPartitionState.OFFLINE_PUSH.name());
     }
     if (helixHybridStoreQuotaEnabled) {
       try {
@@ -72,9 +74,10 @@ public class HelixPartitionStatusAccessor extends HelixPartitionStateAccessor {
             getPartitionNameFromId(topic, partitionId));
       } catch (NullPointerException e) {
         LOGGER.warn(
-            "The partition " + partitionId + " doesn't exist in resource " + topic
-                + " , cannot delete a non-existent partition state for "
-                + HelixPartitionState.HYBRID_STORE_QUOTA.name());
+            "The partition {} doesn't exist in resource {}, cannot delete a non-existent partition state for {}.",
+            partitionId,
+            topic,
+            HelixPartitionState.HYBRID_STORE_QUOTA.name());
       }
     }
   }

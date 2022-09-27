@@ -18,7 +18,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class HelixSchemaAccessor {
-  protected final Logger logger = LogManager.getLogger(getClass().getSimpleName());
+  private static final Logger logger = LogManager.getLogger(HelixSchemaAccessor.class);
 
   private static final int DEFAULT_ZK_REFRESH_ATTEMPTS = 3;
   private static final long DEFAULT_ZK_REFRESH_INTERVAL = TimeUnit.SECONDS.toMillis(10);
@@ -118,12 +118,12 @@ public class HelixSchemaAccessor {
 
   public void createKeySchema(String storeName, SchemaEntry schemaEntry) {
     HelixUtils.create(schemaAccessor, getKeySchemaPath(storeName), schemaEntry);
-    logger.info("Set up key schema: " + schemaEntry.toString() + " for store: " + storeName);
+    logger.info("Set up key schema: {} for store: {}.", schemaEntry, storeName);
   }
 
   public void addValueSchema(String storeName, SchemaEntry schemaEntry) {
     HelixUtils.create(schemaAccessor, getValueSchemaPath(storeName, String.valueOf(schemaEntry.getId())), schemaEntry);
-    logger.info("Added value schema: " + schemaEntry + " for store: " + storeName);
+    logger.info("Added value schema: {} for store: {}.", schemaEntry, storeName);
   }
 
   public void addDerivedSchema(String storeName, DerivedSchemaEntry derivedSchemaEntry) {
@@ -134,42 +134,42 @@ public class HelixSchemaAccessor {
             String.valueOf(derivedSchemaEntry.getValueSchemaID()),
             String.valueOf(derivedSchemaEntry.getId())),
         derivedSchemaEntry);
-    logger.info("Added derived schema: " + derivedSchemaEntry + "for store: " + storeName);
+    logger.info("Added derived schema: {} for store: {}.", derivedSchemaEntry, storeName);
   }
 
   public void removeDerivedSchema(String storeName, String derivedSchemaIdPair) {
     HelixUtils.remove(schemaAccessor, getDerivedSchemaPath(storeName, derivedSchemaIdPair));
-    logger.info("Removed derived schema for store: " + storeName + " derived schema id pair: " + derivedSchemaIdPair);
+    logger.info("Removed derived schema for store: {} derived schema id pair: {}.", storeName, derivedSchemaIdPair);
   }
 
   public void subscribeKeySchemaCreationChange(String storeName, IZkChildListener childListener) {
     schemaAccessor.subscribeChildChanges(getKeySchemaParentPath(storeName), childListener);
-    logger.info("Subscribe key schema child changes for store: " + storeName);
+    logger.info("Subscribe key schema child changes for store: {}.", storeName);
   }
 
   public void unsubscribeKeySchemaCreationChange(String storeName, IZkChildListener childListener) {
     schemaAccessor.unsubscribeChildChanges(getKeySchemaParentPath(storeName), childListener);
-    logger.info("Unsubscribe key schema child changes for store: " + storeName);
+    logger.info("Unsubscribe key schema child changes for store: {}.", storeName);
   }
 
   public void subscribeValueSchemaCreationChange(String storeName, IZkChildListener childListener) {
     schemaAccessor.subscribeChildChanges(getValueSchemaParentPath(storeName), childListener);
-    logger.info("Subscribe value schema child changes for store: " + storeName);
+    logger.info("Subscribe value schema child changes for store: {}.", storeName);
   }
 
   public void unsubscribeValueSchemaCreationChange(String storeName, IZkChildListener childListener) {
     schemaAccessor.unsubscribeChildChanges(getValueSchemaParentPath(storeName), childListener);
-    logger.info("Unsubscribe value schema child changes for store: " + storeName);
+    logger.info("Unsubscribe value schema child changes for store: {}.", storeName);
   }
 
   public void subscribeDerivedSchemaCreationChange(String storeName, IZkChildListener childListener) {
     derivedSchemaAccessor.subscribeChildChanges(getDerivedSchemaParentPath(storeName), childListener);
-    logger.info("Subscribe derived schema child changes for store: " + storeName);
+    logger.info("Subscribe derived schema child changes for store: {}.", storeName);
   }
 
   public void unsubscribeDerivedSchemaCreationChanges(String storeName, IZkChildListener childListener) {
     derivedSchemaAccessor.unsubscribeChildChanges(getDerivedSchemaParentPath(storeName), childListener);
-    logger.info("Unsubscribe derived schema child changes for store: " + storeName);
+    logger.info("Unsubscribe derived schema child changes for store: {}.", storeName);
   }
 
   protected String getStorePath(String storeName) {
@@ -245,19 +245,19 @@ public class HelixSchemaAccessor {
             String.valueOf(rmdSchemaEntry.getValueSchemaID()),
             String.valueOf(rmdSchemaEntry.getId())),
         rmdSchemaEntry);
-    logger.info("Added replication metadata schema: " + rmdSchemaEntry + " for store: " + storeName);
+    logger.info("Added replication metadata schema: {} for store: {}.", rmdSchemaEntry, storeName);
   }
 
   public void subscribeReplicationMetadataSchemaCreationChange(String storeName, IZkChildListener childListener) {
     replicationMetadataSchemaAccessor
         .subscribeChildChanges(getReplicationMetadataSchemaParentPath(storeName), childListener);
-    logger.info("Subscribe replication metadata schema child changes for store: " + storeName);
+    logger.info("Subscribe replication metadata schema child changes for store: {}", storeName);
   }
 
   public void unsubscribeReplicationMetadataSchemaCreationChanges(String storeName, IZkChildListener childListener) {
     replicationMetadataSchemaAccessor
         .unsubscribeChildChanges(getReplicationMetadataSchemaParentPath(storeName), childListener);
-    logger.info("Unsubscribe replication metadata schema child changes for store: " + storeName);
+    logger.info("Unsubscribe replication metadata schema child changes for store: {}.", storeName);
   }
 
   String getReplicationMetadataSchemaParentPath(String storeName) {

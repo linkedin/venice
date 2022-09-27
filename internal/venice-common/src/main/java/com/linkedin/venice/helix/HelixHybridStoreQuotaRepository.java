@@ -79,7 +79,7 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
 
   public void refresh() {
     try {
-      LOGGER.info("Refresh started for cluster " + manager.getClusterName() + "'s" + getClass().getSimpleName());
+      LOGGER.info("Refresh started for cluster {}'s {}.", manager.getClusterName(), getClass().getSimpleName());
       routingTableProvider = new RoutingTableProvider(manager.getOriginalManager(), dataSource);
       routingTableProvider.addRoutingTableChangeListener(this, null);
       // We only support HYBRID_STORE_QUOTA in this class.
@@ -87,7 +87,7 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
           routingTableProvider
               .getRoutingTableSnapshot(PropertyType.CUSTOMIZEDVIEW, HelixPartitionState.HYBRID_STORE_QUOTA.name()),
           null);
-      LOGGER.info("Refresh finished for cluster" + manager.getClusterName() + "'s" + getClass().getSimpleName());
+      LOGGER.info("Refresh finished for cluster {}'s {}.", manager.getClusterName(), getClass().getSimpleName());
     } catch (Exception e) {
       String errorMessage = "Cannot refresh routing table from Helix for cluster " + manager.getClusterName();
       LOGGER.error(errorMessage, e);
@@ -126,7 +126,7 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
               status = HybridStoreQuotaStatus.valueOf(instanceState);
             } catch (Exception e) {
               String instanceName = entry.getKey();
-              LOGGER.warn("Instance:" + instanceName + " unrecognized status:" + instanceState);
+              LOGGER.warn("Instance: {} unrecognized status: {}.", instanceName, instanceState);
               continue;
             }
             if (status.equals(HybridStoreQuotaStatus.QUOTA_VIOLATED)) {
@@ -149,8 +149,10 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
       }
       LOGGER.info("Updated resource execution status map.");
       LOGGER.info(
-          "Hybrid store quota view is changed. The number of active resources is " + resourcesInCustomizedView.size()
-              + ", and the number of deleted resource is " + deletedResourceNames.size());
+          "Hybrid store quota view is changed. The number of active resources is {}, "
+              + "and the number of deleted resource is {}.",
+          resourcesInCustomizedView.size(),
+          deletedResourceNames.size());
     }
   }
 
@@ -167,7 +169,7 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
         onHybridStoreQuotaViewChange(routingTableSnapshot);
         break;
       default:
-        LOGGER.warn("Received Helix routing table change on invalid type " + helixPropertyType);
+        LOGGER.warn("Received Helix routing table change on invalid type: {}.", helixPropertyType);
     }
   }
 }
