@@ -43,7 +43,6 @@ public class AbstractTestAdminSparkServer {
     VeniceControllerCreateOptions options =
         new VeniceControllerCreateOptions.Builder(cluster.getClusterName(), cluster.getKafka())
             .zkAddress(parentZk.getAddress())
-            .parent(true)
             .replicationFactor(1)
             .childControllers(new VeniceControllerWrapper[] { cluster.getLeaderVeniceController() })
             .extraProperties(extraProperties)

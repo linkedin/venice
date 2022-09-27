@@ -102,7 +102,6 @@ public class PushJobDetailsTest {
         new VeniceControllerCreateOptions.Builder(venice.getClusterName(), venice.getKafka())
             .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
             .extraProperties(controllerProperties)
-            .parent(true)
             .zkAddress(zkWrapper.getAddress())
             .build());
     parentControllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());

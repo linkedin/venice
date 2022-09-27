@@ -37,8 +37,7 @@ public class AdminChannelWithSSLTest {
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
 
         VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(clusterName, kafkaBrokerWrapper).parent(true)
-                .zkAddress(parentZk.getAddress())
+            new VeniceControllerCreateOptions.Builder(clusterName, kafkaBrokerWrapper).zkAddress(parentZk.getAddress())
                 .childControllers(new VeniceControllerWrapper[] { childControllerWrapper })
                 .sslToKafka(true)
                 .build())) {

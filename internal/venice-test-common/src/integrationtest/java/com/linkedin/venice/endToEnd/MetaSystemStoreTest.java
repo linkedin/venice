@@ -109,7 +109,6 @@ public class MetaSystemStoreTest {
     parentController = ServiceFactory.getVeniceController(
         new VeniceControllerCreateOptions.Builder(venice.getClusterName(), venice.getKafka())
             .childControllers(venice.getVeniceControllers().toArray(new VeniceControllerWrapper[0]))
-            .parent(true)
             .extraProperties(testProperties)
             .zkAddress(parentZkServer.getAddress())
             .build());

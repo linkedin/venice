@@ -91,7 +91,6 @@ public class VeniceParentHelixAdminTest {
                 .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
                 .zkAddress(zkServerWrapper.getAddress())
                 .extraProperties(properties)
-                .parent(true)
                 .build());
         ControllerClient parentControllerClient =
             new ControllerClient(venice.getClusterName(), parentController.getControllerUrl())) {
@@ -122,7 +121,6 @@ public class VeniceParentHelixAdminTest {
                 .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
                 .zkAddress(zkServerWrapper.getAddress())
                 .extraProperties(properties)
-                .parent(true)
                 .build());
         ControllerClient parentControllerClient =
             new ControllerClient(venice.getClusterName(), parentControllerWrapper.getControllerUrl())) {
@@ -245,7 +243,6 @@ public class VeniceParentHelixAdminTest {
                 .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
                 .zkAddress(zkServerWrapper.getAddress())
                 .extraProperties(properties)
-                .parent(true)
                 .build());
         ControllerClient parentControllerClient =
             new ControllerClient(venice.getClusterName(), parentController.getControllerUrl())) {
@@ -305,7 +302,6 @@ public class VeniceParentHelixAdminTest {
     try (VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceController(
         new VeniceControllerCreateOptions.Builder(venice.getClusterName(), venice.getKafka())
             .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
-            .parent(true)
             .zkAddress(zkServerWrapper.getAddress())
             .build())) {
       String controllerUrl = parentControllerWrapper.getControllerUrl();
@@ -411,7 +407,6 @@ public class VeniceParentHelixAdminTest {
                 .childControllers(new VeniceControllerWrapper[] { childControllerWrapper })
                 .zkAddress(parentZk.getAddress())
                 .extraProperties(properties)
-                .parent(true)
                 .sslToKafka(isControllerSslEnabled)
                 .build())) {
       String childControllerUrl = isControllerSslEnabled

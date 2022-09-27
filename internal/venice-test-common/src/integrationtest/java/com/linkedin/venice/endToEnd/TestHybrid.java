@@ -174,7 +174,6 @@ public class TestHybrid {
         VeniceControllerWrapper parentController = ServiceFactory.getVeniceController(
             new VeniceControllerCreateOptions.Builder(venice.getClusterName(), venice.getKafka())
                 .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
-                .parent(true)
                 .zkAddress(parentZk.getAddress())
                 .build());
         ControllerClient controllerClient =

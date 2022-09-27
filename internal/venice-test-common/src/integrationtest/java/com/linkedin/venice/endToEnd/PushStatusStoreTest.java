@@ -104,7 +104,6 @@ public class PushStatusStoreTest {
             .childControllers(cluster.getVeniceControllers().toArray(new VeniceControllerWrapper[0]))
             .extraProperties(extraProperties)
             .zkAddress(parentZkServer.getAddress())
-            .parent(true)
             .build());
   }
 

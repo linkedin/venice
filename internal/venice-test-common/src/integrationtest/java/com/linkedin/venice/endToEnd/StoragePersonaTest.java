@@ -53,7 +53,6 @@ public class StoragePersonaTest {
     parentController = ServiceFactory.getVeniceController(
         new VeniceControllerCreateOptions.Builder(venice.getClusterName(), venice.getKafka())
             .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
-            .parent(true)
             .zkAddress(parentZk.getAddress())
             .build());
     controllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());

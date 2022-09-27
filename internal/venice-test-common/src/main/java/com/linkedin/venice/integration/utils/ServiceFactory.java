@@ -125,8 +125,11 @@ public class ServiceFactory {
         KafkaBrokerWrapper.generateService(zkServerWrapper, mockTime));
   }
 
-  public static VeniceControllerWrapper getVeniceController(VeniceControllerCreateOptions options) {
-    return getStatefulService(VeniceControllerWrapper.SERVICE_NAME, VeniceControllerWrapper.generateService(options));
+  // to get parent controller, add child controllers to controllerCreateOptions
+  public static VeniceControllerWrapper getVeniceController(VeniceControllerCreateOptions controllerCreateOptions) {
+    return getStatefulService(
+        VeniceControllerWrapper.SERVICE_NAME,
+        VeniceControllerWrapper.generateService(controllerCreateOptions));
   }
 
   public static AdminSparkServer getMockAdminSparkServer(

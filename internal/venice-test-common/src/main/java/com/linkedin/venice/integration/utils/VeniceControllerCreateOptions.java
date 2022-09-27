@@ -32,7 +32,6 @@ public class VeniceControllerCreateOptions {
   private final AuthorizerService authorizerService;
 
   private VeniceControllerCreateOptions(Builder builder) {
-    isParent = builder.isParent;
     sslToKafka = builder.sslToKafka;
     d2Enabled = builder.d2Enabled;
     replicationFactor = builder.replicationFactor;
@@ -46,6 +45,7 @@ public class VeniceControllerCreateOptions {
     kafkaBroker = builder.kafkaBroker;
     extraProperties = builder.extraProperties;
     authorizerService = builder.authorizerService;
+    isParent = builder.childControllers != null && builder.childControllers.length != 0;
   }
 
   @Override
@@ -160,8 +160,6 @@ public class VeniceControllerCreateOptions {
   public static class Builder {
     private final String[] clusterNames;
     private final KafkaBrokerWrapper kafkaBroker;
-
-    private boolean isParent = false;
     private boolean sslToKafka = false;
     private boolean d2Enabled = false;
     private boolean isMinActiveReplicaSet = false;
@@ -182,11 +180,6 @@ public class VeniceControllerCreateOptions {
 
     public Builder(String clusterName, KafkaBrokerWrapper kafkaBroker) {
       this(new String[] { clusterName }, kafkaBroker);
-    }
-
-    public Builder parent(boolean parent) {
-      isParent = parent;
-      return this;
     }
 
     public Builder sslToKafka(boolean sslToKafka) {
@@ -257,9 +250,6 @@ public class VeniceControllerCreateOptions {
         extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, "true");
       }
       d2Enabled = clusterToD2 != null;
-      if (childControllers == null || childControllers.length == 0) {
-        throw new IllegalArgumentException("Child controller list cannot be null or empty for parent controller");
-      }
     }
 
     private void verifyAndAddChildControllerSpecificDefaults() {
@@ -276,7 +266,7 @@ public class VeniceControllerCreateOptions {
       if (extraProperties == null) {
         extraProperties = new Properties();
       }
-      if (isParent) {
+      if (childControllers != null && childControllers.length != 0) {
         verifyAndAddParentControllerSpecificDefaults();
       } else {
         verifyAndAddChildControllerSpecificDefaults();

@@ -253,7 +253,6 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
           false);
       VeniceControllerCreateOptions options =
           new VeniceControllerCreateOptions.Builder(clusterNames, parentKafka).zkAddress(parentKafka.getZkAddress())
-              .parent(true)
               .replicationFactor(replicationFactor)
               .childControllers(childControllers)
               .extraProperties(finalParentControllerProperties)

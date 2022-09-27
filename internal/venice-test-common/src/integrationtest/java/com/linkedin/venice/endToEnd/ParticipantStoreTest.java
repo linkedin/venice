@@ -91,7 +91,6 @@ public class ParticipantStoreTest {
             .childControllers(venice.getVeniceControllers().toArray(new VeniceControllerWrapper[0]))
             .zkAddress(parentZk.getAddress())
             .extraProperties(controllerConfig)
-            .parent(true)
             .build());
     participantMessageStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(venice.getClusterName());
     controllerClient = venice.getControllerClient();

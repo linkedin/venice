@@ -105,7 +105,6 @@ public class DaVinciClusterAgnosticTest {
     VeniceControllerCreateOptions controllerCreateOptions =
         new VeniceControllerCreateOptions.Builder(clusterNames, multiClusterVenice.getKafkaBrokerWrapper())
             .zkAddress(zkServer.getAddress())
-            .parent(true)
             .replicationFactor(3)
             .childControllers(childControllers.toArray(new VeniceControllerWrapper[0]))
             .extraProperties(testProperties)

@@ -42,7 +42,6 @@ public class TestStoreUpdateStoragePersona {
         new VeniceControllerCreateOptions.Builder(venice.getClusterName(), venice.getKafka())
             .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
             .zkAddress(parentZk.getAddress())
-            .parent(true)
             .build());
     controllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
   }
