@@ -1,9 +1,10 @@
 package com.linkedin.venice.client.consumer;
 
 import com.linkedin.venice.annotation.Experimental;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
+import java.util.Collection;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
 
 
 /**
@@ -50,8 +51,8 @@ public interface VeniceChangelogConsumer<K, V> {
    * Polling function to get any available messages from the underlying system for all partitions subscribed.
    *
    * @param timeout The maximum time to block (must not be greater than {@link Long#MAX_VALUE} milliseconds)
-   * @return map of topic partition to records since the last fetch for the subscribed list of topics and partitions
+   * @return a collection of messages since the last fetch for the subscribed list of topic partitions
    * @throws a VeniceException if polling operation fails
    */
-  ConsumerRecords<K, V> poll(long timeout);
+  Collection<PubSubMessage> poll(long timeout);
 }
