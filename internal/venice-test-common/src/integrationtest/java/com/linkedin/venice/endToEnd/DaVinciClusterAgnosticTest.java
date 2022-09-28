@@ -25,6 +25,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
@@ -42,7 +43,6 @@ import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
@@ -102,16 +102,15 @@ public class DaVinciClusterAgnosticTest {
     multiClusterVenice = ServiceFactory.getVeniceMultiClusterWrapper(options);
     clusterNames = multiClusterVenice.getClusterNames();
     Collection<VeniceControllerWrapper> childControllers = multiClusterVenice.getControllers().values();
-    parentController = ServiceFactory.getVeniceParentController(
-        clusterNames,
-        zkServer.getAddress(),
-        multiClusterVenice.getKafkaBrokerWrapper(),
-        childControllers.toArray(new VeniceControllerWrapper[0]),
-        multiClusterVenice.getClusterToD2(),
-        false,
-        3,
-        new VeniceProperties(testProperties),
-        Optional.empty());
+    VeniceControllerCreateOptions controllerCreateOptions =
+        new VeniceControllerCreateOptions.Builder(clusterNames, multiClusterVenice.getKafkaBrokerWrapper())
+            .zkAddress(zkServer.getAddress())
+            .replicationFactor(3)
+            .childControllers(childControllers.toArray(new VeniceControllerWrapper[0]))
+            .extraProperties(testProperties)
+            .clusterToD2(multiClusterVenice.getClusterToD2())
+            .build();
+    parentController = ServiceFactory.getVeniceController(controllerCreateOptions);
     for (String cluster: clusterNames) {
       try (ControllerClient controllerClient =
           new ControllerClient(cluster, multiClusterVenice.getLeaderController(cluster).getControllerUrl())) {

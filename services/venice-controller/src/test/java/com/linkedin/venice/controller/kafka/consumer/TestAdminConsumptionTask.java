@@ -62,6 +62,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
@@ -469,7 +470,9 @@ public class TestAdminConsumptionTask {
       String adminTopic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
       topicManager.createTopic(adminTopic, 1, 1, true);
       String storeName = "test-store";
-      try (VeniceControllerWrapper controller = ServiceFactory.getVeniceChildController(clusterName, kafka);
+      try (
+          VeniceControllerWrapper controller =
+              ServiceFactory.getVeniceController(new VeniceControllerCreateOptions.Builder(clusterName, kafka).build());
           VeniceWriter<byte[], byte[], byte[]> writer =
               TestUtils.getVeniceWriterFactory(kafka.getAddress()).createBasicVeniceWriter(adminTopic)) {
         byte[] message = getStoreCreationMessage(clusterName, storeName, owner, "invalid_key_schema", valueSchema, 1); // This

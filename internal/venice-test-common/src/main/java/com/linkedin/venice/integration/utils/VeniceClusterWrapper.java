@@ -192,17 +192,17 @@ public class VeniceClusterWrapper extends ProcessWrapper {
               .setStoreName("dummy");
           options.getExtraProperties().put(CLIENT_CONFIG_FOR_CONSUMER, clientConfig);
         }
-        VeniceControllerWrapper veniceControllerWrapper = ServiceFactory.getVeniceChildController(
-            new String[] { options.getClusterName() },
-            kafkaBrokerWrapper,
-            options.getReplicationFactor(),
-            options.getPartitionSize(),
-            options.getRebalanceDelayMs(),
-            options.getMinActiveReplica(),
-            options.getClusterToD2(),
-            options.isSslToKafka(),
-            true,
-            options.getExtraProperties());
+        VeniceControllerWrapper veniceControllerWrapper = ServiceFactory.getVeniceController(
+            new VeniceControllerCreateOptions.Builder(options.getClusterName(), kafkaBrokerWrapper)
+                .replicationFactor(options.getReplicationFactor())
+                .partitionSize(options.getPartitionSize())
+                .rebalanceDelayMs(options.getRebalanceDelayMs())
+                .minActiveReplica(options.getMinActiveReplica())
+                .clusterToD2(options.getClusterToD2())
+                .sslToKafka(options.isSslToKafka())
+                .d2Enabled(true)
+                .extraProperties(options.getExtraProperties())
+                .build());
         veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);
       }
 
@@ -474,17 +474,15 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   }
 
   public VeniceControllerWrapper addVeniceController(Properties properties) {
-    VeniceControllerWrapper veniceControllerWrapper = ServiceFactory.getVeniceChildController(
-        new String[] { clusterName },
-        kafkaBrokerWrapper,
-        defaultReplicaFactor,
-        defaultPartitionSize,
-        defaultDelayToRebalanceMS,
-        defaultMinActiveReplica,
-        null,
-        sslToKafka,
-        false,
-        properties);
+    VeniceControllerWrapper veniceControllerWrapper = ServiceFactory.getVeniceController(
+        new VeniceControllerCreateOptions.Builder(clusterName, kafkaBrokerWrapper)
+            .replicationFactor(defaultReplicaFactor)
+            .partitionSize(defaultPartitionSize)
+            .rebalanceDelayMs(defaultDelayToRebalanceMS)
+            .minActiveReplica(defaultMinActiveReplica)
+            .sslToKafka(sslToKafka)
+            .extraProperties(properties)
+            .build());
     synchronized (this) {
       veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);
       setExternalControllerDiscoveryURL(

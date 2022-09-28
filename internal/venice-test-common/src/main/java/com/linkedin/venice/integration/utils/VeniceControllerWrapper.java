@@ -47,7 +47,6 @@ import static com.linkedin.venice.SSLConfig.DEFAULT_CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.integration.utils.D2TestUtils.CONTROLLER_SERVICE_NAME;
 
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceController;
@@ -71,7 +70,6 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.Properties;
 import org.apache.commons.lang.StringUtils;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.logging.log4j.LogManager;
@@ -118,42 +116,27 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     this.metricsRepository = metricsRepository;
   }
 
-  static StatefulServiceProvider<VeniceControllerWrapper> generateService(
-      String[] clusterNames,
-      String zkAddress,
-      KafkaBrokerWrapper kafkaBroker,
-      boolean isParent,
-      int replicationFactor,
-      int partitionSize,
-      long rebalanceDelayMs,
-      int minActiveReplica,
-      VeniceControllerWrapper[] childControllers,
-      Properties extraProperties,
-      String clusterToD2,
-      boolean sslToKafka,
-      boolean d2Enabled,
-      Optional<AuthorizerService> authorizerService) {
-
+  static StatefulServiceProvider<VeniceControllerWrapper> generateService(VeniceControllerCreateOptions options) {
     return (serviceName, dataDirectory) -> {
       int adminPort = Utils.getFreePort();
       int adminSecurePort = Utils.getFreePort();
       List<VeniceProperties> propertiesList = new ArrayList<>();
 
-      VeniceProperties extraProps = new VeniceProperties(extraProperties);
+      VeniceProperties extraProps = new VeniceProperties(options.getExtraProperties());
       final boolean sslEnabled = extraProps.getBoolean(CONTROLLER_SSL_ENABLED, DEFAULT_CONTROLLER_SSL_ENABLED);
 
-      for (String clusterName: clusterNames) {
-        VeniceProperties clusterProps =
-            IntegrationTestUtils.getClusterProps(clusterName, zkAddress, kafkaBroker, sslToKafka);
+      for (String clusterName: options.getClusterNames()) {
+        VeniceProperties clusterProps = IntegrationTestUtils
+            .getClusterProps(clusterName, options.getZkAddress(), options.getKafkaBroker(), options.isSslToKafka());
 
         // TODO: Validate that these configs are all still used.
         // TODO: Centralize default config values in a single place
         PropertyBuilder builder = new PropertyBuilder().put(clusterProps.toProperties())
             .put(KAFKA_REPLICATION_FACTOR, 1)
             .put(ADMIN_TOPIC_REPLICATION_FACTOR, 1)
-            .put(KAFKA_ZK_ADDRESS, kafkaBroker.getZkAddress())
+            .put(KAFKA_ZK_ADDRESS, options.getKafkaBroker().getZkAddress())
             .put(CONTROLLER_NAME, "venice-controller") // Why is this configurable?
-            .put(DEFAULT_REPLICA_FACTOR, replicationFactor)
+            .put(DEFAULT_REPLICA_FACTOR, options.getReplicationFactor())
             .put(DEFAULT_NUMBER_OF_PARTITION, 1)
             .put(ADMIN_PORT, adminPort)
             .put(ADMIN_SECURE_PORT, adminSecurePort)
@@ -163,20 +146,22 @@ public class VeniceControllerWrapper extends ProcessWrapper {
              * in the whole system. 3 seems like a reasonable tradeoff between these concerns.
              */
             .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 3)
-            .put(DEFAULT_PARTITION_SIZE, partitionSize)
-            .put(CONTROLLER_PARENT_MODE, isParent)
-            .put(DELAY_TO_REBALANCE_MS, rebalanceDelayMs)
-            .put(MIN_ACTIVE_REPLICA, minActiveReplica)
+            .put(DEFAULT_PARTITION_SIZE, options.getPartitionSize())
+            .put(CONTROLLER_PARENT_MODE, options.isParent())
+            .put(DELAY_TO_REBALANCE_MS, options.getRebalanceDelayMs())
+            .put(MIN_ACTIVE_REPLICA, options.getMinActiveReplica())
             .put(TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS, 100)
             .put(STORAGE_ENGINE_OVERHEAD_RATIO, DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO)
             .put(
                 CLUSTER_TO_D2,
-                StringUtils.isEmpty(clusterToD2) ? TestUtils.getClusterToDefaultD2String(clusterName) : clusterToD2)
-            .put(SSL_TO_KAFKA, sslToKafka)
-            .put(SSL_KAFKA_BOOTSTRAP_SERVERS, kafkaBroker.getSSLAddress())
+                StringUtils.isEmpty(options.getClusterToD2())
+                    ? TestUtils.getClusterToDefaultD2String(clusterName)
+                    : options.getClusterToD2())
+            .put(SSL_TO_KAFKA, options.isSslToKafka())
+            .put(SSL_KAFKA_BOOTSTRAP_SERVERS, options.getKafkaBroker().getSSLAddress())
             .put(ENABLE_OFFLINE_PUSH_SSL_WHITELIST, false)
             .put(ENABLE_HYBRID_PUSH_SSL_WHITELIST, false)
-            .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBroker.getAddress())
+            .put(KAFKA_BOOTSTRAP_SERVERS, options.getKafkaBroker().getAddress())
             .put(OFFLINE_JOB_START_TIMEOUT_MS, 60_000)
             // To speed up topic cleanup
             .put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, 100)
@@ -185,7 +170,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             // Moving from topic monitor to admin protocol for add version and starting ingestion
             .put(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, true)
             // The first cluster will always be the one to host system schemas...
-            .put(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, clusterNames[0])
+            .put(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, options.getClusterNames()[0])
             .put(TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS, false)
             .put(CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, true)
             .put(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, true)
@@ -198,55 +183,52 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           builder.put(SslUtils.getVeniceLocalSslProperties());
         }
 
-        if (sslToKafka) {
+        if (options.isSslToKafka()) {
           builder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);
           builder.put(KafkaSSLUtils.getLocalCommonKafkaSSLConfig());
         }
 
         String fabricAllowList = "";
-        if (isParent) {
+        if (options.isParent()) {
           // Parent controller needs config to route per-cluster requests such as job status
           // This dummy parent controller wont support such requests until we make this config configurable.
           // go/inclusivecode deferred(Reference will be removed when clients have migrated)
           fabricAllowList = extraProps.getStringWithAlternative(CHILD_CLUSTER_ALLOWLIST, CHILD_CLUSTER_WHITELIST, "");
         }
 
-        if (isParent && (childControllers == null || childControllers.length == 0)) {
-          throw new IllegalArgumentException("Child controller list cannot be null or empty for parent controller");
-        }
         /**
          * Check if the Venice setup is single or multi data center. It's valid for a single data center setup to not
          * have fabric allow list and child data center controller map for child controllers.
          */
-        if (childControllers != null) {
-          for (int dcIndex = 0; dcIndex < childControllers.length; dcIndex++) {
+        if (options.getChildControllers() != null) {
+          for (int dcIndex = 0; dcIndex < options.getChildControllers().length; dcIndex++) {
             String dcName = createDataCenterNameWithIndex(dcIndex);
             if (!fabricAllowList.equals("")) {
               fabricAllowList += ",";
             }
             fabricAllowList += dcName;
-            VeniceControllerWrapper childController = childControllers[dcIndex];
+            VeniceControllerWrapper childController = options.getChildControllers()[dcIndex];
             if (childController == null) {
               throw new IllegalArgumentException("child controller at index " + dcIndex + " is null!");
             }
             builder.put(CHILD_CLUSTER_URL_PREFIX + "." + dcName, childController.getControllerUrl());
-            if (isParent) {
+            if (options.isParent()) {
               builder.put(
                   CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + dcName,
-                  childController.getKafkaBootstrapServers(sslToKafka));
+                  childController.getKafkaBootstrapServers(options.isSslToKafka()));
               builder.put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + dcName, childController.getKafkaZkAddress());
               LOGGER.info(
                   "ControllerConfig: {}.{} KafkaUrl: {} kafkaZk: {}",
                   CHILD_DATA_CENTER_KAFKA_URL_PREFIX,
                   dcName,
-                  childController.getKafkaBootstrapServers(sslToKafka),
+                  childController.getKafkaBootstrapServers(options.isSslToKafka()),
                   childController.getKafkaZkAddress());
             }
           }
         }
         builder.put(CHILD_CLUSTER_ALLOWLIST, fabricAllowList);
 
-        if (isParent) {
+        if (options.isParent()) {
           /**
            * In native replication, source fabric can be child fabrics as well as parent fabric;
            * and in parent fabric, there can be more than one Kafka clusters, so we might need more
@@ -257,8 +239,12 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           builder.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, nativeReplicationSourceFabricAllowlist);
           builder.put(
               CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + parentDataCenterName1,
-              sslToKafka ? kafkaBroker.getSSLAddress() : kafkaBroker.getAddress());
-          builder.put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + parentDataCenterName1, kafkaBroker.getZkAddress());
+              options.isSslToKafka()
+                  ? options.getKafkaBroker().getSSLAddress()
+                  : options.getKafkaBroker().getAddress());
+          builder.put(
+              CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + parentDataCenterName1,
+              options.getKafkaBroker().getZkAddress());
           builder.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, parentDataCenterName1);
 
           /**
@@ -287,20 +273,19 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         VeniceProperties props = builder.build();
         propertiesList.add(props);
       }
-
       List<ServiceDiscoveryAnnouncer> d2ServerList = new ArrayList<>();
-      if (d2Enabled) {
-        d2ServerList.add(createD2Server(zkAddress, adminPort, false));
+      if (options.isD2Enabled()) {
+        d2ServerList.add(createD2Server(options.getZkAddress(), adminPort, false));
         if (sslEnabled) {
-          d2ServerList.add(createD2Server(zkAddress, adminSecurePort, true));
+          d2ServerList.add(createD2Server(options.getZkAddress(), adminSecurePort, true));
         }
       }
 
-      D2Client d2Client = D2TestUtils.getAndStartD2Client(zkAddress);
+      D2Client d2Client = D2TestUtils.getAndStartD2Client(options.getZkAddress());
       MetricsRepository metricsRepository = TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME);
 
       Optional<ClientConfig> consumerClientConfig = Optional.empty();
-      Object clientConfig = extraProperties.get(VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER);
+      Object clientConfig = options.getExtraProperties().get(VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER);
       if (clientConfig != null && clientConfig instanceof ClientConfig) {
         consumerClientConfig = Optional.of((ClientConfig) clientConfig);
       }
@@ -309,7 +294,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           metricsRepository,
           d2ServerList,
           Optional.empty(),
-          authorizerService,
+          Optional.ofNullable(options.getAuthorizerService()),
           d2Client,
           consumerClientConfig,
           Optional.empty());
@@ -321,44 +306,13 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           adminSecurePort,
           propertiesList,
           d2ServerList,
-          zkAddress,
+          options.getZkAddress(),
           metricsRepository);
     };
   }
 
   private static String createDataCenterNameWithIndex(int index) {
     return "dc-" + index;
-  }
-
-  static StatefulServiceProvider<VeniceControllerWrapper> generateService(
-      String[] clusterNames,
-      String zkAddress,
-      KafkaBrokerWrapper kafkaBrokerWrapper,
-      boolean isParent,
-      int replicationFactor,
-      int partitionSize,
-      long rebalanceDelayMs,
-      int minActiveReplica,
-      VeniceControllerWrapper[] childControllers,
-      Properties extraProperties,
-      String clusterToD2,
-      boolean sslToKafka,
-      boolean d2Enable) {
-    return generateService(
-        clusterNames,
-        zkAddress,
-        kafkaBrokerWrapper,
-        isParent,
-        replicationFactor,
-        partitionSize,
-        rebalanceDelayMs,
-        minActiveReplica,
-        childControllers,
-        extraProperties,
-        clusterToD2,
-        sslToKafka,
-        d2Enable,
-        Optional.empty());
   }
 
   @Override

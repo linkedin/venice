@@ -23,6 +23,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
@@ -39,7 +40,6 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.Metric;
 import java.util.Map;
 import java.util.Optional;
@@ -86,13 +86,12 @@ public class ParticipantStoreTest {
     serverProperties.setProperty(PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS, Long.toString(100));
     veniceServerWrapper = venice.addVeniceServer(serverFeatureProperties, serverProperties);
     parentZk = ServiceFactory.getZkServer();
-    parentController = ServiceFactory.getVeniceParentController(
-        venice.getClusterName(),
-        parentZk.getAddress(),
-        venice.getKafka(),
-        venice.getVeniceControllers().toArray(new VeniceControllerWrapper[0]),
-        new VeniceProperties(controllerConfig),
-        false);
+    parentController = ServiceFactory.getVeniceController(
+        new VeniceControllerCreateOptions.Builder(venice.getClusterName(), venice.getKafka())
+            .childControllers(venice.getVeniceControllers().toArray(new VeniceControllerWrapper[0]))
+            .zkAddress(parentZk.getAddress())
+            .extraProperties(controllerConfig)
+            .build());
     participantMessageStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(venice.getClusterName());
     controllerClient = venice.getControllerClient();
     parentControllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
