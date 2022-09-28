@@ -1,19 +1,6 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
-import static com.linkedin.venice.hadoop.VenicePushJob.DEFER_VERSION_SWAP;
-import static com.linkedin.venice.hadoop.VenicePushJob.ENABLE_WRITE_COMPUTE;
-import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
-import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
-import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_FABRIC;
-import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
-import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_TOPIC;
-import static com.linkedin.venice.hadoop.VenicePushJob.KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
-import static com.linkedin.venice.hadoop.VenicePushJob.SUPPRESS_END_OF_PUSH_MESSAGE;
-import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_PARTITIONERS_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.getLatestPathOfInputDirectory;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
@@ -634,10 +621,9 @@ public class TestVenicePushJob {
                 .setPartitionCount(2)
                 .setIncrementalPushEnabled(true)
                 .setWriteComputationEnabled(true)
-                .setChunkingEnabled(chunkingEnabled)
                 .setLeaderFollowerModel(true)));
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
-
+    props.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, "true");
     // create a batch version.
     TestPushUtils.runPushJob("Test push job", props);
     try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
