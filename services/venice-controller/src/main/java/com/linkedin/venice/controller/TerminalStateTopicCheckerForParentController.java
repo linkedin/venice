@@ -24,7 +24,7 @@ import org.apache.logging.log4j.Logger;
 public class TerminalStateTopicCheckerForParentController implements Runnable, Closeable {
   private static final long MAX_BACKOFF_MS = TimeUnit.HOURS.toMillis(6);
 
-  private final Logger logger = LogManager.getLogger(TerminalStateTopicCheckerForParentController.class);
+  private static final Logger LOGGER = LogManager.getLogger(TerminalStateTopicCheckerForParentController.class);
   private final AtomicBoolean isRunning = new AtomicBoolean(true);
   private final VeniceParentHelixAdmin parentController;
   private final HelixReadOnlyStoreConfigRepository storeConfigRepository;
@@ -51,12 +51,12 @@ public class TerminalStateTopicCheckerForParentController implements Runnable, C
   public void close() {
     isRunning.set(false);
     topicToBackoffMap.clear();
-    logger.info("Stopped running " + getClass().getSimpleName());
+    LOGGER.info("Stopped running {}", getClass().getSimpleName());
   }
 
   @Override
   public void run() {
-    logger.info("Started running " + getClass().getSimpleName());
+    LOGGER.info("Started running {}", getClass().getSimpleName());
     while (isRunning.get()) {
       try {
         Thread.sleep(checkDelayInMs);
@@ -99,14 +99,14 @@ public class TerminalStateTopicCheckerForParentController implements Runnable, C
                 });
               }
             } catch (Exception e) {
-              logger.error("Unexpected exception while checking topic state for: " + topic);
+              LOGGER.error("Unexpected exception while checking topic state for: {}", topic);
             }
           }
         }
       } catch (InterruptedException ie) {
         break;
       } catch (Throwable e) {
-        logger.error("Unexpected throwable while running " + getClass().getSimpleName(), e);
+        LOGGER.error("Unexpected throwable while running {}", getClass().getSimpleName(), e);
       }
     }
     close();
@@ -145,9 +145,9 @@ public class TerminalStateTopicCheckerForParentController implements Runnable, C
           });
         }
       } catch (Exception e) {
-        logger.error(
-            "Unexpected exception while processing topic: " + topic
-                + " for populating relevant Venice version topics map",
+        LOGGER.error(
+            "Unexpected exception while processing topic: {} for populating relevant Venice version topics map",
+            topic,
             e);
       }
     }

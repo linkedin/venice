@@ -129,7 +129,7 @@ public class UserSystemStoreLifeCycleHelper {
       MetaStoreWriter metaStoreWriter,
       Optional<PushStatusStoreRecordDeleter> pushStatusStoreRecordDeleter,
       Logger LOGGER) {
-    LOGGER.info("Start deleting system store: " + systemStoreName);
+    LOGGER.info("Start deleting system store: {}", systemStoreName);
     admin.deleteAllVersionsInStore(clusterName, systemStoreName);
     pushMonitor.cleanupStoreStatus(systemStoreName);
     if (!isStoreMigrating) {
@@ -146,21 +146,21 @@ public class UserSystemStoreLifeCycleHelper {
         case BATCH_JOB_HEARTBEAT_STORE:
           // TODO: do we need to do any clean up here? HEARTBEAT_STORE is not coupled with any specific user store.
           LOGGER.error(
-              "Venice store " + BATCH_JOB_HEARTBEAT_STORE.extractRegularStoreName(systemStoreName)
-                  + " has a coupled batch job heartbeat system store?");
+              "Venice store {} has a coupled batch job heartbeat system store?",
+              BATCH_JOB_HEARTBEAT_STORE.extractRegularStoreName(systemStoreName));
           break;
         default:
           throw new VeniceException("Unknown system store type: " + systemStoreName);
       }
       admin.truncateKafkaTopic(Version.composeRealTimeTopic(systemStoreName));
     } else {
-      LOGGER.info("The RT topic for: " + systemStoreName + " will not be deleted since the user store is migrating");
+      LOGGER.info("The RT topic for: {} will not be deleted since the user store is migrating", systemStoreName);
     }
     Store systemStore = storeRepository.getStore(systemStoreName);
     if (systemStore != null) {
       admin.truncateOldTopics(clusterName, systemStore, true);
     }
-    LOGGER.info("Finished deleting system store: " + systemStoreName);
+    LOGGER.info("Finished deleting system store: {}", systemStoreName);
   }
 
   public static void maybeDeleteSystemStoresForUserStore(
@@ -210,8 +210,7 @@ public class UserSystemStoreLifeCycleHelper {
       case DAVINCI_PUSH_STATUS_STORE:
         return userStore.isDaVinciPushStatusStoreEnabled();
       default:
-        LOGGER.warn(
-            "System store type: " + systemStoreType + " is not user level system store, return false by default.");
+        LOGGER.warn("System store type: {} is not user level system store, return false by default.", systemStoreType);
         return false;
     }
   }

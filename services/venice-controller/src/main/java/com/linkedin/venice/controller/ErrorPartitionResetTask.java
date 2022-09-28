@@ -82,7 +82,7 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
 
   @Override
   public void run() {
-    logger.info("Running " + taskId);
+    logger.info("Running {}", taskId);
     isRunning.set(true);
     while (isRunning.get()) {
       try {
@@ -102,11 +102,11 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
         irrelevantResources.clear();
         errorPartitionStats.recordErrorPartitionProcessingTime(System.currentTimeMillis() - startTime);
       } catch (Exception e) {
-        logger.error("Unexpected exception while running " + taskId, e);
+        logger.error("Unexpected exception while running {}", taskId, e);
         errorPartitionStats.recordErrorPartitionResetAttemptErrored();
       }
     }
-    logger.info("Stopped " + taskId);
+    logger.info("Stopped {}", taskId);
   }
 
   private void resetApplicableErrorPartitions(Store store) {
@@ -149,8 +149,10 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
               pushStatus = pushMonitor.getOfflinePushOrThrow(resourceName);
             }
             logger.warn(
-                "Error partition unrecoverable from reset. Resource: " + resourceName + ", partition: "
-                    + partition.getId() + ", reset count: " + currentResetCount);
+                "Error partition unrecoverable from reset. Resource: {}, partition: {}, reset count: {}",
+                resourceName,
+                partition.getId(),
+                currentResetCount);
             PartitionStatus partitionStatus = pushStatus.getPartitionStatus(partition.getId());
             // skip printing the hosts the info if partition status is null.
             if (partitionStatus == null) {
@@ -160,11 +162,10 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
             Collection<ReplicaStatus> replicaStatuses = partitionStatus.getReplicaStatuses();
             replicaStatuses.forEach(
                 (i) -> logger.warn(
-                    String.format(
-                        "Host: %s, Offline push status: %s, Details: %s.",
-                        i.getInstanceId(),
-                        i.getCurrentStatus().name(),
-                        i.getIncrementalPushVersion())));
+                    "Host: {}, Offline push status: {}, Details: {}.",
+                    i.getInstanceId(),
+                    i.getCurrentStatus().name(),
+                    i.getIncrementalPushVersion()));
           } else if (errorInstances.size() > 1) {
             // The following scenarios can occur:
             // 1. Helix will trigger recovery re-balance in attempt to bring more replicas ONLINE.
@@ -195,12 +196,12 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
         errorPartitionStats.recordErrorPartitionResetAttempt(v.size());
       });
     } catch (VeniceNoHelixResourceException noHelixResourceException) {
-      logger.error("Resource: " + resourceName + " is missing unexpectedly", noHelixResourceException);
+      logger.error("Resource: {} is missing unexpectedly", resourceName, noHelixResourceException);
       errorPartitionStats.recordErrorPartitionResetAttemptErrored();
     } catch (Exception e) {
       logger.error(
-          "Unexpected exception while processing partitions for resource: " + resourceName
-              + " for error partition reset",
+          "Unexpected exception while processing partitions for resource: {} for error partition reset",
+          resourceName,
           e);
       errorPartitionStats.recordErrorPartitionResetAttemptErrored();
     }

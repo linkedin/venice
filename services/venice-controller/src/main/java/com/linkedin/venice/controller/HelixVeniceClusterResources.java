@@ -235,8 +235,11 @@ public class HelixVeniceClusterResources implements VeniceResource {
           store.setReplicationFactor(config.getReplicationFactor());
           metadataRepository.updateStore(store);
           LOGGER.info(
-              "Updated replication factor from " + previousReplicationFactor + " to " + config.getReplicationFactor()
-                  + " for store: " + store.getName() + " in cluster: " + clusterName);
+              "Updated replication factor from {} to {} for store: {}, in cluster: {}",
+              previousReplicationFactor,
+              config.getReplicationFactor(),
+              store.getName(),
+              clusterName);
         }
       }
     }
@@ -319,7 +322,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
       try {
         leakedPushStatusCleanUpService.stop();
       } catch (Exception e) {
-        LOGGER.error("Error when stopping leaked push status clean-up service for cluster " + clusterName);
+        LOGGER.error("Error when stopping leaked push status clean-up service for cluster: {}", clusterName);
       }
     }
   }

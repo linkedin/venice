@@ -82,8 +82,8 @@ public class InstanceStatusDecider {
       long startTimeForAcquiringLockInMs = System.currentTimeMillis();
       synchronized (resourceAssignment) {
         LOGGER.info(
-            "Spent " + LatencyUtils.getElapsedTimeInMs(startTimeForAcquiringLockInMs)
-                + "ms on acquiring ResourceAssignment lock.");
+            "Spent {}ms on acquiring ResourceAssignment lock.",
+            LatencyUtils.getElapsedTimeInMs(startTimeForAcquiringLockInMs));
         // Get resource names from replicas hold by this instance.
         Set<String> resourceNameSet = replicas.stream().map(Replica::getResource).collect(Collectors.toSet());
 
@@ -108,9 +108,12 @@ public class InstanceStatusDecider {
             Pair<Boolean, String> result = willLoseData(resources.getPushMonitor(), partitionAssignmentAfterRemoving);
             if (result.getFirst()) {
               LOGGER.info(
-                  "Instance:" + instanceId + " is not removable because Version:" + resourceName
-                      + " would lose data if this instance was removed from cluster:" + clusterName + " details: "
-                      + result.getSecond());
+                  "Instance: {} is not removable because Version: {} would lose data "
+                      + "if this instance was removed from cluster: {} details: {}",
+                  instanceId,
+                  resourceName,
+                  clusterName,
+                  result.getSecond());
               return NodeRemovableResult.nonremoveableResult(
                   resourceName,
                   NodeRemovableResult.BlockingRemoveReason.WILL_LOSE_DATA,
@@ -131,9 +134,12 @@ public class InstanceStatusDecider {
 
             if (result.getFirst()) {
               LOGGER.info(
-                  "Instance:" + instanceId + " is not removable because Version:" + resourceName
-                      + " would be re-balanced if this instance was removed from cluster:" + clusterName + " details: "
-                      + result.getSecond());
+                  "Instance: {} is not removable because Version: {} would be re-balanced "
+                      + "if this instance was removed from cluster: {} details: {}",
+                  instanceId,
+                  resourceName,
+                  clusterName,
+                  result.getSecond());
               return NodeRemovableResult.nonremoveableResult(
                   resourceName,
                   NodeRemovableResult.BlockingRemoveReason.WILL_TRIGGER_LOAD_REBALANCE,
@@ -218,14 +224,15 @@ public class InstanceStatusDecider {
   private static VersionStatus getVersionStatus(ReadWriteStoreRepository storeRepository, String resourceName) {
     Store store = storeRepository.getStore(Version.parseStoreFromKafkaTopicName(resourceName));
     if (store == null) {
-      LOGGER.info("Can not find store for the resource:" + resourceName);
+      LOGGER.info("Can not find store for the resource: {}", resourceName);
       return VersionStatus.NOT_CREATED;
     }
     if (!store.isEnableReads()) {
       // Ignore store replicas that have read disabled.
       LOGGER.info(
-          "Ignoring node removal checks for resource: " + resourceName + " because the store: " + store.getName()
-              + " has reads disabled");
+          "Ignoring node removal checks for resource: {} because the store: {} has reads disabled",
+          resourceName,
+          store.getName());
       return VersionStatus.NOT_CREATED;
     }
     return store.getVersionStatus(Version.parseVersionFromKafkaTopicName(resourceName));

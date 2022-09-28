@@ -86,8 +86,8 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
 
     if (properties.containsKey(ProducerConfig.COMPRESSION_TYPE_CONFIG)) {
       LOGGER.info(
-          "Compression type explicitly specified by config: "
-              + properties.getProperty(ProducerConfig.COMPRESSION_TYPE_CONFIG));
+          "Compression type explicitly specified by config: {}",
+          properties.getProperty(ProducerConfig.COMPRESSION_TYPE_CONFIG));
     } else {
       /**
        * In general, 'gzip' compression ratio is the best among all the available codecs:
@@ -113,7 +113,7 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
           "Props key not found: " + PROPERTIES_KAFKA_PREFIX + ProducerConfig.BOOTSTRAP_SERVERS_CONFIG);
     }
 
-    LOGGER.info("Constructing KafkaProducer with the following properties: " + properties);
+    LOGGER.info("Constructing KafkaProducer with the following properties: {}", properties);
     producer = new KafkaProducer<>(properties);
     // TODO: Consider making the choice of partitioner implementation configurable
   }
@@ -262,8 +262,8 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
           extractedMetrics.put(entry.getKey().name(), (Double) value);
         }
       } catch (Exception e) {
-        LOGGER.info(
-            "Caught exception: {} when attempting to get producer metrics. " + "Incomplete metrics might be returned.",
+        LOGGER.warn(
+            "Caught exception: {} when attempting to get producer metrics. Incomplete metrics might be returned.",
             e.getMessage());
       }
     }
