@@ -59,10 +59,10 @@ public abstract class AbstractPushMonitorTest {
   private OfflinePushAccessor mockAccessor;
   private AbstractPushMonitor monitor;
   private ReadWriteStoreRepository mockStoreRepo;
-  private RoutingDataRepository mockRoutingDataRepo;
-  private StoreCleaner mockStoreCleaner;
+  protected RoutingDataRepository mockRoutingDataRepo;
+  protected StoreCleaner mockStoreCleaner;
   private AggPushHealthStats mockPushHealthStats;
-  private ClusterLockManager clusterLockManager;
+  protected ClusterLockManager clusterLockManager;
 
   private final static String clusterName = Utils.getUniqueString("test_cluster");
   private final static String aggregateRealTimeSourceKafkaUrl = "aggregate-real-time-source-kafka-url";
@@ -754,7 +754,8 @@ public abstract class AbstractPushMonitorTest {
         "At least one replica already received end_of_push, so we send SOBR and update push status to END_OF_PUSH_RECEIVED");
   }
 
-  private static class MockStoreCleaner implements StoreCleaner {
+
+  protected class MockStoreCleaner implements StoreCleaner {
     private final ClusterLockManager clusterLockManager;
 
     public MockStoreCleaner(ClusterLockManager clusterLockManager) {

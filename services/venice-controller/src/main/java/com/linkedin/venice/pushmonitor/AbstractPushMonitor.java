@@ -5,6 +5,7 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.NOT_CREATED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED;
 
+import com.linkedin.venice.controller.HelixAdminClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -19,6 +20,7 @@ import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
+import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -65,6 +67,7 @@ public abstract class AbstractPushMonitor
   private final ClusterLockManager clusterLockManager;
   private final String aggregateRealTimeSourceKafkaUrl;
   private final List<String> activeActiveRealTimeSourceKafkaURLs;
+  private final HelixAdminClient helixAdminClient;
 
   public AbstractPushMonitor(
       String clusterName,
@@ -76,7 +79,8 @@ public abstract class AbstractPushMonitor
       RealTimeTopicSwitcher realTimeTopicSwitcher,
       ClusterLockManager clusterLockManager,
       String aggregateRealTimeSourceKafkaUrl,
-      List<String> activeActiveRealTimeSourceKafkaURLs) {
+      List<String> activeActiveRealTimeSourceKafkaURLs,
+      HelixAdminClient helixAdminClient) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.storeCleaner = storeCleaner;
@@ -87,6 +91,7 @@ public abstract class AbstractPushMonitor
     this.clusterLockManager = clusterLockManager;
     this.aggregateRealTimeSourceKafkaUrl = aggregateRealTimeSourceKafkaUrl;
     this.activeActiveRealTimeSourceKafkaURLs = activeActiveRealTimeSourceKafkaURLs;
+    this.helixAdminClient = helixAdminClient;
   }
 
   @Override
@@ -659,6 +664,22 @@ public abstract class AbstractPushMonitor
     checkWhetherToStartBufferReplayForHybrid(offlinePushStatus);
   }
 
+  private boolean disableReplica(PartitionAssignment partitionAssignment, Optional<String> leaderErrorInfo) {
+    String errorInfo = leaderErrorInfo.orElse("");
+    if (errorInfo.isEmpty()) {
+      return false;
+    }
+    String[] tokens = errorInfo.split("_", 2);
+    String resourceName = partitionAssignment.getTopic();
+    helixAdminClient.enablePartition(
+        false,
+        clusterName,
+        tokens[0],
+        resourceName,
+        Collections.singletonList(HelixUtils.getPartitionName(resourceName, Integer.parseInt(tokens[1]))));
+    return true;
+  }
+
   @Override
   public void onExternalViewChange(PartitionAssignment partitionAssignment) {
     LOGGER.info("Received the routing data changed notification for topic: {}", partitionAssignment.getTopic());
@@ -676,12 +697,14 @@ public abstract class AbstractPushMonitor
 
         Pair<ExecutionStatus, Optional<String>> status = checkPushStatus(pushStatus, partitionAssignment);
         if (!status.getFirst().equals(pushStatus.getCurrentStatus())) {
-          if (status.getFirst().isTerminal()) {
+          boolean disabled = false;
+          if (status.getFirst() == ERROR) {
+            disabled = disableReplica(partitionAssignment, status.getSecond());
+          }
+          if (!disabled && status.getFirst().isTerminal()) {
             LOGGER.info(
-                "Offline push status will be changed to {} for topic: {} from status: {}",
-                status.toString(),
-                kafkaTopic,
-                pushStatus.getCurrentStatus());
+                "Offline push status will be changed to " + status + " for topic: " + kafkaTopic + " from status: "
+                    + pushStatus.getCurrentStatus());
             handleOfflinePushUpdate(pushStatus, status.getFirst(), status.getSecond());
           } else if (status.getFirst().equals(ExecutionStatus.END_OF_PUSH_RECEIVED)) {
             // For all partitions, at least one replica has received the EOP. Check if it's time to start buffer replay.

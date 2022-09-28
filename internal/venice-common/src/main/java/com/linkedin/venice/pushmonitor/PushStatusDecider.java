@@ -129,11 +129,18 @@ public abstract class PushStatusDecider {
             getPartitionStatus(partitionStatus, pushStatus.getReplicationFactor(), partition.getInstanceToStateMap());
 
         if (executionStatus == ERROR) {
+          Optional<String> leaderError = getLeaderErrorInfo(
+              partitionStatus,
+              pushStatus.getReplicationFactor(),
+              partition.getInstanceToStateMap(),
+              getNumberOfToleratedErrors());
           return new Pair<>(
               executionStatus,
-              Optional.of(
-                  "too many ERROR replicas in partition: " + partitionStatus.getPartitionId()
-                      + " for offlinePushStrategy: " + getStrategy().name()));
+              leaderError.isPresent()
+                  ? leaderError
+                  : Optional.of(
+                      "too many ERROR replicas in partition: " + partitionStatus.getPartitionId()
+                          + " for offlinePushStrategy: " + getStrategy().name()));
         }
 
         if (!executionStatus.equals(COMPLETED)) {
@@ -251,6 +258,36 @@ public abstract class PushStatusDecider {
     return getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap, getNumberOfToleratedErrors());
   }
 
+  protected Optional<String> getLeaderErrorInfo(
+      PartitionStatus partitionStatus,
+      int replicationFactor,
+      Map<Instance, String> instanceToStateMap,
+      int numberOfToleratedErrors) {
+    boolean isLeaderInError = false;
+    Map<ExecutionStatus, Integer> executionStatusMap = new HashMap<>();
+    String instanceName = null;
+    int partitionId = -1;
+    for (Map.Entry<Instance, String> entry: instanceToStateMap.entrySet()) {
+      ExecutionStatus currentStatus =
+          getReplicaCurrentStatus(partitionStatus.getReplicaHistoricStatusList(entry.getKey().getNodeId()));
+      if (entry.getValue().equals(HelixState.LEADER_STATE)) {
+        if (currentStatus.equals(ERROR)) {
+          instanceName = entry.getKey().getNodeId();
+          partitionId = partitionStatus.getPartitionId();
+          isLeaderInError = true;
+        }
+      }
+      executionStatusMap.merge(currentStatus, 1, Integer::sum);
+    }
+
+    // return leader error info only if its LEADER error and sufficient replicas exists.
+    if (!isLeaderInError || executionStatusMap.getOrDefault(ERROR, 0) > instanceToStateMap.size() - replicationFactor
+        + numberOfToleratedErrors) {
+      return Optional.empty();
+    }
+    return Optional.of(instanceName + "_" + partitionId);
+  }
+
   protected ExecutionStatus getPartitionStatus(
       PartitionStatus partitionStatus,
       int replicationFactor,
@@ -272,34 +309,31 @@ public abstract class PushStatusDecider {
         if (!currentStatus.equals(COMPLETED)) {
           isLeaderCompleted = false;
         }
-
         if (currentStatus.equals(ERROR)) {
           isLeaderInError = true;
         }
-
       }
-
       executionStatusMap.merge(currentStatus, 1, Integer::sum);
     }
 
-    if (executionStatusMap.containsKey(COMPLETED)
-        && executionStatusMap.get(COMPLETED) >= replicationFactor - numberOfToleratedErrors && isLeaderCompleted) {
+    if (executionStatusMap.getOrDefault(COMPLETED, 0) >= (replicationFactor - numberOfToleratedErrors)
+        && isLeaderCompleted) {
       return COMPLETED;
+    }
+
+    if (executionStatusMap.getOrDefault(ERROR, 0) > instanceToStateMap.size() - replicationFactor
+        + numberOfToleratedErrors) {
+      return ERROR;
     }
 
     if (isLeaderInError) {
       return ERROR;
     }
 
-    if (executionStatusMap.containsKey(ERROR)
-        && executionStatusMap.get(ERROR) > instanceToStateMap.size() - replicationFactor + numberOfToleratedErrors) {
-      return ERROR;
-    }
-
     /**
      * Report EOP if at least one replica has consumed an EOP control message
      */
-    if (executionStatusMap.containsKey(END_OF_PUSH_RECEIVED) && executionStatusMap.get(END_OF_PUSH_RECEIVED) > 0) {
+    if (executionStatusMap.getOrDefault(END_OF_PUSH_RECEIVED, 0) > 0) {
       return END_OF_PUSH_RECEIVED;
     }
 
