@@ -98,4 +98,21 @@ public class DaVinciConfig {
     this.cacheConfig = cacheConfig;
     return this;
   }
+
+  /**
+   * These functions are unused but are a part of the public API. They have been kept for backward compatibility.
+   * @return Zero (dummy value)
+   */
+  @Deprecated
+  public long getMemoryLimit() {
+    return 0;
+  }
+
+  /**
+   * These functions are unused but are a part of the public API. They have been kept for backward compatibility.
+   */
+  @Deprecated
+  public DaVinciConfig setMemoryLimit(long memoryLimit) {
+    return this;
+  }
 }
