@@ -24,7 +24,7 @@ import org.testng.annotations.Test;
 
 
 public class TestHelixReadOnlyStorageEngineRepository {
-  private static Logger logger = LogManager.getLogger(TestHelixReadOnlyStorageEngineRepository.class);
+  private static final Logger LOGGER = LogManager.getLogger(TestHelixReadOnlyStorageEngineRepository.class);
 
   private String zkAddress;
   private ZkClient zkClient;
@@ -150,7 +150,7 @@ public class TestHelixReadOnlyStorageEngineRepository {
 
     @Override
     public void handleStoreChanged(Store store) {
-      logger.info("Received handleStoreChanged: " + store.toString());
+      LOGGER.info("Received handleStoreChanged: {}", store);
       changeCount.incrementAndGet();
     }
 
@@ -305,7 +305,7 @@ public class TestHelixReadOnlyStorageEngineRepository {
           expectedDeletionCount,
           "Listener's deletion count should be " + expectedDeletionCount + " following: " + details);
 
-      logger.info("Successfully asserted that notifications work after " + details);
+      LOGGER.info("Successfully asserted that notifications work after {}", details);
     });
   }
 }

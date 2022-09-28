@@ -529,17 +529,16 @@ public class TopicManagerTest {
     CompletableFuture delayedTopicCreationFuture = CompletableFuture.runAsync(() -> {
       delayedTopicCreationStartedSignal.countDown();
       LOGGER.info(
-          String.format(
-              "Thread started and it will create topic %s in %s second(s)",
-              initiallyNotExistTopic,
-              delayedTopicCreationInSeconds));
+          "Thread started and it will create topic {} in {} second(s)",
+          initiallyNotExistTopic,
+          delayedTopicCreationInSeconds);
       try {
         Thread.sleep(TimeUnit.SECONDS.toMillis(delayedTopicCreationInSeconds));
       } catch (InterruptedException e) {
         Assert.fail("Got unexpected exception...", e);
       }
       topicManager.createTopic(initiallyNotExistTopic, 1, 1, false);
-      LOGGER.info("Created this initially-not-exist topic: " + initiallyNotExistTopic);
+      LOGGER.info("Created this initially-not-exist topic: {}", initiallyNotExistTopic);
     });
     Assert.assertTrue(delayedTopicCreationStartedSignal.await(5, TimeUnit.SECONDS));
 

@@ -99,9 +99,9 @@ public class SharedKafkaProducerServiceTest {
             veniceWriter1
                 .put(new KafkaKey(MessageType.PUT, "topic1".getBytes()), "topic1".getBytes(), 1, (metadata, e) -> {
                   if (e != null) {
-                    LOGGER.error("Error when producing to an existing topic " + existingTopic, e);
+                    LOGGER.error("Error when producing to an existing topic: {}", existingTopic, e);
                   } else {
-                    LOGGER.info("produced offset test-topic-1: " + metadata.offset());
+                    LOGGER.info("produced offset test-topic-1: {}", metadata.offset());
                     producedTopicPresent.countDown();
                   }
                 });

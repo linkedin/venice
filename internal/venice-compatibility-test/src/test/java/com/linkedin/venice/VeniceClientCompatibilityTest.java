@@ -54,7 +54,7 @@ public class VeniceClientCompatibilityTest {
 
   @BeforeClass
   private void setUp() throws Exception {
-    LOGGER.info("Avro version in unit test: " + AvroCompatibilityHelper.getRuntimeAvroVersion());
+    LOGGER.info("Avro version in unit test: {}", AvroCompatibilityHelper.getRuntimeAvroVersion());
     Assert.assertEquals(
         AvroCompatibilityHelper.getRuntimeAvroVersion(),
         AvroVersion.valueOf(System.getProperty("clientAvroVersion")));
@@ -66,7 +66,7 @@ public class VeniceClientCompatibilityTest {
      */
     String routerPort = Integer.toString(Utils.getFreePort());
     String routerAddress = "http://localhost:" + routerPort;
-    LOGGER.info("Router address in unit test: " + routerAddress);
+    LOGGER.info("Router address in unit test: {}", routerAddress);
 
     String storeName = Utils.getUniqueString("venice-store");
     clusterProcess = ForkedJavaProcess.exec(
@@ -109,7 +109,7 @@ public class VeniceClientCompatibilityTest {
       }
     });
     Assert.assertNotNull(zkAddress[0]);
-    LOGGER.info("Zookeeper address in unit test: " + zkAddress[0]);
+    LOGGER.info("Zookeeper address in unit test: {}", zkAddress[0]);
 
     daVinciClient = ServiceFactory.getGenericAvroDaVinciClientWithoutMetaSystemStoreRepo(
         storeName,

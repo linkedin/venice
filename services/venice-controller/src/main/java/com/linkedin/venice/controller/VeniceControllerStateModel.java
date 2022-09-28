@@ -131,7 +131,7 @@ public class VeniceControllerStateModel extends StateModel {
         throw new VeniceException("No configuration exists for " + clusterName);
       }
       String controllerName = message.getTgtName();
-      LOGGER.info(controllerName + " becoming leader from standby for " + clusterName);
+      LOGGER.info("{} becoming leader from standby for {}", controllerName, clusterName);
 
       if (helixManagerInitialized()) {
         // TODO: It seems like this should throw an exception. Otherwise the case would be you'd have an instance be
@@ -140,21 +140,19 @@ public class VeniceControllerStateModel extends StateModel {
         // ERROR'd
         // and the partition was 'reset' instead of bouncing the process.
         LOGGER.error(
-            String.format(
-                "Helix manager already exists for instance %s on cluster %s and received controller name %s",
-                helixManager.getInstanceName(),
-                clusterName,
-                controllerName));
+            "Helix manager already exists for instance {} on cluster {} and received controller name {}",
+            helixManager.getInstanceName(),
+            clusterName,
+            controllerName);
 
       } else {
         initHelixManager(controllerName);
         initClusterResources();
         LOGGER.info(
-            String.format(
-                "Controller %s with instance %s is the leader of cluster %s",
-                controllerName,
-                helixManager.getInstanceName(),
-                clusterName));
+            "Controller {} with instance {} is the leader of cluster {}",
+            controllerName,
+            helixManager.getInstanceName(),
+            clusterName);
       }
     });
   }
@@ -207,7 +205,7 @@ public class VeniceControllerStateModel extends StateModel {
     executeStateTransition(message, () -> {
       String controllerName = message.getTgtName();
 
-      LOGGER.info(controllerName + " becoming standby from leader for " + clusterName);
+      LOGGER.info("{} becoming standby from leader for {}", controllerName, clusterName);
       // Reset acquires the cluster write lock to prevent the partial result of admin operation.
       reset();
     });
@@ -220,7 +218,7 @@ public class VeniceControllerStateModel extends StateModel {
   public void onBecomeOfflineFromStandby(Message message, NotificationContext context) {
     executeStateTransition(message, () -> {
       String controllerName = message.getTgtName();
-      LOGGER.info(controllerName + " becoming offline from standby for " + clusterName);
+      LOGGER.info("{} becoming offline from standby for {}", controllerName, clusterName);
     });
   }
 
@@ -232,7 +230,7 @@ public class VeniceControllerStateModel extends StateModel {
     executeStateTransition(message, () -> {
       clusterConfig = multiClusterConfigs.getControllerConfig(clusterName);
       String controllerName = message.getTgtName();
-      LOGGER.info(controllerName + " becoming standby from offline for " + clusterName);
+      LOGGER.info("{} becoming standby from offline for {}", controllerName, clusterName);
     });
   }
 
@@ -242,7 +240,7 @@ public class VeniceControllerStateModel extends StateModel {
   @Transition(to = HelixState.DROPPED_STATE, from = HelixState.OFFLINE_STATE)
   public void onBecomeDroppedFromOffline(Message message, NotificationContext context) {
     executeStateTransition(message, () -> {
-      LOGGER.info(clusterName + " going from OFFLINE to DROPPED.");
+      LOGGER.info("{} going from OFFLINE to DROPPED.", clusterName);
     });
   }
 
@@ -252,7 +250,7 @@ public class VeniceControllerStateModel extends StateModel {
   @Transition(to = HelixState.DROPPED_STATE, from = HelixState.ERROR_STATE)
   public void onBecomeDroppedFromError(Message message, NotificationContext context) {
     executeStateTransition(message, () -> {
-      LOGGER.info(clusterName + " going from ERROR to DROPPED.");
+      LOGGER.info("{} going from ERROR to DROPPED.", clusterName);
     });
   }
 
@@ -262,7 +260,7 @@ public class VeniceControllerStateModel extends StateModel {
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.ERROR_STATE)
   public void onBecomingOfflineFromError(Message message, NotificationContext context) {
     executeStateTransition(message, () -> {
-      LOGGER.info(clusterName + " going from ERROR to OFFLINE.");
+      LOGGER.info("{} going from ERROR to OFFLINE.", clusterName);
     });
   }
 
@@ -272,7 +270,7 @@ public class VeniceControllerStateModel extends StateModel {
   @Override
   public void rollbackOnError(Message message, NotificationContext context, StateTransitionError error) {
     String controllerName = message.getTgtName();
-    LOGGER.error(controllerName + " rollbacks on error for " + clusterName);
+    LOGGER.error("{} rollbacks on error for {}", controllerName, clusterName);
     reset();
   }
 

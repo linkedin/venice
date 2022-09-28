@@ -92,7 +92,7 @@ public class SharedKafkaProducerService extends AbstractVeniceService {
 
     this.metricsRepository = metricsRepository;
     this.producerMetricsToBeReported = producerMetricsToBeReported;
-    logger.info("SharedKafkaProducer: is initialized");
+    LOGGER.info("SharedKafkaProducer: is initialized");
   }
 
   @Override
@@ -103,26 +103,27 @@ public class SharedKafkaProducerService extends AbstractVeniceService {
   @Override
   public synchronized void stopInner() throws Exception {
     isRunning = false;
-    logger.info("SharedKafkaProducer: is being closed");
+    LOGGER.info("SharedKafkaProducer: is being closed");
     // This map should be empty when this is called.
     if (!producerTaskToProducerMap.isEmpty()) {
-      logger.error(
-          "SharedKafkaProducer: following producerTasks are still using the shared producers. {"
-              + producerTaskToProducerMap.keySet().stream().collect(Collectors.joining(",")) + "}");
+      LOGGER.error(
+          "SharedKafkaProducer: following producerTasks are still using the shared producers. [{}]",
+          producerTaskToProducerMap.keySet().stream().collect(Collectors.joining(",")));
     }
 
     Set<SharedKafkaProducer> producerInstanceSet = new HashSet<>(Arrays.asList(producers));
     producerInstanceSet.parallelStream().filter(Objects::nonNull).forEach(sharedKafkaProducer -> {
       try {
         // Force close all the producer even if there are active producerTask assigned to it.
-        logger.info(
-            "SharedKafkaProducer: Closing producer: " + sharedKafkaProducer + ", Currently assigned task: "
-                + sharedKafkaProducer.getProducerTaskCount());
+        LOGGER.info(
+            "SharedKafkaProducer: Closing producer: {}, Currently assigned task: {}",
+            sharedKafkaProducer,
+            sharedKafkaProducer.getProducerTaskCount());
         sharedKafkaProducer.close(kafkaProducerCloseTimeout, false);
         producers[sharedKafkaProducer.getId()] = null;
         decrActiveSharedProducerCount();
       } catch (Exception e) {
-        logger.warn("SharedKafkaProducer: Error in closing kafka producer", e);
+        LOGGER.warn("SharedKafkaProducer: Error in closing kafka producer", e);
       }
     });
   }
@@ -141,22 +142,22 @@ public class SharedKafkaProducerService extends AbstractVeniceService {
 
     if (producerTaskToProducerMap.containsKey(producerTaskName)) {
       sharedKafkaProducer = producerTaskToProducerMap.get(producerTaskName);
-      LOGGER.info(
-          "SharedKafkaProducer: " + producerTaskName + " already has a producer id: " + sharedKafkaProducer.getId());
+      LOGGER
+          .info("SharedKafkaProducer: {} already has a producer id: {}", producerTaskName, sharedKafkaProducer.getId());
       return sharedKafkaProducer;
     }
 
     // Do lazy creation of producers
     for (int i = 0; i < producers.length; i++) {
       if (producers[i] == null) {
-        LOGGER.info("SharedKafkaProducer: Creating Producer id: " + i);
+        LOGGER.info("SharedKafkaProducer: Creating Producer id: {}", i);
         producerProperties.put(PROPERTIES_KAFKA_PREFIX + CLIENT_ID_CONFIG, "shared-producer-" + String.valueOf(i));
         KafkaProducerWrapper kafkaProducerWrapper =
             kafkaProducerSupplier.getNewProducer(new VeniceProperties(producerProperties));
         sharedKafkaProducer =
             new SharedKafkaProducer(this, i, kafkaProducerWrapper, metricsRepository, producerMetricsToBeReported);
         producers[i] = sharedKafkaProducer;
-        LOGGER.info("SharedKafkaProducer: Created Shared Producer instance: " + sharedKafkaProducer);
+        LOGGER.info("SharedKafkaProducer: Created Shared Producer instance: {}", sharedKafkaProducer);
         incrActiveSharedProducerCount();
         break;
       }
@@ -175,8 +176,7 @@ public class SharedKafkaProducerService extends AbstractVeniceService {
 
     sharedKafkaProducer.addProducerTask(producerTaskName);
     producerTaskToProducerMap.put(producerTaskName, sharedKafkaProducer);
-    LOGGER
-        .info("SharedKafkaProducer: " + producerTaskName + " acquired the producer id: " + sharedKafkaProducer.getId());
+    LOGGER.info("SharedKafkaProducer: {} acquired the producer id: {}", producerTaskName, sharedKafkaProducer.getId());
     logProducerInstanceAssignments();
     incrActiveSharedProducerTasksCount();
     return sharedKafkaProducer;
@@ -189,14 +189,13 @@ public class SharedKafkaProducerService extends AbstractVeniceService {
     }
 
     if (!producerTaskToProducerMap.containsKey(producerTaskName)) {
-      LOGGER.error("SharedKafkaProducer: " + producerTaskName + " does not have a producer");
+      LOGGER.error("SharedKafkaProducer: {} does not have a producer", producerTaskName);
       return;
     }
     SharedKafkaProducer sharedKafkaProducer = producerTaskToProducerMap.get(producerTaskName);
     sharedKafkaProducer.removeProducerTask(producerTaskName);
     producerTaskToProducerMap.remove(producerTaskName, sharedKafkaProducer);
-    LOGGER
-        .info("SharedKafkaProducer: " + producerTaskName + " released the producer id: " + sharedKafkaProducer.getId());
+    LOGGER.info("SharedKafkaProducer: {} released the producer id: {}", producerTaskName, sharedKafkaProducer.getId());
     logProducerInstanceAssignments();
     decrActiveSharedProducerTasksCount();
   }
@@ -220,7 +219,7 @@ public class SharedKafkaProducerService extends AbstractVeniceService {
       }
     }
     sb.append("]");
-    LOGGER.info("SharedKafkaProducer: Current Assignments: " + sb.toString());
+    LOGGER.info("SharedKafkaProducer: Current Assignments: {}", sb);
   }
 
   public interface KafkaProducerSupplier {

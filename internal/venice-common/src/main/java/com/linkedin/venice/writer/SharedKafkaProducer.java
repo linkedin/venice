@@ -109,7 +109,7 @@ public class SharedKafkaProducer implements KafkaProducerWrapper {
     if (sharedKafkaProducerService.isRunning()) {
       sharedKafkaProducerService.releaseKafkaProducer(topic);
     } else {
-      LOGGER.info("SharedKafkaProducer: is already closed can't release the producer for topic: " + topic);
+      LOGGER.info("producer is already closed, can't release for topic: {}", topic);
     }
   }
 
@@ -253,7 +253,7 @@ public class SharedKafkaProducer implements KafkaProducerWrapper {
       super(metricsRepository, "SharedKafkaProducer");
       kafkaProducerMetrics.keySet().forEach(metric -> {
         String metricName = "producer_" + id + "_" + metric;
-        LOGGER.info("SharedKafkaProducer: Registering metric: " + metricName);
+        LOGGER.info("SharedKafkaProducer: Registering metric: {}", metricName);
         registerSensorIfAbsent(metricName, new Gauge(() -> {
           mayBeCalculateAllProducerMetrics();
           return kafkaProducerMetrics.get(metric);

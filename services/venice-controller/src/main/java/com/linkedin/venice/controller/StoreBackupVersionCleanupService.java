@@ -114,25 +114,31 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     }
     String storeName = store.getName();
     LOGGER.info(
-        "Started removing backup versions according to retention policy for store: " + storeName + " in cluster: "
-            + clusterName);
+        "Started removing backup versions according to retention policy for store: {} in cluster: {}",
+        storeName,
+        clusterName);
     readyToBeRemovedVersions.forEach(v -> {
       int versionNum = v.getNumber();
       LOGGER.info(
-          "Version: " + versionNum + " of store: " + storeName + " in cluster: " + clusterName
-              + " will be removed according to backup version retention policy");
+          "Version: {} of store: {} in cluster: {} will be removed according to backup version retention policy",
+          versionNum,
+          storeName,
+          clusterName);
       try {
         admin.deleteOneStoreVersion(clusterName, storeName, versionNum);
       } catch (Exception e) {
         LOGGER.error(
-            "Encountered exception while trying to delete version: " + versionNum + " store: " + storeName
-                + " in cluster: " + clusterName,
+            "Encountered exception while trying to delete version: {}, store: {}, in cluster: {}",
+            versionNum,
+            storeName,
+            clusterName,
             e);
       }
     });
     LOGGER.info(
-        "Finished removing backup versions according to retention policy for store: " + storeName + " in cluster: "
-            + clusterName);
+        "Finished removing backup versions according to retention policy for store: {} in cluster: {}",
+        storeName,
+        clusterName);
     return true;
   }
 
@@ -164,8 +170,9 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
               didCleanup = cleanupBackupVersion(store, clusterName);
             } catch (Exception e) {
               LOGGER.error(
-                  "Encountered exception while handling backup version cleanup for store: " + store.getName()
-                      + " in cluster: " + clusterName,
+                  "Encountered exception while handling backup version cleanup for store: {} in cluster: {}",
+                  store.getName(),
+                  clusterName,
                   e);
             }
             if (didCleanup) {
