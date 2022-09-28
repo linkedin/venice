@@ -8,6 +8,7 @@ import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.TestUtils;
@@ -45,7 +46,8 @@ public class TestAdminSparkServerGetLeader {
   public void setUp() {
     zkServer = ServiceFactory.getZkServer();
     kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
-    veniceControllerWrapper = ServiceFactory.getVeniceChildController(cluster, kafkaBrokerWrapper);
+    veniceControllerWrapper = ServiceFactory
+        .getVeniceController(new VeniceControllerCreateOptions.Builder(cluster, kafkaBrokerWrapper).build());
   }
 
   @AfterMethod

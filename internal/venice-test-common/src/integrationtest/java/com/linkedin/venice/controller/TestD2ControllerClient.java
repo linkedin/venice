@@ -8,13 +8,13 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.Properties;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -27,17 +27,14 @@ public class TestD2ControllerClient {
     D2Client d2Client = null;
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
-        VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceChildController(
-            new String[] { CLUSTER_NAME },
-            kafkaBrokerWrapper,
-            1,
-            10,
-            0,
-            1,
-            null,
-            true,
-            true,
-            new Properties())) {
+        VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(
+            new VeniceControllerCreateOptions.Builder(CLUSTER_NAME, kafkaBrokerWrapper).replicationFactor(1)
+                .partitionSize(10)
+                .rebalanceDelayMs(0)
+                .minActiveReplica(1)
+                .sslToKafka(true)
+                .d2Enabled(true)
+                .build())) {
       String zkAddress = kafkaBrokerWrapper.getZkAddress();
       D2TestUtils.setupD2Config(
           zkAddress,

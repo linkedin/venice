@@ -41,6 +41,7 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
@@ -105,13 +106,12 @@ public class MetaSystemStoreTest {
     venice = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 1000000, false, false);
     controllerClient = venice.getControllerClient();
     parentZkServer = ServiceFactory.getZkServer();
-    parentController = ServiceFactory.getVeniceParentController(
-        venice.getClusterName(),
-        parentZkServer.getAddress(),
-        venice.getKafka(),
-        venice.getVeniceControllers().toArray(new VeniceControllerWrapper[0]),
-        new VeniceProperties(testProperties),
-        false);
+    parentController = ServiceFactory.getVeniceController(
+        new VeniceControllerCreateOptions.Builder(venice.getClusterName(), venice.getKafka())
+            .childControllers(venice.getVeniceControllers().toArray(new VeniceControllerWrapper[0]))
+            .extraProperties(testProperties)
+            .zkAddress(parentZkServer.getAddress())
+            .build());
   }
 
   @AfterClass

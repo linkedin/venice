@@ -11,6 +11,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import java.util.Optional;
@@ -27,8 +28,10 @@ public class TestBackupControllerResponse {
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker(zkServer);
         ControllerTransport transport = new ControllerTransport(Optional.empty());
-        VeniceControllerWrapper controller1 = ServiceFactory.getVeniceChildController(clusterName, kafka);
-        VeniceControllerWrapper controller2 = ServiceFactory.getVeniceChildController(clusterName, kafka)) {
+        VeniceControllerWrapper controller1 =
+            ServiceFactory.getVeniceController(new VeniceControllerCreateOptions.Builder(clusterName, kafka).build());
+        VeniceControllerWrapper controller2 =
+            ServiceFactory.getVeniceController(new VeniceControllerCreateOptions.Builder(clusterName, kafka).build())) {
       // TODO: Eliminate sleep to make test reliable
       Thread.sleep(2000);
       VeniceControllerWrapper nonLeaderController =

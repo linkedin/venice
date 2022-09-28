@@ -7,12 +7,12 @@ import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -40,16 +40,15 @@ public class AbstractTestAdminSparkServer {
     // The cluster does not have router setup
     extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, "false");
     extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, "false");
-    parentController = ServiceFactory.getVeniceParentController(
-        new String[] { cluster.getClusterName() },
-        parentZk.getAddress(),
-        cluster.getKafka(),
-        new VeniceControllerWrapper[] { cluster.getLeaderVeniceController() },
-        null,
-        false,
-        1,
-        new VeniceProperties(extraProperties),
-        authorizerService);
+    VeniceControllerCreateOptions options =
+        new VeniceControllerCreateOptions.Builder(cluster.getClusterName(), cluster.getKafka())
+            .zkAddress(parentZk.getAddress())
+            .replicationFactor(1)
+            .childControllers(new VeniceControllerWrapper[] { cluster.getLeaderVeniceController() })
+            .extraProperties(extraProperties)
+            .authorizerService(authorizerService.orElse(null))
+            .build();
+    parentController = ServiceFactory.getVeniceController(options);
 
     if (!useParentRestEndpoint) {
       controllerClient =
