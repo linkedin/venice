@@ -1,8 +1,9 @@
 package com.linkedin.venice.client.consumer;
 
-import java.util.Map;
+import com.linkedin.venice.annotation.Experimental;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
 
 
 /**
@@ -10,13 +11,14 @@ import java.util.concurrent.CompletableFuture;
  * @param <K>
  * @param <V>
  */
+@Experimental
 public interface VeniceChangelogConsumer<K, V> {
   /**
    * Subscribe a set of partitions to this VeniceChangelogConsumer. The VeniceChangelogConsumer
    * should try to consume messages from all partitions that are subscribed to it.
    *
-   * @return a future which completes when the partitions are ready to be consumed data
    * @param partitions the set of partition to subscribe and consume
+   * @return a future which completes when the partitions are ready to be consumed data
    * @throws a VeniceException if subscribe operation failed for any of the partitions
    */
   CompletableFuture<Void> subscribe(Set<Integer> partitions);
@@ -28,13 +30,6 @@ public interface VeniceChangelogConsumer<K, V> {
    * @throws a VeniceException if subscribe operation failed for any of the partitions
    */
   CompletableFuture<Void> subscribeAll();
-
-  /**
-   * Obtain the underlying store name.
-   *
-   * @return store name
-   */
-  String getStoreName();
 
   /**
    * Stop ingesting messages from a set of partitions for this VeniceChangelogConsumer.
@@ -55,8 +50,8 @@ public interface VeniceChangelogConsumer<K, V> {
    * Polling function to get any available messages from the underlying system for all partitions subscribed.
    *
    * @param timeout The maximum time to block (must not be greater than {@link Long#MAX_VALUE} milliseconds)
-   * @throws org.apache.kafka.common.errors.InterruptException if the calling thread is interrupted before or while
-   * this function is called
+   * @return map of topic partition to records since the last fetch for the subscribed list of topics and partitions
+   * @throws a VeniceException if polling operation fails
    */
-  Map<K, V> poll(long timeout) throws InterruptedException;
+  ConsumerRecords<K, V> poll(long timeout);
 }
