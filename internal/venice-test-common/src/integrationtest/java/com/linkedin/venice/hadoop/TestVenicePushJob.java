@@ -9,6 +9,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_FABRIC;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.hadoop.VenicePushJob.KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
 import static com.linkedin.venice.hadoop.VenicePushJob.SUPPRESS_END_OF_PUSH_MESSAGE;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
@@ -480,7 +481,6 @@ public class TestVenicePushJob {
     props.put(INCREMENTAL_PUSH, false);
 
     TestPushUtils.runPushJob("Test push job", props);
-
   }
 
   @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during Hadoop to Venice Bridge.*")
@@ -620,7 +620,6 @@ public class TestVenicePushJob {
     }
   }
 
-  // TODO: KIF-repush breaks when chunking is enabled. Enable data verification once VENG-9948 has been fixed.
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testKIFRepushFetch(boolean chunkingEnabled) throws Exception {
     File inputDir = getTempDataDirectory();
@@ -635,9 +634,10 @@ public class TestVenicePushJob {
             new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
                 .setPartitionCount(2)
                 .setIncrementalPushEnabled(true)
+                .setWriteComputationEnabled(true)
                 .setLeaderFollowerModel(true)));
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
-
+    props.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, "true");
     // create a batch version.
     TestPushUtils.runPushJob("Test push job", props);
     try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
@@ -661,11 +661,11 @@ public class TestVenicePushJob {
     // Run the repush job, it should still pass
     TestPushUtils.runPushJob("Test push job", props);
 
-    // try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
-    // ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
-    // for (int i = 1; i <= 100; i++) {
-    // Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
-    // }
-    // }
+    try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+      for (int i = 1; i <= 100; i++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+      }
+    }
   }
 }
