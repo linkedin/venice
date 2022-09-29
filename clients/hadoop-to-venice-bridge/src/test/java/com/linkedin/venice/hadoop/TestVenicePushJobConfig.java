@@ -43,7 +43,7 @@ public class TestVenicePushJobConfig {
     pushJob.run();
   }
 
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Chunking is not supported when using repush with ttl feature.*")
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Repush TTL is not supported when the store has chunking enabled.*")
   public void testRepushTTLJobWithChunking() {
     Properties repushProps = new Properties();
     repushProps.put(VenicePushJob.REPUSH_TTL_IN_HOURS, 10L);
