@@ -7,19 +7,9 @@ public interface PubSubTopic {
   String getName();
 
   /**
-   * @return whether it is a RT topic
+   * @return the {@link PubSubTopicType} of the topic
    */
-  boolean isRealTimeTopic();
-
-  /**
-   * @return whether it is a version-topic.
-   */
-  boolean isVersionTopic();
-
-  /**
-   * @return whether it is a reprocessing topic.
-   */
-  boolean isReprocessingTopic();
+  PubSubTopicType getPubSubTopicType();
 
   /**
    * @return the store name that this topic is associated with.

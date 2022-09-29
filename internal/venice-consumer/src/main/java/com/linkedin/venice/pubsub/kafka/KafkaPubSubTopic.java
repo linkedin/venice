@@ -1,14 +1,14 @@
 package com.linkedin.venice.pubsub.kafka;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicType;
 
 
 public class KafkaPubSubTopic implements PubSubTopic {
   private final String name;
-  private final boolean isRealTimeTopic;
-  private final boolean isVersionTopic;
-  private final boolean isReprocessingTopic;
+  private final PubSubTopicType pubSubTopicType;
   private final String storeName;
 
   /**
@@ -19,9 +19,15 @@ public class KafkaPubSubTopic implements PubSubTopic {
    */
   KafkaPubSubTopic(String name) {
     this.name = name;
-    this.isRealTimeTopic = Version.isRealTimeTopic(name);
-    this.isVersionTopic = Version.isVersionTopic(name);
-    this.isReprocessingTopic = Version.isStreamReprocessingTopic(name);
+    if (Version.isRealTimeTopic(name)) {
+      pubSubTopicType = PubSubTopicType.REALTIME_TOPIC;
+    } else if (Version.isStreamReprocessingTopic(name)) {
+      pubSubTopicType = PubSubTopicType.REPROCESSING_TOPIC;
+    } else if (Version.isVersionTopic(name)) {
+      pubSubTopicType = PubSubTopicType.VERSION_TOPIC;
+    } else {
+      throw new VeniceException("Unsupported topic type for: " + name);
+    }
     this.storeName = Version.parseStoreFromKafkaTopicName(name);
   }
 
@@ -30,19 +36,8 @@ public class KafkaPubSubTopic implements PubSubTopic {
     return name;
   }
 
-  @Override
-  public boolean isRealTimeTopic() {
-    return isRealTimeTopic;
-  }
-
-  @Override
-  public boolean isVersionTopic() {
-    return isVersionTopic;
-  }
-
-  @Override
-  public boolean isReprocessingTopic() {
-    return isReprocessingTopic;
+  public PubSubTopicType getPubSubTopicType() {
+    return pubSubTopicType;
   }
 
   @Override
