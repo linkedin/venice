@@ -1942,11 +1942,9 @@ public class VenicePushJob implements AutoCloseable {
     }
 
     if (setting.isSourceKafka) {
-      if (storeSetting.isWriteComputeEnabled) {
-        throw new VeniceException("KIF repush is not available for for write compute store.");
-      }
       int sourceVersionNumber = Version.parseVersionFromKafkaTopicName(pushJobSetting.kafkaInputTopic);
       Optional<Version> sourceVersion = storeResponse.getStore().getVersion(sourceVersionNumber);
+
       if (!sourceVersion.isPresent()) {
         if (pushJobSetting.repushInfoResponse != null
             && pushJobSetting.repushInfoResponse.getRepushInfo().getVersion().getNumber() == sourceVersionNumber) {
@@ -1957,7 +1955,9 @@ public class VenicePushJob implements AutoCloseable {
               "Could not find version " + sourceVersionNumber + ", please provide input fabric to repush.");
         }
       }
-
+      if (storeSetting.isWriteComputeEnabled && sourceVersion.get().isActiveActiveReplicationEnabled()) {
+        throw new VeniceException("KIF repush is not available for for write compute active/active store.");
+      }
       storeSetting.sourceKafkaInputVersionInfo = sourceVersion.get();
       // Skip quota check
       storeSetting.storeStorageQuota = Store.UNLIMITED_STORAGE_QUOTA;
@@ -2109,6 +2109,7 @@ public class VenicePushJob implements AutoCloseable {
                 + sourceVersion.getCompressionStrategy() + ", new version: " + newVersion.getNumber() + " is using: "
                 + newVersion.getCompressionStrategy());
       }
+
       // Chunked source version cannot be repushed if new version is not chunking enabled.
       if (sourceVersion.isChunkingEnabled() && !newVersion.isChunkingEnabled()) {
         throw new VeniceException(
