@@ -9,6 +9,7 @@ import sys
 from subprocess import check_output
 from subprocess import call
 import click
+import re
 
 cur_version = sys.version_info
 if cur_version.major < 3 or (cur_version.major == 3 and cur_version.minor < 6):
@@ -32,13 +33,29 @@ def format_version(major, minor, build):
 
 
 def get_next_version(bump_major, bump_minor):
-    # looking to parse tags of form: "'release-0.1.36-cutoff'" to get latest version number and increment build
-    # component assume tags end "-0.1.37-cutoff'" because we have some inconsistency in the prefix (sometimes
-    # release-, sometimes release-venice-)
-    tags_text = check_output(["git", "tag"])  # tag1\ntag2\ntag3...
+    # looking to parse tags of form: "release-0.1.36-cutoff" to get the latest version number and increment build
+    # component.
+    # Because we have some inconsistency in the prefix (sometimes release-, sometimes release-venice-), assume tags are
+    # either of the two:
+    # 1. Full versions (e.g. "0.1.37")
+    # 2. End in "-<version>-cutoff" (e.g. "-0.1.37-cutoff")
+    tags_text = check_output(["git", "tag"], text=True)  # tag1\ntag2\ntag3...
     tags_lines = [str(l) for l in tags_text.splitlines()]  # ['tag1', 'tag2', ...]
-    tags_parts = [l.split("-") for l in tags_lines]  # [ ["'release", "0.1.36", "cutoff'"], ...]
-    tags_numbers = [p[len(p) - 2] for p in tags_parts if p[len(p) - 1] == "cutoff'"]  # ["0.1.36", ..]
+
+    full_version_regex = '(^\\d+(?:.\\d+)+$)'
+    legacy_version_regex = '^release-(\\d+(.\\d+)+)-cutoff$'
+    tags_numbers = []
+    for line in tags_lines:
+        full_version_regex_match = re.search(full_version_regex, line)
+        if full_version_regex_match:
+            tags_numbers.append(full_version_regex_match.group(1))
+            continue
+
+        legacy_version_regex_match = re.search(legacy_version_regex, line)
+        if legacy_version_regex_match:
+            tags_numbers.append(legacy_version_regex_match.group(1))
+            continue
+
     version_numbers = [n.split(".") for n in tags_numbers if len(n.split(".")) == 3]  # [ ["0","1","36"], ...]
     version_ints = [[int(part) for part in number] for number in version_numbers]  # [[0,1,36], ...]
 
@@ -90,9 +107,8 @@ def get_remote():
     remote_text = check_output(["git", "remote", "-v"])
     lines = [l.decode("UTF-8") for l in remote_text.splitlines()]
     for line in lines:
-        # TODO: Change to GitHub repo
-        if "/venice/venice" in line:
-            remote = str(line).split("\t")[0]  # origin ssh://git.corp... (fetch)
+        if "git@github.com:linkedin/venice.git" in line or "https://github.com/linkedin/venice.git" in line:
+            remote = str(line).split("\t")[0]  # origin ssh://git@github.com... (fetch)
             print("Using remote: " + remote)
             return remote
     raise Exception("Failed to parse remotes for this git repository")
@@ -104,7 +120,7 @@ def make_tag(remote, bump_major, bump_minor, need_verification):
     if pull_success != 0:
         sys.exit()
     version = get_next_version(bump_major, bump_minor)
-    tag_name = "release-" + version + "-cutoff"
+    tag_name = version
     tag_message = "tag for release " + version
 
     if need_verification:

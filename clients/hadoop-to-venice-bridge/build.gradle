@@ -46,6 +46,9 @@ dependencies {
   runtimeOnly libraries.httpClient
 }
 
+apply from: "$rootDir/gradle/helper/publishing.gradle"
+apply from: "$rootDir/gradle/helper/packaging.gradle"
+
 artifacts {
   archives shadowJar
 }
@@ -64,3 +67,13 @@ jar {
     attributes 'Main-Class': 'com.linkedin.venice.hadoop.VenicePushJob'
   }
 }
+
+//"fat" sources jar
+task sourceJar(type: Jar, dependsOn: classes) {
+  duplicatesStrategy = DuplicatesStrategy.WARN
+  // we return here a closure to do this lazy, after all projects are configured by gradle
+  from { packaging.collectSourceSetsIncludingSubmodules(project) }
+}
+
+def artifactName = "hadoop-to-venice-bridge"
+publishing.configureShadowArtifactPublishing(project, artifactName, shadowJar, sourceJar, testJar)

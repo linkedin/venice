@@ -4,12 +4,15 @@ import org.apache.tools.ant.taskdefs.condition.Os
 plugins {
   id 'idea'
   id 'java'
+  id 'maven-publish'
   id 'com.diffplug.spotless' version '6.9.1'
   id 'com.dorongold.task-tree' version '2.1.0'
   id 'com.github.johnrengelman.shadow' version '6.1.0' apply false
   id 'com.github.spotbugs' version '4.8.0' apply false
   id 'org.gradle.test-retry' version '1.4.0' apply false
 }
+
+apply from: "$rootDir/gradle/helper/publishing.gradle"
 
 /*
  * This snippet allows the Gradle environment to be overridden with custom
@@ -102,7 +105,49 @@ ext.libraries = [
     zstd: 'com.github.luben:zstd-jni:1.5.2-3'
 ]
 
+group = 'com.linkedin.venice'
+
+//does not include "hadoop-to-venice-bridge" as that module has its own publishing section (because shadow jar)
+//does not include "venice-admin-tool" as that module has its own publishing section (because shadow jar)
+//does not include "venice-test-common" as that is a test-only module
+Map<String, String> projectsToPublish = new HashMap<String, String>() {{
+  // Services
+  put(":services:venice-controller", "venice-controller")
+  put(":services:venice-router", "venice-router")
+  put(":services:venice-server", "venice-server")
+
+  // Clients
+  put(":clients:da-vinci-client", "da-vinci-client")
+  put(":clients:venice-client", "venice-client")
+  put(":clients:venice-samza", "venice-samza")
+  put(":clients:venice-thin-client", "venice-thin-client")
+
+  // Internal
+  put(":internal:venice-client-common", "venice-client-common")
+  put(":internal:venice-common", "venice-common")
+  put(":internal:venice-compatibility-test", "venice-compatibility-test")
+  put(":internal:venice-consumer", "venice-consumer")
+  put(":internal:venice-test-common", "venice-test-common")
+
+  // Internal - Alpini
+  put(":internal:alpini:common:common-base", "alpini-common-base")
+  put(":internal:alpini:common:common-cli", "alpini-common-cli")
+  put(":internal:alpini:common:common-const", "alpini-common-const")
+  put(":internal:alpini:common:common-io", "alpini-common-io")
+  put(":internal:alpini:common:common-log", "alpini-common-log")
+  put(":internal:alpini:common:common-native", "alpini-common-native")
+  put(":internal:alpini:common:common-test", "alpini-common-test")
+  put(":internal:alpini:netty4:netty4-base", "alpini-netty4-base")
+  put(":internal:alpini:router:router-api", "alpini-router-api")
+  put(":internal:alpini:router:router-base", "alpini-router-base")
+  put(":internal:alpini:router:router-impl", "alpini-router-impl")
+}}
+
 subprojects {
+  //apply group and version to all submodules
+  group = rootProject.group
+  version = rootProject.version
+
   apply {
     plugin 'idea'
     plugin 'jacoco'
@@ -328,6 +373,32 @@ subprojects {
     zip64 = true
     duplicatesStrategy = DuplicatesStrategy.FAIL
     exclude('**/*.xml')
+  }
+
+  def publishRegularArtifacts = projectsToPublish.containsKey(project.path)
+
+  if (publishRegularArtifacts) {
+    task sourceJar(type: Jar) {
+      from sourceSets.main.allJava
+      classifier "sources"
+    }
+  }
+
+  // TODO: Enable after we have valid javadocs
+  // task javadocJar(type: Jar) {
+  //   from javadoc
+  //   classifier = 'javadoc'
+  // }
+
+  task testJar(type: Jar) {
+    from sourceSets.test.allJava
+    classifier = 'tests'
+  }
+
+  if (project.version != project.DEFAULT_VERSION) {
+    if (publishRegularArtifacts) {
+      publishing.configureRegularArtifactPublishing(project, projectsToPublish.get(project.path), sourceJar, testJar)
+    }
   }
 }
 

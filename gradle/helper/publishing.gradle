@@ -1,0 +1,96 @@
+ext.publishing = [
+    configureRegularArtifactPublishing: { subproject, artifactName, sourceJar, testJar ->
+      println "Will publish ${subproject.path} at ${subproject.group}:${artifactName}:${subproject.version}"
+
+      publishing {
+        publications {
+          "$artifactName"(MavenPublication) {
+            groupId subproject.group
+            artifactId artifactName
+            version subproject.version
+
+            from components.java
+            artifact sourceJar
+            //  TODO: Enable after we have valid javadocs
+            // artifact javadocJar
+            artifact testJar
+
+            //we strive to meet https://central.sonatype.org/pages/requirements.html
+            pom {
+              name = 'Venice'
+              description = 'Derived Data Platform for planet-scale workloads'
+              url = 'https://github.com/linkedin/venice'
+
+              licenses {
+                license {
+                  name = 'BSD 2-Clause'
+                  url = 'https://raw.githubusercontent.com/linkedin/venice/master/LICENSE'
+                }
+              }
+              scm {
+                connection = 'scm:git:git://github.com:linkedin/venice.git'
+                developerConnection = 'scm:git:ssh://github.com:linkedin/venice.git'
+                url = 'https://github.com/linkedin/venice'
+              }
+            }
+          }
+        }
+
+        repositories {
+          mavenLocal()
+          maven {
+            name "LinkedInJFrog"
+            url "https://linkedin.jfrog.io/artifactory/venice"
+            credentials {
+              if (System.getenv('JFROG_USERNAME') != null && System.getenv('JFROG_API_KEY') != null) {
+                username System.getenv('JFROG_USERNAME')
+                password System.getenv('JFROG_API_KEY')
+              }
+            }
+          }
+        }
+      }
+    },
+
+    configureShadowArtifactPublishing: { subproject, artifactName, shadowJar, sourceJar, testJar ->
+      println "Will publish ${subproject.path} at ${subproject.group}:${artifactName}:${subproject.version}"
+
+      publishing {
+        publications {
+          "$artifactName"(MavenPublication) {
+            groupId subproject.group
+            artifactId "$artifactName"
+            version subproject.version
+
+            artifact source: shadowJar, classifier: 'all'
+            // TODO: Enable after we figure out getting the full source for shadow jars
+            // artifact sourceJar
+            // TODO: Enable after we have valid javadocs
+            // artifact javadocJar
+
+            //we strive to meet https://central.sonatype.org/pages/requirements.html
+            pom {
+              name = 'Venice'
+              description = 'Derived Data Platform for planet-scale workloads'
+              url = 'https://github.com/linkedin/venice'
+
+              licenses {
+                license {
+                  name = 'BSD 2-Clause'
+                  url = 'https://raw.githubusercontent.com/linkedin/venice/master/LICENSE'
+                }
+              }
+              scm {
+                connection = 'scm:git:git://github.com:linkedin/venice.git'
+                developerConnection = 'scm:git:ssh://github.com:linkedin/venice.git'
+                url = 'https://github.com/linkedin/venice'
+              }
+            }
+          }
+        }
+
+        //repositories inherited from parent build.gradle
+      }
+
+    }
+]
