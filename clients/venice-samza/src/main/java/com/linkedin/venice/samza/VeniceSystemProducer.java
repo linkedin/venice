@@ -113,7 +113,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private Schema keySchema;
   private String canonicalKeySchemaStr;
   // To avoid the excessive usage of the cache in case each message is using a unique key schema
-  private Map<Schema, String> canonicalSchemaStrCache = new BoundedHashMap<>(10, true);
+  private final Map<Schema, String> canonicalSchemaStrCache = new BoundedHashMap<>(10, true);
 
   private D2Client d2Client;
   private D2ControllerClient controllerClient;
@@ -185,17 +185,17 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     return this.runningFabric;
   }
 
-  protected ControllerResponse controllerRequestWithRetry(Supplier<ControllerResponse> supplier) {
+  protected ControllerResponse controllerRequestWithRetry(Supplier<ControllerResponse> supplier, int retryLimit) {
     String errorMsg = "";
     Exception lastException = null;
-    for (int currentAttempt = 0; currentAttempt < 2; currentAttempt++) {
+    for (int currentAttempt = 0; currentAttempt < retryLimit; currentAttempt++) {
       lastException = null;
       try {
         ControllerResponse controllerResponse = supplier.get();
         if (!controllerResponse.isError()) {
           return controllerResponse;
         } else {
-          time.sleep(1000 * (currentAttempt + 1));
+          time.sleep(1000L * (currentAttempt + 1));
           errorMsg = controllerResponse.getError();
         }
       } catch (Exception e) {
@@ -203,7 +203,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
           throw new VeniceException(e);
         }
         try {
-          time.sleep(1000 * (currentAttempt + 1));
+          time.sleep(1000L * (currentAttempt + 1));
         } catch (InterruptedException ie) {
           throw new VeniceException(ie);
         }
@@ -215,8 +215,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   }
 
   /**
-   * This method is overrided and not used by LinkedIn internally.
-   * Please update the overrided method accordingly after modifying this method.
+   * This method is overridden and not used by LinkedIn internally.
+   * Please update the overridden method accordingly after modifying this method.
    */
   protected VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(VersionCreationResponse store) {
     Properties veniceWriterProperties = new Properties();
@@ -258,16 +258,17 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     this.isStarted = true;
 
     this.d2Client = new D2ClientBuilder().setZkHosts(veniceD2ZKHost)
-        .setSSLContext(sslFactory.isPresent() ? sslFactory.get().getSSLContext() : null)
+        .setSSLContext(sslFactory.map(SSLFactory::getSSLContext).orElse(null))
         .setIsSSLEnabled(sslFactory.isPresent())
-        .setSSLParameters(sslFactory.isPresent() ? sslFactory.get().getSSLParameters() : null)
+        .setSSLParameters(sslFactory.map(SSLFactory::getSSLParameters).orElse(null))
         .setFsBasePath(fsBasePath)
         .setEnableSaveUriDataOnDisk(true)
         .build();
     D2ClientUtils.startClient(d2Client);
     // Discover cluster
     D2ServiceDiscoveryResponse discoveryResponse = (D2ServiceDiscoveryResponse) controllerRequestWithRetry(
-        () -> D2ControllerClient.discoverCluster(d2Client, d2ServiceName, this.storeName));
+        () -> D2ControllerClient.discoverCluster(d2Client, d2ServiceName, this.storeName),
+        10);
     String clusterName = discoveryResponse.getCluster();
     LOGGER.info("Found cluster: {} for store: {}", clusterName, storeName);
 
@@ -281,7 +282,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       // Discover the D2 service name for the system store
       String kafkaMessageEnvelopSchemaSysStore = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName();
       D2ServiceDiscoveryResponse sysStoreDiscoveryResponse = (D2ServiceDiscoveryResponse) controllerRequestWithRetry(
-          () -> D2ControllerClient.discoverCluster(d2Client, d2ServiceName, kafkaMessageEnvelopSchemaSysStore));
+          () -> D2ControllerClient.discoverCluster(d2Client, d2ServiceName, kafkaMessageEnvelopSchemaSysStore),
+          2);
       ClientConfig clientConfigForKafkaMessageEnvelopeSchemaReader =
           ClientConfig.defaultGenericClientConfig(kafkaMessageEnvelopSchemaSysStore);
       clientConfigForKafkaMessageEnvelopeSchemaReader.setD2ServiceName(sysStoreDiscoveryResponse.getD2Service());
@@ -309,25 +311,27 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
             Optional.empty(),
             Optional.ofNullable(runningFabric),
             false,
-            -1));
+            -1),
+        2);
     LOGGER.info("Got [store: {}] VersionCreationResponse: {}", storeName, versionCreationResponse);
     this.topicName = versionCreationResponse.getKafkaTopic();
     this.kafkaBootstrapServers = versionCreationResponse.getKafkaBootstrapServers();
 
     StoreResponse storeResponse =
-        (StoreResponse) controllerRequestWithRetry(() -> this.controllerClient.getStore(storeName));
+        (StoreResponse) controllerRequestWithRetry(() -> this.controllerClient.getStore(storeName), 2);
     this.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
 
     boolean hybridStoreDiskQuotaEnabled = storeResponse.getStore().isHybridStoreDiskQuotaEnabled();
 
     SchemaResponse keySchemaResponse =
-        (SchemaResponse) controllerRequestWithRetry(() -> this.controllerClient.getKeySchema(this.storeName));
+        (SchemaResponse) controllerRequestWithRetry(() -> this.controllerClient.getKeySchema(this.storeName), 2);
     LOGGER.info("Got [store: {}] SchemaResponse for key schema: {}", storeName, keySchemaResponse);
     this.keySchema = parseSchemaFromJSONStrictValidation(keySchemaResponse.getSchemaStr());
     this.canonicalKeySchemaStr = AvroCompatibilityHelper.toParsingForm(this.keySchema);
 
     MultiSchemaResponse valueSchemaResponse = (MultiSchemaResponse) controllerRequestWithRetry(
-        () -> this.controllerClient.getAllValueAndDerivedSchema(this.storeName));
+        () -> this.controllerClient.getAllValueAndDerivedSchema(this.storeName),
+        2);
     LOGGER.info("Got [store: {}] SchemaResponse for value schemas: {}", storeName, valueSchemaResponse);
     for (MultiSchemaResponse.Schema valueSchema: valueSchemaResponse.getSchemas()) {
       valueSchemaIds.put(
@@ -419,7 +423,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       Utils.closeQuietlyWithErrorLogged(pushMonitor.get());
     }
     Utils.closeQuietlyWithErrorLogged(controllerClient);
-    hybridStoreQuotaMonitor.ifPresent(monitor -> Utils.closeQuietlyWithErrorLogged(monitor));
+    hybridStoreQuotaMonitor.ifPresent(Utils::closeQuietlyWithErrorLogged);
     D2ClientUtils.shutdownClient(d2Client);
     try {
       FileUtils.deleteDirectory(new File(fsBasePath));
@@ -520,7 +524,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
       Pair<Integer, Integer> valueSchemaIdPair = valueSchemaIds.computeIfAbsent(valueObjectSchema, valueSchema -> {
         SchemaResponse valueSchemaResponse = (SchemaResponse) controllerRequestWithRetry(
-            () -> controllerClient.getValueOrDerivedSchemaId(storeName, valueSchema.toString()));
+            () -> controllerClient.getValueOrDerivedSchemaId(storeName, valueSchema.toString()),
+            2);
         LOGGER.info("Got [store: {}] SchemaResponse for schema: {}", storeName, valueSchema);
         return new Pair<>(valueSchemaResponse.getId(), valueSchemaResponse.getDerivedSchemaId());
       });
@@ -566,7 +571,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   /**
    * Flushing the data to Venice store in case VeniceSystemProducer buffers message.
    *
-   * @param s String representing the source of the message. Currently VeniceSystemProducer is not using this param.
+   * @param s String representing the source of the message. Currently, VeniceSystemProducer is not using this param.
    */
   @Override
   public void flush(String s) {
@@ -638,7 +643,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       writer.write(input, encoder);
       encoder.flush();
     } catch (IOException e) {
-      throw new RuntimeException("Failed to write intput: " + input + " to binary encoder", e);
+      throw new RuntimeException("Failed to write input: " + input + " to binary encoder", e);
     }
     return out.toByteArray();
   }
