@@ -51,10 +51,9 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
     if (!valueIterator.hasNext()) {
       throw new VeniceException("There is no value corresponding to key bytes: " + ByteUtils.toHexString(keyBytes));
     }
-    List<KafkaInputMapperValue> mapperValues = getMapperValues(valueIterator);
     return isChunkingEnabled()
-        ? extractChunkedMessage(keyBytes, mapperValues)
-        : extractNonChunkedMessage(keyBytes, mapperValues);
+        ? extractChunkedMessage(keyBytes, getMapperValues(valueIterator))
+        : extractNonChunkedMessage(keyBytes, valueIterator);
   }
 
   private Optional<VeniceWriterMessage> extractChunkedMessage(
@@ -81,17 +80,26 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
 
   private Optional<VeniceWriterMessage> extractNonChunkedMessage(
       final byte[] keyBytes,
-      @Nonnull List<KafkaInputMapperValue> mapperValues) {
-    Validate.notEmpty(mapperValues);
+      @Nonnull Iterator<BytesWritable> valueIterator) {
+    Validate.isTrue(valueIterator.hasNext());
     // Only get the value with the largest offset for the purpose of compaction
-    KafkaInputMapperValue lastValue = null;
+    KafkaInputMapperValue mapperValue = null;
     long largestOffset = Long.MIN_VALUE;
-    for (KafkaInputMapperValue mapperValue: mapperValues) {
+    byte[] mapperValueBytes;
+    byte[] lastValueBytes = null;
+    while (valueIterator.hasNext()) {
+      mapperValueBytes = valueIterator.next().copyBytes();
+      mapperValue = KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_DESERIALIZER.deserialize(mapperValue, mapperValueBytes);
       if (mapperValue.offset > largestOffset) {
-        lastValue = mapperValue;
+        lastValueBytes = mapperValueBytes;
         largestOffset = mapperValue.offset;
       }
     }
+    if (lastValueBytes == null) {
+      throw new IllegalStateException("lastValueBytes should not be null!");
+    }
+    KafkaInputMapperValue lastValue =
+        KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_DESERIALIZER.deserialize(mapperValue, lastValueBytes);
     if (lastValue.valueType.equals(MapperValueType.DELETE)) {
       // Deleted record
       if (lastValue.replicationMetadataPayload.remaining() != 0) {
