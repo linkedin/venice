@@ -82,7 +82,7 @@ public class TestSystemStore {
     assertTrue(systemStore.getClientDecompressionEnabled());
     assertFalse(systemStore.isChunkingEnabled());
     assertEquals(systemStore.getBatchGetLimit(), -1);
-    assertFalse(systemStore.isIncrementalPushEnabled());
+    assertTrue(systemStore.isIncrementalPushEnabled());
     assertTrue(systemStore.isAccessControlled());
     assertFalse(systemStore.isMigrating());
     assertEquals(systemStore.getNumVersionsToPreserve(), 0);

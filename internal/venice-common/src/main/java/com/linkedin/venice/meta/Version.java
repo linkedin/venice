@@ -139,11 +139,6 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setVersionSwapDeferred(boolean versionSwapDeferred);
 
-  // TODO(sumane): Kept for interop; should be removed in inc push cleanup Phase-II
-  IncrementalPushPolicy getIncrementalPushPolicy();
-
-  void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy);
-
   int getReplicationFactor();
 
   void setReplicationFactor(int replicationFactor);

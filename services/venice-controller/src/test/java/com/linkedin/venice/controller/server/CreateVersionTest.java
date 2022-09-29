@@ -56,7 +56,6 @@ public class CreateVersionTest {
   private static final String CLUSTER_NAME = "test_cluster";
   private static final String STORE_NAME = "test_store";
   private static final String USER = "test_user";
-  private static final String IP = "0.0.0.0";
   private static final String JOB_ID = "push_1";
 
   private Admin admin;
@@ -151,7 +150,7 @@ public class CreateVersionTest {
     verify(response).status(org.apache.http.HttpStatus.SC_BAD_REQUEST);
   }
 
-  @Test(description = "requestTopicForPushing should return an RT topic when store is hybrid and inc-push is enabled")
+  @Test(description = "requestTopicForPushing should return an RT topic when store is hybrid & PushType is INCREMENTAL")
   public void testRequestTopicForIncPushReturnsRTTopicWhenStoreIsHybridAndIncPushIsEnabled() throws Exception {
     doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(STORE_NAME);
     doCallRealMethod().when(request).queryParamOrDefault(any(), any());
@@ -166,7 +165,6 @@ public class CreateVersionTest {
         ReadStrategy.ANY_OF_ONLINE,
         OfflinePushStrategy.WAIT_ALL_REPLICAS,
         1);
-    store.setIncrementalPushEnabled(true);
     store.setHybridStoreConfig(
         new HybridStoreConfigImpl(
             0,
@@ -195,7 +193,6 @@ public class CreateVersionTest {
             false);
 
     Assert.assertTrue(store.isHybrid());
-    Assert.assertTrue(store.isIncrementalPushEnabled());
 
     // Build a CreateVersion route.
     CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
@@ -209,8 +206,8 @@ public class CreateVersionTest {
   }
 
   // A store should never end up in the state where inc-push is enabled but hybrid configs are not set, nevertheless
-  // if it happens an ERROR should be returned on requestTopicForPushing with inc-push job type.
-  @Test(description = "requestTopicForPushing should an ERROR when store is not in hybrid but inc-push is enabled")
+  // if it happens an ERROR should be returned when requestTopicForPushing is called with inc-push job type.
+  @Test(description = "requestTopicForPushing should return an ERROR when store is not hybrid but PushType is INCREMENTAL")
   public void testRequestTopicForIncPushReturnsErrorWhenStoreIsNotHybridAndIncPushIsEnabled() throws Exception {
     doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(STORE_NAME);
     doCallRealMethod().when(request).queryParamOrDefault(any(), any());
@@ -225,7 +222,6 @@ public class CreateVersionTest {
         ReadStrategy.ANY_OF_ONLINE,
         OfflinePushStrategy.WAIT_ALL_REPLICAS,
         1);
-    store.setIncrementalPushEnabled(true);
     doReturn(store).when(admin).getStore(CLUSTER_NAME, STORE_NAME);
 
     Version version = new VersionImpl(STORE_NAME, 1, JOB_ID);
@@ -247,7 +243,6 @@ public class CreateVersionTest {
             false);
 
     Assert.assertFalse(store.isHybrid());
-    Assert.assertTrue(store.isIncrementalPushEnabled());
 
     // Build a CreateVersion route.
     CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);

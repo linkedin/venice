@@ -202,7 +202,6 @@ public class TestAdminSparkWithMocks {
             DataReplicationPolicy.NON_AGGREGATE,
             BufferReplayPolicy.REWIND_FROM_EOP));
     mockStore.setActiveActiveReplicationEnabled(true);
-    mockStore.setIncrementalPushEnabled(true);
     doReturn(mockStore).when(admin).getStore(anyString(), anyString());
     doReturn(true).when(admin).isParent();
     doReturn(true).when(admin).isLeaderControllerFor(anyString());

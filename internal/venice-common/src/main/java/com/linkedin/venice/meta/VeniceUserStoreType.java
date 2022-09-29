@@ -17,11 +17,13 @@ public enum VeniceUserStoreType {
   /**
    * The data in these stores are from full pushes and incremental pushes.
    */
+  @Deprecated
   INCREMENTAL_PUSH,
 
   /**
    * These stores are either hybrid or incremental push enabled.
    */
+  @Deprecated
   HYBRID_OR_INCREMENTAL,
 
   /**

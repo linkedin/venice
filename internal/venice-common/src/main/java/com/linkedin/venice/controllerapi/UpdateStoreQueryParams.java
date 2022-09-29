@@ -21,7 +21,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PRO
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_OVERHEAD_BYPASS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LEADER_FOLLOWER_MODEL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION_DUPLICATE_STORE;
@@ -108,7 +107,6 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setEnableReads(srcStore.isEnableStoreReads())
             .setEnableWrites(srcStore.isEnableStoreWrites())
             .setHybridStoreDiskQuotaEnabled(srcStore.isHybridStoreDiskQuotaEnabled())
-            .setIncrementalPushEnabled(srcStore.isIncrementalPushEnabled())
             .setLargestUsedVersionNumber(srcStore.getLargestUsedVersionNumber())
             .setLeaderFollowerModel(srcStore.isLeaderFollowerModelEnabled())
             .setNativeReplicationEnabled(srcStore.isNativeReplicationEnabled())
@@ -382,14 +380,6 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Boolean> getRmdChunkingEnabled() {
     return getBoolean(RMD_CHUNKING_ENABLED);
-  }
-
-  public UpdateStoreQueryParams setIncrementalPushEnabled(boolean incrementalPushEnabled) {
-    return putBoolean(INCREMENTAL_PUSH_ENABLED, incrementalPushEnabled);
-  }
-
-  public Optional<Boolean> getIncrementalPushEnabled() {
-    return getBoolean(INCREMENTAL_PUSH_ENABLED);
   }
 
   public UpdateStoreQueryParams setBatchGetLimit(int batchGetLimit) {

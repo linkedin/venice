@@ -133,9 +133,6 @@ public class TerminalStateTopicCheckerForParentController implements Runnable, C
           if (!parentController.isLeaderControllerFor(clusterName)) {
             continue;
           }
-          if (parentController.getStore(clusterName, storeName).isIncrementalPushEnabled()) {
-            continue;
-          }
           allVeniceVersionTopics.compute(storeName, (s, topics) -> {
             if (topics == null) {
               topics = new HashMap<>();

@@ -1748,7 +1748,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
 
     parentAdmin.initStorageCluster(clusterName);
-    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+    parentAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setHybridRewindSeconds(3600).setHybridOffsetLagThreshold(1));
 
     verify(zkClient, times(1)).readData(zkMetadataNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -1766,7 +1769,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.UPDATE_STORE.getValue());
 
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
-    Assert.assertEquals(updateStore.incrementalPushEnabled, true);
+    Assert.assertNotNull(updateStore.hybridStoreConfig);
+    Assert.assertEquals(updateStore.hybridStoreConfig.getRewindTimeInSeconds(), 3600);
 
     long readQuota = 100L;
     boolean readability = true;
@@ -1774,7 +1778,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Map<String, String> testPartitionerParams = new HashMap<>();
 
     UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams().setEnableReads(readability)
-        .setIncrementalPushEnabled(false)
         .setPartitionCount(64)
         .setPartitionerClass("com.linkedin.venice.partitioner.DefaultVenicePartitioner")
         .setPartitionerParams(testPartitionerParams)
@@ -2419,7 +2422,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
-  public void testHybridAndIncrementalUpdateStoreCommands() {
+  public void testHybridUpdateStoreCommands() {
     String storeName = Utils.getUniqueString("testUpdateStore");
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
@@ -2463,11 +2466,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             0,
             DataReplicationPolicy.NON_AGGREGATE,
             BufferReplayPolicy.REWIND_FROM_EOP));
-    // Incremental push can be enabled on a hybrid store, default inc push policy is inc push to RT now
-    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
 
-    // veniceWriter.put will be called again for the second update store command
-    verify(veniceWriter, times(2)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    verify(veniceWriter, times(1)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
   }
 
   @Test

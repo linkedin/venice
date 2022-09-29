@@ -745,28 +745,11 @@ public class StoresRoutes extends AbstractRoute {
         VeniceUserStoreType userStoreType = VeniceUserStoreType.valueOf(storeType.toUpperCase());
         switch (userStoreType) {
           case BATCH_ONLY:
-            storeCandidates = admin.getAllStores(cluster)
-                .stream()
-                .filter(store -> (!store.isHybrid() && !store.isIncrementalPushEnabled()))
-                .collect(Collectors.toList());
+            storeCandidates =
+                admin.getAllStores(cluster).stream().filter(store -> !store.isHybrid()).collect(Collectors.toList());
             break;
           case HYBRID_ONLY:
-            storeCandidates = admin.getAllStores(cluster)
-                .stream()
-                .filter(store -> (store.isHybrid() && !store.isIncrementalPushEnabled()))
-                .collect(Collectors.toList());
-            break;
-          case INCREMENTAL_PUSH:
-            storeCandidates = admin.getAllStores(cluster)
-                .stream()
-                .filter(Store::isIncrementalPushEnabled)
-                .collect(Collectors.toList());
-            break;
-          case HYBRID_OR_INCREMENTAL:
-            storeCandidates = admin.getAllStores(cluster)
-                .stream()
-                .filter(store -> (store.isHybrid() || store.isIncrementalPushEnabled()))
-                .collect(Collectors.toList());
+            storeCandidates = admin.getAllStores(cluster).stream().filter(Store::isHybrid).collect(Collectors.toList());
             break;
           case ALL:
             storeCandidates = admin.getAllStores(cluster);

@@ -416,8 +416,8 @@ public class TestPushJobWithNativeReplication {
     motherOfAllTests(
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1)
             .setHybridOffsetLagThreshold(TEST_TIMEOUT)
-            .setHybridRewindSeconds(2L)
-            .setIncrementalPushEnabled(true),
+            .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE)
+            .setHybridRewindSeconds(2L),
         100,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
           try (VenicePushJob job = new VenicePushJob("Batch Push", props)) {
@@ -442,7 +442,8 @@ public class TestPushJobWithNativeReplication {
   public void testNativeReplicationForHeartbeatSystemStores(int recordCount, int partitionCount) throws Exception {
     motherOfAllTests(
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(partitionCount)
-            .setIncrementalPushEnabled(true),
+            .setHybridRewindSeconds(1)
+            .setHybridOffsetLagThreshold(1),
         recordCount,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
           // Enable VPJ to send liveness heartbeat.
@@ -545,16 +546,6 @@ public class TestPushJobWithNativeReplication {
               new UpdateStoreQueryParams().setHybridRewindSeconds(10).setHybridOffsetLagThreshold(2);
           assertCommand(parentControllerClient.updateStore(hybridStoreName, updateStoreParams));
 
-          /**
-           * Create an incremental push enabled store
-           */
-          String incrementPushStoreName = Utils.getUniqueString("incremental-push-store");
-          newStoreResponse =
-              parentControllerClient.createNewStore(incrementPushStoreName, "", STRING_SCHEMA, STRING_SCHEMA);
-          Assert.assertFalse(newStoreResponse.isError());
-          updateStoreParams = new UpdateStoreQueryParams().setIncrementalPushEnabled(true);
-          assertCommand(parentControllerClient.updateStore(incrementPushStoreName, updateStoreParams));
-
           final Optional<String> defaultNativeReplicationSource = Optional.of(DEFAULT_NATIVE_REPLICATION_SOURCE);
           final Optional<String> newNativeReplicationSource = Optional.of("new-nr-source");
           /**
@@ -576,7 +567,7 @@ public class TestPushJobWithNativeReplication {
                         Arrays.asList(parentControllerClient, dc0Client, dc1Client);
 
                     /**
-                     * Batch-only stores should have native replication enabled; hybrid stores or incremental push stores
+                     * Batch-only stores should not have native replication enabled; hybrid stores should
                      * have native replication enabled with dc-0 as source.
                      */
                     NativeReplicationTestUtils
@@ -586,12 +577,6 @@ public class TestPushJobWithNativeReplication {
                         hybridStoreName,
                         true,
                         defaultNativeReplicationSource);
-                    NativeReplicationTestUtils.verifyDCConfigNativeRepl(
-                        allControllerClients,
-                        incrementPushStoreName,
-                        true,
-                        defaultNativeReplicationSource);
-
                     /**
                      * Second test:
                      * 1. Revert the cluster to previous state
@@ -611,42 +596,7 @@ public class TestPushJobWithNativeReplication {
                             Optional.empty()));
 
                     /**
-                     * Hybrid stores shouldn't have native replication enabled; batch-only stores should have native replication
-                     * enabled with the new source fabric and incremental push stores should have native replication enabled
-                     * with original source fabric.
-                     */
-                    NativeReplicationTestUtils.verifyDCConfigNativeRepl(
-                        allControllerClients,
-                        batchOnlyStoreName,
-                        true,
-                        newNativeReplicationSource);
-                    NativeReplicationTestUtils.verifyDCConfigNativeRepl(allControllerClients, hybridStoreName, false);
-                    NativeReplicationTestUtils.verifyDCConfigNativeRepl(
-                        allControllerClients,
-                        incrementPushStoreName,
-                        true,
-                        defaultNativeReplicationSource);
-
-                    /**
-                     * Third test:
-                     * 1. Revert the cluster to previous state
-                     * 2. Test the cluster level command that disables native replication for all incremental push stores
-                     */
-                    assertCommand(
-                        parentControllerClient.configureNativeReplicationForCluster(
-                            true,
-                            VeniceUserStoreType.HYBRID_ONLY.toString(),
-                            newNativeReplicationSource,
-                            Optional.empty()));
-                    assertCommand(
-                        parentControllerClient.configureNativeReplicationForCluster(
-                            false,
-                            VeniceUserStoreType.INCREMENTAL_PUSH.toString(),
-                            Optional.empty(),
-                            Optional.empty()));
-
-                    /**
-                     * Incremental push stores shouldn't have native replication enabled; batch-only stores and hybrid stores
+                     * Hybrid stores shouldn't have native replication enabled; batch-only stores
                      * should have native replication enabled with the new source fabric.
                      */
                     NativeReplicationTestUtils.verifyDCConfigNativeRepl(
@@ -654,22 +604,14 @@ public class TestPushJobWithNativeReplication {
                         batchOnlyStoreName,
                         true,
                         newNativeReplicationSource);
-                    NativeReplicationTestUtils.verifyDCConfigNativeRepl(
-                        allControllerClients,
-                        hybridStoreName,
-                        true,
-                        newNativeReplicationSource);
-                    NativeReplicationTestUtils
-                        .verifyDCConfigNativeRepl(allControllerClients, incrementPushStoreName, false);
-
+                    NativeReplicationTestUtils.verifyDCConfigNativeRepl(allControllerClients, hybridStoreName, false);
                     /**
-                     * Fourth test:
-                     * Test the cluster level command that enables native replication for all incremental push stores
+                     * Third test: Revert the cluster to previous state
                      */
                     assertCommand(
                         parentControllerClient.configureNativeReplicationForCluster(
                             true,
-                            VeniceUserStoreType.INCREMENTAL_PUSH.toString(),
+                            VeniceUserStoreType.HYBRID_ONLY.toString(),
                             newNativeReplicationSource,
                             Optional.empty()));
 
@@ -684,11 +626,6 @@ public class TestPushJobWithNativeReplication {
                     NativeReplicationTestUtils.verifyDCConfigNativeRepl(
                         allControllerClients,
                         hybridStoreName,
-                        true,
-                        newNativeReplicationSource);
-                    NativeReplicationTestUtils.verifyDCConfigNativeRepl(
-                        allControllerClients,
-                        incrementPushStoreName,
                         true,
                         newNativeReplicationSource);
                   }));
@@ -713,8 +650,8 @@ public class TestPushJobWithNativeReplication {
                 parentControllerClient
                     .updateStore(
                         storeName,
-                        new UpdateStoreQueryParams().setIncrementalPushEnabled(true)
-                            .setHybridOffsetLagThreshold(1)
+                        new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1)
+                            .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE)
                             .setHybridRewindSeconds(Time.SECONDS_PER_DAY))
                     .isError());
 

@@ -45,7 +45,6 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
@@ -436,16 +435,6 @@ public class AdminExecutionTask implements Callable<Void> {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
 
-    // safeguard to prevent setting any other policy than the INCREMENTAL_PUSH_SAME_AS_REAL_TIME during controller
-    // upgrades.
-    if (message.incrementalPushEnabled
-        && message.incrementalPushPolicy != IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME.getValue()) {
-      throw new VeniceException(
-          "UpdateStore failed for store:" + storeName + " due to the use of an unsupported incremental push policy:{}. "
-              + IncrementalPushPolicy.valueOf(message.incrementalPushPolicy)
-              + "The only supported policy for incremental pushes is INCREMENTAL_PUSH_SAME_AS_REAL_TIME.");
-    }
-
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setOwner(message.owner.toString())
         .setEnableReads(message.enableReads)
         .setEnableWrites(message.enableWrites)
@@ -479,7 +468,6 @@ public class AdminExecutionTask implements Callable<Void> {
         .setRmdChunkingEnabled(message.rmdChunkingEnabled)
         .setBatchGetLimit(message.batchGetLimit)
         .setNumVersionsToPreserve(message.numVersionsToPreserve)
-        .setIncrementalPushEnabled(message.incrementalPushEnabled)
         .setStoreMigration(message.isMigrating)
         .setWriteComputationEnabled(message.writeComputationEnabled)
         .setReadComputationEnabled(message.readComputationEnabled)

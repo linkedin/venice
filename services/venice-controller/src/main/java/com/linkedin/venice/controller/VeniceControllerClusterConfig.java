@@ -22,26 +22,21 @@ import static com.linkedin.venice.ConfigKeys.DEFAULT_ROUTING_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.DELAY_TO_REBALANCE_MS;
 import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY_STORE;
 import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE;
-import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORE;
 import static com.linkedin.venice.ConfigKeys.ENABLE_HYBRID_PUSH_SSL_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.ENABLE_HYBRID_PUSH_SSL_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES;
 import static com.linkedin.venice.ConfigKeys.ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_BATCH_ONLY_STORES;
 import static com.linkedin.venice.ConfigKeys.ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_HYBRID_STORES;
-import static com.linkedin.venice.ConfigKeys.ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES;
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY;
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID;
-import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH;
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY;
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_FOR_HYBRID;
-import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_FOR_INCREMENTAL_PUSH;
 import static com.linkedin.venice.ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.HELIX_REBALANCE_ALG;
 import static com.linkedin.venice.ConfigKeys.HELIX_SEND_MESSAGE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_LOG_COMPACTION_FOR_HYBRID_STORES;
-import static com.linkedin.venice.ConfigKeys.KAFKA_LOG_COMPACTION_FOR_INCREMENTAL_PUSH_STORES;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_ADMIN_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS;
@@ -56,7 +51,6 @@ import static com.linkedin.venice.ConfigKeys.LF_MODEL_DEPENDENCY_CHECK_DISABLED;
 import static com.linkedin.venice.ConfigKeys.MIN_ACTIVE_REPLICA;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES;
-import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES;
 import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_MONITOR_TYPE;
@@ -162,12 +156,6 @@ public class VeniceControllerClusterConfig {
   private boolean nativeReplicationEnabledAsDefaultForBatchOnly;
 
   /**
-   * When this option is enabled, all new incremental push enabled stores will have native replication enabled in store
-   * config so long as the store has leader follower also enabled.
-   */
-  private boolean nativeReplicationEnabledAsDefaultForIncremental;
-
-  /**
    * When this option is enabled, all new hybrid stores will have native replication enabled in store config so long
    * as the store has leader follower also enabled.
    */
@@ -175,7 +163,6 @@ public class VeniceControllerClusterConfig {
 
   private String nativeReplicationSourceFabricAsDefaultForBatchOnly;
   private String nativeReplicationSourceFabricAsDefaultForHybrid;
-  private String nativeReplicationSourceFabricAsDefaultForIncremental;
 
   /**
    * When this option is enabled, all new batch-only stores will have active-active replication enabled in store config so long
@@ -206,11 +193,6 @@ public class VeniceControllerClusterConfig {
    * When this option is enabled, all new hybrid stores will have leader follower enabled.
    */
   private boolean leaderFollowerEnabledForHybridStores;
-
-  /**
-   * When this option is enabled, all new incremental push stores will have leader follower enabled.
-   */
-  private boolean leaderFollowerEnabledForIncrementalPushStores;
 
   /**
    * When this option is enabled, all new batch-only stores will have leader/follower state model enabled.
@@ -255,7 +237,6 @@ public class VeniceControllerClusterConfig {
   private Optional<Integer> minInSyncReplicasRealTimeTopics;
   private Optional<Integer> minInSyncReplicasAdminTopics;
   private boolean kafkaLogCompactionForHybridStores;
-  private boolean kafkaLogCompactionForIncrementalPushStores;
   private long kafkaMinLogCompactionLagInMs;
 
   /**
@@ -317,8 +298,6 @@ public class VeniceControllerClusterConfig {
     minInSyncReplicasRealTimeTopics = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS);
     minInSyncReplicasAdminTopics = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_ADMIN_TOPICS);
     kafkaLogCompactionForHybridStores = props.getBoolean(KAFKA_LOG_COMPACTION_FOR_HYBRID_STORES, true);
-    kafkaLogCompactionForIncrementalPushStores =
-        props.getBoolean(KAFKA_LOG_COMPACTION_FOR_INCREMENTAL_PUSH_STORES, true);
     kafkaMinLogCompactionLagInMs =
         props.getLong(KAFKA_MIN_LOG_COMPACTION_LAG_MS, DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS);
     replicationFactor = props.getInt(DEFAULT_REPLICA_FACTOR);
@@ -359,9 +338,6 @@ public class VeniceControllerClusterConfig {
     nativeReplicationEnabledForBatchOnly = props.getBoolean(ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY, false);
     nativeReplicationEnabledAsDefaultForBatchOnly =
         props.getBoolean(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY, false);
-    nativeReplicationEnabledForIncremental = props.getBoolean(ENABLE_NATIVE_REPLICATION_FOR_INCREMENTAL_PUSH, false);
-    nativeReplicationEnabledAsDefaultForIncremental =
-        props.getBoolean(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH, false);
     nativeReplicationEnabledForHybrid = props.getBoolean(ENABLE_NATIVE_REPLICATION_FOR_HYBRID, false);
     nativeReplicationEnabledAsDefaultForHybrid =
         props.getBoolean(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID, false);
@@ -369,17 +345,11 @@ public class VeniceControllerClusterConfig {
         props.getString(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES, "");
     nativeReplicationSourceFabricAsDefaultForHybrid =
         props.getString(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES, "");
-    nativeReplicationSourceFabricAsDefaultForIncremental =
-        props.getString(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES, "");
     activeActiveReplicationEnabledAsDefaultForBatchOnly =
         props.getBoolean(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY_STORE, false);
     activeActiveReplicationEnabledAsDefaultForHybrid =
         props.getBoolean(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE, false);
-    activeActiveReplicationEnabledAsDefaultForIncremental =
-        props.getBoolean(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORE, false);
     leaderFollowerEnabledForHybridStores = props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_HYBRID_STORES, false);
-    leaderFollowerEnabledForIncrementalPushStores =
-        props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES, false);
     leaderFollowerEnabledForBatchOnlyStores =
         props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_BATCH_ONLY_STORES, false);
     leaderFollowerEnabledForAllStores = props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, true);
@@ -387,15 +357,13 @@ public class VeniceControllerClusterConfig {
     lfModelDependencyCheckDisabled = props.getBoolean(LF_MODEL_DEPENDENCY_CHECK_DISABLED, false);
 
     if (!leaderFollowerEnabledForAllStores && !lfModelDependencyCheckDisabled
-        && (nativeReplicationEnabledAsDefaultForBatchOnly || nativeReplicationEnabledAsDefaultForIncremental
-            || nativeReplicationEnabledAsDefaultForHybrid)) {
+        && (nativeReplicationEnabledAsDefaultForBatchOnly || nativeReplicationEnabledAsDefaultForHybrid)) {
       LOGGER.error(
           "Cannot enable native replication when leader follower is not enabled for all stores. Will revert "
               + "the cluster-level native replication flags to false");
       nativeReplicationEnabledForBatchOnly = false;
       nativeReplicationEnabledAsDefaultForBatchOnly = false;
       nativeReplicationEnabledForIncremental = false;
-      nativeReplicationEnabledAsDefaultForIncremental = false;
       nativeReplicationEnabledForHybrid = false;
       nativeReplicationEnabledAsDefaultForHybrid = false;
     }
@@ -637,10 +605,6 @@ public class VeniceControllerClusterConfig {
     return kafkaLogCompactionForHybridStores;
   }
 
-  public boolean isKafkaLogCompactionForIncrementalPushStoresEnabled() {
-    return kafkaLogCompactionForIncrementalPushStores;
-  }
-
   public long getKafkaMinLogCompactionLagInMs() {
     return kafkaMinLogCompactionLagInMs;
   }
@@ -651,14 +615,6 @@ public class VeniceControllerClusterConfig {
 
   public boolean isNativeReplicationEnabledAsDefaultForBatchOnly() {
     return nativeReplicationEnabledAsDefaultForBatchOnly;
-  }
-
-  public boolean isNativeReplicationEnabledForIncremental() {
-    return nativeReplicationEnabledForIncremental;
-  }
-
-  public boolean isNativeReplicationEnabledAsDefaultForIncremental() {
-    return nativeReplicationEnabledAsDefaultForIncremental;
   }
 
   public boolean isNativeReplicationEnabledForHybrid() {
@@ -677,20 +633,12 @@ public class VeniceControllerClusterConfig {
     return activeActiveReplicationEnabledAsDefaultForHybrid;
   }
 
-  public boolean isActiveActiveReplicationEnabledAsDefaultForIncremental() {
-    return activeActiveReplicationEnabledAsDefaultForIncremental;
-  }
-
   public boolean isLfModelDependencyCheckDisabled() {
     return lfModelDependencyCheckDisabled;
   }
 
   public boolean isLeaderFollowerEnabledForHybridStores() {
     return leaderFollowerEnabledForHybridStores || leaderFollowerEnabledForAllStores;
-  }
-
-  public boolean isLeaderFollowerEnabledForIncrementalPushStores() {
-    return leaderFollowerEnabledForIncrementalPushStores || leaderFollowerEnabledForAllStores;
   }
 
   public boolean isLeaderFollowerEnabledForBatchOnlyStores() {
@@ -715,10 +663,6 @@ public class VeniceControllerClusterConfig {
 
   public String getNativeReplicationSourceFabricAsDefaultForHybrid() {
     return nativeReplicationSourceFabricAsDefaultForHybrid;
-  }
-
-  public String getNativeReplicationSourceFabricAsDefaultForIncremental() {
-    return nativeReplicationSourceFabricAsDefaultForIncremental;
   }
 
   public VeniceProperties getJettyConfigOverrides() {

@@ -427,7 +427,7 @@ public abstract class TestBatch {
             Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
           }
         },
-        new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+        new UpdateStoreQueryParams().setHybridRewindSeconds(1).setHybridOffsetLagThreshold(1));
 
     testBatchStore(
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema2(inputDir)),
@@ -438,7 +438,7 @@ public abstract class TestBatch {
           }
         },
         storeName,
-        new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+        new UpdateStoreQueryParams().setHybridRewindSeconds(1).setHybridOffsetLagThreshold(1));
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -454,7 +454,6 @@ public abstract class TestBatch {
         },
         getSimpleFileWithUserSchemaValidatorForZstd(),
         new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT)
-            .setIncrementalPushEnabled(true)
             .setHybridOffsetLagThreshold(10)
             .setHybridRewindSeconds(0));
 
@@ -485,7 +484,6 @@ public abstract class TestBatch {
             }
           },
           new UpdateStoreQueryParams().setAmplificationFactor(2)
-              .setIncrementalPushEnabled(true)
               .setLeaderFollowerModel(true)
               .setChunkingEnabled(true)
               .setHybridOffsetLagThreshold(10)

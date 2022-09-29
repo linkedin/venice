@@ -124,7 +124,8 @@ public class PushStatusStoreMultiColoTest {
                 .setLeaderFollowerModel(true)
                 .setPartitionCount(PARTITION_COUNT)
                 .setAmplificationFactor(1)
-                .setIncrementalPushEnabled(true)));
+                .setHybridRewindSeconds(1)
+                .setHybridOffsetLagThreshold(1)));
     String daVinciPushStatusSystemStoreName =
         VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
     VersionCreationResponse versionCreationResponseForDaVinciPushStatusSystemStore = parentControllerClient

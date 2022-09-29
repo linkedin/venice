@@ -432,16 +432,6 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
-    public IncrementalPushPolicy getIncrementalPushPolicy() {
-      return IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME;
-    }
-
-    @Override
-    public void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
     public int getReplicationFactor() {
       return this.delegate.getReplicationFactor();
     }
@@ -1099,16 +1089,6 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setStoreMetaSystemStoreEnabled(boolean storeMetaSystemStoreEnabled) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public IncrementalPushPolicy getIncrementalPushPolicy() {
-    return IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME;
-  }
-
-  @Override
-  public void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
     throw new UnsupportedOperationException();
   }
 

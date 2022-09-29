@@ -39,7 +39,6 @@ import static com.linkedin.venice.Arg.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.Arg.HYBRID_STORE_OVERHEAD_BYPASS;
 import static com.linkedin.venice.Arg.HYBRID_TIME_LAG;
 import static com.linkedin.venice.Arg.INCLUDE_SYSTEM_STORES;
-import static com.linkedin.venice.Arg.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.Arg.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.Arg.KAFKA_CONSUMER_CONFIG_FILE;
 import static com.linkedin.venice.Arg.KAFKA_OPERATION_TIMEOUT;
@@ -199,7 +198,7 @@ public enum Command {
           HYBRID_BUFFER_REPLAY_POLICY, ACCESS_CONTROL, COMPRESSION_STRATEGY, CLIENT_DECOMPRESSION_ENABLED,
           CHUNKING_ENABLED, RMD_CHUNKING_ENABLED, BATCH_GET_LIMIT, NUM_VERSIONS_TO_PRESERVE, WRITE_COMPUTATION_ENABLED,
           READ_COMPUTATION_ENABLED, LEADER_FOLLOWER_MODEL_ENABLED, BACKUP_STRATEGY,
-          AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, INCREMENTAL_PUSH_ENABLED, BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR,
+          AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR,
           HYBRID_STORE_DISK_QUOTA_ENABLED, REGULAR_VERSION_ETL_ENABLED, FUTURE_VERSION_ETL_ENABLED,
           ETLED_PROXY_USER_ACCOUNT, NATIVE_REPLICATION_ENABLED, PUSH_STREAM_SOURCE_ADDRESS,
           BACKUP_VERSION_RETENTION_DAY, REPLICATION_FACTOR, NATIVE_REPLICATION_SOURCE_FABRIC, REPLICATE_ALL_CONFIGS,
@@ -339,22 +338,22 @@ public enum Command {
   ),
   ENABLE_NATIVE_REPLICATION_FOR_CLUSTER(
       "enable-native-replication-for-cluster",
-      "enable native replication for certain stores (batch-only, hybrid-only, incremental-push, hybrid-or-incremental, all) in a cluster",
+      "enable native replication for certain stores (batch-only, hybrid-only, all) in a cluster",
       new Arg[] { URL, CLUSTER, STORE_TYPE }, new Arg[] { REGIONS_FILTER, NATIVE_REPLICATION_SOURCE_FABRIC }
   ),
   DISABLE_NATIVE_REPLICATION_FOR_CLUSTER(
       "disable-native-replication-for-cluster",
-      "disable native replication for certain stores (batch-only, hybrid-only, incremental-push, hybrid-or-incremental, all) in a cluster",
+      "disable native replication for certain stores (batch-only, hybrid-only, all) in a cluster",
       new Arg[] { URL, CLUSTER, STORE_TYPE }, new Arg[] { REGIONS_FILTER, NATIVE_REPLICATION_SOURCE_FABRIC }
   ),
   ENABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER(
       "enable-active-active-replication-for-cluster",
-      "enable active active replication for certain stores (batch-only, hybrid-only, incremental-push, hybrid-or-incremental, all) in a cluster",
+      "enable active active replication for certain stores (batch-only, hybrid-only, all) in a cluster",
       new Arg[] { URL, CLUSTER, STORE_TYPE }, new Arg[] { REGIONS_FILTER }
   ),
   DISABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER(
       "disable-active-active-replication-for-cluster",
-      "disable active active replication for certain stores (batch-only, hybrid-only, incremental-push, hybrid-or-incremental, all) in a cluster",
+      "disable active active replication for certain stores (batch-only, hybrid-only, all) in a cluster",
       new Arg[] { URL, CLUSTER, STORE_TYPE }, new Arg[] { REGIONS_FILTER }
   ),
   GET_DELETABLE_STORE_TOPICS(

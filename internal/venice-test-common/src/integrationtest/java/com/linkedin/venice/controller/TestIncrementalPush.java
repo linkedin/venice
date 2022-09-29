@@ -51,7 +51,7 @@ public class TestIncrementalPush {
     int dataSize = partitionCount * partitionSize;
     cluster.getNewStore(storeName);
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
-    params.setIncrementalPushEnabled(true).setHybridRewindSeconds(1).setHybridOffsetLagThreshold(1);
+    params.setHybridRewindSeconds(1).setHybridOffsetLagThreshold(1);
     cluster.updateStore(storeName, params);
 
     VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);

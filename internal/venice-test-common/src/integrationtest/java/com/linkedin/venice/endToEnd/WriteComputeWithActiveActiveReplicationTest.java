@@ -217,7 +217,6 @@ public class WriteComputeWithActiveActiveReplicationTest {
         .setLeaderFollowerModel(true)
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
         .setChunkingEnabled(false)
-        .setIncrementalPushEnabled(true)
         .setHybridRewindSeconds(25L)
         .setHybridOffsetLagThreshold(1L)
         .setWriteComputationEnabled(true);
@@ -455,7 +454,6 @@ public class WriteComputeWithActiveActiveReplicationTest {
         .setLeaderFollowerModel(true)
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
         .setChunkingEnabled(false)
-        .setIncrementalPushEnabled(true)
         .setHybridRewindSeconds(25L)
         .setHybridOffsetLagThreshold(1L)
         .setWriteComputationEnabled(true);
@@ -866,7 +864,6 @@ public class WriteComputeWithActiveActiveReplicationTest {
         .setLeaderFollowerModel(true)
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
         .setChunkingEnabled(false)
-        .setIncrementalPushEnabled(true)
         .setHybridRewindSeconds(25L)
         .setHybridOffsetLagThreshold(1L)
         .setWriteComputationEnabled(true);

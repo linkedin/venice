@@ -155,7 +155,6 @@ public class TestActiveActiveReplicationForIncPush {
               .setPartitionCount(1)
               .setHybridOffsetLagThreshold(TEST_TIMEOUT / 2)
               .setHybridRewindSeconds(2L)
-              .setIncrementalPushEnabled(true)
               .setLeaderFollowerModel(true)
               .setNativeReplicationEnabled(true)
               .setNativeReplicationSourceFabric("dc-2");

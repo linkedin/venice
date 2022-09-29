@@ -8,10 +8,8 @@ import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_ZK_PREFIX;
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY;
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID;
-import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH;
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY;
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_FOR_HYBRID;
-import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_FOR_INCREMENTAL_PUSH;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_OTHER_URLS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_URL;
@@ -21,7 +19,6 @@ import static com.linkedin.venice.ConfigKeys.LF_MODEL_DEPENDENCY_CHECK_DISABLED;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES;
-import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 
@@ -156,16 +153,12 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
 
       defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY, true);
       defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY, true);
-      defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_FOR_INCREMENTAL_PUSH, true);
-      defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH, true);
       defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_FOR_HYBRID, true);
       defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID, true);
       defaultParentControllerProps
           .put(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES, childColoNames.get(0));
       defaultParentControllerProps
           .put(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES, childColoNames.get(0));
-      defaultParentControllerProps
-          .put(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES, childColoNames.get(0));
       defaultParentControllerProps.put(AGGREGATE_REAL_TIME_SOURCE_REGION, parentColoName);
       defaultParentControllerProps.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, childColoList + "," + parentColoName);
 

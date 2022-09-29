@@ -119,14 +119,12 @@ public class TestVenicePushJobConfig {
 
   private StoreInfo getStoreInfo(Consumer<StoreInfo> info) {
     StoreInfo storeInfo = new StoreInfo();
-    storeInfo.setIncrementalPushEnabled(false);
     storeInfo.setStorageQuotaInByte(1L);
     storeInfo.setSchemaAutoRegisterFromPushJobEnabled(false);
     storeInfo.setChunkingEnabled(false);
     storeInfo.setCompressionStrategy(CompressionStrategy.NO_OP);
     storeInfo.setWriteComputationEnabled(false);
     storeInfo.setLeaderFollowerModelEnabled(false);
-    storeInfo.setIncrementalPushEnabled(false);
 
     Version version = new VersionImpl(TEST_STORE, 0, TEST_PUSH);
     storeInfo.setVersions(Collections.singletonList(version));

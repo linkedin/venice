@@ -943,8 +943,7 @@ public class TestPushUtils {
             .setCompressionStrategy(compressionStrategy)
             .setBatchGetLimit(2000)
             .setReadQuotaInCU(DEFAULT_PER_ROUTER_READ_QUOTA)
-            .setChunkingEnabled(chunkingEnabled)
-            .setIncrementalPushEnabled(incrementalPushEnabled);
+            .setChunkingEnabled(chunkingEnabled);
 
     return createStoreForJob(veniceClusterName, keySchemaStr, valueSchemaStr, props, storeParams);
   }

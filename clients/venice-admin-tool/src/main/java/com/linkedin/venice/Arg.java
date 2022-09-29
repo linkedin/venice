@@ -83,9 +83,6 @@ public enum Arg {
   RMD_CHUNKING_ENABLED(
       "rmd-chunking-enabled", "rce", true,
       "Enable/Disable replication metadata chunking, mostly for Active/Active replication enabled store with partial update requirement support"
-  ),
-  INCREMENTAL_PUSH_ENABLED(
-      "incremental-push-enabled", "ipe", true, "a flag to see if the store supports incremental push or not"
   ), BATCH_GET_LIMIT("batch-get-limit", "bgl", true, "Key number limit inside one batch-get request"),
   NUM_VERSIONS_TO_PRESERVE("num-versions-to-preserve", "nvp", true, "Number of version that store should preserve."),
   KAFKA_BOOTSTRAP_SERVERS("kafka-bootstrap-servers", "kbs", true, "Kafka bootstrap server URL(s)"),
@@ -159,8 +156,7 @@ public enum Arg {
   INCLUDE_SYSTEM_STORES("include-system-stores", "iss", true, "Include internal stores maintained by the system."),
   SSL_CONFIG_PATH("ssl-config-path", "scp", true, "SSl config file path"),
   STORE_TYPE(
-      "store-type", "st", true,
-      "the type of the stores. The support type are 'batch_only', hybrid_only', `incremental_push', 'hybrid_or_incremental', 'system', 'all'"
+      "store-type", "st", true, "the type of the stores. Supported options: 'batch_only', hybrid_only', 'system', 'all'"
   ),
   NATIVE_REPLICATION_ENABLED(
       "native-replication-enabled", "nr", true,

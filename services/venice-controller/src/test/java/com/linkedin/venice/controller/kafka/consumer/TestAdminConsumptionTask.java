@@ -73,7 +73,6 @@ import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.SegmentStatus;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.DataReplicationPolicy;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.InMemoryOffsetManager;
 import com.linkedin.venice.offsets.OffsetManager;
@@ -913,7 +912,6 @@ public class TestAdminConsumptionTask {
     setStore.enableWrites = enableWrites;
     setStore.accessControlled = accessControlled;
     setStore.incrementalPushEnabled = true;
-    setStore.incrementalPushPolicy = IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME.getValue();
     setStore.isMigrating = storeMigration;
     setStore.writeComputationEnabled = writeComputationEnabled;
     setStore.readComputationEnabled = computationEnabled;
@@ -989,9 +987,8 @@ public class TestAdminConsumptionTask {
                 && updateStoreQueryParams.getStoreMigration().get() == storeMigration
                 && updateStoreQueryParams.getWriteComputationEnabled().get() == writeComputationEnabled
                 && updateStoreQueryParams.getReadComputationEnabled().get() == computationEnabled
-                && updateStoreQueryParams.getBootstrapToOnlineTimeoutInHours().get() == bootstrapToOnlineTimeoutInHours
-                && updateStoreQueryParams.getIncrementalPushEnabled().get() // Incremental push must be enabled.
-        ));
+                && updateStoreQueryParams.getBootstrapToOnlineTimeoutInHours()
+                    .get() == bootstrapToOnlineTimeoutInHours));
   }
 
   @Test(timeOut = TIMEOUT)

@@ -522,7 +522,6 @@ public abstract class StoreIngestionTaskTest {
         beforeStartingConsumption,
         assertions,
         this.hybridStoreConfig,
-        false,
         Optional.empty(),
         isActiveActiveReplicationEnabled,
         1,
@@ -562,7 +561,6 @@ public abstract class StoreIngestionTaskTest {
         beforeStartingConsumption,
         assertions,
         this.hybridStoreConfig,
-        false,
         Optional.empty(),
         isActiveActiveReplicationEnabled,
         1,
@@ -576,7 +574,6 @@ public abstract class StoreIngestionTaskTest {
       Runnable beforeStartingConsumption,
       Runnable assertions,
       Optional<HybridStoreConfig> hybridStoreConfig,
-      boolean incrementalPushEnabled,
       Optional<DiskUsage> diskUsageForTest,
       boolean isActiveActiveReplicationEnabled,
       int amplificationFactor,
@@ -636,7 +633,6 @@ public abstract class StoreIngestionTaskTest {
         partitionCount,
         partitionerConfig,
         hybridStoreConfig,
-        incrementalPushEnabled,
         false,
         isActiveActiveReplicationEnabled,
         storeVersionConfigOverride);
@@ -690,7 +686,6 @@ public abstract class StoreIngestionTaskTest {
       int partitionCount,
       PartitionerConfig partitionerConfig,
       Optional<HybridStoreConfig> hybridStoreConfig,
-      boolean incrementalPushEnabled,
       boolean isNativeReplicationEnabled,
       boolean isActiveActiveReplicationEnabled) {
     return setupStoreAndVersionMocks(
@@ -730,9 +725,6 @@ public abstract class StoreIngestionTaskTest {
 
     version.setLeaderFollowerModelEnabled(true);
     doReturn(true).when(mockStore).isLeaderFollowerModelEnabled();
-
-    version.setIncrementalPushEnabled(incrementalPushEnabled);
-    doReturn(incrementalPushEnabled).when(mockStore).isIncrementalPushEnabled();
 
     version.setHybridStoreConfig(hybridSoreConfigValue);
     doReturn(hybridSoreConfigValue).when(mockStore).getHybridStoreConfig();
@@ -1156,7 +1148,6 @@ public abstract class StoreIngestionTaskTest {
       }
     },
         Optional.of(hybridStoreConfig),
-        false,
         Optional.empty(),
         isActiveActiveReplicationEnabled,
         amplificationFactor,
@@ -1793,7 +1784,7 @@ public abstract class StoreIngestionTaskTest {
       verify(mockLocalKafkaConsumer, timeout(LONG_TEST_TIMEOUT))
           .batchUnsubscribe(Collections.singleton(topicPartition));
       verify(mockLocalKafkaConsumer, never()).unSubscribe(topic, PARTITION_BAR);
-    }, this.hybridStoreConfig, false, Optional.empty(), isActiveActiveReplicationEnabled, 1, extraServerProperties);
+    }, this.hybridStoreConfig, Optional.empty(), isActiveActiveReplicationEnabled, 1, extraServerProperties);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -2086,7 +2077,6 @@ public abstract class StoreIngestionTaskTest {
                   HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
                   DataReplicationPolicy.NON_AGGREGATE,
                   BufferReplayPolicy.REWIND_FROM_EOP)),
-          false,
           Optional.empty(),
           isActiveActiveReplicationEnabled,
           1,
@@ -2250,7 +2240,6 @@ public abstract class StoreIngestionTaskTest {
           }
         }),
         Optional.empty(),
-        false,
         Optional.of(diskFullUsage),
         isActiveActiveReplicationEnabled,
         1,
@@ -2271,6 +2260,13 @@ public abstract class StoreIngestionTaskTest {
     // Records order are: StartOfSeg, StartOfPush, data, EndOfPush, EndOfSeg, StartOfSeg, StartOfIncrementalPush
     // data, EndOfIncrementalPush
 
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
+        10,
+        20,
+        HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+        DataReplicationPolicy.NON_AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP);
+
     runTest(new RandomPollStrategy(), Utils.setOf(PARTITION_FOO), () -> {}, () -> {
       waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         // sync the offset when receiving EndOfPush
@@ -2289,7 +2285,7 @@ public abstract class StoreIngestionTaskTest {
         verify(mockLogNotifier, atLeastOnce())
             .endOfIncrementalPushReceived(topic, PARTITION_FOO, fooNewOffset, version);
       });
-    }, Optional.empty(), true, Optional.empty(), isActiveActiveReplicationEnabled, 1, Collections.emptyMap());
+    }, Optional.of(hybridStoreConfig), Optional.empty(), isActiveActiveReplicationEnabled, 1, Collections.emptyMap());
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -2325,7 +2321,6 @@ public abstract class StoreIngestionTaskTest {
           verify(mockAbstractStorageEngine).warmUpStoragePartition(PARTITION_FOO);
         }),
         Optional.empty(),
-        false,
         Optional.empty(),
         isActiveActiveReplicationEnabled,
         1,
@@ -2359,7 +2354,6 @@ public abstract class StoreIngestionTaskTest {
           longThat(completionOffset -> (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2)));
     }),
         Optional.empty(),
-        false,
         Optional.empty(),
         isActiveActiveReplicationEnabled,
         1,
@@ -2404,7 +2398,6 @@ public abstract class StoreIngestionTaskTest {
           longThat(completionOffset -> (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2)));
     }),
         Optional.empty(),
-        false,
         Optional.empty(),
         isActiveActiveReplicationEnabled,
         1,
@@ -2548,13 +2541,8 @@ public abstract class StoreIngestionTaskTest {
         DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
 
-    MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(
-        partitionCount,
-        partitionerConfig,
-        Optional.of(hybridStoreConfig),
-        false,
-        false,
-        true);
+    MockStoreVersionConfigs storeAndVersionConfigs =
+        setupStoreAndVersionMocks(partitionCount, partitionerConfig, Optional.of(hybridStoreConfig), false, true);
     Store mockStore = storeAndVersionConfigs.store;
     Version version = storeAndVersionConfigs.version;
     VeniceStoreVersionConfig storeConfig = storeAndVersionConfigs.storeVersionConfig;
@@ -2686,7 +2674,7 @@ public abstract class StoreIngestionTaskTest {
         BufferReplayPolicy.REWIND_FROM_EOP);
 
     MockStoreVersionConfigs storeAndVersionConfigs =
-        setupStoreAndVersionMocks(partitionCount, partitionerConfig, Optional.of(hybridStoreConfig), false, true, true);
+        setupStoreAndVersionMocks(partitionCount, partitionerConfig, Optional.of(hybridStoreConfig), true, true);
     Store mockStore = storeAndVersionConfigs.store;
     Version version = storeAndVersionConfigs.version;
     VeniceStoreVersionConfig storeConfig = storeAndVersionConfigs.storeVersionConfig;
@@ -2852,7 +2840,7 @@ public abstract class StoreIngestionTaskTest {
         BufferReplayPolicy.REWIND_FROM_EOP);
 
     MockStoreVersionConfigs storeAndVersionConfigs =
-        setupStoreAndVersionMocks(partitionCount, partitionerConfig, Optional.of(hybridStoreConfig), false, true, true);
+        setupStoreAndVersionMocks(partitionCount, partitionerConfig, Optional.of(hybridStoreConfig), true, true);
     Store mockStore = storeAndVersionConfigs.store;
     Version version = storeAndVersionConfigs.version;
     VeniceStoreVersionConfig storeConfig = storeAndVersionConfigs.storeVersionConfig;
@@ -2932,7 +2920,7 @@ public abstract class StoreIngestionTaskTest {
     HybridStoreConfig hybridStoreConfig =
         new HybridStoreConfigImpl(100, 100, 100, DataReplicationPolicy.AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP);
     MockStoreVersionConfigs storeAndVersionConfigs =
-        setupStoreAndVersionMocks(2, partitionerConfig, Optional.of(hybridStoreConfig), false, true, false);
+        setupStoreAndVersionMocks(2, partitionerConfig, Optional.of(hybridStoreConfig), true, false);
     Store mockStore = storeAndVersionConfigs.store;
     Version version = storeAndVersionConfigs.version;
     VeniceStoreVersionConfig storeConfig = storeAndVersionConfigs.storeVersionConfig;

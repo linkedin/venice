@@ -471,7 +471,7 @@ public class VenicePushJob implements AutoCloseable {
     CompressionStrategy compressionStrategy;
     boolean isLeaderFollowerModelEnabled;
     boolean isWriteComputeEnabled;
-    boolean isIncrementalPushEnabled;
+    boolean isHybridStore;
     Version sourceKafkaInputVersionInfo;
     Version sourceKafkaOutputVersionInfo;
     long storeRewindTimeInSeconds;
@@ -2031,7 +2031,7 @@ public class VenicePushJob implements AutoCloseable {
     storeSetting.compressionStrategy = storeResponse.getStore().getCompressionStrategy();
     storeSetting.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
     storeSetting.isLeaderFollowerModelEnabled = storeResponse.getStore().isLeaderFollowerModelEnabled();
-    storeSetting.isIncrementalPushEnabled = storeResponse.getStore().isIncrementalPushEnabled();
+    storeSetting.isHybridStore = storeResponse.getStore().getHybridStoreConfig() != null;
     storeSetting.storeRewindTimeInSeconds = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
 
     HybridStoreConfig hybridStoreConfig = storeResponse.getStore().getHybridStoreConfig();
@@ -2042,12 +2042,11 @@ public class VenicePushJob implements AutoCloseable {
         storeSetting.storeRewindTimeInSeconds = hybridStoreConfig.getRewindTimeInSeconds();
       }
     }
-
     if (setting.enableWriteCompute && !storeSetting.isWriteComputeEnabled) {
       throw new VeniceException("Store does not have write compute enabled.");
     }
 
-    if (setting.enableWriteCompute && (!storeSetting.isIncrementalPushEnabled || !setting.isIncrementalPush)) {
+    if (setting.enableWriteCompute && (!storeSetting.isHybridStore || !setting.isIncrementalPush)) {
       throw new VeniceException("Write compute is only available for incremental push jobs.");
     }
 

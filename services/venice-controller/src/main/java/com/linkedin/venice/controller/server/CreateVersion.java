@@ -450,20 +450,12 @@ public class CreateVersion extends AbstractRoute {
               + store.getHybridStoreConfig().getDataReplicationPolicy(),
           ErrorType.BAD_REQUEST);
     }
-    if (pushType.isIncremental()) {
-      if (!store.isIncrementalPushEnabled()) {
-        throw new VeniceHttpException(
-            HttpStatus.SC_BAD_REQUEST,
-            "requesting topic for incremental push to store: " + store.getName()
-                + " which does not have incremental push enabled.",
-            ErrorType.BAD_REQUEST);
-      } else if (!store.isHybrid()) {
-        throw new VeniceHttpException(
-            HttpStatus.SC_BAD_REQUEST,
-            "requesting topic for incremental push to store: " + store.getName()
-                + " which does not have hybrid mode enabled.",
-            ErrorType.BAD_REQUEST);
-      }
+    if (pushType.isIncremental() && !store.isHybrid()) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          "requesting topic for incremental push to store: " + store.getName()
+              + " which does not have hybrid mode enabled.",
+          ErrorType.BAD_REQUEST);
     }
   }
 

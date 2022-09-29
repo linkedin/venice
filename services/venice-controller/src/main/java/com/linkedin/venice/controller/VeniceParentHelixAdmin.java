@@ -21,7 +21,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WR
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LEADER_FOLLOWER_MODEL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION_DUPLICATE_STORE;
@@ -151,7 +150,6 @@ import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -2194,7 +2192,6 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> rmdChunkingEnabled = params.getRmdChunkingEnabled();
       Optional<Integer> batchGetLimit = params.getBatchGetLimit();
       Optional<Integer> numVersionsToPreserve = params.getNumVersionsToPreserve();
-      Optional<Boolean> incrementalPushEnabled = params.getIncrementalPushEnabled();
       Optional<Boolean> storeMigration = params.getStoreMigration();
       Optional<Boolean> writeComputationEnabled = params.getWriteComputationEnabled();
       Optional<Integer> replicationMetadataVersionID = params.getReplicationMetadataVersionID();
@@ -2237,7 +2234,6 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.clusterName = clusterName;
       setStore.storeName = storeName;
       setStore.owner = owner.map(addToUpdatedConfigList(updatedConfigsList, OWNER)).orElseGet(currStore::getOwner);
-      setStore.incrementalPushPolicy = IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME.getValue();
 
       // Invalid config update on hybrid will not be populated to admin channel so subsequent updates on the store won't
       // be blocked by retry mechanism.
@@ -2333,10 +2329,6 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.currentVersion = currentVersion.map(addToUpdatedConfigList(updatedConfigsList, VERSION))
           .orElse(AdminConsumptionTask.IGNORED_CURRENT_VERSION);
 
-      setStore.incrementalPushEnabled =
-          incrementalPushEnabled.map(addToUpdatedConfigList(updatedConfigsList, INCREMENTAL_PUSH_ENABLED))
-              .orElseGet(currStore::isIncrementalPushEnabled);
-
       hybridRewindSeconds.map(addToUpdatedConfigList(updatedConfigsList, REWIND_TIME_IN_SECONDS));
       hybridOffsetLagThreshold.map(addToUpdatedConfigList(updatedConfigsList, OFFSET_LAG_TO_GO_ONLINE));
       hybridTimeLagThreshold.map(addToUpdatedConfigList(updatedConfigsList, TIME_LAG_TO_GO_ONLINE));
@@ -2349,17 +2341,6 @@ public class VeniceParentHelixAdmin implements Admin {
           hybridTimeLagThreshold,
           hybridDataReplicationPolicy,
           hybridBufferReplayPolicy);
-      // If store is already hybrid then check to make sure the end state is valid. We do this because we allow enabling
-      // incremental push without enabling hybrid already (we will automatically convert to hybrid store with default
-      // configs).
-      if (veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig()) && !veniceHelixAdmin.isHybrid(hybridStoreConfig)
-          && setStore.incrementalPushEnabled) {
-        throw new VeniceHttpException(
-            HttpStatus.SC_BAD_REQUEST,
-            "Cannot convert store to batch-only, incremental push enabled stores require valid hybrid configs. "
-                + "Please disable incremental push if you'd like to convert the store to batch-only",
-            ErrorType.BAD_REQUEST);
-      }
       if (hybridStoreConfig == null) {
         setStore.hybridStoreConfig = null;
       } else {
@@ -2378,14 +2359,6 @@ public class VeniceParentHelixAdmin implements Admin {
               .getNumberOfPartitionForHybrid();
           updatedConfigsList.add(PARTITION_COUNT);
         }
-      }
-
-      if (incrementalPushEnabled.orElse(currStore.isIncrementalPushEnabled())
-          && !veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig())
-          && !veniceHelixAdmin.isHybrid(hybridStoreConfig)) {
-        LOGGER.info(
-            "Enabling incremental push for a batch store:{} will convert it to a hybrid store with default configs.",
-            storeName);
       }
 
       /**
@@ -3312,11 +3285,11 @@ public class VeniceParentHelixAdmin implements Admin {
       String leaderControllerUrl = "Unspecified leader controller url";
       try {
         leaderControllerUrl = controllerClient.getLeaderControllerUrl();
-      } catch (VeniceException getMasterException) {
-        LOGGER.warn("Couldn't query {} for job status of {}", region, kafkaTopic, getMasterException);
+      } catch (VeniceException e) {
+        LOGGER.warn("Couldn't query {} for job status of {}", region, kafkaTopic, e);
         statuses.add(ExecutionStatus.UNKNOWN);
         extraInfo.put(region, ExecutionStatus.UNKNOWN.toString());
-        extraDetails.put(region, "Failed to get leader controller url " + getMasterException.getMessage());
+        extraDetails.put(region, "Failed to get leader controller url " + e.getMessage());
         continue;
       }
       JobStatusQueryResponse response = controllerClient.queryJobStatus(kafkaTopic, incrementalPushVersion);
@@ -3373,20 +3346,11 @@ public class VeniceParentHelixAdmin implements Admin {
             "The errored kafka topic {} won't be truncated since it will be used to investigate some Kafka related issue",
             kafkaTopic);
       } else {
-        /**
-         * truncate the topic if either
-         * 1. the store is not incremental push enabled and the push completed (no ERROR)
-         * 2. this is a failed batch push
-         * 3. the store is incremental push enabled and same incPushToRT and batch push finished
+        /*
+         * truncate the topic when the current status is terminal and this is batch/full push
          */
         Store store = getVeniceHelixAdmin().getStore(clusterName, Version.parseStoreFromKafkaTopicName(kafkaTopic));
-        boolean failedBatchPush = !incrementalPushVersion.isPresent() && currentReturnStatus == ExecutionStatus.ERROR;
-        boolean incPushEnabledBatchpushSuccess =
-            !incrementalPushVersion.isPresent() && store.isIncrementalPushEnabled();
-        boolean nonIncPushBatchSucess =
-            !store.isIncrementalPushEnabled() && currentReturnStatus != ExecutionStatus.ERROR;
-
-        if ((failedBatchPush || nonIncPushBatchSucess || incPushEnabledBatchpushSuccess)
+        if (!incrementalPushVersion.isPresent()
             && !getMultiClusterConfigs().getCommonConfig().disableParentTopicTruncationUponCompletion()) {
           LOGGER.info("Truncating kafka topic: {} with job status: {}", kafkaTopic, currentReturnStatus);
           truncateKafkaTopic(kafkaTopic);

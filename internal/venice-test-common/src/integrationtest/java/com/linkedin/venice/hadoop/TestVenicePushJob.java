@@ -17,6 +17,8 @@ import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
 import static com.linkedin.venice.hadoop.VenicePushJob.SUPPRESS_END_OF_PUSH_MESSAGE;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.getLatestPathOfInputDirectory;
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
 import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
@@ -40,6 +42,7 @@ import com.linkedin.venice.hadoop.partitioner.NonDeterministicVenicePartitioner;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -442,7 +445,9 @@ public class TestVenicePushJob {
     // disable WriteCompute in store
     params.setWriteComputationEnabled(false);
     params.setLeaderFollowerModel(true);
-    params.setIncrementalPushEnabled(true);
+    params.setHybridRewindSeconds(1)
+        .setHybridOffsetLagThreshold(1)
+        .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE);
 
     controllerClient.createNewStoreWithParameters(storeName, "owner", "\"string\"", "\"string\"", params);
 
@@ -470,7 +475,7 @@ public class TestVenicePushJob {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setWriteComputationEnabled(true);
     params.setLeaderFollowerModel(true);
-    params.setIncrementalPushEnabled(false);
+    params.setHybridRewindSeconds(-1).setHybridOffsetLagThreshold(-1); // should not be a hybrid store
 
     controllerClient.createNewStoreWithParameters(storeName, "owner", "\"string\"", "\"string\"", params);
 
@@ -564,7 +569,9 @@ public class TestVenicePushJob {
             storeName,
             new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
                 .setPartitionCount(2)
-                .setIncrementalPushEnabled(true)
+                .setHybridRewindSeconds(DEFAULT_REWIND_TIME_IN_SECONDS)
+                .setHybridOffsetLagThreshold(DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD)
+                .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE)
                 .setLeaderFollowerModel(true)));
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
 
@@ -634,7 +641,9 @@ public class TestVenicePushJob {
             storeName,
             new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
                 .setPartitionCount(2)
-                .setIncrementalPushEnabled(true)
+                .setHybridRewindSeconds(DEFAULT_REWIND_TIME_IN_SECONDS)
+                .setHybridOffsetLagThreshold(0)
+                .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE)
                 .setWriteComputationEnabled(true)
                 .setLeaderFollowerModel(true)));
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);

@@ -415,17 +415,9 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     String additionalNode = "localhost_6868";
     startParticipant(true, additionalNode);
     veniceAdmin.createStore(clusterName, storeName, owner, KEY_SCHEMA, VALUE_SCHEMA);
-
+    // 2 replicas puts a replica on the blocking participant
     Version version = veniceAdmin
-        .incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), partitionCount, 2); // 2
-                                                                                                                // replicas
-                                                                                                                // puts
-                                                                                                                // a
-                                                                                                                // replica
-                                                                                                                // on
-                                                                                                                // the
-                                                                                                                // blocking
-                                                                                                                // participant
+        .incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), partitionCount, 2);
     Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), 0);
     veniceAdmin.setStoreCurrentVersion(clusterName, storeName, version.getNumber());
     Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), version.getNumber());
@@ -473,9 +465,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
             .getAmplificationFactor(),
         amplificationFactor);
 
-    veniceAdmin.setIncrementalPushEnabled(clusterName, storeName, true);
-    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isIncrementalPushEnabled());
-
     veniceAdmin.setBootstrapToOnlineTimeoutInHours(clusterName, storeName, 48);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getBootstrapToOnlineTimeoutInHours(), 48);
     veniceAdmin.setLeaderFollowerModelEnabled(clusterName, storeName, true);
@@ -493,10 +482,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertTrue(rmdVersionID.isPresent());
     Assert.assertEquals((int) rmdVersionID.get(), 2);
 
-    // test hybrid config
-    // set incrementalPushEnabled to be false as hybrid and incremental are mutex
-    veniceAdmin.setIncrementalPushEnabled(clusterName, storeName, false);
-    Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).isHybrid());
     veniceAdmin.updateStore(
         clusterName,
         storeName,
@@ -1677,9 +1662,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     veniceAdmin.updateStore(
         clusterName,
         incrementalAndHybridEnabledStoreName,
-        new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1)
-            .setHybridRewindSeconds(0)
-            .setIncrementalPushEnabled(true));
+        new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1).setHybridRewindSeconds(0));
     veniceAdmin.incrementVersionIdempotent(
         clusterName,
         incrementalAndHybridEnabledStoreName,
@@ -1709,7 +1692,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void testEarlyDeleteBackup() {
     String testDeleteStore = Utils.getUniqueString("testDeleteStore");
     veniceAdmin.createStore(clusterName, testDeleteStore, storeOwner, "\"string\"", "\"string\"");
-    veniceAdmin.updateStore(clusterName, testDeleteStore, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+    veniceAdmin.updateStore(
+        clusterName,
+        testDeleteStore,
+        new UpdateStoreQueryParams().setHybridOffsetLagThreshold(10L).setHybridRewindSeconds(10));
     veniceAdmin.incrementVersionIdempotent(clusterName, testDeleteStore, Version.guidBasedDummyPushId(), 1, 1);
     TestUtils.waitForNonDeterministicCompletion(
         TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
