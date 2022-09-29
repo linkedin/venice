@@ -15,7 +15,7 @@ public class VeniceKafkaInputTTLFilter extends AbstractVeniceFilter<KafkaInputMa
   }
 
   @Override
-  protected boolean filter(final KafkaInputMapperValue kafkaInputMapperValue) {
+  protected boolean apply(final KafkaInputMapperValue kafkaInputMapperValue) {
     switch (ttlPolicy) {
       case RT_WRITE_ONLY:
         // TODO implementation to retrieve RMD and parse timestamp information. See VENG-9956

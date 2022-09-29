@@ -54,7 +54,7 @@ public class VeniceKafkaInputMapper extends AbstractVeniceMapper<BytesWritable, 
       BytesWritable keyBW,
       BytesWritable valueBW,
       Reporter reporter) {
-    if (veniceFilter.isPresent() && veniceFilter.get().filterRecursively(inputValue)) {
+    if (veniceFilter.isPresent() && veniceFilter.get().applyRecursively(inputValue)) {
       return false;
     }
     keyBW.set(inputKey);

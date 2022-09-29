@@ -21,7 +21,7 @@ public abstract class AbstractVeniceFilter<INPUT_VALUE> {
    * @param value
    * @return true if the value should be filtered out, otherwise false.
    */
-  protected abstract boolean filter(final INPUT_VALUE value);
+  protected abstract boolean apply(final INPUT_VALUE value);
 
   /**
    * This function passes the value through the filter chain to determine
@@ -29,11 +29,11 @@ public abstract class AbstractVeniceFilter<INPUT_VALUE> {
    * @param value
    * @return true if the value should be filtered out by this filter or its successor, otherwise false.
    */
-  public boolean filterRecursively(final INPUT_VALUE value) {
-    if (filter((value))) {
+  public boolean applyRecursively(final INPUT_VALUE value) {
+    if (apply((value))) {
       return true;
     } else {
-      return next != null && next.filterRecursively(value);
+      return next != null && next.applyRecursively(value);
     }
   }
 

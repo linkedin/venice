@@ -41,13 +41,13 @@ public class TestVeniceKafkaInputTTLFilter {
   @Test(expectedExceptions = UnsupportedOperationException.class, expectedExceptionsMessageRegExp = ".*policy is not supported.*")
   public void testFilterWithUnsupportedPolicy() {
     KafkaInputMapperValue value = new KafkaInputMapperValue();
-    filterWithUnsupportedPolicy.filterRecursively(value);
+    filterWithUnsupportedPolicy.applyRecursively(value);
   }
 
   @Test
   public void testFilterWithRejectBatchWritePolicy() {
     KafkaInputMapperValue value = new KafkaInputMapperValue();
     // TODO change this once the implementation of REJECT_BATCH_WRITE is completed
-    Assert.assertFalse(filterWithSupportedPolicy.filterRecursively(value));
+    Assert.assertFalse(filterWithSupportedPolicy.applyRecursively(value));
   }
 }
