@@ -227,7 +227,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     }
 
     /**
-     * If given store and partition have already exist in this node, openStoreForNewPartition is idempotent so it
+     * If given store and partition have already existed in this node, openStoreForNewPartition is idempotent, so it
      * will not create them again.
      */
     final Consumer<Double> setupTimeLogging = elapsedTimeInMs -> {
@@ -249,9 +249,9 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     // Gracefully drop partition to drain the requests to this partition
     // This method is called during OFFLINE->DROPPED state transition. Due to Zk or other transient issues a store
     // version could miss ONLINE->OFFLINE transition and newer version could come online triggering this transition.
-    // Since this removes the storageEngine from the map not doing a un-subscribe and dropping a partition could
+    // Since this removes the storageEngine from the map not doing an un-subscribe and dropping a partition could
     // lead to NPE and other issues.
-    // Adding a topic unsubscribe call for those race conditions as a safe-guard before dropping the partition.
+    // Adding a topic unsubscribe call for those race conditions as a safeguard before dropping the partition.
     ingestionBackend.dropStoragePartitionGracefully(
         storeConfig,
         partition,
@@ -263,6 +263,11 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     metaSystemStoreReplicaStatusNotifier.ifPresent(
         systemStoreReplicaStatusNotifier -> systemStoreReplicaStatusNotifier
             .drop(storeConfig.getStoreVersionName(), partition));
+    if (!ingestionBackend.getStorageService()
+        .getStorageEngineRepository()
+        .hasLocalStorageEngine(storeConfig.getStoreVersionName())) {
+      ingestionBackend.closeStoreIngestionTask(storeConfig);
+    }
   }
 
   /**

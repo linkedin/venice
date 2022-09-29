@@ -172,7 +172,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final StorageEngineBackedCompressorFactory compressorFactory;
 
-  private final ResourceAutoClosableLockManager topicLockManager;
+  private final ResourceAutoClosableLockManager<String> topicLockManager;
 
   public KafkaStoreIngestionService(
       StorageEngineRepository storageEngineRepository,
@@ -203,7 +203,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.partitionStateSerializer = partitionStateSerializer;
     this.compressorFactory = compressorFactory;
     // Each topic that has any partition ingested by this class has its own lock.
-    this.topicLockManager = new ResourceAutoClosableLockManager(() -> new ReentrantLock());
+    this.topicLockManager = new ResourceAutoClosableLockManager<>(ReentrantLock::new);
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     ServerKafkaClientFactory veniceConsumerFactory = new ServerKafkaClientFactory(
@@ -654,10 +654,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       }
 
       /**
-       * Since Venice metric is store-level and it would have multiply topics tasks exist in the same time.
-       * Only the task with largest version would emit it stats. That being said, relying on the {@link #metadataRepo}
+       * Since Venice metric is store-level, and it would have multiply topics tasks exist in the same time.
+       * Only the task with the largest version would emit it stats. That being said, relying on the {@link #metadataRepo}
        * to get the max version may be unreliable, since the information in this object is not guaranteed
-       * to be up to date. As a sanity check, we will also look at the version in the topic name, and
+       * to be up-to-date. As a sanity check, we will also look at the version in the topic name, and
        * pick whichever number is highest as the max version number.
        */
       String storeName = Version.parseStoreFromKafkaTopicName(topic);
@@ -680,6 +680,19 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       consumerTask.subscribePartition(topic, partitionId, leaderState);
     }
     LOGGER.info("Started Consuming - Kafka Partition: {}-{}.", topic, partitionId);
+  }
+
+  public void closeStoreIngestionTask(VeniceStoreVersionConfig veniceStoreVersionConfig) {
+    String topicName = veniceStoreVersionConfig.getStoreVersionName();
+    try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topicName)) {
+      if (topicNameToIngestionTaskMap.containsKey(topicName)) {
+        topicNameToIngestionTaskMap.remove(topicName).close();
+        LOGGER.info("Closed consumption task for topic {}", topicName);
+      } else {
+        LOGGER.info("Ignoring close request for not-existing consumption task {}", topicName);
+      }
+    }
+    topicLockManager.removeLockForResource(topicName);
   }
 
   @Override

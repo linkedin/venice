@@ -3,7 +3,6 @@ package com.linkedin.davinci.helix;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
-import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
@@ -40,7 +39,6 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
   protected String resourceName;
   protected String instanceName;
 
-  protected AggHostLevelIngestionStats mockAggStoreIngestionStats;
   protected AggVersionedIngestionStats mockAggVersionedIngestionStats;
   protected SafeHelixManager mockManager;
   protected HelixManager mockHelixManager;

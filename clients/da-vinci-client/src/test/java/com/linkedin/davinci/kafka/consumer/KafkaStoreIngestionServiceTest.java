@@ -1,16 +1,8 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertTrue;
+import static com.linkedin.venice.ConfigKeys.*;
+import static org.mockito.Mockito.*;
+import static org.testng.Assert.*;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceClusterConfig;
@@ -19,6 +11,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ClusterInfoProvider;
@@ -47,6 +40,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.function.Function;
 import org.apache.kafka.common.protocol.SecurityProtocol;
+import org.mockito.Mockito;
+import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -85,10 +80,10 @@ public abstract class KafkaStoreIngestionServiceTest {
     String dummyKafkaZKAddress = "localhost:1234";
 
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
-    doReturn(-1l).when(mockVeniceServerConfig).getKafkaFetchQuotaBytesPerSecond();
-    doReturn(-1l).when(mockVeniceServerConfig).getKafkaFetchQuotaRecordPerSecond();
-    doReturn(-1l).when(mockVeniceServerConfig).getKafkaFetchQuotaUnorderedBytesPerSecond();
-    doReturn(-1l).when(mockVeniceServerConfig).getKafkaFetchQuotaUnorderedRecordPerSecond();
+    doReturn(-1L).when(mockVeniceServerConfig).getKafkaFetchQuotaBytesPerSecond();
+    doReturn(-1L).when(mockVeniceServerConfig).getKafkaFetchQuotaRecordPerSecond();
+    doReturn(-1L).when(mockVeniceServerConfig).getKafkaFetchQuotaUnorderedBytesPerSecond();
+    doReturn(-1L).when(mockVeniceServerConfig).getKafkaFetchQuotaUnorderedRecordPerSecond();
     doReturn("").when(mockVeniceServerConfig).getDataBasePath();
     doReturn(0.9d).when(mockVeniceServerConfig).getDiskFullThreshold();
     doReturn(Int2ObjectMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterIdToAliasMap();
@@ -280,5 +275,63 @@ public abstract class KafkaStoreIngestionServiceTest {
     assertTrue(
         results.size() == 2 && results.contains(invalidTopic) && results.contains(topic1),
         "Invalid and retired ingesting topics should be included in the returned set");
+  }
+
+  @Test
+  public void testCloseStoreIngestionTask() {
+    kafkaStoreIngestionService = new KafkaStoreIngestionService(
+        mockStorageEngineRepository,
+        mockVeniceConfigLoader,
+        storageMetadataService,
+        mockClusterInfoProvider,
+        mockMetadataRepo,
+        mockSchemaRepo,
+        mockLiveClusterConfigRepo,
+        new MetricsRepository(),
+        null,
+        Optional.empty(),
+        Optional.empty(),
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        Optional.empty(),
+        null,
+        false,
+        compressorFactory,
+        Optional.empty(),
+        false,
+        null);
+    String topicName = "test-store_v1";
+    String storeName = Version.parseStoreFromKafkaTopicName(topicName);
+    Store mockStore = new ZKStore(
+        storeName,
+        "unit-test",
+        0,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        1);
+
+    AbstractStorageEngine storageEngine1 = mock(AbstractStorageEngine.class);
+    Mockito.when(mockStorageEngineRepository.getLocalStorageEngine(topicName)).thenReturn(storageEngine1);
+
+    mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
+    doReturn(mockStore).when(mockMetadataRepo).getStore(storeName);
+    doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeName);
+    doReturn(new Pair<>(mockStore, mockStore.getVersion(1).get())).when(mockMetadataRepo)
+        .waitVersion(eq(storeName), eq(1), any());
+    VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    kafkaStoreIngestionService.startConsumption(new VeniceStoreVersionConfig(topicName, veniceProperties), 0);
+    StoreIngestionTask storeIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
+    kafkaStoreIngestionService.closeStoreIngestionTask(new VeniceStoreVersionConfig(topicName, veniceProperties));
+    StoreIngestionTask closedStoreIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
+    Assert.assertNull(closedStoreIngestionTask);
+
+    AbstractStorageEngine storageEngine2 = mock(AbstractStorageEngine.class);
+    Mockito.when(mockStorageEngineRepository.getLocalStorageEngine(topicName)).thenReturn(storageEngine2);
+    kafkaStoreIngestionService.startConsumption(new VeniceStoreVersionConfig(topicName, veniceProperties), 0);
+    StoreIngestionTask newStoreIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
+    Assert.assertNotNull(newStoreIngestionTask);
+    Assert.assertNotEquals(storeIngestionTask, newStoreIngestionTask);
+    Assert.assertEquals(newStoreIngestionTask.getStorageEngine(), storageEngine2);
   }
 }

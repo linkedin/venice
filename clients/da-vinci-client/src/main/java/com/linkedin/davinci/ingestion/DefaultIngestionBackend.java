@@ -19,7 +19,7 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * DefaultIngestionBackend is the default ingestion backend implementation. Ingestion will be done in the same JVM as the application.
+ * The default ingestion backend implementation. Ingestion will be done in the same JVM as the application.
  */
 public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceIngestionBackend {
   private static final Logger LOGGER = LogManager.getLogger(DefaultIngestionBackend.class);
@@ -148,6 +148,11 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
   @Override
   public StorageService getStorageService() {
     return storageService;
+  }
+
+  @Override
+  public void closeStoreIngestionTask(VeniceStoreVersionConfig storeConfig) {
+    getStoreIngestionService().closeStoreIngestionTask(storeConfig);
   }
 
   @Override

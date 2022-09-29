@@ -329,9 +329,8 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   @Override
   public synchronized void close() throws VeniceException {
     long startTime = System.currentTimeMillis();
-    List<Partition> tmpList = new ArrayList<>();
     // SparseConcurrentList does not support parallelStream, copy to a tmp list.
-    partitionList.forEach(p -> tmpList.add(p));
+    List<Partition> tmpList = new ArrayList<>(partitionList);
     tmpList.parallelStream().forEach(Partition::close);
     LOGGER.info(
         "Closing {} rockDB partitions of store {} took {} ms",
