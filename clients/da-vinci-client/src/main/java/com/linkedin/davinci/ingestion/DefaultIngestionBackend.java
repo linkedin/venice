@@ -4,7 +4,6 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
-import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -83,18 +82,19 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
       int partition,
       int timeoutInSeconds,
       boolean removeEmptyStorageEngine) {
+    String topicName = storeConfig.getStoreVersionName();
     if (storeIngestionService.isPartitionConsuming(storeConfig, partition)) {
       long startTimeInMs = System.currentTimeMillis();
       getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, 1, timeoutInSeconds);
       LOGGER.info(
           "Partition: {} of topic: {} has stopped consumption in {} ms.",
           partition,
-          storeConfig.getStoreVersionName(),
+          topicName,
           LatencyUtils.getElapsedTimeInMs(startTimeInMs));
     }
     getStoreIngestionService().resetConsumptionOffset(storeConfig, partition);
     getStorageService().dropStorePartition(storeConfig, partition, removeEmptyStorageEngine);
-    LOGGER.info("Partition: {} of topic: {} has been dropped.", partition, storeConfig.getStoreVersionName());
+    LOGGER.info("Partition: {} of topic: {} has been dropped.", partition, topicName);
 
     StorageEngineRepository storageEngineRepository = getStorageService().getStorageEngineRepository();
 
@@ -106,20 +106,14 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
      * ingestion process maintains metadata partition in its storage engine, so it will have to keep the engine. However,
      * StoreIngestionTask can still be closed as there is no data partition associated.
      */
-    if ((!storageEngineRepository.hasLocalStorageEngine(storeConfig.getStoreVersionName()))
-        || (storageEngineRepository.getLocalStorageEngine(storeConfig.getStoreVersionName())
-            .getPartitionIds()
-            .size() == 0)) {
+    if ((!storageEngineRepository.hasLocalStorageEngine(topicName))
+        || (storageEngineRepository.getLocalStorageEngine(topicName).getPartitionIds().size() == 0)) {
       getStoreIngestionService().closeStoreIngestionTask(storeConfig);
     }
 
     // Delete this replica from meta system store if exists.
-    Optional<MetaSystemStoreReplicaStatusNotifier> metaSystemStoreReplicaStatusNotifier =
-        getStoreIngestionService().getMetaSystemStoreReplicaStatusNotifier();
-    metaSystemStoreReplicaStatusNotifier.ifPresent(
-        systemStoreReplicaStatusNotifier -> systemStoreReplicaStatusNotifier
-            .drop(storeConfig.getStoreVersionName(), partition));
-
+    getStoreIngestionService().getMetaSystemStoreReplicaStatusNotifier()
+        .ifPresent(systemStoreReplicaStatusNotifier -> systemStoreReplicaStatusNotifier.drop(topicName, partition));
   }
 
   @Override
