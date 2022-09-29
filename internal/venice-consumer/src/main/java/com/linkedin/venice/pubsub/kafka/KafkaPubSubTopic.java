@@ -1,6 +1,5 @@
 package com.linkedin.venice.pubsub.kafka;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
@@ -19,15 +18,7 @@ public class KafkaPubSubTopic implements PubSubTopic {
    */
   KafkaPubSubTopic(String name) {
     this.name = name;
-    if (Version.isRealTimeTopic(name)) {
-      pubSubTopicType = PubSubTopicType.REALTIME_TOPIC;
-    } else if (Version.isStreamReprocessingTopic(name)) {
-      pubSubTopicType = PubSubTopicType.REPROCESSING_TOPIC;
-    } else if (Version.isVersionTopic(name)) {
-      pubSubTopicType = PubSubTopicType.VERSION_TOPIC;
-    } else {
-      throw new VeniceException("Unsupported topic type for: " + name);
-    }
+    this.pubSubTopicType = PubSubTopicType.getPubSubTopicType(name);
     this.storeName = Version.parseStoreFromKafkaTopicName(name);
   }
 
