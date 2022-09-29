@@ -1,4 +1,4 @@
-name: Build with All Tests and Upload Archives On Demand
+name: Build and Upload Archives On Demand
 
 # Run this workflow when triggered manually
 on: workflow_dispatch

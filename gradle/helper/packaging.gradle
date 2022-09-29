@@ -1,0 +1,24 @@
+ext.packaging = [
+    collectSourceSetsIncludingSubmodules: { subproject ->
+      return collectSourceSetsIncludingSubmodules(subproject)
+    }
+]
+
+// workaround for missing gradle shadow plugin feature, see https://github.com/johnrengelman/shadow/issues/41
+private Set<SourceDirectorySet> collectSourceSetsIncludingSubmodules(Project project){
+  Set<SourceDirectorySet> result = [].toSet()
+  recursiveCollectSourceSets(project, [].toSet(), result)
+  return result
+}
+
+private void recursiveCollectSourceSets(Project visitingProject,
+    Set<Project> visitedProjects,
+    Set<SourceDirectorySet> collectedSourceSets) {
+  if (!visitedProjects.contains(visitingProject)) {
+    visitedProjects.add(visitingProject)
+    collectedSourceSets.add(visitingProject.sourceSets.main.allSource)
+    visitingProject.configurations.implementation.getAllDependencies().withType(ProjectDependency).each {
+      ProjectDependency pd -> recursiveCollectSourceSets(pd.getDependencyProject(), visitedProjects, collectedSourceSets)
+    }
+  }
+}
