@@ -7,7 +7,7 @@ import java.util.Map;
 
 /**
  * The policy controls the TTL behavior regarding how batch writes are treated.
- * As of today (09/15/2022), only real-time write can be TTLed/supported.
+ * As of writing, only real-time write can be TTLed/supported.
  */
 public enum TTLResolutionPolicy {
   /**
