@@ -3,7 +3,6 @@ package com.linkedin.davinci.helix;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
-import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
@@ -15,7 +14,6 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.Utils;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -257,17 +255,6 @@ public abstract class AbstractPartitionStateModel extends StateModel {
         partition,
         getStoreConfig().getPartitionGracefulDropDelaySeconds());
     removeCustomizedState();
-    // Delete this replica from meta system store if necessary
-    Optional<MetaSystemStoreReplicaStatusNotifier> metaSystemStoreReplicaStatusNotifier =
-        ingestionBackend.getStoreIngestionService().getMetaSystemStoreReplicaStatusNotifier();
-    metaSystemStoreReplicaStatusNotifier.ifPresent(
-        systemStoreReplicaStatusNotifier -> systemStoreReplicaStatusNotifier
-            .drop(storeConfig.getStoreVersionName(), partition));
-    if (!ingestionBackend.getStorageService()
-        .getStorageEngineRepository()
-        .hasLocalStorageEngine(storeConfig.getStoreVersionName())) {
-      ingestionBackend.closeStoreIngestionTask(storeConfig);
-    }
   }
 
   /**

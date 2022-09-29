@@ -58,6 +58,4 @@ public interface IngestionBackendBase extends Closeable {
   KafkaStoreIngestionService getStoreIngestionService();
 
   StorageService getStorageService();
-
-  void closeStoreIngestionTask(VeniceStoreVersionConfig storeConfig);
 }
