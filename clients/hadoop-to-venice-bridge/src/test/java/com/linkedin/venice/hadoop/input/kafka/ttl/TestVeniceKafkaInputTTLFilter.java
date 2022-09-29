@@ -16,12 +16,12 @@ public class TestVeniceKafkaInputTTLFilter {
   @BeforeClass
   public void setUp() {
     Properties validProps = new Properties();
-    validProps.put(VenicePushJob.REPUSH_TTL_IN_HOURS_OVERRIDE, 10L);
+    validProps.put(VenicePushJob.REPUSH_TTL_IN_HOURS, 10L);
     validProps.put(VenicePushJob.REPUSH_TTL_POLICY, 0);
     VeniceProperties valid = new VeniceProperties(validProps);
 
     Properties invalidProps = new Properties();
-    invalidProps.put(VenicePushJob.REPUSH_TTL_IN_HOURS_OVERRIDE, 10L);
+    invalidProps.put(VenicePushJob.REPUSH_TTL_IN_HOURS, 10L);
     invalidProps.put(VenicePushJob.REPUSH_TTL_POLICY, 1);
     VeniceProperties invalid = new VeniceProperties(invalidProps);
 
@@ -41,13 +41,13 @@ public class TestVeniceKafkaInputTTLFilter {
   @Test(expectedExceptions = UnsupportedOperationException.class, expectedExceptionsMessageRegExp = ".*policy is not supported.*")
   public void testFilterWithUnsupportedPolicy() {
     KafkaInputMapperValue value = new KafkaInputMapperValue();
-    filterWithUnsupportedPolicy.processRecursively(value);
+    filterWithUnsupportedPolicy.filterRecursively(value);
   }
 
   @Test
   public void testFilterWithRejectBatchWritePolicy() {
     KafkaInputMapperValue value = new KafkaInputMapperValue();
     // TODO change this once the implementation of REJECT_BATCH_WRITE is completed
-    Assert.assertFalse(filterWithSupportedPolicy.processRecursively(value));
+    Assert.assertFalse(filterWithSupportedPolicy.filterRecursively(value));
   }
 }

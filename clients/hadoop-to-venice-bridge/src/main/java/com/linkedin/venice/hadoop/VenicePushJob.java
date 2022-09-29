@@ -312,7 +312,7 @@ public class VenicePushJob implements AutoCloseable {
    * try to override it.
    */
   public static final long DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE = Time.SECONDS_PER_DAY;
-  public static final String REPUSH_TTL_IN_HOURS_OVERRIDE = "repush.ttl.hours.override";
+  public static final String REPUSH_TTL_IN_HOURS = "repush.ttl.hours";
   public static final String REPUSH_TTL_POLICY = "repush.ttl.policy";
   private static final Logger LOGGER = LogManager.getLogger(VenicePushJob.class);
 
@@ -643,7 +643,7 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.kafkaInputCombinerEnabled = props.getBoolean(KAFKA_INPUT_COMBINER_ENABLED, false);
     pushJobSettingToReturn.suppressEndOfPushMessage = props.getBoolean(SUPPRESS_END_OF_PUSH_MESSAGE, false);
     pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
-    pushJobSettingToReturn.repushTtlInHours = props.getLong(REPUSH_TTL_IN_HOURS_OVERRIDE, -1);
+    pushJobSettingToReturn.repushTtlInHours = props.getLong(REPUSH_TTL_IN_HOURS, -1);
 
     if (pushJobSettingToReturn.repushTtlInHours != -1 && !pushJobSettingToReturn.isSourceKafka) {
       throw new VeniceException("Repush with TTL is only supported while using Kafka input");
@@ -2527,7 +2527,7 @@ public class VenicePushJob implements AutoCloseable {
        */
       conf.set(KAFKA_INPUT_TOPIC, pushJobSetting.kafkaInputTopic);
       conf.set(KAFKA_INPUT_BROKER_URL, pushJobSetting.kafkaInputBrokerUrl);
-      conf.setLong(REPUSH_TTL_IN_HOURS_OVERRIDE, pushJobSetting.repushTtlInHours);
+      conf.setLong(REPUSH_TTL_IN_HOURS, pushJobSetting.repushTtlInHours);
       conf.setInt(REPUSH_TTL_POLICY, 0); // only support one policy thus not allow any value passed in.
     } else {
       conf.setInt(VALUE_SCHEMA_ID_PROP, pushJobSchemaInfo.getValueSchemaId());

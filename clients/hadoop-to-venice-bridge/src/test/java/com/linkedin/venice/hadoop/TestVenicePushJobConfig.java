@@ -38,7 +38,7 @@ public class TestVenicePushJobConfig {
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Repush with TTL is only supported while using Kafka input.*")
   public void testRepushTTLJobWithNonKafkaInput() {
     Properties repushProps = new Properties();
-    repushProps.put(VenicePushJob.REPUSH_TTL_IN_HOURS_OVERRIDE, 10L);
+    repushProps.put(VenicePushJob.REPUSH_TTL_IN_HOURS, 10L);
     VenicePushJob pushJob = getSpyVenicePushJob(Optional.of(repushProps), Optional.empty());
     pushJob.run();
   }
@@ -46,7 +46,7 @@ public class TestVenicePushJobConfig {
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Chunking is not supported when using repush with ttl feature.*")
   public void testRepushTTLJobWithChunking() {
     Properties repushProps = new Properties();
-    repushProps.put(VenicePushJob.REPUSH_TTL_IN_HOURS_OVERRIDE, 10L);
+    repushProps.put(VenicePushJob.REPUSH_TTL_IN_HOURS, 10L);
     repushProps.setProperty(VenicePushJob.SOURCE_KAFKA, "true");
     repushProps.setProperty(VenicePushJob.KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(TEST_STORE, 0));
     repushProps.setProperty(VenicePushJob.KAFKA_INPUT_BROKER_URL, "localhost");

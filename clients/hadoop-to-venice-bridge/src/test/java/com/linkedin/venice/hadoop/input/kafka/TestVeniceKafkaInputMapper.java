@@ -1,6 +1,6 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_IN_HOURS_OVERRIDE;
+import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_IN_HOURS;
 import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_POLICY;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -59,7 +59,7 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
   @Test
   public void testValidFilterWhenTTLSpecified() {
     Properties props = new Properties();
-    props.put(REPUSH_TTL_IN_HOURS_OVERRIDE, 10L);
+    props.put(REPUSH_TTL_IN_HOURS, 10L);
     props.put(REPUSH_TTL_POLICY, 0);
     Assert.assertTrue(newMapper().getFilter(new VeniceProperties(props)).isPresent());
   }

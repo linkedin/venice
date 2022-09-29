@@ -11,9 +11,10 @@ import java.util.Map;
  */
 public enum TTLResolutionPolicy {
   /**
-   * Reject batch writes as they don't contain RMD to perform TTL logic, so only real-time write. can be TTLed
+   * Only real-time(RT) data, which can contain the RMD, will be TTLed. If the data doesn't contain RMD,
+   * it means the data comes from batch or the store is not AA-enabled, this policy will fail the H2V job.
    */
-  REJECT_BATCH_WRITE(0),
+  RT_WRITE_ONLY(0),
 
   /**
    * Bypass all the batch data and don't perform TTL on them.

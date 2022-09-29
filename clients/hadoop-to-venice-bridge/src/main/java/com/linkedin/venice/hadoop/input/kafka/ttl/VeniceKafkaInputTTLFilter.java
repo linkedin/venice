@@ -15,9 +15,9 @@ public class VeniceKafkaInputTTLFilter extends AbstractVeniceFilter<KafkaInputMa
   }
 
   @Override
-  protected boolean process(final KafkaInputMapperValue kafkaInputMapperValue) {
+  protected boolean filter(final KafkaInputMapperValue kafkaInputMapperValue) {
     switch (ttlPolicy) {
-      case REJECT_BATCH_WRITE:
+      case RT_WRITE_ONLY:
         // TODO implementation to retrieve RMD and parse timestamp information. See VENG-9956
         return false; // do not drop anything
       case BYPASS_BATCH_WRITE:
