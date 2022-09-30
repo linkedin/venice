@@ -1,3 +1,9 @@
+---
+layout: default
+title: Quickstart
+permalink: docs/quickstart
+---
+
 ## Venice Quickstart
 
 Follow this guide to set up a simple venice cluster using docker images
@@ -14,7 +20,7 @@ wget https://raw.githubusercontent.com/linkedin/venice/master/quickstart/docker-
 ```
 
 #### Step 3: Run docker compose
-This will download and start containers for kafka, zookeeper, venice-controller, venice-router, 
+This will download and start containers for kafka, zookeeper, venice-controller, venice-router,
 venice-server, and venice-client.
 Once containers are up and running, it will create a test cluster, namely, `venice-cluster`.
 
@@ -24,8 +30,8 @@ docker compose up -d
 ```
 
 #### Step 4: Access `venice-client` container's bash shell
- From this container, we will create a store in `venice-cluster`, which was created in step 3, push 
- data to it and run queries against it.
+From this container, we will create a store in `venice-cluster`, which was created in step 3, push
+data to it and run queries against it.
 ```
 docker exec -it venice-client bash
 ```
@@ -55,7 +61,7 @@ bash create_store.sh
 ```
 
 #### Step 6: Push data to the store
-Venice supports multiple ways to write data to the store. For more details, please refer to [Write Path](https://github.com/linkedin/venice#write-path) section in [README](https://github.com/linkedin/venice#venice). 
+Venice supports multiple ways to write data to the store. For more details, please refer to [Write Path](https://linkedin.github.io/venice#write-path) section in [README](https://linkedin.github.io/venice).
 In this example, we will use batch push mode and push 100 records.
 ```
 key: 1 to 100
@@ -134,5 +140,5 @@ docker compose down
 
 ## Next steps
 Venice is a feature rich derived data store. It offers features such as write-compute, read-compute, streaming ingestion, multi data center active-active replication,
-deterministic conflict resolution, etc. To know more about such features please refer [README](https://github.com/linkedin/venice#venice) and reach out to 
-the [Venice team](https://github.com/linkedin/venice#community-resources).
+deterministic conflict resolution, etc. To know more about such features please refer [README](https://linkedin.github.io/venice/) and reach out to
+the [Venice team](https://linkedin.github.io/venice/#community-resources).

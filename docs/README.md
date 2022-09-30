@@ -1,5 +1,20 @@
-Venice
-======
+<html>
+    <h1 align="center">
+      Venice
+    </h1>
+    <h3 align="center">
+      Derived Data Platform for planet-scale workloads
+    </h3>
+    <h3 align="center">
+      Important Links:
+      <a href="https://communityinviter.com/apps/venicedb/venice">Slack</a> &
+      <a href="https://github.com/linkedin/venice/discussions">Discussions</a>.   
+      <a href="https://linkedin.github.io/venice/">Docs</a>.
+    </h3>
+</html> 
+
+[![License](https://img.shields.io/badge/License-BSD_2--Clause-blue.svg)](https://github.com/linkedin/venice/blob/master/LICENSE)
+[![Docs Latest](https://img.shields.io/badge/docs-latest-blue.svg)](https://linkedin.github.io/venice/)
 
 Venice is a derived data storage platform, providing the following characteristics:
 
@@ -59,12 +74,10 @@ There are two main client modes for accessing Venice data:
 - **Classical Venice**: perform remote queries against Venice's distributed backend service. In this mode, read compute queries are pushed down to the backend and only the computation results are returned to the client. 
 - **Da Vinci**: eagerly load some or all partitions of the dataset and perform queries against the resulting local cache. Future updates to the data continue to be streamed in and applied to the local cache.
 
-Getting Started
-===============
-Refer to the [Venice quickstart](./quickstart/README.md) to create your own Venice cluster and play around with some features like creating a data store, batch push, incremental push, and single get.
+# Getting Started
+Refer to the [Venice quickstart](https://linkedin.github.io/venice/docs/quickstart) to create your own Venice cluster and play around with some features like creating a data store, batch push, incremental push, and single get.
 
-Previously Published Content
-============================
+# Previously Published Content
 
 The following blog posts have previously been published about Venice:
 
@@ -84,14 +97,11 @@ The following talks have been given about Venice:
 
 Keep in mind that older content reflects an earlier phase of the project and may not be entirely correct anymore.
 
-Community Resources
-===================
+# Community Resources
 
 Feel free to engage with the community using our:
 - [Slack workspace](https://communityinviter.com/apps/venicedb/venice)
 - [LinkedIn group](https://www.linkedin.com/groups/14129519/)
 - [Twitter handle](https://twitter.com/VeniceDataBase)
 - GitHub [issues](https://github.com/linkedin/venice/issues) and [discussions](https://github.com/linkedin/venice/discussions)
-- The [contributor's guide](./CONTRIBUTING.md).
-
-[//]: # (TODO: Add link to setup and execution guide)
+- The [contributor's guide](CONTRIBUTING.md).
