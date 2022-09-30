@@ -406,7 +406,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param callback - Callback function invoked by Kafka producer after sending the message.
    * @param leaderMetadataWrapper - The leader Metadata of this message in the source topic:
    *                         -1:  VeniceWriter is sending this message in a Samza app to the real-time topic; or it's
-   *                              sending the message in H2V plugin to the version topic;
+   *                              sending the message in VPJ plugin to the version topic;
    *                         >=0: Leader replica consumes a delete message from real-time topic, VeniceWriter in leader
    *                              is sending this message to version topic with extra info: offset in the real-time topic.
    * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
@@ -424,7 +424,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param callback - callback will be executed after Kafka producer completes on sending the message.
    * @param leaderMetadataWrapper - The leader Metadata of this message in the source topic:
    *                             -1:  VeniceWriter is sending this message in a Samza app to the real-time topic; or it's
-   *                                  sending the message in H2V plugin to the version topic;
+   *                                  sending the message in VPJ plugin to the version topic;
    *                             >=0: Leader replica consumes a delete message from real-time topic, VeniceWriter in leader
    *                                  is sending this message to version topic with extra info: offset in the real-time topic.
    * @param logicalTs - An timestamp field to indicate when this record was produced from apps point of view.
@@ -447,7 +447,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param callback - callback will be executed after Kafka producer completes on sending the message.
    * @param leaderMetadataWrapper - The leader Metadata of this message in the source topic:
    *                             -1:  VeniceWriter is sending this message in a Samza app to the real-time topic; or it's
-   *                                  sending the message in H2V plugin to the version topic;
+   *                                  sending the message in VPJ plugin to the version topic;
    *                             >=0: Leader replica consumes a delete message from real-time topic, VeniceWriter in leader
    *                                  is sending this message to version topic with extra info: offset in the real-time topic.
    * @param deleteMetadata - a DeleteMetadata containing replication metadata related fields.
@@ -480,7 +480,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param callback - Callback function invoked by Kafka producer after sending the message.
    * @param leaderMetadataWrapper - The leader Metadata of this message in the source topic:
    *                         -1:  VeniceWriter is sending this message in a Samza app to the real-time topic; or it's
-   *                              sending the message in H2V plugin to the version topic;
+   *                              sending the message in VPJ plugin to the version topic;
    *                         >=0: Leader replica consumes a delete message from real-time topic, VeniceWriter in leader
    *                              is sending this message to version topic with extra info: offset in the real-time topic.
    * @param logicalTs - An timestamp field to indicate when this record was produced from apps point of view.
@@ -593,7 +593,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    *
    * UpstreamOffset is the offset of PUT message in the source topic:
    * -1:  VeniceWriter is sending this message in a Samza app to the real-time topic; or it's
-   *      sending the message in H2V plugin to the version topic;
+   *      sending the message in VPJ plugin to the version topic;
    * >=0: Leader replica consumes a put message from real-time topic, VeniceWriter in leader
    *      is sending this message to version topic with extra info: offset in the real-time topic.
    */
@@ -617,7 +617,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param callback - Callback function invoked by Kafka producer after sending the message
    * @param leaderMetadataWrapper - The leader Metadata of this message in the source topic:
    *    -1:  VeniceWriter is sending this message in a Samza app to the real-time topic; or it's
-   *         sending the message in H2V plugin to the version topic;
+   *         sending the message in VPJ plugin to the version topic;
    *    >=0: Leader replica consumes a put message from real-time topic, VeniceWriter in leader
    *         is sending this message to version topic with extra info: offset in the real-time topic.
    * @param logicalTs - An timestamp field to indicate when this record was produced from apps view.

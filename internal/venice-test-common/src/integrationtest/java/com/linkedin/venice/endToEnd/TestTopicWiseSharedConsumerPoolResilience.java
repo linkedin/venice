@@ -7,7 +7,7 @@ import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
 import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
 
@@ -72,27 +72,27 @@ public class TestTopicWiseSharedConsumerPoolResilience {
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
-    Properties h2vProperties = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    Properties vpjProperties = defaultVPJProps(veniceCluster, inputDirPath, storeName);
 
     VeniceControllerWrapper controllerWrapper = veniceCluster.getRandmonVeniceController();
     Admin admin = controllerWrapper.getVeniceAdmin();
 
     try (ControllerClient controllerClient =
-        createStoreForJob(veniceCluster.getClusterName(), recordSchema, h2vProperties)) {
+        createStoreForJob(veniceCluster.getClusterName(), recordSchema, vpjProperties)) {
       int pushes = 5;
       for (int cur = 1; cur <= pushes; ++cur) {
         int expectedVersionNumber = cur;
-        long h2vStart = System.currentTimeMillis();
+        long vpjStart = System.currentTimeMillis();
         String jobName = Utils.getUniqueString("hybrid-job-" + expectedVersionNumber);
-        try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
+        try (VenicePushJob job = new VenicePushJob(jobName, vpjProperties)) {
           job.run();
           TestUtils.waitForNonDeterministicCompletion(
               5,
               TimeUnit.SECONDS,
-              () -> controllerClient.getStore((String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
+              () -> controllerClient.getStore((String) vpjProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
                   .getStore()
                   .getCurrentVersion() == expectedVersionNumber);
-          LOGGER.info("**TIME** H2V{} took {} ms", expectedVersionNumber, (System.currentTimeMillis() - h2vStart));
+          LOGGER.info("**TIME** VPJ{} took {} ms", expectedVersionNumber, (System.currentTimeMillis() - vpjStart));
         }
         if (expectedVersionNumber >= 3) {
           // need to wait for the resource for the backup version is completely dropped to free up the share consumer

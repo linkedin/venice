@@ -142,7 +142,7 @@ public class JobRoutes extends AbstractRoute {
     return (request, response) -> {
       PushJobStatusUploadResponse responseObject = new PushJobStatusUploadResponse();
       response.type(HttpConstants.JSON);
-      // TODO: remove once all h2v plugin deployments have updated and no longer calling into this for reporting.
+      // TODO: remove once all vpj plugin deployments have updated and no longer calling into this for reporting.
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
@@ -166,7 +166,7 @@ public class JobRoutes extends AbstractRoute {
         key.storeName = storeName;
         key.versionNumber = versionNumber;
         PushJobDetails pushJobDetails;
-        // TODO remove passing PushJobDetails as JSON string once all H2V plugins are updated.
+        // TODO remove passing PushJobDetails as JSON string once all VPJ plugins are updated.
         if (request.queryParams().contains(PUSH_JOB_DETAILS)) {
           String pushJobDetailsString = request.queryParams(PUSH_JOB_DETAILS);
           DatumReader<PushJobDetails> reader =

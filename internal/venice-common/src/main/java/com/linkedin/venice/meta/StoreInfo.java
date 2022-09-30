@@ -83,7 +83,7 @@ public class StoreInfo {
   private Map<String, Integer> coloToCurrentVersions;
 
   /**
-   * Highest version number that has been claimed by an upstream (H2V) system which will create the corresponding kafka topic.
+   * Highest version number that has been claimed by an upstream (VPJ) system which will create the corresponding kafka topic.
    */
   private int reservedVersion = 0;
   /**

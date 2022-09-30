@@ -26,7 +26,7 @@ import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
 import static com.linkedin.venice.utils.TestPushUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
@@ -807,7 +807,7 @@ public class TestPushJobWithNativeReplication {
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     String childControllerUrl = childDatacenters.get(0).getControllerConnectString();
-    Properties props = defaultH2VProps(childControllerUrl, inputDirPath, storeName);
+    Properties props = defaultVPJProps(childControllerUrl, inputDirPath, storeName);
     createStoreForJob(clusterName, recordSchema, props).close();
 
     TestPushUtils.runPushJob("Test push job", props);
@@ -878,7 +878,7 @@ public class TestPushJobWithNativeReplication {
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    Properties props = defaultH2VProps(parentControllerUrls, inputDirPath, storeName);
+    Properties props = defaultVPJProps(parentControllerUrls, inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
     UpdateStoreQueryParams updateStoreParams = updateStoreParamsTransformer

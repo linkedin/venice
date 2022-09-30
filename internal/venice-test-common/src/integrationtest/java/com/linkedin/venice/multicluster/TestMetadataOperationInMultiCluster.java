@@ -1,7 +1,7 @@
 package com.linkedin.venice.multicluster;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
-import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
 
@@ -130,7 +130,7 @@ public class TestMetadataOperationInMultiCluster {
   }
 
   @Test
-  public void testRunH2VInMultiCluster() throws Exception {
+  public void testRunVPJInMultiCluster() throws Exception {
     VeniceMultiClusterCreateOptions options = new VeniceMultiClusterCreateOptions.Builder(2).numberOfControllers(3)
         .numberOfServers(1)
         .numberOfRouters(1)
@@ -145,19 +145,19 @@ public class TestMetadataOperationInMultiCluster {
       Map<String, Properties> propertiesMap = new HashMap<>();
       for (String clusterName: clusterNames) {
         String storeName = clusterName + storeNameSuffix;
-        // Use th first cluster in config, and test could h2v find the correct cluster.
-        Properties h2vProperties =
-            defaultH2VProps(multiClusterWrapper.getRandomController().getControllerUrl(), inputDirPath, storeName);
-        propertiesMap.put(clusterName, h2vProperties);
-        Schema keySchema = recordSchema.getField(h2vProperties.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema();
-        Schema valueSchema = recordSchema.getField(h2vProperties.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema();
+        // Use th first cluster in config, and test could vpj find the correct cluster.
+        Properties vpjProperties =
+            defaultVPJProps(multiClusterWrapper.getRandomController().getControllerUrl(), inputDirPath, storeName);
+        propertiesMap.put(clusterName, vpjProperties);
+        Schema keySchema = recordSchema.getField(vpjProperties.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema();
+        Schema valueSchema = recordSchema.getField(vpjProperties.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema();
 
         try (ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(
             clusterName,
             multiClusterWrapper.getRandomController().getControllerUrl())) {
           controllerClient.createNewStore(storeName, "test", keySchema.toString(), valueSchema.toString());
           ControllerResponse controllerResponse = controllerClient.updateStore(
-              h2vProperties.getProperty(VENICE_STORE_NAME_PROP),
+              vpjProperties.getProperty(VENICE_STORE_NAME_PROP),
               new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
 
           Assert.assertFalse(controllerResponse.isError());
@@ -170,7 +170,7 @@ public class TestMetadataOperationInMultiCluster {
         properties.setProperty(
             VenicePushJob.PBNJ_ROUTER_URL_PROP,
             multiClusterWrapper.getClusters().get(clusterName).getRandomRouterURL());
-        runH2V(
+        runVPJ(
             properties,
             1,
             ControllerClient.constructClusterControllerClient(
@@ -180,21 +180,21 @@ public class TestMetadataOperationInMultiCluster {
     }
   }
 
-  private static void runH2V(Properties h2vProperties, int expectedVersionNumber, ControllerClient controllerClient)
+  private static void runVPJ(Properties vpjProperties, int expectedVersionNumber, ControllerClient controllerClient)
       throws Exception {
 
-    long h2vStart = System.currentTimeMillis();
+    long vpjStart = System.currentTimeMillis();
     String jobName = Utils.getUniqueString("job-" + expectedVersionNumber);
     // job will talk to any controller to do cluster discover then do the push.
-    try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
+    try (VenicePushJob job = new VenicePushJob(jobName, vpjProperties)) {
       job.run();
       TestUtils.waitForNonDeterministicCompletion(
           5,
           TimeUnit.SECONDS,
-          () -> controllerClient.getStore((String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
+          () -> controllerClient.getStore((String) vpjProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
               .getStore()
               .getCurrentVersion() == expectedVersionNumber);
-      LOGGER.info("**TIME** H2V {} takes {} ms.", expectedVersionNumber, (System.currentTimeMillis() - h2vStart));
+      LOGGER.info("**TIME** VPJ {} takes {} ms.", expectedVersionNumber, (System.currentTimeMillis() - vpjStart));
     }
   }
 }

@@ -12,7 +12,7 @@ import org.apache.kafka.clients.producer.RecordMetadata;
  * make unit tests easier.
  *
  * @see VeniceWriter
- * // @see MockVeniceWriter in the H2V tests (commented because this module does not depend on H2V)
+ * // @see MockVeniceWriter in the VPJ tests (commented because this module does not depend on VPJ)
  */
 public abstract class AbstractVeniceWriter<K, V, U> implements Closeable {
   protected final String topicName;

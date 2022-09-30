@@ -1171,7 +1171,7 @@ public class ConfigKeys {
       "admin.consumption.max.worker.thread.pool.size";
 
   /**
-   * This factor is used to estimate potential push size. H2V reducer multiplies it
+   * This factor is used to estimate potential push size. VPJ reducer multiplies it
    * with total record size and compares it with store storage quota
    * TODO: it will be moved to Store metadata if we allow stores have various storage engine types.
    */

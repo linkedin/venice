@@ -1,7 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
 
@@ -111,7 +111,7 @@ public class TestStaleDataVisibility {
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
 
     // create a store via parent controller url
-    Properties props = defaultH2VProps(parentControllerUrls, inputDirPath, storeName);
+    Properties props = defaultVPJProps(parentControllerUrls, inputDirPath, storeName);
     createStoreForJob(clusterName, recordSchema, props).close();
     try (ControllerClient controllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
       String pushStatusStoreVersionName =
@@ -137,7 +137,7 @@ public class TestStaleDataVisibility {
 
       // get single child controller, empty push to it
       VeniceControllerWrapper childController = childControllers.get(0).get(0);
-      Properties props2 = defaultH2VProps(childController.getControllerUrl(), inputDirPath, storeName);
+      Properties props2 = defaultVPJProps(childController.getControllerUrl(), inputDirPath, storeName);
       try (VenicePushJob job = new VenicePushJob("Test push job", props2)) {
         job.run();
       }

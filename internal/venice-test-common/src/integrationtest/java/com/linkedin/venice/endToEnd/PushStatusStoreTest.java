@@ -10,7 +10,7 @@ import static com.linkedin.venice.ConfigKeys.USE_PUSH_STATUS_STORE_FOR_INCREMENT
 import static com.linkedin.venice.common.PushStatusStoreUtils.SERVER_INCREMENTAL_PUSH_PREFIX;
 import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
-import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithIntToStringSchema;
 import static org.testng.Assert.assertEquals;
@@ -149,9 +149,9 @@ public class PushStatusStoreTest {
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT_MS * 2)
   public void testKafkaPushJob(boolean isIsolated) throws Exception {
-    Properties h2vProperties = getH2VProperties();
+    Properties vpjProperties = getVPJProperties();
     // setup initial version
-    runH2V(h2vProperties, 1, cluster);
+    runVPJ(vpjProperties, 1, cluster);
 
     Map<String, Object> extraBackendConfigMap =
         isIsolated ? TestUtils.getIngestionIsolationPropertyMap() : new HashMap<>();
@@ -165,7 +165,7 @@ public class PushStatusStoreTest {
         new DaVinciConfig(),
         extraBackendConfigMap)) {
       daVinciClient.subscribeAll().get();
-      runH2V(h2vProperties, 2, cluster);
+      runVPJ(vpjProperties, 2, cluster);
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
         assertEquals(reader.getPartitionStatus(storeName, 2, 0, Optional.empty()).size(), 1);
       });
@@ -187,35 +187,35 @@ public class PushStatusStoreTest {
   @Test(timeOut = TEST_TIMEOUT_MS)
   public void testIncrementalPush() throws Exception {
     VeniceProperties backendConfig = getBackendConfigBuilder().build();
-    Properties h2vProperties = getH2VProperties();
-    runH2V(h2vProperties, 1, cluster);
+    Properties vpjProperties = getVPJProperties();
+    runVPJ(vpjProperties, 1, cluster);
     try (DaVinciClient daVinciClient =
         ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig)) {
       daVinciClient.subscribeAll().get();
-      h2vProperties = getH2VProperties();
-      h2vProperties.setProperty(INCREMENTAL_PUSH, "true");
-      runH2V(h2vProperties, 1, cluster);
+      vpjProperties = getVPJProperties();
+      vpjProperties.setProperty(INCREMENTAL_PUSH, "true");
+      runVPJ(vpjProperties, 1, cluster);
       assertEquals(daVinciClient.get(1).get().toString(), "name 1");
     }
   }
 
   @Test(timeOut = TEST_TIMEOUT_MS)
   public void testIncrementalPushStatusStoredInPushStatusStore() throws Exception {
-    Properties h2vProperties = getH2VProperties();
-    runH2V(h2vProperties, 1, cluster);
+    Properties vpjProperties = getVPJProperties();
+    runVPJ(vpjProperties, 1, cluster);
     try (AvroGenericStoreClient storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setD2Client(d2Client)
             .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME))) {
-      h2vProperties = getH2VProperties();
-      h2vProperties.setProperty(INCREMENTAL_PUSH, "true");
+      vpjProperties = getVPJProperties();
+      vpjProperties.setProperty(INCREMENTAL_PUSH, "true");
       int expectedVersionNumber = 1;
-      long h2vStart = System.currentTimeMillis();
+      long vpjStart = System.currentTimeMillis();
       String jobName = Utils.getUniqueString("batch-job-" + expectedVersionNumber);
-      try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
+      try (VenicePushJob job = new VenicePushJob(jobName, vpjProperties)) {
         job.run();
         cluster.waitVersion(storeName, expectedVersionNumber, controllerClient);
-        LOGGER.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
+        LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
         assertEquals(storeClient.get(1).get().toString(), "name 1");
         Optional<String> incPushVersion = job.getIncrementalPushVersion();
         for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
@@ -238,20 +238,20 @@ public class PushStatusStoreTest {
   /* The following test is targeted at verifying the behavior of controller when queryJobStatus is invoked for inc-push */
   @Test(timeOut = TEST_TIMEOUT_MS)
   public void testIncrementalPushStatusReadingFromPushStatusStoreInController() throws Exception {
-    Properties h2vProperties = getH2VProperties();
-    runH2V(h2vProperties, 1, cluster);
+    Properties vpjProperties = getVPJProperties();
+    runVPJ(vpjProperties, 1, cluster);
     try (AvroGenericStoreClient storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setD2Client(d2Client)
             .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME))) {
-      h2vProperties.setProperty(INCREMENTAL_PUSH, "true");
+      vpjProperties.setProperty(INCREMENTAL_PUSH, "true");
       int expectedVersionNumber = 1;
-      long h2vStart = System.currentTimeMillis();
+      long vpjStart = System.currentTimeMillis();
       String jobName = Utils.getUniqueString("batch-job-" + expectedVersionNumber);
-      try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
+      try (VenicePushJob job = new VenicePushJob(jobName, vpjProperties)) {
         job.run();
         cluster.waitVersion(storeName, expectedVersionNumber, controllerClient);
-        LOGGER.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
+        LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
         assertEquals(storeClient.get(1).get().toString(), "name 1");
         Optional<String> incPushVersion = job.getIncrementalPushVersion();
         // verify partition replicas have reported their status to the push status store
@@ -304,17 +304,17 @@ public class PushStatusStoreTest {
   @Test(timeOut = TEST_TIMEOUT_MS)
   public void testAutomaticPurge() throws Exception {
     VeniceProperties backendConfig = getBackendConfigBuilder().build();
-    Properties h2vProperties = getH2VProperties();
+    Properties vpjProperties = getVPJProperties();
     // setup initial version
-    runH2V(h2vProperties, 1, cluster);
+    runVPJ(vpjProperties, 1, cluster);
     try (DaVinciClient daVinciClient =
         ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig)) {
       daVinciClient.subscribeAll().get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
         assertEquals(reader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 1);
       });
-      runH2V(h2vProperties, 2, cluster);
-      runH2V(h2vProperties, 3, cluster);
+      runVPJ(vpjProperties, 2, cluster);
+      runVPJ(vpjProperties, 3, cluster);
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
         assertEquals(reader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 0);
       });
@@ -410,23 +410,23 @@ public class PushStatusStoreTest {
         .put(PUSH_STATUS_STORE_ENABLED, true);
   }
 
-  private Properties getH2VProperties() throws Exception {
-    // Setup H2V job properties.
+  private Properties getVPJProperties() throws Exception {
+    // Setup VPJ job properties.
     // Produce input data.
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     writeSimpleAvroFileWithIntToStringSchema(inputDir, true);
-    return defaultH2VProps(cluster, inputDirPath, storeName);
+    return defaultVPJProps(cluster, inputDirPath, storeName);
   }
 
-  private void runH2V(Properties h2vProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) {
-    long h2vStart = System.currentTimeMillis();
+  private void runVPJ(Properties vpjProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) {
+    long vpjStart = System.currentTimeMillis();
     String jobName = Utils.getUniqueString("batch-job-" + expectedVersionNumber);
-    try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
+    try (VenicePushJob job = new VenicePushJob(jobName, vpjProperties)) {
       job.run();
-      String storeName = (String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP);
+      String storeName = (String) vpjProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP);
       cluster.waitVersion(storeName, expectedVersionNumber, controllerClient);
-      LOGGER.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
+      LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
     }
   }
 }
