@@ -574,7 +574,6 @@ public class DaVinciClientTest {
       dataToPublish.add(new Pair<>(3, 4));
 
       generateHybridData(storeName, dataToPublish);
-      LOGGER.error("DEBUGGING SINGLE GET");
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         for (Pair<Object, Object> entry: dataToPublish) {
           assertEquals(client.get((Integer) entry.getFirst()).get(), entry.getSecond());
