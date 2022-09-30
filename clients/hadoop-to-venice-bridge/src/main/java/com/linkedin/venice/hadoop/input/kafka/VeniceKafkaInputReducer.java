@@ -139,6 +139,10 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
             getDerivedValueSchemaId()));
   }
 
+  /**
+   * TODO: Refactor code so that we don't need to hold on to a full list of deserialized values, which can OOM.
+   */
+  @Deprecated
   private List<KafkaInputMapperValue> getMapperValues(Iterator<BytesWritable> valueIterator) {
     List<KafkaInputMapperValue> mapperValues = new ArrayList<>();
     while (valueIterator.hasNext()) {
