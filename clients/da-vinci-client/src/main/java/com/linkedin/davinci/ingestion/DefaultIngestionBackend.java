@@ -99,7 +99,7 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
     StorageEngineRepository storageEngineRepository = getStorageService().getStorageEngineRepository();
 
     /**
-     * Close StoreIngestionTask if local storage engine does not exist (dropped) or it has no data partition.
+     * Shutdown StoreIngestionTask if local storage engine does not exist (dropped) or it has no data partition.
      * (1) Local storage engine will be dropped by default when last data partition is dropped. In this case, we should
      * close StoreIngestionTask as it is no longer performing ingestion.
      * (2) In isolated ingestion case, we will keep local storage engine even if there is no data partition. Isolated
@@ -108,7 +108,7 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
      */
     if ((!storageEngineRepository.hasLocalStorageEngine(topicName))
         || (storageEngineRepository.getLocalStorageEngine(topicName).getPartitionIds().size() == 0)) {
-      getStoreIngestionService().closeStoreIngestionTask(storeConfig);
+      getStoreIngestionService().shutdownStoreIngestionTask(storeConfig);
     }
 
     // Delete this replica from meta system store if exists.

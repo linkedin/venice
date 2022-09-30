@@ -266,8 +266,10 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       }
 
       if (daVinciConfig.isCacheEnabled()) {
+        LogManager.getLogger().error("DEBUGGING: GETTING FROM CACHE");
         return cacheBackend.get(key, versionBackend.getVersion(), (k, executor) -> this.readFromLocalStorage(k, null));
       } else {
+        LogManager.getLogger().error("DEBUGGING: GETTING FROM STORAGE ENGINE");
         return readFromLocalStorage(key, reusableValue);
       }
     }

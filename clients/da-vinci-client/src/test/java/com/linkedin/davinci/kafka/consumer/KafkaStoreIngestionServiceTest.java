@@ -330,7 +330,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     kafkaStoreIngestionService.startConsumption(new VeniceStoreVersionConfig(topicName, veniceProperties), 0);
     StoreIngestionTask storeIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
-    kafkaStoreIngestionService.closeStoreIngestionTask(new VeniceStoreVersionConfig(topicName, veniceProperties));
+    kafkaStoreIngestionService.shutdownStoreIngestionTask(new VeniceStoreVersionConfig(topicName, veniceProperties));
     StoreIngestionTask closedStoreIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
     Assert.assertNull(closedStoreIngestionTask);
 

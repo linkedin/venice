@@ -84,6 +84,7 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Timer;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
@@ -173,6 +174,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final Properties kafkaProps;
   protected final KafkaClientFactory kafkaClientFactory;
   protected final AtomicBoolean isRunning;
+  protected final AtomicBoolean isClosed;
   protected final AtomicBoolean emitMetrics; // TODO: remove this once we migrate to versioned stats
   protected final AtomicInteger consumerActionSequenceNumber = new AtomicInteger(0);
   protected final PriorityBlockingQueue<ConsumerAction> consumerActionsQueue;
@@ -403,6 +405,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.versionedDIVStats = builder.getVersionedDIVStats();
     this.versionedIngestionStats = builder.getVersionedStorageIngestionStats();
     this.isRunning = new AtomicBoolean(true);
+    this.isClosed = new AtomicBoolean(false);
     this.emitMetrics = new AtomicBoolean(true);
     this.readOnlyForBatchOnlyStoreEnabled = storeConfig.isReadOnlyForBatchOnlyStoreEnabled();
 
@@ -1320,7 +1323,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      */
     if (!consumerHasAnySubscription()) {
       if (++idleCounter <= MAX_IDLE_COUNTER) {
-        String message = consumerTaskId + " Not subscribed to any partitions";
+        String message = consumerTaskId + " Not subscribed to any partitions " + isDaVinciClient;
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
           LOGGER.info(message);
         }
@@ -1629,6 +1632,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     close();
+    isClosed.set(true);
     LOGGER.info("Store ingestion task for store: {} is closed", kafkaVersionTopic);
   }
 
@@ -3285,11 +3289,34 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
+   * This method is a blocking call to wait for {@link StoreIngestionTask} for fully shutdown in the given time.
+   * @param waitTime Maximum wait time for the shutdown operation.
+   */
+  public synchronized void shutdown(int waitTime) {
+    int sleepInterval = 100;
+    close();
+    int elapsedTime = 0;
+    while (elapsedTime < waitTime) {
+      if (isClosed.get()) {
+        LOGGER.info("Shutdown store ingestion task for topic {} in {}ms.", kafkaVersionTopic, elapsedTime);
+        return;
+      }
+      Utils.sleep(sleepInterval);
+      elapsedTime += sleepInterval;
+    }
+    LOGGER.error("After {}ms, store ingestion task for topic: {} is not fully shutdown.", waitTime, kafkaVersionTopic);
+  }
+
+  /**
    * A function to allow the service to get the current status of the task.
    * This would allow the service to create a new task if required.
    */
   public boolean isRunning() {
     return isRunning.get();
+  }
+
+  public boolean isClosed() {
+    return isClosed.get();
   }
 
   public String getVersionTopic() {

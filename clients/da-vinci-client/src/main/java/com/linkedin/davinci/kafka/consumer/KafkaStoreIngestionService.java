@@ -682,12 +682,16 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     LOGGER.info("Started Consuming - Kafka Partition: {}-{}.", topic, partitionId);
   }
 
-  public void closeStoreIngestionTask(VeniceStoreVersionConfig veniceStoreVersionConfig) {
+  /**
+   * This method closes the specified {@link StoreIngestionTask} and wait for up to 10 seconds for fully shutdown.
+   * @param veniceStoreVersionConfig store version config that carries topic information.
+   */
+  public void shutdownStoreIngestionTask(VeniceStoreVersionConfig veniceStoreVersionConfig) {
     String topicName = veniceStoreVersionConfig.getStoreVersionName();
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topicName)) {
       if (topicNameToIngestionTaskMap.containsKey(topicName)) {
-        topicNameToIngestionTaskMap.remove(topicName).close();
-        LOGGER.info("Closed consumption task for topic {}", topicName);
+        StoreIngestionTask storeIngestionTask = topicNameToIngestionTaskMap.remove(topicName);
+        storeIngestionTask.shutdown(10000);
       } else {
         LOGGER.info("Ignoring close request for not-existing consumption task {}", topicName);
       }

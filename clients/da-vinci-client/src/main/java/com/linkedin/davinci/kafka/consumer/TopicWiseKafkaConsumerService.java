@@ -8,6 +8,7 @@ import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Properties;
@@ -80,6 +81,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
       String versionTopic,
       TopicPartition topicPartition) {
     // Check whether this version topic has been subscribed before or not.
+    LOGGER.info("DEBUGGING SUB BEGIN: " + versionTopic);
     SharedKafkaConsumer chosenConsumer = versionTopicToConsumerMap.get(versionTopic);
     if (chosenConsumer != null) {
       LOGGER.info(
@@ -158,6 +160,8 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
    */
   @Override
   public synchronized void unsubscribeAll(String versionTopic) {
+    LOGGER.error(
+        "DEBUGGING UNSUB BEGIN: " + versionTopic + " " + Arrays.toString(Thread.currentThread().getStackTrace()));
     SharedKafkaConsumer sharedKafkaConsumer = versionTopicToConsumerMap.get(versionTopic);
     if (sharedKafkaConsumer == null) {
       LOGGER.warn("No assigned shared consumer found for this version topic: {}", versionTopic);
@@ -165,6 +169,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
     }
     removeTopicFromConsumer(versionTopic, sharedKafkaConsumer);
     super.unsubscribeAll(versionTopic);
+    LOGGER.error("DEBUGGING UNSUB END: " + versionTopic);
   }
 
   /**
