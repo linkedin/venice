@@ -483,7 +483,7 @@ public class TestVenicePushJob {
     TestPushUtils.runPushJob("Test push job", props);
   }
 
-  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during Hadoop to Venice Bridge.*")
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during VenicePushJob.*")
   public void testRunJobWithBuggySprayingMapReduceShufflePartitioner() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
@@ -505,7 +505,7 @@ public class TestVenicePushJob {
     // No need for asserts, because we are expecting an exception to be thrown!
   }
 
-  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during Hadoop to Venice Bridge.*")
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during VenicePushJob.*")
   public void testRunJobWithBuggyOffsettingMapReduceShufflePartitioner() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
@@ -527,7 +527,7 @@ public class TestVenicePushJob {
     // No need for asserts, because we are expecting an exception to be thrown!
   }
 
-  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during Hadoop to Venice Bridge.*")
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during VenicePushJob.*")
   public void testRunJobWithNonDeterministicPartitioner() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);

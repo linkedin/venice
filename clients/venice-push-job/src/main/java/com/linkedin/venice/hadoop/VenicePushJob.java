@@ -1539,7 +1539,7 @@ public class VenicePushJob implements AutoCloseable {
 
   private void throwVeniceException(Throwable e) throws VeniceException {
     if (!(e instanceof VeniceException)) {
-      e = new VeniceException("Exception or error caught during Hadoop to Venice Bridge: " + e.getMessage(), e);
+      e = new VeniceException("Exception or error caught during VenicePushJob: " + e.getMessage(), e);
     }
     throw (VeniceException) e;
   }
@@ -1752,7 +1752,7 @@ public class VenicePushJob implements AutoCloseable {
 
   private void logGreeting() {
     LOGGER.info(
-        "Running Hadoop to Venice Bridge: " + jobId + Utils.NEW_LINE_CHAR + "  _    _           _                   "
+        "Running VenicePushJob: " + jobId + Utils.NEW_LINE_CHAR + "  _    _           _                   "
             + Utils.NEW_LINE_CHAR + " | |  | |         | |                  " + Utils.NEW_LINE_CHAR
             + " | |__| | __ _  __| | ___   ___  _ __  " + Utils.NEW_LINE_CHAR
             + " |  __  |/ _` |/ _` |/ _ \\ / _ \\| '_ \\ " + Utils.NEW_LINE_CHAR
