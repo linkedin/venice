@@ -1317,7 +1317,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      */
     if (!consumerHasAnySubscription()) {
       if (++idleCounter <= MAX_IDLE_COUNTER) {
-        String message = consumerTaskId + " Not subscribed to any partitions " + isDaVinciClient;
+        String message = consumerTaskId + " Not subscribed to any partitions ";
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
           LOGGER.info(message);
         }
