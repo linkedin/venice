@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -183,6 +184,13 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
     // Expect the output collect to collect output due to no early termination
     verify(output, times(getNumberOfCollectorInvocationForFirstMapInvocation(numReducers, taskId)))
         .collect(any(), any());
+  }
+
+  @Test
+  public void testEmptyFilter() {
+    try (VeniceAvroMapper mapper = new VeniceAvroMapper()) {
+      Assert.assertFalse(mapper.getFilter(new VeniceProperties()).isPresent());
+    }
   }
 
   private AvroWrapper<IndexedRecord> getAvroWrapper(String keyFieldValue, String valueFieldValue) {

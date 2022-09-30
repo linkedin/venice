@@ -12,6 +12,7 @@ import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.util.HashMap;
 import org.apache.avro.Schema;
@@ -109,6 +110,13 @@ public class TestVeniceVsonMapper extends AbstractTestVeniceMapper<VeniceVsonMap
     jobConf.set(FILE_VALUE_SCHEMA, fileValueSchemaStr);
 
     return jobConf;
+  }
+
+  @Test
+  public void testEmptyFilter() {
+    try (VeniceVsonMapper mapper = new VeniceVsonMapper()) {
+      Assert.assertFalse(mapper.getFilter(new VeniceProperties()).isPresent());
+    }
   }
 
   private Pair<BytesWritable, BytesWritable> generateRecord() {
