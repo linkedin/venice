@@ -1626,7 +1626,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     close();
-    notifyAll();
+    synchronized (this) {
+      notifyAll();
+    }
     LOGGER.info("Store ingestion task for store: {} is closed", kafkaVersionTopic);
   }
 
