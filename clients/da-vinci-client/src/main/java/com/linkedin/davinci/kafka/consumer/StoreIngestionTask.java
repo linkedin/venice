@@ -3287,12 +3287,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * @param waitTime Maximum wait time for the shutdown operation.
    */
   public synchronized void shutdown(int waitTime) {
+    long startTimeInMs = System.currentTimeMillis();
     close();
     try {
       wait(waitTime);
     } catch (Exception e) {
       LOGGER.error("Caught exception while waiting for ingestion task of topic: {} shutdown.", kafkaVersionTopic);
     }
+    LOGGER.info(
+        "Ingestion task of topic: {} is shutdown in {}ms",
+        kafkaVersionTopic,
+        LatencyUtils.getElapsedTimeInMs(startTimeInMs));
   }
 
   /**
