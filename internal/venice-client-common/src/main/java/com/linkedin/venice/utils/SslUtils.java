@@ -111,6 +111,10 @@ public class SslUtils {
     File file = new File(tempDir.getAbsolutePath(), resource);
     if (!file.exists()) {
       try (InputStream is = (ClassLoader.getSystemResourceAsStream(resource))) {
+        if (is == null) {
+          throw new IllegalStateException(
+              "ClassLoader.getSystemResourceAsStream returned null resource for: " + resource);
+        }
         Files.copy(is, file.getAbsoluteFile().toPath());
       } catch (IOException e) {
         throw new RuntimeException("Failed to copy resource: " + resource + " to tmp dir", e);
