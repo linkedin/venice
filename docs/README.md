@@ -1,3 +1,4 @@
+
 <html>
     <h1 align="center">
       Venice
@@ -50,6 +51,8 @@ Write Compute includes two kinds of operations, which can be performed on the va
 - **Partial update**: set the content of a field within the value.
 - **Collection merging**: add or remove entries in a set or map.  
 
+N.B.: Currently, write compute is only supported in conjunction with active-passive replication. Support for active-actice replication is under development. 
+
 Read Path
 ---------
 
@@ -84,6 +87,7 @@ The following blog posts have previously been published about Venice:
 - 2015: [Prototyping Venice: Derived Data Platform](https://engineering.linkedin.com/distributed-systems/prototyping-venice-derived-data-platform)
 - 2017: [Building Venice with Apache Helix](https://engineering.linkedin.com/blog/2017/02/building-venice-with-apache-helix)
 - 2017: [Building Venice: A Production Software Case Study](https://engineering.linkedin.com/blog/2017/04/building-venice--a-production-software-case-study)
+- 2017: [Venice Hybrid: Doing Lambda Better](https://engineering.linkedin.com/blog/2017/12/venice-hybrid--doing-lambda-better)
 - 2018: [Venice Performance Optimization](https://engineering.linkedin.com/blog/2018/04/venice-performance-optimization)
 - 2021: [Taming memory fragmentation in Venice with Jemalloc](https://engineering.linkedin.com/blog/2021/taming-memory-fragmentation-in-venice-with-jemalloc)
 - 2022: [Supporting large fanout use cases at scale in Venice](https://engineering.linkedin.com/blog/2022/supporting-large-fanout-use-cases-at-scale-in-venice)
@@ -104,4 +108,4 @@ Feel free to engage with the community using our:
 - [LinkedIn group](https://www.linkedin.com/groups/14129519/)
 - [Twitter handle](https://twitter.com/VeniceDataBase)
 - GitHub [issues](https://github.com/linkedin/venice/issues) and [discussions](https://github.com/linkedin/venice/discussions)
-- The [contributor's guide](CONTRIBUTING.md).
+- [Contributor's guide](CONTRIBUTING.md).
