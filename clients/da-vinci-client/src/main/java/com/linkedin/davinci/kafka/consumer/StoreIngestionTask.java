@@ -558,6 +558,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         subPartition -> consumerActionsQueue.add(new ConsumerAction(UNSUBSCRIBE, topic, subPartition, nextSeqNum())));
   }
 
+  public boolean hasAnySubscription() {
+    return !partitionConsumptionStateMap.isEmpty();
+  }
+
   /**
    * Adds an asynchronous resetting partition consumption offset request for the task.
    */

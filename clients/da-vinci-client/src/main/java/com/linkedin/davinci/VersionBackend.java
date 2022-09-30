@@ -136,7 +136,6 @@ public class VersionBackend {
 
   private AbstractStorageEngine getStorageEngineOrThrow() {
     AbstractStorageEngine engine = storageEngine.get();
-    LOGGER.error("DEBUGGING READ: " + (engine == null ? null : engine.hashCode()));
     if (engine == null) {
       throw new VeniceException("Storage engine is not ready, version=" + this);
     }

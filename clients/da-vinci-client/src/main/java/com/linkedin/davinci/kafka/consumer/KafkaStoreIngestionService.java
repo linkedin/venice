@@ -61,6 +61,7 @@ import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DiskUsage;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Time;
@@ -817,9 +818,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     final String topic = veniceStore.getStoreVersionName();
 
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
-      StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
-      if (consumerTask != null && consumerTask.isRunning()) {
-        consumerTask.unSubscribePartition(topic, partitionId);
+      StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topic);
+      if (ingestionTask != null && ingestionTask.isRunning()) {
+        ingestionTask.unSubscribePartition(topic, partitionId);
       } else {
         LOGGER.warn("Ignoring stop consumption message for Topic {} Partition {}", topic, partitionId);
       }
@@ -840,26 +841,39 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int partitionId,
       int sleepSeconds,
       int numRetries) {
-    stopConsumption(veniceStore, partitionId);
-    try {
-      for (int i = 0; i < numRetries; i++) {
-        if (!isPartitionConsuming(veniceStore, partitionId)) {
-          LOGGER.info(
-              "Partition:{} of store: {} has stopped consumption.",
-              partitionId,
-              veniceStore.getStoreVersionName());
-          return;
+    if (isPartitionConsuming(veniceStore, partitionId)) {
+      stopConsumption(veniceStore, partitionId);
+      try {
+        long startTimeInMs = System.currentTimeMillis();
+        for (int i = 0; i < numRetries; i++) {
+          if (!isPartitionConsuming(veniceStore, partitionId)) {
+            LOGGER.info(
+                "Partition: {} of topic: {} has stopped consumption in {}ms.",
+                partitionId,
+                veniceStore.getStoreVersionName(),
+                LatencyUtils.getElapsedTimeInMs(startTimeInMs));
+            break;
+          }
+          sleep((long) sleepSeconds * Time.MS_PER_SECOND);
         }
-        sleep((long) sleepSeconds * Time.MS_PER_SECOND);
+        LOGGER.error(
+            "Partition: {} of store: {} is still consuming after waiting for it to stop for {} seconds.",
+            partitionId,
+            veniceStore.getStoreVersionName(),
+            numRetries * sleepSeconds);
+      } catch (InterruptedException e) {
+        LOGGER.warn("Waiting for partition to stop consumption was interrupted", e);
+        currentThread().interrupt();
       }
-      LOGGER.error(
-          "Partition: {} of store: {} is still consuming after waiting for it to stop for {} seconds.",
+    } else {
+      LOGGER.warn(
+          "Partition: {} of topic: {} is not consuming, skipped the stop consumption.",
           partitionId,
-          veniceStore.getStoreVersionName(),
-          numRetries * sleepSeconds);
-    } catch (InterruptedException e) {
-      LOGGER.warn("Waiting for partition to stop consumption was interrupted", e);
-      currentThread().interrupt();
+          veniceStore.getStoreVersionName());
+    }
+    resetConsumptionOffset(veniceStore, partitionId);
+    if (!ingestionTaskHasAnySubscription(veniceStore.getStoreVersionName())) {
+      shutdownStoreIngestionTask(veniceStore);
     }
   }
 
@@ -951,12 +965,19 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
   }
 
+  public boolean ingestionTaskHasAnySubscription(String topic) {
+    try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
+      StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
+      return consumerTask != null && consumerTask.hasAnySubscription();
+    }
+  }
+
   @Override
   public boolean isPartitionConsuming(VeniceStoreVersionConfig veniceStore, int partitionId) {
     final String topic = veniceStore.getStoreVersionName();
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
-      StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
-      return consumerTask != null && consumerTask.isRunning() && consumerTask.isPartitionConsuming(partitionId);
+      StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topic);
+      return ingestionTask != null && ingestionTask.isRunning() && ingestionTask.isPartitionConsuming(partitionId);
     }
   }
 

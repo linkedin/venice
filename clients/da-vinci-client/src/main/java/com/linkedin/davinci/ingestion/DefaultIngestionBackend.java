@@ -5,11 +5,9 @@ import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.notifier.VeniceNotifier;
-import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
-import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
@@ -83,37 +81,12 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
       int timeoutInSeconds,
       boolean removeEmptyStorageEngine) {
     String topicName = storeConfig.getStoreVersionName();
-    if (storeIngestionService.isPartitionConsuming(storeConfig, partition)) {
-      long startTimeInMs = System.currentTimeMillis();
-      getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, 1, timeoutInSeconds);
-      LOGGER.info(
-          "Partition: {} of topic: {} has stopped consumption in {} ms.",
-          partition,
-          topicName,
-          LatencyUtils.getElapsedTimeInMs(startTimeInMs));
-    }
-    getStoreIngestionService().resetConsumptionOffset(storeConfig, partition);
-    getStorageService().dropStorePartition(storeConfig, partition, removeEmptyStorageEngine);
-    LOGGER.info("Partition: {} of topic: {} has been dropped.", partition, topicName);
-
-    StorageEngineRepository storageEngineRepository = getStorageService().getStorageEngineRepository();
-
-    /**
-     * Shutdown StoreIngestionTask if local storage engine does not exist (dropped) or it has no data partition.
-     * (1) Local storage engine will be dropped by default when last data partition is dropped. In this case, we should
-     * close StoreIngestionTask as it is no longer performing ingestion.
-     * (2) In isolated ingestion case, we will keep local storage engine even if there is no data partition. Isolated
-     * ingestion process maintains metadata partition in its storage engine, so it will have to keep the engine. However,
-     * StoreIngestionTask can still be closed as there is no data partition associated.
-     */
-    if ((!storageEngineRepository.hasLocalStorageEngine(topicName))
-        || (storageEngineRepository.getLocalStorageEngine(topicName).getPartitionIds().size() == 0)) {
-      getStoreIngestionService().shutdownStoreIngestionTask(storeConfig);
-    }
-
     // Delete this replica from meta system store if exists.
     getStoreIngestionService().getMetaSystemStoreReplicaStatusNotifier()
         .ifPresent(systemStoreReplicaStatusNotifier -> systemStoreReplicaStatusNotifier.drop(topicName, partition));
+    getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, 1, timeoutInSeconds);
+    getStorageService().dropStorePartition(storeConfig, partition, removeEmptyStorageEngine);
+
   }
 
   @Override

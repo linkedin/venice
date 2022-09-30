@@ -403,8 +403,8 @@ public class DaVinciClientTest {
   public void testIngestionIsolation(boolean isAmplificationFactorEnabled) throws Exception {
     final int partitionCount = 3;
     final int dataPartition = 1;
-    int emptyPartition1 = (dataPartition + 1) % partitionCount;
-    int emptyPartition2 = (dataPartition + 2) % partitionCount;
+    int emptyPartition1 = 2;
+    int emptyPartition2 = 0;
     final int amplificationFactor = isAmplificationFactorEnabled ? 3 : 1;
     String storeName = Utils.getUniqueString("store");
     String storeName2 = createStoreWithMetaSystemStore(KEY_COUNT);
@@ -517,8 +517,9 @@ public class DaVinciClientTest {
       boolean isAmplificationFactorEnabled,
       DaVinciConfig daVinciConfig) throws Exception {
     // Create store
-    final int dataPartition = 1;
     final int partitionCount = 2;
+    final int emptyPartition = 0;
+    final int dataPartition = 1;
     final int amplificationFactor = isAmplificationFactorEnabled ? 3 : 1;
     String storeName = Utils.getUniqueString("store");
 
@@ -544,7 +545,6 @@ public class DaVinciClientTest {
         new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
       DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, daVinciConfig);
       // subscribe to a partition without data
-      int emptyPartition = (dataPartition + 1) % partitionCount;
       client.subscribe(Collections.singleton(emptyPartition)).get();
       for (int i = 0; i < KEY_COUNT; i++) {
         int key = i;
