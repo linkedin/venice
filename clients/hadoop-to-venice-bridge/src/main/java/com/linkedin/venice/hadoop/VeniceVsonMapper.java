@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Optional;
 import org.apache.hadoop.io.BytesWritable;
 
 
@@ -11,5 +12,10 @@ public class VeniceVsonMapper extends AbstractVeniceMapper<BytesWritable, BytesW
   @Override
   public AbstractVeniceRecordReader<BytesWritable, BytesWritable> getRecordReader(VeniceProperties props) {
     return new VeniceVsonRecordReader(props);
+  }
+
+  @Override
+  protected Optional<AbstractVeniceFilter<BytesWritable>> getFilter(final VeniceProperties props) {
+    return Optional.empty();
   }
 }
