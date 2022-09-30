@@ -1,5 +1,11 @@
-Responsible Disclosure of Security Vulnerabilities
-==================================================
+---
+layout: default
+title: Responsible Disclosure of Security Vulnerabilities
+parent: Community Guides
+permalink: /community_guides/security_vulnerability
+---
+
+# Responsible Disclosure of Security Vulnerabilities
 
 Please do not file reports on GitHub for security issues.  Please
 review the guidelines for reporting [Security Vulnerabilities](https://www.linkedin.com/help/linkedin/answer/62924/security-vulnerabilities?lang=en).
