@@ -2459,7 +2459,7 @@ public class VenicePushJob implements AutoCloseable {
       StoreSetting storeSetting,
       VeniceProperties props,
       String id) {
-    setupCommonJobConf(conf, pushJobSchemaInfo, id + ":hadoop_to_venice_bridge-" + versionTopicInfo.topic);
+    setupCommonJobConf(conf, pushJobSchemaInfo, id + ":venice_push_job-" + versionTopicInfo.topic);
     conf.set(BATCH_NUM_BYTES_PROP, Integer.toString(pushJobSetting.batchNumBytes));
     conf.set(TOPIC_PROP, versionTopicInfo.topic);
     // We need the two configs with bootstrap servers since VeniceWriterFactory requires kafka.bootstrap.servers while
@@ -2677,7 +2677,7 @@ public class VenicePushJob implements AutoCloseable {
     setupCommonJobConf(
         conf,
         pushJobSchemaInfo,
-        id + ":hadoop_to_venice_bridge_validate_schema_and_build_dict-" + pushJobSetting.storeName);
+        id + ":venice_push_job_validate_schema_and_build_dict-" + pushJobSetting.storeName);
 
     conf.set(VENICE_STORE_NAME_PROP, pushJobSetting.storeName);
     conf.set(ETL_VALUE_SCHEMA_TRANSFORMATION, pushJobSetting.etlValueSchemaTransformation.name());

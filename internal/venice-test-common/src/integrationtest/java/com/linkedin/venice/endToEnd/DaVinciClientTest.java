@@ -954,7 +954,7 @@ public class DaVinciClientTest {
       ControllerResponse response = controllerClient.updateStore(storeName, params);
       Assert.assertFalse(response.isError(), response.getError());
 
-      // Push data through VPJ bridge.
+      // Push data through VPJ.
       runVPJ(vpjProperties, 1, cluster);
     }
   }
