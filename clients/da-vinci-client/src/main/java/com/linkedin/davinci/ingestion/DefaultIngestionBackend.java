@@ -84,7 +84,9 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
     // Delete this replica from meta system store if exists.
     getStoreIngestionService().getMetaSystemStoreReplicaStatusNotifier()
         .ifPresent(systemStoreReplicaStatusNotifier -> systemStoreReplicaStatusNotifier.drop(topicName, partition));
+    // Stop consumption of the partition.
     getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, 1, timeoutInSeconds);
+    // Drops corresponding data partition from storage.
     getStorageService().dropStorePartition(storeConfig, partition, removeEmptyStorageEngine);
 
   }

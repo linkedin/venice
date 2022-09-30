@@ -687,7 +687,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * This method closes the specified {@link StoreIngestionTask} and wait for up to 10 seconds for fully shutdown.
    * @param veniceStoreVersionConfig store version config that carries topic information.
    */
-  public void shutdownStoreIngestionTask(VeniceStoreVersionConfig veniceStoreVersionConfig) {
+  protected void shutdownStoreIngestionTask(VeniceStoreVersionConfig veniceStoreVersionConfig) {
     String topicName = veniceStoreVersionConfig.getStoreVersionName();
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topicName)) {
       if (topicNameToIngestionTaskMap.containsKey(topicName)) {
@@ -882,8 +882,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * @param veniceStore Venice Store for the partition.
    * @param partitionId Venice partition's id.
    */
-  @Override
-  public void resetConsumptionOffset(VeniceStoreVersionConfig veniceStore, int partitionId) {
+  private void resetConsumptionOffset(VeniceStoreVersionConfig veniceStore, int partitionId) {
     String topic = veniceStore.getStoreVersionName();
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
     if (consumerTask != null && consumerTask.isRunning()) {

@@ -269,15 +269,20 @@ public class StorageService extends AbstractVeniceService {
   }
 
   /**
-   * Removes the Store, Partition from the Storage service.
+   * Drops the partition of the specified store version in the storage service. When all data partitions are dropped,
+   * it will also drop the storage engine of the specific store version.
+   * @param storeConfig config of the store version.
+   * @param partition partition ID to be dropped.
    */
   public synchronized void dropStorePartition(VeniceStoreVersionConfig storeConfig, int partition) {
     dropStorePartition(storeConfig, partition, true);
   }
 
   /**
-   * Removes the Store, Partition from the Storage service.
-   * @param removeEmptyStorageEngine Whether to delete the storage engine when there is no remaining partition.
+   * Drops the partition of the specified store version in the storage service.
+   * @param storeConfig config of the store version.
+   * @param partition partition ID to be dropped.
+   * @param removeEmptyStorageEngine Whether to delete the storage engine when there is no remaining data partition.
    */
   public synchronized void dropStorePartition(
       VeniceStoreVersionConfig storeConfig,
