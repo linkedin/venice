@@ -878,20 +878,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   /**
-   * Resets Offset to beginning for Kafka Partition corresponding to Venice Partition.
-   * @param veniceStore Venice Store for the partition.
-   * @param partitionId Venice partition's id.
-   */
-  private void resetConsumptionOffset(VeniceStoreVersionConfig veniceStore, int partitionId) {
-    String topic = veniceStore.getStoreVersionName();
-    StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
-    if (consumerTask != null && consumerTask.isRunning()) {
-      consumerTask.resetPartitionConsumptionOffset(topic, partitionId);
-    }
-    LOGGER.info("Offset reset to beginning - Kafka Partition: {}-{}.", topic, partitionId);
-  }
-
-  /**
    * @param topicName Venice topic (store and version number) for the corresponding consumer task that needs to be killed.
    *                  No action is taken for invocations of killConsumptionTask on topics that are not in the map. This
    *                  includes logging.
@@ -961,13 +947,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
       return consumerTask != null && consumerTask.isRunning();
-    }
-  }
-
-  public boolean ingestionTaskHasAnySubscription(String topic) {
-    try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
-      StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
-      return consumerTask != null && consumerTask.hasAnySubscription();
     }
   }
 
@@ -1158,5 +1137,26 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   public ReadOnlyStoreRepository getMetadataRepo() {
     return metadataRepo;
+  }
+
+  private boolean ingestionTaskHasAnySubscription(String topic) {
+    try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
+      StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
+      return consumerTask != null && consumerTask.hasAnySubscription();
+    }
+  }
+
+  /**
+   * Resets Offset to beginning for Kafka Partition corresponding to Venice Partition.
+   * @param veniceStore Venice Store for the partition.
+   * @param partitionId Venice partition's id.
+   */
+  private void resetConsumptionOffset(VeniceStoreVersionConfig veniceStore, int partitionId) {
+    String topic = veniceStore.getStoreVersionName();
+    StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
+    if (consumerTask != null && consumerTask.isRunning()) {
+      consumerTask.resetPartitionConsumptionOffset(topic, partitionId);
+    }
+    LOGGER.info("Offset reset to beginning - Kafka Partition: {}-{}.", topic, partitionId);
   }
 }

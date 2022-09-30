@@ -84,7 +84,6 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Timer;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
@@ -174,7 +173,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final Properties kafkaProps;
   protected final KafkaClientFactory kafkaClientFactory;
   protected final AtomicBoolean isRunning;
-  protected final AtomicBoolean isClosed;
   protected final AtomicBoolean emitMetrics; // TODO: remove this once we migrate to versioned stats
   protected final AtomicInteger consumerActionSequenceNumber = new AtomicInteger(0);
   protected final PriorityBlockingQueue<ConsumerAction> consumerActionsQueue;
@@ -405,7 +403,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.versionedDIVStats = builder.getVersionedDIVStats();
     this.versionedIngestionStats = builder.getVersionedStorageIngestionStats();
     this.isRunning = new AtomicBoolean(true);
-    this.isClosed = new AtomicBoolean(false);
     this.emitMetrics = new AtomicBoolean(true);
     this.readOnlyForBatchOnlyStoreEnabled = storeConfig.isReadOnlyForBatchOnlyStoreEnabled();
 
@@ -570,13 +567,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     amplificationFactorAdapter.execute(
         partition,
         subPartition -> consumerActionsQueue.add(new ConsumerAction(RESET_OFFSET, topic, subPartition, nextSeqNum())));
-  }
-
-  /**
-   * Get the Store for this ingestion task. Short term solution for funneling versioned stats of zk shared system stores.
-   */
-  public Store getIngestionStore() {
-    return storeRepository.getStoreOrThrow(storeName);
   }
 
   public String getStoreName() {
@@ -1624,7 +1614,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     aggKafkaConsumerService.unsubscribeAll(kafkaVersionTopic);
     LOGGER.info("Detached Kafka consumer(s) for version topic: {}", kafkaVersionTopic);
     try {
-      partitionConsumptionStateMap.values().parallelStream().forEach(pcs -> pcs.unsubscribe());
+      partitionConsumptionStateMap.values().parallelStream().forEach(PartitionConsumptionState::unsubscribe);
       partitionConsumptionStateMap.clear();
     } catch (Exception e) {
       LOGGER.error("{} Error while unsubscribing topic.", consumerTaskId, e);
@@ -1636,7 +1626,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     close();
-    isClosed.set(true);
+    notifyAll();
     LOGGER.info("Store ingestion task for store: {} is closed", kafkaVersionTopic);
   }
 
@@ -3297,18 +3287,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * @param waitTime Maximum wait time for the shutdown operation.
    */
   public synchronized void shutdown(int waitTime) {
-    int sleepInterval = 100;
     close();
-    int elapsedTime = 0;
-    while (elapsedTime < waitTime) {
-      if (isClosed.get()) {
-        LOGGER.info("Shutdown store ingestion task for topic {} in {}ms.", kafkaVersionTopic, elapsedTime);
-        return;
-      }
-      Utils.sleep(sleepInterval);
-      elapsedTime += sleepInterval;
+    try {
+      wait(waitTime);
+    } catch (Exception e) {
+      LOGGER.error("Caught exception while waiting for ingestion task of topic: {} shutdown.", kafkaVersionTopic);
     }
-    LOGGER.error("After {}ms, store ingestion task for topic: {} is not fully shutdown.", waitTime, kafkaVersionTopic);
   }
 
   /**
@@ -3317,10 +3301,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   public boolean isRunning() {
     return isRunning.get();
-  }
-
-  public boolean isClosed() {
-    return isClosed.get();
   }
 
   public String getVersionTopic() {
