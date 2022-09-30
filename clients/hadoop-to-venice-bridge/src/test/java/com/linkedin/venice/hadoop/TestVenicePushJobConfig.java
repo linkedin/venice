@@ -35,7 +35,7 @@ public class TestVenicePushJobConfig {
   private static final String TEST_CLUSTER = "test_cluster";
   private static final String TEST_SERVICE = "test_venice";
 
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Repush with TTL is only supported while using Kafka input.*")
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Repush with TTL is only supported while using Kafka Input Format.*")
   public void testRepushTTLJobWithNonKafkaInput() {
     Properties repushProps = new Properties();
     repushProps.put(VenicePushJob.REPUSH_TTL_IN_HOURS, 10L);

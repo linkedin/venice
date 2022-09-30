@@ -319,7 +319,7 @@ public class VenicePushJob implements AutoCloseable {
   public static final String REPUSH_TTL_IN_HOURS = "repush.ttl.hours";
   public static final String REPUSH_TTL_POLICY = "repush.ttl.policy";
 
-  public static final int UNSET = -1;
+  public static final int NOT_SET = -1;
   private static final Logger LOGGER = LogManager.getLogger(VenicePushJob.class);
 
   /**
@@ -649,10 +649,10 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.kafkaInputCombinerEnabled = props.getBoolean(KAFKA_INPUT_COMBINER_ENABLED, false);
     pushJobSettingToReturn.suppressEndOfPushMessage = props.getBoolean(SUPPRESS_END_OF_PUSH_MESSAGE, false);
     pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
-    pushJobSettingToReturn.repushTtlInHours = props.getLong(REPUSH_TTL_IN_HOURS, UNSET);
+    pushJobSettingToReturn.repushTtlInHours = props.getLong(REPUSH_TTL_IN_HOURS, NOT_SET);
 
-    if (pushJobSettingToReturn.repushTtlInHours != UNSET && !pushJobSettingToReturn.isSourceKafka) {
-      throw new VeniceException("Repush with TTL is only supported while using Kafka input");
+    if (pushJobSettingToReturn.repushTtlInHours != NOT_SET && !pushJobSettingToReturn.isSourceKafka) {
+      throw new VeniceException("Repush with TTL is only supported while using Kafka Input Format");
     }
 
     if (pushJobSettingToReturn.isSourceKafka) {
@@ -663,13 +663,13 @@ public class VenicePushJob implements AutoCloseable {
       pushJobSettingToReturn.isDuplicateKeyAllowed = true;
 
       if (pushJobSettingToReturn.isIncrementalPush) {
-        throw new VeniceException("Incremental push is not supported while using Kafka Input");
+        throw new VeniceException("Incremental push is not supported while using Kafka Input Format");
       }
       if (pushJobSettingToReturn.isSourceETL) {
-        throw new VeniceException("Source ETL is not supported while using Kafka Input");
+        throw new VeniceException("Source ETL is not supported while using Kafka Input Format");
       }
       if (pushJobSettingToReturn.enablePBNJ) {
-        throw new VeniceException("PBNJ is not supported while using Kafka Input");
+        throw new VeniceException("PBNJ is not supported while using Kafka Input Format");
       }
       pushJobSettingToReturn.kafkaInputTopic =
           getSourceTopicNameForKafkaInput(props.getString(VENICE_STORE_NAME_PROP), props, pushJobSettingToReturn);
@@ -678,13 +678,13 @@ public class VenicePushJob implements AutoCloseable {
           : pushJobSettingToReturn.repushInfoResponse.getRepushInfo().getKafkaBrokerUrl();
     }
     pushJobSettingToReturn.storeName = props.getString(VENICE_STORE_NAME_PROP);
-    pushJobSettingToReturn.rewindTimeInSecondsOverride = props.getLong(REWIND_TIME_IN_SECONDS_OVERRIDE, UNSET);
+    pushJobSettingToReturn.rewindTimeInSecondsOverride = props.getLong(REWIND_TIME_IN_SECONDS_OVERRIDE, NOT_SET);
 
     // If we didn't specify a rewind time
-    if (pushJobSettingToReturn.rewindTimeInSecondsOverride == UNSET) {
+    if (pushJobSettingToReturn.rewindTimeInSecondsOverride == NOT_SET) {
       // But we did specify a rewind time epoch timestamp
-      long rewindTimestamp = props.getLong(REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE, UNSET);
-      if (rewindTimestamp > UNSET) {
+      long rewindTimestamp = props.getLong(REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE, NOT_SET);
+      if (rewindTimestamp != NOT_SET) {
         long nowInSeconds = System.currentTimeMillis() / 1000;
         // So long as that rewind time isn't in the future
         if (rewindTimestamp > nowInSeconds) {
@@ -912,7 +912,7 @@ public class VenicePushJob implements AutoCloseable {
       storeSetting = getSettingsFromController(controllerClient, pushJobSetting);
       inputStorageQuotaTracker = new InputStorageQuotaTracker(storeSetting.storeStorageQuota);
 
-      if (pushJobSetting.repushTtlInHours != UNSET && storeSetting.isChunkingEnabled) {
+      if (pushJobSetting.repushTtlInHours != NOT_SET && storeSetting.isChunkingEnabled) {
         throw new VeniceException("Repush TTL is not supported when the store has chunking enabled.");
       }
 
@@ -995,7 +995,7 @@ public class VenicePushJob implements AutoCloseable {
         if (pushJobSetting.isSourceKafka) {
           pushId = Version.generateRePushId(pushId);
           if (storeSetting.sourceKafkaInputVersionInfo.getHybridStoreConfig() != null
-              && pushJobSetting.rewindTimeInSecondsOverride == UNSET) {
+              && pushJobSetting.rewindTimeInSecondsOverride == NOT_SET) {
             pushJobSetting.rewindTimeInSecondsOverride = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
             LOGGER.info("Overriding re-push rewind time in seconds to: {}", DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE);
           }
@@ -2775,7 +2775,7 @@ public class VenicePushJob implements AutoCloseable {
     propKeyValuePairs.add("Is duplicated key allowed: " + pushJobSetting.isDuplicateKeyAllowed);
     propKeyValuePairs.add("Is source ETL data: " + pushJobSetting.isSourceETL);
     propKeyValuePairs.add("ETL value schema transformation : " + pushJobSetting.etlValueSchemaTransformation);
-    propKeyValuePairs.add("Is Kafka Input: " + pushJobSetting.isSourceKafka);
+    propKeyValuePairs.add("Is Kafka Input Format: " + pushJobSetting.isSourceKafka);
     if (pushJobSetting.isSourceKafka) {
       propKeyValuePairs.add("Kafka Input broker urls: " + pushJobSetting.kafkaInputBrokerUrl);
       propKeyValuePairs.add("Kafka Input topic name: " + pushJobSetting.kafkaInputTopic);
