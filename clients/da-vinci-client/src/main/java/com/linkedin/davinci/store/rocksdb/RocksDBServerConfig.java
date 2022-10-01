@@ -121,7 +121,7 @@ public class RocksDBServerConfig {
   public static final String ROCKSDB_MAX_OPEN_FILES = "rocksdb.max.open.files";
 
   /**
-   * Target file size, and this will only apply to hybrid store since batch-only push from H2V is using SSTFileWriter directly.
+   * Target file size, and this will only apply to hybrid store since batch-only push from VPJ is using SSTFileWriter directly.
    */
   public static final String ROCKSDB_TARGET_FILE_SIZE_IN_BYTES = "rocksdb.target.file.size.in.bytes";
 

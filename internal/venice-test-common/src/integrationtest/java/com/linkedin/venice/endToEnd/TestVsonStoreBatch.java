@@ -9,7 +9,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_URL_PROP;
 import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestPushUtils.writeComplexVsonFile;
 import static com.linkedin.venice.utils.TestPushUtils.writeMultiLevelVsonFile;
@@ -229,7 +229,7 @@ public class TestVsonStoreBatch {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testKafkaInputBatchJobWithVsonStoreMultiLevelRecordsSchemaWithSelectedField() throws Exception {
-    TestBatch.H2VValidator validator = (avroClient, vsonClient, metricsRepository) -> {
+    TestBatch.VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {
       for (int i = 0; i < 100; i++) {
         GenericRecord valueInnerRecord = (GenericRecord) ((List) avroClient.get(i).get()).get(0);
         Assert.assertEquals(valueInnerRecord.get("member_id"), i);
@@ -285,14 +285,14 @@ public class TestVsonStoreBatch {
   private String testBatchStore(
       TestBatch.InputFileWriter inputFileWriter,
       Consumer<Properties> extraProps,
-      TestBatch.H2VValidator dataValidator) throws Exception {
+      TestBatch.VPJValidator dataValidator) throws Exception {
     return testBatchStore(inputFileWriter, extraProps, dataValidator, new UpdateStoreQueryParams());
   }
 
   private String testBatchStore(
       TestBatch.InputFileWriter inputFileWriter,
       Consumer<Properties> extraProps,
-      TestBatch.H2VValidator dataValidator,
+      TestBatch.VPJValidator dataValidator,
       UpdateStoreQueryParams storeParms) throws Exception {
     return testBatchStore(inputFileWriter, extraProps, dataValidator, storeParms, Optional.empty(), true);
   }
@@ -300,7 +300,7 @@ public class TestVsonStoreBatch {
   private String testBatchStore(
       TestBatch.InputFileWriter inputFileWriter,
       Consumer<Properties> extraProps,
-      TestBatch.H2VValidator dataValidator,
+      TestBatch.VPJValidator dataValidator,
       UpdateStoreQueryParams storeParms,
       Optional<String> storeNameOptional,
       boolean deleteStoreAfterValidation) throws Exception {
@@ -312,7 +312,7 @@ public class TestVsonStoreBatch {
 
     try {
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
-      Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+      Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
       extraProps.accept(props);
 
       if (!storeNameOptional.isPresent()) {

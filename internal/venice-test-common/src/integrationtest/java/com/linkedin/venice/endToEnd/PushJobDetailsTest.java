@@ -22,7 +22,7 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.PROGRESS;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.START_OF_BUFFER_REPLAY_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.TOPIC_SWITCH_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.WARNING;
-import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
 import static org.testng.Assert.assertEquals;
@@ -135,11 +135,11 @@ public class PushJobDetailsTest {
         "test-user",
         recordSchema.getField("id").schema().toString(),
         recordSchema.getField("name").schema().toString());
-    // Set store quota to unlimited else local H2V jobs will fail due to quota enforcement NullPointerException because
+    // Set store quota to unlimited else local VPJ jobs will fail due to quota enforcement NullPointerException because
     // hadoop job client cannot fetch counters properly.
     parentControllerClient
         .updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(-1).setPartitionCount(2));
-    Properties pushJobProps = defaultH2VProps(venice, inputDirPath, testStoreName);
+    Properties pushJobProps = defaultVPJProps(venice, inputDirPath, testStoreName);
     pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
     pushJobProps.setProperty(VENICE_URL_PROP, parentController.getControllerUrl());
     pushJobProps.setProperty(VENICE_DISCOVER_URL_PROP, parentController.getControllerUrl());
@@ -230,7 +230,7 @@ public class PushJobDetailsTest {
         recordSchema.getField("name").schema().toString());
     // hadoop job client cannot fetch counters properly and should fail the job
     parentControllerClient.updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(0));
-    Properties pushJobProps = defaultH2VProps(venice, inputDirPath, testStoreName);
+    Properties pushJobProps = defaultVPJProps(venice, inputDirPath, testStoreName);
     pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
     pushJobProps.setProperty(VENICE_URL_PROP, parentController.getControllerUrl());
     pushJobProps.setProperty(VENICE_DISCOVER_URL_PROP, parentController.getControllerUrl());

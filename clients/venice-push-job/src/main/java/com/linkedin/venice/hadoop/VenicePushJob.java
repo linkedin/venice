@@ -1539,7 +1539,7 @@ public class VenicePushJob implements AutoCloseable {
 
   private void throwVeniceException(Throwable e) throws VeniceException {
     if (!(e instanceof VeniceException)) {
-      e = new VeniceException("Exception or error caught during Hadoop to Venice Bridge: " + e.getMessage(), e);
+      e = new VeniceException("Exception or error caught during VenicePushJob: " + e.getMessage(), e);
     }
     throw (VeniceException) e;
   }
@@ -1752,7 +1752,7 @@ public class VenicePushJob implements AutoCloseable {
 
   private void logGreeting() {
     LOGGER.info(
-        "Running Hadoop to Venice Bridge: " + jobId + Utils.NEW_LINE_CHAR + "  _    _           _                   "
+        "Running VenicePushJob: " + jobId + Utils.NEW_LINE_CHAR + "  _    _           _                   "
             + Utils.NEW_LINE_CHAR + " | |  | |         | |                  " + Utils.NEW_LINE_CHAR
             + " | |__| | __ _  __| | ___   ___  _ __  " + Utils.NEW_LINE_CHAR
             + " |  __  |/ _` |/ _` |/ _ \\ / _ \\| '_ \\ " + Utils.NEW_LINE_CHAR
@@ -2459,7 +2459,7 @@ public class VenicePushJob implements AutoCloseable {
       StoreSetting storeSetting,
       VeniceProperties props,
       String id) {
-    setupCommonJobConf(conf, pushJobSchemaInfo, id + ":hadoop_to_venice_bridge-" + versionTopicInfo.topic);
+    setupCommonJobConf(conf, pushJobSchemaInfo, id + ":venice_push_job-" + versionTopicInfo.topic);
     conf.set(BATCH_NUM_BYTES_PROP, Integer.toString(pushJobSetting.batchNumBytes));
     conf.set(TOPIC_PROP, versionTopicInfo.topic);
     // We need the two configs with bootstrap servers since VeniceWriterFactory requires kafka.bootstrap.servers while
@@ -2677,7 +2677,7 @@ public class VenicePushJob implements AutoCloseable {
     setupCommonJobConf(
         conf,
         pushJobSchemaInfo,
-        id + ":hadoop_to_venice_bridge_validate_schema_and_build_dict-" + pushJobSetting.storeName);
+        id + ":venice_push_job_validate_schema_and_build_dict-" + pushJobSetting.storeName);
 
     conf.set(VENICE_STORE_NAME_PROP, pushJobSetting.storeName);
     conf.set(ETL_VALUE_SCHEMA_TRANSFORMATION, pushJobSetting.etlValueSchemaTransformation.name());
@@ -2968,7 +2968,7 @@ public class VenicePushJob implements AutoCloseable {
   public static void main(String[] args) {
 
     if (args.length != 1) {
-      Utils.exit("USAGE: java -jar hadoop-to-venice-bridge-all.jar <VPJ_config_file_path>");
+      Utils.exit("USAGE: java -jar venice-push-job-all.jar <VPJ_config_file_path>");
     }
     Properties properties = new Properties();
     try {

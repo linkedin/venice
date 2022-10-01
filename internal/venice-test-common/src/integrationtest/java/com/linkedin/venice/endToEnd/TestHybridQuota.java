@@ -8,7 +8,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestPushUtils.sendCustomSizeStreamingRecord;
@@ -114,21 +114,21 @@ public class TestHybridQuota {
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
-    Properties h2vProperties = defaultH2VProps(sharedVenice, inputDirPath, storeName);
+    Properties vpjProperties = defaultVPJProps(sharedVenice, inputDirPath, storeName);
 
     SafeHelixManager readManager = null;
     HelixCustomizedViewOfflinePushRepository offlinePushRepository = null;
     HelixHybridStoreQuotaRepository hybridStoreQuotaOnlyRepository = null;
     try (
         ControllerClient controllerClient =
-            createStoreForJob(sharedVenice.getClusterName(), recordSchema, h2vProperties);
+            createStoreForJob(sharedVenice.getClusterName(), recordSchema, vpjProperties);
         TopicManager topicManager = new TopicManager(
             DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
             100,
             0L,
             TestUtils.getVeniceConsumerFactory(sharedVenice.getKafka()))) {
 
-      // Setting the hybrid store quota here will cause the H2V push failed.
+      // Setting the hybrid store quota here will cause the VPJ push failed.
       ControllerResponse response = controllerClient.updateStore(
           storeName,
           new UpdateStoreQueryParams().setPartitionCount(2)
@@ -160,12 +160,12 @@ public class TestHybridQuota {
       offlinePushRepository.refresh();
       hybridStoreQuotaOnlyRepository.refresh();
 
-      // Do an H2V push
-      TestHybrid.runH2V(h2vProperties, 1, controllerClient);
+      // Do an VPJ push
+      TestHybrid.runVPJ(vpjProperties, 1, controllerClient);
       String topicForStoreVersion1 = Version.composeKafkaTopic(storeName, 1);
 
-      // Do an H2V push
-      TestHybrid.runH2V(h2vProperties, 2, controllerClient);
+      // Do an VPJ push
+      TestHybrid.runVPJ(vpjProperties, 2, controllerClient);
       String topicForStoreVersion2 = Version.composeKafkaTopic(storeName, 2);
       Assert.assertTrue(
           topicManager.isTopicCompactionEnabled(topicForStoreVersion1),
@@ -182,8 +182,8 @@ public class TestHybridQuota {
           HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
       assertTrue(offlinePushRepository.containsKafkaTopic(topicForStoreVersion2));
 
-      // Do an H2V push
-      TestHybrid.runH2V(h2vProperties, 3, controllerClient);
+      // Do an VPJ push
+      TestHybrid.runVPJ(vpjProperties, 3, controllerClient);
       String topicForStoreVersion3 = Version.composeKafkaTopic(storeName, 3);
       long storageQuotaInByte = 60000; // A small quota, easily violated.
 

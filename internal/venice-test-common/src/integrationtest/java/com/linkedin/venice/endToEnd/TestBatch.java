@@ -25,7 +25,7 @@ import static com.linkedin.venice.utils.TestPushUtils.ETL_UNION_VALUE_SCHEMA_STR
 import static com.linkedin.venice.utils.TestPushUtils.ETL_UNION_VALUE_SCHEMA_STRING_WITH_NULL;
 import static com.linkedin.venice.utils.TestPushUtils.ETL_VALUE_SCHEMA_STRING;
 import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestPushUtils.loadFileAsString;
 import static com.linkedin.venice.utils.TestPushUtils.testRecordType;
@@ -100,7 +100,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-//TODO: write a H2VWrapper that can handle the whole flow
+//TODO: write a VPJWrapper that can handle the whole flow
 
 
 @Test(singleThreaded = true)
@@ -138,7 +138,7 @@ public abstract class TestBatch {
     Pair<Schema, Schema> schemas = new Pair<>(keySchema, valueSchema);
     String storeName = Utils.getUniqueString("store");
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     createStoreForJob(veniceCluster, schemas.getFirst().toString(), schemas.getSecond().toString(), props).close();
 
     // Query store
@@ -249,7 +249,7 @@ public abstract class TestBatch {
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testCompressingRecord(boolean compressionMetricCollectionEnabled, boolean useMapperToBuildDict)
       throws Exception {
-    H2VValidator validator = (avroClient, vsonClient, metricsRepository) -> {
+    VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {
       // test single get
       for (int i = 1; i <= 100; i++) {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
@@ -317,7 +317,7 @@ public abstract class TestBatch {
    * This validator adds Non deterministic wait and retry for the first get to succeed. Idea behind this is that when there are no
    * store previous versions to fall back on (this is the first version), routers might take sometime to retrieve the dictionary.
    */
-  static H2VValidator getSimpleFileWithUserSchemaValidatorForZstd() {
+  static VPJValidator getSimpleFileWithUserSchemaValidatorForZstd() {
     return (avroClient, vsonClient, metricsRepository) -> {
       // Wait for the first get to succeed. After the first one, the following gets must succeed without retry.
       TestUtils.waitForNonDeterministicAssertion(
@@ -618,7 +618,7 @@ public abstract class TestBatch {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testKafkaInputBatchJob() throws Exception {
-    H2VValidator validator = (avroClient, vsonClient, metricsRepository) -> {
+    VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {
       // test single get
       for (int i = 1; i <= 100; i++) {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
@@ -634,7 +634,7 @@ public abstract class TestBatch {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testKafkaInputAAStore() throws Exception {
-    H2VValidator validator = (avroClient, vsonClient, metricsRepository) -> {
+    VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {
       // test single get
       for (int i = 1; i <= 100; i++) {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
@@ -657,7 +657,7 @@ public abstract class TestBatch {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testReducerCountValidation() throws Exception {
-    H2VValidator validator = (avroClient, vsonClient, metricsRepository) -> {
+    VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {
       // test single get
       for (int i = 1; i <= 1; i++) {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
@@ -795,14 +795,14 @@ public abstract class TestBatch {
   protected String testBatchStore(
       InputFileWriter inputFileWriter,
       Consumer<Properties> extraProps,
-      H2VValidator dataValidator) throws Exception {
+      VPJValidator dataValidator) throws Exception {
     return testBatchStore(inputFileWriter, extraProps, dataValidator, new UpdateStoreQueryParams());
   }
 
   private String testBatchStore(
       InputFileWriter inputFileWriter,
       Consumer<Properties> extraProps,
-      H2VValidator dataValidator,
+      VPJValidator dataValidator,
       UpdateStoreQueryParams storeParms) throws Exception {
     return testBatchStore(inputFileWriter, extraProps, dataValidator, null, storeParms, false, false);
   }
@@ -810,7 +810,7 @@ public abstract class TestBatch {
   private String testBatchStore(
       InputFileWriter inputFileWriter,
       Consumer<Properties> extraProps,
-      H2VValidator dataValidator,
+      VPJValidator dataValidator,
       UpdateStoreQueryParams storeParms,
       boolean createMetaSystemStore) throws Exception {
     return testBatchStore(
@@ -827,7 +827,7 @@ public abstract class TestBatch {
   private String testBatchStoreMultiVersionPush(
       InputFileWriter inputFileWriter,
       Consumer<Properties> extraProps,
-      H2VValidator dataValidator,
+      VPJValidator dataValidator,
       UpdateStoreQueryParams storeParms) throws Exception {
     return testBatchStore(inputFileWriter, extraProps, dataValidator, null, storeParms, true, false);
   }
@@ -835,12 +835,12 @@ public abstract class TestBatch {
   private String testBatchStoreWithDerivedSchema(
       InputFileWriter inputFileWriter,
       Consumer<Properties> extraProps,
-      H2VValidator dataValidator,
+      VPJValidator dataValidator,
       UpdateStoreQueryParams storeParms) throws Exception {
     return testBatchStore(inputFileWriter, extraProps, dataValidator, null, storeParms, true, true);
   }
 
-  private void testRepush(String storeName, H2VValidator dataValidator) throws Exception {
+  private void testRepush(String storeName, VPJValidator dataValidator) throws Exception {
     for (String combiner: new String[] { "true", "false" }) {
       testBatchStore(
           inputDir -> new Pair<>(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.NULL)),
@@ -860,7 +860,7 @@ public abstract class TestBatch {
   private String testBatchStore(
       InputFileWriter inputFileWriter,
       Consumer<Properties> extraProps,
-      H2VValidator dataValidator,
+      VPJValidator dataValidator,
       String existingStore,
       UpdateStoreQueryParams storeParms,
       boolean multiPushJobs) throws Exception {
@@ -870,7 +870,7 @@ public abstract class TestBatch {
   private String testBatchStore(
       InputFileWriter inputFileWriter,
       Consumer<Properties> extraProps,
-      H2VValidator dataValidator,
+      VPJValidator dataValidator,
       String existingStore,
       UpdateStoreQueryParams storeParms,
       boolean multiPushJobs,
@@ -889,7 +889,7 @@ public abstract class TestBatch {
   private String testBatchStore(
       InputFileWriter inputFileWriter,
       Consumer<Properties> extraProps,
-      H2VValidator dataValidator,
+      VPJValidator dataValidator,
       String existingStore,
       UpdateStoreQueryParams storeParams,
       boolean multiPushJobs,
@@ -900,7 +900,7 @@ public abstract class TestBatch {
     String storeName = StringUtils.isEmpty(existingStore) ? Utils.getUniqueString("store") : existingStore;
 
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     extraProps.accept(props);
 
     if (StringUtils.isEmpty(existingStore)) {
@@ -955,7 +955,7 @@ public abstract class TestBatch {
     Pair<Schema, Schema> write(File inputDir) throws IOException;
   }
 
-  interface H2VValidator {
+  interface VPJValidator {
     void validate(
         AvroGenericStoreClient avroClient,
         AvroGenericStoreClient vsonClient,
@@ -1015,7 +1015,7 @@ public abstract class TestBatch {
       return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
     };
 
-    H2VValidator dataValidator = (avroClient, vsonClient, metricsRepository) -> {
+    VPJValidator dataValidator = (avroClient, vsonClient, metricsRepository) -> {
       Set<String> keys = new HashSet<>(10);
 
       // Single gets
@@ -1355,7 +1355,7 @@ public abstract class TestBatch {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     props.setProperty(VenicePushJob.PBNJ_ENABLE, "true");
     props.setProperty(VenicePushJob.PBNJ_ROUTER_URL_PROP, veniceCluster.getRandomRouterURL());
     createStoreForJob(veniceCluster.getClusterName(), recordSchema, props).close();
@@ -1401,7 +1401,7 @@ public abstract class TestBatch {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testKafkaInputBatchJobSucceedsWhenSourceTopicIsEmpty() throws Exception {
-    H2VValidator emptyValidator = (avroClient, vsonClient, metricsRepository) -> {};
+    VPJValidator emptyValidator = (avroClient, vsonClient, metricsRepository) -> {};
 
     // Run an Empty Push
     String storeName = testBatchStore(inputDir -> {

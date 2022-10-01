@@ -13,7 +13,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithIntToStringSchema;
 import static org.testng.Assert.assertEquals;
@@ -940,32 +940,32 @@ public class DaVinciClientTest {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     writeSimpleAvroFileWithIntToStringSchema(inputDir, true);
 
-    // Setup H2V job properties.
-    Properties h2vProperties = defaultH2VProps(cluster, inputDirPath, storeName);
-    propertiesConsumer.accept(h2vProperties);
+    // Setup VPJ job properties.
+    Properties vpjProperties = defaultVPJProps(cluster, inputDirPath, storeName);
+    propertiesConsumer.accept(vpjProperties);
     // Create & update store for test.
     final int numPartitions = 3;
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(numPartitions); // Update the
                                                                                                    // partition count.
     paramsConsumer.accept(params);
     try (ControllerClient controllerClient =
-        createStoreForJob(cluster, DEFAULT_KEY_SCHEMA, "\"string\"", h2vProperties)) {
+        createStoreForJob(cluster, DEFAULT_KEY_SCHEMA, "\"string\"", vpjProperties)) {
       TestUtils.createMetaSystemStore(controllerClient, storeName, Optional.of(LOGGER));
       ControllerResponse response = controllerClient.updateStore(storeName, params);
       Assert.assertFalse(response.isError(), response.getError());
 
-      // Push data through H2V bridge.
-      runH2V(h2vProperties, 1, cluster);
+      // Push data through VPJ.
+      runVPJ(vpjProperties, 1, cluster);
     }
   }
 
-  private static void runH2V(Properties h2vProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) {
-    long h2vStart = System.currentTimeMillis();
+  private static void runVPJ(Properties vpjProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) {
+    long vpjStart = System.currentTimeMillis();
     String jobName = Utils.getUniqueString("batch-job-" + expectedVersionNumber);
-    TestPushUtils.runPushJob(jobName, h2vProperties);
-    String storeName = (String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP);
+    TestPushUtils.runPushJob(jobName, vpjProperties);
+    String storeName = (String) vpjProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP);
     cluster.waitVersion(storeName, expectedVersionNumber);
-    LOGGER.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
+    LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
   }
 
   private String createStoreWithMetaSystemStore(int keyCount) throws Exception {

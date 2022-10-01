@@ -849,11 +849,11 @@ public class TestPushUtils {
     void write(Schema recordSchema, DataFileWriter writer) throws IOException;
   }
 
-  public static Properties defaultH2VProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {
-    return defaultH2VProps(veniceCluster.getRandmonVeniceController().getControllerUrl(), inputDirPath, storeName);
+  public static Properties defaultVPJProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {
+    return defaultVPJProps(veniceCluster.getRandmonVeniceController().getControllerUrl(), inputDirPath, storeName);
   }
 
-  public static Properties defaultH2VProps(String veniceUrl, String inputDirPath, String storeName) {
+  public static Properties defaultVPJProps(String veniceUrl, String inputDirPath, String storeName) {
     Properties props = new Properties();
     props.put(VENICE_URL_PROP, veniceUrl);
     props.put(VENICE_STORE_NAME_PROP, storeName);
@@ -872,8 +872,8 @@ public class TestPushUtils {
     return props;
   }
 
-  public static Properties sslH2VProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {
-    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+  public static Properties sslVPJProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     props.putAll(KafkaSSLUtils.getLocalKafkaClientSSLConfig());
     // remove the path for certs and pwd, because we will get them from hadoop user credentials.
     props.remove(SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG);

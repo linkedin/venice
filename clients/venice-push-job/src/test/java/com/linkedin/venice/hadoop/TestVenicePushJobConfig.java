@@ -67,7 +67,7 @@ public class TestVenicePushJobConfig {
   }
 
   private VenicePushJob getSpyVenicePushJob(Optional<Properties> props, Optional<ControllerClient> client) {
-    Properties baseProps = TestPushUtils.defaultH2VProps(TEST_URL, TEST_PATH, TEST_STORE);
+    Properties baseProps = TestPushUtils.defaultVPJProps(TEST_URL, TEST_PATH, TEST_STORE);
     // for mocked tests, only attempt once.
     baseProps.put(VenicePushJob.CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
     props.ifPresent(baseProps::putAll);

@@ -470,7 +470,7 @@ public class TestVenicePushJobCheckpoints {
       Consumer<Properties> extraProps,
       List<VenicePushJob.PushJobCheckpoints> expectedReportedCheckpoints) {
 
-    Properties props = getH2VProps();
+    Properties props = getVPJProps();
     if (extraProps != null) {
       extraProps.accept(props);
     }
@@ -502,7 +502,7 @@ public class TestVenicePushJobCheckpoints {
     }
   }
 
-  private Properties getH2VProps() {
+  private Properties getVPJProps() {
     Properties props = new Properties();
     props.put(VenicePushJob.VENICE_URL_PROP, "venice-urls");
     props.put(VenicePushJob.VENICE_STORE_NAME_PROP, "store-name");

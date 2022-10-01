@@ -36,11 +36,11 @@ public class TestMigrationPushStrategyZKAccessor {
     MigrationPushStrategyZKAccessor accessor =
         new MigrationPushStrategyZKAccessor(zkClient, new HelixAdapterSerializer());
     String voldemortStore = Utils.getUniqueString("voldemort_store");
-    accessor.setPushStrategy(voldemortStore, MigrationPushStrategy.RunBnPAndH2VWaitForBothStrategy.name());
+    accessor.setPushStrategy(voldemortStore, MigrationPushStrategy.RunBnPAndVPJWaitForBothStrategy.name());
     Map<String, String> pushStrategies = accessor.getAllPushStrategies();
     Assert.assertTrue(pushStrategies.containsKey(voldemortStore));
     Assert
-        .assertEquals(pushStrategies.get(voldemortStore), MigrationPushStrategy.RunBnPAndH2VWaitForBothStrategy.name());
+        .assertEquals(pushStrategies.get(voldemortStore), MigrationPushStrategy.RunBnPAndVPJWaitForBothStrategy.name());
     // update
     accessor.setPushStrategy(voldemortStore, MigrationPushStrategy.RunBnPOnlyStrategy.name());
     pushStrategies = accessor.getAllPushStrategies();

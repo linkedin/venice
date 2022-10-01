@@ -31,7 +31,7 @@ public class CommonConfigKeys {
   /**
    * This config defines the class name of the SSL factory.
    *
-   * a. In the livenice, backend and H2V product, we should override this config with the
+   * a. In the livenice, backend and VPJ product, we should override this config with the
    *    LinkedIn internal SSL factory class name.
    * b. In open source venice project, we should use the {@link com.linkedin.venice.security.DefaultSSLFactory}
    *    class, which is a clone implementation of {@link com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl}

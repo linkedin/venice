@@ -364,7 +364,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(SET_PARTITION_COUNT.getPath(), storesRoutes.setPartitionCount(admin));
 
     httpService.get(MASTER_CONTROLLER.getPath(), controllerRoutes.getLeaderController(admin));
-    // This API should be used by CORP controller only. H2V could talk to any of controllers in CORP to find who is the
+    // This API should be used by CORP controller only. VPJ could talk to any of controllers in CORP to find who is the
     // current leader CORP controller. In other colos, router will find the leader controller instead of calling this
     // API.
     httpService.get(LEADER_CONTROLLER.getPath(), controllerRoutes.getLeaderController(admin));

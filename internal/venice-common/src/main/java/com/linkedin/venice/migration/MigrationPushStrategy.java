@@ -1,8 +1,8 @@
 package com.linkedin.venice.migration;
 
 public enum MigrationPushStrategy {
-  RunBnPOnlyStrategy, RunH2VOnlyStrategy, RunBnPAndH2VWaitForBothStrategy, RunBnPAndH2VWaitForBnPOnlyStrategy,
-  RunBnPAndH2VWaitForH2VOnlyStrategy;
+  RunBnPOnlyStrategy, RunVPJOnlyStrategy, RunBnPAndVPJWaitForBothStrategy, RunBnPAndVPJWaitForBnPOnlyStrategy,
+  RunBnPAndVPJWaitForVPJOnlyStrategy;
 
   public static String getAllEnumString() {
     StringBuilder sb = new StringBuilder();

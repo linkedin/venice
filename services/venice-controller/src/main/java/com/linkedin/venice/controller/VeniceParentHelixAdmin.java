@@ -3284,7 +3284,7 @@ public class VeniceParentHelixAdmin implements Admin {
     }
 
     if (currentReturnStatus.isTerminal()) {
-      // If there is a temporary datacenter connection failure, we want H2V to report failure while allowing the push
+      // If there is a temporary datacenter connection failure, we want VPJ to report failure while allowing the push
       // to succeed in remaining datacenters. If we want to allow the push to succeed in asyc in the remaining
       // datacenter
       // then put the topic delete into an else block under `if (failcount > 0)`

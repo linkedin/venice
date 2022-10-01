@@ -38,7 +38,7 @@ import org.apache.commons.lang.Validate;
  *
  * N.B.
  * 1. We should keep {@link WriteComputeOperation} backward compatible. That's being said, if you change it, make
- * sure to release SN earlier than Samza/H2V plugin.
+ * sure to release SN earlier than Samza/VPJ plugin.
  *
  * 2. We should ask partners to assign a default value or wrap the field with nullable union if they intent to use
  * "partial put" to create new k/v pair (when the key is not existing in the store).

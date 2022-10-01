@@ -75,5 +75,5 @@ task sourceJar(type: Jar, dependsOn: classes) {
   from { packaging.collectSourceSetsIncludingSubmodules(project) }
 }
 
-def artifactName = "hadoop-to-venice-bridge"
+def artifactName = "venice-push-job"
 publishing.configureShadowArtifactPublishing(project, artifactName, shadowJar, sourceJar, testJar)
