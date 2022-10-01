@@ -555,6 +555,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         subPartition -> consumerActionsQueue.add(new ConsumerAction(UNSUBSCRIBE, topic, subPartition, nextSeqNum())));
   }
 
+  public boolean hasAnySubscription() {
+    return !partitionConsumptionStateMap.isEmpty();
+  }
+
   /**
    * Adds an asynchronous resetting partition consumption offset request for the task.
    */
@@ -563,13 +567,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     amplificationFactorAdapter.execute(
         partition,
         subPartition -> consumerActionsQueue.add(new ConsumerAction(RESET_OFFSET, topic, subPartition, nextSeqNum())));
-  }
-
-  /**
-   * Get the Store for this ingestion task. Short term solution for funneling versioned stats of zk shared system stores.
-   */
-  public Store getIngestionStore() {
-    return storeRepository.getStoreOrThrow(storeName);
   }
 
   public String getStoreName() {
@@ -1320,7 +1317,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      */
     if (!consumerHasAnySubscription()) {
       if (++idleCounter <= MAX_IDLE_COUNTER) {
-        String message = consumerTaskId + " Not subscribed to any partitions";
+        String message = consumerTaskId + " Not subscribed to any partitions ";
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
           LOGGER.info(message);
         }
@@ -1617,7 +1614,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     aggKafkaConsumerService.unsubscribeAll(kafkaVersionTopic);
     LOGGER.info("Detached Kafka consumer(s) for version topic: {}", kafkaVersionTopic);
     try {
-      partitionConsumptionStateMap.values().parallelStream().forEach(pcs -> pcs.unsubscribe());
+      partitionConsumptionStateMap.values().parallelStream().forEach(PartitionConsumptionState::unsubscribe);
       partitionConsumptionStateMap.clear();
     } catch (Exception e) {
       LOGGER.error("{} Error while unsubscribing topic.", consumerTaskId, e);
@@ -1629,6 +1626,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     close();
+    synchronized (this) {
+      notifyAll();
+    }
     LOGGER.info("Store ingestion task for store: {} is closed", kafkaVersionTopic);
   }
 
@@ -3282,6 +3282,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // The operation is executed on a single thread in run method.
     // This method signals the run method to end, which closes the
     // resources before exiting.
+  }
+
+  /**
+   * This method is a blocking call to wait for {@link StoreIngestionTask} for fully shutdown in the given time.
+   * @param waitTime Maximum wait time for the shutdown operation.
+   */
+  public synchronized void shutdown(int waitTime) {
+    long startTimeInMs = System.currentTimeMillis();
+    close();
+    try {
+      wait(waitTime);
+    } catch (Exception e) {
+      LOGGER.error("Caught exception while waiting for ingestion task of topic: {} shutdown.", kafkaVersionTopic);
+    }
+    LOGGER.info(
+        "Ingestion task of topic: {} is shutdown in {}ms",
+        kafkaVersionTopic,
+        LatencyUtils.getElapsedTimeInMs(startTimeInMs));
   }
 
   /**

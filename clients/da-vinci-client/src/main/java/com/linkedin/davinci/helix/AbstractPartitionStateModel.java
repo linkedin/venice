@@ -3,7 +3,6 @@ package com.linkedin.davinci.helix;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
-import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
@@ -15,7 +14,6 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.Utils;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -227,7 +225,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     }
 
     /**
-     * If given store and partition have already exist in this node, openStoreForNewPartition is idempotent so it
+     * If given store and partition have already existed in this node, openStoreForNewPartition is idempotent, so it
      * will not create them again.
      */
     final Consumer<Double> setupTimeLogging = elapsedTimeInMs -> {
@@ -249,20 +247,14 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     // Gracefully drop partition to drain the requests to this partition
     // This method is called during OFFLINE->DROPPED state transition. Due to Zk or other transient issues a store
     // version could miss ONLINE->OFFLINE transition and newer version could come online triggering this transition.
-    // Since this removes the storageEngine from the map not doing a un-subscribe and dropping a partition could
+    // Since this removes the storageEngine from the map not doing an un-subscribe and dropping a partition could
     // lead to NPE and other issues.
-    // Adding a topic unsubscribe call for those race conditions as a safe-guard before dropping the partition.
+    // Adding a topic unsubscribe call for those race conditions as a safeguard before dropping the partition.
     ingestionBackend.dropStoragePartitionGracefully(
         storeConfig,
         partition,
         getStoreConfig().getPartitionGracefulDropDelaySeconds());
     removeCustomizedState();
-    // Delete this replica from meta system store if necessary
-    Optional<MetaSystemStoreReplicaStatusNotifier> metaSystemStoreReplicaStatusNotifier =
-        ingestionBackend.getStoreIngestionService().getMetaSystemStoreReplicaStatusNotifier();
-    metaSystemStoreReplicaStatusNotifier.ifPresent(
-        systemStoreReplicaStatusNotifier -> systemStoreReplicaStatusNotifier
-            .drop(storeConfig.getStoreVersionName(), partition));
   }
 
   /**

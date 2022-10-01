@@ -8,7 +8,6 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
-import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
@@ -19,7 +18,7 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * DefaultIngestionBackend is the default ingestion backend implementation. Ingestion will be done in the same JVM as the application.
+ * The default ingestion backend implementation. Ingestion will be done in the same JVM as the application.
  */
 public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceIngestionBackend {
   private static final Logger LOGGER = LogManager.getLogger(DefaultIngestionBackend.class);
@@ -81,18 +80,15 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
       int partition,
       int timeoutInSeconds,
       boolean removeEmptyStorageEngine) {
-    if (storeIngestionService.isPartitionConsuming(storeConfig, partition)) {
-      long startTimeInMs = System.currentTimeMillis();
-      getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, 1, timeoutInSeconds);
-      LOGGER.info(
-          "Partition: {} of topic: {} has stopped consumption in {} ms.",
-          partition,
-          storeConfig.getStoreVersionName(),
-          LatencyUtils.getElapsedTimeInMs(startTimeInMs));
-    }
-    getStoreIngestionService().resetConsumptionOffset(storeConfig, partition);
+    String topicName = storeConfig.getStoreVersionName();
+    // Delete this replica from meta system store if exists.
+    getStoreIngestionService().getMetaSystemStoreReplicaStatusNotifier()
+        .ifPresent(systemStoreReplicaStatusNotifier -> systemStoreReplicaStatusNotifier.drop(topicName, partition));
+    // Stop consumption of the partition.
+    getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, 1, timeoutInSeconds);
+    // Drops corresponding data partition from storage.
     getStorageService().dropStorePartition(storeConfig, partition, removeEmptyStorageEngine);
-    LOGGER.info("Partition: {} of topic: {} has been dropped.", partition, storeConfig.getStoreVersionName());
+
   }
 
   @Override

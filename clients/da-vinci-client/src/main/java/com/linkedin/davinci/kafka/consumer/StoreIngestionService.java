@@ -49,13 +49,6 @@ public interface StoreIngestionService extends MetadataRetriever {
   void stopConsumptionAndWait(VeniceStoreVersionConfig veniceStore, int partitionId, int sleepSeconds, int numRetries);
 
   /**
-   * Resets Offset to beginning for Kafka Partition corresponding to Venice Partition.
-   * @param veniceStore Venice Store for the partition.
-   * @param partitionId Venice partition's id.
-   */
-  void resetConsumptionOffset(VeniceStoreVersionConfig veniceStore, int partitionId);
-
-  /**
    * Kill all of running consumptions of given store.
    *
    * @param topicName Venice topic (store and version number) for the corresponding consumer task that needs to be killed.
