@@ -16,7 +16,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_PARTITIONERS_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.getLatestPathOfInputDirectory;
 import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithStringToStringSchema;
 import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
@@ -169,7 +169,7 @@ public class TestVenicePushJob {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     veniceCluster.getNewStore(storeName);
-    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
 
     TestPushUtils.runPushJob("Test push job", props);
     // No need for asserts, because we are expecting an exception to be thrown!
@@ -187,7 +187,7 @@ public class TestVenicePushJob {
     String storeName = Utils.getUniqueString("store");
     veniceCluster.getNewStore(storeName);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     // Override with not-existing key field
     props.put(KEY_FIELD_PROP, "id1");
 
@@ -209,7 +209,7 @@ public class TestVenicePushJob {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     veniceCluster.getNewStore(storeName);
-    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     // Override with not-existing value field
     props.put(VALUE_FIELD_PROP, "name1");
 
@@ -230,7 +230,7 @@ public class TestVenicePushJob {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     veniceCluster.getNewStore(storeName);
-    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     // Override with not-existing value field
     props.put(KEY_FIELD_PROP, "");
     props.put(VALUE_FIELD_PROP, "name1");
@@ -255,7 +255,7 @@ public class TestVenicePushJob {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     veniceCluster.getNewStore(storeName);
-    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
 
     TestPushUtils.runPushJob("Test push job", props);
 
@@ -317,7 +317,7 @@ public class TestVenicePushJob {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
 
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     createStoreForJob(veniceCluster.getClusterName(), recordSchema, props).close();
     String jobName = "Test push job";
 
@@ -337,7 +337,7 @@ public class TestVenicePushJob {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     createStoreForJob(veniceCluster.getClusterName(), recordSchema, props).close();
     String jobName = "Test push job";
     // Run job with different value schema (from 'string' to 'int')
@@ -355,7 +355,7 @@ public class TestVenicePushJob {
     ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl);
     Schema recordSchema = writeSimpleAvroFileWithStringToStringSchema(inputDir, false);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     props.setProperty(SUPPRESS_END_OF_PUSH_MESSAGE, "true");
     createStoreForJob(veniceCluster.getClusterName(), recordSchema, props);
     TestPushUtils.runPushJob("Test push job", props);
@@ -381,7 +381,7 @@ public class TestVenicePushJob {
     ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl);
     Schema recordSchema = writeSimpleAvroFileWithStringToStringSchema(inputDir, false);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     props.setProperty(DEFER_VERSION_SWAP, "true");
     createStoreForJob(veniceCluster.getClusterName(), recordSchema, props);
 
@@ -446,7 +446,7 @@ public class TestVenicePushJob {
     controllerClient.createNewStoreWithParameters(storeName, "owner", "\"string\"", "\"string\"", params);
 
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
 
     // enable write compute param
     props.put(ENABLE_WRITE_COMPUTE, true);
@@ -474,7 +474,7 @@ public class TestVenicePushJob {
     controllerClient.createNewStoreWithParameters(storeName, "owner", "\"string\"", "\"string\"", params);
 
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
 
     // enable write compute param
     props.put(ENABLE_WRITE_COMPUTE, true);
@@ -483,7 +483,7 @@ public class TestVenicePushJob {
     TestPushUtils.runPushJob("Test push job", props);
   }
 
-  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during Hadoop to Venice Bridge.*")
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during VenicePushJob.*")
   public void testRunJobWithBuggySprayingMapReduceShufflePartitioner() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
@@ -496,7 +496,7 @@ public class TestVenicePushJob {
         veniceCluster.updateStore(
             storeName,
             new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA).setPartitionCount(3)));
-    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
 
     TestPushUtils.runPushJob(
         "Test push job",
@@ -505,7 +505,7 @@ public class TestVenicePushJob {
     // No need for asserts, because we are expecting an exception to be thrown!
   }
 
-  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during Hadoop to Venice Bridge.*")
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during VenicePushJob.*")
   public void testRunJobWithBuggyOffsettingMapReduceShufflePartitioner() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
@@ -518,7 +518,7 @@ public class TestVenicePushJob {
         veniceCluster.updateStore(
             storeName,
             new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA).setPartitionCount(3)));
-    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
 
     TestPushUtils.runPushJob(
         "Test push job",
@@ -527,7 +527,7 @@ public class TestVenicePushJob {
     // No need for asserts, because we are expecting an exception to be thrown!
   }
 
-  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during Hadoop to Venice Bridge.*")
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during VenicePushJob.*")
   public void testRunJobWithNonDeterministicPartitioner() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
@@ -543,7 +543,7 @@ public class TestVenicePushJob {
             new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
                 .setPartitionCount(3)
                 .setPartitionerClass(nonDeterministicPartitionerClassName)));
-    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     props.setProperty(VENICE_PARTITIONERS_PROP, nonDeterministicPartitionerClassName);
 
     TestPushUtils.runPushJob("Test push job", props);
@@ -565,7 +565,7 @@ public class TestVenicePushJob {
                 .setPartitionCount(2)
                 .setIncrementalPushEnabled(true)
                 .setLeaderFollowerModel(true)));
-    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
 
     // create a batch version.
     TestPushUtils.runPushJob("Test push job", props);
@@ -636,7 +636,7 @@ public class TestVenicePushJob {
                 .setIncrementalPushEnabled(true)
                 .setWriteComputationEnabled(true)
                 .setLeaderFollowerModel(true)));
-    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     props.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, "true");
     // create a batch version.
     TestPushUtils.runPushJob("Test push job", props);

@@ -337,9 +337,9 @@ public class CreateVersion extends AbstractRoute {
             }
 
             /**
-             * Override the source fabric for H2V incremental push job for A/A replication. Following is the order of priority.
+             * Override the source fabric for VPJ incremental push job for A/A replication. Following is the order of priority.
              * 1. Parent controller emergency source fabric config.
-             * 2. H2V plugin source grid fabric config.
+             * 2. VPJ plugin source grid fabric config.
              * 3. parent corp kafka cluster.
              *
              * At this point parent corp cluster is already set in the responseObject.setKafkaBootstrapServers().
@@ -561,7 +561,7 @@ public class CreateVersion extends AbstractRoute {
         String storeName = request.queryParams(NAME);
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
-        // TODO No-op, can be removed once the corresponding H2V plugin version is deployed.
+        // TODO No-op, can be removed once the corresponding VPJ plugin version is deployed.
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);

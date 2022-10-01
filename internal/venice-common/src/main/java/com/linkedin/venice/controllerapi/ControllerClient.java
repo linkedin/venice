@@ -280,7 +280,7 @@ public class ControllerClient implements Closeable {
   }
 
   /**
-   * Request a topic for the VeniceWriter to write into.  A new H2V push, or a Samza bulk processing job should both use
+   * Request a topic for the VeniceWriter to write into.  A new VPJ push, or a Samza bulk processing job should both use
    * this method.  The push job ID needs to be unique for this push.  Multiple requests with the same pushJobId are
    * idempotent and will return the same topic.
    * @param storeName Name of the store being written to.
@@ -645,7 +645,7 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.JOB, params, JobStatusQueryResponse.class, timeoutMs, 1, null);
   }
 
-  // TODO remove passing PushJobDetails as JSON string once all H2V plugins are updated.
+  // TODO remove passing PushJobDetails as JSON string once all VPJ plugins are updated.
   public ControllerResponse sendPushJobDetails(String storeName, int version, String pushJobDetailsString) {
     QueryParams params =
         newParams().add(NAME, storeName).add(VERSION, version).add(PUSH_JOB_DETAILS, pushJobDetailsString);

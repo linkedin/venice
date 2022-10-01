@@ -12,7 +12,7 @@ import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_I
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_SSL_TO_KAFKA;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_KB;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
-import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.writeBatchData;
 
@@ -986,7 +986,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       }
 
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
-      Properties props = defaultH2VProps(controllerUrl, inputDirPath, storeName);
+      Properties props = defaultVPJProps(controllerUrl, inputDirPath, storeName);
       TestPushUtils.runPushJob("Test Batch push job", props);
 
       propertyBuilder.put(FORKED_PROCESS_STORE_NAME, storeName);

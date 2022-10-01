@@ -2,7 +2,7 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.utils.TestPushUtils.NESTED_SCHEMA_STRING;
 import static com.linkedin.venice.utils.TestPushUtils.NESTED_SCHEMA_STRING_V2;
-import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestPushUtils.loadFileAsString;
@@ -226,7 +226,7 @@ public class PartialUpdateTest {
       // Records 1-100, id string to name record
       Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir, true);
       VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
-      Properties h2vProperties = defaultH2VProps(parentControllerURL, inputDirPath, storeName);
+      Properties vpjProperties = defaultVPJProps(parentControllerURL, inputDirPath, storeName);
       try (ControllerClient controllerClient = new ControllerClient(CLUSTER_NAME, parentControllerURL);
           AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
               ClientConfig.defaultGenericClientConfig(storeName)
@@ -264,10 +264,10 @@ public class PartialUpdateTest {
             controllerClient.addDerivedSchema(storeName, schemaResponse.getId(), writeComputeSchema.toString());
         Assert.assertFalse(schemaResponse.isError());
 
-        // H2V push
+        // VPJ push
         String childControllerUrl = childDatacenters.get(0).getRandomController().getControllerUrl();
         try (ControllerClient childControllerClient = new ControllerClient(CLUSTER_NAME, childControllerUrl)) {
-          runH2V(h2vProperties, 1, childControllerClient);
+          runVPJ(vpjProperties, 1, childControllerClient);
         }
 
         // Verify records (note, records 1-100 have been pushed)
@@ -432,14 +432,14 @@ public class PartialUpdateTest {
   /**
    * Blocking, waits for new version to go online
    */
-  private void runH2V(Properties h2vProperties, int expectedVersionNumber, ControllerClient controllerClient) {
+  private void runVPJ(Properties vpjProperties, int expectedVersionNumber, ControllerClient controllerClient) {
     String jobName = Utils.getUniqueString("write-compute-job-" + expectedVersionNumber);
-    try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
+    try (VenicePushJob job = new VenicePushJob(jobName, vpjProperties)) {
       job.run();
       TestUtils.waitForNonDeterministicCompletion(
           10,
           TimeUnit.SECONDS,
-          () -> controllerClient.getStore((String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
+          () -> controllerClient.getStore((String) vpjProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
               .getStore()
               .getCurrentVersion() == expectedVersionNumber);
     }

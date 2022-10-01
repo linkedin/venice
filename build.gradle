@@ -108,7 +108,7 @@ ext.libraries = [
 group = 'com.linkedin.venice'
 
 // This does not include modules that are published as shadow jars as they have their own publishing sections:
-// 1. hadoop-to-venice-bridge
+// 1. venice-push-job
 // 2. venice-admin-tool
 Map<String, String> projectsToPublish = new HashMap<String, String>() {{
   // Services

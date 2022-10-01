@@ -9,7 +9,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_CLUSTER_NAME;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
-import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestPushUtils.sendStreamingRecord;
@@ -392,7 +392,7 @@ public class TestStoreMigration {
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, RECORD_COUNT);
-    Properties props = defaultH2VProps(controllerUrl, inputDirPath, storeName);
+    Properties props = defaultVPJProps(controllerUrl, inputDirPath, storeName);
     String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
     String valueSchemaStr =
         recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();

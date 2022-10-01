@@ -2,7 +2,7 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
 import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -101,7 +101,7 @@ public class TestSuperSetSchemaRegistration {
     Schema valueSchema = recordSchema.getField("value").schema();
 
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     props.setProperty(VALUE_FIELD_PROP, "value");
 
     try (ControllerClient controllerClient =
@@ -114,7 +114,7 @@ public class TestSuperSetSchemaRegistration {
     }
 
     writeComplicatedAvroFileWithUserSchema(inputDir, true, true);
-    props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
 
     props.setProperty(VALUE_FIELD_PROP, "value");
 
@@ -123,7 +123,7 @@ public class TestSuperSetSchemaRegistration {
     }
 
     writeComplicatedAvroFileWithUserSchema(inputDir, false, false);
-    props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     props.setProperty(VALUE_FIELD_PROP, "value");
 
     try (VenicePushJob job = new VenicePushJob("Test Batch push job # 2", props)) {

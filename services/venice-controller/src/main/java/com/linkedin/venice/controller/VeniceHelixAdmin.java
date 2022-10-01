@@ -5358,7 +5358,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     /**
      * Source fabric selection priority:
      * 1. Parent controller emergency source fabric config.
-     * 2. H2V plugin source grid fabric config.
+     * 2. VPJ plugin source grid fabric config.
      * 3. Store level source fabric config.
      * 4. Cluster level source fabric config.
      */

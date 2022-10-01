@@ -6,7 +6,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_OPTIMIZE_DATABASE_FOR_BACKUP
 import static com.linkedin.venice.ConfigKeys.SERVER_OPTIMIZE_DATABASE_SERVICE_SCHEDULE_INTERNAL_SECONDS;
 import static com.linkedin.venice.utils.TestPushUtils.DEFAULT_USER_DATA_RECORD_COUNT;
 import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
 import static org.testng.Assert.assertEquals;
@@ -61,18 +61,18 @@ public class TestBackupVersionDatabaseOptimization {
     }
   }
 
-  private void runH2V(Properties h2vProperties, int expectedVersionNumber, ControllerClient controllerClient) {
-    long h2vStart = System.currentTimeMillis();
+  private void runVPJ(Properties vpjProperties, int expectedVersionNumber, ControllerClient controllerClient) {
+    long vpjStart = System.currentTimeMillis();
     String jobName = Utils.getUniqueString("push-job-" + expectedVersionNumber);
-    try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
+    try (VenicePushJob job = new VenicePushJob(jobName, vpjProperties)) {
       job.run();
       TestUtils.waitForNonDeterministicCompletion(
           5,
           TimeUnit.SECONDS,
-          () -> controllerClient.getStore((String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
+          () -> controllerClient.getStore((String) vpjProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
               .getStore()
               .getCurrentVersion() == expectedVersionNumber);
-      LOGGER.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
+      LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
     }
   }
 
@@ -82,13 +82,13 @@ public class TestBackupVersionDatabaseOptimization {
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
-    Properties h2vProperties = defaultH2VProps(venice, inputDirPath, storeName);
+    Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
 
-    try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, h2vProperties);
+    try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
         AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
-      // Do an H2V push
-      runH2V(h2vProperties, 1, controllerClient);
+      // Do an VPJ push
+      runVPJ(vpjProperties, 1, controllerClient);
 
       class ResultValidator implements TestUtils.NonDeterministicAssertion {
         private final int recordCount;
@@ -118,13 +118,13 @@ public class TestBackupVersionDatabaseOptimization {
           true,
           new ResultValidator(DEFAULT_USER_DATA_RECORD_COUNT));
 
-      // Do another H2V push, with more records, otherwise the two datasets are indistinguishable
+      // Do another VPJ push, with more records, otherwise the two datasets are indistinguishable
       int recordCountOf2ndRun = DEFAULT_USER_DATA_RECORD_COUNT * 2;
       File inputDir2 = getTempDataDirectory();
       String inputDirPath2 = "file://" + inputDir2.getAbsolutePath();
       writeSimpleAvroFileWithUserSchema(inputDir2, true, recordCountOf2ndRun);
-      Properties h2vProperties2 = defaultH2VProps(venice, inputDirPath2, storeName);
-      runH2V(h2vProperties2, 2, controllerClient);
+      Properties vpjProperties2 = defaultVPJProps(venice, inputDirPath2, storeName);
+      runVPJ(vpjProperties2, 2, controllerClient);
 
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, new ResultValidator(recordCountOf2ndRun));
 

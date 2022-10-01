@@ -60,7 +60,7 @@ body:
           required: false
         - label: "`Server`: This is the component that persists all the store data."
           required: false
-        - label: "`VenicePushJob/H2V`: This is the component that pushes derived data from Hadoop to Venice backend."
+        - label: "`VenicePushJob`: This is the component that pushes derived data from Hadoop to Venice backend."
           required: false
         - label: "`Thin Client`: This is a stateless client users use to query Venice Router for reading store data."
           required: false

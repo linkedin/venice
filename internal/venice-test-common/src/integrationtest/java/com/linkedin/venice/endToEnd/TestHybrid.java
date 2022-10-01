@@ -21,7 +21,7 @@ import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
 import static com.linkedin.venice.utils.TestPushUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.TestPushUtils.getSamzaProducerConfig;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
@@ -298,9 +298,9 @@ public class TestHybrid {
       File inputDir = getTempDataDirectory();
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
       Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
-      Properties h2vProperties = defaultH2VProps(venice, inputDirPath, storeName);
+      Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
 
-      try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, h2vProperties);
+      try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
           AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
               ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
           TopicManager topicManager = new TopicManager(
@@ -322,8 +322,8 @@ public class TestHybrid {
 
         Assert.assertFalse(response.isError());
 
-        // Do an H2V push
-        runH2V(h2vProperties, 1, controllerClient);
+        // Do an VPJ push
+        runVPJ(vpjProperties, 1, controllerClient);
 
         // verify the topic compaction policy
         String topicForStoreVersion1 = Version.composeKafkaTopic(storeName, 1);
@@ -403,8 +403,8 @@ public class TestHybrid {
           }
         });
 
-        // Run H2V a third Time
-        runH2V(h2vProperties, 3, controllerClient);
+        // Run VPJ a third Time
+        runVPJ(vpjProperties, 3, controllerClient);
         // verify the topic compaction policy
         String topicForStoreVersion3 = Version.composeKafkaTopic(storeName, 3);
         Assert.assertTrue(
@@ -1065,9 +1065,9 @@ public class TestHybrid {
       File inputDir = getTempDataDirectory();
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
       Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
-      Properties h2vProperties = defaultH2VProps(venice, inputDirPath, storeName);
+      Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
 
-      try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, h2vProperties);
+      try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
           AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
               ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
           TopicManager topicManager = new TopicManager(
@@ -1084,8 +1084,8 @@ public class TestHybrid {
 
         Assert.assertFalse(response.isError());
 
-        // Do an H2V push with an empty RT
-        runH2V(h2vProperties, 1, controllerClient);
+        // Do an VPJ push with an empty RT
+        runVPJ(vpjProperties, 1, controllerClient);
 
         // Verify some records (note, records 1-100 have been pushed)
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
@@ -1180,10 +1180,10 @@ public class TestHybrid {
       File inputDir = getTempDataDirectory();
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
       Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
-      Properties h2vProperties = defaultH2VProps(venice, inputDirPath, storeName);
+      Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
 
       try (
-          ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, h2vProperties)) {
+          ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties)) {
         // Have 1 partition only, so that all keys are produced to the same partition
         ControllerResponse response = controllerClient.updateStore(
             storeName,
@@ -1194,8 +1194,8 @@ public class TestHybrid {
 
         Assert.assertFalse(response.isError());
 
-        // Do an H2V push
-        runH2V(h2vProperties, 1, controllerClient);
+        // Do an VPJ push
+        runVPJ(vpjProperties, 1, controllerClient);
 
         /**
          * The following k/v pairs will be sent to RT, with the same producer GUID:
@@ -1365,8 +1365,8 @@ public class TestHybrid {
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
-    Properties h2vProperties = defaultH2VProps(venice, inputDirPath, storeName);
-    try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, h2vProperties);
+    Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
+    try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
         AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
       // Have 1 partition only, so that all keys are produced to the same partition
@@ -1377,12 +1377,12 @@ public class TestHybrid {
               .setLeaderFollowerModel(true)
               .setPartitionCount(1));
       Assert.assertFalse(response.isError());
-      // Do an H2V push normally to make sure everything is working fine.
-      runH2V(h2vProperties, 1, controllerClient);
+      // Do an VPJ push normally to make sure everything is working fine.
+      runVPJ(vpjProperties, 1, controllerClient);
 
-      // Now do an H2V push with version swap deferred to make sure we don't swap.
-      h2vProperties.put(DEFER_VERSION_SWAP, "true");
-      runH2V(h2vProperties, 1, controllerClient);
+      // Now do an VPJ push with version swap deferred to make sure we don't swap.
+      vpjProperties.put(DEFER_VERSION_SWAP, "true");
+      runVPJ(vpjProperties, 1, controllerClient);
 
       Properties veniceWriterProperties = new Properties();
       veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getKafka().getAddress());
@@ -1437,8 +1437,8 @@ public class TestHybrid {
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
-    Properties h2vProperties = defaultH2VProps(venice, inputDirPath, storeName);
-    try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, h2vProperties);
+    Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
+    try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
         AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
       // Have 1 partition only, so that all keys are produced to the same partition
@@ -1448,8 +1448,8 @@ public class TestHybrid {
               .setHybridOffsetLagThreshold(streamingMessageLag)
               .setPartitionCount(1));
       Assert.assertFalse(response.isError());
-      // Do an H2V push
-      runH2V(h2vProperties, 1, controllerClient);
+      // Do an VPJ push
+      runVPJ(vpjProperties, 1, controllerClient);
       Properties veniceWriterProperties = new Properties();
       veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getKafka().getAddress());
       /**
@@ -1745,18 +1745,18 @@ public class TestHybrid {
   /**
    * Blocking, waits for new version to go online
    */
-  public static void runH2V(Properties h2vProperties, int expectedVersionNumber, ControllerClient controllerClient) {
-    long h2vStart = System.currentTimeMillis();
+  public static void runVPJ(Properties vpjProperties, int expectedVersionNumber, ControllerClient controllerClient) {
+    long vpjStart = System.currentTimeMillis();
     String jobName = Utils.getUniqueString("hybrid-job-" + expectedVersionNumber);
-    try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
+    try (VenicePushJob job = new VenicePushJob(jobName, vpjProperties)) {
       job.run();
       TestUtils.waitForNonDeterministicCompletion(
           5,
           TimeUnit.SECONDS,
-          () -> controllerClient.getStore((String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
+          () -> controllerClient.getStore((String) vpjProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
               .getStore()
               .getCurrentVersion() == expectedVersionNumber);
-      LOGGER.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
+      LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
     }
   }
 

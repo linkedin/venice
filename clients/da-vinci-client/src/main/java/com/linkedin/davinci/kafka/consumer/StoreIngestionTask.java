@@ -3142,7 +3142,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /**
    * Check whether the given schema id is available for current store.
-   * The function will bypass the check if schema id is -1 (H2V job is still using it before we finishes t he integration with schema registry).
+   * The function will bypass the check if schema id is -1 (VPJ job is still using it before we finishes t he integration with schema registry).
    * Right now, this function is maintaining a local cache for schema id of current store considering that the value schema is immutable;
    * If the schema id is not available, this function will polling until the schema appears or timeout: {@link #SCHEMA_POLLING_TIMEOUT_MS};
    *

@@ -39,7 +39,7 @@ dependencyResolutionManagement {
 }
 
 include 'clients:da-vinci-client'
-include 'clients:hadoop-to-venice-bridge'
+include 'clients:venice-push-job'
 include 'clients:venice-admin-tool'
 include 'clients:venice-client'
 include 'internal:venice-common'

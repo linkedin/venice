@@ -12,7 +12,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -139,11 +139,11 @@ public class TestActiveActiveReplicationForIncPush {
     String storeName = Utils.getUniqueString("store");
 
     try {
-      Properties propsBatch = defaultH2VProps(parentControllerUrls, inputDirPathBatch, storeName);
+      Properties propsBatch = defaultVPJProps(parentControllerUrls, inputDirPathBatch, storeName);
       propsBatch.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
-      Properties propsInc1 = defaultH2VProps(parentControllerUrls, inputDirPathInc1, storeName);
+      Properties propsInc1 = defaultVPJProps(parentControllerUrls, inputDirPathInc1, storeName);
       propsInc1.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
-      Properties propsInc2 = defaultH2VProps(parentControllerUrls, inputDirPathInc2, storeName);
+      Properties propsInc2 = defaultVPJProps(parentControllerUrls, inputDirPathInc2, storeName);
       propsInc2.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
       Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDirBatch, true, 100);

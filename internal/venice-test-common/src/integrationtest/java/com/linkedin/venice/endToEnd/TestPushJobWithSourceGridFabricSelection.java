@@ -11,7 +11,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_KAFKA_PRODUCER_ENABLE
 import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -134,7 +134,7 @@ public class TestPushJobWithSourceGridFabricSelection {
               .isError());
     }
 
-    Properties props = defaultH2VProps(parentControllerUrls, inputDirPath, storeName);
+    Properties props = defaultVPJProps(parentControllerUrls, inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
     props.put(SOURCE_GRID_FABRIC, "dc-1");
 
