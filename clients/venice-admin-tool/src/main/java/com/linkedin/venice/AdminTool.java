@@ -70,6 +70,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
@@ -277,6 +278,9 @@ public class AdminTool {
           break;
         case ADD_DERIVED_SCHEMA:
           applyDerivedSchemaToStore(cmd);
+          break;
+        case GENERATE_DERIVED_SCHEMA:
+          generateDerivedSchemaForStore(cmd);
           break;
         case REMOVE_DERIVED_SCHEMA:
           removeDerivedSchema(cmd);
@@ -980,6 +984,22 @@ public class AdminTool {
       throw new VeniceException("Error updating store with schema: " + valueResponse.getError());
     }
     printObject(valueResponse);
+  }
+
+  private static void generateDerivedSchemaForStore(CommandLine cmd) throws Exception {
+    String store = getRequiredArgument(cmd, Arg.STORE, Command.GENERATE_DERIVED_SCHEMA);
+    int valueSchemaId = Utils.parseIntFromString(
+        getRequiredArgument(cmd, Arg.VALUE_SCHEMA_ID, Command.GENERATE_DERIVED_SCHEMA),
+        "value schema id");
+    SchemaResponse schemaResponse = controllerClient.getValueSchema(store, valueSchemaId);
+    if (schemaResponse.isError()) {
+      throw new VeniceException("Error getting venice value schema: " + schemaResponse.getError());
+    }
+
+    String schemaString = schemaResponse.getSchemaStr();
+
+    Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchemaStr(schemaString);
+    System.out.println(writeComputeSchema.toString());
   }
 
   private static void removeDerivedSchema(CommandLine cmd) {

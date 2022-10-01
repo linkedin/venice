@@ -17,7 +17,6 @@ import static com.linkedin.venice.Arg.CLUSTER;
 import static com.linkedin.venice.Arg.CLUSTER_DEST;
 import static com.linkedin.venice.Arg.CLUSTER_SRC;
 import static com.linkedin.venice.Arg.COMPRESSION_STRATEGY;
-import static com.linkedin.venice.Arg.DERIVED_SCHEMA;
 import static com.linkedin.venice.Arg.DERIVED_SCHEMA_ID;
 import static com.linkedin.venice.Arg.DEST_FABRIC;
 import static com.linkedin.venice.Arg.DISABLE_DAVINCI_PUSH_STATUS_STORE;
@@ -144,7 +143,9 @@ public enum Command {
       new Arg[] { URL, CLUSTER, SYSTEM_STORE_TYPE }
   ), SET_VERSION("set-version", "Set the version that will be served", new Arg[] { URL, CLUSTER, STORE, VERSION }),
   ADD_SCHEMA("add-schema", "", new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA }),
-  ADD_DERIVED_SCHEMA("add-derived-schema", "", new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA_ID, DERIVED_SCHEMA }),
+  ADD_DERIVED_SCHEMA("add-derived-schema", "", new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA_ID }),
+
+  GENERATE_DERIVED_SCHEMA("generate-derived-schema", "", new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA_ID }),
   REMOVE_DERIVED_SCHEMA(
       "remove-derived-schema", "remove derived schema for a given store by the value and derived schema Ids",
       new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA_ID, DERIVED_SCHEMA_ID }

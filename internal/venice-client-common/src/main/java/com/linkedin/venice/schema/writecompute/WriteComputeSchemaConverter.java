@@ -1,3 +1,4 @@
+
 package com.linkedin.venice.schema.writecompute;
 
 import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.WRITE_COMPUTE_RECORD_SCHEMA_SUFFIX;
