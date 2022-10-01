@@ -24,10 +24,15 @@ public interface IngestionBackendBase extends Closeable {
 
   void killConsumptionTask(String topicName);
 
-  // addIngestionNotifier adds ingestion listener to KafkaStoreIngestionService
   void addIngestionNotifier(VeniceNotifier ingestionListener);
 
-  // dropStoragePartitionGracefully will stop subscribe topic's partition and delete partition data from storage.
+  /**
+   * This method stops to subscribe the specified topic partition and delete partition data from storage and it will
+   * always drop empty storage engine.
+   * @param storeConfig Store version config
+   * @param partition Partition number to be dropped in the store version.
+   * @param timeoutInSeconds Number of seconds to wait before timeout.
+   */
   default void dropStoragePartitionGracefully(
       VeniceStoreVersionConfig storeConfig,
       int partition,
@@ -35,7 +40,13 @@ public interface IngestionBackendBase extends Closeable {
     dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, true);
   }
 
-  // dropStoragePartitionGracefully will stop subscribe topic's partition and delete partition data from storage.
+  /**
+   * This method stops to subscribe the specified topic partition and delete partition data from storage.
+   * @param storeConfig Store version config
+   * @param partition Partition number to be dropped in the store version.
+   * @param timeoutInSeconds Number of seconds to wait before timeout.
+   * @param removeEmptyStorageEngine Whether to drop storage engine when dropping the last partition.
+   */
   void dropStoragePartitionGracefully(
       VeniceStoreVersionConfig storeConfig,
       int partition,

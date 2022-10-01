@@ -61,6 +61,7 @@ import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DiskUsage;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Time;
@@ -172,7 +173,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final StorageEngineBackedCompressorFactory compressorFactory;
 
-  private final ResourceAutoClosableLockManager topicLockManager;
+  private final ResourceAutoClosableLockManager<String> topicLockManager;
 
   public KafkaStoreIngestionService(
       StorageEngineRepository storageEngineRepository,
@@ -203,7 +204,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.partitionStateSerializer = partitionStateSerializer;
     this.compressorFactory = compressorFactory;
     // Each topic that has any partition ingested by this class has its own lock.
-    this.topicLockManager = new ResourceAutoClosableLockManager(() -> new ReentrantLock());
+    this.topicLockManager = new ResourceAutoClosableLockManager<>(ReentrantLock::new);
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     ServerKafkaClientFactory veniceConsumerFactory = new ServerKafkaClientFactory(
@@ -654,10 +655,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       }
 
       /**
-       * Since Venice metric is store-level and it would have multiply topics tasks exist in the same time.
-       * Only the task with largest version would emit it stats. That being said, relying on the {@link #metadataRepo}
+       * Since Venice metric is store-level, and it would have multiply topics tasks exist in the same time.
+       * Only the task with the largest version would emit it stats. That being said, relying on the {@link #metadataRepo}
        * to get the max version may be unreliable, since the information in this object is not guaranteed
-       * to be up to date. As a sanity check, we will also look at the version in the topic name, and
+       * to be up-to-date. As a sanity check, we will also look at the version in the topic name, and
        * pick whichever number is highest as the max version number.
        */
       String storeName = Version.parseStoreFromKafkaTopicName(topic);
@@ -680,6 +681,23 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       consumerTask.subscribePartition(topic, partitionId, leaderState);
     }
     LOGGER.info("Started Consuming - Kafka Partition: {}-{}.", topic, partitionId);
+  }
+
+  /**
+   * This method closes the specified {@link StoreIngestionTask} and wait for up to 10 seconds for fully shutdown.
+   * @param veniceStoreVersionConfig store version config that carries topic information.
+   */
+  protected void shutdownStoreIngestionTask(VeniceStoreVersionConfig veniceStoreVersionConfig) {
+    String topicName = veniceStoreVersionConfig.getStoreVersionName();
+    try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topicName)) {
+      if (topicNameToIngestionTaskMap.containsKey(topicName)) {
+        StoreIngestionTask storeIngestionTask = topicNameToIngestionTaskMap.remove(topicName);
+        storeIngestionTask.shutdown(10000);
+      } else {
+        LOGGER.info("Ignoring close request for not-existing consumption task {}", topicName);
+      }
+    }
+    topicLockManager.removeLockForResource(topicName);
   }
 
   @Override
@@ -800,9 +818,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     final String topic = veniceStore.getStoreVersionName();
 
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
-      StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
-      if (consumerTask != null && consumerTask.isRunning()) {
-        consumerTask.unSubscribePartition(topic, partitionId);
+      StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topic);
+      if (ingestionTask != null && ingestionTask.isRunning()) {
+        ingestionTask.unSubscribePartition(topic, partitionId);
       } else {
         LOGGER.warn("Ignoring stop consumption message for Topic {} Partition {}", topic, partitionId);
       }
@@ -823,42 +841,40 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int partitionId,
       int sleepSeconds,
       int numRetries) {
-    stopConsumption(veniceStore, partitionId);
-    try {
-      for (int i = 0; i < numRetries; i++) {
-        if (!isPartitionConsuming(veniceStore, partitionId)) {
-          LOGGER.info(
-              "Partition:{} of store: {} has stopped consumption.",
-              partitionId,
-              veniceStore.getStoreVersionName());
-          return;
+    if (isPartitionConsuming(veniceStore, partitionId)) {
+      stopConsumption(veniceStore, partitionId);
+      try {
+        long startTimeInMs = System.currentTimeMillis();
+        for (int i = 0; i < numRetries; i++) {
+          if (!isPartitionConsuming(veniceStore, partitionId)) {
+            LOGGER.info(
+                "Partition: {} of topic: {} has stopped consumption in {}ms.",
+                partitionId,
+                veniceStore.getStoreVersionName(),
+                LatencyUtils.getElapsedTimeInMs(startTimeInMs));
+            break;
+          }
+          sleep((long) sleepSeconds * Time.MS_PER_SECOND);
         }
-        sleep((long) sleepSeconds * Time.MS_PER_SECOND);
+        LOGGER.error(
+            "Partition: {} of store: {} is still consuming after waiting for it to stop for {} seconds.",
+            partitionId,
+            veniceStore.getStoreVersionName(),
+            numRetries * sleepSeconds);
+      } catch (InterruptedException e) {
+        LOGGER.warn("Waiting for partition to stop consumption was interrupted", e);
+        currentThread().interrupt();
       }
-      LOGGER.error(
-          "Partition: {} of store: {} is still consuming after waiting for it to stop for {} seconds.",
+    } else {
+      LOGGER.warn(
+          "Partition: {} of topic: {} is not consuming, skipped the stop consumption.",
           partitionId,
-          veniceStore.getStoreVersionName(),
-          numRetries * sleepSeconds);
-    } catch (InterruptedException e) {
-      LOGGER.warn("Waiting for partition to stop consumption was interrupted", e);
-      currentThread().interrupt();
+          veniceStore.getStoreVersionName());
     }
-  }
-
-  /**
-   * Resets Offset to beginning for Kafka Partition corresponding to Venice Partition.
-   * @param veniceStore Venice Store for the partition.
-   * @param partitionId Venice partition's id.
-   */
-  @Override
-  public void resetConsumptionOffset(VeniceStoreVersionConfig veniceStore, int partitionId) {
-    String topic = veniceStore.getStoreVersionName();
-    StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
-    if (consumerTask != null && consumerTask.isRunning()) {
-      consumerTask.resetPartitionConsumptionOffset(topic, partitionId);
+    resetConsumptionOffset(veniceStore, partitionId);
+    if (!ingestionTaskHasAnySubscription(veniceStore.getStoreVersionName())) {
+      shutdownStoreIngestionTask(veniceStore);
     }
-    LOGGER.info("Offset reset to beginning - Kafka Partition: {}-{}.", topic, partitionId);
   }
 
   /**
@@ -938,8 +954,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   public boolean isPartitionConsuming(VeniceStoreVersionConfig veniceStore, int partitionId) {
     final String topic = veniceStore.getStoreVersionName();
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
-      StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
-      return consumerTask != null && consumerTask.isRunning() && consumerTask.isPartitionConsuming(partitionId);
+      StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topic);
+      return ingestionTask != null && ingestionTask.isRunning() && ingestionTask.isPartitionConsuming(partitionId);
     }
   }
 
@@ -1121,5 +1137,26 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   public ReadOnlyStoreRepository getMetadataRepo() {
     return metadataRepo;
+  }
+
+  private boolean ingestionTaskHasAnySubscription(String topic) {
+    try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
+      StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
+      return consumerTask != null && consumerTask.hasAnySubscription();
+    }
+  }
+
+  /**
+   * Resets Offset to beginning for Kafka Partition corresponding to Venice Partition.
+   * @param veniceStore Venice Store for the partition.
+   * @param partitionId Venice partition's id.
+   */
+  private void resetConsumptionOffset(VeniceStoreVersionConfig veniceStore, int partitionId) {
+    String topic = veniceStore.getStoreVersionName();
+    StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
+    if (consumerTask != null && consumerTask.isRunning()) {
+      consumerTask.resetPartitionConsumptionOffset(topic, partitionId);
+    }
+    LOGGER.info("Offset reset to beginning - Kafka Partition: {}-{}.", topic, partitionId);
   }
 }
