@@ -1,0 +1,7 @@
+dependencies {
+    rootProject.subprojects.each { subproject ->
+        if (subproject.path != project.path && subproject.subprojects.size() == 0) {
+            implementation project(subproject.path)
+        }
+    }
+}

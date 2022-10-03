@@ -107,6 +107,22 @@ ext.libraries = [
 
 group = 'com.linkedin.venice'
 
+publishing {
+  repositories {
+    mavenLocal()
+    maven {
+      name "LinkedInJFrog"
+      url "https://linkedin.jfrog.io/artifactory/venice"
+      credentials {
+        if (System.getenv('JFROG_USERNAME') != null && System.getenv('JFROG_API_KEY') != null) {
+          username System.getenv('JFROG_USERNAME')
+          password System.getenv('JFROG_API_KEY')
+        }
+      }
+    }
+  }
+}
+
 // This does not include modules that are published as shadow jars as they have their own publishing sections:
 // 1. venice-push-job
 // 2. venice-admin-tool
@@ -141,6 +157,9 @@ Map<String, String> projectsToPublish = new HashMap<String, String>() {{
   put(":internal:alpini:router:router-api", "alpini-router-api")
   put(":internal:alpini:router:router-base", "alpini-router-base")
   put(":internal:alpini:router:router-impl", "alpini-router-impl")
+
+  // Depend-all module
+  put(":venice-all", "venice-all")
 }}
 
 subprojects {
@@ -395,10 +414,8 @@ subprojects {
     classifier = 'tests'
   }
 
-  if (project.version != project.DEFAULT_VERSION) {
-    if (publishRegularArtifacts) {
-      publishing.configureRegularArtifactPublishing(project, projectsToPublish.get(project.path), sourceJar, testJar)
-    }
+  if (publishRegularArtifacts) {
+    publishing.configureRegularArtifactPublishing(project, projectsToPublish.get(project.path), sourceJar, testJar)
   }
 }
 

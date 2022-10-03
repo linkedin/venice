@@ -38,20 +38,25 @@ dependencyResolutionManagement {
   repositories.addAll(pluginManagement.repositories)
 }
 
+// Client modules
 include 'clients:da-vinci-client'
 include 'clients:venice-push-job'
 include 'clients:venice-admin-tool'
 include 'clients:venice-client'
+include 'clients:venice-samza'
+include 'clients:venice-thin-client'
+
+// Service modules
+include 'services:venice-controller'
+include 'services:venice-router'
+include 'services:venice-server'
+
+// Internal modules
 include 'internal:venice-common'
 include 'internal:venice-compatibility-test'
 include 'internal:venice-consumer'
-include 'services:venice-controller'
-include 'services:venice-router'
-include 'clients:venice-samza'
 include 'internal:venice-client-common'
-include 'services:venice-server'
 include 'internal:venice-test-common'
-include 'clients:venice-thin-client'
 
 // Alpini modules
 include 'internal:alpini:common:common-base'
@@ -65,3 +70,6 @@ include 'internal:alpini:netty4:netty4-base'
 include 'internal:alpini:router:router-api'
 include 'internal:alpini:router:router-base'
 include 'internal:alpini:router:router-impl'
+
+// Depend-all module
+include 'venice-all'
