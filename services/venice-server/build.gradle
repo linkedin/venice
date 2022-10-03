@@ -47,6 +47,7 @@ dependencies {
   implementation libraries.zkclient
 
   testImplementation libraries.fastUtil
+  testImplementation project(':internal:alpini:router:alpini-router-api')
   testImplementation project(':services:venice-router')
 }
 

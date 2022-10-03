@@ -46,6 +46,8 @@ dependencies {
 
   // Test dependencies are allowed to be bulkier.
   testImplementation libraries.kafkaClientsTest // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
+  testImplementation project(':internal:alpini:common:alpini-common-base')
+  testImplementation project(':internal:alpini:common:alpini-common-io')
   testImplementation project(':internal:alpini:router:alpini-router-api')
   testImplementation project(':services:venice-controller')
   testImplementation project(':clients:da-vinci-client')
