@@ -20,14 +20,21 @@ The various motivations for operator-driven Repushes are described in more detai
 
 ### Reconfiguration
 In Venice, some store configs can be changed live, while some others take effect when the next store-version is pushed.
-Configs which take effect on the next store-version push include:
+Configs which can be changed with a Repush (or a regular Full Push) include:
 
 1. Partition-related settings
    1. Partition count
    2. Amplification factor
    3. Custom partitioner implementation
-2. Compression algorithm
-3. Replication settings
+2. Replication settings
+3. Whether a store is hybrid
+
+Having some configs be immutable within the scope of a store-version makes the development and maintenance of the system
+easier to reason about. In the past, the Venice team has leveraged Repushes to execute large scale migrations as new
+modes were introduced (e.g., migrating from active-passive to active-active replication, or migrating from the 
+offline/bootstrap/online state model to the leader/follower state model). Repush enabled operators to roll out (and 
+occasionally roll back) these migrations in a way that was invisible to users of the platform. Although these migrations 
+are behind us, it is possible that future migrations may also be designed to be executed this way.
 
 ### Sorting
 When doing a Full Push (and also when Repushing), the data gets sorted inside the Map Reduce job, prior to pushing. The 
@@ -48,7 +55,7 @@ partitions. In these cases, as long as one of the DCs is healthy, it can be used
 data in other DCs.
 
 ## Repush Configuration
-The following Venice Push Job config ise used to enable Repush functionality:
+The following Venice Push Job config is used to enable Repush functionality:
 ```
 source.kafka = true
 ```
