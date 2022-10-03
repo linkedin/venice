@@ -223,11 +223,10 @@ public class VeniceReducer extends AbstractMapReduceTask
     }
     if (key.getLength() > VeniceMRPartitioner.EMPTY_KEY_LENGTH
         && (!hasReportedFailure(reporter, this.isDuplicateKeyAllowed))) {
-      Optional<VeniceWriterMessage> message = extract(key, values, reporter);
-      if (message.isPresent()) {
+      VeniceWriterMessage message = extract(key, values, reporter);
+      if (message != null) {
         try {
-          VeniceWriterMessage veniceWriterMessage = message.get();
-          sendMessageToKafka(reporter, veniceWriterMessage.getConsumer());
+          sendMessageToKafka(reporter, message.getConsumer());
         } catch (VeniceException e) {
           if (e instanceof TopicAuthorizationVeniceException) {
             MRJobCounterHelper.incrWriteAclAuthorizationFailureCount(reporter, 1);
@@ -257,10 +256,7 @@ public class VeniceReducer extends AbstractMapReduceTask
     return enableWriteCompute;
   }
 
-  protected Optional<VeniceWriterMessage> extract(
-      BytesWritable key,
-      Iterator<BytesWritable> values,
-      Reporter reporter) {
+  protected VeniceWriterMessage extract(BytesWritable key, Iterator<BytesWritable> values, Reporter reporter) {
     /**
      * Don't use {@link BytesWritable#getBytes()} since it could be padded or modified by some other records later on.
      */
@@ -273,14 +269,13 @@ public class VeniceReducer extends AbstractMapReduceTask
       throw new VeniceException("'DuplicateKeyPrinter' is not initialized properly");
     }
     duplicateKeyPrinter.detectAndHandleDuplicateKeys(keyBytes, valueBytes, values, reporter);
-    return Optional.of(
-        new VeniceWriterMessage(
-            keyBytes,
-            valueBytes,
-            valueSchemaId,
-            getCallback(),
-            isEnableWriteCompute(),
-            getDerivedValueSchemaId()));
+    return new VeniceWriterMessage(
+        keyBytes,
+        valueBytes,
+        valueSchemaId,
+        getCallback(),
+        isEnableWriteCompute(),
+        getDerivedValueSchemaId());
   }
 
   protected boolean hasReportedFailure(Reporter reporter, boolean isDuplicateKeyAllowed) {
