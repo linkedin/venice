@@ -1,0 +1,10 @@
+dependencies {
+  compile project(':internal:alpini:common:alpini-common-io')
+  compile project(':internal:alpini:router:alpini-router-api')
+  compileOnly project(':internal:alpini:netty4:alpini-netty4-base')
+  compileOnly libraries.mail
+  testCompile libraries.testng
+  testCompile project(':internal:alpini:netty4:alpini-netty4-base')
+  testCompile libraries.mail
+  implementation libraries.javaxActivation
+}

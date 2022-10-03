@@ -1,5 +1,5 @@
 dependencies {
-  compile project(':internal:alpini:common:common-base')
+  compile project(':internal:alpini:common:alpini-common-base')
   compile libraries.mockito
   compile libraries.log4j2api
   compile libraries.testng

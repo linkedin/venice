@@ -1,11 +1,11 @@
 dependencies {
-  compile project(':internal:alpini:common:common-base')
-  compile project(':internal:alpini:common:common-io')
+  compile project(':internal:alpini:common:alpini-common-base')
+  compile project(':internal:alpini:common:alpini-common-io')
   compile libraries.commonsIo
   compile libraries.commonsLang
   compile libraries.netty
   compile libraries.snappy
-  //testCompile project(':internal:alpini:netty4:netty4-test')
+  //testCompile project(':internal:alpini:netty4:alpini-netty4-test')
   //testCompile spec.external.'mockito-all'
   //testCompile libraries.testng
   testCompile libraries.testng

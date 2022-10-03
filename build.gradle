@@ -126,41 +126,41 @@ publishing {
 // This does not include modules that are published as shadow jars as they have their own publishing sections:
 // 1. venice-push-job
 // 2. venice-admin-tool
-Map<String, String> projectsToPublish = new HashMap<String, String>() {{
+Set<String> projectsToPublish = [
   // Services
-  put(":services:venice-controller", "venice-controller")
-  put(":services:venice-router", "venice-router")
-  put(":services:venice-server", "venice-server")
+  ":services:venice-controller",
+  ":services:venice-router",
+  ":services:venice-server",
 
   // Clients
-  put(":clients:da-vinci-client", "da-vinci-client")
-  put(":clients:venice-client", "venice-client")
-  put(":clients:venice-samza", "venice-samza")
-  put(":clients:venice-thin-client", "venice-thin-client")
+  ":clients:da-vinci-client",
+  ":clients:venice-client",
+  ":clients:venice-samza",
+  ":clients:venice-thin-client",
 
   // Internal
-  put(":internal:venice-client-common", "venice-client-common")
-  put(":internal:venice-common", "venice-common")
-  put(":internal:venice-compatibility-test", "venice-compatibility-test")
-  put(":internal:venice-consumer", "venice-consumer")
-  put(":internal:venice-test-common", "venice-test-common")
+  ":internal:venice-client-common",
+  ":internal:venice-common",
+  ":internal:venice-compatibility-test",
+  ":internal:venice-consumer",
+  ":internal:venice-test-common",
 
   // Internal - Alpini
-  put(":internal:alpini:common:common-base", "alpini-common-base")
-  put(":internal:alpini:common:common-cli", "alpini-common-cli")
-  put(":internal:alpini:common:common-const", "alpini-common-const")
-  put(":internal:alpini:common:common-io", "alpini-common-io")
-  put(":internal:alpini:common:common-log", "alpini-common-log")
-  put(":internal:alpini:common:common-native", "alpini-common-native")
-  put(":internal:alpini:common:common-test", "alpini-common-test")
-  put(":internal:alpini:netty4:netty4-base", "alpini-netty4-base")
-  put(":internal:alpini:router:router-api", "alpini-router-api")
-  put(":internal:alpini:router:router-base", "alpini-router-base")
-  put(":internal:alpini:router:router-impl", "alpini-router-impl")
+  ":internal:alpini:common:common-base",
+  ":internal:alpini:common:common-cli",
+  ":internal:alpini:common:common-const",
+  ":internal:alpini:common:common-io",
+  ":internal:alpini:common:common-log",
+  ":internal:alpini:common:common-native",
+  ":internal:alpini:common:common-test",
+  ":internal:alpini:netty4:netty4-base",
+  ":internal:alpini:router:router-api",
+  ":internal:alpini:router:router-base",
+  ":internal:alpini:router:router-impl",
 
   // Depend-all module
-  put(":venice-all", "venice-all")
-}}
+  ":venice-all",
+]
 
 subprojects {
   //apply group and version to all submodules
@@ -394,7 +394,7 @@ subprojects {
     exclude('**/*.xml')
   }
 
-  def publishRegularArtifacts = projectsToPublish.containsKey(project.path)
+  def publishRegularArtifacts = projectsToPublish.contains(project.path)
 
   if (publishRegularArtifacts) {
     task sourceJar(type: Jar) {
@@ -415,7 +415,7 @@ subprojects {
   }
 
   if (publishRegularArtifacts) {
-    publishing.configureRegularArtifactPublishing(project, projectsToPublish.get(project.path), sourceJar, testJar)
+    publishing.configureRegularArtifactPublishing(project, sourceJar, testJar)
   }
 }
 

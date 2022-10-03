@@ -33,8 +33,8 @@ dependencies {
 
   implementation libraries.avroUtilFastserde
   implementation libraries.classgraph
-  implementation project(':internal:alpini:common:common-base')
-  implementation project(':internal:alpini:netty4:netty4-base')
+  implementation project(':internal:alpini:common:alpini-common-base')
+  implementation project(':internal:alpini:netty4:alpini-netty4-base')
   implementation libraries.failsafe
   implementation libraries.log4j2api
   implementation libraries.zstd

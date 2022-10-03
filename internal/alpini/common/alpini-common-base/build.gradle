@@ -4,7 +4,7 @@ configurations {
 
 dependencies {
   testCompile libraries.testng
-  compile project(':internal:alpini:common:common-const')
+  compile project(':internal:alpini:common:alpini-common-const')
   compile libraries.jacksonDatabind
   compile libraries.jsr305
   //testCompile spec.external.'mockito-all'

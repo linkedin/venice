@@ -1,13 +1,13 @@
 ext.publishing = [
-    configureRegularArtifactPublishing: { currentProject, artifactName, sourceJar, testJar ->
+    configureRegularArtifactPublishing: { currentProject, sourceJar, testJar ->
       if (currentProject.version != project.DEFAULT_VERSION) {
-        println "Will publish ${currentProject.path} at ${currentProject.group}:${artifactName}:${currentProject.version}"
+        println "Will publish ${currentProject.path} at ${currentProject.group}:${currentProject.name}:${currentProject.version}"
 
         publishing {
           publications {
-            "$artifactName"(MavenPublication) {
+            "${currentProject.name}"(MavenPublication) {
               groupId currentProject.group
-              artifactId artifactName
+              artifactId currentProject.name
               version currentProject.version
 
               from currentProject.components.java
@@ -42,18 +42,18 @@ ext.publishing = [
       }
     },
 
-    configureShadowArtifactPublishing: { currentProject, artifactName, shadowJar, sourceJar, testJar ->
+    configureShadowArtifactPublishing: { currentProject, shadowJar, sourceJar, testJar ->
       if (currentProject.version != project.DEFAULT_VERSION) {
         def classifier = 'all'
-        println "Will publish ${currentProject.path} at ${currentProject.group}:${artifactName}-${classifier}:${currentProject.version}"
+        println "Will publish ${currentProject.path} at ${currentProject.group}:${currentProject.name}-${classifier}:${currentProject.version}"
 
         println ""
 
         publishing {
           publications {
-            "$artifactName"(MavenPublication) {
+            "${currentProject.name}"(MavenPublication) {
               groupId currentProject.group
-              artifactId "$artifactName"
+              artifactId currentProject.name
               version currentProject.version
 
               artifact source: shadowJar, classifier: "$classifier"
