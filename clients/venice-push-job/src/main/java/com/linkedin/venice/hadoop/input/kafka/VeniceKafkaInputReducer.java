@@ -8,12 +8,8 @@ import com.linkedin.venice.hadoop.input.kafka.chunk.ChunkAssembler;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ByteUtils;
-import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.List;
-import java.util.Optional;
 import javax.annotation.Nonnull;
-import org.apache.commons.lang.Validate;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Reporter;
@@ -27,7 +23,8 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
   private static final RecordDeserializer<KafkaInputMapperValue> KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_DESERIALIZER =
       FastSerializerDeserializerFactory
           .getFastAvroSpecificDeserializer(KafkaInputMapperValue.SCHEMA$, KafkaInputMapperValue.class);
-  private ChunkAssembler chunkAssembler;
+  private ChunkAssembler chunkAssembler = null;
+  private MessageExtractor extractor = this::extractNonChunkedMessage;
 
   /**
    * No need to print out duplicate keys since duplicate keys are expected in Kafka topics.
@@ -40,10 +37,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
   }
 
   @Override
-  protected Optional<VeniceWriterMessage> extract(
-      BytesWritable key,
-      Iterator<BytesWritable> valueIterator,
-      Reporter reporter) {
+  protected VeniceWriterMessage extract(BytesWritable key, Iterator<BytesWritable> valueIterator, Reporter reporter) {
     /**
      * Don't use {@link BytesWritable#getBytes()} since it could be padded or modified by some other records later on.
      */
@@ -51,37 +45,43 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
     if (!valueIterator.hasNext()) {
       throw new VeniceException("There is no value corresponding to key bytes: " + ByteUtils.toHexString(keyBytes));
     }
-    return isChunkingEnabled()
-        ? extractChunkedMessage(keyBytes, getMapperValues(valueIterator))
-        : extractNonChunkedMessage(keyBytes, valueIterator);
+    return extractor.extract(keyBytes, valueIterator);
   }
 
-  private Optional<VeniceWriterMessage> extractChunkedMessage(
-      final byte[] keyBytes,
-      @Nonnull List<KafkaInputMapperValue> mapperValues) {
-    Validate.notEmpty(mapperValues);
-    return getChunkAssembler().assembleAndGetValue(keyBytes, mapperValues)
-        .map(
-            valueBytesAndSchemaId -> new VeniceWriterMessage(
-                keyBytes,
-                valueBytesAndSchemaId.getBytes(),
-                valueBytesAndSchemaId.getSchemaID(),
-                getCallback(),
-                isEnableWriteCompute(),
-                getDerivedValueSchemaId()));
-  }
-
-  private ChunkAssembler getChunkAssembler() {
-    if (chunkAssembler == null) {
-      chunkAssembler = new ChunkAssembler();
+  @Override
+  protected void setChunkingEnabled(boolean isChunkingEnabled) {
+    super.setChunkingEnabled(isChunkingEnabled);
+    if (isChunkingEnabled) {
+      this.extractor = this::extractChunkedMessage;
+      this.chunkAssembler = new ChunkAssembler();
+    } else {
+      this.extractor = this::extractNonChunkedMessage;
+      this.chunkAssembler = null;
     }
-    return chunkAssembler;
   }
 
-  private Optional<VeniceWriterMessage> extractNonChunkedMessage(
+  private interface MessageExtractor {
+    VeniceWriterMessage extract(byte[] keyBytes, Iterator<BytesWritable> valueIterator);
+  }
+
+  private VeniceWriterMessage extractChunkedMessage(
       final byte[] keyBytes,
       @Nonnull Iterator<BytesWritable> valueIterator) {
-    Validate.isTrue(valueIterator.hasNext());
+    ChunkAssembler.ValueBytesAndSchemaId value = chunkAssembler.assembleAndGetValue(keyBytes, valueIterator);
+    return value == null
+        ? null
+        : new VeniceWriterMessage(
+            keyBytes,
+            value.getBytes(),
+            value.getSchemaID(),
+            getCallback(),
+            isEnableWriteCompute(),
+            getDerivedValueSchemaId());
+  }
+
+  private VeniceWriterMessage extractNonChunkedMessage(
+      final byte[] keyBytes,
+      @Nonnull Iterator<BytesWritable> valueIterator) {
     // Only get the value with the largest offset for the purpose of compaction
     KafkaInputMapperValue mapperValue = null;
     long largestOffset = Long.MIN_VALUE;
@@ -103,52 +103,36 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
     if (lastValue.valueType.equals(MapperValueType.DELETE)) {
       // Deleted record
       if (lastValue.replicationMetadataPayload.remaining() != 0) {
-        return Optional.of(
-            new VeniceWriterMessage(
-                keyBytes,
-                null,
-                lastValue.schemaId,
-                lastValue.replicationMetadataVersionId,
-                lastValue.replicationMetadataPayload,
-                getCallback(),
-                isEnableWriteCompute(),
-                getDerivedValueSchemaId()));
+        return new VeniceWriterMessage(
+            keyBytes,
+            null,
+            lastValue.schemaId,
+            lastValue.replicationMetadataVersionId,
+            lastValue.replicationMetadataPayload,
+            getCallback(),
+            isEnableWriteCompute(),
+            getDerivedValueSchemaId());
       }
-      return Optional.empty();
+      return null;
     }
     byte[] valueBytes = ByteUtils.extractByteArray(lastValue.value);
     if (lastValue.replicationMetadataPayload.remaining() != 0) {
-      return Optional.of(
-          new VeniceWriterMessage(
-              keyBytes,
-              valueBytes,
-              lastValue.schemaId,
-              lastValue.replicationMetadataVersionId,
-              lastValue.replicationMetadataPayload,
-              getCallback(),
-              isEnableWriteCompute(),
-              getDerivedValueSchemaId()));
+      return new VeniceWriterMessage(
+          keyBytes,
+          valueBytes,
+          lastValue.schemaId,
+          lastValue.replicationMetadataVersionId,
+          lastValue.replicationMetadataPayload,
+          getCallback(),
+          isEnableWriteCompute(),
+          getDerivedValueSchemaId());
     }
-    return Optional.of(
-        new VeniceWriterMessage(
-            keyBytes,
-            valueBytes,
-            lastValue.schemaId,
-            getCallback(),
-            isEnableWriteCompute(),
-            getDerivedValueSchemaId()));
-  }
-
-  /**
-   * TODO: Refactor code so that we don't need to hold on to a full list of deserialized values, which can OOM.
-   */
-  @Deprecated
-  private List<KafkaInputMapperValue> getMapperValues(Iterator<BytesWritable> valueIterator) {
-    List<KafkaInputMapperValue> mapperValues = new ArrayList<>();
-    while (valueIterator.hasNext()) {
-      mapperValues
-          .add(KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_DESERIALIZER.deserialize(valueIterator.next().copyBytes()));
-    }
-    return mapperValues;
+    return new VeniceWriterMessage(
+        keyBytes,
+        valueBytes,
+        lastValue.schemaId,
+        getCallback(),
+        isEnableWriteCompute(),
+        getDerivedValueSchemaId());
   }
 }
