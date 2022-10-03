@@ -93,3 +93,8 @@ it defaults to false.
 ```
 kafka.input.combiner.enabled = true
 ```
+## Future Work
+Repush will eventually support a more efficient way to perform [TTL](../user_guide/ttl.md).
+
+Another potential enhancement would be to add support for changing the compression setting of a store, which currently
+requires a Full Push, and which Repush does not support yet.
