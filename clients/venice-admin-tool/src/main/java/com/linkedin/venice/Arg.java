@@ -19,6 +19,7 @@ public enum Arg {
   STORE_SIZE("store-size", "ss", true, "Size of the store in bytes, used to calculate partitioning"),
   KEY_SCHEMA("key-schema-file", "ks", true, "Path to text file with key schema"),
   VALUE_SCHEMA_ID("value-schema-id", "vid", true, "value schema id"),
+  SKIP_YES_PROMPT("skip-yes-prompt", "y", true, "Skips prompting for continue messages and proceeds."),
   VALUE_SCHEMA("value-schema-file", "vs", true, "Path to text file with value schema"),
   DERIVED_SCHEMA_ID("derived-schema-id", "did", true, "derived schema id"),
   DERIVED_SCHEMA("derived-schema-file", "ds", true, "Path to text file with derived schema"),

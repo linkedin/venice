@@ -98,6 +98,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Scanner;
 import java.util.Set;
 import java.util.StringJoiner;
 import java.util.concurrent.ExecutionException;
@@ -999,7 +1000,47 @@ public class AdminTool {
     String schemaString = schemaResponse.getSchemaStr();
 
     Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchemaStr(schemaString);
-    System.out.println(writeComputeSchema.toString());
+
+    boolean shouldUploadSchema =
+        Utils.parseBooleanFromString(getOptionalArgument(cmd, Arg.SKIP_YES_PROMPT, "false"), "skip yes prompt");
+
+    if (!shouldUploadSchema) {
+      shouldUploadSchema = blockAndGetConfirmation(
+          String.format(
+              "Will upload schema \n\n %s \n\nto store %s. Continue?...",
+              writeComputeSchema.toString(),
+              store));
+    }
+
+    if (shouldUploadSchema) {
+      verifyValidSchema(writeComputeSchema.toString());
+      System.out.println("\nUploading schema...\n");
+      SchemaResponse valueResponse =
+          controllerClient.addDerivedSchema(store, valueSchemaId, writeComputeSchema.toString());
+      if (valueResponse.isError()) {
+        throw new VeniceException("Error updating store with schema: " + valueResponse.getError());
+      }
+      printObject(valueResponse);
+    } else {
+      System.out.println("\nExiting without uploading...\n");
+    }
+  }
+
+  /**
+   * Blocks and waits for user input.  Returns true if user typed 'y' and false for anything else.
+   *
+   * @param promptToPrint The text with which to prompt the user at time of waiting for input
+   * @return
+   */
+  private static boolean blockAndGetConfirmation(String promptToPrint) {
+    Scanner scanner = new Scanner(System.in);
+    System.out.println(promptToPrint + " [Y/N]\n");
+    String line = scanner.nextLine();
+    if (line.equalsIgnoreCase("y")) {
+      return true;
+    } else {
+      return false;
+    }
   }
 
   private static void removeDerivedSchema(CommandLine cmd) {

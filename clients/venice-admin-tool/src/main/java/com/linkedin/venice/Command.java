@@ -1,96 +1,6 @@
 package com.linkedin.venice;
 
-import static com.linkedin.venice.Arg.ACCESS_CONTROL;
-import static com.linkedin.venice.Arg.ACL_PERMS;
-import static com.linkedin.venice.Arg.ACTIVE_ACTIVE_REPLICATION_ENABLED;
-import static com.linkedin.venice.Arg.ALLOW_STORE_MIGRATION;
-import static com.linkedin.venice.Arg.AMPLIFICATION_FACTOR;
-import static com.linkedin.venice.Arg.AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED;
-import static com.linkedin.venice.Arg.BACKUP_STRATEGY;
-import static com.linkedin.venice.Arg.BACKUP_VERSION_RETENTION_DAY;
-import static com.linkedin.venice.Arg.BATCH_GET_LIMIT;
-import static com.linkedin.venice.Arg.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR;
-import static com.linkedin.venice.Arg.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED;
-import static com.linkedin.venice.Arg.CHUNKING_ENABLED;
-import static com.linkedin.venice.Arg.CLIENT_DECOMPRESSION_ENABLED;
-import static com.linkedin.venice.Arg.CLUSTER;
-import static com.linkedin.venice.Arg.CLUSTER_DEST;
-import static com.linkedin.venice.Arg.CLUSTER_SRC;
-import static com.linkedin.venice.Arg.COMPRESSION_STRATEGY;
-import static com.linkedin.venice.Arg.DERIVED_SCHEMA_ID;
-import static com.linkedin.venice.Arg.DEST_FABRIC;
-import static com.linkedin.venice.Arg.DISABLE_DAVINCI_PUSH_STATUS_STORE;
-import static com.linkedin.venice.Arg.DISABLE_META_STORE;
-import static com.linkedin.venice.Arg.ETLED_PROXY_USER_ACCOUNT;
-import static com.linkedin.venice.Arg.EXECUTION;
-import static com.linkedin.venice.Arg.EXPECTED_ROUTER_COUNT;
-import static com.linkedin.venice.Arg.FABRIC;
-import static com.linkedin.venice.Arg.FABRIC_A;
-import static com.linkedin.venice.Arg.FABRIC_B;
-import static com.linkedin.venice.Arg.FORCE;
-import static com.linkedin.venice.Arg.FUTURE_VERSION_ETL_ENABLED;
-import static com.linkedin.venice.Arg.HYBRID_BUFFER_REPLAY_POLICY;
-import static com.linkedin.venice.Arg.HYBRID_DATA_REPLICATION_POLICY;
-import static com.linkedin.venice.Arg.HYBRID_OFFSET_LAG;
-import static com.linkedin.venice.Arg.HYBRID_REWIND_SECONDS;
-import static com.linkedin.venice.Arg.HYBRID_STORE_DISK_QUOTA_ENABLED;
-import static com.linkedin.venice.Arg.HYBRID_STORE_OVERHEAD_BYPASS;
-import static com.linkedin.venice.Arg.HYBRID_TIME_LAG;
-import static com.linkedin.venice.Arg.INCLUDE_SYSTEM_STORES;
-import static com.linkedin.venice.Arg.INCREMENTAL_PUSH_ENABLED;
-import static com.linkedin.venice.Arg.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.Arg.KAFKA_CONSUMER_CONFIG_FILE;
-import static com.linkedin.venice.Arg.KAFKA_OPERATION_TIMEOUT;
-import static com.linkedin.venice.Arg.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
-import static com.linkedin.venice.Arg.KAFKA_TOPIC_NAME;
-import static com.linkedin.venice.Arg.KAFKA_TOPIC_PARTITION;
-import static com.linkedin.venice.Arg.KAFKA_TOPIC_RETENTION_IN_MS;
-import static com.linkedin.venice.Arg.KAFKA_ZOOKEEPER_CONNECTION_URL;
-import static com.linkedin.venice.Arg.KEY;
-import static com.linkedin.venice.Arg.KEY_SCHEMA;
-import static com.linkedin.venice.Arg.LARGEST_USED_VERSION_NUMBER;
-import static com.linkedin.venice.Arg.LEADER_FOLLOWER_MODEL_ENABLED;
-import static com.linkedin.venice.Arg.MESSAGE_COUNT;
-import static com.linkedin.venice.Arg.MIGRATION_PUSH_STRATEGY;
-import static com.linkedin.venice.Arg.NATIVE_REPLICATION_ENABLED;
-import static com.linkedin.venice.Arg.NATIVE_REPLICATION_SOURCE_FABRIC;
-import static com.linkedin.venice.Arg.NUM_VERSIONS_TO_PRESERVE;
-import static com.linkedin.venice.Arg.OFFSET;
-import static com.linkedin.venice.Arg.OWNER;
-import static com.linkedin.venice.Arg.PARTITIONER_CLASS;
-import static com.linkedin.venice.Arg.PARTITIONER_PARAMS;
-import static com.linkedin.venice.Arg.PARTITION_COUNT;
-import static com.linkedin.venice.Arg.PRINCIPAL;
-import static com.linkedin.venice.Arg.PUSH_ID;
-import static com.linkedin.venice.Arg.PUSH_STREAM_SOURCE_ADDRESS;
-import static com.linkedin.venice.Arg.READABILITY;
-import static com.linkedin.venice.Arg.READ_COMPUTATION_ENABLED;
-import static com.linkedin.venice.Arg.READ_QUOTA;
-import static com.linkedin.venice.Arg.REGIONS_FILTER;
-import static com.linkedin.venice.Arg.REGULAR_VERSION_ETL_ENABLED;
-import static com.linkedin.venice.Arg.REPLICATE_ALL_CONFIGS;
-import static com.linkedin.venice.Arg.REPLICATION_FACTOR;
-import static com.linkedin.venice.Arg.RETRY;
-import static com.linkedin.venice.Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
-import static com.linkedin.venice.Arg.SKIP_DIV;
-import static com.linkedin.venice.Arg.SOURCE_FABRIC;
-import static com.linkedin.venice.Arg.STARTING_OFFSET;
-import static com.linkedin.venice.Arg.STORAGE_NODE;
-import static com.linkedin.venice.Arg.STORAGE_PERSONA;
-import static com.linkedin.venice.Arg.STORAGE_QUOTA;
-import static com.linkedin.venice.Arg.STORE;
-import static com.linkedin.venice.Arg.STORE_SIZE;
-import static com.linkedin.venice.Arg.STORE_TYPE;
-import static com.linkedin.venice.Arg.SYSTEM_STORE_TYPE;
-import static com.linkedin.venice.Arg.URL;
-import static com.linkedin.venice.Arg.VALUE_SCHEMA;
-import static com.linkedin.venice.Arg.VALUE_SCHEMA_ID;
-import static com.linkedin.venice.Arg.VENICE_CLIENT_SSL_CONFIG_FILE;
-import static com.linkedin.venice.Arg.VERSION;
-import static com.linkedin.venice.Arg.VOLDEMORT_STORE;
-import static com.linkedin.venice.Arg.VSON_STORE;
-import static com.linkedin.venice.Arg.WRITEABILITY;
-import static com.linkedin.venice.Arg.WRITE_COMPUTATION_ENABLED;
+import static com.linkedin.venice.Arg.*;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.Arrays;
@@ -145,7 +55,9 @@ public enum Command {
   ADD_SCHEMA("add-schema", "", new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA }),
   ADD_DERIVED_SCHEMA("add-derived-schema", "", new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA_ID }),
 
-  GENERATE_DERIVED_SCHEMA("generate-derived-schema", "", new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA_ID }),
+  GENERATE_DERIVED_SCHEMA(
+      "generate-derived-schema", "", new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA_ID, SKIP_YES_PROMPT }
+  ),
   REMOVE_DERIVED_SCHEMA(
       "remove-derived-schema", "remove derived schema for a given store by the value and derived schema Ids",
       new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA_ID, DERIVED_SCHEMA_ID }
