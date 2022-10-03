@@ -1,8 +1,8 @@
 dependencies {
-  testCompile libraries.testng
-  compile libraries.log4j2api
-  compile libraries.jna
-  compile libraries.jsr305
+  testImplementation libraries.testng
+  implementation libraries.log4j2api
+  implementation libraries.jna
+  implementation libraries.jsr305
 }
 
 

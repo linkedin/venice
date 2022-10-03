@@ -1,10 +1,10 @@
 dependencies {
-  testCompile libraries.testng
-  compile libraries.log4j2api
+  testImplementation libraries.testng
+  implementation libraries.log4j2api
   compileOnly libraries.jsr305
-  //compile project(':internal:alpini:common:alpini-common-base')
-  //testCompile spec.external.'mockito-all'
-  //testCompile libraries.testng
+  //implementation project(':internal:alpini:common:alpini-common-base')
+  //testImplementation spec.external.'mockito-all'
+  //testImplementation libraries.testng
 }
 
 

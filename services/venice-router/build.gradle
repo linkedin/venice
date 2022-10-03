@@ -20,6 +20,16 @@ configurations.all {
 dependencies {
   implementation project(':internal:venice-common')
 
+  implementation (project(':internal:alpini:common:alpini-common-base'))  {
+    exclude group: 'javax.servlet'
+    exclude group: 'org.mockito', module: 'mockito-all'
+  }
+
+  implementation (project(':internal:alpini:router:alpini-router-api'))  {
+    exclude group: 'javax.servlet'
+    exclude group: 'org.mockito', module: 'mockito-all'
+  }
+
   implementation (project(':internal:alpini:router:alpini-router-base'))  {
     exclude group: 'javax.servlet'
     exclude group: 'org.mockito', module: 'mockito-all'
