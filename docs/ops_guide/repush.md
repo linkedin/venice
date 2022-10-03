@@ -54,7 +54,7 @@ others. Alternatively, it's possible that correlated hardware failures resulted 
 partitions. In these cases, as long as one of the DCs is healthy, it can be used as the source of a repush to repair the
 data in other DCs.
 
-## Repush Configuration
+## Usage
 The following Venice Push Job config is used to enable Repush functionality:
 ```
 source.kafka = true

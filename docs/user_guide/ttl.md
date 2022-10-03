@@ -18,7 +18,7 @@ back to replay the real-time data (N), one can control the TTL parameters. The t
 as a "minimum TTL", while the "maximum TTL" is N + delay between each empty push. For example, if you schedule a daily 
 empty push, and N = 6 days, then the oldest data in your store will be at least 6 days old, and at most 7 days old.
 
-## How to Set it Up
+## Usage
 At the moment, there are two ways to perform empty pushes:
 1. Via the `empty-push` command in the admin tool.
 2. Via the Venice Push Job, executed from a Hadoop grid, but with an empty input directory.
