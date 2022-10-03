@@ -95,6 +95,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.commons.lang.StringUtils;
+import org.apache.http.HttpStatus;
 import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -1174,6 +1175,11 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.CLEANUP_INSTANCE_CUSTOMIZED_STATES, params, MultiStoreTopicsResponse.class);
   }
 
+  public ControllerResponse removeStoreFromGraveyard(String storeName) {
+    QueryParams params = newParams().add(NAME, storeName);
+    return request(ControllerRoute.REMOVE_STORE_FROM_GRAVEYARD, params, ControllerResponse.class);
+  }
+
   /***
    * Add all global parameters in this method. Always use a form of this method to generate
    * a new list of NameValuePair objects for making HTTP requests.
@@ -1211,6 +1217,7 @@ public class ControllerClient implements Closeable {
       int maxAttempts,
       byte[] data) {
     Exception lastException = null;
+    boolean logErrorMessage = true;
     try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
       for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
         try {
@@ -1220,6 +1227,10 @@ public class ControllerClient implements Closeable {
           // Total wait time should be at least leader election time (~30 seconds)
           lastException = e;
         } catch (VeniceHttpException e) {
+          if (e.getHttpStatusCode() == HttpStatus.SC_PRECONDITION_FAILED) {
+            logErrorMessage = false;
+            throw e;
+          }
           if (e.getHttpStatusCode() != HttpConstants.SC_MISDIRECTED_REQUEST) {
             throw e;
           }
@@ -1248,14 +1259,24 @@ public class ControllerClient implements Closeable {
     String message =
         "An error occurred during controller request." + " controller = " + this.leaderControllerUrl + ", route = "
             + route.getPath() + ", params = " + params.getAbbreviatedNameValuePairs() + ", timeout = " + timeoutMs;
-    return makeErrorResponse(message, lastException, responseType);
+    return makeErrorResponse(message, lastException, responseType, logErrorMessage);
   }
 
   private <T extends ControllerResponse> T makeErrorResponse(
       String message,
       Exception exception,
       Class<T> responseType) {
-    LOGGER.error(message, exception);
+    return makeErrorResponse(message, exception, responseType, true);
+  }
+
+  private <T extends ControllerResponse> T makeErrorResponse(
+      String message,
+      Exception exception,
+      Class<T> responseType,
+      boolean logErrorMessage) {
+    if (logErrorMessage) {
+      LOGGER.error(message, exception);
+    }
     try {
       T response = responseType.newInstance();
       response.setError(message, exception);

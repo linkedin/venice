@@ -102,13 +102,6 @@ public class AbstractVeniceStats {
     });
   }
 
-  protected void unregisterSensor(String sensorName) {
-    Sensor sensor = sensors.remove(sensorName);
-    if (sensor != null) {
-      metricsRepository.removeSensor(sensorName);
-    }
-  }
-
   protected void unregisterAllSensors() {
     for (Sensor sensor: sensors.values()) {
       metricsRepository.removeSensor(sensor.name());

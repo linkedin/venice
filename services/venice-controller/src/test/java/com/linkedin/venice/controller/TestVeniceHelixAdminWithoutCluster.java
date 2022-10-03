@@ -279,6 +279,8 @@ public class TestVeniceHelixAdminWithoutCluster {
 
     doCallRealMethod().when(admin).checkResourceCleanupBeforeStoreCreation(anyString(), anyString());
     doCallRealMethod().when(admin).checkResourceCleanupBeforeStoreCreation(anyString(), anyString(), anyBoolean());
+    doCallRealMethod().when(admin)
+        .checkKafkaTopicAndHelixResource(anyString(), anyString(), anyBoolean(), anyBoolean(), anyBoolean());
 
     testExecution.accept(admin);
   }

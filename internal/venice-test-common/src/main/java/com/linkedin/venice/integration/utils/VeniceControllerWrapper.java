@@ -40,6 +40,7 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA;
 import static com.linkedin.venice.ConfigKeys.STORAGE_ENGINE_OVERHEAD_RATIO;
+import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_DELAY_FACTOR;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS;
@@ -165,6 +166,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(OFFLINE_JOB_START_TIMEOUT_MS, 60_000)
             // To speed up topic cleanup
             .put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, 100)
+            .put(TOPIC_CLEANUP_DELAY_FACTOR, 2)
             .put(KAFKA_ADMIN_CLASS, KafkaAdminClient.class.getName())
             .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
             // Moving from topic monitor to admin protocol for add version and starting ingestion

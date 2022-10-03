@@ -1,6 +1,6 @@
 package com.linkedin.venice.meta;
 
-import com.linkedin.venice.common.VeniceSystemStoreType;
+import java.util.List;
 
 
 /**
@@ -17,19 +17,23 @@ public interface StoreGraveyard {
   int getLargestUsedVersionNumber(String storeName);
 
   /**
-   * Retrieve the largest used version number for the system store of the user store from graveyard. Return 0 if the
-   * store dose not exist in the graveyard, which is the default value we used for the new store.
-   */
-  int getPerUserStoreSystemStoreLargestUsedVersionNumber(String userStoreName, VeniceSystemStoreType systemStoreType);
-
-  /**
-   * Put the given store into grave yard. If the store has already existed in the grave yard, update it by this given
+   * Put the given store into graveyard. If the store has already existed in the graveyard, update it by this given
    * store.
    */
   void putStoreIntoGraveyard(String clusterName, Store store);
 
   /**
-   * Remove the given store from grave yard if it exists.
+   * Get store from the graveyard in the specified cluster.
+   */
+  Store getStoreFromGraveyard(String clusterName, String storeName);
+
+  /**
+   * Remove the given store from graveyard in the specified cluster.
    */
   void removeStoreFromGraveyard(String clusterName, String storeName);
+
+  /**
+   * List store names from graveyard in the specified cluster.
+   */
+  List<String> listStoreNamesFromGraveyard(String clusterName);
 }

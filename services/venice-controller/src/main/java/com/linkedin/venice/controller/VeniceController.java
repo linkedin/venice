@@ -13,6 +13,7 @@ import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.stats.KafkaClientStats;
@@ -41,6 +42,7 @@ public class VeniceController {
   private AdminSparkServer secureAdminServer;
   private TopicCleanupService topicCleanupService;
   private Optional<StoreBackupVersionCleanupService> storeBackupVersionCleanupService;
+  private Optional<StoreGraveyardCleanupService> storeGraveyardCleanupService;
 
   private final boolean sslEnabled;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
@@ -178,12 +180,19 @@ public class VeniceController {
           multiClusterConfigs.getCommonConfig().isDisableParentRequestTopicForStreamPushes());
     }
     storeBackupVersionCleanupService = Optional.empty();
+    storeGraveyardCleanupService = Optional.empty();
+    Admin admin = controllerService.getVeniceHelixAdmin();
     if (multiClusterConfigs.isParent()) {
-      topicCleanupService =
-          new TopicCleanupServiceForParentController(controllerService.getVeniceHelixAdmin(), multiClusterConfigs);
+      topicCleanupService = new TopicCleanupServiceForParentController(admin, multiClusterConfigs);
+      if (!(admin instanceof VeniceParentHelixAdmin)) {
+        throw new VeniceException(
+            "'VeniceParentHelixAdmin' is expected of the returned 'Admin' from 'VeniceControllerService#getVeniceHelixAdmin' in parent mode");
+      }
+      storeGraveyardCleanupService =
+          Optional.of(new StoreGraveyardCleanupService((VeniceParentHelixAdmin) admin, multiClusterConfigs));
+      LOGGER.info("StoreGraveyardCleanupService is enabled");
     } else {
-      topicCleanupService = new TopicCleanupService(controllerService.getVeniceHelixAdmin(), multiClusterConfigs);
-      Admin admin = controllerService.getVeniceHelixAdmin();
+      topicCleanupService = new TopicCleanupService(admin, multiClusterConfigs);
       if (!(admin instanceof VeniceHelixAdmin)) {
         throw new VeniceException(
             "'VeniceHelixAdmin' is expected of the returned 'Admin' from 'VeniceControllerService#getVeniceHelixAdmin' in child mode");
@@ -209,7 +218,8 @@ public class VeniceController {
       secureAdminServer.start();
     }
     topicCleanupService.start();
-    storeBackupVersionCleanupService.ifPresent(s -> s.start());
+    storeBackupVersionCleanupService.ifPresent(AbstractVeniceService::start);
+    storeGraveyardCleanupService.ifPresent(AbstractVeniceService::start);
     // register with service discovery at the end
     serviceDiscoveryAnnouncers.forEach(serviceDiscoveryAnnouncer -> {
       serviceDiscoveryAnnouncer.register();
@@ -230,6 +240,7 @@ public class VeniceController {
     // TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
     Utils.closeQuietlyWithErrorLogged(topicCleanupService);
     storeBackupVersionCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    storeGraveyardCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     Utils.closeQuietlyWithErrorLogged(adminServer);
     Utils.closeQuietlyWithErrorLogged(secureAdminServer);
     Utils.closeQuietlyWithErrorLogged(controllerService);

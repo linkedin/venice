@@ -33,7 +33,9 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_ROUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_EARLY_DELETE_BACKUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_GRAVEYARD_CLEANUP_FOR_BATCH_ONLY_STORE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_IN_AZURE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
@@ -236,6 +238,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private final String identityParserClassName;
 
+  private final boolean graveyardCleanupForBatchOnlyStoreEnabled;
+
+  private final long graveyardCleanupSleepIntervalBetweenListFetchMs;
+
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
     this.adminPort = props.getInt(ADMIN_PORT);
@@ -425,6 +431,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.controllerInAzureFabric = props.getBoolean(CONTROLLER_IN_AZURE_FABRIC, false);
     this.unregisterMetricForDeletedStoreEnabled = props.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
     this.identityParserClassName = props.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
+    this.graveyardCleanupForBatchOnlyStoreEnabled =
+        props.getBoolean(CONTROLLER_ENABLE_GRAVEYARD_CLEANUP_FOR_BATCH_ONLY_STORE, false);
+    this.graveyardCleanupSleepIntervalBetweenListFetchMs =
+        props.getLong(CONTROLLER_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MS, TimeUnit.MINUTES.toMillis(15));
   }
 
   private void validateActiveActiveConfigs() {
@@ -783,6 +793,14 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public String getIdentityParserClassName() {
     return identityParserClassName;
+  }
+
+  public boolean isGraveyardCleanupForBatchOnlyStoreEnabled() {
+    return graveyardCleanupForBatchOnlyStoreEnabled;
+  }
+
+  public long getGraveyardCleanupSleepIntervalBetweenListFetchMs() {
+    return graveyardCleanupSleepIntervalBetweenListFetchMs;
   }
 
   /**

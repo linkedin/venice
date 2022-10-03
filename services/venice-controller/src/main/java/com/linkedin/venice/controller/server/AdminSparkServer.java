@@ -76,6 +76,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.OFFLINE_PUSH_INF
 import static com.linkedin.venice.controllerapi.ControllerRoute.PREPARE_DATA_RECOVERY;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_DERIVED_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_NODE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_STORE_FROM_GRAVEYARD;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REPLICATE_META_DATA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REQUEST_TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SEND_PUSH_JOB_DETAILS;
@@ -152,7 +153,7 @@ public class AdminSparkServer extends AbstractVeniceService {
   final private SparkServerStats nonclusterSpecificStats;
 
   private static String REQUEST_START_TIME = "startTime";
-  private static String REQUEST_SUCCEED = "succeed";
+  protected static String REQUEST_SUCCEED = "succeed";
 
   // In order to build multiple controller in a single JVM, we create a new http service instance for each of
   // AdminSparkServer instance.
@@ -422,6 +423,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(UPDATE_ADMIN_TOPIC_METADATA.getPath(), adminTopicMetadataRoutes.updateAdminTopicMetadata(admin));
 
     httpService.post(DELETE_KAFKA_TOPIC.getPath(), storesRoutes.deleteKafkaTopic(admin));
+    httpService.post(REMOVE_STORE_FROM_GRAVEYARD.getPath(), storesRoutes.removeStoreFromGraveyard(admin));
 
     httpService.post(CREATE_STORAGE_PERSONA.getPath(), storagePersonaRoutes.createStoragePersona(admin));
     httpService.get(GET_STORAGE_PERSONA.getPath(), storagePersonaRoutes.getStoragePersona(admin));
