@@ -2,6 +2,7 @@
 layout: default
 title: Repush
 parent: Operator Guides
+permalink: docs/ops_guide/repush
 ---
 
 # Repush
@@ -15,7 +16,7 @@ auxiliary goals of Full Pushes end up being fulfilled organically.
 In other cases, users do Full Pushes either infrequently, or not at all. In these cases, the operator may want to 
 manually trigger a Repush, without involving the user.
 
-## Repush Use Cases
+## Use Cases
 The various motivations for operator-driven Repushes are described in more details below.
 
 ### Reconfiguration
@@ -94,7 +95,7 @@ it defaults to false.
 kafka.input.combiner.enabled = true
 ```
 ## Future Work
-Repush will eventually support a more efficient way to perform [TTL](../user_guide/ttl.md).
+Repush will eventually support a more efficient way to perform [TTL](https://linkedin.github.io/venice/user_guide/ttl).
 
 Another potential enhancement would be to add support for changing the compression setting of a store, which currently
 requires a Full Push, and which Repush does not support yet.

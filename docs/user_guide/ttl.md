@@ -2,6 +2,7 @@
 layout: default
 title: Time to Live (TTL)
 parent: User Guides
+permalink: docs/user_guide/ttl
 ---
 
 # Time to Live (TTL)
@@ -18,12 +19,22 @@ back to replay the real-time data (N), one can control the TTL parameters. The t
 as a "minimum TTL", while the "maximum TTL" is N + delay between each empty push. For example, if you schedule a daily 
 empty push, and N = 6 days, then the oldest data in your store will be at least 6 days old, and at most 7 days old.
 
+## Use Cases
+TTL can serve as a storage efficiency optimization for use cases where the data is transient in nature, and not useful
+beyond a certain age.
+
+TTL can also be useful in certain scenarios where the data should not be retained longer than prescribed for compliance
+reasons. Note that for these scenarios, it is important to understand (as explained above) that the rewind time is the 
+minimum, not maximum, TTL. It is also advisable to schedule the periodic purging such that there is a margin of safety 
+in case of infra delays or failures.
+
 ## Usage
 At the moment, there are two ways to perform empty pushes:
 1. Via the `empty-push` command in the admin tool.
-2. Via the Venice Push Job, executed from a Hadoop grid, but with an empty input directory.
+2. Via the Venice Push Job, executed from a Hadoop grid, but with an input directory that contains a file with no 
+   records in it.
 
 ## Future Work
-A more efficient implementation of TTL is currently under development, which will leverage [Repush](../ops_guide/repush.md)
+A more efficient implementation of TTL is currently under development, which will leverage [Repush](https://linkedin.github.io/venice/ops_guide/repush)
 in order to do an offline compaction and sorting of the data and thus minimize the impact on servers. This guide will be
 updated when the functionality is ready to try.
