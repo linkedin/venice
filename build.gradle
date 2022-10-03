@@ -146,17 +146,17 @@ Set<String> projectsToPublish = [
   ":internal:venice-test-common",
 
   // Internal - Alpini
-  ":internal:alpini:common:common-base",
-  ":internal:alpini:common:common-cli",
-  ":internal:alpini:common:common-const",
-  ":internal:alpini:common:common-io",
-  ":internal:alpini:common:common-log",
-  ":internal:alpini:common:common-native",
-  ":internal:alpini:common:common-test",
-  ":internal:alpini:netty4:netty4-base",
-  ":internal:alpini:router:router-api",
-  ":internal:alpini:router:router-base",
-  ":internal:alpini:router:router-impl",
+  ":internal:alpini:common:alpini-common-base",
+  ":internal:alpini:common:alpini-common-cli",
+  ":internal:alpini:common:alpini-common-const",
+  ":internal:alpini:common:alpini-common-io",
+  ":internal:alpini:common:alpini-common-log",
+  ":internal:alpini:common:alpini-common-native",
+  ":internal:alpini:common:alpini-common-test",
+  ":internal:alpini:netty4:alpini-netty4-base",
+  ":internal:alpini:router:alpini-router-api",
+  ":internal:alpini:router:alpini-router-base",
+  ":internal:alpini:router:alpini-router-impl",
 
   // Depend-all module
   ":venice-all",
