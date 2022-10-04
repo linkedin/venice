@@ -113,8 +113,8 @@ publishing {
     maven {
       name 'LinkedInJFrog'
       url 'https://linkedin.jfrog.io/artifactory/venice'
-      credentials {
-        if (System.getenv('JFROG_USERNAME') != null && System.getenv('JFROG_API_KEY') != null) {
+      if (System.getenv('JFROG_USERNAME') != null && System.getenv('JFROG_API_KEY') != null) {
+        credentials {
           username System.getenv('JFROG_USERNAME')
           password System.getenv('JFROG_API_KEY')
         }
@@ -161,6 +161,8 @@ Set<String> projectsToPublish = [
   // Depend-all module
   ':venice-all',
 ]
+
+println "Will publish using ${System.getenv('JFROG_USERNAME')}"
 
 subprojects {
   //apply group and version to all submodules
