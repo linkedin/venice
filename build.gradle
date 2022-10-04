@@ -159,10 +159,8 @@ Set<String> projectsToPublish = [
   ':internal:alpini:router:alpini-router-impl',
 
   // Depend-all module
-  ':venice-all-transitive',
+  ':all-modules',
 ]
-
-println "Will publish using ${System.getenv('JFROG_USERNAME')}"
 
 subprojects {
   //apply group and version to all submodules

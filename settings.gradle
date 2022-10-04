@@ -72,4 +72,4 @@ include 'internal:alpini:router:alpini-router-base'
 include 'internal:alpini:router:alpini-router-impl'
 
 // Depend-all module
-include 'venice-all-transitive'
+include 'all-modules'
