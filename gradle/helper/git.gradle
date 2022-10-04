@@ -13,9 +13,7 @@ ext.git = [
   },
 
   setConfig: { key, value ->
-    exec {
-      commandLine = ['git', 'config', key, value]
-    }
+    "git config ${key} ${value}".execute()
   },
 
   getFileDiffStatus: {
