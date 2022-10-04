@@ -91,6 +91,7 @@ public class DaVinciBackend implements Closeable {
   private final StorageEngineBackedCompressorFactory compressorFactory;
   private final Optional<ObjectCacheBackend> cacheBackend;
   private DaVinciIngestionBackend ingestionBackend;
+  private final AggVersionedStorageEngineStats aggVersionedStorageEngineStats;
 
   public DaVinciBackend(
       ClientConfig clientConfig,
@@ -133,7 +134,7 @@ public class DaVinciBackend implements Closeable {
           AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
       storeVersionStateSerializer.setSchemaReader(versionStateSchemaReader);
 
-      AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(
+      aggVersionedStorageEngineStats = new AggVersionedStorageEngineStats(
           metricsRepository,
           storeRepository,
           backendConfig.isUnregisterMetricForDeletedStoreEnabled());
@@ -149,7 +150,7 @@ public class DaVinciBackend implements Closeable {
       IsolatedIngestionUtils.destroyLingeringIsolatedIngestionProcess(configLoader);
       storageService = new StorageService(
           configLoader,
-          storageEngineStats,
+          aggVersionedStorageEngineStats,
           rocksDBMemoryStats,
           storeVersionStateSerializer,
           partitionStateSerializer,
@@ -274,12 +275,6 @@ public class DaVinciBackend implements Closeable {
         continue;
       }
 
-      // Remove unused stores' StoreBackend object here to avoid duplicate metrics issued caused by re-init
-      // StoreBackend.
-      for (String unusedStoreName: unusedStores) {
-        deleteStore(unusedStoreName);
-      }
-
       Version version = storeRepository.getStoreOrThrow(storeName)
           .getVersion(versionNumber)
           .orElseThrow(
@@ -298,6 +293,13 @@ public class DaVinciBackend implements Closeable {
         storeNameToBootstrapVersionMap.put(storeName, version);
         storeNameToPartitionListMap.put(storeName, storageService.getUserPartitions(kafkaTopicName));
       }
+    }
+    /**
+     * Remove unused store's {@link StoreBackend} to avoid duplicate metrics registration issues when iterating storage
+     * engines for different versions of the same store.
+     */
+    for (String unusedStoreName: unusedStores) {
+      deleteStore(unusedStoreName);
     }
 
     // Cleanup stale StaleBackendConfig
@@ -342,7 +344,9 @@ public class DaVinciBackend implements Closeable {
     // Subscribe all bootstrap version partitions.
     storeNameToBootstrapVersionMap.forEach((storeName, version) -> {
       List<Integer> partitions = storeNameToPartitionListMap.get(storeName);
+      String versionTopic = version.kafkaTopicName();
       LOGGER.info("Bootstrapping partitions " + partitions + " for " + version.kafkaTopicName());
+      aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageService.getStorageEngine(versionTopic));
       StoreBackend storeBackend = getStoreOrThrow(version.getStoreName());
       storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
     });
