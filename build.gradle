@@ -418,7 +418,7 @@ subprojects {
 }
 
 spotless {
-  ratchetFrom "origin/${git.getBranch()}"
+  ratchetFrom "${git.getUpstreamRemote()}/main"
   java {
     importOrder()
     removeUnusedImports()
