@@ -18,7 +18,7 @@ The GitHub issue should contain the detailed problem statement.
 1. Fork the GitHub repository at http://github.com/linkedin/venice if you haven't already
 2. Clone your fork, create a new branch, push commits to the branch
 3. Consider whether documentation or tests need to be added or updated as part of the change, and add them as needed (doc changes should be submitted along with code change in the same PR)
-4. Run all tests as described in the project's [Workspace setup guide](https://linkedin.github.io/venice/dev_guide/workspace_setup#run-the-test-suite).
+4. Run all tests as described in the project's [Workspace setup guide](../dev_guide/workspace_setup.md#run-the-test-suite).
 5. Open a pull request against the `main` branch of `linkedin/venice`. (Only in special cases would the PR be opened against other branches.)
 6. The PR title should usually be of the form `[component1]...[componentN]: Concise commit message`.
    * Valid component tags are: `[da-vinci]`, `[server]`, `[controller]`,

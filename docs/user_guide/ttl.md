@@ -2,7 +2,6 @@
 layout: default
 title: Time to Live (TTL)
 parent: User Guides
-permalink: docs/user_guide/ttl
 ---
 
 # Time to Live (TTL)
@@ -35,6 +34,6 @@ At the moment, there are two ways to perform empty pushes:
    records in it.
 
 ## Future Work
-A more efficient implementation of TTL is currently under development, which will leverage [Repush](https://linkedin.github.io/venice/docs/ops_guide/repush)
+A more efficient implementation of TTL is currently under development, which will leverage [Repush](../ops_guide/repush.md)
 in order to do an offline compaction and sorting of the data and thus minimize the impact on servers. This guide will be
 updated when the functionality is ready to try.
