@@ -20,12 +20,22 @@ configurations.all {
 dependencies {
   implementation project(':internal:venice-common')
 
-  implementation (project(':internal:alpini:router:router-base'))  {
+  implementation (project(':internal:alpini:common:alpini-common-base'))  {
     exclude group: 'javax.servlet'
     exclude group: 'org.mockito', module: 'mockito-all'
   }
 
-  implementation (project(':internal:alpini:netty4:netty4-base')) { // for SSL Initializer
+  implementation (project(':internal:alpini:router:alpini-router-api'))  {
+    exclude group: 'javax.servlet'
+    exclude group: 'org.mockito', module: 'mockito-all'
+  }
+
+  implementation (project(':internal:alpini:router:alpini-router-base'))  {
+    exclude group: 'javax.servlet'
+    exclude group: 'org.mockito', module: 'mockito-all'
+  }
+
+  implementation (project(':internal:alpini:netty4:alpini-netty4-base')) { // for SSL Initializer
     exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependency, doesn't exist in repo
     exclude group: 'xerces', module: 'xerces' // resolve conflicting transitive dependency
     exclude group: 'com.fasterxml.jackson.core', module: 'jackson-core'// resolve conflicting transitive dependency
@@ -43,10 +53,10 @@ dependencies {
     exclude module: 'zookeeper'
   }
 
-  implementation project(':internal:alpini:netty4:netty4-base')
+  implementation project(':internal:alpini:netty4:alpini-netty4-base')
   implementation libraries.httpAsyncClient
-  implementation project(':internal:alpini:router:router-api')
-  implementation project(':internal:alpini:router:router-impl')
+  implementation project(':internal:alpini:router:alpini-router-api')
+  implementation project(':internal:alpini:router:alpini-router-impl')
 
   testImplementation project(':clients:venice-thin-client')
   testImplementation libraries.kafkaClientsTest // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)

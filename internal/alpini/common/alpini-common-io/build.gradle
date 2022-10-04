@@ -1,0 +1,12 @@
+dependencies {
+  testImplementation libraries.testng
+  implementation project(':internal:alpini:common:alpini-common-base')
+  implementation project(':internal:alpini:common:alpini-common-const')
+  implementation libraries.commonsIo
+  implementation libraries.jsr305
+  implementation libraries.log4j2api
+  //testImplementation spec.external.'mockito-all'
+  //testImplementation libraries.testng
+}
+
+

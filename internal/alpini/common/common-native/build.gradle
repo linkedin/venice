@@ -1,8 +1,0 @@
-dependencies {
-  testCompile libraries.testng
-  compile libraries.log4j2api
-  compile libraries.jna
-  compile libraries.jsr305
-}
-
-

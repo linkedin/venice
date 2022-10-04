@@ -1,0 +1,8 @@
+dependencies {
+  testImplementation libraries.testng
+  implementation libraries.log4j2api
+  implementation libraries.jna
+  implementation libraries.jsr305
+}
+
+

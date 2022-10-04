@@ -1,0 +1,19 @@
+dependencies {
+  implementation project(':internal:alpini:common:alpini-common-base')
+  implementation project(':internal:alpini:common:alpini-common-const')
+  implementation project(':internal:alpini:common:alpini-common-io')
+  implementation libraries.commonsIo
+  implementation libraries.commonsLang
+  implementation libraries.jsr305
+  implementation libraries.log4j2api
+  implementation libraries.netty
+  implementation libraries.snappy
+  //testImplementation project(':internal:alpini:netty4:alpini-netty4-test')
+  //testImplementation spec.external.'mockito-all'
+  //testImplementation libraries.testng
+  testImplementation libraries.testng
+  testImplementation libraries.mail
+  testImplementation libraries.log4j2core
+}
+
+

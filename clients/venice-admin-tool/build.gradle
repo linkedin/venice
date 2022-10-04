@@ -38,5 +38,4 @@ task sourceJar(type: Jar, dependsOn: classes) {
   from { packaging.collectSourceSetsIncludingSubmodules(project) }
 }
 
-def artifactName = "venice-admin-tool"
-publishing.configureShadowArtifactPublishing(project, artifactName, shadowJar, sourceJar, testJar)
+publishing.configureShadowArtifactPublishing(project, shadowJar, sourceJar, testJar)
