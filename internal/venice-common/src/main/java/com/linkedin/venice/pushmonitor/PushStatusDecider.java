@@ -104,7 +104,8 @@ public abstract class PushStatusDecider {
    */
   public Pair<ExecutionStatus, Optional<String>> checkPushStatusAndDetailsByPartitionsStatus(
       OfflinePushStatus pushStatus,
-      PartitionAssignment partitionAssignment) {
+      PartitionAssignment partitionAssignment,
+      DisableReplicaCallback callback) {
     // Sanity check
     if (partitionAssignment == null || partitionAssignment.isMissingAssignedPartitions()) {
       logger.warn("partitionAssignment not ready: {}", partitionAssignment);
@@ -125,22 +126,18 @@ public abstract class PushStatusDecider {
           // Defensive coding. Should never happen if the sanity check above works.
           throw new IllegalStateException("partition " + partitionId + " is null.");
         }
-        ExecutionStatus executionStatus =
-            getPartitionStatus(partitionStatus, pushStatus.getReplicationFactor(), partition.getInstanceToStateMap());
+        ExecutionStatus executionStatus = getPartitionStatus(
+            partitionStatus,
+            pushStatus.getReplicationFactor(),
+            partition.getInstanceToStateMap(),
+            callback);
 
         if (executionStatus == ERROR) {
-          Optional<String> leaderError = getLeaderErrorInfo(
-              partitionStatus,
-              pushStatus.getReplicationFactor(),
-              partition.getInstanceToStateMap(),
-              getNumberOfToleratedErrors());
           return new Pair<>(
               executionStatus,
-              leaderError.isPresent()
-                  ? leaderError
-                  : Optional.of(
-                      "too many ERROR replicas in partition: " + partitionStatus.getPartitionId()
-                          + " for offlinePushStrategy: " + getStrategy().name()));
+              Optional.of(
+                  "too many ERROR replicas in partition: " + partitionStatus.getPartitionId()
+                      + " for offlinePushStrategy: " + getStrategy().name()));
         }
 
         if (!executionStatus.equals(COMPLETED)) {
@@ -254,8 +251,14 @@ public abstract class PushStatusDecider {
   protected ExecutionStatus getPartitionStatus(
       PartitionStatus partitionStatus,
       int replicationFactor,
-      Map<Instance, String> instanceToStateMap) {
-    return getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap, getNumberOfToleratedErrors());
+      Map<Instance, String> instanceToStateMap,
+      DisableReplicaCallback callback) {
+    return getPartitionStatus(
+        partitionStatus,
+        replicationFactor,
+        instanceToStateMap,
+        getNumberOfToleratedErrors(),
+        callback);
   }
 
   protected Optional<String> getLeaderErrorInfo(
@@ -292,7 +295,8 @@ public abstract class PushStatusDecider {
       PartitionStatus partitionStatus,
       int replicationFactor,
       Map<Instance, String> instanceToStateMap,
-      int numberOfToleratedErrors) {
+      int numberOfToleratedErrors,
+      DisableReplicaCallback callback) {
     Map<ExecutionStatus, Integer> executionStatusMap = new HashMap<>();
 
     // when resources are running under L/F model, leader is usually taking more critical work and
@@ -300,7 +304,6 @@ public abstract class PushStatusDecider {
     // partitions can be completed. Vice versa, partitions will be in error state if leader is in error
     // state.
     boolean isLeaderCompleted = true;
-    boolean isLeaderInError = false;
 
     for (Map.Entry<Instance, String> entry: instanceToStateMap.entrySet()) {
       ExecutionStatus currentStatus =
@@ -309,8 +312,8 @@ public abstract class PushStatusDecider {
         if (!currentStatus.equals(COMPLETED)) {
           isLeaderCompleted = false;
         }
-        if (currentStatus.equals(ERROR)) {
-          isLeaderInError = true;
+        if (currentStatus.equals(ERROR) && callback != null) {
+          callback.disableReplica(entry.getKey().getNodeId(), partitionStatus.getPartitionId());
         }
       }
       executionStatusMap.merge(currentStatus, 1, Integer::sum);
@@ -323,10 +326,6 @@ public abstract class PushStatusDecider {
 
     if (executionStatusMap.getOrDefault(ERROR, 0) > instanceToStateMap.size() - replicationFactor
         + numberOfToleratedErrors) {
-      return ERROR;
-    }
-
-    if (isLeaderInError) {
       return ERROR;
     }
 

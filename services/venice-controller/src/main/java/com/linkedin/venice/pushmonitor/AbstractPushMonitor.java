@@ -141,7 +141,7 @@ public abstract class AbstractPushMonitor
             String topic = offlinePushStatus.getKafkaTopic();
             if (routingDataRepository.containsKafkaTopic(topic)) {
               Pair<ExecutionStatus, Optional<String>> status =
-                  checkPushStatus(offlinePushStatus, routingDataRepository.getPartitionAssignments(topic));
+                  checkPushStatus(offlinePushStatus, routingDataRepository.getPartitionAssignments(topic), null);
               if (status.getFirst().isTerminal()) {
                 LOGGER.info(
                     "Found a offline pushes could be terminated: {} status: {}",
@@ -565,7 +565,8 @@ public abstract class AbstractPushMonitor
 
   protected abstract Pair<ExecutionStatus, Optional<String>> checkPushStatus(
       OfflinePushStatus pushStatus,
-      PartitionAssignment partitionAssignment);
+      PartitionAssignment partitionAssignment,
+      DisableReplicaCallback callback);
 
   public abstract List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId);
 
@@ -664,26 +665,26 @@ public abstract class AbstractPushMonitor
     checkWhetherToStartBufferReplayForHybrid(offlinePushStatus);
   }
 
-  private boolean disableReplica(PartitionAssignment partitionAssignment, Optional<String> leaderErrorInfo) {
-    String errorInfo = leaderErrorInfo.orElse("");
-    if (errorInfo.isEmpty()) {
-      return false;
-    }
-    String[] tokens = errorInfo.split("_", 2);
-    String resourceName = partitionAssignment.getTopic();
-    helixAdminClient.enablePartition(
-        false,
-        clusterName,
-        tokens[0],
-        resourceName,
-        Collections.singletonList(HelixUtils.getPartitionName(resourceName, Integer.parseInt(tokens[1]))));
-    return true;
+  protected DisableReplicaCallback getDisableReplicaCallback(String kafkaTopic) {
+    DisableReplicaCallback callback = new DisableReplicaCallback() {
+      @Override
+      public void disableReplica(String instance, int partitionId) {
+        helixAdminClient.enablePartition(
+            false,
+            clusterName,
+            instance,
+            kafkaTopic,
+            Collections.singletonList(HelixUtils.getPartitionName(kafkaTopic, partitionId)));
+      }
+    };
+    return callback;
   }
 
   @Override
   public void onExternalViewChange(PartitionAssignment partitionAssignment) {
     LOGGER.info("Received the routing data changed notification for topic: {}", partitionAssignment.getTopic());
     String storeName = Version.parseStoreFromKafkaTopicName(partitionAssignment.getTopic());
+
     try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
       String kafkaTopic = partitionAssignment.getTopic();
       OfflinePushStatus pushStatus = getOfflinePush(kafkaTopic);
@@ -695,13 +696,11 @@ public abstract class AbstractPushMonitor
           return;
         }
 
-        Pair<ExecutionStatus, Optional<String>> status = checkPushStatus(pushStatus, partitionAssignment);
+        Pair<ExecutionStatus, Optional<String>> status =
+            checkPushStatus(pushStatus, partitionAssignment, getDisableReplicaCallback(kafkaTopic));
         if (!status.getFirst().equals(pushStatus.getCurrentStatus())) {
-          boolean disabled = false;
-          if (status.getFirst() == ERROR) {
-            disabled = disableReplica(partitionAssignment, status.getSecond());
-          }
-          if (!disabled && status.getFirst().isTerminal()) {
+
+          if (status.getFirst().isTerminal()) {
             LOGGER.info(
                 "Offline push status will be changed to " + status + " for topic: " + kafkaTopic + " from status: "
                     + pushStatus.getCurrentStatus());

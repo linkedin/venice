@@ -661,6 +661,7 @@ public abstract class AbstractPushMonitorTest {
 
     // External view exists
     doReturn(true).when(mockRoutingDataRepo).containsKafkaTopic(topic);
+    doReturn(new PartitionAssignment(topic, 1)).when(mockRoutingDataRepo).getPartitionAssignments(topic);
 
     // Check hybrid push status
     monitor.onPartitionStatusChange(topic, partitionStatus);
@@ -718,6 +719,7 @@ public abstract class AbstractPushMonitorTest {
 
     // External view exists
     doReturn(true).when(mockRoutingDataRepo).containsKafkaTopic(topic);
+    doReturn(new PartitionAssignment(topic, 1)).when(mockRoutingDataRepo).getPartitionAssignments(topic);
 
     int threadCount = 8;
     Thread[] threads = new Thread[threadCount];

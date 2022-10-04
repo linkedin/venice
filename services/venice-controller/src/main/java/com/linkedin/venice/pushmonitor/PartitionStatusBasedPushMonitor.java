@@ -71,7 +71,10 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
   private void updatePushStatusByPartitionStatus(
       OfflinePushStatus offlinePushStatus,
       PartitionAssignment partitionAssignment) {
-    Pair<ExecutionStatus, Optional<String>> status = checkPushStatus(offlinePushStatus, partitionAssignment);
+    Pair<ExecutionStatus, Optional<String>> status = checkPushStatus(
+        offlinePushStatus,
+        partitionAssignment,
+        getDisableReplicaCallback(partitionAssignment.getTopic()));
     if (status.getFirst().isTerminal()) {
       LOGGER.info(
           "Found a offline pushes could be terminated: {} status: {}",
@@ -87,9 +90,10 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
   @Override
   protected Pair<ExecutionStatus, Optional<String>> checkPushStatus(
       OfflinePushStatus pushStatus,
-      PartitionAssignment partitionAssignment) {
+      PartitionAssignment partitionAssignment,
+      DisableReplicaCallback callback) {
     return PushStatusDecider.getDecider(pushStatus.getStrategy())
-        .checkPushStatusAndDetailsByPartitionsStatus(pushStatus, partitionAssignment);
+        .checkPushStatusAndDetailsByPartitionsStatus(pushStatus, partitionAssignment, callback);
   }
 
   @Override
