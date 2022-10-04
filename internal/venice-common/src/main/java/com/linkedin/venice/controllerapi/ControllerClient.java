@@ -204,10 +204,8 @@ public class ControllerClient implements Closeable {
     try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
       for (String url: urls) {
         try {
-          // TODO: Change this to LEADER_CONTROLLER after backend components with inclusive endpoints are deployed
-          // completely
           String leaderControllerUrl =
-              transport.request(url, ControllerRoute.MASTER_CONTROLLER, newParams(), LeaderControllerResponse.class)
+              transport.request(url, ControllerRoute.LEADER_CONTROLLER, newParams(), LeaderControllerResponse.class)
                   .getUrl();
           LOGGER.info("Discovered leader controller {} from {}", leaderControllerUrl, url);
           return leaderControllerUrl;

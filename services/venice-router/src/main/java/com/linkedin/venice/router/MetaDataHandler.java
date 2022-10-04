@@ -135,7 +135,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     String resourceType = helper.getResourceType(); // may be null
     if (TYPE_LEADER_CONTROLLER.equals(resourceType) || TYPE_LEADER_CONTROLLER_LEGACY.equals(resourceType)) {
       // go/inclusivecode deprecated(alias="leader_controller")
-      // URI: /leader_controller or /master_controller. Remove reference when the non inclusive term is removed.
+      // URI: /leader_controller or /master_controller
       handleControllerLookup(ctx);
     } else if (TYPE_KEY_SCHEMA.equals(resourceType)) {
       // URI: /key_schema/${storeName}

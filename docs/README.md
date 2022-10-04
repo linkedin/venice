@@ -14,7 +14,7 @@
     </h3>
 </html> 
 
-[![License](https://img.shields.io/badge/License-BSD_2--Clause-blue.svg)](https://github.com/linkedin/venice/blob/master/LICENSE)
+[![License](https://img.shields.io/badge/License-BSD_2--Clause-blue.svg)](https://github.com/linkedin/venice/blob/main/LICENSE)
 [![Docs Latest](https://img.shields.io/badge/docs-latest-blue.svg)](https://linkedin.github.io/venice/)
 
 Venice is a derived data storage platform, providing the following characteristics:

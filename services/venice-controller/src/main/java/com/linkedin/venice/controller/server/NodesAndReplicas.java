@@ -8,6 +8,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ALLOW_LIST_ADD_NODE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.ALLOW_LIST_REMOVE_NODE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ClUSTER_HEALTH_INSTANCES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_NODES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_REPLICAS;
@@ -15,7 +16,6 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.NODE_REMOVABLE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.NODE_REPLICAS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.NODE_REPLICAS_READINESS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_NODE;
-import static com.linkedin.venice.controllerapi.ControllerRoute.WHITE_LIST_REMOVE_NODE;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -278,7 +278,7 @@ public class NodesAndReplicas extends AbstractRoute {
           responseObject.setErrorType(ErrorType.BAD_REQUEST);
           return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
-        AdminSparkServer.validateParams(request, WHITE_LIST_REMOVE_NODE.getParams(), admin);
+        AdminSparkServer.validateParams(request, ALLOW_LIST_REMOVE_NODE.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         responseObject.setCluster(cluster);
         String nodeId = request.queryParams(STORAGE_NODE_ID);
