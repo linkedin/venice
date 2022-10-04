@@ -1,95 +1,88 @@
 ext.publishing = [
-    configureRegularArtifactPublishing: { subproject, artifactName, sourceJar, testJar ->
-      println "Will publish ${subproject.path} at ${subproject.group}:${artifactName}:${subproject.version}"
+    configureRegularArtifactPublishing: { currentProject, sourceJar, testJar ->
+      if (currentProject.version != project.DEFAULT_VERSION) {
+        println "Will publish ${currentProject.path} at ${currentProject.group}:${currentProject.name}:${currentProject.version}"
 
-      publishing {
-        publications {
-          "$artifactName"(MavenPublication) {
-            groupId subproject.group
-            artifactId artifactName
-            version subproject.version
+        publishing {
+          publications {
+            "${currentProject.name}"(MavenPublication) {
+              groupId currentProject.group
+              artifactId currentProject.name
+              version currentProject.version
 
-            from components.java
-            artifact sourceJar
-            //  TODO: Enable after we have valid javadocs
-            // artifact javadocJar
-            artifact testJar
+              from currentProject.components.java
+              artifact sourceJar
+              //  TODO: Enable after we have valid javadocs
+              // artifact javadocJar
+              artifact testJar
 
-            //we strive to meet https://central.sonatype.org/pages/requirements.html
-            pom {
-              name = 'Venice'
-              description = 'Derived Data Platform for planet-scale workloads'
-              url = 'https://github.com/linkedin/venice'
+              //we strive to meet https://central.sonatype.org/pages/requirements.html
+              pom {
+                name = 'Venice'
+                description = 'Derived Data Platform for planet-scale workloads'
+                url = 'https://github.com/linkedin/venice'
 
-              licenses {
-                license {
-                  name = 'BSD 2-Clause'
-                  url = 'https://raw.githubusercontent.com/linkedin/venice/master/LICENSE'
+                licenses {
+                  license {
+                    name = 'BSD 2-Clause'
+                    url = 'https://raw.githubusercontent.com/linkedin/venice/master/LICENSE'
+                  }
+                }
+                scm {
+                  connection = 'scm:git:git://github.com:linkedin/venice.git'
+                  developerConnection = 'scm:git:ssh://github.com:linkedin/venice.git'
+                  url = 'https://github.com/linkedin/venice'
                 }
               }
-              scm {
-                connection = 'scm:git:git://github.com:linkedin/venice.git'
-                developerConnection = 'scm:git:ssh://github.com:linkedin/venice.git'
-                url = 'https://github.com/linkedin/venice'
-              }
             }
           }
-        }
 
-        repositories {
-          mavenLocal()
-          maven {
-            name "LinkedInJFrog"
-            url "https://linkedin.jfrog.io/artifactory/venice"
-            credentials {
-              if (System.getenv('JFROG_USERNAME') != null && System.getenv('JFROG_API_KEY') != null) {
-                username System.getenv('JFROG_USERNAME')
-                password System.getenv('JFROG_API_KEY')
-              }
-            }
-          }
+          //repositories inherited from parent build.gradle
         }
       }
     },
 
-    configureShadowArtifactPublishing: { subproject, artifactName, shadowJar, sourceJar, testJar ->
-      println "Will publish ${subproject.path} at ${subproject.group}:${artifactName}:${subproject.version}"
+    configureShadowArtifactPublishing: { currentProject, shadowJar, sourceJar, testJar ->
+      if (currentProject.version != project.DEFAULT_VERSION) {
+        def classifier = 'all'
+        println "Will publish ${currentProject.path} at ${currentProject.group}:${currentProject.name}-${classifier}:${currentProject.version}"
 
-      publishing {
-        publications {
-          "$artifactName"(MavenPublication) {
-            groupId subproject.group
-            artifactId "$artifactName"
-            version subproject.version
+        publishing {
+          publications {
+            "${currentProject.name}"(MavenPublication) {
+              groupId currentProject.group
+              artifactId currentProject.name
+              version currentProject.version
 
-            artifact source: shadowJar, classifier: 'all'
-            // TODO: Enable after we figure out getting the full source for shadow jars
-            // artifact sourceJar
-            // TODO: Enable after we have valid javadocs
-            // artifact javadocJar
+              artifact source: shadowJar, classifier: "$classifier"
+              // TODO: Enable after we figure out getting the full source for shadow jars
+              // artifact sourceJar
+              // TODO: Enable after we have valid javadocs
+              // artifact javadocJar
 
-            //we strive to meet https://central.sonatype.org/pages/requirements.html
-            pom {
-              name = 'Venice'
-              description = 'Derived Data Platform for planet-scale workloads'
-              url = 'https://github.com/linkedin/venice'
-
-              licenses {
-                license {
-                  name = 'BSD 2-Clause'
-                  url = 'https://raw.githubusercontent.com/linkedin/venice/master/LICENSE'
-                }
-              }
-              scm {
-                connection = 'scm:git:git://github.com:linkedin/venice.git'
-                developerConnection = 'scm:git:ssh://github.com:linkedin/venice.git'
+              //we strive to meet https://central.sonatype.org/pages/requirements.html
+              pom {
+                name = 'Venice'
+                description = 'Derived Data Platform for planet-scale workloads'
                 url = 'https://github.com/linkedin/venice'
+
+                licenses {
+                  license {
+                    name = 'BSD 2-Clause'
+                    url = 'https://raw.githubusercontent.com/linkedin/venice/master/LICENSE'
+                  }
+                }
+                scm {
+                  connection = 'scm:git:git://github.com:linkedin/venice.git'
+                  developerConnection = 'scm:git:ssh://github.com:linkedin/venice.git'
+                  url = 'https://github.com/linkedin/venice'
+                }
               }
             }
           }
-        }
 
-        //repositories inherited from parent build.gradle
+          //repositories inherited from parent build.gradle
+        }
       }
 
     }

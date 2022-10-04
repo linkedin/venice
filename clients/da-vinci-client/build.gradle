@@ -6,7 +6,13 @@ dependencies {
     exclude group: 'org.scala-lang'
   }
 
-  implementation (project(':internal:alpini:netty4:netty4-base')) { // for SSL Initializer
+  implementation (project(':internal:alpini:common:alpini-common-base')) { // for SslFactory
+    exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependency, doesn't exist in repo
+    exclude group: 'xerces', module: 'xerces' // resolve conflicting transitive dependency
+    exclude group: 'com.fasterxml.jackson.core', module: 'jackson-core'// resolve conflicting transitive dependency
+  }
+
+  implementation (project(':internal:alpini:netty4:alpini-netty4-base')) { // for SSL Initializer
     exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependency, doesn't exist in repo
     exclude group: 'xerces', module: 'xerces' // resolve conflicting transitive dependency
     exclude group: 'com.fasterxml.jackson.core', module: 'jackson-core'// resolve conflicting transitive dependency

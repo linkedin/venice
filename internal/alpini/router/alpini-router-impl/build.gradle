@@ -1,0 +1,11 @@
+dependencies {
+  implementation project(':internal:alpini:common:alpini-common-base')
+  implementation project(':internal:alpini:router:alpini-router-api')
+  implementation project(':internal:alpini:router:alpini-router-base')
+  compileOnly project(':internal:alpini:netty4:alpini-netty4-base')
+  implementation libraries.jsr305
+  implementation libraries.log4j2api
+  implementation libraries.netty
+  testImplementation libraries.testng
+  testImplementation project(':internal:alpini:netty4:alpini-netty4-base')
+}

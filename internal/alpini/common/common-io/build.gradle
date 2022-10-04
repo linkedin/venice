@@ -1,9 +1,0 @@
-dependencies {
-  testCompile libraries.testng
-  compile project(':internal:alpini:common:common-base')
-  compile libraries.commonsIo
-  //testCompile spec.external.'mockito-all'
-  //testCompile libraries.testng
-}
-
-

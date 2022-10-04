@@ -1,0 +1,9 @@
+// This module depends on all other Venice modules. Its primary purpose is to help scripts identify all venice modules
+// via transitive dependencies instead of enumerating all modules individually.
+dependencies {
+    rootProject.subprojects.each { subproject ->
+        if (subproject.path != project.path && subproject.subprojects.size() == 0) {
+            implementation project(subproject.path)
+        }
+    }
+}

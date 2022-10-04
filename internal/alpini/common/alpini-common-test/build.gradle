@@ -1,0 +1,10 @@
+dependencies {
+  implementation project(':internal:alpini:common:alpini-common-base')
+  implementation libraries.mockito
+  implementation libraries.log4j2api
+  implementation libraries.testng
+
+  testImplementation libraries.log4j2core
+}
+
+
