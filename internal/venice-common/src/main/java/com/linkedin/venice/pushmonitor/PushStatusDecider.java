@@ -261,36 +261,6 @@ public abstract class PushStatusDecider {
         callback);
   }
 
-  protected Optional<String> getLeaderErrorInfo(
-      PartitionStatus partitionStatus,
-      int replicationFactor,
-      Map<Instance, String> instanceToStateMap,
-      int numberOfToleratedErrors) {
-    boolean isLeaderInError = false;
-    Map<ExecutionStatus, Integer> executionStatusMap = new HashMap<>();
-    String instanceName = null;
-    int partitionId = -1;
-    for (Map.Entry<Instance, String> entry: instanceToStateMap.entrySet()) {
-      ExecutionStatus currentStatus =
-          getReplicaCurrentStatus(partitionStatus.getReplicaHistoricStatusList(entry.getKey().getNodeId()));
-      if (entry.getValue().equals(HelixState.LEADER_STATE)) {
-        if (currentStatus.equals(ERROR)) {
-          instanceName = entry.getKey().getNodeId();
-          partitionId = partitionStatus.getPartitionId();
-          isLeaderInError = true;
-        }
-      }
-      executionStatusMap.merge(currentStatus, 1, Integer::sum);
-    }
-
-    // return leader error info only if its LEADER error and sufficient replicas exists.
-    if (!isLeaderInError || executionStatusMap.getOrDefault(ERROR, 0) > instanceToStateMap.size() - replicationFactor
-        + numberOfToleratedErrors) {
-      return Optional.empty();
-    }
-    return Optional.of(instanceName + "_" + partitionId);
-  }
-
   protected ExecutionStatus getPartitionStatus(
       PartitionStatus partitionStatus,
       int replicationFactor,

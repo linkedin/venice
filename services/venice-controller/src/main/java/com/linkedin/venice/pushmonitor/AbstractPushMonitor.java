@@ -702,8 +702,10 @@ public abstract class AbstractPushMonitor
 
           if (status.getFirst().isTerminal()) {
             LOGGER.info(
-                "Offline push status will be changed to " + status + " for topic: " + kafkaTopic + " from status: "
-                    + pushStatus.getCurrentStatus());
+                "Offline push status will be changed to {} for topic: {} from status: {}",
+                status.toString(),
+                kafkaTopic,
+                pushStatus.getCurrentStatus());
             handleOfflinePushUpdate(pushStatus, status.getFirst(), status.getSecond());
           } else if (status.getFirst().equals(ExecutionStatus.END_OF_PUSH_RECEIVED)) {
             // For all partitions, at least one replica has received the EOP. Check if it's time to start buffer replay.
