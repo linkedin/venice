@@ -47,8 +47,6 @@ ext.publishing = [
         def classifier = 'all'
         println "Will publish ${currentProject.path} at ${currentProject.group}:${currentProject.name}-${classifier}:${currentProject.version}"
 
-        println ""
-
         publishing {
           publications {
             "${currentProject.name}"(MavenPublication) {
