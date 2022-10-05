@@ -78,7 +78,7 @@ import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.ErrorType;
-import com.linkedin.venice.exceptions.PreconditionCheckFailedException;
+import com.linkedin.venice.exceptions.ResourceStillExistsException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
@@ -1039,7 +1039,7 @@ public class StoresRoutes extends AbstractRoute {
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
         admin.removeStoreFromGraveyard(clusterName, storeName);
-      } catch (PreconditionCheckFailedException exception) {
+      } catch (ResourceStillExistsException exception) {
         responseObject.setError(exception);
         response.status(exception.getHttpStatusCode());
         request.attribute(AdminSparkServer.REQUEST_SUCCEED, false);

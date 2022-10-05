@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.venice.exceptions.PreconditionCheckFailedException;
+import com.linkedin.venice.exceptions.ResourceStillExistsException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.SystemTime;
@@ -84,8 +84,8 @@ public class StoreGraveyardCleanupService extends AbstractVeniceService {
                   admin.removeStoreFromGraveyard(clusterName, storeName);
                   didCleanup = true;
                 }
-              } catch (PreconditionCheckFailedException preconditionCheckFailedException) {
-                // Ignore PreconditionCheckFailedException which indicates store graveyard is not ready for removal.
+              } catch (ResourceStillExistsException resourceStillExistsException) {
+                // Ignore ResourceStillExistsException which indicates store graveyard is not ready for removal.
               } catch (Exception exception) {
                 LOGGER.error(
                     "Encountered exception while handling store graveyard cleanup for store: {} in cluster: {}",

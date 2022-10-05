@@ -130,7 +130,7 @@ import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.PartitionerSchemaMismatchException;
-import com.linkedin.venice.exceptions.PreconditionCheckFailedException;
+import com.linkedin.venice.exceptions.ResourceStillExistsException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -4974,8 +4974,8 @@ public class VeniceParentHelixAdmin implements Admin {
     controllerClientMap.forEach((coloName, cc) -> {
       ControllerResponse response = cc.removeStoreFromGraveyard(storeName);
       if (response.isError()) {
-        if (ErrorType.PRECONDITION_CHECK_FAILED.equals(response.getErrorType())) {
-          throw new PreconditionCheckFailedException(
+        if (ErrorType.RESOURCE_STILL_EXISTS.equals(response.getErrorType())) {
+          throw new ResourceStillExistsException(
               "Store graveyard " + storeName + " is not ready for removal in colo: " + coloName);
         }
         throw new VeniceException(

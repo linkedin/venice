@@ -3,10 +3,10 @@ package com.linkedin.venice.exceptions;
 import org.apache.http.HttpStatus;
 
 
-public class PreconditionCheckFailedException extends VeniceException {
-  public PreconditionCheckFailedException(String message) {
+public class ResourceStillExistsException extends VeniceException {
+  public ResourceStillExistsException(String message) {
     super(message);
-    super.errorType = ErrorType.PRECONDITION_CHECK_FAILED;
+    super.errorType = ErrorType.RESOURCE_STILL_EXISTS;
   }
 
   @Override

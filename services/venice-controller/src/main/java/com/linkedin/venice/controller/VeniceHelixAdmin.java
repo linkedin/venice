@@ -57,7 +57,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
-import com.linkedin.venice.exceptions.PreconditionCheckFailedException;
+import com.linkedin.venice.exceptions.ResourceStillExistsException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
@@ -6751,7 +6751,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         storeNameForTopic = Version.parseStoreFromKafkaTopicName(topic);
       }
       if (storeNameForTopic != null && allRelevantStores.contains(storeNameForTopic)) {
-        throw new PreconditionCheckFailedException(
+        throw new ResourceStillExistsException(
             "Topic: " + topic + " still exists for store: " + storeName + ", please make sure all "
                 + (checkVersionTopic ? "" : "real-time ") + "topics are removed.");
       }
@@ -6763,7 +6763,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (Version.isVersionTopic(resource)) {
           String storeNameForResource = Version.parseStoreFromVersionTopic(resource);
           if (allRelevantStores.contains(storeNameForResource)) {
-            throw new PreconditionCheckFailedException(
+            throw new ResourceStillExistsException(
                 "Helix Resource: " + resource + " still exists for store: " + storeName
                     + ", please make sure all helix resources are removed.");
           }
@@ -6777,7 +6777,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (Version.isVersionTopic(resource)) {
           String storeNameForResource = Version.parseStoreFromVersionTopic(resource);
           if (allRelevantStores.contains(storeNameForResource)) {
-            throw new PreconditionCheckFailedException(
+            throw new ResourceStillExistsException(
                 "Offline push: " + resource + " still exists for store: " + storeName
                     + ", please make sure all offline push nodes are removed.");
           }
