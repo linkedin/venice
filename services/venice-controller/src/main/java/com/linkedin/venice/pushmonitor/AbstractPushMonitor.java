@@ -20,6 +20,7 @@ import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
+import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
@@ -29,6 +30,7 @@ import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -68,6 +70,7 @@ public abstract class AbstractPushMonitor
   private final String aggregateRealTimeSourceKafkaUrl;
   private final List<String> activeActiveRealTimeSourceKafkaURLs;
   private final HelixAdminClient helixAdminClient;
+  private final EventThrottler helixClientThrottler;
 
   public AbstractPushMonitor(
       String clusterName,
@@ -92,6 +95,8 @@ public abstract class AbstractPushMonitor
     this.aggregateRealTimeSourceKafkaUrl = aggregateRealTimeSourceKafkaUrl;
     this.activeActiveRealTimeSourceKafkaURLs = activeActiveRealTimeSourceKafkaURLs;
     this.helixAdminClient = helixAdminClient;
+    this.helixClientThrottler =
+        new EventThrottler(10, 5000, "push_monitor_helix_client_throttler", false, EventThrottler.BLOCK_STRATEGY);
   }
 
   @Override
@@ -667,6 +672,9 @@ public abstract class AbstractPushMonitor
 
   protected DisableReplicaCallback getDisableReplicaCallback(String kafkaTopic) {
     DisableReplicaCallback callback = new DisableReplicaCallback() {
+      private final Map<String, Set<Integer>> disabledReplicaMap = new HashMap<>();
+      private final Set<String> enabledReplicas = new HashSet<>();
+
       @Override
       public void disableReplica(String instance, int partitionId) {
         LOGGER.warn(
@@ -680,6 +688,29 @@ public abstract class AbstractPushMonitor
             instance,
             kafkaTopic,
             Collections.singletonList(HelixUtils.getPartitionName(kafkaTopic, partitionId)));
+        disabledReplicaMap.computeIfAbsent(instance, k -> new HashSet<>()).add(partitionId);
+        enabledReplicas.remove(instance);
+      }
+
+      @Override
+      public boolean isReplicaDisabled(String instance, int partitionId) {
+        Set<Integer> disabledPartitions = disabledReplicaMap.getOrDefault(instance, null);
+        if (disabledPartitions != null) {
+          return disabledPartitions.contains(partitionId);
+        }
+        if (enabledReplicas.contains(instance)) {
+          return false;
+        }
+        helixClientThrottler.maybeThrottle(1);
+        Map<String, List<String>> helixMap = helixAdminClient.getDisabledPartitionsMap(clusterName, instance);
+        if (helixMap.containsKey(kafkaTopic)) {
+          disabledPartitions = helixMap.get(kafkaTopic).stream().map(Integer::parseInt).collect(Collectors.toSet());
+          disabledReplicaMap.computeIfAbsent(instance, k -> new HashSet<>()).addAll(disabledPartitions);
+          return disabledPartitions.contains(partitionId);
+        } else {
+          enabledReplicas.add(instance);
+        }
+        return false;
       }
     };
     return callback;

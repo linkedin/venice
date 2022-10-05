@@ -6,4 +6,6 @@ package com.linkedin.venice.pushmonitor;
  */
 public interface DisableReplicaCallback {
   void disableReplica(String instance, int partitionId);
+
+  boolean isReplicaDisabled(String instance, int partitionId);
 }

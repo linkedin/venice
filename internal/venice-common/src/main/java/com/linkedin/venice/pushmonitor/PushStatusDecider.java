@@ -274,7 +274,7 @@ public abstract class PushStatusDecider {
     // partitions can be completed. Vice versa, partitions will be in error state if leader is in error
     // state.
     boolean isLeaderCompleted = true;
-
+    int previouslyDisabledReplica = 0;
     for (Map.Entry<Instance, String> entry: instanceToStateMap.entrySet()) {
       ExecutionStatus currentStatus =
           getReplicaCurrentStatus(partitionStatus.getReplicaHistoricStatusList(entry.getKey().getNodeId()));
@@ -282,10 +282,15 @@ public abstract class PushStatusDecider {
         if (!currentStatus.equals(COMPLETED)) {
           isLeaderCompleted = false;
         }
-        // The following has a potential to mark all or multiple replicas as disabled which could lead
-        // to a stuck pushjob. operator should monitor for disabled replicas in Helix and take action.
+
         if (currentStatus.equals(ERROR) && callback != null) {
           callback.disableReplica(entry.getKey().getNodeId(), partitionStatus.getPartitionId());
+        }
+      } else if (entry.getValue().equals(HelixState.OFFLINE_STATE)) {
+        // If the replica is in offline state, check if its due to previously disabled replica or not.
+        if (callback != null
+            && callback.isReplicaDisabled(entry.getKey().getNodeId(), partitionStatus.getPartitionId())) {
+          previouslyDisabledReplica++;
         }
       }
       executionStatusMap.merge(currentStatus, 1, Integer::sum);
@@ -296,8 +301,8 @@ public abstract class PushStatusDecider {
       return COMPLETED;
     }
 
-    if (executionStatusMap.getOrDefault(ERROR, 0) > instanceToStateMap.size() - replicationFactor
-        + numberOfToleratedErrors) {
+    if (executionStatusMap.getOrDefault(ERROR, 0) + previouslyDisabledReplica > instanceToStateMap.size()
+        - replicationFactor + numberOfToleratedErrors) {
       return ERROR;
     }
 
