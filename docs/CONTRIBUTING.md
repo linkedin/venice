@@ -2,7 +2,7 @@
 layout: default
 title: Contribution Agreement
 parent: Community Guides
-permalink: /community_guides/contribution_agreement
+permalink: /docs/community_guide/contribution_agreement
 ---
 
 # Contribution Agreement
@@ -16,7 +16,7 @@ license.
 
 # Responsible Disclosure of Security Vulnerabilities
 
-Please refer to our [Security Policy](https://linkedin.github.io/venice/community_guides/security_vulnerability) for our policy on
+Please refer to our [Security Policy](./SECURITY.md) for our policy on
 responsibly reporting security vulnerabilities.
 
 # Contribution Process
@@ -37,8 +37,8 @@ If you have any user feedback, please create a new GitHub issue and the communit
 
 ## For New Contributors
 
-Please follow [Venice Workspace Setup](https://linkedin.github.io/venice/dev_guide/workspace_setup) and
-[Venice Recommended Development Workflow](https://linkedin.github.io/venice/dev_guide/recommended_development_workflow)
+Please follow [Venice Workspace Setup](./dev_guide/workspace_setup.md) and
+[Venice Recommended Development Workflow](./dev_guide/recommended_development_workflow.md)
 
 ## Tips for Getting Your Pull Request Accepted
 
@@ -51,4 +51,4 @@ Please follow [Venice Workspace Setup](https://linkedin.github.io/venice/dev_gui
 
 ## Code of Conduct
 
-This project and everyone who participates in it is governed by the [Venice Code of Conduct](https://linkedin.github.io/venice/code_of_conduct). By participating, you are expected to uphold this code. Please report unacceptable behavior on [Slack](https://venicedb.slack.com/archives/C03SLQWRSLF).
+This project and everyone who participates in it is governed by the [Venice Code of Conduct](./CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior on [Slack](https://venicedb.slack.com/archives/C03SLQWRSLF).

@@ -2,7 +2,7 @@
 layout: default
 title: Responsible Disclosure of Security Vulnerabilities
 parent: Community Guides
-permalink: /community_guides/security_vulnerability
+permalink: /docs/community_guide/security_vulnerability
 ---
 
 # Responsible Disclosure of Security Vulnerabilities

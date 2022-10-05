@@ -2,7 +2,7 @@
 layout: default
 title: Developer Guides
 has_children: true
-permalink: docs/dev_guide
+permalink: /docs/dev_guide
 ---
 # Developer Guide
 
