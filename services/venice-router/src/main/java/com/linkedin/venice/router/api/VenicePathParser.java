@@ -75,6 +75,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
   // leader controller without knowing whether the host is Router or Controller.
   // Without good reason, please don't update this path.
   public static final String TYPE_LEADER_CONTROLLER = ControllerRoute.LEADER_CONTROLLER.getPath().replace("/", "");
+  @Deprecated
   public static final String TYPE_LEADER_CONTROLLER_LEGACY =
       ControllerRoute.MASTER_CONTROLLER.getPath().replace("/", "");
   public static final String TYPE_KEY_SCHEMA = "key_schema";

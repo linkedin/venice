@@ -68,8 +68,7 @@ public abstract class AbstractHttp2StreamFrameCodec extends MessageToMessageCode
   /**
    * The set of headers that should not be directly copied when converting headers from HTTP to HTTP/2.
    */
-  // go/inclusivecode exempt(Field name is based upon a netty4 field name of the same name)
-  protected static final List<AsciiString> HTTP_TO_HTTP2_HEADER_BLACKLIST;
+  protected static final List<AsciiString> HTTP_TO_HTTP2_HEADER_DENY_LIST;
 
   static {
     try {
@@ -78,7 +77,7 @@ public abstract class AbstractHttp2StreamFrameCodec extends MessageToMessageCode
       field.setAccessible(true);
       @SuppressWarnings("unchecked")
       CharSequenceMap<AsciiString> map = (CharSequenceMap<AsciiString>) field.get(null);
-      HTTP_TO_HTTP2_HEADER_BLACKLIST = Collections
+      HTTP_TO_HTTP2_HEADER_DENY_LIST = Collections
           .unmodifiableList(Arrays.asList(map.names().stream().map(AsciiString::of).toArray(AsciiString[]::new)));
     } catch (Exception e) {
       throw new Error(e);

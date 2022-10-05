@@ -68,8 +68,6 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
   /**
    *  Possible config options which are not included in {@link com.linkedin.venice.ConfigKeys}.
     */
-  // go/inclusivecode deprecated(alias="server_enable_allow_list")
-  public static final String SERVER_ENABLE_SERVER_WHITE_LIST = "server_enable_white_list";
   public static final String SERVER_ENABLE_SERVER_ALLOW_LIST = "server_enable_allow_list";
   public static final String SERVER_IS_AUTO_JOIN = "server_is_auto_join";
   public static final String SERVER_ENABLE_SSL = "server_enable_ssl";
@@ -159,12 +157,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       String serverName,
       Map<String, Map<String, String>> kafkaClusterMap) {
     return (serviceName, dataDirectory) -> {
-      boolean enableServerAllowlist = Boolean.parseBoolean(
-          getPropertyWithAlternative(
-              featureProperties,
-              SERVER_ENABLE_SERVER_ALLOW_LIST,
-              SERVER_ENABLE_SERVER_WHITE_LIST,
-              "false"));
+      boolean enableServerAllowlist =
+          Boolean.parseBoolean(featureProperties.getProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, "false"));
       boolean sslToKafka = Boolean.parseBoolean(featureProperties.getProperty(SERVER_SSL_TO_KAFKA, "false"));
       boolean isKafkaOpenSSLEnabled =
           Boolean.parseBoolean(featureProperties.getProperty(SERVER_ENABLE_KAFKA_OPENSSL, "false"));
@@ -406,8 +400,6 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     options.addOption(new Option("lp", "listenPort", true, "listening port for server"));
     options.addOption(new Option("scp", "serverConfigPath", true, "path to server config file"));
     options.addOption(new Option("ss", "ssl", false, "is secured"));
-    // go/inclusivecode deprecated(alias="esa|enableServerAllowlist")
-    options.addOption(new Option("esw", "enableServerWhitelist", false, "white listing enabled for the server"));
     options.addOption(new Option("esa", "enableServerAllowlist", false, "allow listing enabled for the server"));
     options.addOption(new Option("iaj", "isAutoJoin", false, "automatically join the venice cluster"));
     options.addOption(new Option("vu", "veniceUrl", true, "ZK url for venice d2 service"));

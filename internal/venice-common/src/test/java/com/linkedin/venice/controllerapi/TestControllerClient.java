@@ -76,7 +76,7 @@ public class TestControllerClient {
       // We must specify content_length header, otherwise netty will keep polling, since it
       // doesn't know when to finish writing the response.
       response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
-      mockController.addResponseForUriPattern(ControllerRoute.MASTER_CONTROLLER.getPath() + ".*", response);
+      mockController.addResponseForUriPattern(ControllerRoute.LEADER_CONTROLLER.getPath() + ".*", response);
 
       String controllerUrlWithSpaceAtBeginning = "   http://" + mockController.getAddress();
       ControllerClient controllerClient =
@@ -95,7 +95,7 @@ public class TestControllerClient {
 
     try (MockD2ServerWrapper mockController =
         ServiceFactory.getMockD2Server("test-controller", d2ClusterName, d2ServiceName)) {
-      String uriPattern = ControllerRoute.MASTER_CONTROLLER.getPath() + ".*cluster_name=" + veniceClusterName + ".*";
+      String uriPattern = ControllerRoute.LEADER_CONTROLLER.getPath() + ".*cluster_name=" + veniceClusterName + ".*";
       mockController.addResponseForUriPattern(
           uriPattern,
           constructLeaderControllerResponse(veniceClusterName, fakeLeaderControllerUri));
@@ -116,7 +116,7 @@ public class TestControllerClient {
 
     try (MockD2ServerWrapper mockController =
         ServiceFactory.getMockD2Server("test-controller", d2ClusterName, d2ServiceName)) {
-      String uriPattern = ControllerRoute.MASTER_CONTROLLER.getPath() + ".*cluster_name=" + veniceClusterName + ".*";
+      String uriPattern = ControllerRoute.LEADER_CONTROLLER.getPath() + ".*cluster_name=" + veniceClusterName + ".*";
       mockController.addResponseForUriPattern(
           uriPattern,
           constructLeaderControllerResponse(veniceClusterName, fakeLeaderControllerUri));

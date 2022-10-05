@@ -13,20 +13,16 @@ plugins {
   id 'com.gradle.enterprise' version '3.10'
 }
 
+apply from: "$rootDir/gradle/helper/git.gradle"
+
 gradleEnterprise {
   server = System.getProperty('buildScanServer', 'Set systemProp.buildScanServer in ~/.gradle/gradle.properties')
-  def stdout = new ByteArrayOutputStream()
 
-  exec {
-    commandLine = ['git', 'diff', '--name-status', 'origin/master']
-    standardOutput = stdout
-  }
-
-  def status = "$stdout";
+  def status = git.getFileDiffStatus()
   buildScan {
-    value 'GIT_BRANCH', 'git rev-parse --abbrev-ref HEAD'.execute().text.trim()
-    value 'GIT_COMMIT', 'git rev-parse --verify HEAD'.execute().text.trim()
-    value 'GIT_COMMIT_TITLE', 'git log --format=%s -1 HEAD'.execute().text.trim()
+    value 'GIT_BRANCH', "${git.getBranch()}"
+    value 'GIT_COMMIT', "${git.getCommitHash()}"
+    value 'GIT_COMMIT_TITLE', "${git.getCommitTitle()}"
     if (status) {
       tag 'dirty'
       value 'GIT_STATUS', status
