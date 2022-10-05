@@ -599,10 +599,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
               helixAdminClient
                   .enablePartition(true, clusterName, instance.getNodeId(), entry.getKey(), entry.getValue());
+              LOGGER.info("Enabled disabled replica of resource {}, partitions {}", entry.getKey(), entry.getValue());
             }
           }
           LOGGER.info(
-              "Enabling disabled replicas for instances {} took {} ",
+              "Enabling disabled replicas for instances {} took {} ms",
               newInstances.stream().map(Instance::getNodeId).collect(Collectors.joining(",")),
               LatencyUtils.getElapsedTimeInMs(startTime));
         }

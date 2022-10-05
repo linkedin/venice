@@ -669,6 +669,11 @@ public abstract class AbstractPushMonitor
     DisableReplicaCallback callback = new DisableReplicaCallback() {
       @Override
       public void disableReplica(String instance, int partitionId) {
+        LOGGER.warn(
+            "Disabling errored out leader replica of {} partition: {} on host {}",
+            kafkaTopic,
+            partitionId,
+            instance);
         helixAdminClient.enablePartition(
             false,
             clusterName,
