@@ -1,5 +1,9 @@
 package com.linkedin.venice.pushmonitor;
 
-public abstract class DisableReplicaCallback {
-  public abstract void disableReplica(String instance, int partitionId);
+/**
+ * The callback method to disable leader replicas whenever they are in ERROR state so that helix
+ * can elect a new leader.
+ */
+public interface DisableReplicaCallback {
+  void disableReplica(String instance, int partitionId);
 }
