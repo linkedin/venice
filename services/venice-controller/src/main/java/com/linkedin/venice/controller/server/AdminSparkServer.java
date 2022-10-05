@@ -96,8 +96,6 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOP
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORAGE_PERSONA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPLOAD_PUSH_JOB_STATUS;
-import static com.linkedin.venice.controllerapi.ControllerRoute.WHITE_LIST_ADD_NODE;
-import static com.linkedin.venice.controllerapi.ControllerRoute.WHITE_LIST_REMOVE_NODE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.WIPE_CLUSTER;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -341,9 +339,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(NODE_REPLICAS.getPath(), nodesAndReplicas.listReplicasForStorageNode(admin));
     httpService.get(NODE_REMOVABLE.getPath(), nodesAndReplicas.isNodeRemovable(admin));
     httpService.get(NODE_REPLICAS_READINESS.getPath(), nodesAndReplicas.nodeReplicasReadiness(admin));
-    httpService.post(WHITE_LIST_ADD_NODE.getPath(), nodesAndReplicas.addNodeIntoAllowList(admin));
     httpService.post(ALLOW_LIST_ADD_NODE.getPath(), nodesAndReplicas.addNodeIntoAllowList(admin));
-    httpService.post(WHITE_LIST_REMOVE_NODE.getPath(), nodesAndReplicas.removeNodeFromAllowList(admin));
     httpService.post(ALLOW_LIST_REMOVE_NODE.getPath(), nodesAndReplicas.removeNodeFromAllowList(admin));
     httpService.post(REMOVE_NODE.getPath(), nodesAndReplicas.removeNodeFromCluster(admin));
 
@@ -491,10 +487,10 @@ public class AdminSparkServer extends AbstractVeniceService {
           CLUSTER + " is a required parameter",
           ErrorType.BAD_REQUEST);
     }
+    // go/inclusivecode deprecated (alias="LEADER_CONTROLLER")
     if (!LEADER_CONTROLLER.pathEquals(request.pathInfo()) && !MASTER_CONTROLLER.pathEquals(request.pathInfo())
         && !CLUSTER_DISCOVERY.pathEquals(request.pathInfo()) && !admin.isLeaderControllerFor(clusterName)) {
-      // go/inclusivecode deprecated (alias="leader_controller")
-      // Skip leader controller check for '/master_controller' and '/discover_cluster' request
+      // Skip leader controller check for '/leader_controller' and '/discover_cluster' request
       throw new VeniceHttpException(
           HttpConstants.SC_MISDIRECTED_REQUEST,
           "This controller " + Utils.getHostName() + " is not the active controller",

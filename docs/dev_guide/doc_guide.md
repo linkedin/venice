@@ -2,24 +2,26 @@
 layout: default
 title: Documentation Guideline
 parent: Developer Guides
+permalink: /docs/dev_guide/documentation_guideline
 ---
 
 # Documentation Guideline
 
-We prefer simplicity and currently use GitHub page to host Venice documentation. Those documentation will be built automatically by GitHub pipelines in the `master` branch.
+We prefer simplicity and currently use GitHub page to host Venice documentation. Those documentation will be built automatically by GitHub pipelines in the `main` branch.
 
 ## Hierarchy
 
 In order for your docs to be rendered properly in the documentation hierarchy, Venice developers need to add a header
 section at the top of each documentation. The `title` section will be what the end user sees in the sidebar, and
-the `parent` section represents the parent page of the current page for linking purpose. An example of the header is
-below:
+the `parent` section represents the parent page of the current page for linking purpose. The `permalink` section will be
+the URL path where the page will be served. An example of the header is below:
 
 ```
 ---
 layout: default
 title: Documentation Guideline
 parent: Developer Guides
+permalink: /docs/dev_guide/documentation_guideline
 ---
 ```
 

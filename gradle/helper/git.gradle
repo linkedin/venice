@@ -1,0 +1,40 @@
+ext.git = [
+  getUpstreamRemote: {
+    def remotes = 'git remote -v'.execute().text.trim()
+    for (line in remotes.split('\n')) {
+      if (line.contains('git@github.com:linkedin/venice') || line.contains('https://github.com/linkedin/venice')) {
+        def remote = line.split('\t')[0]  // origin ssh://git@github.com... (fetch)
+        ext._upstreamRemote = remote
+        return remote
+      }
+    }
+
+    throw new InvalidUserDataException('Could not find a remote that refers to https://github.com/linkedin/venice')
+  },
+
+  setConfig: { key, value ->
+    "git config ${key} ${value}".execute()
+  },
+
+  getFileDiffStatus: {
+    def remoteName = ext.git.getUpstreamRemote()
+    def stdout = new ByteArrayOutputStream()
+    exec {
+      commandLine = ['git', 'diff', '--name-status', "${remoteName}/main"]
+      standardOutput = stdout
+    }
+    return "$stdout"
+  },
+
+  getBranch: {
+    return 'git rev-parse --abbrev-ref HEAD'.execute().text.trim()
+  },
+
+  getCommitHash: {
+    return 'git rev-parse --verify HEAD'.execute().text.trim()
+  },
+
+  getCommitTitle: {
+    return 'git log --format=%s -1 HEAD'.execute().text.trim()
+  }
+]

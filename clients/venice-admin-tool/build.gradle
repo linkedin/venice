@@ -19,10 +19,6 @@ dependencies {
 apply from: "$rootDir/gradle/helper/publishing.gradle"
 apply from: "$rootDir/gradle/helper/packaging.gradle"
 
-artifacts {
-  archives shadowJar
-}
-
 jar {
   manifest {
     attributes = ['Implementation-Title'  : 'Venice Admin Tool',
@@ -30,12 +26,3 @@ jar {
                   'Main-Class'            : 'com.linkedin.venice.AdminTool']
   }
 }
-
-//"fat" sources jar
-task sourceJar(type: Jar, dependsOn: classes) {
-  duplicatesStrategy = DuplicatesStrategy.WARN
-  // we return here a closure to do this lazy, after all projects are configured by gradle
-  from { packaging.collectSourceSetsIncludingSubmodules(project) }
-}
-
-publishing.configureShadowArtifactPublishing(project, shadowJar, sourceJar, testJar)

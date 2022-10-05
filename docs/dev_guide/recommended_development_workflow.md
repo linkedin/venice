@@ -2,6 +2,7 @@
 layout: default
 title: Venice Recommended Development Workflow
 parent: Developer Guides
+permalink: /docs/dev_guide/recommended_development_workflow
 ---
 
 # Venice Recommended Development Workflow
@@ -18,8 +19,8 @@ The GitHub issue should contain the detailed problem statement.
 1. Fork the GitHub repository at http://github.com/linkedin/venice if you haven't already
 2. Clone your fork, create a new branch, push commits to the branch
 3. Consider whether documentation or tests need to be added or updated as part of the change, and add them as needed (doc changes should be submitted along with code change in the same PR)
-4. Run all tests as described in the project's [Workspace setup guide](https://linkedin.github.io/venice/dev_guide/workspace_setup#run-the-test-suite).
-5. Open a pull request against the `master` branch of `linkedin/venice`. (Only in special cases would the PR be opened against other branches.)
+4. Run all tests as described in the project's [Workspace setup guide](../dev_guide/workspace_setup.md#run-the-test-suite).
+5. Open a pull request against the `main` branch of `linkedin/venice`. (Only in special cases would the PR be opened against other branches.)
 6. The PR title should usually be of the form `[component1]...[componentN]: Concise commit message`.
    * Valid component tags are: `[da-vinci]`, `[server]`, `[controller]`,
       `[router]`, `[samza]`, `[vpj]`, `[fast-client]`, `[thin-client]`, `[alpini]`,
@@ -63,12 +64,12 @@ Please list the new dependencies in the PR description and answer these question
 2. Please add a comment and "@" the reviewer in the PR if you have addressed reviewers' comments. Even though GitHub sends notifications when new commits are pushed, it is helpful to know that the PR is ready for review once again.
 3. Lively, polite, rapid technical debate is encouraged from everyone in the community. The outcome may be a rejection of the entire change.
 4. Reviewers can indicate that a change looks suitable for merging by approving it via GitHub's review interface. This indicates the strongest level of technical sign-off on a patch and it means: "I've looked at this thoroughly and take as much ownership as if I wrote the patch myself". If you approve a pull request, you will be expected to help with bugs or follow-up issues on the patch. Consistent, judicious use of pull request approvals is a great way to gain credibility as a reviewer with the broader community. Venice reviewers will typically include the acronym LGTM in their approval comment. This was the convention used to approve pull requests before the "approve" feature was introduced by GitHub.
-5. Sometimes, other changes will be merged which conflict with your pull request's changes. The PR can't be merged until the conflict is resolved. This can be resolved with `"git fetch origin"` followed by `"git rebase origin/master"` and resolving the conflicts by hand, then pushing the result to your branch.
+5. Sometimes, other changes will be merged which conflict with your pull request's changes. The PR can't be merged until the conflict is resolved. This can be resolved with `"git fetch upstream"` followed by `"git rebase upstream/main"` and resolving the conflicts by hand, then pushing the result to your branch.
 6. Try to be responsive to the discussion rather than let days pass between replies.
 
 ## Closing Your Pull Request / Issue
 1. If a change is accepted, it will be merged and the pull request will automatically be closed, along with the associated Issue if the PR description contains `Resolves #XXX`
-2. Note that in the rare case you are asked to open a pull request against a branch besides master, that you will actually have to close the pull request manually
+2. Note that in the rare case you are asked to open a pull request against a branch besides `main`, that you will actually have to close the pull request manually
 3. If your pull request is ultimately rejected, please close it.
 4. If a pull request has gotten little or no attention, consider improving the description or the change itself and ping likely reviewers after a few days. Consider proposing a change that's easier to include, like a smaller and/or less invasive change.
 5. If a pull request is closed because it is deemed not the right approach to resolve an Issue, then leave the Issue open. However, if the review makes it clear that the problem identified in the Issue is not going to be resolved by any pull request (not a problem, won't fix) then also resolve the Issue.

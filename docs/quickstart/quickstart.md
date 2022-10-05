@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Quickstart
-permalink: docs/quickstart
+permalink: /docs/quickstart
 ---
 
 ## Venice Quickstart
@@ -16,7 +16,7 @@ provided by Venice team.
 
 #### Step 2: Download Venice quickstart Docker compose file
 ```
-wget https://raw.githubusercontent.com/linkedin/venice/master/quickstart/docker-compose.yaml
+wget https://raw.githubusercontent.com/linkedin/venice/main/quickstart/docker-compose.yaml
 ```
 
 #### Step 3: Run docker compose
@@ -61,7 +61,7 @@ bash create_store.sh
 ```
 
 #### Step 6: Push data to the store
-Venice supports multiple ways to write data to the store. For more details, please refer to [Write Path](https://linkedin.github.io/venice#write-path) section in [README](https://linkedin.github.io/venice).
+Venice supports multiple ways to write data to the store. For more details, please refer to [Write Path](../README.md#write-path) section in [README](../README.md).
 In this example, we will use batch push mode and push 100 records.
 ```
 key: 1 to 100
@@ -140,5 +140,5 @@ docker compose down
 
 ## Next steps
 Venice is a feature rich derived data store. It offers features such as write-compute, read-compute, streaming ingestion, multi data center active-active replication,
-deterministic conflict resolution, etc. To know more about such features please refer [README](https://linkedin.github.io/venice/) and reach out to
-the [Venice team](https://linkedin.github.io/venice/#community-resources).
+deterministic conflict resolution, etc. To know more about such features please refer [README](../README.md) and reach out to
+the [Venice team](../README.md#community-resources).

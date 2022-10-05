@@ -60,7 +60,7 @@ public class Http2StreamFrameServerCodec extends AbstractHttp2StreamFrameCodec {
     if (msg.headers() instanceof Http1Headers) {
       Http2Headers headers = ((Http1Headers) msg.headers()).getHttp2Headers();
 
-      HTTP_TO_HTTP2_HEADER_BLACKLIST.forEach(headers::remove);
+      HTTP_TO_HTTP2_HEADER_DENY_LIST.forEach(headers::remove);
 
       return headers;
     }

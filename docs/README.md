@@ -14,7 +14,7 @@
     </h3>
 </html> 
 
-[![License](https://img.shields.io/badge/License-BSD_2--Clause-blue.svg)](https://github.com/linkedin/venice/blob/master/LICENSE)
+[![License](https://img.shields.io/badge/License-BSD_2--Clause-blue.svg)](https://github.com/linkedin/venice/blob/main/LICENSE)
 [![Docs Latest](https://img.shields.io/badge/docs-latest-blue.svg)](https://linkedin.github.io/venice/)
 
 Venice is a derived data storage platform, providing the following characteristics:
@@ -78,7 +78,7 @@ There are two main client modes for accessing Venice data:
 - **Da Vinci**: eagerly load some or all partitions of the dataset and perform queries against the resulting local cache. Future updates to the data continue to be streamed in and applied to the local cache.
 
 # Getting Started
-Refer to the [Venice quickstart](https://linkedin.github.io/venice/docs/quickstart) to create your own Venice cluster and play around with some features like creating a data store, batch push, incremental push, and single get.
+Refer to the [Venice quickstart](./quickstart/quickstart.md) to create your own Venice cluster and play around with some features like creating a data store, batch push, incremental push, and single get.
 
 # Previously Published Content
 

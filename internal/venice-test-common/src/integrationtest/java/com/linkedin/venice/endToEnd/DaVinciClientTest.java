@@ -71,6 +71,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.nio.ByteBuffer;
@@ -674,8 +675,17 @@ public class DaVinciClientTest {
       }
     }
 
-    try (DaVinciClient<Integer, Object> client =
-        ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath)) {
+    MetricsRepository metricsRepository = new MetricsRepository();
+    DaVinciTestContext<Integer, Object> daVinciTestContext =
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
+            d2Client,
+            metricsRepository,
+            Optional.empty(),
+            cluster.getZk().getAddress(),
+            storeName,
+            daVinciConfig,
+            Collections.singletonMap(DATA_BASE_PATH, baseDataPath));
+    try (DaVinciClient<Integer, Object> client = daVinciTestContext.getDaVinciClient()) {
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         try {
           Map<Integer, Integer> keyValueMap = new HashMap<>();
@@ -688,6 +698,11 @@ public class DaVinciClientTest {
           throw new AssertionError("", e);
         }
       });
+      // After restart, Da Vinci client will still get correct metrics for ingested stores.
+      String metricName = "." + storeName + "_current--disk_usage_in_bytes.Gauge";
+      Metric storeDiskUsageMetric = metricsRepository.getMetric(metricName);
+      Assert.assertNotNull(storeDiskUsageMetric);
+      Assert.assertTrue(storeDiskUsageMetric.value() > 0);
     }
 
     daVinciConfig.setStorageClass(StorageClass.DISK);
