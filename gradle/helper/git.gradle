@@ -2,7 +2,7 @@ ext.git = [
   getUpstreamRemote: {
     def remotes = 'git remote -v'.execute().text.trim()
     for (line in remotes.split('\n')) {
-      if (line.contains('git@github.com:linkedin/venice.git') || line.contains('https://github.com/linkedin/venice.git')) {
+      if (line.contains('git@github.com:linkedin/venice') || line.contains('github.com/linkedin/venice')) {
         def remote = line.split('\t')[0]  // origin ssh://git@github.com... (fetch)
         ext._upstreamRemote = remote
         return remote
