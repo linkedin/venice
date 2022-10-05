@@ -2,6 +2,7 @@
 layout: default
 title: Time to Live (TTL)
 parent: User Guides
+permalink: /docs/user_guide/ttl
 ---
 
 # Time to Live (TTL)

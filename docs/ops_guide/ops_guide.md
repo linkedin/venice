@@ -2,6 +2,7 @@
 layout: default
 title: Operator Guides
 has_children: true
+permalink: /docs/ops_guide
 ---
 # Operator Guide
 

@@ -2,6 +2,7 @@
 layout: default
 title: Repush
 parent: Operator Guides
+permalink: /docs/ops_guide/repush
 ---
 
 # Repush

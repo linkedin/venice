@@ -1,6 +1,7 @@
 ---
 layout: default
 title: Quickstart
+permalink: /docs/quickstart
 ---
 
 ## Venice Quickstart

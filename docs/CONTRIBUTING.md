@@ -2,6 +2,7 @@
 layout: default
 title: Contribution Agreement
 parent: Community Guides
+permalink: /docs/community_guide/contribution_agreement
 ---
 
 # Contribution Agreement

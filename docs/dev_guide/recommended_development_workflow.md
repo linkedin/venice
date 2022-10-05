@@ -2,6 +2,7 @@
 layout: default
 title: Venice Recommended Development Workflow
 parent: Developer Guides
+permalink: /docs/dev_guide/recommended_development_workflow
 ---
 
 # Venice Recommended Development Workflow

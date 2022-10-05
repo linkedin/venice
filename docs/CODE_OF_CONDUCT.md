@@ -2,6 +2,7 @@
 layout: default
 title: Code Of Conduct
 parent: Community Guides
+permalink: /docs/community_guide/code_of_conduct
 ---
 
 # Contributor Covenant Code of Conduct

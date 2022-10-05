@@ -2,6 +2,7 @@
 layout: default
 title: Venice Workspace Setup
 parent: Developer Guides
+permalink: /docs/dev_guide/workspace_setup
 ---
 
 # Venice Workspace Setup
