@@ -49,30 +49,8 @@ dependencies {
 apply from: "$rootDir/gradle/helper/publishing.gradle"
 apply from: "$rootDir/gradle/helper/packaging.gradle"
 
-artifacts {
-  archives shadowJar
-}
-
-shadowJar {
-  include '**'
-  exclude '**/com/linkedin/hadoop**'
-  exclude '**/org.apache.hadoop*'
-  exclude '**/org/apache/commons/**'
-  exclude '**/org/apache/hadoop/**'
-  exclude '**/org/apache/xerces/**'
-}
-
 jar {
   manifest {
     attributes 'Main-Class': 'com.linkedin.venice.hadoop.VenicePushJob'
   }
 }
-
-//"fat" sources jar
-task sourceJar(type: Jar, dependsOn: classes) {
-  duplicatesStrategy = DuplicatesStrategy.WARN
-  // we return here a closure to do this lazy, after all projects are configured by gradle
-  from { packaging.collectSourceSetsIncludingSubmodules(project) }
-}
-
-publishing.configureShadowArtifactPublishing(project, shadowJar, sourceJar, testJar)

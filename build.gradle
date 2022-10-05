@@ -124,45 +124,6 @@ publishing {
   }
 }
 
-// This does not include modules that are published as shadow jars as they have their own publishing sections:
-// 1. venice-push-job
-// 2. venice-admin-tool
-Set<String> projectsToPublish = [
-  // Services
-  ':services:venice-controller',
-  ':services:venice-router',
-  ':services:venice-server',
-
-  // Clients
-  ':clients:da-vinci-client',
-  ':clients:venice-client',
-  ':clients:venice-samza',
-  ':clients:venice-thin-client',
-
-  // Internal
-  ':internal:venice-client-common',
-  ':internal:venice-common',
-  ':internal:venice-compatibility-test',
-  ':internal:venice-consumer',
-  ':internal:venice-test-common',
-
-  // Internal - Alpini
-  ':internal:alpini:common:alpini-common-base',
-  ':internal:alpini:common:alpini-common-cli',
-  ':internal:alpini:common:alpini-common-const',
-  ':internal:alpini:common:alpini-common-io',
-  ':internal:alpini:common:alpini-common-log',
-  ':internal:alpini:common:alpini-common-native',
-  ':internal:alpini:common:alpini-common-test',
-  ':internal:alpini:netty4:alpini-netty4-base',
-  ':internal:alpini:router:alpini-router-api',
-  ':internal:alpini:router:alpini-router-base',
-  ':internal:alpini:router:alpini-router-impl',
-
-  // Depend-all module
-  ':all-modules',
-]
-
 subprojects {
   //apply group and version to all submodules
   group = rootProject.group
@@ -406,14 +367,14 @@ subprojects {
     classifier = 'tests'
   }
 
-  if (project.path in projectsToPublish) {
-    // Do not add source jar for shadow jars as they need to have sources of all transitive dependencies too
-    task sourceJar(type: Jar) {
-      from sourceSets.main.allJava
-      classifier 'sources'
-    }
+  task sourceJar(type: Jar) {
+    from sourceSets.main.allJava
+    classifier 'sources'
+  }
 
-    publishing.configureRegularArtifactPublishing(project, sourceJar, testJar)
+  // Only publish artifacts for projects that are at the leaf level
+  if (project.childProjects.size() == 0) {
+    publishing.configureArtifactPublishing(project, sourceJar, testJar)
   }
 }
 
