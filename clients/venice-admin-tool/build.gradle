@@ -19,10 +19,6 @@ dependencies {
 apply from: "$rootDir/gradle/helper/publishing.gradle"
 apply from: "$rootDir/gradle/helper/packaging.gradle"
 
-artifacts {
-  archives shadowJar
-}
-
 jar {
   manifest {
     attributes = ['Implementation-Title'  : 'Venice Admin Tool',
