@@ -282,6 +282,8 @@ public abstract class PushStatusDecider {
         if (!currentStatus.equals(COMPLETED)) {
           isLeaderCompleted = false;
         }
+        // The following has a potential to mark all or multiple replicas as disabled which could lead
+        // to a stuck pushjob. operator should monitor for disabled replicas in Helix and take action.
         if (currentStatus.equals(ERROR) && callback != null) {
           callback.disableReplica(entry.getKey().getNodeId(), partitionStatus.getPartitionId());
         }
