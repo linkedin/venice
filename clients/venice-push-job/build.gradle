@@ -53,15 +53,6 @@ artifacts {
   archives shadowJar
 }
 
-shadowJar {
-  include '**'
-  exclude '**/com/linkedin/hadoop**'
-  exclude '**/org.apache.hadoop*'
-  exclude '**/org/apache/commons/**'
-  exclude '**/org/apache/hadoop/**'
-  exclude '**/org/apache/xerces/**'
-}
-
 jar {
   manifest {
     attributes 'Main-Class': 'com.linkedin.venice.hadoop.VenicePushJob'
