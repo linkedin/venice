@@ -345,9 +345,9 @@ public class DaVinciBackend implements Closeable {
     storeNameToBootstrapVersionMap.forEach((storeName, version) -> {
       List<Integer> partitions = storeNameToPartitionListMap.get(storeName);
       String versionTopic = version.kafkaTopicName();
-      LOGGER.info("Bootstrapping partitions " + partitions + " for " + version.kafkaTopicName());
+      LOGGER.info("Bootstrapping partitions {} for {}", partitions, versionTopic);
       aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageService.getStorageEngine(versionTopic));
-      StoreBackend storeBackend = getStoreOrThrow(version.getStoreName());
+      StoreBackend storeBackend = getStoreOrThrow(storeName);
       storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
     });
   }
