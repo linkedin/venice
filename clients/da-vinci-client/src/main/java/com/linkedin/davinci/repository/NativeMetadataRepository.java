@@ -494,11 +494,9 @@ public abstract class NativeMetadataRepository
     // Workaround to make old metadata compatible with new fields
     newStore.fixMissingFields();
     Store oldStore = subscribedStoreMap.put(newStore.getName(), newStore);
-    if (oldStore == null) {
-      totalStoreReadQuota.addAndGet(newStore.getReadQuotaInCU());
-      notifyStoreCreated(newStore);
-    } else if (!oldStore.equals(newStore)) {
-      totalStoreReadQuota.addAndGet(newStore.getReadQuotaInCU() - oldStore.getReadQuotaInCU());
+    if ((oldStore == null) || (!oldStore.equals(newStore))) {
+      long previousStoreReadQuota = oldStore == null ? 0 : oldStore.getReadQuotaInCU();
+      totalStoreReadQuota.addAndGet(newStore.getReadQuotaInCU() - previousStoreReadQuota);
       notifyStoreChanged(newStore);
     }
     return oldStore;
