@@ -63,9 +63,7 @@ public class D2ControllerClient extends ControllerClient {
     LeaderControllerResponse controllerResponse = d2ClientGet(
         this.d2Client,
         this.d2ServiceName,
-        // TODO: Change this to LEADER_CONTROLLER after backend components with inclusive endpoints are deployed
-        // completely
-        ControllerRoute.MASTER_CONTROLLER.getPath(),
+        ControllerRoute.LEADER_CONTROLLER.getPath(),
         newParams(),
         LeaderControllerResponse.class);
     /**

@@ -148,11 +148,7 @@ public enum ControllerRoute {
       "/node_removable", HttpMethod.GET, Collections.singletonList(STORAGE_NODE_ID), INSTANCE_VIEW,
       LOCKED_STORAGE_NODE_IDS
   ), NODE_REPLICAS_READINESS("/node_replicas_readiness", HttpMethod.GET, Collections.singletonList(STORAGE_NODE_ID)),
-  // go/inclusivecode deprecated (alias="/allow_list_add_node)
-  WHITE_LIST_ADD_NODE("/white_list_add_node", HttpMethod.POST, Collections.singletonList(STORAGE_NODE_ID)),
   ALLOW_LIST_ADD_NODE("/allow_list_add_node", HttpMethod.POST, Collections.singletonList(STORAGE_NODE_ID)),
-  // go/inclusivecode deprecated (alias="/allow_list_remove_node)
-  WHITE_LIST_REMOVE_NODE("/white_list_remove_node", HttpMethod.POST, Collections.singletonList(STORAGE_NODE_ID)),
   ALLOW_LIST_REMOVE_NODE("/allow_list_remove_node", HttpMethod.POST, Collections.singletonList(STORAGE_NODE_ID)),
 
   REMOVE_NODE("/remove_node", HttpMethod.POST, Collections.singletonList(STORAGE_NODE_ID)),
@@ -174,6 +170,7 @@ public enum ControllerRoute {
   ),
   REMOVE_DERIVED_SCHEMA("/remove_derived_schema", HttpMethod.POST, Arrays.asList(NAME, SCHEMA_ID, DERIVED_SCHEMA_ID)),
   // go/inclusivecode deprecated (alias="/leader_controller)
+  @Deprecated
   MASTER_CONTROLLER("/master_controller", HttpMethod.GET, Collections.emptyList()),
   LEADER_CONTROLLER("/leader_controller", HttpMethod.GET, Collections.emptyList()),
 

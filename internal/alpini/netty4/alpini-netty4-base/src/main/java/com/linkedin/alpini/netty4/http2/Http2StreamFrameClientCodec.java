@@ -41,7 +41,7 @@ public class Http2StreamFrameClientCodec extends AbstractHttp2StreamFrameCodec {
           headers.scheme(connectionScheme(ctx).name());
         }
 
-        HTTP_TO_HTTP2_HEADER_BLACKLIST.forEach(headers::remove);
+        HTTP_TO_HTTP2_HEADER_DENY_LIST.forEach(headers::remove);
 
         return headers;
       }

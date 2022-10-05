@@ -12,6 +12,7 @@ plugins {
   id 'org.gradle.test-retry' version '1.4.1' apply false
 }
 
+apply from: "$rootDir/gradle/helper/git.gradle"
 apply from: "$rootDir/gradle/helper/publishing.gradle"
 
 /*
@@ -417,7 +418,7 @@ subprojects {
 }
 
 spotless {
-  ratchetFrom 'origin/master'
+  ratchetFrom "${git.getUpstreamRemote()}/main"
   java {
     importOrder()
     removeUnusedImports()
@@ -439,9 +440,7 @@ task setupLocalRepo {
     def configKey = it.key
     def configValue = it.value
     println "Setting $configKey = $configValue"
-    exec {
-      commandLine = ['git', 'config', configKey, configValue]
-    }
+    git.setConfig(configKey, configValue)
   }
 }
 

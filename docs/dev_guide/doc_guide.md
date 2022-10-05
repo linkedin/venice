@@ -6,7 +6,7 @@ parent: Developer Guides
 
 # Documentation Guideline
 
-We prefer simplicity and currently use GitHub page to host Venice documentation. Those documentation will be built automatically by GitHub pipelines in the `master` branch.
+We prefer simplicity and currently use GitHub page to host Venice documentation. Those documentation will be built automatically by GitHub pipelines in the `main` branch.
 
 ## Hierarchy
 

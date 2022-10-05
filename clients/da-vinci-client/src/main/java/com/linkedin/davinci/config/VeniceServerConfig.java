@@ -5,7 +5,6 @@ import static com.linkedin.venice.ConfigKeys.AUTOCREATE_DATA_PATH;
 import static com.linkedin.venice.ConfigKeys.AUTO_CLOSE_IDLE_CONSUMERS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
-import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_WHITE_LIST;
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
 import static com.linkedin.venice.ConfigKeys.HELIX_HYBRID_STORE_QUOTA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
@@ -390,8 +389,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         Paths.get(System.getProperty("java.io.tmpdir"), "venice-server-data").toAbsolutePath().toString());
     autoCreateDataPath = Boolean.parseBoolean(serverProperties.getString(AUTOCREATE_DATA_PATH, "true"));
     rocksDBServerConfig = new RocksDBServerConfig(serverProperties);
-    enableServerAllowList =
-        serverProperties.getBooleanWithAlternative(ENABLE_SERVER_WHITE_LIST, ENABLE_SERVER_ALLOW_LIST, false);
+    enableServerAllowList = serverProperties.getBoolean(ENABLE_SERVER_ALLOW_LIST, false);
     maxLeaderFollowerStateTransitionThreadNumber =
         serverProperties.getInt(MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER, 20);
 
