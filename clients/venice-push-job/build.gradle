@@ -67,12 +67,3 @@ jar {
     attributes 'Main-Class': 'com.linkedin.venice.hadoop.VenicePushJob'
   }
 }
-
-//"fat" sources jar
-task sourceJar(type: Jar, dependsOn: classes) {
-  duplicatesStrategy = DuplicatesStrategy.WARN
-  // we return here a closure to do this lazy, after all projects are configured by gradle
-  from { packaging.collectSourceSetsIncludingSubmodules(project) }
-}
-
-publishing.configureShadowArtifactPublishing(project, shadowJar, sourceJar, testJar)
