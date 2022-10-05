@@ -106,7 +106,7 @@ def get_remote():
     remote_text = check_output(['git', 'remote', '-v'])
     lines = [l.decode('UTF-8') for l in remote_text.splitlines()]
     for line in lines:
-        if 'git@github.com:linkedin/venice.git' in line or 'https://github.com/linkedin/venice.git' in line:
+        if 'git@github.com:linkedin/venice' in line or 'https://github.com/linkedin/venice' in line:
             remote = str(line).split('\t')[0]  # origin ssh://git@github.com... (fetch)
             print('Using remote: ' + remote)
             return remote
