@@ -116,7 +116,7 @@ public class TestControllerClient {
 
     try (MockD2ServerWrapper mockController =
         ServiceFactory.getMockD2Server("test-controller", d2ClusterName, d2ServiceName)) {
-      String uriPattern = ControllerRoute.MASTER_CONTROLLER.getPath() + ".*cluster_name=" + veniceClusterName + ".*";
+      String uriPattern = ControllerRoute.LEADER_CONTROLLER.getPath() + ".*cluster_name=" + veniceClusterName + ".*";
       mockController.addResponseForUriPattern(
           uriPattern,
           constructLeaderControllerResponse(veniceClusterName, fakeLeaderControllerUri));
