@@ -25,7 +25,7 @@ def read_config(path):
 def run_command(command):
   status, output = subprocess.getstatusoutput(command)
   if status:
-    raise SystemExit(output)
+    raise SystemExit(command + '\n' + output)
   return output
 
 def get_queued_build(build_url, params):
@@ -63,7 +63,7 @@ if __name__ == "__main__":
   parser.add_argument("-m", "--message", help="optional description of the changes")
   parser.add_argument("patch", nargs='?', help="diff-formatted patch to submit for testing")
 
-  params = dict(job="Venice-WcTest", baseline="origin/master")
+  params = dict(job="Venice-WcTest", baseline="upstream/main")
   params.update(read_config(CI_CONFIG))
   parser.set_defaults(**params)
   params.update(vars(parser.parse_args()))
@@ -80,6 +80,7 @@ if __name__ == "__main__":
   if "patch" in params:
     response = run_command(command + shlex.quote(params["patch"]))
   else:
+    run_command("git fetch upstream")
     changes = run_command("git diff --find-renames --compact-summary " + params["baseline"])
     if not changes:
       raise SystemExit("No changes")
