@@ -7,11 +7,11 @@ on:
 
 jobs:
   deploy:
-    if: github.repository == 'linkedin/venice'
+#    if: github.repository == 'linkedin/venice'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
 
       - name: Cut release tag to build and upload Venice Release archive
         run: |
-          ./make_tag.py --no-verify
+          ./make_tag.py 
