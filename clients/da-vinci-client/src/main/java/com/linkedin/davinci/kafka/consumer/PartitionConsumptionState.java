@@ -88,7 +88,7 @@ public class PartitionConsumptionState {
   /**
    * This hash map will keep a temporary mapping between a key and it's value.
    * get {@link #getTransientRecord(byte[])} and put {@link #setTransientRecord(int, long, byte[], int, GenericRecord)}
-   * operation on this map will be invoked from from kafka consumer thread.
+   * operation on this map will be invoked from kafka consumer thread.
    * delete {@link #mayRemoveTransientRecord(int, long, byte[])} operation will be invoked from drainer thread after persisting it in DB.
    * because of the properties of the above operations the caller is guaranteed to get the latest value for a key either from
    * this map or from the DB.
