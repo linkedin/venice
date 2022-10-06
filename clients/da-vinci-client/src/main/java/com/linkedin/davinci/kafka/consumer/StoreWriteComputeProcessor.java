@@ -1,6 +1,5 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.serialization.avro.MapOrderingPreservingSerDeFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.merge.MergeRecordHelper;
@@ -8,6 +7,7 @@ import com.linkedin.venice.schema.writecompute.WriteComputeProcessor;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaValidator;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.serializer.avro.MapOrderingPreservingSerDeFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;

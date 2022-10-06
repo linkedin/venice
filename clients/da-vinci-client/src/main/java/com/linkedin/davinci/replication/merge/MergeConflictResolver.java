@@ -7,7 +7,6 @@ import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
 
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
-import com.linkedin.davinci.serialization.avro.MapOrderingPreservingSerDeFactory;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
@@ -17,6 +16,7 @@ import com.linkedin.venice.schema.SchemaUtils;
 import com.linkedin.venice.schema.merge.ValueAndRmd;
 import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
+import com.linkedin.venice.serializer.avro.MapOrderingPreservingSerDeFactory;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;

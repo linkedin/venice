@@ -1,4 +1,4 @@
-package com.linkedin.davinci.serialization.avro;
+package com.linkedin.venice.serializer.avro;
 
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;

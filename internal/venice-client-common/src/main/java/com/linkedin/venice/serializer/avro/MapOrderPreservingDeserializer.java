@@ -1,4 +1,4 @@
-package com.linkedin.davinci.serialization.avro;
+package com.linkedin.venice.serializer.avro;
 
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import org.apache.avro.Schema;
