@@ -57,6 +57,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
+import com.linkedin.venice.exceptions.ResourceStillExistsException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
@@ -6185,14 +6186,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     multiClusterConfigs.addClusterConfig(config);
   }
 
-  private ZkAllowlistAccessor getAllowlistAccessor() {
-    return allowlistAccessor;
-  }
-
-  StoreGraveyard getStoreGraveyard() {
-    return storeGraveyard;
-  }
-
   String getControllerName() {
     return controllerName;
   }
@@ -6724,12 +6717,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throw new VeniceException("Store: " + storeName + " still exists in cluster: " + clusterName);
     }
 
-    Set<String> allRelevantStores = new HashSet<>();
-    Arrays.stream(VeniceSystemStoreType.values()).forEach(s -> allRelevantStores.add(s.getSystemStoreName(storeName)));
-    allRelevantStores.add(storeName);
-
-    // Check all the topics belonging to this store.
-    Set<String> topics = getTopicManager().listTopics();
     /**
      * All store version topics from before deletion will not be used since we will create a new version number
      * that has not been used previously. We let TopicCleanupService take care of the cleanups.
@@ -6737,29 +6724,64 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * The version check skip was introduced when Venice was running with Kafka MirrorMaker to avoid a KMM crash.
      * TODO: Evaluate if this code needs to change now that KMM logic has been deprecated.
      *
-     * So for topic check, we will ensure the RT topic for the Venice store will be deleted, and all other system
-     * store topics.
+     * So for topic check, we ensure RT topics for the Venice store and its system stores are deleted.
      */
+    checkKafkaTopicAndHelixResource(clusterName, storeName, false, checkHelixResource, false);
+  }
+
+  void checkKafkaTopicAndHelixResource(
+      String clusterName,
+      String storeName,
+      boolean checkVersionTopic,
+      boolean checkHelixResource,
+      boolean checkOfflinePush) {
+    Set<String> allRelevantStores = Arrays.stream(VeniceSystemStoreType.values())
+        .filter(VeniceSystemStoreType::isStoreZkShared)
+        .map(s -> s.getSystemStoreName(storeName))
+        .collect(Collectors.toSet());
+    allRelevantStores.add(storeName);
+
+    // Check Kafka topics belonging to this store.
+    Set<String> topics = getTopicManager().listTopics();
     topics.forEach(topic -> {
+      String storeNameForTopic = null;
       if (Version.isRealTimeTopic(topic)) {
-        String storeNameForTopic = Version.parseStoreFromRealTimeTopic(topic);
-        if (allRelevantStores.contains(storeNameForTopic)) {
-          throw new VeniceException(
-              "Topic: " + ": " + topic + " still exists for store: " + storeName
-                  + ", please make sure all the resources are removed before store re-creation");
-        }
+        storeNameForTopic = Version.parseStoreFromRealTimeTopic(topic);
+      } else if (checkVersionTopic) {
+        storeNameForTopic = Version.parseStoreFromKafkaTopicName(topic);
+      }
+      if (storeNameForTopic != null && allRelevantStores.contains(storeNameForTopic)) {
+        throw new ResourceStillExistsException(
+            "Topic: " + topic + " still exists for store: " + storeName + ", please make sure all "
+                + (checkVersionTopic ? "" : "real-time ") + "topics are removed.");
       }
     });
-    // Check all the helix resources.
+    // Check all helix resources.
     if (checkHelixResource) {
       List<String> helixAliveResources = getAllLiveHelixResources(clusterName);
       helixAliveResources.forEach(resource -> {
         if (Version.isVersionTopic(resource)) {
-          String storeNameForResource = Version.parseStoreFromKafkaTopicName(resource);
+          String storeNameForResource = Version.parseStoreFromVersionTopic(resource);
           if (allRelevantStores.contains(storeNameForResource)) {
-            throw new VeniceException(
-                "Helix Resource: " + ": " + resource + " still exists for store: " + storeName
-                    + ", please make sure all the resources are removed before store re-creation");
+            throw new ResourceStillExistsException(
+                "Helix Resource: " + resource + " still exists for store: " + storeName
+                    + ", please make sure all helix resources are removed.");
+          }
+        }
+      });
+    }
+    // Check all offline push zk nodes.
+    if (checkOfflinePush) {
+      VeniceOfflinePushMonitorAccessor accessor =
+          new VeniceOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer);
+      List<String> offlinePushes = zkClient.getChildren(accessor.getOfflinePushStatuesParentPath());
+      offlinePushes.forEach(resource -> {
+        if (Version.isVersionTopic(resource)) {
+          String storeNameForResource = Version.parseStoreFromVersionTopic(resource);
+          if (allRelevantStores.contains(storeNameForResource)) {
+            throw new ResourceStillExistsException(
+                "Offline push: " + resource + " still exists for store: " + storeName
+                    + ", please make sure all offline push nodes are removed.");
           }
         }
       });
@@ -7343,5 +7365,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
     }
     return deletedZNodes;
+  }
+
+  @Override
+  public StoreGraveyard getStoreGraveyard() {
+    return storeGraveyard;
+  }
+
+  @Override
+  public void removeStoreFromGraveyard(String clusterName, String storeName) {
+    checkControllerLeadershipFor(clusterName);
+    checkKafkaTopicAndHelixResource(clusterName, storeName, true, true, true);
+    storeGraveyard.removeStoreFromGraveyard(clusterName, storeName);
   }
 }

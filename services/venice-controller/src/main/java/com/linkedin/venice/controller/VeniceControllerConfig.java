@@ -36,6 +36,9 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_BATCH_PUSH_FROM_A
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_IN_AZURE_FABRIC;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
@@ -236,6 +239,12 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private final String identityParserClassName;
 
+  private final boolean storeGraveyardCleanupEnabled;
+
+  private final int storeGraveyardCleanupDelayMinutes;
+
+  private final int storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes;
+
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
     this.adminPort = props.getInt(ADMIN_PORT);
@@ -425,6 +434,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.controllerInAzureFabric = props.getBoolean(CONTROLLER_IN_AZURE_FABRIC, false);
     this.unregisterMetricForDeletedStoreEnabled = props.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
     this.identityParserClassName = props.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
+    this.storeGraveyardCleanupEnabled = props.getBoolean(CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED, false);
+    this.storeGraveyardCleanupDelayMinutes = props.getInt(CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES, 0);
+    this.storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes =
+        props.getInt(CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES, 15);
   }
 
   private void validateActiveActiveConfigs() {
@@ -783,6 +796,18 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public String getIdentityParserClassName() {
     return identityParserClassName;
+  }
+
+  public boolean isStoreGraveyardCleanupEnabled() {
+    return storeGraveyardCleanupEnabled;
+  }
+
+  public int getStoreGraveyardCleanupDelayMinutes() {
+    return storeGraveyardCleanupDelayMinutes;
+  }
+
+  public int getStoreGraveyardCleanupSleepIntervalBetweenListFetchMinutes() {
+    return storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes;
   }
 
   /**

@@ -256,4 +256,8 @@ public class VeniceControllerMultiClusterConfig {
   public String getEmergencySourceRegion() {
     return getCommonConfig().getEmergencySourceRegion();
   }
+
+  public int getGraveyardCleanupSleepIntervalBetweenListFetchMinutes() {
+    return getCommonConfig().getStoreGraveyardCleanupSleepIntervalBetweenListFetchMinutes();
+  }
 }

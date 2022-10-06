@@ -130,6 +130,7 @@ import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.PartitionerSchemaMismatchException;
+import com.linkedin.venice.exceptions.ResourceStillExistsException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -156,6 +157,7 @@ import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreDataAudit;
+import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
@@ -4956,5 +4958,30 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public List<String> cleanupInstanceCustomizedStates(String clusterName) {
     throw new VeniceUnsupportedOperationException("cleanupInstanceCustomizedStates");
+  }
+
+  @Override
+  public StoreGraveyard getStoreGraveyard() {
+    return getVeniceHelixAdmin().getStoreGraveyard();
+  }
+
+  @Override
+  public void removeStoreFromGraveyard(String clusterName, String storeName) {
+    // Check parent data center to make sure store could be removed from graveyard.
+    getVeniceHelixAdmin().checkKafkaTopicAndHelixResource(clusterName, storeName, true, false, false);
+    // Check all child data centers to make sure store is removed from graveyard there.
+    Map<String, ControllerClient> controllerClientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    controllerClientMap.forEach((coloName, cc) -> {
+      ControllerResponse response = cc.removeStoreFromGraveyard(storeName);
+      if (response.isError()) {
+        if (ErrorType.RESOURCE_STILL_EXISTS.equals(response.getErrorType())) {
+          throw new ResourceStillExistsException(
+              "Store graveyard " + storeName + " is not ready for removal in colo: " + coloName);
+        }
+        throw new VeniceException(
+            "Error when removing store graveyard " + storeName + " in colo: " + coloName + ". " + response.getError());
+      }
+    });
+    getStoreGraveyard().removeStoreFromGraveyard(clusterName, storeName);
   }
 }

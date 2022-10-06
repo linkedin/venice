@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controller.server.VeniceRouteHandler.ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_DEST;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC;
@@ -42,6 +43,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_LF_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORE_PUSH_INFO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.MIGRATE_STORE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_STORE_FROM_GRAVEYARD;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_OWNER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_TOPIC_COMPACTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_VERSION;
@@ -49,6 +51,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.STORAGE_ENGINE_O
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORE;
 
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
@@ -74,6 +77,8 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
+import com.linkedin.venice.exceptions.ErrorType;
+import com.linkedin.venice.exceptions.ResourceStillExistsException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
@@ -94,6 +99,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
+import org.apache.http.HttpStatus;
 import spark.Request;
 import spark.Route;
 
@@ -1013,6 +1019,34 @@ public class StoresRoutes extends AbstractRoute {
         admin.truncateKafkaTopic(topicName);
         veniceResponse.setCluster(cluster);
       }
+    };
+  }
+
+  public Route removeStoreFromGraveyard(Admin admin) {
+    return (request, response) -> {
+      ControllerResponse responseObject = new ControllerResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        if (!isAllowListUser(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
+          responseObject.setError(ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX + request.url());
+          responseObject.setErrorType(ErrorType.BAD_REQUEST);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+        }
+        AdminSparkServer.validateParams(request, REMOVE_STORE_FROM_GRAVEYARD.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        responseObject.setCluster(clusterName);
+        responseObject.setName(storeName);
+        admin.removeStoreFromGraveyard(clusterName, storeName);
+      } catch (ResourceStillExistsException exception) {
+        responseObject.setError(exception);
+        AdminSparkServer.handleError(exception, request, response, false);
+      } catch (Throwable throwable) {
+        responseObject.setError(throwable);
+        AdminSparkServer.handleError(new VeniceException(throwable), request, response);
+      }
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 }
