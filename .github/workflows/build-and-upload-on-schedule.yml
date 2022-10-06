@@ -1,0 +1,29 @@
+name: Venice LinkedIn Publication Pipeline
+
+on:
+  schedule:
+    - cron: "30 9 * * 4"
+  workflow_dispatch:
+    inputs:
+      branchName:
+        description: "Branch from which you want to publish jars in Venice public repo. By default it's main branch."
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up JDK 11
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'microsoft'
+          java-version: '11'
+
+      - name: Cut release tag to build and upload Venice Release archive
+        if : ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'}}
+        env:
+          MVN_JFROG_USER: ${{ secrets.MVN_JFROG_USER }}
+          MVN_JFROG_KEY: ${{ secrets.MVN_JFROG_KEY }}
+          GIT_BRANCH_NAME: ${{ github.event.inputs.branchName }}
+        run: |
+          ./make_tag.py
