@@ -20,6 +20,7 @@ import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataAudit;
+import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
@@ -862,4 +863,8 @@ public interface Admin extends AutoCloseable, Closeable {
    * @return list of deleted ZNode paths.
    */
   List<String> cleanupInstanceCustomizedStates(String clusterName);
+
+  StoreGraveyard getStoreGraveyard();
+
+  void removeStoreFromGraveyard(String clusterName, String storeName);
 }

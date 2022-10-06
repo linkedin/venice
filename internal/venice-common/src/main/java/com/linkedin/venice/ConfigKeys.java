@@ -321,6 +321,24 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_IN_AZURE_FABRIC = "controller.in.azure.fabric";
 
+  /**
+   * Whether to enable graveyard cleanup for batch-only store at cluster level. Default is false.
+   */
+  public static final String CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED = "controller.store.graveyard.cleanup.enabled";
+
+  /**
+   * When store graveyard cleanup is enabled, delete the graveyard znode if it has not been changed for a specific time.
+   * Default is 0 min.
+   */
+  public static final String CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES =
+      "controller.store.graveyard.cleanup.delay.minutes";
+
+  /**
+   * Sleep interval between each graveyard list fetch from ZK in StoreGraveyardCleanup service. Default is 15 min.
+   * */
+  public static final String CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES =
+      "controller.store.graveyard.cleanup.sleep.interval.between.list.fetch.minutes";
+
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";
   public static final String DATA_BASE_PATH = "data.base.path";
