@@ -1,0 +1,17 @@
+name: Venice Publication Pipeline
+
+on:
+  schedule:
+    - cron: "30 0 * * 3"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    if: github.repository == 'linkedin/venice'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Cut release tag to build and upload Venice Release archive
+        run: |
+          ./make_tag.py --no-verify 
