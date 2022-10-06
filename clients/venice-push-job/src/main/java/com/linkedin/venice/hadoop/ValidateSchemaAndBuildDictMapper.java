@@ -5,6 +5,8 @@ import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.hadoop.VenicePushJob.ETL_VALUE_SCHEMA_TRANSFORMATION;
 import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJob.INPUT_PATH_LAST_MODIFIED_TIME;
+import static com.linkedin.venice.hadoop.VenicePushJob.KEY_INPUT_FILE_DATA_SIZE;
+import static com.linkedin.venice.hadoop.VenicePushJob.KEY_ZSTD_COMPRESSION_DICTIONARY;
 import static com.linkedin.venice.hadoop.VenicePushJob.PATH_FILTER;
 import static com.linkedin.venice.hadoop.VenicePushJob.PushJobSetting;
 import static com.linkedin.venice.hadoop.VenicePushJob.StoreSetting;
@@ -13,11 +15,16 @@ import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
+import com.linkedin.venice.hadoop.output.avro.ValidateSchemaAndBuildDictOutput;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.mapred.AvroWrapper;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -35,13 +42,12 @@ import org.apache.logging.log4j.Logger;
 /**
  * Mapper only MR to Validate Schema and Build dictionary if needed
  *
- * Note
- * 1. processing all the files in this split are done sequentially and if it
- *    results in significant increase in the mapper time or resulting in timeouts,
- *    this needs to be revisited to be done via a thread pool.
+ * Note: processing all the files in this split are done sequentially and if it
+ * results in significant increase in the mapper time or resulting in timeouts,
+ * this needs to be revisited to be done via a thread pool.
  */
 public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
-    implements Mapper<IntWritable, NullWritable, NullWritable, NullWritable> {
+    implements Mapper<IntWritable, NullWritable, AvroWrapper<GenericRecord>, NullWritable> {
   private static final Logger LOGGER = LogManager.getLogger(ValidateSchemaAndBuildDictMapper.class);
   protected InputDataInfoProvider inputDataInfoProvider = null;
   protected InputDataInfoProvider.InputDataInfo inputDataInfo;
@@ -53,15 +59,24 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
   private FileSystem fileSystem = null;
   private long inputModificationTime;
   protected String inputDirectory;
+  private Schema outputSchema;
+  private Long inputFileDataSize = 0L;
+
+  private GenericRecord getRecord(Schema recordSchema, byte[] key, byte[] value) {
+    GenericRecord genericRecord = new GenericData.Record(recordSchema);
+    genericRecord.put("key", key);
+    genericRecord.put("value", value);
+    return genericRecord;
+  }
 
   @Override
   public void map(
       IntWritable inputKey,
       NullWritable inputValue,
-      OutputCollector<NullWritable, NullWritable> output,
+      OutputCollector<AvroWrapper<GenericRecord>, NullWritable> output,
       Reporter reporter) throws IOException {
     if (!hasReportedFailure) {
-      if (process(inputKey, reporter)) {
+      if (process(inputKey, output, reporter)) {
         /** successfully processed a record */
         MRJobCounterHelper.incrMapperNumRecordsSuccessfullyProcessedCount(reporter, 1);
       } else {
@@ -82,7 +97,10 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
    * @param reporter
    * @return true for successful processing, false for error
    */
-  protected boolean process(IntWritable inputIdx, Reporter reporter) throws IOException {
+  protected boolean process(
+      IntWritable inputIdx,
+      OutputCollector<AvroWrapper<GenericRecord>, NullWritable> output,
+      Reporter reporter) throws IOException {
     DefaultInputDataInfoProvider inputDataInfoProvider = (DefaultInputDataInfoProvider) this.inputDataInfoProvider;
     int fileIdx = inputIdx.get();
     if (fileIdx != VeniceFileInputSplit.MAPPER_BUILD_DICTIONARY_KEY) {
@@ -137,9 +155,19 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
           return false;
         }
       }
+      inputFileDataSize += fileStatus.getLen();
     } else {
-      // If dictionary building is enabled and if there are any input records:
-      // build dictionary from the data collected so far
+      // Post the processing of input files: Persist some data to HDFS to be used by the VPJ driver code
+
+      // 1. inputFileDataSize
+      ByteBuffer inputFileDataSizeBuffer = ByteBuffer.allocate(Long.BYTES);
+      inputFileDataSizeBuffer.putLong(inputFileDataSize);
+      GenericRecord genericRecord =
+          getRecord(outputSchema, KEY_INPUT_FILE_DATA_SIZE.getBytes(), inputFileDataSizeBuffer.array());
+      output.collect(new AvroWrapper<>(genericRecord), NullWritable.get());
+
+      // 2. zstd compression dictionary: If dictionary building is enabled and if there are any
+      // input records: build dictionary from the data collected so far and persist it
       if (buildDictionary) {
         if (inputDataInfo.hasRecords()) {
           LOGGER.info(
@@ -149,6 +177,8 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
           try {
             dict = inputDataInfoProvider.getZstdDictTrainSamples();
             MRJobCounterHelper.incrMapperZstdDictTrainSuccessCount(reporter, 1);
+            genericRecord = getRecord(outputSchema, KEY_ZSTD_COMPRESSION_DICTIONARY.getBytes(), dict);
+            output.collect(new AvroWrapper<>(genericRecord), NullWritable.get());
           } catch (Exception e) {
             MRJobCounterHelper.incrMapperZstdDictTrainFailureCount(reporter, 1);
             LOGGER.error(
@@ -249,6 +279,8 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
       // Errors are printed and counters are incremented already
       hasReportedFailure = true;
     }
+
+    outputSchema = ValidateSchemaAndBuildDictOutput.SCHEMA$;
   }
 
   @Override
