@@ -2233,13 +2233,13 @@ public class VeniceParentHelixAdmin implements Admin {
           .map(addToUpdatedConfigList(updatedConfigsList, ACTIVE_ACTIVE_REPLICATION_ENABLED))
           .orElseGet(currStore::isActiveActiveReplicationEnabled);
 
+      // Only update fields that are set, other fields will be read from the original store's partitioner config.
+      PartitionerConfig updatedPartitionerConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldPartitionerConfig(
+          currStore,
+          partitionerClass,
+          partitionerParams,
+          amplificationFactor);
       if (partitionerClass.isPresent() || partitionerParams.isPresent() || amplificationFactor.isPresent()) {
-        // Only update fields that are set, other fields will be read from the original store's partitioner config.
-        PartitionerConfig updatedPartitionerConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldPartitionerConfig(
-            currStore,
-            partitionerClass,
-            partitionerParams,
-            amplificationFactor);
         // Update updatedConfigsList.
         partitionerClass.ifPresent(p -> updatedConfigsList.add(PARTITIONER_CLASS));
         partitionerParams.ifPresent(p -> updatedConfigsList.add(PARTITIONER_PARAMS));
@@ -2467,6 +2467,14 @@ public class VeniceParentHelixAdmin implements Admin {
        * Fabrics filter is not a store config, so we don't need to add it into {@link UpdateStore#updatedConfigsList}
        */
       setStore.regionsFilter = regionsFilter.orElse(null);
+
+      if ((setStore.getActiveActiveReplicationEnabled() || setStore.getWriteComputationEnabled())
+          && updatedPartitionerConfig.getAmplificationFactor() > 1) {
+        throw new VeniceHttpException(
+            HttpStatus.SC_BAD_REQUEST,
+            "Non-default amplification factor is not compatible with active-active replication and/or write compute.",
+            ErrorType.BAD_REQUEST);
+      }
 
       final boolean writeComputeJustEnabled =
           writeComputationEnabled.orElse(false) && !currStore.isWriteComputationEnabled();
