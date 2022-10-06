@@ -1041,8 +1041,7 @@ public class StoresRoutes extends AbstractRoute {
         admin.removeStoreFromGraveyard(clusterName, storeName);
       } catch (ResourceStillExistsException exception) {
         responseObject.setError(exception);
-        response.status(exception.getHttpStatusCode());
-        request.attribute(AdminSparkServer.REQUEST_SUCCEED, false);
+        AdminSparkServer.handleError(exception, request, response, false);
       } catch (Throwable throwable) {
         responseObject.setError(throwable);
         AdminSparkServer.handleError(new VeniceException(throwable), request, response);

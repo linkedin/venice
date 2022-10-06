@@ -1,7 +1,8 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_GRAVEYARD_CLEANUP_FOR_BATCH_ONLY_STORE;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -45,8 +46,9 @@ public class TestStoreGraveyardCleanupService {
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
 
     Properties parentControllerProperties = new Properties();
-    parentControllerProperties.put(CONTROLLER_ENABLE_GRAVEYARD_CLEANUP_FOR_BATCH_ONLY_STORE, "true");
-    parentControllerProperties.put(CONTROLLER_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MS, 1000L);
+    parentControllerProperties.put(CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED, "true");
+    parentControllerProperties.put(CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES, 0);
+    parentControllerProperties.put(CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES, -1);
 
     multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
@@ -79,35 +81,20 @@ public class TestStoreGraveyardCleanupService {
       NewStoreResponse newStoreResponse =
           parentControllerClient.createNewStore(batchStoreName, "test", "\"string\"", "\"string\"");
       Assert.assertFalse(newStoreResponse.isError());
-      String hybridStoreName = Utils.getUniqueString("testStoreGraveyardCleanupHybrid");
-      newStoreResponse = parentControllerClient.createNewStore(hybridStoreName, "test", "\"string\"", "\"string\"");
-      Assert.assertFalse(newStoreResponse.isError());
 
       ControllerResponse updateResponse = parentControllerClient
           .updateStore(batchStoreName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
       Assert.assertFalse(updateResponse.isError());
-      updateResponse = parentControllerClient.updateStore(
-          hybridStoreName,
-          new UpdateStoreQueryParams().setHybridRewindSeconds(10)
-              .setHybridOffsetLagThreshold(2)
-              .setEnableReads(false)
-              .setEnableWrites(false));
-      Assert.assertFalse(updateResponse.isError());
 
       TrackableControllerResponse response = parentControllerClient.deleteStore(batchStoreName);
-      Assert.assertFalse(response.isError());
-      response = parentControllerClient.deleteStore(hybridStoreName);
       Assert.assertFalse(response.isError());
 
       StoreGraveyard parentStoreGraveyard = parentControllers.get(0).getVeniceAdmin().getStoreGraveyard();
       StoreGraveyard childStoreGraveyard =
           childDatacenters.get(0).getLeaderController(CLUSTER_NAME).getVeniceAdmin().getStoreGraveyard();
-      // Only batch store graveyard is cleaned up
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
-        Assert.assertNull(parentStoreGraveyard.getStoreFromGraveyard(CLUSTER_NAME, batchStoreName));
-        Assert.assertNotNull(parentStoreGraveyard.getStoreFromGraveyard(CLUSTER_NAME, hybridStoreName));
-        Assert.assertNull(childStoreGraveyard.getStoreFromGraveyard(CLUSTER_NAME, batchStoreName));
-        Assert.assertNotNull(childStoreGraveyard.getStoreFromGraveyard(CLUSTER_NAME, hybridStoreName));
+        Assert.assertNull(parentStoreGraveyard.getStoreFromGraveyard(CLUSTER_NAME, batchStoreName, null));
+        Assert.assertNull(childStoreGraveyard.getStoreFromGraveyard(CLUSTER_NAME, batchStoreName, null));
       });
     }
   }

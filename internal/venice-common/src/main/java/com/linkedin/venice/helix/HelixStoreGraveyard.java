@@ -20,6 +20,7 @@ import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.zookeeper.data.Stat;
 
 
 public class HelixStoreGraveyard implements StoreGraveyard {
@@ -136,9 +137,9 @@ public class HelixStoreGraveyard implements StoreGraveyard {
   }
 
   @Override
-  public Store getStoreFromGraveyard(String clusterName, String storeName) {
+  public Store getStoreFromGraveyard(String clusterName, String storeName, Stat stat) {
     String path = getStoreGraveyardPath(clusterName, storeName);
-    return dataAccessor.get(path, null, AccessOption.PERSISTENT);
+    return dataAccessor.get(path, stat, AccessOption.PERSISTENT);
   }
 
   @Override

@@ -6735,10 +6735,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       boolean checkVersionTopic,
       boolean checkHelixResource,
       boolean checkOfflinePush) {
-    Set<String> allRelevantStores = new HashSet<>();
-    Arrays.stream(VeniceSystemStoreType.values())
+    Set<String> allRelevantStores = Arrays.stream(VeniceSystemStoreType.values())
         .filter(VeniceSystemStoreType::isStoreZkShared)
-        .forEach(s -> allRelevantStores.add(s.getSystemStoreName(storeName)));
+        .map(s -> s.getSystemStoreName(storeName))
+        .collect(Collectors.toSet());
     allRelevantStores.add(storeName);
 
     // Check Kafka topics belonging to this store.
@@ -6772,7 +6772,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     // Check all offline push zk nodes.
     if (checkOfflinePush) {
-      List<String> offlinePushes = zkClient.getChildren("/" + clusterName + "/OfflinePushes");
+      VeniceOfflinePushMonitorAccessor accessor =
+          new VeniceOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer);
+      List<String> offlinePushes = zkClient.getChildren(accessor.getOfflinePushStatuesParentPath());
       offlinePushes.forEach(resource -> {
         if (Version.isVersionTopic(resource)) {
           String storeNameForResource = Version.parseStoreFromVersionTopic(resource);

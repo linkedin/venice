@@ -1,14 +1,13 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.exceptions.ResourceStillExistsException;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.zookeeper.data.Stat;
 
 
 /**
@@ -23,9 +22,6 @@ import org.apache.logging.log4j.Logger;
  * Each child controller checks if the store can be removed from graveyard in the child colo. If so, remove it and
  * respond OK. Otherwise, respond with error. If all child controllers respond OK, parent controller will remove
  * the store from graveyard in parent colo.
- *
- * The service only removes batch-only stores for now because hybrid ETL needs graveyard to guarantee version numbers
- * are not reused in recreated stores before ETL off-boarding steps.
  */
 public class StoreGraveyardCleanupService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(StoreGraveyardCleanupService.class);
@@ -33,8 +29,7 @@ public class StoreGraveyardCleanupService extends AbstractVeniceService {
   private final VeniceParentHelixAdmin admin;
   private final VeniceControllerMultiClusterConfig multiClusterConfig;
   private final Thread cleanupThread;
-  private final long sleepIntervalBetweenListFetchMs; // default is 15 min
-  private final long sleepIntervalBetweenStore = TimeUnit.MINUTES.toMillis(1);
+  private final int sleepIntervalBetweenListFetchMinutes; // default is 15 min
   private final Time time = new SystemTime();
   private boolean stop = false;
 
@@ -43,7 +38,8 @@ public class StoreGraveyardCleanupService extends AbstractVeniceService {
       VeniceControllerMultiClusterConfig multiClusterConfig) {
     this.admin = admin;
     this.multiClusterConfig = multiClusterConfig;
-    this.sleepIntervalBetweenListFetchMs = multiClusterConfig.getGraveyardCleanupSleepIntervalBetweenListFetchMs();
+    this.sleepIntervalBetweenListFetchMinutes =
+        multiClusterConfig.getGraveyardCleanupSleepIntervalBetweenListFetchMinutes();
     this.cleanupThread = new Thread(new StoreGraveyardCleanupTask(), "StoreGraveyardCleanupTask");
   }
 
@@ -65,12 +61,13 @@ public class StoreGraveyardCleanupService extends AbstractVeniceService {
       LOGGER.info("Started running {}", getClass().getSimpleName());
       while (!stop) {
         try {
-          time.sleep(sleepIntervalBetweenListFetchMs);
+          time.sleep((long) sleepIntervalBetweenListFetchMinutes * Time.MS_PER_MINUTE);
           // loop all clusters
           for (String clusterName: multiClusterConfig.getClusters()) {
-            boolean cleanupForBatchOnlyStoreEnabled =
-                multiClusterConfig.getControllerConfig(clusterName).isGraveyardCleanupForBatchOnlyStoreEnabled();
-            if (!cleanupForBatchOnlyStoreEnabled || !admin.isLeaderControllerFor(clusterName)) {
+            VeniceControllerConfig clusterConfig = multiClusterConfig.getControllerConfig(clusterName);
+            boolean cleanupEnabled = clusterConfig.isStoreGraveyardCleanupEnabled();
+            int delayInMinutes = clusterConfig.getStoreGraveyardCleanupDelayMinutes();
+            if (!cleanupEnabled || !admin.isLeaderControllerFor(clusterName)) {
               // Only clean up when config is enabled and this is the leader controller for current cluster
               continue;
             }
@@ -79,8 +76,9 @@ public class StoreGraveyardCleanupService extends AbstractVeniceService {
             for (String storeName: storeNames) {
               boolean didCleanup = false;
               try {
-                Store store = admin.getStoreGraveyard().getStoreFromGraveyard(clusterName, storeName);
-                if (store != null && !store.isHybrid() && !store.isIncrementalPushEnabled()) {
+                Stat stat = new Stat();
+                admin.getStoreGraveyard().getStoreFromGraveyard(clusterName, storeName, stat);
+                if ((time.getMilliseconds() - stat.getMtime()) / Time.MS_PER_MINUTE > delayInMinutes) {
                   admin.removeStoreFromGraveyard(clusterName, storeName);
                   didCleanup = true;
                 }
@@ -94,7 +92,7 @@ public class StoreGraveyardCleanupService extends AbstractVeniceService {
                     exception);
               }
               if (didCleanup) {
-                time.sleep(sleepIntervalBetweenStore);
+                time.sleep(Time.MS_PER_MINUTE);
               }
             }
           }

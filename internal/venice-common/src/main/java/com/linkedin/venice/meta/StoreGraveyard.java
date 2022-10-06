@@ -1,6 +1,7 @@
 package com.linkedin.venice.meta;
 
 import java.util.List;
+import org.apache.zookeeper.data.Stat;
 
 
 /**
@@ -25,7 +26,7 @@ public interface StoreGraveyard {
   /**
    * Get store from the graveyard in the specified cluster.
    */
-  Store getStoreFromGraveyard(String clusterName, String storeName);
+  Store getStoreFromGraveyard(String clusterName, String storeName, Stat stat);
 
   /**
    * Remove the given store from graveyard in the specified cluster.

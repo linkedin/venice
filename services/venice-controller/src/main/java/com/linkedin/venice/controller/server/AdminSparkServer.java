@@ -521,12 +521,18 @@ public class AdminSparkServer extends AbstractVeniceService {
   }
 
   protected static void handleError(Throwable e, Request request, Response response) {
-    StringBuilder sb = new StringBuilder("Request params were: ");
-    request.queryMap().toMap().forEach((k, v) -> { /* Map<String, String[]> */
-      sb.append(k).append("=").append(String.join(",", v)).append(" ");
-    });
-    String errMsg = sb.toString();
-    LOGGER.error(errMsg, e);
+    handleError(e, request, response, true);
+  }
+
+  protected static void handleError(Throwable e, Request request, Response response, boolean logErrorMessage) {
+    if (logErrorMessage) {
+      StringBuilder sb = new StringBuilder("Request params were: ");
+      request.queryMap().toMap().forEach((k, v) -> { /* Map<String, String[]> */
+        sb.append(k).append("=").append(String.join(",", v)).append(" ");
+      });
+      String errMsg = sb.toString();
+      LOGGER.error(errMsg, e);
+    }
     if (e instanceof Error) {
       throw (Error) e;
     }

@@ -1147,7 +1147,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         .waitForNonDeterministicAssertion(TOTAL_TIMEOUT_FOR_LONG_TEST_MS, TimeUnit.MILLISECONDS, false, true, () -> {
           veniceAdmin.getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
           veniceAdmin.removeStoreFromGraveyard(clusterName, storeName);
-          Assert.assertNull(veniceAdmin.getStoreGraveyard().getStoreFromGraveyard(clusterName, storeName));
+          Assert.assertNull(veniceAdmin.getStoreGraveyard().getStoreFromGraveyard(clusterName, storeName, null));
         });
   }
 
