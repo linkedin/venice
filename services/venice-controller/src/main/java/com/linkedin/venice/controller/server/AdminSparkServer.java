@@ -153,7 +153,7 @@ public class AdminSparkServer extends AbstractVeniceService {
   final private SparkServerStats nonclusterSpecificStats;
 
   private static String REQUEST_START_TIME = "startTime";
-  protected static String REQUEST_SUCCEED = "succeed";
+  private static String REQUEST_SUCCEED = "succeed";
 
   // In order to build multiple controller in a single JVM, we create a new http service instance for each of
   // AdminSparkServer instance.
