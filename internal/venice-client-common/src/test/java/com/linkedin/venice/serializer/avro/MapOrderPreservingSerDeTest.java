@@ -1,4 +1,4 @@
-package com.linkedin.davinci.serialization.avro;
+package com.linkedin.venice.serializer.avro;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.utils.IndexedHashMap;
