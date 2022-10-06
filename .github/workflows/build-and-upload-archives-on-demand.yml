@@ -14,11 +14,15 @@ jobs:
       # Checks out a copy of your repository on the ubuntu-latest machine
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # all history for all branches and tags
 
       - name: Add upstream remote
+        if: github.repository != 'linkedin/venice'
         run: git remote add upstream https://github.com/linkedin/venice
 
       - name: Fetch upstream refs
+        if: github.repository != 'linkedin/venice'
         run: git fetch upstream
 
       - name: Set up JDK 11
