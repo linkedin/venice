@@ -3,9 +3,9 @@ package com.linkedin.venice.offsets;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -19,12 +19,10 @@ public class InMemoryStorageMetadataService extends InMemoryOffsetManager implem
   private final ConcurrentMap<String, StoreVersionState> topicToStoreVersionStateMap = new ConcurrentHashMap<>();
 
   @Override
-  public void put(String topicName, StoreVersionState record) throws VeniceException {
-    LOGGER.info(
-        "InMemoryStorageMetadataService.put(StoreVersionState) called with topicName: {}, record: {}",
-        topicName,
-        record);
-    topicToStoreVersionStateMap.put(topicName, record);
+  public void computeStoreVersionState(String topicName, Function<StoreVersionState, StoreVersionState> mapFunction)
+      throws VeniceException {
+    LOGGER.info("InMemoryStorageMetadataService.compute(StoreVersionState) called for topicName: {}", topicName);
+    topicToStoreVersionStateMap.compute(topicName, (s, storeVersionState) -> mapFunction.apply(storeVersionState));
   }
 
   @Override
@@ -34,8 +32,8 @@ public class InMemoryStorageMetadataService extends InMemoryOffsetManager implem
   }
 
   @Override
-  public Optional<StoreVersionState> getStoreVersionState(String topicName) throws VeniceException {
-    Optional<StoreVersionState> recordToReturn = Optional.ofNullable(topicToStoreVersionStateMap.get(topicName));
+  public StoreVersionState getStoreVersionState(String topicName) throws VeniceException {
+    StoreVersionState recordToReturn = topicToStoreVersionStateMap.get(topicName);
     LOGGER.info(
         "InMemoryStorageMetadataService.getStoreVersionState called with topicName: {}, recordToReturn: {}",
         topicName,

@@ -51,7 +51,7 @@ public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
         mock(ReadOnlyStoreRepository.class));
     storeConfig = new VeniceStoreVersionConfig(STORE_NAME, serverProperties);
 
-    testStoreEngine = service.openStoreForNewPartition(storeConfig, PARTITION_ID);
+    testStoreEngine = service.openStoreForNewPartition(storeConfig, PARTITION_ID, () -> null);
     createStoreForTest();
   }
 

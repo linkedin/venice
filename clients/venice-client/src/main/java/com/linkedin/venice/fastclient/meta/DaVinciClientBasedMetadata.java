@@ -424,7 +424,8 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
   public VeniceCompressor getCompressor(CompressionStrategy compressionStrategy, int version) {
     if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
       String resourceName = getResourceName(version);
-      if (!compressorFactory.versionSpecificCompressorExists(resourceName)) {
+      VeniceCompressor compressor = compressorFactory.getVersionSpecificCompressor(resourceName);
+      if (compressor == null) {
         ByteBuffer dictionary = versionZstdDictionaryMap.get(version);
         if (dictionary == null) {
           throw new VeniceClientException(
@@ -433,11 +434,11 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
                   storeName,
                   version));
         } else {
-          compressorFactory
-              .createVersionSpecificCompressorIfNotExist(compressionStrategy, resourceName, dictionary.array(), 0);
+          compressor = compressorFactory
+              .createVersionSpecificCompressorIfNotExist(compressionStrategy, resourceName, dictionary.array());
         }
       }
-      return compressorFactory.getVersionSpecificCompressor(resourceName);
+      return compressor;
     } else {
       return compressorFactory.getCompressor(compressionStrategy);
     }

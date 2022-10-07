@@ -11,7 +11,6 @@ import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WR
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 
-import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.storage.chunking.ChunkingAdapter;
@@ -22,7 +21,6 @@ import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
@@ -146,8 +144,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    *    entire ingestion task.
    */
   protected final Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriter;
-  protected final Lazy<VeniceCompressor> compressor;
-  protected final StorageEngineBackedCompressorFactory compressorFactory;
   protected final Int2ObjectMap<String> kafkaClusterIdToUrlMap;
   private long dataRecoveryCompletionTimeLagThresholdInMs = 0;
 
@@ -160,8 +156,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       VeniceStoreVersionConfig storeConfig,
       int errorPartitionId,
       boolean isIsolatedIngestion,
-      Optional<ObjectCacheBackend> cacheBackend,
-      StorageEngineBackedCompressorFactory compressorFactory) {
+      Optional<ObjectCacheBackend> cacheBackend) {
     super(
         builder,
         store,
@@ -214,12 +209,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
     }
     this.nativeReplicationSourceVersionTopicKafkaURLSingletonSet =
-        Collections.unmodifiableSet(Collections.singleton(nativeReplicationSourceVersionTopicKafkaURL));
+        Collections.singleton(nativeReplicationSourceVersionTopicKafkaURL);
     LOGGER.info(
         "Native replication source version topic kafka url set to: " + nativeReplicationSourceVersionTopicKafkaURL
             + " for topic: " + getVersionTopic());
-
-    this.compressorFactory = compressorFactory;
 
     this.veniceWriterFactory = builder.getVeniceWriterFactory();
     this.veniceWriter = Lazy.of(
@@ -234,11 +227,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * Notice that the pattern is different in stream reprocessing which contains a lot more segments and is also
              * different in some test cases which reuse the same VeniceWriter.
              */
-            storageMetadataService.getStoreVersionState(kafkaVersionTopic).map(svs -> svs.chunked),
+            isChunked,
             venicePartitioner,
             storeVersionPartitionCount * amplificationFactor));
 
-    this.compressor = Lazy.of(() -> compressorFactory.getCompressor(compressionStrategy, kafkaVersionTopic));
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
 
     this.kafkaDataIntegrityValidatorForLeaders = new KafkaDataIntegrityValidator(kafkaVersionTopic);
@@ -1080,34 +1072,36 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       TopicSwitch topicSwitch,
       PartitionConsumptionState partitionConsumptionState,
       Map<String, Long> upstreamStartOffsetByKafkaURL) {
-    Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
-    if (storeVersionState.isPresent()) {
-      String newTopicSwitchLogging = "TopicSwitch message (new source topic:" + topicSwitch.sourceTopicName
-          + "; rewind start time:" + topicSwitch.rewindStartTimestamp + "; upstream start offset by source Kafka URL: "
-          + upstreamStartOffsetByKafkaURL + ")";
+    storageMetadataService.computeStoreVersionState(kafkaVersionTopic, previousStoreVersionState -> {
+      if (previousStoreVersionState != null) {
+        String newTopicSwitchLogging = "TopicSwitch message (new source topic:" + topicSwitch.sourceTopicName
+            + "; rewind start time:" + topicSwitch.rewindStartTimestamp
+            + "; upstream start offset by source Kafka URL: " + upstreamStartOffsetByKafkaURL + ")";
 
-      if (storeVersionState.get().topicSwitch == null) {
-        LOGGER.info("First time receiving a " + newTopicSwitchLogging);
+        if (previousStoreVersionState.topicSwitch == null) {
+          LOGGER.info("First time receiving a " + newTopicSwitchLogging);
+        } else {
+          LOGGER.info(
+              "Previous TopicSwitch message in metadata store (source topic:"
+                  + previousStoreVersionState.topicSwitch.sourceTopicName + "; rewind start time:"
+                  + previousStoreVersionState.topicSwitch.rewindStartTimestamp + "; source kafka servers "
+                  + topicSwitch.sourceKafkaServers + ") will be replaced" + " by the new " + newTopicSwitchLogging);
+        }
+        previousStoreVersionState.topicSwitch = topicSwitch;
+
+        // Put TopicSwitch message into in-memory state to avoid poking metadata store
+        partitionConsumptionState.setTopicSwitch(resolveSourceKafkaServersWithinTopicSwitch(topicSwitch));
+
+        // Sync latest store version level metadata to disk
+        return previousStoreVersionState;
       } else {
-        LOGGER.info(
-            "Previous TopicSwitch message in metadata store (source topic:"
-                + storeVersionState.get().topicSwitch.sourceTopicName + "; rewind start time:"
-                + storeVersionState.get().topicSwitch.rewindStartTimestamp + "; source kafka servers "
-                + topicSwitch.sourceKafkaServers + ") will be replaced" + " by the new " + newTopicSwitchLogging);
+        throw new VeniceException(
+            "Unexpected: received some " + ControlMessageType.TOPIC_SWITCH.name()
+                + " control message in a topic where we have not yet received a "
+                + ControlMessageType.START_OF_PUSH.name() + " control message, for partition "
+                + partitionConsumptionState + " and upstreamStartOffsetByKafkaURL: " + upstreamStartOffsetByKafkaURL);
       }
-      storeVersionState.get().topicSwitch = topicSwitch;
-      // Sync latest store version level metadata to disk
-      storageMetadataService.put(kafkaVersionTopic, storeVersionState.get());
-
-      // Put TopicSwitch message into in-memory state to avoid poking metadata store
-      partitionConsumptionState.setTopicSwitch(resolveSourceKafkaServersWithinTopicSwitch(topicSwitch));
-    } else {
-      throw new VeniceException(
-          "Unexpected: received some " + ControlMessageType.TOPIC_SWITCH.name()
-              + " control message in a topic where we have not yet received a "
-              + ControlMessageType.START_OF_PUSH.name() + " control message, for partition " + partitionConsumptionState
-              + " and upstreamStartOffsetByKafkaURL: " + upstreamStartOffsetByKafkaURL);
-    }
+    });
   }
 
   /**
@@ -2184,8 +2178,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   public long getBatchReplicationLag() {
-    Optional<StoreVersionState> svs = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
-    if (!svs.isPresent()) {
+    StoreVersionState svs = storageEngine.getStoreVersionState();
+    if (svs == null) {
       /**
        * Store version metadata is created for the first time when the first START_OF_PUSH message is processed;
        * however, the ingestion stat is created the moment an ingestion task is created, so there is a short time
@@ -2240,8 +2234,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   private long getLeaderOffsetLag(Predicate<? super PartitionConsumptionState> partitionConsumptionStateFilter) {
 
-    Optional<StoreVersionState> svs = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
-    if (!svs.isPresent()) {
+    StoreVersionState svs = storageEngine.getStoreVersionState();
+    if (svs == null) {
       /**
        * Store version metadata is created for the first time when the first START_OF_PUSH message is processed;
        * however, the ingestion stat is created the moment an ingestion task is created, so there is a short time
@@ -2320,8 +2314,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           && !pcs.getLeaderFollowerState().equals(LEADER);
 
   private long getFollowerOffsetLag(Predicate<? super PartitionConsumptionState> partitionConsumptionStateFilter) {
-    Optional<StoreVersionState> svs = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
-    if (!svs.isPresent()) {
+    StoreVersionState svs = storageEngine.getStoreVersionState();
+    if (svs == null) {
       /**
        * Store version metadata is created for the first time when the first START_OF_PUSH message is processed;
        * however, the ingestion stat is created the moment an ingestion task is created, so there is a short time
@@ -2518,8 +2512,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (!realTimeTopic.equals(leaderTopic)) {
       return false; // We're consuming from version topic (don't compress it)
     }
-    CompressionStrategy compressionStrategy =
-        storageMetadataService.getStoreVersionCompressionStrategy(kafkaVersionTopic);
     return !compressionStrategy.equals(CompressionStrategy.NO_OP);
   }
 
@@ -2534,7 +2526,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     KafkaMessageEnvelope kafkaValue = consumerRecord.value();
     byte[] keyBytes = kafkaKey.getKey();
     MessageType msgType = MessageType.valueOf(kafkaValue.messageType);
-    boolean isChunkedTopic = storageMetadataService.isStoreVersionChunked(kafkaVersionTopic);
     switch (msgType) {
       case PUT:
         Put put = (Put) kafkaValue.payloadUnion;
@@ -2606,7 +2597,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             (Update) kafkaValue.payloadUnion,
             keyBytes,
             consumerRecord,
-            isChunkedTopic,
             kafkaUrl,
             kafkaClusterId,
             partitionConsumptionState,
@@ -2669,7 +2659,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       Update update,
       byte[] keyBytes,
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      boolean isChunkedTopic,
       String kafkaUrl,
       int kafkaClusterId,
       PartitionConsumptionState partitionConsumptionState,
@@ -2695,8 +2684,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         keyBytes,
         readerValueSchemaId,
         consumerRecord.topic(),
-        consumerRecord.partition(),
-        isChunkedTopic);
+        consumerRecord.partition());
 
     // Apply Write Compute.
     final byte[] updatedValueBytes;
@@ -2748,7 +2736,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       updatedPut.schemaId = readerValueSchemaId;
 
       byte[] updatedKeyBytes = keyBytes;
-      if (isChunkedTopic) {
+      if (isChunked) {
         // Samza VeniceWriter doesn't handle chunking config properly. It reads chunking config
         // from user's input instead of getting it from store's metadata repo. This causes SN
         // to der-se of keys a couple of times.
@@ -2782,27 +2770,26 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       byte[] keyBytes,
       int readerValueSchemaID,
       String topic,
-      int partition,
-      boolean isChunkedTopic) {
+      int partition) {
     final GenericRecord currValue;
     PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(keyBytes);
     if (transientRecord == null) {
       try {
         long lookupStartTimeInNS = System.nanoTime();
         currValue = GenericRecordChunkingAdapter.INSTANCE.get(
-            storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic),
+            storageEngine,
             readerValueSchemaID,
             getSubPartitionId(keyBytes, topic, partition),
             ByteBuffer.wrap(keyBytes),
-            isChunkedTopic,
+            isChunked,
             null,
             null,
             null,
-            storageMetadataService.getStoreVersionCompressionStrategy(kafkaVersionTopic),
+            compressionStrategy,
             serverConfig.isComputeFastAvroEnabled(),
             schemaRepository,
             storeName,
-            compressorFactory,
+            compressor.get(),
             false);
         hostLevelIngestionStats.recordWriteComputeLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
       } catch (Exception e) {

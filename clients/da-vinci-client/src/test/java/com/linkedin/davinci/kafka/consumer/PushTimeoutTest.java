@@ -5,7 +5,6 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 
-import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -71,8 +70,7 @@ public class PushTimeoutTest {
         mockVeniceStoreVersionConfig,
         0,
         false,
-        Optional.empty(),
-        mock(StorageEngineBackedCompressorFactory.class));
+        Optional.empty());
 
     leaderFollowerStoreIngestionTask.subscribePartition(versionTopic, 0, Optional.empty());
     leaderFollowerStoreIngestionTask.run();
@@ -143,8 +141,7 @@ public class PushTimeoutTest {
         mockVeniceStoreVersionConfig,
         0,
         false,
-        Optional.empty(),
-        mock(StorageEngineBackedCompressorFactory.class));
+        Optional.empty());
 
     leaderFollowerStoreIngestionTask.subscribePartition(versionTopic, 0, Optional.empty());
     /**

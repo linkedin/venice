@@ -5,7 +5,6 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
-import java.util.Optional;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -51,17 +50,16 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
       int subPartition,
       String kafkaUrl,
       long beforeProcessingRecordTimestamp) throws InterruptedException {
-    Optional<PartitionConsumptionState> partitionConsumptionState =
-        ingestionTask.getPartitionConsumptionState(subPartition);
+    PartitionConsumptionState partitionConsumptionState = ingestionTask.getPartitionConsumptionState(subPartition);
     boolean sortedInput = false;
-    if (partitionConsumptionState.isPresent()) {
+    if (partitionConsumptionState != null) {
       boolean currentState;
 
       // there is could be cases the following flag does not represent actual message's ingestion state as control
       // message
       // which updates the `isDeferredWrite` flag may not yet be processed. This might cause inefficiency but not
       // logical incorrectness.
-      sortedInput = partitionConsumptionState.get().isDeferredWrite();
+      sortedInput = partitionConsumptionState.isDeferredWrite();
       if (topicToSortedIngestionMode.containsKey(consumerRecord.topic())) {
         currentState = topicToSortedIngestionMode.get(consumerRecord.topic());
         // If there is a change in deferredWrite mode, drain the buffers
@@ -70,9 +68,7 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
               "Switching drainer buffer for topic {} to use {}",
               consumerRecord.topic(),
               sortedInput ? "sorted queue." : "unsorted queue.");
-          drainBufferedRecordsFromTopicPartition(
-              consumerRecord.topic(),
-              partitionConsumptionState.get().getPartition());
+          drainBufferedRecordsFromTopicPartition(consumerRecord.topic(), partitionConsumptionState.getPartition());
           topicToSortedIngestionMode.put(consumerRecord.topic(), sortedInput);
         }
       } else {

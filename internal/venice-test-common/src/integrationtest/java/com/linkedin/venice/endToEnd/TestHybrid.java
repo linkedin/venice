@@ -1159,7 +1159,7 @@ public class TestHybrid {
     }
   }
 
-  @Test(dataProvider = "Boolean-Compression", dataProviderClass = DataProviderUtils.class, timeOut = 180
+  @Test(dataProvider = "Boolean-Compression", dataProviderClass = DataProviderUtils.class, timeOut = 60
       * Time.MS_PER_SECOND)
   public void testDuplicatedMessagesWontBePersisted(
       boolean isIngestionIsolationEnabled,

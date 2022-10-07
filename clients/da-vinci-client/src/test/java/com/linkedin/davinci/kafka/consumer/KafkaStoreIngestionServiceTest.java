@@ -2,8 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -70,6 +69,7 @@ public abstract class KafkaStoreIngestionServiceTest {
   @BeforeClass
   public void setUp() {
     mockStorageEngineRepository = mock(StorageEngineRepository.class);
+    doReturn(mock(AbstractStorageEngine.class)).when(mockStorageEngineRepository).getLocalStorageEngine(anyString());
     storageMetadataService = mock(StorageMetadataService.class);
     mockClusterInfoProvider = mock(ClusterInfoProvider.class);
     mockMetadataRepo = mock(ReadOnlyStoreRepository.class);
@@ -130,7 +130,6 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockSchemaRepo,
         mockLiveClusterConfigRepo,
         new MetricsRepository(),
-        null,
         Optional.empty(),
         Optional.empty(),
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
@@ -211,7 +210,6 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockSchemaRepo,
         mockLiveClusterConfigRepo,
         new MetricsRepository(),
-        null,
         Optional.empty(),
         Optional.empty(),
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
@@ -296,7 +294,6 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockSchemaRepo,
         mockLiveClusterConfigRepo,
         new MetricsRepository(),
-        null,
         Optional.empty(),
         Optional.empty(),
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
