@@ -203,16 +203,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       if (isHybridMode()) {
         dataRecoveryCompletionTimeLagThresholdInMs = TopicManager.BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN / 2;
         LOGGER.info(
-            "Data recovery info for topic: " + getVersionTopic() + ", source kafka url: "
-                + nativeReplicationSourceVersionTopicKafkaURL + ", time lag threshold for completion: "
-                + dataRecoveryCompletionTimeLagThresholdInMs);
+            "Data recovery info for topic: {}, source kafka url: {}, time lag threshold for completion: {}",
+            getVersionTopic(),
+            nativeReplicationSourceVersionTopicKafkaURL,
+            dataRecoveryCompletionTimeLagThresholdInMs);
       }
     }
     this.nativeReplicationSourceVersionTopicKafkaURLSingletonSet =
         Collections.singleton(nativeReplicationSourceVersionTopicKafkaURL);
     LOGGER.info(
-        "Native replication source version topic kafka url set to: " + nativeReplicationSourceVersionTopicKafkaURL
-            + " for topic: " + getVersionTopic());
+        "Native replication source version topic kafka url set to: {} for topic: {}",
+        nativeReplicationSourceVersionTopicKafkaURL,
+        getVersionTopic());
 
     this.veniceWriterFactory = builder.getVeniceWriterFactory();
     this.veniceWriter = Lazy.of(
@@ -436,8 +438,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           if (!store.isMigrationDuplicateStore()) {
             partitionConsumptionState.setLeaderFollowerState(IN_TRANSITION_FROM_STANDBY_TO_LEADER);
             LOGGER.info(
-                consumerTaskId + " became in transition to leader for partition "
-                    + partitionConsumptionState.getPartition());
+                "{} became in transition to leader for partition {}",
+                consumerTaskId,
+                partitionConsumptionState.getPartition());
           }
           break;
 
@@ -451,8 +454,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           long lastTimestamp = getLastConsumedMessageTimestamp(partition);
           if (LatencyUtils.getElapsedTimeInMs(lastTimestamp) > newLeaderInactiveTime) {
             LOGGER.info(
-                consumerTaskId + " start promoting to leader for partition " + partition
-                    + " unsubscribing from current topic: " + kafkaVersionTopic);
+                "{} start promoting to leader for partition {} unsubscribing from current topic: {}",
+                consumerTaskId,
+                partition,
+                kafkaVersionTopic);
             /**
              * There isn't any new message from the old leader for at least {@link newLeaderInactiveTime} minutes,
              * this replica can finally be promoted to leader.
@@ -461,8 +466,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             consumerUnSubscribe(kafkaVersionTopic, partitionConsumptionState);
 
             LOGGER.info(
-                consumerTaskId + " start promoting to leader for partition " + partition
-                    + ", unsubscribed from current topic: " + kafkaVersionTopic);
+                "{} start promoting to leader for partition {}, unsubscribed from current topic: {}",
+                consumerTaskId,
+                partition,
+                kafkaVersionTopic);
             OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
             if (offsetRecord.getLeaderTopic() == null) {
               /**
@@ -480,8 +487,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
             if (!amplificationFactorAdapter.isLeaderSubPartition(partition)
                 && partitionConsumptionState.isEndOfPushReceived()) {
-              LOGGER.info(
-                  "Stop promoting non-leaderSubPartition: " + partition + " of store: " + storeName + " to leader.");
+              LOGGER.info("Stop promoting non-leaderSubPartition: {} of store: {}} to leader.", partition, storeName);
               partitionConsumptionState.setLeaderFollowerState(STANDBY);
               consumerSubscribe(
                   kafkaVersionTopic,
@@ -532,8 +538,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
             partitionConsumptionState.setConsumeRemotely(false);
             LOGGER.info(
-                consumerTaskId + " disabled remote consumption from topic " + currentLeaderTopic + " partition "
-                    + partition);
+                "{} disabled remote consumption from topic {} partition {}",
+                consumerTaskId,
+                currentLeaderTopic,
+                partition);
             /**
              * The flag is turned on in {@link LeaderFollowerStoreIngestionTask#shouldProcessRecord} avoid consuming
              * unwanted messages after EOP in remote VT, such as SOBR. Now that the leader switches to consume locally,
@@ -635,8 +643,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       if (shouldNewLeaderSwitchToRemoteConsumption(partitionConsumptionState)) {
         partitionConsumptionState.setConsumeRemotely(true);
         LOGGER.info(
-            consumerTaskId + " enabled remote consumption from topic " + offsetRecord.getLeaderTopic() + " partition "
-                + partition);
+            "{} enabled remote consumption from topic {} partition {}",
+            consumerTaskId,
+            offsetRecord.getLeaderTopic(),
+            partition);
       }
     }
 
@@ -654,16 +664,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     // subscribe to the new upstream
     String leaderSourceKafkaURL = leaderSourceKafkaURLs.iterator().next();
     LOGGER.info(
-        String.format(
-            "%s is promoted to leader for partition %d and it is going to start consuming from "
-                + "topic %s partition %d at offset %d; source Kafka url: %s; remote consumption flag: %s",
-            consumerTaskId,
-            partition,
-            leaderTopic,
-            leaderTopicPartition,
-            leaderStartOffset,
-            leaderSourceKafkaURL,
-            partitionConsumptionState.consumeRemotely()));
+        "{} is promoted to leader for partition {} and it is going to start consuming from "
+            + "topic {} partition {} at offset {}; source Kafka url: {}; remote consumption flag: {}",
+        consumerTaskId,
+        partition,
+        leaderTopic,
+        leaderTopicPartition,
+        leaderStartOffset,
+        leaderSourceKafkaURL,
+        partitionConsumptionState.consumeRemotely());
     consumerSubscribe(
         leaderTopic,
         partitionConsumptionState.getSourceTopicPartition(leaderTopic),
@@ -675,12 +684,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         Collections.singletonMap(leaderSourceKafkaURL, leaderStartOffset));
 
     LOGGER.info(
-        String.format(
-            "%s, as a leader, started consuming from topic %s partition %d at offset %d",
-            consumerTaskId,
-            offsetRecord.getLeaderTopic(),
-            leaderTopicPartition,
-            leaderStartOffset));
+        "{}, as a leader, started consuming from topic {} partition {} at offset {}",
+        consumerTaskId,
+        offsetRecord.getLeaderTopic(),
+        leaderTopicPartition,
+        leaderStartOffset);
   }
 
   private boolean switchAwayFromStreamReprocessingTopic(String currentLeaderTopic, TopicSwitch topicSwitch) {
@@ -734,8 +742,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (isNativeReplicationEnabled && !newSourceKafkaServer.equals(localKafkaServer)) {
       partitionConsumptionState.setConsumeRemotely(true);
       LOGGER.info(
-          consumerTaskId + " enabled remote consumption from topic " + newSourceTopicName + " partition "
-              + partitionConsumptionState.getSourceTopicPartition(newSourceTopicName));
+          "{} enabled remote consumption from topic {} partition {}",
+          consumerTaskId,
+          newSourceTopicName,
+          partitionConsumptionState.getSourceTopicPartition(newSourceTopicName));
     }
     partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopicName);
     partitionConsumptionState.getOffsetRecord()
@@ -757,8 +767,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         Collections.singletonMap(sourceKafkaURL, upstreamStartOffset));
 
     LOGGER.info(
-        consumerTaskId + " leader successfully switch feed topic from " + currentLeaderTopic + " to "
-            + newSourceTopicName + " offset " + upstreamStartOffset + " partition " + partition);
+        "{} leader successfully switch feed topic from {} to {} offset {} partition {}",
+        consumerTaskId,
+        currentLeaderTopic,
+        newSourceTopicName,
+        upstreamStartOffset,
+        partition);
 
     // In case new topic is empty and leader can never become online
     defaultReadyToServeChecker.apply(partitionConsumptionState);
@@ -917,10 +931,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       if (LatencyUtils
           .getElapsedTimeInMs(latestConsumedProducerTimestamp) < dataRecoveryCompletionTimeLagThresholdInMs) {
         LOGGER.info(
-            "Data recovery completed for topic: " + kafkaVersionTopic + " partition: "
-                + partitionConsumptionState.getPartition() + " upon consuming records with producer timestamp of "
-                + latestConsumedProducerTimestamp + " which is within the data recovery completion lag threshold of "
-                + dataRecoveryCompletionTimeLagThresholdInMs + " ms");
+            "Data recovery completed for topic: {} partition: {} upon consuming records with "
+                + "producer timestamp of {} which is within the data recovery completion lag threshold of {} ms",
+            kafkaVersionTopic,
+            partitionConsumptionState.getPartition(),
+            latestConsumedProducerTimestamp,
+            dataRecoveryCompletionTimeLagThresholdInMs);
         isDataRecoveryCompleted = true;
       }
     }
@@ -938,9 +954,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       long lastTimestamp = getLastConsumedMessageTimestamp(partitionConsumptionState.getPartition());
       if (isAtEndOfSourceVT && LatencyUtils.getElapsedTimeInMs(lastTimestamp) > newLeaderInactiveTime) {
         LOGGER.info(
-            "Data recovery completed for topic: " + kafkaVersionTopic + " partition: "
-                + partitionConsumptionState.getPartition() + " upon exceeding leader inactive time of "
-                + newLeaderInactiveTime + " ms");
+            "Data recovery completed for topic: {} partition: {} upon exceeding leader inactive time of {} ms",
+            kafkaVersionTopic,
+            partitionConsumptionState.getPartition(),
+            newLeaderInactiveTime);
         isDataRecoveryCompleted = true;
       }
     }
@@ -982,7 +999,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * Hence, before processing TopicSwitch message, we need to force downgrade other subPartitions into FOLLOWER.
      */
     if (isLeader(partitionConsumptionState) && !amplificationFactorAdapter.isLeaderSubPartition(partition)) {
-      LOGGER.info("SubPartition: " + partitionConsumptionState.getPartition() + " is demoted from LEADER to STANDBY.");
+      LOGGER.info("SubPartition: {} is demoted from LEADER to STANDBY.", partitionConsumptionState.getPartition());
       String currentLeaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
       consumerUnSubscribe(currentLeaderTopic, partitionConsumptionState);
       waitForLastLeaderPersistFuture(
@@ -1074,18 +1091,24 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       Map<String, Long> upstreamStartOffsetByKafkaURL) {
     storageMetadataService.computeStoreVersionState(kafkaVersionTopic, previousStoreVersionState -> {
       if (previousStoreVersionState != null) {
-        String newTopicSwitchLogging = "TopicSwitch message (new source topic:" + topicSwitch.sourceTopicName
-            + "; rewind start time:" + topicSwitch.rewindStartTimestamp
-            + "; upstream start offset by source Kafka URL: " + upstreamStartOffsetByKafkaURL + ")";
-
         if (previousStoreVersionState.topicSwitch == null) {
-          LOGGER.info("First time receiving a " + newTopicSwitchLogging);
+          LOGGER.info(
+              "First time receiving a TopicSwitch message (new source topic: {}; "
+                  + "rewind start time: {}; upstream start offset by source Kafka URL: {})",
+              topicSwitch.sourceTopicName,
+              topicSwitch.rewindStartTimestamp,
+              upstreamStartOffsetByKafkaURL);
         } else {
           LOGGER.info(
-              "Previous TopicSwitch message in metadata store (source topic:"
-                  + previousStoreVersionState.topicSwitch.sourceTopicName + "; rewind start time:"
-                  + previousStoreVersionState.topicSwitch.rewindStartTimestamp + "; source kafka servers "
-                  + topicSwitch.sourceKafkaServers + ") will be replaced" + " by the new " + newTopicSwitchLogging);
+              "Previous TopicSwitch message in metadata store (source topic: {}; rewind start time: {}; "
+                  + "source kafka servers {}) will be replaced by the new TopicSwitch message (new source topic: {}; "
+                  + "rewind start time: {}; upstream start offset by source Kafka URL: {})",
+              previousStoreVersionState.topicSwitch.sourceTopicName,
+              previousStoreVersionState.topicSwitch.rewindStartTimestamp,
+              topicSwitch.sourceKafkaServers,
+              topicSwitch.sourceTopicName,
+              topicSwitch.rewindStartTimestamp,
+              upstreamStartOffsetByKafkaURL);
         }
         previousStoreVersionState.topicSwitch = topicSwitch;
 
@@ -1352,7 +1375,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             break;
         }
       } catch (Exception e) {
-        LOGGER.warn(consumerTaskId + " failed comparing the rewind message with the actual value in Venice", e);
+        LOGGER.warn("{} failed comparing the rewind message with the actual value in Venice", consumerTaskId, e);
       }
 
       if (lossy) {
@@ -1568,8 +1591,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
     if (partitionConsumptionState == null) {
       LOGGER.info(
-          "Skipping message as partition is no longer actively subscribed. Topic: " + kafkaVersionTopic
-              + " Partition Id: " + subPartition);
+          "Skipping message as partition is no longer actively subscribed. Topic: {} Partition Id: {}",
+          kafkaVersionTopic,
+          subPartition);
       return false;
     }
     switch (partitionConsumptionState.getLeaderFollowerState()) {
@@ -1622,7 +1646,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 errorMsg + ". Throwing exception as the node still subscribes to " + recordTopic);
           }
           if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMsg)) {
-            LOGGER.error(errorMsg + ". Skipping the message as the node does not subscribe to " + recordTopic);
+            LOGGER.error("{}. Skipping the message as the node does not subscribe to {}", errorMsg, recordTopic);
           }
           return false;
         }
@@ -1632,7 +1656,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           String message = consumerTaskId + " Current L/F state:" + partitionConsumptionState.getLeaderFollowerState()
               + "; The record was already processed partition " + subPartition;
           if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
-            LOGGER.info(message + " LastKnown " + lastOffset + " Current " + record.offset());
+            LOGGER.info("{}; LastKnown {}; Current {}", message, lastOffset, record.offset());
           }
           return false;
         }
@@ -1844,9 +1868,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * messages to disk, and potentially rewind a k/v pair to an old value.
          */
         divErrorMetricCallback.execute(e);
-        if (LOGGER.isDebugEnabled()) {
-          LOGGER.debug(consumerTaskId + " : Skipping a duplicate record at offset: " + consumerRecord.offset());
-        }
+        LOGGER.debug("{} : Skipping a duplicate record at offset: {}", consumerTaskId, consumerRecord.offset());
         return DelegateConsumerRecordResult.DUPLICATE_MESSAGE;
       }
 
@@ -2015,17 +2037,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             break;
         }
         if (!isSegmentControlMsg(controlMessageType)) {
-          if (producedFinally) {
-            LOGGER.info(
-                consumerTaskId + " hasProducedToKafka: YES. ControlMessage: " + controlMessageType.name()
-                    + ", received from  Topic: " + consumerRecord.topic() + " Partition: " + consumerRecord.partition()
-                    + " Offset: " + consumerRecord.offset());
-          } else {
-            LOGGER.info(
-                consumerTaskId + " hasProducedToKafka: NO. ControlMessage: " + controlMessageType.name()
-                    + ", received from  Topic: " + consumerRecord.topic() + " Partition: " + consumerRecord.partition()
-                    + " Offset: " + consumerRecord.offset());
-          }
+          LOGGER.info(
+              "{} hasProducedToKafka: {}; ControlMessage: {}; topic: {}; partition: {}; offset: {}",
+              consumerTaskId,
+              producedFinally,
+              controlMessageType.name(),
+              consumerRecord.topic(),
+              consumerRecord.partition(),
+              consumerRecord.offset());
         }
       } else if (kafkaValue == null) {
         throw new VeniceMessageException(
@@ -2085,14 +2104,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }
       } catch (InterruptedException e) {
         LOGGER.warn(
-            "Got interrupted while waiting for the last queued record to be persisted for topic: " + topic
-                + " partition: " + partition + ". Will throw the interrupt exception",
+            "Got interrupted while waiting for the last queued record to be persisted for topic: {}; partition: {}. "
+                + "Will throw the interrupt exception.",
+            topic,
+            partition,
             e);
         throw e;
       } catch (Exception e) {
         LOGGER.error(
-            "Got exception while waiting for the latest queued record future to be completed for topic: " + topic
-                + " partition: " + partition,
+            "Got exception while waiting for the last queued record to be persisted for topic: {}; partition: {}. "
+                + "Will swallow.",
+            topic,
+            partition,
             e);
       }
       Future<Void> lastFuture = null;
@@ -2106,23 +2129,29 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }
       } catch (InterruptedException e) {
         LOGGER.warn(
-            "Got interrupted while waiting for the last leader producer future for topic: " + topic + " partition: "
-                + partition + ". No data loss. Will throw the interrupt exception",
+            "Got interrupted while waiting for the last leader producer future for topic: {}; partition: {}. "
+                + "No data loss. Will throw the interrupt exception.",
+            topic,
+            partition,
             e);
         versionedDIVStats.recordBenignLeaderProducerFailure(storeName, versionNumber);
         throw e;
       } catch (TimeoutException e) {
         LOGGER.error(
-            "Timeout on waiting for the last leader producer future for topic: " + topic + " partition: " + partition
-                + ". No data loss.",
+            "Timeout on waiting for the last leader producer future for topic: {}; partition: {}. No data loss."
+                + "Will swallow.",
+            topic,
+            partition,
             e);
         lastFuture.cancel(true);
         partitionConsumptionState.setLastLeaderPersistFuture(null);
         versionedDIVStats.recordBenignLeaderProducerFailure(storeName, versionNumber);
       } catch (Exception e) {
         LOGGER.error(
-            "Got exception while waiting for the latest producer future to be completed for topic: " + topic
-                + " partition: " + partition,
+            "Got exception while waiting for the latest producer future to be completed for topic: {}; partition: {}"
+                + "Will swallow.",
+            topic,
+            partition,
             e);
         partitionConsumptionState.setLastLeaderPersistFuture(null);
         // No need to fail the push job; just record the failure.

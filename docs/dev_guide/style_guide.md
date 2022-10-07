@@ -59,7 +59,7 @@ refactorable. If your IDE complains that the JavaDoc is misplaced, disable that 
 
 ### Logging
 
-We use log4j and want to use interpolation, rather than manual string concatenation, everywhere, for efficiency reasons. 
+We use log4j2 and want to use interpolation, rather than manual string concatenation, everywhere for efficiency reasons. 
 Note that Spotless may break up fragments of strings by concatenating over multiple lines, but that doesn't matter as it
 gets optimized away by the compiler. Only concatenations with variables end up carrying an overhead.
 
@@ -88,7 +88,7 @@ could be pre-allocated, especially if the wrapped map is final).
 If the API of a class is such that another class needs to call multiple functions in a row to achieve a desired outcome,
 then ask yourself whether the calling class is hand holding the internal state of the called class. Would the internal
 state of the called class be left in an inconsistent or incoherent state if the calling class stopped halfway through
-its sequence of function calls, or if it called those same functions in a different order? If the answer is yet, then
+its sequence of function calls, or if it called those same functions in a different order? If the answer is yes, then
 perhaps the multiple functions should be presented as a single public function, which then internally delegates to many
 private functions, in the correct order.
 
@@ -126,7 +126,8 @@ monitored, alerted on, and remediated if it creeps beyond a certain threshold.
 
 The CPU will do whatever we tell it, day in day out, without complaints, but it does not mean we ought to abuse it.
 Although there is undoubtedly a kernel of truth in the saying that "premature optimization is the root of all evil",
-it is important to consider that the reverse is not equally true: non-optimized code is not the root of all clean code.
+it is important to consider that the reverse is not equally true. In other words, non-optimized code is not the root of 
+all clean code.
 
 For example, if a class contains some final string property, and the code in this class repeatedly performs a lookup
 by that property, then it implies that the result of this lookup may change over time. If that is true, then the code is
@@ -134,6 +135,19 @@ fine, but if it is not true that the result of the lookup would change over time
 the lookup just once, and hanging on to the result in another final property, makes the code not only faster and more 
 efficient, but also easier to reason about, since it indicates the immutability of this looked up property.
 
-Consider that the hot path in Venice may be invoked hundreds of thousands of times per second per server, and it is
-therefore important to minimize overhead in these paths. By being benevolent tyrants, our CPUs serve us better, and will
-hopefully care for us when AGI takes over the world.
+Another example is interrogating a map to see if it contains a key, and if true, then getting that key out of the map.
+This requires 2 lookups, whereas in fact only 1 lookup would suffice, as we can get a value from the map and then check
+whether it's null. Moreover, doing it in 1 lookup is actually cleaner, since it eliminates the race condition where the
+lookup may exist during the `containsKey` check but then get removed prior to the subsequent `get` call. Again, the fast
+code is cleaner.
+
+Yet another example is using the optimal data structure for a given use case. If both a map and an array can do the job
+equally well, then let us use an array, as it is more efficient than a map. For collections of primitives, it is advised 
+to consider using fastutil. If using a more efficient data structure requires significant acrobatics, then we may still 
+prefer to opt for the less efficient one, for the sake of maintainability, but we should consider whether we can build a 
+new data structure which achieves both convenience and efficiency for a given use case. This kind of low-level work is 
+not considered off-limits within Venice, and we welcome it if there is a good rationale for it.
+
+More generally, always keep in mind that the hot path in Venice may be invoked hundreds of thousands of times per second 
+per server, and it is therefore important to minimize overhead in these paths. By being benevolent tyrants, our CPUs 
+serve us better, and will hopefully care for us when AGI takes over the world.
