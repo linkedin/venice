@@ -296,20 +296,20 @@ public abstract class PushStatusDecider {
       executionStatusMap.merge(currentStatus, 1, Integer::sum);
     }
 
-    if (executionStatusMap.getOrDefault(COMPLETED, 0) >= (replicationFactor - numberOfToleratedErrors)
-        && isLeaderCompleted) {
+    if (executionStatusMap.containsKey(COMPLETED)
+        && executionStatusMap.get(COMPLETED) >= (replicationFactor - numberOfToleratedErrors) && isLeaderCompleted) {
       return COMPLETED;
     }
 
-    if (executionStatusMap.getOrDefault(ERROR, 0) + previouslyDisabledReplica > instanceToStateMap.size()
-        - replicationFactor + numberOfToleratedErrors) {
+    if (executionStatusMap.containsKey(ERROR) && executionStatusMap.get(ERROR)
+        + previouslyDisabledReplica > instanceToStateMap.size() - replicationFactor + numberOfToleratedErrors) {
       return ERROR;
     }
 
     /**
      * Report EOP if at least one replica has consumed an EOP control message
      */
-    if (executionStatusMap.getOrDefault(END_OF_PUSH_RECEIVED, 0) > 0) {
+    if (executionStatusMap.containsKey(END_OF_PUSH_RECEIVED) && executionStatusMap.get(END_OF_PUSH_RECEIVED) > 0) {
       return END_OF_PUSH_RECEIVED;
     }
 
