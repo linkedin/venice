@@ -25,10 +25,11 @@ judgment call, and needs to be balanced by concerns like managing the risk of un
 Regarding code style, we use the Eclipse Java Formatter variant of Spotless, which automatically reformats the code as
 part of git commit hooks. Make sure to run `./gradlew assemble` to get the git hooks set up.
 
-We also use spotbugs, with some of the rules resulting in build failures if violated. Over time, we intend to pick up
-more of these rules, fix the code to comply with them, and add them to the list. If you would like to contribute to this 
-effort, feel free to open an issue and suggest which rules you are interested in fixing. Note that there are a few rules 
-that we intend to ignore as they seem to be imprecise or not sufficiently useful.
+We also use Spotbugs, with [some of the rules](https://github.com/linkedin/venice/blob/main/gradle/spotbugs/include.xml) 
+resulting in build failures if violated. Over time, we intend to pick up more of these rules, fix the code to comply 
+with them, and add them to the list. If you would like to contribute to this effort, feel free to open an issue and 
+suggest which rules you are interested in fixing. Note that there are [a few rules that we intend to ignore](https://github.com/linkedin/venice/blob/main/gradle/spotbugs/exclude.xml) 
+as they seem to be imprecise or not sufficiently useful.
 
 In the future, we might add other forms of automation to increase code quality along other dimensions. Feel free to
 suggest ideas in this space.
@@ -94,15 +95,16 @@ private functions, in the correct order.
 
 Avoid passing `this` into classes as this may make the flow of the code difficult to understand. Also, more generally,
 consider whether a class actually needs a handle of an instance of an entire other class (and thus have the ability to 
-call any of its functions), or whether it could make do with just one or two handles to specific functions of the other
-class (thus limiting the surface area of their interaction).
+call any of its functions), or whether it could make do with an instance of a more constrained interface, which the 
+other class implements, or perhaps even just a handle to a specific function of the other class (thus limiting the 
+surface area of their interaction).
 
 ### Avoid Optionals
 
 We are aligned with the philosophy of the original creators of the Optional API, which is that it is a useful construct
 in the context of the Java 8 stream APIs, but should generally not be used beyond that. Null is a perfectly appropriate
-way to denote emptiness, and is not more or less likely to cause NullPointerExceptions. Sentinel values in primitive 
-types (e.g., -1 for a numeric value that is otherwise expected to be positive) are also perfectly appropriate ways to
+way to denote emptiness, and is not more or less likely to cause a `NullPointerException`. Sentinel values in primitive 
+types (e.g., `-1` for a numeric value that is otherwise expected to be positive) are also perfectly appropriate ways to
 denote emptiness. For more info, here are a good [video](https://www.youtube.com/watch?v=fBYhtvY19xA&t=2317s) and 
 [post](https://homes.cs.washington.edu/~mernst/advice/nothing-is-better-than-optional.html) on this subject.
 
@@ -141,7 +143,7 @@ efficient, but also easier to reason about, since it indicates the immutability 
 Another example is interrogating a map to see if it contains a key, and if true, then getting that key out of the map.
 This requires 2 lookups, whereas in fact only 1 lookup would suffice, as we can get a value from the map and then check
 whether it's null. Moreover, doing it in 1 lookup is actually cleaner, since it eliminates the race condition where the
-lookup may exist during the `containsKey` check but then get removed prior to the subsequent `get` call. Again, the 
+lookup may exist during the `containsKey` check but then be removed prior to the subsequent `get` call. Again, the 
 faster code is cleaner.
 
 Yet another example is using the optimal data structure for a given use case. A frequent use case within Venice is to
