@@ -39,7 +39,7 @@ import com.linkedin.venice.hadoop.input.kafka.KafkaInputRecordReader;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputMapper;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputReducer;
 import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
-import com.linkedin.venice.hadoop.output.avro.ValidateSchemaAndBuildDictOutput;
+import com.linkedin.venice.hadoop.output.avro.ValidateSchemaAndBuildDictMapperOutput;
 import com.linkedin.venice.hadoop.pbnj.PostBulkLoadAnalysisMapper;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
@@ -391,7 +391,7 @@ public class VenicePushJob implements AutoCloseable {
   private SentPushJobDetailsTracker sentPushJobDetailsTracker;
   private Class<? extends Partitioner> mapRedPartitionerClass = VeniceMRPartitioner.class;
   private PushJobSchemaInfo pushJobSchemaInfo;
-  private ValidateSchemaAndBuildDictMapperResponse validateSchemaAndBuildDictMapperResponse;
+  private ValidateSchemaAndBuildDictMapperOutputReader validateSchemaAndBuildDictMapperOutputReader;
 
   protected static class PushJobSetting {
     boolean enablePush;
@@ -1305,14 +1305,14 @@ public class VenicePushJob implements AutoCloseable {
     runningJob = runJobWithConfig(jobConf);
     validateCountersAfterValidateSchemaAndBuildDict();
     updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED);
-    getResponseDataFromValidateSchemaAndBuildDictMapper();
+    getValidateSchemaAndBuildDictMapperOutput();
   }
 
-  private void getResponseDataFromValidateSchemaAndBuildDictMapper() throws Exception {
-    validateSchemaAndBuildDictMapperResponse = new ValidateSchemaAndBuildDictMapperResponse();
-    validateSchemaAndBuildDictMapperResponse
+  private void getValidateSchemaAndBuildDictMapperOutput() throws Exception {
+    validateSchemaAndBuildDictMapperOutputReader = new ValidateSchemaAndBuildDictMapperOutputReader();
+    validateSchemaAndBuildDictMapperOutputReader
         .getResponseFromHDFS(getValidateSchemaAndBuildDictionaryOutputFilePath(pushJobSetting.storeName));
-    inputFileDataSize = validateSchemaAndBuildDictMapperResponse.getInputFileDataSize() * INPUT_DATA_SIZE_FACTOR;
+    inputFileDataSize = validateSchemaAndBuildDictMapperOutputReader.getInputFileDataSize() * INPUT_DATA_SIZE_FACTOR;
   }
 
   private void checkLastModificationTimeAndLog() throws IOException {
@@ -1560,7 +1560,7 @@ public class VenicePushJob implements AutoCloseable {
           LOGGER.info(
               "Retrieving the Zstd dictionary trained by {}",
               ValidateSchemaAndBuildDictMapper.class.getSimpleName());
-          compressionDictionary = validateSchemaAndBuildDictMapperResponse.getCompressionDictionary();
+          compressionDictionary = validateSchemaAndBuildDictMapperOutputReader.getCompressionDictionary();
         }
       }
       LOGGER.info("Zstd dictionary size = {} bytes", compressionDictionary.limit());
@@ -2756,7 +2756,7 @@ public class VenicePushJob implements AutoCloseable {
     conf.setInputFormat(VeniceFileInputFormat.class);
     conf.setMapperClass(ValidateSchemaAndBuildDictMapper.class);
 
-    AvroJob.setOutputSchema(conf, ValidateSchemaAndBuildDictOutput.SCHEMA$);
+    AvroJob.setOutputSchema(conf, ValidateSchemaAndBuildDictMapperOutput.getClassSchema());
     conf.setOutputFormat(ValidateSchemaAndBuildDictOutputFormat.class);
 
     /** key/value fields to be used in {@link DefaultInputDataInfoProvider#validateInputAndGetInfo(String)} in the mapper

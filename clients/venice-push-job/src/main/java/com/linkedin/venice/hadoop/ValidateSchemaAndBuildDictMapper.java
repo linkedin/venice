@@ -15,12 +15,11 @@ import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
-import com.linkedin.venice.hadoop.output.avro.ValidateSchemaAndBuildDictOutput;
+import com.linkedin.venice.hadoop.output.avro.ValidateSchemaAndBuildDictMapperOutput;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -61,12 +60,18 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
   protected String inputDirectory;
   private Schema outputSchema;
   private Long inputFileDataSize = 0L;
+  GenericRecord genericRecord;
 
-  private GenericRecord getRecord(Schema recordSchema, byte[] key, byte[] value) {
-    GenericRecord genericRecord = new GenericData.Record(recordSchema);
-    genericRecord.put("key", key);
-    genericRecord.put("value", value);
-    return genericRecord;
+  private void initRecord(Schema recordSchema) {
+    genericRecord = new GenericData.Record(recordSchema);
+  }
+
+  private void appendRecord(String key, byte[] value) {
+    genericRecord.put(key, value);
+  }
+
+  private void appendRecord(String key, long value) {
+    genericRecord.put(key, value);
   }
 
   @Override
@@ -158,44 +163,46 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
       inputFileDataSize += fileStatus.getLen();
     } else {
       // Post the processing of input files: Persist some data to HDFS to be used by the VPJ driver code
+      // 0. Init the record
+      initRecord(outputSchema);
 
-      // 1. inputFileDataSize
-      ByteBuffer inputFileDataSizeBuffer = ByteBuffer.allocate(Long.BYTES);
-      inputFileDataSizeBuffer.putLong(inputFileDataSize);
-      GenericRecord genericRecord =
-          getRecord(outputSchema, KEY_INPUT_FILE_DATA_SIZE.getBytes(), inputFileDataSizeBuffer.array());
-      output.collect(new AvroWrapper<>(genericRecord), NullWritable.get());
+      // 1. append inputFileDataSize (Mandatory entry)
+      appendRecord(KEY_INPUT_FILE_DATA_SIZE, inputFileDataSize);
 
-      // 2. zstd compression dictionary: If dictionary building is enabled and if there are any
-      // input records: build dictionary from the data collected so far and persist it
-      if (buildDictionary) {
-        if (inputDataInfo.hasRecords()) {
-          LOGGER.info(
-              "Creating ZSTD compression dictionary using {}  bytes of samples",
-              inputDataInfoProvider.pushJobZstdConfig.getFilledSize());
-          byte[] dict;
-          try {
-            dict = inputDataInfoProvider.getZstdDictTrainSamples();
-            MRJobCounterHelper.incrMapperZstdDictTrainSuccessCount(reporter, 1);
-            genericRecord = getRecord(outputSchema, KEY_ZSTD_COMPRESSION_DICTIONARY.getBytes(), dict);
-            output.collect(new AvroWrapper<>(genericRecord), NullWritable.get());
-          } catch (Exception e) {
-            MRJobCounterHelper.incrMapperZstdDictTrainFailureCount(reporter, 1);
-            LOGGER.error(
-                "Training ZStd compression dictionary failed: Maybe the sample size is too small or "
-                    + "the content is not suitable for creating dictionary :  ",
-                e);
-            return false;
+      try {
+        // 2. append zstd compression dictionary (optional entry): If dictionary building is enabled and
+        // if there are any input records: build dictionary from the data collected so far and persist it
+        if (buildDictionary) {
+          if (inputDataInfo.hasRecords()) {
+            LOGGER.info(
+                "Creating ZSTD compression dictionary using {}  bytes of samples",
+                inputDataInfoProvider.pushJobZstdConfig.getFilledSize());
+            byte[] dict;
+            try {
+              dict = inputDataInfoProvider.getZstdDictTrainSamples();
+              MRJobCounterHelper.incrMapperZstdDictTrainSuccessCount(reporter, 1);
+              appendRecord(KEY_ZSTD_COMPRESSION_DICTIONARY, dict);
+            } catch (Exception e) {
+              MRJobCounterHelper.incrMapperZstdDictTrainFailureCount(reporter, 1);
+              LOGGER.error(
+                  "Training ZStd compression dictionary failed: Maybe the sample size is too small or "
+                      + "the content is not suitable for creating dictionary :  ",
+                  e);
+              return false;
+            }
+            LOGGER.info("Zstd compression dictionary size = {} bytes", dict.length);
+          } else {
+            LOGGER.info("No compression dictionary is generated as the input data doesn't contain any records");
           }
-          LOGGER.info("Zstd compression dictionary size = {} bytes", dict.length);
         } else {
-          LOGGER.info("No compression dictionary is generated as the input data doesn't contain any records");
+          LOGGER.info(
+              "No compression dictionary is generated with the strategy {} and compressionMetricCollectionEnabled is {}",
+              storeSetting.compressionStrategy,
+              (pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled"));
         }
-      } else {
-        LOGGER.info(
-            "No compression dictionary is generated with the strategy {} and compressionMetricCollectionEnabled is {}",
-            storeSetting.compressionStrategy,
-            (pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled"));
+      } finally {
+        // collect the appended output so far
+        output.collect(new AvroWrapper<>(genericRecord), NullWritable.get());
       }
     }
     return true;
@@ -280,7 +287,7 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
       hasReportedFailure = true;
     }
 
-    outputSchema = ValidateSchemaAndBuildDictOutput.SCHEMA$;
+    outputSchema = ValidateSchemaAndBuildDictMapperOutput.getClassSchema();
   }
 
   @Override

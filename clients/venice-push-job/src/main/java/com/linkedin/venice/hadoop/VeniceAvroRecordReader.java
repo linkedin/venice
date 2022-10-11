@@ -73,7 +73,7 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
         fileSchema = avroDataFileStream.getSchema();
       } catch (IOException e) {
         throw new VeniceException(
-            "Encountered exception reading Avro data from " + hdfsPath.toString()
+            "Encountered exception reading Avro data from " + hdfsPath
                 + ". Check if the file exists and the data is in Avro format.",
             e);
       }
