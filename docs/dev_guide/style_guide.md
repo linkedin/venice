@@ -127,26 +127,33 @@ monitored, alerted on, and remediated if it creeps beyond a certain threshold.
 The CPU will do whatever we tell it, day in day out, without complaints, but it does not mean we ought to abuse it.
 Although there is undoubtedly a kernel of truth in the saying that "premature optimization is the root of all evil",
 it is important to consider that the reverse is not equally true. In other words, non-optimized code is not the root of 
-all clean code.
+all clean code. This picture from one of the talks by Java performance expert Aleksey Shipilëv describes the idea in an 
+easy to grasp manner:
+
+![Complexity vs Performance](https://user-images.githubusercontent.com/1248632/195111861-518f81c4-f226-4942-b88a-a34337da79e3.png)
 
 For example, if a class contains some final string property, and the code in this class repeatedly performs a lookup
 by that property, then it implies that the result of this lookup may change over time. If that is true, then the code is
 fine, but if it is not true that the result of the lookup would change over time, then it is simply useless code. Doing
-the lookup just once, and hanging on to the result in another final property, makes the code not only faster and more 
+the lookup just once, and caching the result in another final property, makes the code not only faster and more 
 efficient, but also easier to reason about, since it indicates the immutability of this looked up property.
 
 Another example is interrogating a map to see if it contains a key, and if true, then getting that key out of the map.
 This requires 2 lookups, whereas in fact only 1 lookup would suffice, as we can get a value from the map and then check
 whether it's null. Moreover, doing it in 1 lookup is actually cleaner, since it eliminates the race condition where the
-lookup may exist during the `containsKey` check but then get removed prior to the subsequent `get` call. Again, the fast
-code is cleaner.
+lookup may exist during the `containsKey` check but then get removed prior to the subsequent `get` call. Again, the 
+faster code is cleaner.
 
-Yet another example is using the optimal data structure for a given use case. If both a map and an array can do the job
-equally well, then let us use an array, as it is more efficient than a map. For collections of primitives, it is advised 
-to consider using fastutil. If using a more efficient data structure requires significant acrobatics, then we may still 
-prefer to opt for the less efficient one, for the sake of maintainability, but we should consider whether we can build a 
-new data structure which achieves both convenience and efficiency for a given use case. This kind of low-level work is 
-not considered off-limits within Venice, and we welcome it if there is a good rationale for it.
+Yet another example is using the optimal data structure for a given use case. A frequent use case within Venice is to
+look something up by partition number (which are in a tight range, between zero and some low number), and thus it is
+possible do the job with either an int-keyed map or an array. If both work equally well from a functional standpoint, 
+then let us use an array, as it is more efficient to perform an index lookup within an array than a map lookup. For 
+collections of primitives, it is advised to consider using [fastutil](https://fastutil.di.unimi.it/). If using a more 
+efficient data structure requires significant acrobatics, then we may still prefer to opt for the less efficient one, 
+for the sake of maintainability (e.g., if it falls within the red zone of the above diagram). That being said, we should 
+consider whether we can build a new data structure which achieves both convenience and efficiency for a given use case
+(e.g., yellow zone). This kind of low-level work is not considered off-limits within Venice, and we welcome it if there 
+is a good rationale for it.
 
 More generally, always keep in mind that the hot path in Venice may be invoked hundreds of thousands of times per second 
 per server, and it is therefore important to minimize overhead in these paths. By being benevolent tyrants, our CPUs 
