@@ -50,9 +50,14 @@ public interface VeniceChangelogConsumer<K, V> {
   /**
    * Polling function to get any available messages from the underlying system for all partitions subscribed.
    *
-   * @param timeout The maximum time to block (must not be greater than {@link Long#MAX_VALUE} milliseconds)
+   * @param timeoutInMs The maximum time to block (must not be greater than {@link Long#MAX_VALUE} milliseconds)
    * @return a collection of messages since the last fetch for the subscribed list of topic partitions
    * @throws a VeniceException if polling operation fails
    */
-  Collection<PubSubMessage> poll(long timeout);
+  Collection<PubSubMessage> poll(long timeoutInMs);
+
+  /**
+   * Release the internal resources.
+   */
+  void close();
 }
