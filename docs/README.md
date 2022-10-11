@@ -1,21 +1,19 @@
-
 <html>
     <h1 align="center">
       Venice
     </h1>
     <h3 align="center">
-      Derived Data Platform for planet-scale workloads
+      Derived Data Platform for Planet-Scale Workloads<br/>
     </h3>
-    <h3 align="center">
-      Important Links:
-      <a href="https://communityinviter.com/apps/venicedb/venice">Slack</a> &
-      <a href="https://github.com/linkedin/venice/discussions">Discussions</a>.   
-      <a href="https://linkedin.github.io/venice/">Docs</a>.
-    </h3>
-</html> 
-
-[![License](https://img.shields.io/badge/License-BSD_2--Clause-blue.svg)](https://github.com/linkedin/venice/blob/main/LICENSE)
-[![Docs Latest](https://img.shields.io/badge/docs-latest-blue.svg)](https://linkedin.github.io/venice/)
+    <div align="center">
+        <a href="https://github.com/linkedin/venice/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-BSD_2--Clause-blue.svg" alt="License"></a>
+        <a href="https://linkedin.github.io/venice/"><img src="https://img.shields.io/badge/docs-latest-blue.svg" alt="Docs Latest"></a>
+        <a href="http://twitter.com/VeniceDataBase"><img src="https://img.shields.io/badge/Twitter-%231DA1F2.svg?logo=Twitter&logoColor=white" alt="Twitter"></a>
+        <a href="https://www.linkedin.com/groups/14129519/"><img src="https://img.shields.io/badge/linkedin-%230077B5.svg?logo=linkedin&logoColor=white" alt="LinkedIn"></a>
+        <a href="https://communityinviter.com/apps/venicedb/venice"><img src="https://img.shields.io/badge/Slack-4A154B?logo=slack&logoColor=white" alt="Slack"></a>
+        <a href="http://github.com/linkedin/venice"><img src="https://img.shields.io/badge/github-%23121011.svg?logo=github&logoColor=white" alt="GitHub"></a>
+    </div>
+</html>
 
 Venice is a derived data storage platform, providing the following characteristics:
 
