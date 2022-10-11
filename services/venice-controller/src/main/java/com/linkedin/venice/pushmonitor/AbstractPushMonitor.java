@@ -696,7 +696,7 @@ public abstract class AbstractPushMonitor
           helixClientThrottler.maybeThrottle(1);
           Map<String, List<String>> helixMap = helixAdminClient.getDisabledPartitionsMap(clusterName, instance);
           if (helixMap.containsKey(kafkaTopic)) {
-            return helixMap.get(kafkaTopic).stream().map(Integer::parseInt).collect(Collectors.toSet());
+            return helixMap.get(kafkaTopic).stream().map(HelixUtils::getPartitionId).collect(Collectors.toSet());
           } else {
             return Collections.emptySet();
           }
