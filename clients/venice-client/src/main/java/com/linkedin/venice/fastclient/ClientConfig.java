@@ -129,7 +129,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
         : TimeUnit.SECONDS.toMillis(10); // 10 seconds
     this.routingUnavailableRequestCounterResetDelayMS = routingUnavailableRequestCounterResetDelayMS > 0
         ? routingUnavailableRequestCounterResetDelayMS
-        : TimeUnit.MINUTES.toMicros(1); // 1 min
+        : TimeUnit.SECONDS.toMillis(10); // 10 seconds
     this.routingPendingRequestCounterInstanceBlockThreshold = routingPendingRequestCounterInstanceBlockThreshold > 0
         ? routingPendingRequestCounterInstanceBlockThreshold
         : 50;
