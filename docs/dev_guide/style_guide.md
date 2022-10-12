@@ -56,7 +56,8 @@ Use a single-line JavaDoc if it fits, e.g., `/** A very short description */`
 
 Note that we also use JavaDoc everywhere we feel like, not just at the top of functions and classes. This is atypical,
 but intentional. It allows us to use the `{@link ClassName}` syntax in order to make the code more easily navigable and
-refactorable. If your IDE complains that the JavaDoc is misplaced, disable that hint (:
+refactorable. If your IDE complains about dangling JavaDocs, that hint should be disabled. If using IntelliJ, this will
+be configured automatically when calling: `./gradlew cleanIdea idea`
 
 ### Logging
 
@@ -98,6 +99,13 @@ consider whether a class actually needs a handle of an instance of an entire oth
 call any of its functions), or whether it could make do with an instance of a more constrained interface, which the 
 other class implements, or perhaps even just a handle to a specific function of the other class (thus limiting the 
 surface area of their interaction).
+
+### Avoid Wildcard Imports
+
+We avoid wildcard imports since they may lead to bugs due to pulling in unintended classes or functions. If using 
+IntelliJ, the auto-conversion of imports into wildcards can be disabled by following these 
+[instructions](https://www.jetbrains.com/help/idea/creating-and-optimizing-imports.html#disable-wildcard-imports). This
+would be a good candidate for automation, perhaps via a new Spotbugs plugin; contributions welcome!
 
 ### Avoid Optionals
 

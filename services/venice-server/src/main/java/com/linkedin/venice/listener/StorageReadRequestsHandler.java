@@ -409,12 +409,12 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       int parallelChunkSize) {
     String topic = request.getResourceName();
     Iterable<MultiGetRouterRequestKeyV1> keys = request.getKeys();
-    AbstractStorageEngine store = getStorageEngine(topic);
+    AbstractStorageEngine storageEngine = getStorageEngine(topic);
 
     MultiGetResponseWrapper responseWrapper = new MultiGetResponseWrapper(request.getKeyCount());
-    responseWrapper.setCompressionStrategy(store.getCompressionStrategy());
+    responseWrapper.setCompressionStrategy(storageEngine.getCompressionStrategy());
     responseWrapper.setDatabaseLookupLatency(0);
-    boolean isChunked = store.isChunked();
+    boolean isChunked = storageEngine.isChunked();
 
     ExecutorService executorService = getExecutor(RequestType.MULTI_GET);
     if (!(keys instanceof ArrayList)) {
@@ -446,7 +446,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
           optionalKeyList.ifPresent(list -> list.add(key.keyBytes.remaining()));
           int subPartitionId = getSubPartitionId(key.partitionId, topic, partitionerConfig, key.keyBytes.array());
           MultiGetResponseRecordV1 record =
-              BatchGetChunkingAdapter.get(store, subPartitionId, key.keyBytes, isChunked, responseWrapper);
+              BatchGetChunkingAdapter.get(storageEngine, subPartitionId, key.keyBytes, isChunked, responseWrapper);
           if (record == null) {
             if (request.isStreamingRequest()) {
               // For streaming, we would like to send back non-existing keys since the end-user won't know the status of
@@ -493,16 +493,16 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     String topic = request.getResourceName();
     Iterable<MultiGetRouterRequestKeyV1> keys = request.getKeys();
     PartitionerConfig partitionerConfig = getPartitionerConfig(request.getResourceName());
-    AbstractStorageEngine store = getStorageEngine(topic);
+    AbstractStorageEngine storageEngine = getStorageEngine(topic);
 
     MultiGetResponseWrapper responseWrapper = new MultiGetResponseWrapper(request.getKeyCount());
-    responseWrapper.setCompressionStrategy(store.getCompressionStrategy());
+    responseWrapper.setCompressionStrategy(storageEngine.getCompressionStrategy());
     responseWrapper.setDatabaseLookupLatency(0);
-    boolean isChunked = store.isChunked();
+    boolean isChunked = storageEngine.isChunked();
     for (MultiGetRouterRequestKeyV1 key: keys) {
       int subPartitionId = getSubPartitionId(key.partitionId, topic, partitionerConfig, key.keyBytes.array());
       MultiGetResponseRecordV1 record =
-          BatchGetChunkingAdapter.get(store, subPartitionId, key.keyBytes, isChunked, responseWrapper);
+          BatchGetChunkingAdapter.get(storageEngine, subPartitionId, key.keyBytes, isChunked, responseWrapper);
       if (record == null) {
         if (request.isStreamingRequest()) {
           // For streaming, we would like to send back non-existing keys since the end-user won't know the status of
@@ -530,7 +530,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     String topic = request.getResourceName();
     String storeName = request.getStoreName();
     Iterable<ComputeRouterRequestKeyV1> keys = request.getKeys();
-    AbstractStorageEngine store = getStorageEngine(topic);
+    AbstractStorageEngine storageEngine = getStorageEngine(topic);
     PartitionerConfig partitionerConfig = getPartitionerConfig(request.getResourceName());
 
     Schema valueSchema;
@@ -556,8 +556,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     }
 
     ComputeResponseWrapper responseWrapper = new ComputeResponseWrapper(request.getKeyCount());
-    CompressionStrategy compressionStrategy = store.getCompressionStrategy();
-    boolean isChunked = store.isChunked();
+    CompressionStrategy compressionStrategy = storageEngine.getCompressionStrategy();
+    boolean isChunked = storageEngine.isChunked();
 
     // The following metrics will get incremented for each record processed in computeResult()
     responseWrapper.setReadComputeDeserializationLatency(0.0);
@@ -594,7 +594,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       clearFieldsInReusedRecord(reuseResultRecord, computeResultSchema);
       int subPartitionId = getSubPartitionId(key.partitionId, topic, partitionerConfig, key.keyBytes.array());
       ComputeResponseRecordV1 record = computeResult(
-          store,
+          storageEngine,
           storeName,
           key.keyBytes,
           key.keyIndex,
