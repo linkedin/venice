@@ -96,6 +96,7 @@ The following talks have been given about Venice:
 - 2018: [Venice with Apache Kafka & Samza](https://www.youtube.com/watch?v=Usz8E4S-hZE)
 - 2019: [People You May Know: Fast Recommendations over Massive Data](https://www.infoq.com/presentations/recommendation-massive-data/)
 - 2019: [Enabling next generation models for PYMK Scale](https://www.youtube.com/watch?v=znd-Q6IvCqY)
+- 2022: [Open Sourcing Venice](https://www.youtube.com/watch?v=pJeg4V3JgYo)
 
 Keep in mind that older content reflects an earlier phase of the project and may not be entirely correct anymore.
 
