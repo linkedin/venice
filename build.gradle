@@ -431,3 +431,70 @@ build {
     'services:venice-controller:installDist'
   )
 }
+
+idea.project.ipr {
+  withXml { provider ->
+    provider.node.component
+            .find { it.@name == 'VcsDirectoryMappings' }
+            .mapping.@vcs = 'Git'
+
+    def inspectionProjectProfileManager = provider.node.component
+        .find { it.@name == 'InspectionProjectProfileManager' }
+
+    def danglingJavaDocInspectionProperties = [
+      class: "DanglingJavadoc",
+      enabled: "false",
+      level: "WARNING",
+      enabled_by_default: "false"
+    ]
+
+    if (inspectionProjectProfileManager == null) {
+      inspectionProjectProfileManager = provider.node.appendNode(
+        "component",
+        [
+          name: "InspectionProjectProfileManager"
+        ]
+      )
+
+      def profile = inspectionProjectProfileManager.appendNode(
+        "profile",
+        [
+          version: "1.0"
+        ]
+      )
+
+      profile.appendNode(
+        "option",
+        [
+          name: "myName",
+          value: "Project Default"
+        ]
+      )
+
+      profile.appendNode(
+        "inspection_tool",
+        danglingJavaDocInspectionProperties
+      )
+
+      inspectionProjectProfileManager.appendNode(
+        "version",
+        [
+          value: "1.0"
+        ]
+      )
+    } else {
+      def danglingJavaDoc = inspectionProjectProfileManager.profile.inspection_tool
+          .find { it.@class == 'DanglingJavadoc' }
+      if (danglingJavaDoc == null) {
+        inspectionProjectProfileManager.profile.get(0).appendNode(
+          "inspection_tool",
+          danglingJavaDocInspectionProperties
+        )
+      } else {
+        danglingJavaDoc.@enabled = false
+        danglingJavaDoc.@level = "WARNING"
+        danglingJavaDoc.@enabled_by_default = false
+      }
+    }
+  }
+}

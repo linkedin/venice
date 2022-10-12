@@ -6,7 +6,6 @@ import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_DELAYED_TO_REBALANCE_MS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARTITION_SIZE_BYTES;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_REPLICATION_FACTOR;
-import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.*;
 
 import com.linkedin.venice.authorization.AuthorizerService;
 import java.util.Arrays;
@@ -242,7 +241,7 @@ public class VeniceControllerCreateOptions {
       if (!isMinActiveReplicaSet) {
         minActiveReplica = replicationFactor > 1 ? replicationFactor - 1 : replicationFactor;
       }
-      extraProperties.setProperty(LOCAL_REGION_NAME, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
+      extraProperties.setProperty(LOCAL_REGION_NAME, VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
       if (!extraProperties.containsKey(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE)) {
         extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, "true");
       }

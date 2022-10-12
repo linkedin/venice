@@ -20,6 +20,7 @@ import java.io.Closeable;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.commons.lang3.Validate;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -49,10 +50,10 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
       long participantMessageConsumptionDelayMs,
       ICProvider icProvider) {
 
-    this.stats = stats;
-    this.storeIngestionService = storeIngestionService;
-    this.clusterInfoProvider = clusterInfoProvider;
-    this.clientConfig = clientConfig;
+    this.stats = Validate.notNull(stats);
+    this.storeIngestionService = Validate.notNull(storeIngestionService);
+    this.clusterInfoProvider = Validate.notNull(clusterInfoProvider);
+    this.clientConfig = Validate.notNull(clientConfig);
     this.participantMessageConsumptionDelayMs = participantMessageConsumptionDelayMs;
     this.icProvider = icProvider;
   }

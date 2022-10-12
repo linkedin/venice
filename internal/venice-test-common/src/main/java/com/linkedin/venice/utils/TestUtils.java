@@ -6,6 +6,7 @@ import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
 import static com.linkedin.venice.utils.TestPushUtils.STRING_SCHEMA;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doReturn;
@@ -24,6 +25,7 @@ import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -376,7 +378,7 @@ public class TestUtils {
       ByteBuffer compressionDictionary) {
     VeniceCompressor compressor = null;
     if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-      compressor = new ZstdWithDictCompressor(compressionDictionary.array(), 0);
+      compressor = new ZstdWithDictCompressor(compressionDictionary.array(), Zstd.maxCompressionLevel());
     } else if (compressionStrategy == CompressionStrategy.GZIP) {
       compressor = new GzipCompressor();
     } else {
@@ -762,8 +764,7 @@ public class TestUtils {
       HttpGet getReq = new HttpGet(sb.toString());
       try (InputStream bodyStream = storageNodeClient.execute(getReq, null).get().getEntity().getContent()) {
         byte[] dictionary = IOUtils.toByteArray(bodyStream);
-        return compressorFactory
-            .createCompressorWithDictionary(compressionStrategy, dictionary, Zstd.maxCompressionLevel());
+        return compressorFactory.createCompressorWithDictionary(dictionary, Zstd.maxCompressionLevel());
       } catch (InterruptedException | ExecutionException e) {
         throw e;
       }
@@ -781,6 +782,9 @@ public class TestUtils {
     KafkaClientFactory mockKafkaClientFactory = mock(KafkaClientFactory.class);
     KafkaConsumerWrapper mockKafkaConsumerWrapper = mock(KafkaConsumerWrapper.class);
     doReturn(mockKafkaConsumerWrapper).when(mockKafkaClientFactory).getConsumer(any());
+
+    StorageEngineRepository mockStorageEngineRepository = mock(StorageEngineRepository.class);
+    doReturn(mock(AbstractStorageEngine.class)).when(mockStorageEngineRepository).getLocalStorageEngine(anyString());
 
     ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     Store mockStore = mock(Store.class);
@@ -834,7 +838,7 @@ public class TestUtils {
 
     return new StoreIngestionTaskFactory.Builder().setVeniceWriterFactory(mock(VeniceWriterFactory.class))
         .setKafkaClientFactory(mockKafkaClientFactory)
-        .setStorageEngineRepository(mock(StorageEngineRepository.class))
+        .setStorageEngineRepository(mockStorageEngineRepository)
         .setStorageMetadataService(mockStorageMetadataService)
         .setLeaderFollowerNotifiersQueue(new ArrayDeque<>())
         .setBandwidthThrottler(mock(EventThrottler.class))
@@ -912,8 +916,8 @@ public class TestUtils {
       String storeName,
       Optional<Logger> logger) {
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-    VersionCreationResponse response = controllerClient.emptyPush(metaSystemStoreName, "testEmptyPush", 1234321);
-    Assert.assertFalse(response.isError());
+    VersionCreationResponse response =
+        assertCommand(controllerClient.emptyPush(metaSystemStoreName, "testEmptyPush", 1234321));
     TestUtils.waitForNonDeterministicPushCompletion(response.getKafkaTopic(), controllerClient, 1, TimeUnit.MINUTES);
     logger.ifPresent(value -> value.info("System store " + metaSystemStoreName + " is created."));
   }

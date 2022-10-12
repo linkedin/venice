@@ -171,7 +171,8 @@ public class DaVinciBackend implements Closeable {
               backendConfig.getIngestionServicePort(),
               partitionStateSerializer,
               new MetadataUpdateStats(metricsRepository),
-              configLoader)
+              configLoader,
+              storageService.getStoreVersionStateSyncer())
           : new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
       // Start storage metadata service
       ((AbstractVeniceService) storageMetadataService).start();
@@ -188,7 +189,6 @@ public class DaVinciBackend implements Closeable {
           schemaRepository,
           null,
           metricsRepository,
-          rocksDBMemoryStats,
           Optional.of(kafkaMessageEnvelopeSchemaReader),
           Optional.empty(),
           partitionStateSerializer,

@@ -4,7 +4,6 @@ import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
 import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
 
-import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.MergeConflictResolver;
@@ -82,8 +81,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       VeniceStoreVersionConfig storeConfig,
       int errorPartitionId,
       boolean isIsolatedIngestion,
-      Optional<ObjectCacheBackend> cacheBackend,
-      StorageEngineBackedCompressorFactory compressorFactory) {
+      Optional<ObjectCacheBackend> cacheBackend) {
     super(
         builder,
         store,
@@ -93,8 +91,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         storeConfig,
         errorPartitionId,
         isIsolatedIngestion,
-        cacheBackend,
-        compressorFactory);
+        cacheBackend);
 
     this.rmdProtocolVersionID = version.getRmdVersionId();
     this.aggVersionedIngestionStats = versionedIngestionStats;
@@ -291,7 +288,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     KafkaMessageEnvelope kafkaValue = consumerRecord.value();
     byte[] keyBytes = kafkaKey.getKey();
     MessageType msgType = MessageType.valueOf(kafkaValue.messageType);
-    boolean isChunkedTopic = storageMetadataService.isStoreVersionChunked(kafkaVersionTopic);
     final int incomingValueSchemaId;
     final int incomingWriteComputeSchemaId;
 
@@ -319,8 +315,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             partitionConsumptionState,
             keyBytes,
             consumerRecord.topic(),
-            consumerRecord.partition(),
-            isChunkedTopic));
+            consumerRecord.partition()));
 
     final Optional<RmdWithValueSchemaId> rmdWithValueSchemaID =
         getReplicationMetadataAndSchemaId(partitionConsumptionState, keyBytes, subPartition);
@@ -396,7 +391,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           mergeConflictResult,
           partitionConsumptionState,
           keyBytes,
-          isChunkedTopic,
           consumerRecord,
           subPartition,
           kafkaUrl,
@@ -455,15 +449,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * @param key The key bytes of the incoming record.
    * @param topic The topic from which the incomign record was consumed
    * @param partition The Kafka partition from which the incomign record was consumed
-   * @param isChunkedTopic If the store version is chunked.
    * @return
    */
   private ByteBuffer getValueBytesForKey(
       PartitionConsumptionState partitionConsumptionState,
       byte[] key,
       String topic,
-      int partition,
-      boolean isChunkedTopic) {
+      int partition) {
     ByteBuffer originalValue = null;
     // Find the existing value. If a value for this key is found from the transient map then use that value, otherwise
     // get it from DB.
@@ -474,15 +466,15 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           storageEngine,
           getSubPartitionId(key, topic, partition),
           ByteBuffer.wrap(key),
-          isChunkedTopic,
+          isChunked,
           null,
           null,
           null,
-          storageMetadataService.getStoreVersionCompressionStrategy(kafkaVersionTopic),
+          compressionStrategy,
           serverConfig.isComputeFastAvroEnabled(),
           schemaRepository,
           storeName,
-          compressorFactory,
+          compressor.get(),
           false);
       hostLevelIngestionStats.recordIngestionValueBytesLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
     } else {
@@ -505,7 +497,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * @param mergeConflictResult The result of conflict resolution.
    * @param partitionConsumptionState The {@link PartitionConsumptionState} of the current partition
    * @param key The key bytes of the incoming record.
-   * @param isChunkedTopic If the store version is chunked.
    * @param consumerRecord The {@link ConsumerRecord} for the current record.
    * @param subPartition
    * @param kafkaUrl
@@ -514,7 +505,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       MergeConflictResult mergeConflictResult,
       PartitionConsumptionState partitionConsumptionState,
       byte[] key,
-      boolean isChunkedTopic,
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       int subPartition,
       String kafkaUrl,
@@ -579,7 +569,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       updatedPut.replicationMetadataPayload = updatedRmdBytes;
 
       byte[] updatedKeyBytes = key;
-      if (isChunkedTopic) {
+      if (isChunked) {
         // Since data is not chunked in RT but chunked in VT, creating the key for the small record case or CVM to be
         // used to persist on disk after producing to Kafka.
         updatedKeyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key);
@@ -1101,8 +1091,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
   @Override
   public long getRegionHybridOffsetLag(int regionId) {
-    Optional<StoreVersionState> svs = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
-    if (!svs.isPresent()) {
+    StoreVersionState svs = storageEngine.getStoreVersionState();
+    if (svs == null) {
       /**
        * Store version metadata is created for the first time when the first START_OF_PUSH message is processed;
        * however, the ingestion stat is created the moment an ingestion task is created, so there is a short time

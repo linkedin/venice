@@ -9,6 +9,7 @@ import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.compute.ComputeOperationUtils;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.ReadComputeOperator;
@@ -24,6 +25,7 @@ import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.Instant;
@@ -61,6 +63,7 @@ public class VersionBackend {
   private final Map<Integer, CompletableFuture<Void>> partitionFutures = new VeniceConcurrentHashMap<>();
   private final int stopConsumptionWaitRetriesNum;
   private final StoreBackendStats storeBackendStats;
+  private final Lazy<VeniceCompressor> compressor;
 
   /*
    * if daVinciPushStatusStoreEnabled, VersionBackend will schedule a periodic job sending heartbeats
@@ -94,12 +97,16 @@ public class VersionBackend {
         .getInt(PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS, DEFAULT_PUSH_STATUS_HEARTBEAT_INTERVAL_IN_SECONDS);
     this.stopConsumptionWaitRetriesNum =
         backend.getConfigLoader().getCombinedProperties().getInt(SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM, 60);
+    this.compressor = Lazy.of(
+        () -> backend.getCompressorFactory().getCompressor(version.getCompressionStrategy(), version.kafkaTopicName()));
     backend.getVersionByTopicMap().put(version.kafkaTopicName(), this);
   }
 
   synchronized void close() {
     LOGGER.info("Closing local version {}", this);
+    // TODO: Consider if all of the below calls to the backend could be merged into a single function.
     backend.getVersionByTopicMap().remove(version.kafkaTopicName(), this);
+    backend.getIngestionBackend().setStorageEngineReference(version.kafkaTopicName(), null);
     if (heartbeat != null) {
       heartbeat.cancel(true);
     }
@@ -187,7 +194,7 @@ public class VersionBackend {
         true,
         backend.getSchemaRepository(),
         null,
-        backend.getCompressorFactory());
+        compressor.get());
   }
 
   public GenericRecord compute(
@@ -216,7 +223,7 @@ public class VersionBackend {
         true,
         backend.getSchemaRepository(),
         null,
-        backend.getCompressorFactory());
+        compressor.get());
 
     return getResultOfComputeOperations(
         computeRequestWrapper.getOperations(),
@@ -275,7 +282,7 @@ public class VersionBackend {
         true,
         backend.getSchemaRepository(),
         null,
-        backend.getCompressorFactory(),
+        compressor.get(),
         computingCallback);
   }
 
