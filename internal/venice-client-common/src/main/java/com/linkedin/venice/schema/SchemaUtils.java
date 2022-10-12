@@ -4,6 +4,7 @@ import static org.apache.avro.Schema.Type.UNION;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.avro.Schema;
@@ -99,5 +100,73 @@ public class SchemaUtils {
     }
 
     return newRecord;
+  }
+
+  /**
+   * Annotate all the top-level map field of the input schema to use Java String as key.
+   * @param schema the input value schema to be annotated.
+   * @return Annotated value schema.
+   */
+  public static Schema annotateStringMapInValueSchema(Schema schema) {
+    // Create duplicate schema here in order not to create any side effect during annotation.
+    Schema replicatedSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schema.toString());
+    for (Schema.Field field: replicatedSchema.getFields()) {
+      if (field.schema().getType().equals(Schema.Type.MAP)) {
+        annotateMapSchema(field.schema());
+      }
+    }
+    return replicatedSchema;
+  }
+
+  /**
+   * Annotate all the top-level map field of the partial update schema to use Java String as key. This method will make
+   * sure field update and collection merging operations of a top-level map field are annotated.
+   * @param schema the input partial update schema to be annotated.
+   * @return Annotated partial update schema.
+   */
+  public static Schema annotateStringMapInDerivedSchema(Schema schema) {
+    // Create duplicate schema here in order not to create any side effect during annotation.
+    Schema replicatedSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schema.toString());
+    for (Schema.Field field: replicatedSchema.getFields()) {
+      if (field.schema().isUnion()) {
+        for (Schema unionBranchSchema: field.schema().getTypes()) {
+          // Full update request for Map field.
+          if (unionBranchSchema.getType().equals(Schema.Type.MAP)) {
+            annotateMapSchema(unionBranchSchema);
+          } else if (unionBranchSchema.getType().equals(Schema.Type.RECORD)) {
+            for (Schema.Field updateOpField: unionBranchSchema.getFields()) {
+              if (updateOpField.schema().getType().equals(Schema.Type.MAP)) {
+                annotateMapSchema(updateOpField.schema());
+              }
+            }
+          }
+        }
+      }
+    }
+    return replicatedSchema;
+  }
+
+  /**
+   * Create a new {@link SchemaEntry} for value schema annotation.
+   * @param schemaEntry Input {@link SchemaEntry}, containing the value schema to be annotated.
+   * @return Annotated value schema in a newly created {@link SchemaEntry}
+   */
+  public static SchemaEntry getAnnotatedStringMapValueSchemaEntry(SchemaEntry schemaEntry) {
+    Schema annotatedSchema = annotateStringMapInValueSchema(schemaEntry.getSchema());
+    return new SchemaEntry(schemaEntry.getId(), annotatedSchema);
+  }
+
+  /**
+   * Create a new {@link DerivedSchemaEntry} for partial update schema annotation.
+   * @param schemaEntry Input {@link DerivedSchemaEntry}, containing the partial update schema to be annotated.
+   * @return Annotated partial update schema in a newly created {@link DerivedSchemaEntry}
+   */
+  public static DerivedSchemaEntry getAnnotatedStringMapDerivedSchemaEntry(DerivedSchemaEntry schemaEntry) {
+    Schema annotatedSchema = annotateStringMapInDerivedSchema(schemaEntry.getSchema());
+    return new DerivedSchemaEntry(schemaEntry.getValueSchemaID(), schemaEntry.getId(), annotatedSchema);
+  }
+
+  private static void annotateMapSchema(Schema mapSchema) {
+    AvroCompatibilityHelper.setSchemaPropFromJsonString(mapSchema, "avro.java.string", "\"String\"", false);
   }
 }
