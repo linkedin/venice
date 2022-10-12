@@ -8,6 +8,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.mapred.FileAlreadyExistsException;
+import org.apache.hadoop.mapred.FileOutputFormat;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -19,7 +20,7 @@ import org.apache.logging.log4j.Logger;
  *    the parent class: to keep the outfile path/Name deterministic
  * 2. set custom permissions to the output directory/files to allow only the push job owners can
  *    access the personally identifiable information (eg: compressionDictionary)
- * 3. sets {@link org.apache.hadoop.mapred.FileOutputFormat#setOutputPath}
+ * 3. sets {@link FileOutputFormat#setOutputPath}
  */
 public class ValidateSchemaAndBuildDictOutputFormat extends AvroOutputFormat {
   private static final Logger LOGGER = LogManager.getLogger(ValidateSchemaAndBuildDictOutputFormat.class);

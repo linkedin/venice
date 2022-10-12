@@ -3,11 +3,11 @@ package com.linkedin.venice.hadoop;
 import static com.linkedin.venice.hadoop.VenicePushJob.KEY_INPUT_FILE_DATA_SIZE;
 import static com.linkedin.venice.hadoop.VenicePushJob.KEY_ZSTD_COMPRESSION_DICTIONARY;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.output.avro.ValidateSchemaAndBuildDictMapperOutput;
 import java.nio.ByteBuffer;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -21,19 +21,27 @@ public class ValidateSchemaAndBuildDictMapperOutputReader {
   private GenericAvroRecordReader genericAvroRecordReader;
   private final ValidateSchemaAndBuildDictMapperOutput output = new ValidateSchemaAndBuildDictMapperOutput();
 
-  private Object getDataFromResponse(String keyToRetrieve) {
-    return genericAvroRecordReader.getField(keyToRetrieve);
+  public ValidateSchemaAndBuildDictMapperOutputReader(String file) throws Exception {
+    Configuration conf = new Configuration();
+    FileSystem fs = FileSystem.get(conf);
+
+    this.genericAvroRecordReader = new GenericAvroRecordReader(fs, file);
+  }
+
+  public void getData() throws Exception {
+    getInputFileDataSizeFromResponse();
+    getCompressionDictionaryFromResponse();
   }
 
   /**
    * inputFileDataSize includes the file schema as well, so even for empty pushes it should not be 0
    * @throws Exception
    */
-  private void getInputFileDataSizeFromResponse() throws Exception {
+  private void getInputFileDataSizeFromResponse() throws VeniceException {
     Long inputFileDataSize = (Long) getDataFromResponse(KEY_INPUT_FILE_DATA_SIZE);
     if (inputFileDataSize <= 0) {
       LOGGER.error("Retrieved inputFileDataSize ({}) is not valid", inputFileDataSize);
-      throw new Exception("Retrieved inputFileDataSize (" + inputFileDataSize + ") is not valid");
+      throw new VeniceException("Retrieved inputFileDataSize (" + inputFileDataSize + ") is not valid");
     }
     LOGGER.info("Retrieved inputFileDataSize is {}", inputFileDataSize);
     output.setInputFileDataSize(inputFileDataSize);
@@ -52,13 +60,8 @@ public class ValidateSchemaAndBuildDictMapperOutputReader {
     output.setZstdDictionary(zstdDictionary);
   }
 
-  protected void getResponseFromHDFS(Path path) throws Exception {
-    Configuration conf = new Configuration();
-    FileSystem fs = FileSystem.get(conf);
-
-    this.genericAvroRecordReader = new GenericAvroRecordReader(fs, path);
-    getInputFileDataSizeFromResponse();
-    getCompressionDictionaryFromResponse();
+  private Object getDataFromResponse(String keyToRetrieve) {
+    return genericAvroRecordReader.getField(keyToRetrieve);
   }
 
   public ByteBuffer getCompressionDictionary() {

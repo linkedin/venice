@@ -5,6 +5,7 @@ import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.NoSuchElementException;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileStream;
 import org.apache.avro.generic.GenericDatumReader;
@@ -21,26 +22,30 @@ import org.apache.logging.log4j.Logger;
  */
 public class GenericAvroRecordReader {
   private static final Logger LOGGER = LogManager.getLogger(GenericAvroRecordReader.class);
-  private final InputStream hdfsInputStream;
+  private final InputStream inputStream;
   private final DataFileStream avroDataFileStream;
   private final Schema fileSchema;
   private final Object avroObject;
 
-  public GenericAvroRecordReader(FileSystem fs, Path hdfsPath) {
-    if (fs != null && hdfsPath != null) {
+  public GenericAvroRecordReader(FileSystem fs, String file) {
+    if (fs != null && file != null) {
       try {
-        hdfsInputStream = fs.open(hdfsPath);
-        avroDataFileStream = new DataFileStream(hdfsInputStream, new GenericDatumReader());
+        inputStream = fs.open(new Path(file));
+        avroDataFileStream = new DataFileStream(inputStream, new GenericDatumReader());
         fileSchema = avroDataFileStream.getSchema();
-        avroObject = avroDataFileStream.next();
+        try {
+          avroObject = avroDataFileStream.next();
+        } catch (NoSuchElementException e) {
+          throw new VeniceException("File " + file + " contains no records", e);
+        }
       } catch (IOException e) {
         throw new VeniceException(
-            "Encountered exception reading Avro data from " + hdfsPath
+            "Encountered exception reading Avro data from " + file
                 + ". Check if the file exists and the data is in Avro format.",
             e);
       }
     } else {
-      throw new VeniceException("Both fs and hdfsPath should not be null");
+      throw new VeniceException("Both fs and file should not be null");
     }
   }
 
@@ -70,6 +75,6 @@ public class GenericAvroRecordReader {
 
   public void close() {
     Utils.closeQuietlyWithErrorLogged(avroDataFileStream);
-    Utils.closeQuietlyWithErrorLogged(hdfsInputStream);
+    Utils.closeQuietlyWithErrorLogged(inputStream);
   }
 }

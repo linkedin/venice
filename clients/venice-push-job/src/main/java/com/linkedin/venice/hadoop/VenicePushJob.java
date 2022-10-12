@@ -900,12 +900,10 @@ public class VenicePushJob implements AutoCloseable {
     this.mapRedPartitionerClass = mapRedPartitionerClass;
   }
 
-  private static Path getValidateSchemaAndBuildDictionaryOutputFilePath(String storeName) {
-    Path outputPath = new Path(
-        VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PATH + "/"
-            + VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PER_STORE_PATH_PREFIX + storeName + "/"
-            + VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE);
-    return outputPath;
+  private static String getValidateSchemaAndBuildDictionaryOutputFile(String storeName) {
+    return VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PATH + "/"
+        + VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PER_STORE_PATH_PREFIX + storeName + "/"
+        + VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE;
   }
 
   /**
@@ -1309,9 +1307,9 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   private void getValidateSchemaAndBuildDictMapperOutput() throws Exception {
-    validateSchemaAndBuildDictMapperOutputReader = new ValidateSchemaAndBuildDictMapperOutputReader();
-    validateSchemaAndBuildDictMapperOutputReader
-        .getResponseFromHDFS(getValidateSchemaAndBuildDictionaryOutputFilePath(pushJobSetting.storeName));
+    String outputAvroFile = getValidateSchemaAndBuildDictionaryOutputFile(pushJobSetting.storeName);
+    validateSchemaAndBuildDictMapperOutputReader = new ValidateSchemaAndBuildDictMapperOutputReader(outputAvroFile);
+    validateSchemaAndBuildDictMapperOutputReader.getData();
     inputFileDataSize = validateSchemaAndBuildDictMapperOutputReader.getInputFileDataSize() * INPUT_DATA_SIZE_FACTOR;
   }
 
