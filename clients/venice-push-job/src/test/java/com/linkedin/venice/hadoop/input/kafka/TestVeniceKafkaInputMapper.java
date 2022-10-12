@@ -2,11 +2,16 @@ package com.linkedin.venice.hadoop.input.kafka;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_IN_HOURS;
 import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_POLICY;
+import static com.linkedin.venice.hadoop.VenicePushJob.RMD_SCHEMA_DIR;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.hadoop.AbstractTestVeniceMapper;
+import com.linkedin.venice.hadoop.AbstractVeniceFilter;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
 import com.linkedin.venice.utils.Pair;
@@ -52,7 +57,7 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
   @Test
   public void testEmptyFilterWhenTTLNotSpecified() {
     try (VeniceKafkaInputMapper mapper = new VeniceKafkaInputMapper()) {
-      Assert.assertFalse(mapper.getFilter(new VeniceProperties()).isPresent());
+      Assert.assertNull(mapper.getFilter(new VeniceProperties()));
     }
   }
 
@@ -61,7 +66,8 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
     Properties props = new Properties();
     props.put(REPUSH_TTL_IN_HOURS, 10L);
     props.put(REPUSH_TTL_POLICY, 0);
-    Assert.assertTrue(newMapper().getFilter(new VeniceProperties(props)).isPresent());
+    props.put(RMD_SCHEMA_DIR, "tmp");
+    Assert.assertNotNull(newMapper().getFilter(new VeniceProperties(props)));
   }
 
   @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
@@ -80,14 +86,37 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
         .collect(keyCaptor.capture(), valueCaptor.capture());
   }
 
-  @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
-  public void testProcessWithFilterFilteringPartialRecords(int numReducers, int taskId) throws IOException {
-    // TODO implement this when VeniceKafkaInputTTLFilter is completed
+  @Test
+  public void testProcessWithFilterFilteringPartialRecords() {
+    AbstractVeniceFilter<KafkaInputMapperValue> filter = mock(AbstractVeniceFilter.class);
+    doReturn(true, false, true, false, false).when(filter).applyRecursively(any()); // filter out partial records
+
+    VeniceKafkaInputMapper mapper = spy(newMapper());
+    doReturn(filter).when(mapper).getFilter(any());
+    mapper.configureTask(any(), any());
+    int validCount = 0, filteredCount = 0;
+    Pair<BytesWritable, KafkaInputMapperValue> record = generateRecord();
+    for (int i = 0; i < 5; i++) {
+      if (mapper.process(BYTES_WRITABLE, record.getSecond(), BYTES_WRITABLE, BYTES_WRITABLE, null)) {
+        validCount++;
+      } else {
+        filteredCount++;
+      }
+    }
+    Assert.assertEquals(validCount, 3);
+    Assert.assertEquals(filteredCount, 2);
   }
 
   @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
   public void testProcessWithFilterFilteringAllRecords(int numReducers, int taskId) throws IOException {
-    // TODO implement this when VeniceKafkaInputTTLFilter is completed
+    AbstractVeniceFilter<KafkaInputMapperValue> filter = mock(AbstractVeniceFilter.class);
+    doReturn(true).when(filter).applyRecursively(any()); // filter out all records
+
+    VeniceKafkaInputMapper mapper = spy(getMapper(numReducers, taskId));
+    doReturn(filter).when(mapper).getFilter(any());
+    mapper.configureTask(any(), any());
+
+    Assert.assertFalse(mapper.process(any(), any(), any(), any(), any()));
   }
 
   private Pair<BytesWritable, KafkaInputMapperValue> generateRecord() {

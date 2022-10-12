@@ -186,10 +186,10 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
         .collect(any(), any());
   }
 
-  @Test
+  @Test(expectedExceptions = UnsupportedOperationException.class)
   public void testEmptyFilter() {
     try (VeniceAvroMapper mapper = new VeniceAvroMapper()) {
-      Assert.assertFalse(mapper.getFilter(new VeniceProperties()).isPresent());
+      mapper.getFilter(new VeniceProperties());
     }
   }
 

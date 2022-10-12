@@ -10,7 +10,6 @@ import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.MergeConflictResolver;
 import com.linkedin.davinci.replication.merge.MergeConflictResolverFactory;
 import com.linkedin.davinci.replication.merge.MergeConflictResult;
-import com.linkedin.davinci.replication.merge.MergeUtils;
 import com.linkedin.davinci.replication.merge.RmdSerDe;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
@@ -34,6 +33,7 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
@@ -327,10 +327,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     final long writeTimestamp = getWriteTimestampFromKME(kafkaValue);
     final long offsetSumPreOperation = rmdWithValueSchemaID.isPresent()
-        ? MergeUtils.extractOffsetVectorSumFromRmd(rmdWithValueSchemaID.get().getRmdRecord())
+        ? RmdUtils.extractOffsetVectorSumFromRmd(rmdWithValueSchemaID.get().getRmdRecord())
         : 0;
     List<Long> recordTimestampsPreOperation = rmdWithValueSchemaID.isPresent()
-        ? MergeUtils.extractTimestampFromRmd(rmdWithValueSchemaID.get().getRmdRecord())
+        ? RmdUtils.extractTimestampFromRmd(rmdWithValueSchemaID.get().getRmdRecord())
         : Collections.singletonList(0L);
     // get the source offset and the id
     long sourceOffset = consumerRecord.offset();
@@ -423,7 +423,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
     // Post Validation checks on resolution
     GenericRecord rmdRecord = mergeConflictResult.getRmdRecord();
-    if (offsetSumPreOperation > MergeUtils.extractOffsetVectorSumFromRmd(rmdRecord)) {
+    if (offsetSumPreOperation > RmdUtils.extractOffsetVectorSumFromRmd(rmdRecord)) {
       // offsets went backwards, raise an alert!
       hostLevelIngestionStats.recordOffsetRegressionDCRError();
       aggVersionedIngestionStats.recordOffsetRegressionDCRError(storeName, versionNumber);
@@ -435,7 +435,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     // this works fine for now however as we do not fully support A/A write compute operations (as we only do root
     // timestamp comparisons).
 
-    List<Long> timestampsPostOperation = MergeUtils.extractTimestampFromRmd(rmdRecord);
+    List<Long> timestampsPostOperation = RmdUtils.extractTimestampFromRmd(rmdRecord);
     for (int i = 0; i < timestampsPreOperation.size(); i++) {
       if (timestampsPreOperation.get(i) > timestampsPostOperation.get(i)) {
         // timestamps went backwards, raise an alert!

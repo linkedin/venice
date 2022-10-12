@@ -15,7 +15,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Optional;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Mapper;
@@ -44,7 +43,7 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE> extends Abstr
   BytesWritable keyBW = new BytesWritable(), valueBW = new BytesWritable();
 
   protected AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> veniceRecordReader;
-  protected Optional<AbstractVeniceFilter<INPUT_VALUE>> veniceFilter;
+  protected AbstractVeniceFilter<INPUT_VALUE> veniceFilter;
 
   @Override
   public void map(
@@ -128,7 +127,7 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE> extends Abstr
   /**
    * A method for child classes to setup {@link AbstractVeniceMapper#veniceFilter}.
    */
-  abstract protected Optional<AbstractVeniceFilter<INPUT_VALUE>> getFilter(final VeniceProperties props);
+  abstract protected AbstractVeniceFilter<INPUT_VALUE> getFilter(final VeniceProperties props);
 
   @Override
   protected void configureTask(VeniceProperties props, JobConf job) {
@@ -163,6 +162,10 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE> extends Abstr
       } else {
         Utils.closeQuietlyWithErrorLogged(compressor);
       }
+    }
+
+    if (veniceFilter != null) {
+      Utils.closeQuietlyWithErrorLogged(veniceFilter);
     }
   }
 }

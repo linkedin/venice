@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.AbstractVeniceFilter;
 import com.linkedin.venice.hadoop.AbstractVeniceMapper;
 import com.linkedin.venice.hadoop.AbstractVeniceRecordReader;
@@ -10,7 +11,7 @@ import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.util.Optional;
+import java.io.IOException;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Reporter;
@@ -29,19 +30,23 @@ public class VeniceKafkaInputMapper extends AbstractVeniceMapper<BytesWritable, 
   }
 
   @Override
-  protected Optional<AbstractVeniceFilter<KafkaInputMapperValue>> getFilter(final VeniceProperties props) {
+  protected AbstractVeniceFilter<KafkaInputMapperValue> getFilter(final VeniceProperties props) {
+    AbstractVeniceFilter<KafkaInputMapperValue> filter = null;
     long ttlInHours = props.getLong(VenicePushJob.REPUSH_TTL_IN_HOURS, VenicePushJob.NOT_SET);
     if (ttlInHours != VenicePushJob.NOT_SET) {
-      VeniceKafkaInputTTLFilter filter = new VeniceKafkaInputTTLFilter(props);
-      return Optional.of(filter);
+      try {
+        filter = new VeniceKafkaInputTTLFilter(props);
+      } catch (IOException e) {
+        throw new VeniceException("Could not instantiate the filter", e);
+      }
     }
-    return Optional.empty();
+    return filter;
   }
 
   @Override
   protected void configureTask(VeniceProperties props, JobConf job) {
     /**
-     * Do nothing for {@link KafkaInputFormat} for now, and if we need to support compression rebuild during re-push,
+     * Do nothing but create the filter for {@link KafkaInputFormat} for now, and if we need to support compression rebuild during re-push,
      * this function needs to be changed.
      */
     this.veniceFilter = getFilter(props);
@@ -54,7 +59,7 @@ public class VeniceKafkaInputMapper extends AbstractVeniceMapper<BytesWritable, 
       BytesWritable keyBW,
       BytesWritable valueBW,
       Reporter reporter) {
-    if (veniceFilter.isPresent() && veniceFilter.get().applyRecursively(inputValue)) {
+    if (veniceFilter != null && veniceFilter.applyRecursively(inputValue)) {
       return false;
     }
     keyBW.set(inputKey);

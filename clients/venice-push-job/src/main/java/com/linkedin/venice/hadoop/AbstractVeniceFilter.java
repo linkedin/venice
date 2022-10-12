@@ -1,13 +1,15 @@
 package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.utils.VeniceProperties;
+import java.io.Closeable;
+import java.io.IOException;
 
 
 /**
  * An abstraction to filter data using Chain of Responsibility pattern.
  * @param <INPUT_VALUE>
  */
-public abstract class AbstractVeniceFilter<INPUT_VALUE> {
+public abstract class AbstractVeniceFilter<INPUT_VALUE> implements Closeable {
   protected final VeniceProperties props;
 
   public AbstractVeniceFilter(final VeniceProperties props) {
@@ -57,5 +59,18 @@ public abstract class AbstractVeniceFilter<INPUT_VALUE> {
    */
   public boolean hasNext() {
     return this.next != null;
+  }
+
+  public abstract void closeResources() throws IOException;
+
+  /**
+   * Recursively close resources of all filters on the chain. It will start from tail first.
+   * @throws IOException
+   */
+  public void close() throws IOException {
+    if (next != null) {
+      next.close();
+    }
+    closeResources();
   }
 }

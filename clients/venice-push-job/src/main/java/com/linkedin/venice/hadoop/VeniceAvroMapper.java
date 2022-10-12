@@ -1,7 +1,6 @@
 package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.utils.VeniceProperties;
-import java.util.Optional;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.avro.mapred.AvroWrapper;
 import org.apache.hadoop.io.NullWritable;
@@ -14,7 +13,7 @@ public class VeniceAvroMapper extends AbstractVeniceMapper<AvroWrapper<IndexedRe
   }
 
   @Override
-  protected Optional<AbstractVeniceFilter<NullWritable>> getFilter(final VeniceProperties props) {
-    return Optional.empty();
+  protected AbstractVeniceFilter<NullWritable> getFilter(final VeniceProperties props) {
+    throw new UnsupportedOperationException("VeniceAvroMapper hasn't implemented the filter yet");
   }
 }
