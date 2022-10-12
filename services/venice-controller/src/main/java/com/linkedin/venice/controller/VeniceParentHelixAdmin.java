@@ -130,6 +130,7 @@ import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.PartitionerSchemaMismatchException;
+import com.linkedin.venice.exceptions.ResourceStillExistsException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -156,6 +157,7 @@ import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreDataAudit;
+import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
@@ -2231,13 +2233,13 @@ public class VeniceParentHelixAdmin implements Admin {
           .map(addToUpdatedConfigList(updatedConfigsList, ACTIVE_ACTIVE_REPLICATION_ENABLED))
           .orElseGet(currStore::isActiveActiveReplicationEnabled);
 
+      // Only update fields that are set, other fields will be read from the original store's partitioner config.
+      PartitionerConfig updatedPartitionerConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldPartitionerConfig(
+          currStore,
+          partitionerClass,
+          partitionerParams,
+          amplificationFactor);
       if (partitionerClass.isPresent() || partitionerParams.isPresent() || amplificationFactor.isPresent()) {
-        // Only update fields that are set, other fields will be read from the original store's partitioner config.
-        PartitionerConfig updatedPartitionerConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldPartitionerConfig(
-            currStore,
-            partitionerClass,
-            partitionerParams,
-            amplificationFactor);
         // Update updatedConfigsList.
         partitionerClass.ifPresent(p -> updatedConfigsList.add(PARTITIONER_CLASS));
         partitionerParams.ifPresent(p -> updatedConfigsList.add(PARTITIONER_PARAMS));
@@ -2465,6 +2467,14 @@ public class VeniceParentHelixAdmin implements Admin {
        * Fabrics filter is not a store config, so we don't need to add it into {@link UpdateStore#updatedConfigsList}
        */
       setStore.regionsFilter = regionsFilter.orElse(null);
+
+      if ((setStore.getActiveActiveReplicationEnabled() || setStore.getWriteComputationEnabled())
+          && updatedPartitionerConfig.getAmplificationFactor() > 1) {
+        throw new VeniceHttpException(
+            HttpStatus.SC_BAD_REQUEST,
+            "Non-default amplification factor is not compatible with active-active replication and/or write compute.",
+            ErrorType.BAD_REQUEST);
+      }
 
       final boolean writeComputeJustEnabled =
           writeComputationEnabled.orElse(false) && !currStore.isWriteComputationEnabled();
@@ -4956,5 +4966,30 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public List<String> cleanupInstanceCustomizedStates(String clusterName) {
     throw new VeniceUnsupportedOperationException("cleanupInstanceCustomizedStates");
+  }
+
+  @Override
+  public StoreGraveyard getStoreGraveyard() {
+    return getVeniceHelixAdmin().getStoreGraveyard();
+  }
+
+  @Override
+  public void removeStoreFromGraveyard(String clusterName, String storeName) {
+    // Check parent data center to make sure store could be removed from graveyard.
+    getVeniceHelixAdmin().checkKafkaTopicAndHelixResource(clusterName, storeName, true, false, false);
+    // Check all child data centers to make sure store is removed from graveyard there.
+    Map<String, ControllerClient> controllerClientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    controllerClientMap.forEach((coloName, cc) -> {
+      ControllerResponse response = cc.removeStoreFromGraveyard(storeName);
+      if (response.isError()) {
+        if (ErrorType.RESOURCE_STILL_EXISTS.equals(response.getErrorType())) {
+          throw new ResourceStillExistsException(
+              "Store graveyard " + storeName + " is not ready for removal in colo: " + coloName);
+        }
+        throw new VeniceException(
+            "Error when removing store graveyard " + storeName + " in colo: " + coloName + ". " + response.getError());
+      }
+    });
+    getStoreGraveyard().removeStoreFromGraveyard(clusterName, storeName);
   }
 }

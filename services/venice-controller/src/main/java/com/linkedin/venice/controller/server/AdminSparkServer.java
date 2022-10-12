@@ -76,6 +76,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.OFFLINE_PUSH_INF
 import static com.linkedin.venice.controllerapi.ControllerRoute.PREPARE_DATA_RECOVERY;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_DERIVED_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_NODE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_STORE_FROM_GRAVEYARD;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REPLICATE_META_DATA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REQUEST_TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SEND_PUSH_JOB_DETAILS;
@@ -422,6 +423,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(UPDATE_ADMIN_TOPIC_METADATA.getPath(), adminTopicMetadataRoutes.updateAdminTopicMetadata(admin));
 
     httpService.post(DELETE_KAFKA_TOPIC.getPath(), storesRoutes.deleteKafkaTopic(admin));
+    httpService.post(REMOVE_STORE_FROM_GRAVEYARD.getPath(), storesRoutes.removeStoreFromGraveyard(admin));
 
     httpService.post(CREATE_STORAGE_PERSONA.getPath(), storagePersonaRoutes.createStoragePersona(admin));
     httpService.get(GET_STORAGE_PERSONA.getPath(), storagePersonaRoutes.getStoragePersona(admin));
@@ -519,12 +521,18 @@ public class AdminSparkServer extends AbstractVeniceService {
   }
 
   protected static void handleError(Throwable e, Request request, Response response) {
-    StringBuilder sb = new StringBuilder("Request params were: ");
-    request.queryMap().toMap().forEach((k, v) -> { /* Map<String, String[]> */
-      sb.append(k).append("=").append(String.join(",", v)).append(" ");
-    });
-    String errMsg = sb.toString();
-    LOGGER.error(errMsg, e);
+    handleError(e, request, response, true);
+  }
+
+  protected static void handleError(Throwable e, Request request, Response response, boolean logErrorMessage) {
+    if (logErrorMessage) {
+      StringBuilder sb = new StringBuilder("Request params were: ");
+      request.queryMap().toMap().forEach((k, v) -> { /* Map<String, String[]> */
+        sb.append(k).append("=").append(String.join(",", v)).append(" ");
+      });
+      String errMsg = sb.toString();
+      LOGGER.error(errMsg, e);
+    }
     if (e instanceof Error) {
       throw (Error) e;
     }

@@ -1127,6 +1127,31 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   }
 
   @Test
+  public void testRemoveStoreFromGraveyard() {
+    String storeName = Utils.getUniqueString("testRemoveStoreFromGraveyard");
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
+    Version version =
+        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    String versionTopic = Version.composeKafkaTopic(storeName, version.getNumber());
+    Assert.assertTrue(
+        veniceAdmin.getTopicManager().containsTopicAndAllPartitionsAreOnline(versionTopic),
+        "Kafka topic should be created.");
+
+    veniceAdmin.setStoreReadability(clusterName, storeName, false);
+    veniceAdmin.setStoreWriteability(clusterName, storeName, false);
+    veniceAdmin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION, true);
+    // Topic has not been deleted. Store graveyard could not be removed.
+    Assert.assertThrows(VeniceException.class, () -> veniceAdmin.removeStoreFromGraveyard(clusterName, storeName));
+
+    TestUtils
+        .waitForNonDeterministicAssertion(TOTAL_TIMEOUT_FOR_LONG_TEST_MS, TimeUnit.MILLISECONDS, false, true, () -> {
+          veniceAdmin.getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
+          veniceAdmin.removeStoreFromGraveyard(clusterName, storeName);
+          Assert.assertNull(veniceAdmin.getStoreGraveyard().getStoreFromGraveyard(clusterName, storeName, null));
+        });
+  }
+
+  @Test
   public void testDeleteStoreWithLargestUsedVersionNumberOverwritten() {
     String storeName = Utils.getUniqueString("testDeleteStore");
     int largestUsedVersionNumber = 1000;
