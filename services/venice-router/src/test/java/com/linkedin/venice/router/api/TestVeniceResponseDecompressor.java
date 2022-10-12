@@ -81,8 +81,7 @@ public class TestVeniceResponseDecompressor {
       compressorFactory.createVersionSpecificCompressorIfNotExist(
           CompressionStrategy.ZSTD_WITH_DICT,
           "test-store_v1",
-          new byte[] {},
-          22);
+          new byte[] {});
 
       VeniceResponseDecompressor responseDecompressor = new VeniceResponseDecompressor(
           true,
@@ -131,8 +130,7 @@ public class TestVeniceResponseDecompressor {
       compressorFactory.createVersionSpecificCompressorIfNotExist(
           CompressionStrategy.ZSTD_WITH_DICT,
           "test-store_v1",
-          new byte[] {},
-          22);
+          new byte[] {});
 
       VeniceResponseDecompressor responseDecompressor = new VeniceResponseDecompressor(
           true,

@@ -13,7 +13,6 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -56,22 +55,16 @@ public class StoreBufferService extends AbstractStoreBufferService {
     private static final int QUEUE_NODE_OVERHEAD_IN_BYTE = 256;
     private final ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord;
     private final StoreIngestionTask ingestionTask;
-    private final LeaderProducedRecordContext leaderProducedRecordContext;
-    private final Optional<CompletableFuture<Void>> queuedRecordPersistedFuture;
     private final String kafkaUrl;
     private final long beforeProcessingRecordTimestamp;
 
     public QueueNode(
         ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
         StoreIngestionTask ingestionTask,
-        LeaderProducedRecordContext leaderProducedRecordContext,
-        Optional<CompletableFuture<Void>> queuedRecordPersistedFuture,
         String kafkaUrl,
         long beforeProcessingRecordTimestamp) {
       this.consumerRecord = consumerRecord;
       this.ingestionTask = ingestionTask;
-      this.leaderProducedRecordContext = leaderProducedRecordContext;
-      this.queuedRecordPersistedFuture = queuedRecordPersistedFuture;
       this.kafkaUrl = kafkaUrl;
       this.beforeProcessingRecordTimestamp = beforeProcessingRecordTimestamp;
     }
@@ -85,11 +78,11 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
 
     public LeaderProducedRecordContext getLeaderProducedRecordContext() {
-      return this.leaderProducedRecordContext;
+      return null;
     }
 
-    public Optional<CompletableFuture<Void>> getQueuedRecordPersistedFuture() {
-      return queuedRecordPersistedFuture;
+    public CompletableFuture<Void> getQueuedRecordPersistedFuture() {
+      return null;
     }
 
     public String getKafkaUrl() {
@@ -133,7 +126,45 @@ public class StoreBufferService extends AbstractStoreBufferService {
     public String toString() {
       return this.consumerRecord.toString();
     }
-  };
+  }
+
+  private static class FollowerQueueNode extends QueueNode {
+    private final CompletableFuture<Void> queuedRecordPersistedFuture;
+
+    public FollowerQueueNode(
+        ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+        StoreIngestionTask ingestionTask,
+        String kafkaUrl,
+        long beforeProcessingRecordTimestamp,
+        CompletableFuture<Void> queuedRecordPersistedFuture) {
+      super(consumerRecord, ingestionTask, kafkaUrl, beforeProcessingRecordTimestamp);
+      this.queuedRecordPersistedFuture = queuedRecordPersistedFuture;
+    }
+
+    @Override
+    public CompletableFuture<Void> getQueuedRecordPersistedFuture() {
+      return queuedRecordPersistedFuture;
+    }
+  }
+
+  private static class LeaderQueueNode extends QueueNode {
+    private final LeaderProducedRecordContext leaderProducedRecordContext;
+
+    public LeaderQueueNode(
+        ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+        StoreIngestionTask ingestionTask,
+        String kafkaUrl,
+        long beforeProcessingRecordTimestamp,
+        LeaderProducedRecordContext leaderProducedRecordContext) {
+      super(consumerRecord, ingestionTask, kafkaUrl, beforeProcessingRecordTimestamp);
+      this.leaderProducedRecordContext = leaderProducedRecordContext;
+    }
+
+    @Override
+    public LeaderProducedRecordContext getLeaderProducedRecordContext() {
+      return this.leaderProducedRecordContext;
+    }
+  }
 
   /**
    * Worker thread, which will invoke {@link StoreIngestionTask#processConsumerRecord(ConsumerRecord, LeaderProducedRecordContext, String, long)} to process
@@ -162,7 +193,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = null;
       LeaderProducedRecordContext leaderProducedRecordContext = null;
       StoreIngestionTask ingestionTask = null;
-      Optional<CompletableFuture<Void>> recordPersistedFuture = null;
+      CompletableFuture<Void> recordPersistedFuture = null;
       long beforeProcessingRecordTimestamp = -1L;
       while (isRunning.get()) {
         try {
@@ -191,8 +222,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
           /**
            * Complete {@link QueueNode#queuedRecordPersistedFuture} since the processing for the current record is done.
            */
-          if (recordPersistedFuture.isPresent()) {
-            recordPersistedFuture.get().complete(null);
+          if (recordPersistedFuture != null) {
+            recordPersistedFuture.complete(null);
           }
 
           TopicPartition topicPartition = new TopicPartition(consumerRecord.topic(), consumerRecord.partition());
@@ -238,8 +269,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
             if (leaderProducedRecordContext != null) {
               leaderProducedRecordContext.completePersistedToDBFuture(processConsumerRecordException);
             }
-            if (recordPersistedFuture != null && recordPersistedFuture.isPresent()) {
-              recordPersistedFuture.get().completeExceptionally(processConsumerRecordException);
+            if (recordPersistedFuture != null) {
+              recordPersistedFuture.completeExceptionally(processConsumerRecordException);
             }
           } else {
             break;
@@ -288,30 +319,36 @@ public class StoreBufferService extends AbstractStoreBufferService {
       String kafkaUrl,
       long beforeProcessingRecordTimestamp) throws InterruptedException {
     int drainerIndex = getDrainerIndexForConsumerRecord(consumerRecord, subPartition);
-    Optional<CompletableFuture<Void>> recordFuture = Optional.empty();
+    MemoryBoundBlockingQueue<QueueNode> queue = blockingQueueArr.get(drainerIndex);
     if (leaderProducedRecordContext == null) {
       /**
        * The last queued record persisted future will only be setup when {@param leaderProducedRecordContext} is 'null',
        * since {@link LeaderProducedRecordContext#persistedToDBFuture} is a superset of this, which is tracking the
        * end-to-end completeness when producing to local Kafka is needed.
        */
-      recordFuture = Optional.of(new CompletableFuture<>());
-    }
+      CompletableFuture<Void> recordFuture = new CompletableFuture<>();
+      queue.put(
+          new FollowerQueueNode(
+              consumerRecord,
+              ingestionTask,
+              kafkaUrl,
+              beforeProcessingRecordTimestamp,
+              recordFuture));
 
-    blockingQueueArr.get(drainerIndex)
-        .put(
-            new QueueNode(
-                consumerRecord,
-                ingestionTask,
-                leaderProducedRecordContext,
-                recordFuture,
-                kafkaUrl,
-                beforeProcessingRecordTimestamp));
-    // Setup the last queued record's future
-    Optional<PartitionConsumptionState> partitionConsumptionState =
-        ingestionTask.getPartitionConsumptionState(consumerRecord.partition());
-    if (partitionConsumptionState.isPresent() && recordFuture.isPresent()) {
-      partitionConsumptionState.get().setLastQueuedRecordPersistedFuture(recordFuture.get());
+      // Setup the last queued record's future
+      PartitionConsumptionState partitionConsumptionState =
+          ingestionTask.getPartitionConsumptionState(consumerRecord.partition());
+      if (partitionConsumptionState != null) {
+        partitionConsumptionState.setLastQueuedRecordPersistedFuture(recordFuture);
+      }
+    } else {
+      queue.put(
+          new LeaderQueueNode(
+              consumerRecord,
+              ingestionTask,
+              kafkaUrl,
+              beforeProcessingRecordTimestamp,
+              leaderProducedRecordContext));
     }
   }
 
@@ -342,7 +379,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
           "Drainer thread " + workerIndex + " has stopped running, cannot drain the topic " + topic);
     }
 
-    QueueNode fakeNode = new QueueNode(fakeRecord, null, null, Optional.empty(), "dummyKafkaUrl", 0);
+    QueueNode fakeNode = new QueueNode(fakeRecord, null, "dummyKafkaUrl", 0);
 
     int cur = 0;
     while (cur++ < retryNum) {

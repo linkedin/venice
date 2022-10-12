@@ -5,7 +5,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import java.util.Optional;
+import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -27,21 +27,22 @@ public class DeepCopyStorageMetadataService extends DeepCopyOffsetManager implem
     this.delegateStorageMetadataService = delegate;
   }
 
-  /**
-   * Persist a new {@link StoreVersionState} for the given {@param topicName}.
-   *
-   * @param topicName for which to retrieve the current {@link StoreVersionState}.
-   * @param record    the {@link StoreVersionState} to persist
-   */
   @Override
-  public void put(String topicName, StoreVersionState record) throws VeniceException {
-    LOGGER.info(
-        "DeepCopyStorageMetadataService.put(StoreVersionState) called with topicName: {}, record: {}",
-        topicName,
-        record);
-    StoreVersionState deepCopy =
-        storeVersionStateSerializer.deserialize(topicName, storeVersionStateSerializer.serialize(topicName, record));
-    delegateStorageMetadataService.put(topicName, deepCopy);
+  public void computeStoreVersionState(String topicName, Function<StoreVersionState, StoreVersionState> mapFunction)
+      throws VeniceException {
+    delegateStorageMetadataService.computeStoreVersionState(topicName, previousStoreVersionState -> {
+      StoreVersionState newSVS = mapFunction.apply(
+          previousStoreVersionState == null
+              ? null
+              : storeVersionStateSerializer
+                  .deserialize(topicName, storeVersionStateSerializer.serialize(topicName, previousStoreVersionState)));
+      LOGGER.info(
+          "DeepCopyStorageMetadataService.compute() called for topicName: {}, previousSVS: {}, newSVS: {}",
+          topicName,
+          previousStoreVersionState,
+          newSVS);
+      return newSVS;
+    });
   }
 
   /**
@@ -63,8 +64,8 @@ public class DeepCopyStorageMetadataService extends DeepCopyOffsetManager implem
    * @return an instance of {@link StoreVersionState} corresponding to this topic.
    */
   @Override
-  public Optional<StoreVersionState> getStoreVersionState(String topicName) throws VeniceException {
-    Optional<StoreVersionState> recordToReturn = delegateStorageMetadataService.getStoreVersionState(topicName);
+  public StoreVersionState getStoreVersionState(String topicName) throws VeniceException {
+    StoreVersionState recordToReturn = delegateStorageMetadataService.getStoreVersionState(topicName);
     LOGGER.info(
         "DeepCopyStorageMetadataService.getStoreVersionState called with topicName: {}, recordToReturn: {}",
         topicName,

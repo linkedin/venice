@@ -23,14 +23,12 @@ import com.linkedin.davinci.stats.AggLagStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.ParticipantStoreConsumptionStats;
-import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.stats.StoreBufferServiceStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreType;
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
@@ -184,7 +182,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       ReadOnlySchemaRepository schemaRepo,
       ReadOnlyLiveClusterConfigRepository liveClusterConfigRepository,
       MetricsRepository metricsRepository,
-      RocksDBMemoryStats rocksDBMemoryStats,
       Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
       Optional<ClientConfig> clientConfig,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
@@ -480,6 +477,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setIsDaVinciClient(isDaVinciClient)
         .setRemoteIngestionRepairService(remoteIngestionRepairService)
         .setMetaStoreWriter(metaStoreWriter)
+        .setCompressorFactory(compressorFactory)
         .build();
   }
 
@@ -559,7 +557,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         veniceStoreVersionConfig,
         partitionId,
         isIsolatedIngestion,
-        compressorFactory,
         cacheBackend);
   }
 
@@ -1060,16 +1057,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
      */
     kafkaConsumerProperties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, groupId);
     return kafkaConsumerProperties;
-  }
-
-  @Override
-  public boolean isStoreVersionChunked(String topicName) {
-    return storageMetadataService.isStoreVersionChunked(topicName);
-  }
-
-  @Override
-  public CompressionStrategy getStoreVersionCompressionStrategy(String topicName) {
-    return storageMetadataService.getStoreVersionCompressionStrategy(topicName);
   }
 
   @Override

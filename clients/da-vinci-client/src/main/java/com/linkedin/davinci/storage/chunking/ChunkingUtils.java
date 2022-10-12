@@ -1,12 +1,12 @@
 package com.linkedin.davinci.storage.chunking;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
-import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -104,7 +104,7 @@ public class ChunkingUtils {
       boolean fastAvroEnabled,
       ReadOnlySchemaRepository schemaRepo,
       String storeName,
-      StorageEngineBackedCompressorFactory compressorFactory) {
+      VeniceCompressor compressor) {
     long databaseLookupStartTimeInNS = (response != null) ? System.nanoTime() : 0;
     reusedRawValue = store.get(partition, keyBuffer, reusedRawValue, false);
     if (reusedRawValue == null) {
@@ -125,7 +125,7 @@ public class ChunkingUtils {
         fastAvroEnabled,
         schemaRepo,
         storeName,
-        compressorFactory,
+        compressor,
         false);
   }
 
@@ -142,7 +142,7 @@ public class ChunkingUtils {
       boolean fastAvroEnabled,
       ReadOnlySchemaRepository schemaRepo,
       String storeName,
-      StorageEngineBackedCompressorFactory compressorFactory,
+      VeniceCompressor compressor,
       StreamingCallback<GenericRecord, GenericRecord> computingCallback) {
 
     long databaseLookupStartTimeInNS = (response != null) ? System.nanoTime() : 0;
@@ -179,8 +179,7 @@ public class ChunkingUtils {
               fastAvroEnabled,
               schemaRepo,
               storeName,
-              compressorFactory,
-              store.getStoreName());
+              compressor);
 
           computingCallback.onRecordReceived(deserializedKey, deserializedValueRecord);
         } else if (writerSchemaId != AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
@@ -210,7 +209,7 @@ public class ChunkingUtils {
    *
    * @see SingleGetChunkingAdapter#get(AbstractStorageEngine, int, byte[], boolean, ReadResponse)
    * @see BatchGetChunkingAdapter#get(AbstractStorageEngine, int, ByteBuffer, boolean, ReadResponse)
-   * @see GenericChunkingAdapter#get(AbstractStorageEngine, int, int, ByteBuffer, boolean, Object, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String, StorageEngineBackedCompressorFactory)
+   * @see GenericChunkingAdapter#get(AbstractStorageEngine, int, int, ByteBuffer, boolean, Object, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String, VeniceCompressor)
    */
   static <VALUE, CHUNKS_CONTAINER> VALUE getFromStorage(
       ChunkingAdapter<CHUNKS_CONTAINER, VALUE> adapter,
@@ -225,7 +224,7 @@ public class ChunkingUtils {
       boolean fastAvroEnabled,
       ReadOnlySchemaRepository schemaRepo,
       String storeName,
-      StorageEngineBackedCompressorFactory compressorFactory,
+      VeniceCompressor compressor,
       boolean skipCache) {
     long databaseLookupStartTimeInNS = (response != null) ? System.nanoTime() : 0;
     byte[] value = store.get(partition, keyBuffer, skipCache);
@@ -245,7 +244,7 @@ public class ChunkingUtils {
         fastAvroEnabled,
         schemaRepo,
         storeName,
-        compressorFactory,
+        compressor,
         skipCache);
   }
 
@@ -260,7 +259,7 @@ public class ChunkingUtils {
    *
    * @see SingleGetChunkingAdapter#get(AbstractStorageEngine, int, byte[], boolean, ReadResponse)
    * @see BatchGetChunkingAdapter#get(AbstractStorageEngine, int, ByteBuffer, boolean, ReadResponse)
-   * @see GenericChunkingAdapter#get(AbstractStorageEngine, int, ByteBuffer, boolean, GenericRecord, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String)
+   * @see GenericChunkingAdapter#get(AbstractStorageEngine, int, ByteBuffer, boolean, Object, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String, VeniceCompressor, boolean)
    */
   private static <VALUE, CHUNKS_CONTAINER> VALUE getFromStorage(
       byte[] value,
@@ -277,7 +276,7 @@ public class ChunkingUtils {
       boolean fastAvroEnabled,
       ReadOnlySchemaRepository schemaRepo,
       String storeName,
-      StorageEngineBackedCompressorFactory compressorFactory,
+      VeniceCompressor compressor,
       boolean skipCache) {
 
     if (value == null) {
@@ -304,8 +303,7 @@ public class ChunkingUtils {
           fastAvroEnabled,
           schemaRepo,
           storeName,
-          compressorFactory,
-          store.getStoreName());
+          compressor);
     } else if (writerSchemaId != AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
       throw new VeniceException("Found a record with invalid schema ID: " + writerSchemaId);
     }
@@ -361,8 +359,7 @@ public class ChunkingUtils {
         fastAvroEnabled,
         schemaRepo,
         storeName,
-        compressorFactory,
-        store.getStoreName());
+        compressor);
   }
 
   private static String getExceptionMessageDetails(AbstractStorageEngine store, int partition, Integer chunkIndex) {

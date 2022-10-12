@@ -19,12 +19,13 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiConsumer;
+import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -46,16 +47,19 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
   private final Queue<IngestionStorageMetadata> metadataUpdateQueue = new ConcurrentLinkedDeque<>();
   private final MetadataUpdateStats metadataUpdateStats;
   private final MetadataUpdateWorker metadataUpdateWorker;
+  private final BiConsumer<String, StoreVersionState> storeVersionStateSyncer;
 
   public MainIngestionStorageMetadataService(
       int targetPort,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       MetadataUpdateStats metadataUpdateStats,
-      VeniceConfigLoader configLoader) {
+      VeniceConfigLoader configLoader,
+      BiConsumer<String, StoreVersionState> storeVersionStateSyncer) {
     this.client = new MainIngestionRequestClient(IsolatedIngestionUtils.getSSLFactory(configLoader), targetPort);
     this.partitionStateSerializer = partitionStateSerializer;
     this.metadataUpdateStats = metadataUpdateStats;
     this.metadataUpdateWorker = new MetadataUpdateWorker();
+    this.storeVersionStateSyncer = storeVersionStateSyncer;
   }
 
   @Override
@@ -72,15 +76,22 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
   }
 
   @Override
-  public void put(String topicName, StoreVersionState record) throws VeniceException {
-    putStoreVersionState(topicName, record);
-    // Sync update with metadata partition opened by ingestion process.
-    IngestionStorageMetadata ingestionStorageMetadata = new IngestionStorageMetadata();
-    ingestionStorageMetadata.metadataUpdateType = IngestionMetadataUpdateType.PUT_STORE_VERSION_STATE.getValue();
-    ingestionStorageMetadata.topicName = topicName;
-    ingestionStorageMetadata.payload =
-        ByteBuffer.wrap(IsolatedIngestionUtils.serializeStoreVersionState(topicName, record));
-    updateRemoteStorageMetadataService(ingestionStorageMetadata);
+  public void computeStoreVersionState(String topicName, Function<StoreVersionState, StoreVersionState> mapFunction)
+      throws VeniceException {
+    topicStoreVersionStateMap.compute(topicName, (key, previousStoreVersionState) -> {
+      StoreVersionState newStoreVersionState = mapFunction.apply(previousStoreVersionState);
+      storeVersionStateSyncer.accept(topicName, newStoreVersionState);
+
+      // Sync update with metadata partition opened by ingestion process.
+      IngestionStorageMetadata ingestionStorageMetadata = new IngestionStorageMetadata();
+      ingestionStorageMetadata.metadataUpdateType = IngestionMetadataUpdateType.PUT_STORE_VERSION_STATE.getValue();
+      ingestionStorageMetadata.topicName = topicName;
+      ingestionStorageMetadata.payload =
+          ByteBuffer.wrap(IsolatedIngestionUtils.serializeStoreVersionState(topicName, newStoreVersionState));
+      updateRemoteStorageMetadataService(ingestionStorageMetadata);
+
+      return newStoreVersionState;
+    });
   }
 
   @Override
@@ -96,12 +107,8 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
   }
 
   @Override
-  public Optional<StoreVersionState> getStoreVersionState(String topicName) throws VeniceException {
-    if (topicStoreVersionStateMap.containsKey(topicName)) {
-      return Optional.of(topicStoreVersionStateMap.get(topicName));
-    } else {
-      return Optional.empty();
-    }
+  public StoreVersionState getStoreVersionState(String topicName) throws VeniceException {
+    return topicStoreVersionStateMap.get(topicName);
   }
 
   @Override
@@ -159,6 +166,7 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
   public void putStoreVersionState(String topicName, StoreVersionState record) {
     LOGGER.info("Updating StoreVersionState for {}", topicName);
     topicStoreVersionStateMap.put(topicName, record);
+    storeVersionStateSyncer.accept(topicName, record);
   }
 
   private synchronized void updateRemoteStorageMetadataService(IngestionStorageMetadata ingestionStorageMetadata) {

@@ -1,6 +1,5 @@
 package com.linkedin.davinci.storage.chunking;
 
-import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -27,7 +26,7 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
    * @param fullBytes includes both the schema ID header and the payload
    *
    * The following parameters can be ignored, by implementing {@link #constructValue(int, byte[])}:
-   *@param bytesLength
+   * @param bytesLength
    * @param reusedValue a previous instance of {@type VALUE} to be re-used in order to minimize GC
    * @param reusedDecoder a previous instance of {@link BinaryDecoder} to be re-used in order to minimize GC
    * @param response the response returned by the query path, which carries certain metrics to be recorded at the end
@@ -50,8 +49,7 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
       boolean fastAvroEnabled,
       ReadOnlySchemaRepository schemaRepo,
       String storeName,
-      StorageEngineBackedCompressorFactory compressorFactory,
-      String versionTopic) {
+      VeniceCompressor compressor) {
     return constructValue(writerSchemaId, fullBytes);
   }
 
@@ -71,8 +69,7 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
   /**
    * This function can be implemented by the adapters which need fewer parameters.
    *
-   * @see #constructValue(int, int, byte[], int, Object, BinaryDecoder, ReadResponse, CompressionStrategy, boolean,
-   * ReadOnlySchemaRepository, String, StorageEngineBackedCompressorFactory, String)
+   * @see #constructValue(int, int, byte[], int, Object, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String, VeniceCompressor)
    */
   default VALUE constructValue(int schemaId, byte[] fullBytes) {
     throw new VeniceException("Not implemented.");
@@ -120,15 +117,14 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
       boolean fastAvroEnabled,
       ReadOnlySchemaRepository schemaRepo,
       String storeName,
-      StorageEngineBackedCompressorFactory compressorFactory,
-      String versionTopic) {
+      VeniceCompressor compressor) {
     return constructValue(schemaId, chunksContainer);
   }
 
   /**
    * This function can be implemented by the adapters which need fewer parameters.
    *
-   * @see #constructValue(int, Object, Object, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String, StorageEngineBackedCompressorFactory, String)
+   * @see #constructValue(int, Object, Object, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String, VeniceCompressor)
    */
   default VALUE constructValue(int schemaId, CHUNKS_CONTAINER chunksContainer) {
     throw new VeniceException("Not implemented.");
