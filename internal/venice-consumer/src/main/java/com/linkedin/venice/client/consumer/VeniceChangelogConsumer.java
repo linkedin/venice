@@ -8,15 +8,16 @@ import java.util.concurrent.CompletableFuture;
 
 
 /**
- * Venice change capture consumer to provide
- * @param <K>
- * @param <V>
+ * Venice change capture consumer to provide value change callback.
+ *
+ * @param <K> The Type for key
+ * @param <V> The Type for value
  */
 @Experimental
 public interface VeniceChangelogConsumer<K, V> {
   /**
-   * Subscribe a set of partitions to this VeniceChangelogConsumer. The VeniceChangelogConsumer
-   * should try to consume messages from all partitions that are subscribed to it.
+   * Subscribe a set of partitions for a store to this VeniceChangelogConsumer. The VeniceChangelogConsumer should try
+   * to consume messages from all partitions that are subscribed to it.
    *
    * @param partitions the set of partition to subscribe and consume
    * @return a future which completes when the partitions are ready to be consumed data
@@ -33,7 +34,7 @@ public interface VeniceChangelogConsumer<K, V> {
   CompletableFuture<Void> subscribeAll();
 
   /**
-   * Stop ingesting messages from a set of partitions for this VeniceChangelogConsumer.
+   * Stop ingesting messages from a set of partitions for a specific store.
    *
    * @param partitions The set of topic partitions to unsubscribe
    * @throws a VeniceException if unsubscribe operation failed for any of the partitions
@@ -50,7 +51,8 @@ public interface VeniceChangelogConsumer<K, V> {
   /**
    * Polling function to get any available messages from the underlying system for all partitions subscribed.
    *
-   * @param timeoutInMs The maximum time to block (must not be greater than {@link Long#MAX_VALUE} milliseconds)
+   * @param timeoutInMs The maximum time to block/wait in between two polling requests (must not be greater than
+   *        {@link Long#MAX_VALUE} milliseconds)
    * @return a collection of messages since the last fetch for the subscribed list of topic partitions
    * @throws a VeniceException if polling operation fails
    */
