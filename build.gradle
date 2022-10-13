@@ -155,6 +155,16 @@ subprojects {
       exclude module: 'clojure'
       exclude module: 'kafka_2.10' // This ends up getting pulled in by a few dependencies, unfortunately :/ ...
       exclude module: 'kafka_2.11'
+
+      // These various netty modules clash with netty-all, and we transitively pull a different version, which causes NoSuchMethodError
+      exclude group: 'io.netty', module: 'netty-buffer'
+      exclude group: 'io.netty', module: 'netty-codec'
+      exclude group: 'io.netty', module: 'netty-common'
+      exclude group: 'io.netty', module: 'netty-handler'
+      exclude group: 'io.netty', module: 'netty-resolver'
+      exclude group: 'io.netty', module: 'netty-transport'
+      exclude group: 'io.netty', module: 'netty-transport-native-epoll'
+      exclude group: 'io.netty', module: 'netty-transport-native-unix-common'
     }
     compileOnly {
       // These dependencies are transitively used at runtime, so we cannot exclude them further than compileOnly
