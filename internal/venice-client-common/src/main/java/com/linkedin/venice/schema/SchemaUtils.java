@@ -126,11 +126,10 @@ public class SchemaUtils {
    * @param schema the input partial update schema to be annotated.
    * @return Annotated partial update schema.
    */
-  public static Schema annotateStringMapInDerivedSchema(Schema schema) {
+  public static Schema annotateStringMapInPartialUpdateSchema(Schema schema) {
     // Create duplicate schema here in order not to create any side effect during annotation.
     Schema replicatedSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schema.toString());
     if (replicatedSchema.getType().equals(Schema.Type.RECORD)) {
-
       for (Schema.Field field: replicatedSchema.getFields()) {
         if (field.schema().isUnion()) {
           for (Schema unionBranchSchema: field.schema().getTypes()) {
@@ -157,6 +156,9 @@ public class SchemaUtils {
    * @return Annotated value schema in a newly created {@link SchemaEntry}
    */
   public static SchemaEntry getAnnotatedStringMapValueSchemaEntry(SchemaEntry schemaEntry) {
+    if (schemaEntry == null) {
+      return null;
+    }
     Schema annotatedSchema = annotateStringMapInValueSchema(schemaEntry.getSchema());
     return new SchemaEntry(schemaEntry.getId(), annotatedSchema);
   }
@@ -167,7 +169,10 @@ public class SchemaUtils {
    * @return Annotated partial update schema in a newly created {@link DerivedSchemaEntry}
    */
   public static DerivedSchemaEntry getAnnotatedStringMapDerivedSchemaEntry(DerivedSchemaEntry schemaEntry) {
-    Schema annotatedSchema = annotateStringMapInDerivedSchema(schemaEntry.getSchema());
+    if (schemaEntry == null) {
+      return null;
+    }
+    Schema annotatedSchema = annotateStringMapInPartialUpdateSchema(schemaEntry.getSchema());
     return new DerivedSchemaEntry(schemaEntry.getValueSchemaID(), schemaEntry.getId(), annotatedSchema);
   }
 
