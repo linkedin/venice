@@ -39,7 +39,8 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * Mapper only MR to Validate Schema and Build dictionary if needed
+ * Mapper only MR to Validate Schema, Build compression dictionary if needed and persist
+ * some data (total file size and compression dictionary) in HDFS to be used by the VPJ Driver
  *
  * Note: processing all the files in this split are done sequentially and if it
  * results in significant increase in the mapper time or resulting in timeouts,
@@ -93,117 +94,148 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
 
   /**
    * This function
-   * 1. Processes a single input file
+   * Step 1. Processes a single input file
    *  1.1. validate this file's schema against the first file's schema
    *  1.2. Collect sample for dictionary from this file if enabled
-   * 2. Builds dictionary from the collected samples if enabled
+   * Step 2.
+   *  2.1. persists total file size
+   *  2.1. Builds and persists compression dictionary from the collected samples if enabled.
    *
    * @param inputIdx File Index or MAPPER_BUILD_DICTIONARY_KEY to build dictionary
    * @param reporter
    * @return true for successful processing, false for error
    */
-  protected boolean process(
+  private boolean process(
       IntWritable inputIdx,
       OutputCollector<AvroWrapper<GenericRecord>, NullWritable> output,
       Reporter reporter) throws IOException {
-    DefaultInputDataInfoProvider inputDataInfoProvider = (DefaultInputDataInfoProvider) this.inputDataInfoProvider;
     int fileIdx = inputIdx.get();
     if (fileIdx != VeniceFileInputSplit.MAPPER_BUILD_DICTIONARY_KEY) {
-      // process input files
-      LOGGER.info("Input File index to be processed is : {}", fileIdx);
+      // Step 1
+      return processInput(fileIdx, reporter);
+    } else {
+      // Step 2
+      return buildDictionaryAndPersistOutput(output, reporter);
+    }
+  }
 
-      if (fileIdx >= fileStatuses.length) {
-        MRJobCounterHelper.incrMapperInvalidInputIdxCount(reporter, 1);
-        checkLastModificationTimeAndLogError("validating schema and building dictionary", reporter);
-        return false;
-      }
+  /**
+   * 1. validate this file's schema against the first file's schema
+   * 2. Collect sample for dictionary from this file if enabled
+   */
+  protected boolean processInput(int fileIdx, Reporter reporter) throws IOException {
+    DefaultInputDataInfoProvider inputDataInfoProvider = (DefaultInputDataInfoProvider) this.inputDataInfoProvider;
+    LOGGER.info("Input File index to be processed is : {}", fileIdx);
+    if (fileIdx >= fileStatuses.length) {
+      MRJobCounterHelper.incrMapperInvalidInputIdxCount(reporter, 1);
+      checkLastModificationTimeAndLogError("validating schema and building dictionary", reporter);
+      return false;
+    }
 
-      FileStatus fileStatus = fileStatuses[fileIdx];
-      LOGGER.info("Input File to be processed is : {}", fileStatus.getPath().toString());
+    FileStatus fileStatus = fileStatuses[fileIdx];
+    LOGGER.info("Input File to be processed is : {}", fileStatus.getPath().toString());
 
-      if (fileStatus.isDirectory()) {
-        // Map-reduce job will fail if the input directory has sub-directory
-        MRJobCounterHelper.incrMapperInvalidInputFileCount(reporter, 1);
+    if (fileStatus.isDirectory()) {
+      // Map-reduce job will fail if the input directory has sub-directory
+      MRJobCounterHelper.incrMapperInvalidInputFileCount(reporter, 1);
+      LOGGER.error(
+          "Error while trying to validate schema: Input directory: {}  should not have sub directory: {}",
+          fileStatus.getPath().getParent().getName(),
+          fileStatus.getPath().getName());
+      return false;
+    }
+
+    if (inputDataInfo.getSchemaInfo().isAvro()) {
+      LOGGER.info("Detected Avro input format.");
+      Pair<Schema, Schema> newSchema =
+          inputDataInfoProvider.getAvroFileHeader(fileSystem, fileStatus.getPath(), buildDictionary);
+      if (!newSchema.equals(inputDataInfo.getSchemaInfo().getAvroSchema())) {
+        MRJobCounterHelper.incrMapperSchemaInconsistencyFailureCount(reporter, 1);
         LOGGER.error(
-            "Error while trying to validate schema: Input directory: {}  should not have sub directory: {}",
-            fileStatus.getPath().getParent().getName(),
-            fileStatus.getPath().getName());
+            "Error while trying to validate schema: Inconsistent file Avro schema found. File: {}. \n"
+                + "Expected file schema: {}.\n Real File schema: {}.",
+            fileStatus.getPath().getName(),
+            inputDataInfo.getSchemaInfo().getAvroSchema(),
+            newSchema);
         return false;
       }
+    } else {
+      LOGGER.info("Detected Vson input format, will convert to Avro automatically.");
+      Pair<VsonSchema, VsonSchema> newSchema =
+          inputDataInfoProvider.getVsonFileHeader(fileSystem, fileStatus.getPath(), buildDictionary);
+      if (!newSchema.equals(inputDataInfo.getSchemaInfo().getVsonSchema())) {
+        MRJobCounterHelper.incrMapperSchemaInconsistencyFailureCount(reporter, 1);
+        LOGGER.error(
+            "Error while trying to validate schema: Inconsistent file vson schema found. File: {}. "
+                + "Expected file schema: {}. Real File schema: {}.",
+            fileStatus.getPath().getName(),
+            inputDataInfo.getSchemaInfo().getVsonSchema(),
+            newSchema);
+        return false;
+      }
+    }
+    inputFileDataSize += fileStatus.getLen();
+    return true;
+  }
 
-      if (inputDataInfo.getSchemaInfo().isAvro()) {
-        LOGGER.info("Detected Avro input format.");
-        Pair<Schema, Schema> newSchema =
-            inputDataInfoProvider.getAvroFileHeader(fileSystem, fileStatus.getPath(), buildDictionary);
-        if (!newSchema.equals(inputDataInfo.getSchemaInfo().getAvroSchema())) {
-          MRJobCounterHelper.incrMapperSchemaInconsistencyFailureCount(reporter, 1);
-          LOGGER.error(
-              "Error while trying to validate schema: Inconsistent file Avro schema found. File: {}. \n"
-                  + "Expected file schema: {}.\n Real File schema: {}.",
-              fileStatus.getPath().getName(),
-              inputDataInfo.getSchemaInfo().getAvroSchema(),
-              newSchema);
-          return false;
+  /**
+   * 1. persists total file size
+   * 2. Builds and persists compression dictionary from the collected samples if enabled.
+   */
+  protected boolean buildDictionaryAndPersistOutput(
+      OutputCollector<AvroWrapper<GenericRecord>, NullWritable> output,
+      Reporter reporter) throws IOException {
+    DefaultInputDataInfoProvider inputDataInfoProvider = (DefaultInputDataInfoProvider) this.inputDataInfoProvider;
+    int dictSampleSize = 0;
+    if (buildDictionary && inputDataInfo.hasRecords()) {
+      dictSampleSize = inputDataInfoProvider.pushJobZstdConfig.getFilledSize();
+    }
+    return buildDictionaryAndPersistOutput(output, reporter, dictSampleSize);
+  }
+
+  protected boolean buildDictionaryAndPersistOutput(
+      OutputCollector<AvroWrapper<GenericRecord>, NullWritable> output,
+      Reporter reporter,
+      int dictSampleSize) throws IOException {
+    // Post the processing of input files: Persist some data to HDFS to be used by the VPJ driver code
+    // 0. Init the record
+    initRecord(outputSchema);
+
+    // 1. append inputFileDataSize (Mandatory entry)
+    appendRecord(KEY_INPUT_FILE_DATA_SIZE, inputFileDataSize);
+
+    try {
+      // 2. append zstd compression dictionary (optional entry): If dictionary building is enabled and
+      // if there are any input records: build dictionary from the data collected so far and persist it
+      if (buildDictionary) {
+        if (inputDataInfo.hasRecords()) {
+          LOGGER.info("Creating ZSTD compression dictionary using {}  bytes of samples", dictSampleSize);
+          byte[] dict;
+          try {
+            dict = inputDataInfoProvider.getZstdDictTrainSamples();
+            MRJobCounterHelper.incrMapperZstdDictTrainSuccessCount(reporter, 1);
+            appendRecord(KEY_ZSTD_COMPRESSION_DICTIONARY, dict);
+          } catch (Exception e) {
+            MRJobCounterHelper.incrMapperZstdDictTrainFailureCount(reporter, 1);
+            LOGGER.error(
+                "Training ZStd compression dictionary failed: Maybe the sample size is too small or "
+                    + "the content is not suitable for creating dictionary :  ",
+                e);
+            return false;
+          }
+          LOGGER.info("Zstd compression dictionary size = {} bytes", dict.length);
+        } else {
+          LOGGER.info("No compression dictionary is generated as the input data doesn't contain any records");
         }
       } else {
-        LOGGER.info("Detected Vson input format, will convert to Avro automatically.");
-        Pair<VsonSchema, VsonSchema> newSchema =
-            inputDataInfoProvider.getVsonFileHeader(fileSystem, fileStatus.getPath(), buildDictionary);
-        if (!newSchema.equals(inputDataInfo.getSchemaInfo().getVsonSchema())) {
-          MRJobCounterHelper.incrMapperSchemaInconsistencyFailureCount(reporter, 1);
-          LOGGER.error(
-              "Error while trying to validate schema: Inconsistent file vson schema found. File: {}. "
-                  + "Expected file schema: {}. Real File schema: {}.",
-              fileStatus.getPath().getName(),
-              inputDataInfo.getSchemaInfo().getVsonSchema(),
-              newSchema);
-          return false;
-        }
+        LOGGER.info(
+            "No compression dictionary is generated with the strategy {} and compressionMetricCollectionEnabled is {}",
+            storeSetting.compressionStrategy,
+            (pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled"));
       }
-      inputFileDataSize += fileStatus.getLen();
-    } else {
-      // Post the processing of input files: Persist some data to HDFS to be used by the VPJ driver code
-      // 0. Init the record
-      initRecord(outputSchema);
-
-      // 1. append inputFileDataSize (Mandatory entry)
-      appendRecord(KEY_INPUT_FILE_DATA_SIZE, inputFileDataSize);
-
-      try {
-        // 2. append zstd compression dictionary (optional entry): If dictionary building is enabled and
-        // if there are any input records: build dictionary from the data collected so far and persist it
-        if (buildDictionary) {
-          if (inputDataInfo.hasRecords()) {
-            LOGGER.info(
-                "Creating ZSTD compression dictionary using {}  bytes of samples",
-                inputDataInfoProvider.pushJobZstdConfig.getFilledSize());
-            byte[] dict;
-            try {
-              dict = inputDataInfoProvider.getZstdDictTrainSamples();
-              MRJobCounterHelper.incrMapperZstdDictTrainSuccessCount(reporter, 1);
-              appendRecord(KEY_ZSTD_COMPRESSION_DICTIONARY, dict);
-            } catch (Exception e) {
-              MRJobCounterHelper.incrMapperZstdDictTrainFailureCount(reporter, 1);
-              LOGGER.error(
-                  "Training ZStd compression dictionary failed: Maybe the sample size is too small or "
-                      + "the content is not suitable for creating dictionary :  ",
-                  e);
-              return false;
-            }
-            LOGGER.info("Zstd compression dictionary size = {} bytes", dict.length);
-          } else {
-            LOGGER.info("No compression dictionary is generated as the input data doesn't contain any records");
-          }
-        } else {
-          LOGGER.info(
-              "No compression dictionary is generated with the strategy {} and compressionMetricCollectionEnabled is {}",
-              storeSetting.compressionStrategy,
-              (pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled"));
-        }
-      } finally {
-        // collect the appended output so far
-        output.collect(new AvroWrapper<>(genericRecord), NullWritable.get());
-      }
+    } finally {
+      // collect(persist) the appended output so far
+      output.collect(new AvroWrapper<>(genericRecord), NullWritable.get());
     }
     return true;
   }

@@ -1,4 +1,4 @@
-package com.linkedin.venice.hadoop;
+package com.linkedin.venice.hadoop.input.avro;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
@@ -18,7 +18,9 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * This class reads the value field given the key field from an avro file based on a schema
+ * This class reads the value field given the key field from an avro file based on the file's schema.
+ * Returns the fields as {@link Object}
+ * Currently reads only a single record containing one or multiple fields
  */
 public class GenericAvroRecordReader {
   private static final Logger LOGGER = LogManager.getLogger(GenericAvroRecordReader.class);

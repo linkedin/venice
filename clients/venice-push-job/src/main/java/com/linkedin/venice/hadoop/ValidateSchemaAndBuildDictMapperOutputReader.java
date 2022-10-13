@@ -4,6 +4,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.KEY_INPUT_FILE_DATA_SIZE;
 import static com.linkedin.venice.hadoop.VenicePushJob.KEY_ZSTD_COMPRESSION_DICTIONARY;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.input.avro.GenericAvroRecordReader;
 import com.linkedin.venice.hadoop.output.avro.ValidateSchemaAndBuildDictMapperOutput;
 import java.nio.ByteBuffer;
 import org.apache.hadoop.conf.Configuration;
