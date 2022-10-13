@@ -18,7 +18,6 @@ import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.logging.log4j.LogManager;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -201,7 +200,6 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     Assert.assertFalse(result.isUpdateIgnored());
     GenericRecord updatedRmd = result.getRmdRecord();
     GenericRecord updatedPerFieldTimestampRecord = (GenericRecord) updatedRmd.get(TIMESTAMP_FIELD_NAME);
-    LogManager.getLogger().info("DEBUGGING: " + updatedPerFieldTimestampRecord);
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("id"), 10L); // Not updated
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("name"), 20L); // Not updated
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("weight"), 15L); // Not updated and it is a new field.
