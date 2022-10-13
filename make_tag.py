@@ -116,12 +116,12 @@ def get_remote():
 
 
 def make_tag(remote, bump_major, bump_minor, need_verification, github_token):
-    pull_success = call(['git', 'pull', '--rebase', remote, 'main'])
-    if pull_success != 0:
-        sys.exit()
-    version = get_next_version(bump_major, bump_minor)
-    tag_name = version
-    tag_message = 'tag for release ' + version
+  #  pull_success = call(['git', 'pull', '--rebase', remote, 'main'])
+  #  if pull_success != 0:
+ #       sys.exit()
+#    version = get_next_version(bump_major, bump_minor)
+    tag_name = '4.0.10'
+#    tag_message = 'tag for release ' + version
 
     if need_verification:
         proceed = get_confirmation(f'New tag is {tag_name}. Continue? [y/N]: ')
@@ -151,8 +151,8 @@ def get_tags(remote):
 
 
 def run(bump_major, bump_minor, need_verification, github_token):
-    remote = get_remote()
-    get_tags(remote)
+    remote = ' ' #get_remote()
+  #  get_tags(remote)
     make_tag(remote, bump_major, bump_minor, need_verification, github_token)
 
 
