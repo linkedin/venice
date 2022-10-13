@@ -17,6 +17,7 @@ import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SystemStore;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
@@ -87,7 +88,8 @@ public class TestHelixReadOnlyStoreRepositoryAdapter {
     // Create one regular store
     regularStoreName = Utils.getUniqueString("test_store");
     Store s1 = TestUtils.createTestStore(regularStoreName, "owner", System.currentTimeMillis());
-    s1.increaseVersion();
+    s1.addVersion(new VersionImpl(s1.getName(), s1.getLargestUsedVersionNumber() + 1, "pushJobId"));
+    s1.setReadQuotaInCU(100);
     s1.setReadQuotaInCU(100);
     s1.setBatchGetLimit(100);
     s1.setReadComputationEnabled(true);
@@ -96,7 +98,7 @@ public class TestHelixReadOnlyStoreRepositoryAdapter {
     regularStoreNameWithMetaSystemStoreEnabled = Utils.getUniqueString("test_store_with_meta_system_store_enabled");
     Store s2 =
         TestUtils.createTestStore(regularStoreNameWithMetaSystemStoreEnabled, "owner", System.currentTimeMillis());
-    s2.increaseVersion();
+    s2.addVersion(new VersionImpl(s2.getName(), s2.getLargestUsedVersionNumber() + 1, "pushJobId"));
     s2.setReadQuotaInCU(100);
     s2.setBatchGetLimit(100);
     s2.setReadComputationEnabled(true);
