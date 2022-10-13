@@ -20,7 +20,7 @@ if cur_version.major < 3 or (cur_version.major == 3 and cur_version.minor < 6):
 @click.option('--bump-major', is_flag=True)
 @click.option('--bump-minor', is_flag=True)
 @click.option('--no-verify', is_flag=True)
-@click.option('--github-token',  help='The github token used for API call')
+@click.option('--github-token', help='The github token used for API call')
 def read_config(bump_major, bump_minor, no_verify, github_token):
     if bump_major and bump_minor:
         print('Cannot bump major and minor versions. Only bumping major version')
@@ -131,10 +131,9 @@ def make_tag(remote, bump_major, bump_minor, need_verification, github_token):
 
     if github_token:
         headers = {
-            'Authorization': f'token {github_token}',
-            'Content-Type': 'application/x-www-form-urlencoded',
+            'Authorization': f'token {github_token}'
         }
-        commit = call(['git', 'rev-parse', 'HEAD'])
+        commit = check_output(['git', 'rev-parse', 'HEAD'], text=True)
         url = 'https://api.github.com/repos/linkedin/venice/git/refs'
         response = requests.post(url, headers=headers, json={'ref': f'refs/tags/{tag_name}', 'sha' : commit})
         if (response.status_code != 201):
