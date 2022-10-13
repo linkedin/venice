@@ -103,7 +103,7 @@ public class HDFSRmdRmdSchemaSource implements RmdSchemaSource, AutoCloseable {
     MultiSchemaResponse.Schema[] schemas = client.getAllReplicationMetadataSchemas(storeName).getSchemas();
     for (MultiSchemaResponse.Schema schema: schemas) {
       // path for rmd schema is /<schemaDir>/<id>_<valueSchemaId>
-      Path schemaPath = new Path(schemaDir + SEPARATOR + schema.getId() + UNDERSCORE + schema.getValueSchemaId());
+      Path schemaPath = new Path(schemaDir + SEPARATOR + schema.getId() + UNDERSCORE + schema.getRmdValueSchemaId());
       if (!fs.exists(schemaPath)) {
         try (FSDataOutputStream outputStream = fs.create(schemaPath);
             OutputStreamWriter outputStreamWriter = new OutputStreamWriter(outputStream, StandardCharsets.UTF_8)) {
@@ -111,9 +111,9 @@ public class HDFSRmdRmdSchemaSource implements RmdSchemaSource, AutoCloseable {
           outputStreamWriter.flush();
         }
         LOGGER.info(
-            "Finished writing RMD schema with id {} and derived id {} onto disk",
+            "Finished writing RMD schema with id {} and RMD value schema id {} onto disk",
             schema.getId(),
-            schema.getDerivedSchemaId());
+            schema.getRmdValueSchemaId());
       }
     }
 

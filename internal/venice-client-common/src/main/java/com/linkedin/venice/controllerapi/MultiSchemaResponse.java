@@ -26,7 +26,7 @@ public class MultiSchemaResponse
      */
     private int derivedSchemaId = -1;
 
-    private int valueSchemaId = -1;
+    private int rmdValueSchemaId = -1;
     private String schemaStr;
 
     public int getId() {
@@ -58,12 +58,12 @@ public class MultiSchemaResponse
       this.schemaStr = schemaStr;
     }
 
-    public int getValueSchemaId() {
-      return valueSchemaId;
+    public int getRmdValueSchemaId() {
+      return rmdValueSchemaId;
     }
 
-    public void setValueSchemaId(int valueSchemaId) {
-      this.valueSchemaId = valueSchemaId;
+    public void setRmdValueSchemaId(int rmdValueSchemaId) {
+      this.rmdValueSchemaId = rmdValueSchemaId;
     }
   }
 

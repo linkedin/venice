@@ -90,7 +90,7 @@ public class TestVeniceKafkaInputTTLFilter {
     MultiSchemaResponse.Schema[] response = new MultiSchemaResponse.Schema[n];
     for (int i = 1; i <= n; i++) {
       MultiSchemaResponse.Schema schema = new MultiSchemaResponse.Schema();
-      schema.setValueSchemaId(i);
+      schema.setRmdValueSchemaId(i);
       schema.setDerivedSchemaId(i);
       schema.setId(i);
       schema.setSchemaStr(rmdSchema.toString());

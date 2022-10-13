@@ -557,7 +557,7 @@ public class ActiveActiveReplicationForHybridTest {
       String expectedSchema =
           "{\"type\":\"record\",\"name\":\"string_MetadataRecord\",\"namespace\":\"com.linkedin.venice\",\"fields\":[{\"name\":\"timestamp\",\"type\":[\"long\"],\"doc\":\"timestamp when the full record was last updated\",\"default\":0},{\"name\":\"replication_checkpoint_vector\",\"type\":{\"type\":\"array\",\"items\":\"long\"},\"doc\":\"high watermark remote checkpoints which touched this record\",\"default\":[]}]}";
       assertEquals(schemaResponse.getSchemas()[0].getSchemaStr(), expectedSchema);
-      assertEquals(schemaResponse.getSchemas()[0].getValueSchemaId(), 1);
+      assertEquals(schemaResponse.getSchemas()[0].getRmdValueSchemaId(), 1);
       assertEquals(schemaResponse.getSchemas()[0].getId(), 1);
     } finally {
       deleteStores(storeName);

@@ -436,7 +436,7 @@ public class SchemaRoutes extends AbstractRoute {
           schemas[cur] = new MultiSchemaResponse.Schema();
           schemas[cur].setId(entry.getId());
           schemas[cur].setSchemaStr(entry.getSchema().toString());
-          schemas[cur].setValueSchemaId(entry.getValueSchemaID());
+          schemas[cur].setRmdValueSchemaId(entry.getValueSchemaID());
           ++cur;
         }
         responseObject.setSchemas(schemas);
