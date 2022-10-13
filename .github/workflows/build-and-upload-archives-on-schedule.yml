@@ -13,5 +13,7 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Cut release tag to build and upload Venice Release archive
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ./make_tag.py --no-verify 
+          ./make_tag.py --no-verify --github-token $GITHUB_TOKEN

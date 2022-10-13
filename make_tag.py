@@ -5,7 +5,7 @@
 # create the tag and push it to main
 
 import sys
-import os
+import requests
 from subprocess import check_output
 from subprocess import call
 import click
@@ -20,7 +20,7 @@ if cur_version.major < 3 or (cur_version.major == 3 and cur_version.minor < 6):
 @click.option('--bump-major', is_flag=True)
 @click.option('--bump-minor', is_flag=True)
 @click.option('--no-verify', is_flag=True)
-@click.option('--github-token', default = ' ', help='The github token used for API call')
+@click.option('--github-token',  help='The github token used for API call')
 def read_config(bump_major, bump_minor, no_verify, github_token):
     if bump_major and bump_minor:
         print('Cannot bump major and minor versions. Only bumping major version')
@@ -129,8 +129,15 @@ def make_tag(remote, bump_major, bump_minor, need_verification, github_token):
             print('Skipped creating the tag')
             return
 
-    if github_token != ' ':
-        os.system('./curltag.sh {} {}' .format(str(tag_name), str(github_token)))
+    if github_token:
+        headers = {
+            'Authorization': f'token {github_token}',
+            'Content-Type': 'application/x-www-form-urlencoded',
+        }
+        response = requests.post('https://api.github.com/repos/linkedin/venice/git/refs', headers=headers, json={"ref": "refs/tags/" + tag_name, "sha" : "$commit"})
+        if (response.status_code != 200):
+            print("Could not push the tag " + tag_name)
+            return
     else:
         tag_success = call(['git', 'tag', '-a', '-m', tag_message, tag_name])
         if tag_success != 0:
