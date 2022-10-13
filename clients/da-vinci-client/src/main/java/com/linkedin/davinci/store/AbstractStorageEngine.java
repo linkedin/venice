@@ -1,6 +1,7 @@
 package com.linkedin.davinci.store;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -503,21 +504,32 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   }
 
   /**
+   * Used in ingestion isolation mode update the storage engine's cache in sync with the updates to the state in
+   * {@link com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService}
+   */
+  public void updateStoreVersionStateCache(StoreVersionState versionState) {
+    versionStateCache.set(versionState);
+  }
+
+  /**
    * Retrieve the store version state from the metadata partition.
    */
-  public Optional<StoreVersionState> getStoreVersionState() {
+  public StoreVersionState getStoreVersionState() {
     while (true) {
       StoreVersionState versionState = versionStateCache.get();
       if (versionState != null) {
-        return Optional.of(versionState);
+        return versionState;
+      }
+      if (metadataPartition == null) {
+        return null;
       }
       byte[] value = metadataPartition.get(VERSION_METADATA_KEY, false);
       if (value == null) {
-        return Optional.empty();
+        return null;
       }
       versionState = storeVersionStateSerializer.deserialize(storeName, value);
       if (versionStateCache.compareAndSet(null, versionState)) {
-        return Optional.of(versionState);
+        return versionState;
       } // else retry the loop...
     }
   }
@@ -608,5 +620,15 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
           "Store name in partition config: " + storagePartitionConfig.getStoreName()
               + " doesn't match current store engine: " + getStoreName());
     }
+  }
+
+  public CompressionStrategy getCompressionStrategy() {
+    StoreVersionState svs = getStoreVersionState();
+    return svs == null ? CompressionStrategy.NO_OP : CompressionStrategy.valueOf(svs.compressionStrategy);
+  }
+
+  public boolean isChunked() {
+    StoreVersionState svs = getStoreVersionState();
+    return svs == null ? false : svs.chunked;
   }
 }

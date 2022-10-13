@@ -8,7 +8,10 @@ import java.util.Objects;
  * Represents a pair of items
  * @param <F> The type of the first item
  * @param <S> The type of the second item
+ *
+ * @deprecated Instead of this, please create a dedicated class with well-named, non-generic (potentially primitive) properties and getters.
  */
+@Deprecated
 public class Pair<F, S> implements Serializable {
   private static final long serialVersionUID = 1L;
 

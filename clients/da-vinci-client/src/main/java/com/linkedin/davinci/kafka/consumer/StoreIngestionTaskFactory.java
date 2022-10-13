@@ -49,7 +49,6 @@ public class StoreIngestionTaskFactory {
       VeniceStoreVersionConfig storeConfig,
       int partitionId,
       boolean isIsolatedIngestion,
-      StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ObjectCacheBackend> cacheBackend) {
     if (version.isActiveActiveReplicationEnabled()) {
       return new ActiveActiveStoreIngestionTask(
@@ -61,8 +60,7 @@ public class StoreIngestionTaskFactory {
           storeConfig,
           partitionId,
           isIsolatedIngestion,
-          cacheBackend,
-          compressorFactory);
+          cacheBackend);
     } else if (version.isLeaderFollowerModelEnabled()) {
       return new LeaderFollowerStoreIngestionTask(
           builder,
@@ -73,8 +71,7 @@ public class StoreIngestionTaskFactory {
           storeConfig,
           partitionId,
           isIsolatedIngestion,
-          cacheBackend,
-          compressorFactory);
+          cacheBackend);
     } else {
       throw new VeniceException("State transition model not defined.");
     }
@@ -120,6 +117,7 @@ public class StoreIngestionTaskFactory {
     private boolean isDaVinciClient;
     private RemoteIngestionRepairService remoteIngestionRepairService;
     private MetaStoreWriter metaStoreWriter;
+    private StorageEngineBackedCompressorFactory compressorFactory;
 
     private interface Setter {
       void apply();
@@ -345,6 +343,14 @@ public class StoreIngestionTaskFactory {
 
     public Builder setIsDaVinciClient(boolean isDaVinciClient) {
       return set(() -> this.isDaVinciClient = isDaVinciClient);
+    }
+
+    public StorageEngineBackedCompressorFactory getCompressorFactory() {
+      return compressorFactory;
+    }
+
+    public Builder setCompressorFactory(StorageEngineBackedCompressorFactory compressorFactory) {
+      return set(() -> this.compressorFactory = compressorFactory);
     }
   }
 }

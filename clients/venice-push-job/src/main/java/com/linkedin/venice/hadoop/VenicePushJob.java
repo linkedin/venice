@@ -467,6 +467,7 @@ public class VenicePushJob implements AutoCloseable {
   private InputStorageQuotaTracker inputStorageQuotaTracker;
   private PushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory;
   private final boolean jobLivenessHeartbeatEnabled;
+  private boolean pushJobStatusUploadDisabledHasBeenLogged = false;
 
   /**
    * Different successful checkpoints and known error scenarios of the VPJ flow.
@@ -1705,10 +1706,14 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   private void sendPushJobDetailsToController() {
-    if (!pushJobSetting.enablePushJobStatusUpload || pushJobDetails == null) {
-      String detailMessage =
-          pushJobSetting.enablePushJobStatusUpload ? "The payload was not populated properly" : "Feature is disabled";
-      LOGGER.warn("Unable to send push job details for monitoring purpose. {}", detailMessage);
+    if (!pushJobSetting.enablePushJobStatusUpload) {
+      if (!pushJobStatusUploadDisabledHasBeenLogged) {
+        pushJobStatusUploadDisabledHasBeenLogged = true;
+        LOGGER.warn("Unable to send push job details for monitoring purpose. Feature is disabled");
+      }
+      return;
+    } else if (pushJobDetails == null) {
+      LOGGER.warn("Unable to send push job details for monitoring purpose. The payload was not populated properly");
       return;
     }
     try {
@@ -2309,12 +2314,10 @@ public class VenicePushJob implements AutoCloseable {
       String previousOverallDetails,
       Map<String, String> previousExtraDetails) {
     String newOverallDetails = previousOverallDetails;
-    String logMessage = "Specific status: ";
     Map<String, String> datacenterSpecificInfo = response.getExtraInfo();
     if (datacenterSpecificInfo != null && !datacenterSpecificInfo.isEmpty()) {
-      logMessage += datacenterSpecificInfo;
+      LOGGER.info("Specific status: {}", datacenterSpecificInfo);
     }
-    LOGGER.info(logMessage);
 
     Optional<String> details = response.getOptionalStatusDetails();
     if (details.isPresent() && detailsAreDifferent(previousOverallDetails, details.get())) {

@@ -383,10 +383,10 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         report.offsetRecordArray = getStoreIngestionService().getPartitionOffsetRecords(topicName, partitionId);
 
         // Set store version state in ingestion report.
-        Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(topicName);
-        if (storeVersionState.isPresent()) {
+        StoreVersionState storeVersionState = storageMetadataService.getStoreVersionState(topicName);
+        if (storeVersionState != null) {
           report.storeVersionState =
-              ByteBuffer.wrap(IsolatedIngestionUtils.serializeStoreVersionState(topicName, storeVersionState.get()));
+              ByteBuffer.wrap(IsolatedIngestionUtils.serializeStoreVersionState(topicName, storeVersionState));
         } else {
           throw new VeniceException("StoreVersionState does not exist for topic: " + topicName);
         }
@@ -646,7 +646,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         schemaRepository,
         liveConfigRepository,
         metricsRepository,
-        rocksDBMemoryStats,
         Optional.of(kafkaMessageEnvelopeSchemaReader),
         isDaVinciClient ? Optional.empty() : Optional.of(clientConfig),
         partitionStateSerializer,

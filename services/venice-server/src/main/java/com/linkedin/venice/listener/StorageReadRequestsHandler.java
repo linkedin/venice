@@ -17,6 +17,7 @@ import com.linkedin.davinci.store.rocksdb.RocksDBComputeAccessMode;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.compute.ComputeOperationUtils;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.ReadComputeOperator;
@@ -39,6 +40,7 @@ import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
 import com.linkedin.venice.listener.response.StorageResponseObject;
 import com.linkedin.venice.meta.PartitionerConfig;
+import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -362,6 +364,14 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
         Optional<Version> version = store.getVersion(versionNumber);
         if (version.isPresent()) {
           partitionerConfig = version.get().getPartitionerConfig();
+          if (partitionerConfig == null) {
+            /**
+             * If we did find the version in the metadata, and its partitioner config is null (common case) then we want
+             * to distinguish this by caching the default partitioner, otherwise we will end up re-executing this
+             * closure repeatedly and needlessly.
+             */
+            return new PartitionerConfigImpl();
+          }
         }
         return partitionerConfig;
       } catch (Exception e) {
@@ -372,16 +382,15 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
   }
 
   private ReadResponse handleSingleGetRequest(GetRouterRequest request) {
-    PartitionerConfig partitionerConfig = getPartitionerConfig(request.getResourceName());
-    int subPartition =
-        getSubPartitionId(request.getPartition(), request.getResourceName(), partitionerConfig, request.getKeyBytes());
     String topic = request.getResourceName();
+    PartitionerConfig partitionerConfig = getPartitionerConfig(topic);
+    int subPartition = getSubPartitionId(request.getPartition(), topic, partitionerConfig, request.getKeyBytes());
     byte[] key = request.getKeyBytes();
-    boolean isChunked = metadataRetriever.isStoreVersionChunked(topic);
 
     AbstractStorageEngine storageEngine = getStorageEngine(topic);
+    boolean isChunked = storageEngine.isChunked();
     StorageResponseObject response = new StorageResponseObject();
-    response.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
+    response.setCompressionStrategy(storageEngine.getCompressionStrategy());
     response.setDatabaseLookupLatency(0);
 
     ValueRecord valueRecord = SingleGetChunkingAdapter.get(storageEngine, subPartition, key, isChunked, response);
@@ -400,12 +409,12 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       int parallelChunkSize) {
     String topic = request.getResourceName();
     Iterable<MultiGetRouterRequestKeyV1> keys = request.getKeys();
-    AbstractStorageEngine store = getStorageEngine(topic);
+    AbstractStorageEngine storageEngine = getStorageEngine(topic);
 
     MultiGetResponseWrapper responseWrapper = new MultiGetResponseWrapper(request.getKeyCount());
-    responseWrapper.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
+    responseWrapper.setCompressionStrategy(storageEngine.getCompressionStrategy());
     responseWrapper.setDatabaseLookupLatency(0);
-    boolean isChunked = metadataRetriever.isStoreVersionChunked(topic);
+    boolean isChunked = storageEngine.isChunked();
 
     ExecutorService executorService = getExecutor(RequestType.MULTI_GET);
     if (!(keys instanceof ArrayList)) {
@@ -435,10 +444,9 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
         for (int subChunkCur = startPos; subChunkCur < endPos; ++subChunkCur) {
           final MultiGetRouterRequestKeyV1 key = keyList.get(subChunkCur);
           optionalKeyList.ifPresent(list -> list.add(key.keyBytes.remaining()));
-          int subPartitionId =
-              getSubPartitionId(key.partitionId, request.getResourceName(), partitionerConfig, key.keyBytes.array());
+          int subPartitionId = getSubPartitionId(key.partitionId, topic, partitionerConfig, key.keyBytes.array());
           MultiGetResponseRecordV1 record =
-              BatchGetChunkingAdapter.get(store, subPartitionId, key.keyBytes, isChunked, responseWrapper);
+              BatchGetChunkingAdapter.get(storageEngine, subPartitionId, key.keyBytes, isChunked, responseWrapper);
           if (record == null) {
             if (request.isStreamingRequest()) {
               // For streaming, we would like to send back non-existing keys since the end-user won't know the status of
@@ -485,17 +493,16 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     String topic = request.getResourceName();
     Iterable<MultiGetRouterRequestKeyV1> keys = request.getKeys();
     PartitionerConfig partitionerConfig = getPartitionerConfig(request.getResourceName());
-    AbstractStorageEngine store = getStorageEngine(topic);
+    AbstractStorageEngine storageEngine = getStorageEngine(topic);
 
     MultiGetResponseWrapper responseWrapper = new MultiGetResponseWrapper(request.getKeyCount());
-    responseWrapper.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
+    responseWrapper.setCompressionStrategy(storageEngine.getCompressionStrategy());
     responseWrapper.setDatabaseLookupLatency(0);
-    boolean isChunked = metadataRetriever.isStoreVersionChunked(topic);
+    boolean isChunked = storageEngine.isChunked();
     for (MultiGetRouterRequestKeyV1 key: keys) {
-      int subPartitionId =
-          getSubPartitionId(key.partitionId, request.getResourceName(), partitionerConfig, key.keyBytes.array());
+      int subPartitionId = getSubPartitionId(key.partitionId, topic, partitionerConfig, key.keyBytes.array());
       MultiGetResponseRecordV1 record =
-          BatchGetChunkingAdapter.get(store, subPartitionId, key.keyBytes, isChunked, responseWrapper);
+          BatchGetChunkingAdapter.get(storageEngine, subPartitionId, key.keyBytes, isChunked, responseWrapper);
       if (record == null) {
         if (request.isStreamingRequest()) {
           // For streaming, we would like to send back non-existing keys since the end-user won't know the status of
@@ -523,7 +530,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     String topic = request.getResourceName();
     String storeName = request.getStoreName();
     Iterable<ComputeRouterRequestKeyV1> keys = request.getKeys();
-    AbstractStorageEngine store = getStorageEngine(topic);
+    AbstractStorageEngine storageEngine = getStorageEngine(topic);
     PartitionerConfig partitionerConfig = getPartitionerConfig(request.getResourceName());
 
     Schema valueSchema;
@@ -549,8 +556,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     }
 
     ComputeResponseWrapper responseWrapper = new ComputeResponseWrapper(request.getKeyCount());
-    CompressionStrategy compressionStrategy = metadataRetriever.getStoreVersionCompressionStrategy(topic);
-    boolean isChunked = metadataRetriever.isStoreVersionChunked(topic);
+    CompressionStrategy compressionStrategy = storageEngine.getCompressionStrategy();
+    boolean isChunked = storageEngine.isChunked();
 
     // The following metrics will get incremented for each record processed in computeResult()
     responseWrapper.setReadComputeDeserializationLatency(0.0);
@@ -582,12 +589,12 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     }
 
     Map<String, Object> globalContext = new HashMap<>();
+    VeniceCompressor compressor = compressorFactory.getCompressor(compressionStrategy, topic);
     for (ComputeRouterRequestKeyV1 key: keys) {
       clearFieldsInReusedRecord(reuseResultRecord, computeResultSchema);
-      int subPartitionId =
-          getSubPartitionId(key.partitionId, request.getResourceName(), partitionerConfig, key.keyBytes.array());
+      int subPartitionId = getSubPartitionId(key.partitionId, topic, partitionerConfig, key.keyBytes.array());
       ComputeResponseRecordV1 record = computeResult(
-          store,
+          storageEngine,
           storeName,
           key.keyBytes,
           key.keyIndex,
@@ -604,7 +611,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
           request.isStreamingRequest(),
           responseWrapper,
           globalContext,
-          reusedRawValue);
+          reusedRawValue,
+          compressor);
       if (record != null) {
         // TODO: streaming support in storage node
         responseWrapper.addRecord(record);
@@ -645,7 +653,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       boolean isStreaming,
       ComputeResponseWrapper response,
       Map<String, Object> globalContext,
-      ByteBuffer reuseRawValue) {
+      ByteBuffer reuseRawValue,
+      VeniceCompressor compressor) {
 
     switch (rocksDBComputeAccessMode) {
       case SINGLE_GET:
@@ -661,7 +670,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
             fastAvroEnabled,
             this.schemaRepo,
             storeName,
-            compressorFactory,
+            compressor,
             false);
         break;
       case SINGLE_GET_WITH_REUSE:
@@ -678,7 +687,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
             fastAvroEnabled,
             this.schemaRepo,
             response,
-            compressorFactory);
+            compressor);
         break;
       default:
         throw new VeniceException("Unknown rocksDB compute storage operation");
