@@ -36,7 +36,6 @@ import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
-import org.apache.logging.log4j.LogManager;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -271,7 +270,6 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
 
     // Set up partial update request.
     Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(personSchemaV1);
-    LogManager.getLogger().info("DEBUG: " + partialUpdateSchema.toString(true));
     UpdateBuilder updateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
     updateBuilder.setNewFieldValue("age", 99);
     updateBuilder.setNewFieldValue("name", "Francisco");
@@ -375,6 +373,32 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     Map<String, Object> updatedMapField = (Map<String, Object>) updatedValueRecord.get("stringMap");
     Assert.assertEquals(updatedMapField.size(), 3);
     Assert.assertEquals(updatedMapField.get("1").toString(), "one");
+    Assert.assertEquals(updatedMapField.get("2").toString(), "two");
+    Assert.assertEquals(updatedMapField.get("3").toString(), "three");
+
+    // Create another partial update request to remove one of the map key-value pair.
+    updateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
+    updateBuilder.setKeysToRemoveFromMapField("stringMap", Collections.singletonList("1"));
+    updateFieldRecord = updateBuilder.build();
+    writeComputeBytes = ByteBuffer.wrap(
+        FastSerializerDeserializerFactory.getFastAvroGenericSerializer(partialUpdateSchema)
+            .serialize(updateFieldRecord));
+
+    MergeConflictResult mergeConflictResult2 = mergeConflictResolver.update(
+        Lazy.of(() -> updatedValueBytes),
+        Optional.of(rmdWithValueSchemaId),
+        writeComputeBytes,
+        incomingValueSchemaId,
+        incomingWriteComputeSchemaId,
+        valueLevelTimestamp + 2,
+        1,
+        1,
+        newColoID);
+    ByteBuffer updatedValueBytes2 = mergeConflictResult2.getNewValue().get();
+    updatedValueRecord = MapOrderingPreservingSerDeFactory.getDeserializer(annotatedSchema, annotatedSchema)
+        .deserialize(updatedValueBytes2.array());
+    updatedMapField = (Map<String, Object>) updatedValueRecord.get("stringMap");
+    Assert.assertEquals(updatedMapField.size(), 2);
     Assert.assertEquals(updatedMapField.get("2").toString(), "two");
     Assert.assertEquals(updatedMapField.get("3").toString(), "three");
   }

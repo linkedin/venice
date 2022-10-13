@@ -1,5 +1,9 @@
 package com.linkedin.venice.schema;
 
+import static org.apache.avro.Schema.Type.ARRAY;
+import static org.apache.avro.Schema.Type.MAP;
+import static org.apache.avro.Schema.Type.RECORD;
+import static org.apache.avro.Schema.Type.STRING;
 import static org.apache.avro.Schema.Type.UNION;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -110,9 +114,9 @@ public class SchemaUtils {
   public static Schema annotateStringMapInValueSchema(Schema schema) {
     // Create duplicate schema here in order not to create any side effect during annotation.
     Schema replicatedSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schema.toString());
-    if (replicatedSchema.getType().equals(Schema.Type.RECORD)) {
+    if (replicatedSchema.getType().equals(RECORD)) {
       for (Schema.Field field: replicatedSchema.getFields()) {
-        if (field.schema().getType().equals(Schema.Type.MAP)) {
+        if (field.schema().getType().equals(MAP)) {
           annotateMapSchema(field.schema());
         }
       }
@@ -129,17 +133,21 @@ public class SchemaUtils {
   public static Schema annotateStringMapInPartialUpdateSchema(Schema schema) {
     // Create duplicate schema here in order not to create any side effect during annotation.
     Schema replicatedSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schema.toString());
-    if (replicatedSchema.getType().equals(Schema.Type.RECORD)) {
+    if (replicatedSchema.getType().equals(RECORD)) {
       for (Schema.Field field: replicatedSchema.getFields()) {
         if (field.schema().isUnion()) {
           for (Schema unionBranchSchema: field.schema().getTypes()) {
             // Full update request for Map field.
             if (unionBranchSchema.getType().equals(Schema.Type.MAP)) {
               annotateMapSchema(unionBranchSchema);
-            } else if (unionBranchSchema.getType().equals(Schema.Type.RECORD)) {
+            } else if (unionBranchSchema.getType().equals(RECORD)) {
               for (Schema.Field updateOpField: unionBranchSchema.getFields()) {
-                if (updateOpField.schema().getType().equals(Schema.Type.MAP)) {
+                Schema.Type updateOpFieldType = updateOpField.schema().getType();
+                if (updateOpFieldType.equals(MAP)) {
                   annotateMapSchema(updateOpField.schema());
+                } else if (updateOpFieldType.equals(ARRAY)
+                    && updateOpField.schema().getElementType().getType().equals(STRING)) {
+                  annotateStringArraySchema(updateOpField.schema());
                 }
               }
             }
@@ -178,5 +186,10 @@ public class SchemaUtils {
 
   private static void annotateMapSchema(Schema mapSchema) {
     AvroCompatibilityHelper.setSchemaPropFromJsonString(mapSchema, "avro.java.string", "\"String\"", false);
+  }
+
+  private static void annotateStringArraySchema(Schema arraySchema) {
+    AvroCompatibilityHelper
+        .setSchemaPropFromJsonString(arraySchema.getElementType(), "avro.java.string", "\"String\"", false);
   }
 }
