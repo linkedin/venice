@@ -61,7 +61,7 @@ public class ValidateSchemaAndBuildDictOutputFormat extends AvroOutputFormat {
   /**
    * 1. The parent directory should be accessible by every user/group (777)
    * 2. specific output directory for this store should be accessible only by
-   *    the user who triggers VPJ (700)
+   *    the user who triggers VPJ (700) to protect unauthorized access to pii
    * @param conf mapred config
    * @param storeName used for the specific output directory name
    * @throws IOException

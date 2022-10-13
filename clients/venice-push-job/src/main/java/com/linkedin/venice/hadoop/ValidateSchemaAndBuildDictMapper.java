@@ -93,11 +93,12 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
   }
 
   /**
-   * This function
-   * Step 1. Processes a single input file
+   * This function does 1 of the below based on inputIdx:
+   * 1. inputIdx is valid input file: Processes a single input file
    *  1.1. validate this file's schema against the first file's schema
-   *  1.2. Collect sample for dictionary from this file if enabled
-   * Step 2.
+   *  1.2. Calculates total file size
+   *  1.3. Collect sample for dictionary from this file if enabled
+   * 2. inputIdx is sentinel record: Builds dictionary and persists information
    *  2.1. persists total file size
    *  2.1. Builds and persists compression dictionary from the collected samples if enabled.
    *
@@ -110,29 +111,30 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
       OutputCollector<AvroWrapper<GenericRecord>, NullWritable> output,
       Reporter reporter) throws IOException {
     int fileIdx = inputIdx.get();
-    if (fileIdx != VeniceFileInputSplit.MAPPER_BUILD_DICTIONARY_KEY) {
-      // Step 1
+    if (fileIdx != VeniceFileInputSplit.MAPPER_SENTINEL_KEY_TO_BUILD_DICTIONARY_AND_PERSIST_OUTPUT) {
+      // Processes a single input file
       return processInput(fileIdx, reporter);
     } else {
-      // Step 2
+      // Builds dictionary and persists information
       return buildDictionaryAndPersistOutput(output, reporter);
     }
   }
 
   /**
    * 1. validate this file's schema against the first file's schema
-   * 2. Collect sample for dictionary from this file if enabled
+   * 2. Calculates total file size
+   * 3. Collect sample for dictionary from this file if enabled
    */
   protected boolean processInput(int fileIdx, Reporter reporter) throws IOException {
-    LOGGER.info("Input File index to be processed is : {}", fileIdx);
-    if (fileIdx >= fileStatuses.length) {
+    LOGGER.info("Processing input file index {} in directory {}", fileIdx, inputDirectory);
+    if (fileIdx == fileStatuses.length) {
       MRJobCounterHelper.incrMapperInvalidInputIdxCount(reporter, 1);
       checkLastModificationTimeAndLogError("validating schema and building dictionary", reporter);
       return false;
     }
 
     FileStatus fileStatus = fileStatuses[fileIdx];
-    LOGGER.info("Input File to be processed is : {}", fileStatus.getPath().toString());
+    LOGGER.info("Processing input file {}", fileStatus.getPath().toString());
 
     if (fileStatus.isDirectory()) {
       // Map-reduce job will fail if the input directory has sub-directory
@@ -185,15 +187,15 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
       OutputCollector<AvroWrapper<GenericRecord>, NullWritable> output,
       Reporter reporter) throws IOException {
     // Post the processing of input files: Persist some data to HDFS to be used by the VPJ driver code
-    // 0. Init the record
+    // 1. Init the record
     initRecord(outputSchema);
 
-    // 1. append inputFileDataSize (Mandatory entry)
+    // 2. append inputFileDataSize (Mandatory entry)
     appendRecord(KEY_INPUT_FILE_DATA_SIZE, inputFileDataSize);
 
     try {
-      // 2. append zstd compression dictionary (optional entry): If dictionary building is enabled and
-      // if there are any input records: build dictionary from the data collected so far and persist it
+      // 3. append zstd compression dictionary (optional entry): If dictionary building is enabled and
+      // if there are any input records: build dictionary from the data collected so far and append it
       if (buildDictionary) {
         if (inputDataInfo.hasRecords()) {
           LOGGER.info(
@@ -223,7 +225,7 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
             (pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled"));
       }
     } finally {
-      // collect(persist) the appended output so far
+      // 4. collect(persist) the appended output so far
       output.collect(new AvroWrapper<>(genericRecord), NullWritable.get());
     }
     return true;
