@@ -134,7 +134,7 @@ def make_tag(remote, bump_major, bump_minor, need_verification, github_token):
             'Authorization': f'token {github_token}'
         }
         commit = check_output(['git', 'rev-parse', 'HEAD'], text=True)
-        url = 'https://api.github.com/repos/linkedin/venice/git/refs'
+        url = 'https://api.github.com/repos/majisourav99/venice/git/refs'
         response = requests.post(url, headers=headers, json={'ref': f'refs/tags/{tag_name}', 'sha' : commit})
         if (response.status_code != 201):
             print('Could not create the tag ' + tag_name)
