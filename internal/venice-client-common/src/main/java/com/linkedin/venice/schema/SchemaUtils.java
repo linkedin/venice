@@ -110,9 +110,11 @@ public class SchemaUtils {
   public static Schema annotateStringMapInValueSchema(Schema schema) {
     // Create duplicate schema here in order not to create any side effect during annotation.
     Schema replicatedSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schema.toString());
-    for (Schema.Field field: replicatedSchema.getFields()) {
-      if (field.schema().getType().equals(Schema.Type.MAP)) {
-        annotateMapSchema(field.schema());
+    if (replicatedSchema.getType().equals(Schema.Type.RECORD)) {
+      for (Schema.Field field: replicatedSchema.getFields()) {
+        if (field.schema().getType().equals(Schema.Type.MAP)) {
+          annotateMapSchema(field.schema());
+        }
       }
     }
     return replicatedSchema;
@@ -127,16 +129,19 @@ public class SchemaUtils {
   public static Schema annotateStringMapInDerivedSchema(Schema schema) {
     // Create duplicate schema here in order not to create any side effect during annotation.
     Schema replicatedSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schema.toString());
-    for (Schema.Field field: replicatedSchema.getFields()) {
-      if (field.schema().isUnion()) {
-        for (Schema unionBranchSchema: field.schema().getTypes()) {
-          // Full update request for Map field.
-          if (unionBranchSchema.getType().equals(Schema.Type.MAP)) {
-            annotateMapSchema(unionBranchSchema);
-          } else if (unionBranchSchema.getType().equals(Schema.Type.RECORD)) {
-            for (Schema.Field updateOpField: unionBranchSchema.getFields()) {
-              if (updateOpField.schema().getType().equals(Schema.Type.MAP)) {
-                annotateMapSchema(updateOpField.schema());
+    if (replicatedSchema.getType().equals(Schema.Type.RECORD)) {
+
+      for (Schema.Field field: replicatedSchema.getFields()) {
+        if (field.schema().isUnion()) {
+          for (Schema unionBranchSchema: field.schema().getTypes()) {
+            // Full update request for Map field.
+            if (unionBranchSchema.getType().equals(Schema.Type.MAP)) {
+              annotateMapSchema(unionBranchSchema);
+            } else if (unionBranchSchema.getType().equals(Schema.Type.RECORD)) {
+              for (Schema.Field updateOpField: unionBranchSchema.getFields()) {
+                if (updateOpField.schema().getType().equals(Schema.Type.MAP)) {
+                  annotateMapSchema(updateOpField.schema());
+                }
               }
             }
           }

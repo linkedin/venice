@@ -18,6 +18,7 @@ import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.logging.log4j.LogManager;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -69,7 +70,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     Assert.assertTrue(AvroSupersetSchemaUtils.isSupersetSchema(userSchemaV5, userSchemaV3));
     final Schema rmdSchemaV3 = userV3Schema.getRmdSchema();
     final Schema rmdSchemaV4 = userV4Schema.getRmdSchema();
-    final Schema rmdSchemaV5 = userV4Schema.getRmdSchema();
+    final Schema rmdSchemaV5 = userV5Schema.getRmdSchema();
     final ReadOnlySchemaRepository schemaRepository =
         mockSchemaRepository(userSchemaV3, userSchemaV4, userSchemaV5, rmdSchemaV3, rmdSchemaV4, rmdSchemaV5);
 
@@ -200,6 +201,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     Assert.assertFalse(result.isUpdateIgnored());
     GenericRecord updatedRmd = result.getRmdRecord();
     GenericRecord updatedPerFieldTimestampRecord = (GenericRecord) updatedRmd.get(TIMESTAMP_FIELD_NAME);
+    LogManager.getLogger().info("DEBUGGING: " + updatedPerFieldTimestampRecord);
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("id"), 10L); // Not updated
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("name"), 20L); // Not updated
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("weight"), 15L); // Not updated and it is a new field.
