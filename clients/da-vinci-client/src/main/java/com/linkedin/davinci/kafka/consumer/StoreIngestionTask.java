@@ -3100,6 +3100,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
 
+    if (purgeTransientRecordBuffer && isTransientRecordBufferUsed()
+        && partitionConsumptionState.isEndOfPushReceived()) {
+      if (leaderProducedRecordContext != null) {
+        partitionConsumptionState.mayRemoveTransientRecord(
+            leaderProducedRecordContext.getConsumedKafkaClusterId(),
+            leaderProducedRecordContext.getConsumedOffset(),
+            kafkaKey.getKey());
+      } else {
+        int leaderSubPartition = PartitionUtils.getLeaderSubPartition(
+            partitionConsumptionState.getUserPartition(),
+            partitionConsumptionState.getAmplificationFactor());
+        PartitionConsumptionState leaderPartitionConsumptionState = getPartitionConsumptionState(leaderSubPartition);
+        if (leaderPartitionConsumptionState != null) {
+          leaderPartitionConsumptionState.mayRemoveTransientRecord(
+              kafkaValue.getLeaderMetadataFooter().getUpstreamKafkaClusterId(),
+              kafkaValue.getLeaderMetadataFooter().getUpstreamOffset(),
+              kafkaKey.getKey());
+        }
+      }
+    }
     /*
      * Potentially clean the mapping from transient record map. consumedOffset may be -1 when individual chunks are getting
      * produced to drainer queue from kafka callback thread {@link LeaderFollowerStoreIngestionTask#LeaderProducerMessageCallback}

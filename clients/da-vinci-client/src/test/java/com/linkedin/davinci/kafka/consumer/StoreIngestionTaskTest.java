@@ -158,6 +158,7 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -1002,6 +1003,82 @@ public abstract class StoreIngestionTaskTest {
 
     // verify the shared consumer should be detached when the ingestion task is closed.
     verify(aggKafkaConsumerService).unsubscribeAll(topic);
+  }
+
+  @Test
+  public void testTransientRecordEviction() throws Exception {
+    final int amplificationFactor = 5;
+    final int partitionCount = PARTITION_COUNT / amplificationFactor;
+
+    inMemoryLocalKafkaBroker.createTopic(Version.composeRealTimeTopic(storeNameWithoutVersionInfo), partitionCount);
+    mockStorageMetadataService = new InMemoryStorageMetadataService();
+
+    AbstractStoragePartition mockStoragePartition = mock(AbstractStoragePartition.class);
+    doReturn(mockStoragePartition).when(mockAbstractStorageEngine).getPartitionOrThrow(anyInt());
+
+    SchemaEntry schemaEntry = new SchemaEntry(1, "\"string\"");
+    doReturn(schemaEntry).when(mockSchemaRepo).getSupersetOrLatestValueSchema(storeNameWithoutVersionInfo);
+
+    VeniceWriter vtWriter =
+        getVeniceWriter(topic, () -> new MockInMemoryProducer(inMemoryLocalKafkaBroker), amplificationFactor);
+
+    VeniceWriter rtWriter = getVeniceWriter(
+        Version.composeRealTimeTopic(storeNameWithoutVersionInfo),
+        () -> new MockInMemoryProducer(inMemoryLocalKafkaBroker),
+        1);
+
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
+        100,
+        100,
+        HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+        DataReplicationPolicy.NON_AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP);
+
+    runTest(new RandomPollStrategy(), Utils.setOf(PARTITION_FOO), () -> {}, () -> {
+      doReturn(vtWriter).when(mockWriterFactory)
+          .createBasicVeniceWriter(anyString(), anyBoolean(), any(VenicePartitioner.class), anyInt());
+
+      vtWriter.broadcastStartOfPush(new HashMap<>());
+      vtWriter.broadcastEndOfPush(new HashMap<>());
+      verify(mockLogNotifier, never()).completed(anyString(), anyInt(), anyLong());
+
+      vtWriter.broadcastTopicSwitch(
+          Collections.singletonList(inMemoryLocalKafkaBroker.getKafkaBootstrapServer()),
+          Version.composeRealTimeTopic(storeNameWithoutVersionInfo),
+          System.currentTimeMillis() - TimeUnit.SECONDS.toMillis(10),
+          new HashMap<>());
+
+      storeIngestionTaskUnderTest.promoteToLeader(
+          topic,
+          PARTITION_FOO,
+          new LeaderFollowerPartitionStateModel.LeaderSessionIdChecker(1, new AtomicLong(1)));
+
+      try {
+        for (int i = 0; i < partitionCount * amplificationFactor; ++i) {
+          rtWriter.put(getRandomKey(i), putValue, EXISTING_SCHEMA_ID, PUT_KEY_FOO_TIMESTAMP, null);
+        }
+        rtWriter.flush();
+      } catch (Exception e) {
+        Assert.fail("Failed to write to real-time topic.", e);
+      }
+
+      verify(mockAbstractStorageEngine, timeout(10_000).times(amplificationFactor))
+          .putWithReplicationMetadata(anyInt(), any(), any(), any());
+
+      IntList subPartitions = PartitionUtils.getSubPartitions(PARTITION_FOO, amplificationFactor);
+      for (int subPartition: subPartitions) {
+        PartitionConsumptionState pcs = storeIngestionTaskUnderTest.getPartitionConsumptionState(subPartition);
+        if (pcs != null) {
+          Assert.assertEquals(pcs.getTransientRecordMapSize(), 0);
+        }
+      }
+    },
+        Optional.of(hybridStoreConfig),
+        false,
+        Optional.empty(),
+        true,
+        amplificationFactor,
+        Collections.singletonMap(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 3L));
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
