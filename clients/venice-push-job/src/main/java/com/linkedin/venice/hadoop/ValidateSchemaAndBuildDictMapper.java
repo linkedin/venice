@@ -49,7 +49,7 @@ import org.apache.logging.log4j.Logger;
 public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
     implements Mapper<IntWritable, NullWritable, AvroWrapper<GenericRecord>, NullWritable> {
   private static final Logger LOGGER = LogManager.getLogger(ValidateSchemaAndBuildDictMapper.class);
-  protected InputDataInfoProvider inputDataInfoProvider = null;
+  protected DefaultInputDataInfoProvider inputDataInfoProvider = null;
   protected InputDataInfoProvider.InputDataInfo inputDataInfo;
   protected PushJobSetting pushJobSetting = new PushJobSetting();
   protected StoreSetting storeSetting = new StoreSetting();
@@ -60,7 +60,7 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
   private long inputModificationTime;
   protected String inputDirectory;
   private Schema outputSchema;
-  private Long inputFileDataSize = 0L;
+  protected Long inputFileDataSize = 0L;
   GenericRecord genericRecord;
 
   private void initRecord(Schema recordSchema) {
@@ -124,7 +124,6 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
    * 2. Collect sample for dictionary from this file if enabled
    */
   protected boolean processInput(int fileIdx, Reporter reporter) throws IOException {
-    DefaultInputDataInfoProvider inputDataInfoProvider = (DefaultInputDataInfoProvider) this.inputDataInfoProvider;
     LOGGER.info("Input File index to be processed is : {}", fileIdx);
     if (fileIdx >= fileStatuses.length) {
       MRJobCounterHelper.incrMapperInvalidInputIdxCount(reporter, 1);
@@ -182,21 +181,9 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
    * 1. persists total file size
    * 2. Builds and persists compression dictionary from the collected samples if enabled.
    */
-  protected boolean buildDictionaryAndPersistOutput(
+  private boolean buildDictionaryAndPersistOutput(
       OutputCollector<AvroWrapper<GenericRecord>, NullWritable> output,
       Reporter reporter) throws IOException {
-    DefaultInputDataInfoProvider inputDataInfoProvider = (DefaultInputDataInfoProvider) this.inputDataInfoProvider;
-    int dictSampleSize = 0;
-    if (buildDictionary && inputDataInfo.hasRecords()) {
-      dictSampleSize = inputDataInfoProvider.pushJobZstdConfig.getFilledSize();
-    }
-    return buildDictionaryAndPersistOutput(output, reporter, dictSampleSize);
-  }
-
-  protected boolean buildDictionaryAndPersistOutput(
-      OutputCollector<AvroWrapper<GenericRecord>, NullWritable> output,
-      Reporter reporter,
-      int dictSampleSize) throws IOException {
     // Post the processing of input files: Persist some data to HDFS to be used by the VPJ driver code
     // 0. Init the record
     initRecord(outputSchema);
@@ -209,7 +196,9 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
       // if there are any input records: build dictionary from the data collected so far and persist it
       if (buildDictionary) {
         if (inputDataInfo.hasRecords()) {
-          LOGGER.info("Creating ZSTD compression dictionary using {}  bytes of samples", dictSampleSize);
+          LOGGER.info(
+              "Creating ZSTD compression dictionary using {}  bytes of samples",
+              inputDataInfoProvider.pushJobZstdConfig.getFilledSize());
           byte[] dict;
           try {
             dict = inputDataInfoProvider.getZstdDictTrainSamples();
@@ -324,7 +313,6 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
 
   @Override
   public void close() {
-    DefaultInputDataInfoProvider inputDataInfoProvider = (DefaultInputDataInfoProvider) this.inputDataInfoProvider;
     if (inputDataInfoProvider != null) {
       inputDataInfoProvider.close();
     }
