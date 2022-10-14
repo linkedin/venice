@@ -10,7 +10,6 @@ import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
-import com.linkedin.venice.helix.MapKeyStringAnnotatedReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaUtils;
 import com.linkedin.venice.schema.merge.ValueAndRmd;

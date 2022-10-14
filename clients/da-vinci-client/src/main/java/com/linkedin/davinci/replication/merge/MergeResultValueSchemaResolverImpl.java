@@ -2,7 +2,6 @@ package com.linkedin.davinci.replication.merge;
 
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.MapKeyStringAnnotatedReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import java.util.Map;

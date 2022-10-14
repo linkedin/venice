@@ -1,6 +1,5 @@
 package com.linkedin.davinci.replication.merge;
 
-import com.linkedin.venice.helix.MapKeyStringAnnotatedReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.venice.schema.merge.MergeRecordHelper;

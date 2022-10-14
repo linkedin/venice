@@ -1,4 +1,4 @@
-package com.linkedin.venice.helix;
+package com.linkedin.davinci.replication.merge;
 
 import static com.linkedin.venice.schema.SchemaUtils.getAnnotatedStringMapDerivedSchemaEntry;
 import static com.linkedin.venice.schema.SchemaUtils.getAnnotatedStringMapValueSchemaEntry;
