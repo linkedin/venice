@@ -7,7 +7,7 @@ on:
 
 jobs:
   deploy:
-    if: github.repository == 'majisourav99/venice'
+    if: github.repository == 'linkedin/venice'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3

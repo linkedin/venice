@@ -116,12 +116,12 @@ def get_remote():
 
 
 def make_tag(remote, bump_major, bump_minor, need_verification, github_token):
-  #  pull_success = call(['git', 'pull', '--rebase', remote, 'main'])
-  #  if pull_success != 0:
- #       sys.exit()
-#    version = get_next_version(bump_major, bump_minor)
-    tag_name = '4.0.10'
-#    tag_message = 'tag for release ' + version
+    pull_success = call(['git', 'pull', '--rebase', remote, 'main'])
+    if pull_success != 0:
+        sys.exit()
+    version = get_next_version(bump_major, bump_minor)
+    tag_name = version;
+    tag_message = 'tag for release ' + version
 
     if need_verification:
         proceed = get_confirmation(f'New tag is {tag_name}. Continue? [y/N]: ')
@@ -133,12 +133,12 @@ def make_tag(remote, bump_major, bump_minor, need_verification, github_token):
         headers = {
             'Authorization': f'token {github_token}'
         }
-        commit = check_output(['git', 'rev-parse', 'HEAD'], text=True)
-        url = 'https://api.github.com/repos/majisourav99/venice/git/refs'
+        commit = check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+        url = 'https://api.github.com/repos/linkedin/venice/git/refs'
         response = requests.post(url, headers=headers, json={'ref': f'refs/tags/{tag_name}', 'sha' : commit})
         if (response.status_code != 201):
             print('Could not create the tag ' + tag_name)
-            return
+            sys.exit()
     else:
         tag_success = call(['git', 'tag', '-a', '-m', tag_message, tag_name])
         if tag_success != 0:
@@ -151,8 +151,8 @@ def get_tags(remote):
 
 
 def run(bump_major, bump_minor, need_verification, github_token):
-    remote = ' ' #get_remote()
-  #  get_tags(remote)
+    remote = get_remote()
+    get_tags(remote)
     make_tag(remote, bump_major, bump_minor, need_verification, github_token)
 
 
