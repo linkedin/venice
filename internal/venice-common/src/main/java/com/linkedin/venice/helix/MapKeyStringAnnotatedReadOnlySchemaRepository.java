@@ -19,6 +19,9 @@ import java.util.Optional;
  * task. This class will annotate value schema and partial update schema so when performing Map collection merging,
  * Map field's key can be deserialized into String type and thus is comparable for DCR purpose. Without this wrapper or
  * user annotation, map fields will have key in UTF-8 type which is not comparable.
+ * This wrapper class only implements retrieval of the value schema (including the latest value schema and superset schema)
+ * and partial update schema as they are the only usage in merge conflict resolver. Other operations are not supported
+ * intentionally to avoid unexpected behavior.
  */
 public class MapKeyStringAnnotatedReadOnlySchemaRepository implements ReadOnlySchemaRepository {
   private final ReadOnlySchemaRepository internalSchemaRepo;
@@ -32,7 +35,6 @@ public class MapKeyStringAnnotatedReadOnlySchemaRepository implements ReadOnlySc
 
   @Override
   public void refresh() {
-    internalSchemaRepo.refresh();
   }
 
   @Override
