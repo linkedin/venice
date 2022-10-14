@@ -39,7 +39,7 @@ import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputMapper;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputReducer;
 import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
 import com.linkedin.venice.hadoop.pbnj.PostBulkLoadAnalysisMapper;
-import com.linkedin.venice.hadoop.schema.HDFSRmdRmdSchemaSource;
+import com.linkedin.venice.hadoop.schema.HDFSRmdSchemaSource;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.utils.ControllerUtils;
 import com.linkedin.venice.message.KafkaKey;
@@ -989,8 +989,8 @@ public class VenicePushJob implements AutoCloseable {
           }
           if (pushJobSetting.repushTtlInHours != NOT_SET) {
             // the schema path will be suffixed by the store name, e.g. /tmp/veniceRmdSchemas/<store_name>
-            try (HDFSRmdRmdSchemaSource rmdSchemaSource =
-                new HDFSRmdRmdSchemaSource(TEMP_DIR_PREFIX + pushJobSetting.storeName, props, controllerClient)) {
+            try (HDFSRmdSchemaSource rmdSchemaSource =
+                new HDFSRmdSchemaSource(TEMP_DIR_PREFIX + pushJobSetting.storeName, props, controllerClient)) {
               rmdSchemaSource.loadRmdSchemasOnDisk();
               pushJobSetting.rmdSchemaDir = rmdSchemaSource.getPath();
             }

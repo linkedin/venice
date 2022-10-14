@@ -3,7 +3,7 @@ package com.linkedin.venice.hadoop.input.kafka.ttl;
 import com.linkedin.venice.hadoop.AbstractVeniceFilter;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
-import com.linkedin.venice.hadoop.schema.HDFSRmdRmdSchemaSource;
+import com.linkedin.venice.hadoop.schema.HDFSRmdSchemaSource;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.schema.rmd.RmdVersionId;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
@@ -21,15 +22,15 @@ import org.apache.avro.generic.GenericRecord;
  */
 public class VeniceKafkaInputTTLFilter extends AbstractVeniceFilter<KafkaInputMapperValue> {
   private final TTLResolutionPolicy ttlPolicy;
-  private final long ttlInHours;
-  private final HDFSRmdRmdSchemaSource schemaSource;
+  private final long ttlInMs;
+  private final HDFSRmdSchemaSource schemaSource;
   private final Map<RmdVersionId, Schema> rmdMapping;
 
   public VeniceKafkaInputTTLFilter(VeniceProperties props) throws IOException {
     super(props);
     ttlPolicy = TTLResolutionPolicy.valueOf(props.getInt(VenicePushJob.REPUSH_TTL_POLICY));
-    ttlInHours = props.getLong(VenicePushJob.REPUSH_TTL_IN_HOURS);
-    schemaSource = new HDFSRmdRmdSchemaSource(props.getString(VenicePushJob.RMD_SCHEMA_DIR));
+    ttlInMs = TimeUnit.HOURS.toMillis(props.getLong(VenicePushJob.REPUSH_TTL_IN_HOURS));
+    schemaSource = new HDFSRmdSchemaSource(props.getString(VenicePushJob.RMD_SCHEMA_DIR));
     rmdMapping = schemaSource.fetchSchemas();
   }
 
@@ -39,7 +40,7 @@ public class VeniceKafkaInputTTLFilter extends AbstractVeniceFilter<KafkaInputMa
     switch (ttlPolicy) {
       case RT_WRITE_ONLY:
         Instant timestamp = Instant.ofEpochMilli(getTimeStampFromRmd(kafkaInputMapperValue));
-        return ChronoUnit.HOURS.between(timestamp, curTime) > ttlInHours;
+        return ChronoUnit.MILLIS.between(timestamp, curTime) > ttlInMs;
       case BYPASS_BATCH_WRITE:
       case ACCEPT_BATCH_WRITE:
       default:

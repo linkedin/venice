@@ -19,14 +19,14 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class TestHDFSRmdRmdSchemaSource {
+public class TestHDFSRmdSchemaSource {
   private final static String TEST_STORE = "test_store";
   private final static int numOfSchemas = 3;
 
   private final static String TEST_SCHEMA =
       "{\"type\":\"record\"," + "\"name\":\"User\"," + "\"namespace\":\"example.avro\"," + "\"fields\":["
           + "{\"name\":\"name\",\"type\":\"string\",\"default\":\"venice\"}]}";
-  private HDFSRmdRmdSchemaSource source;
+  private HDFSRmdSchemaSource source;
 
   @BeforeClass
   public void setUp() throws IOException {
@@ -40,7 +40,7 @@ public class TestHDFSRmdRmdSchemaSource {
     response.setSchemas(schemas);
     doReturn(response).when(client).getAllReplicationMetadataSchemas(TEST_STORE);
 
-    source = new HDFSRmdRmdSchemaSource(inputDir.getAbsolutePath(), new VeniceProperties(props), client);
+    source = new HDFSRmdSchemaSource(inputDir.getAbsolutePath(), new VeniceProperties(props), client);
   }
 
   @Test

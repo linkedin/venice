@@ -43,8 +43,8 @@ import org.apache.logging.log4j.Logger;
  * Borrowed some codes from HDFSSchemaSource. The difference is HDFSRmdSchemaSource is created for a single store.
  */
 @NotThreadsafe
-public class HDFSRmdRmdSchemaSource implements RmdSchemaSource, AutoCloseable {
-  private static final Logger LOGGER = LogManager.getLogger(HDFSRmdRmdSchemaSource.class);
+public class HDFSRmdSchemaSource implements RmdSchemaSource, AutoCloseable {
+  private static final Logger LOGGER = LogManager.getLogger(HDFSRmdSchemaSource.class);
   private static final String UNDERSCORE = "_";
   private static final String SEPARATOR = "/";
   private final VeniceProperties props;
@@ -52,7 +52,7 @@ public class HDFSRmdRmdSchemaSource implements RmdSchemaSource, AutoCloseable {
   private final Path schemaDir;
   private final ControllerClient controllerClient;
 
-  public HDFSRmdRmdSchemaSource(
+  public HDFSRmdSchemaSource(
       final String schemaDir,
       final VeniceProperties props,
       final ControllerClient controllerClient) throws IOException {
@@ -66,7 +66,7 @@ public class HDFSRmdRmdSchemaSource implements RmdSchemaSource, AutoCloseable {
     this.controllerClient = controllerClient;
   }
 
-  public HDFSRmdRmdSchemaSource(final String schemaDir, final VeniceProperties props) throws IOException {
+  public HDFSRmdSchemaSource(final String schemaDir, final VeniceProperties props) throws IOException {
     this(schemaDir, props, null);
   }
 
@@ -75,7 +75,7 @@ public class HDFSRmdRmdSchemaSource implements RmdSchemaSource, AutoCloseable {
    * @param schemaDirSuffix
    * @throws IOException
    */
-  public HDFSRmdRmdSchemaSource(final String schemaDirSuffix) throws IOException {
+  public HDFSRmdSchemaSource(final String schemaDirSuffix) throws IOException {
     this(schemaDirSuffix, null);
   }
 
