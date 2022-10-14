@@ -31,12 +31,6 @@ public class MapKeyStringAnnotatedStoreSchemaCache {
     this.internalSchemaRepo = internalSchemaRepo;
   }
 
-  public void clear() {
-    valueSchemaEntryMapCache.clear();
-    partialUpdateSchemaEntryMapCache.clear();
-    internalSchemaRepo.clear();
-  }
-
   /**
    * Retrieve value schema of a store and annotate its map fields. The annotation will only be done once in the repository's
    * lifetime as the result is cached.
