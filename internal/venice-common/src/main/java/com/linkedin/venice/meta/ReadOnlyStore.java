@@ -1214,16 +1214,6 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
-  public Version increaseVersion() {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public Version increaseVersion(String pushJobId) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
   public Version peekNextVersion() {
     return this.delegate.peekNextVersion();
   }

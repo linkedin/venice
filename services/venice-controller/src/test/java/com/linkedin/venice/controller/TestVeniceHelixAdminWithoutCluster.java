@@ -14,16 +14,10 @@ import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
-import com.linkedin.venice.meta.OfflinePushStrategy;
-import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
-import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
@@ -38,49 +32,6 @@ import org.testng.annotations.Test;
 
 
 public class TestVeniceHelixAdminWithoutCluster {
-  @Test
-  public void canFindStartedVersionInStore() {
-    String storeName = Utils.getUniqueString("store");
-    Store store = new ZKStore(
-        storeName,
-        "owner",
-        System.currentTimeMillis(),
-        PersistenceType.IN_MEMORY,
-        RoutingStrategy.CONSISTENT_HASH,
-        ReadStrategy.ANY_OF_ONLINE,
-        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
-        1);
-    store.increaseVersion("123");
-    Version version = store.getVersions().get(0);
-    Optional<Version> returnedVersion = VeniceHelixAdmin.getStartedVersion(store);
-    Assert.assertEquals(returnedVersion.get(), version);
-  }
-
-  /**
-   * This test should fail and be removed when we revert to using push ID to guarantee idempotence.
-   */
-  @Test
-  public void findStartedVersionIgnoresPushId() {
-    String pushId = Utils.getUniqueString("pushid");
-    String storeName = Utils.getUniqueString("store");
-    Store store = new ZKStore(
-        storeName,
-        "owner",
-        System.currentTimeMillis(),
-        PersistenceType.IN_MEMORY,
-        RoutingStrategy.CONSISTENT_HASH,
-        ReadStrategy.ANY_OF_ONLINE,
-        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
-        1);
-    store.increaseVersion(pushId);
-    Version version = store.getVersions().get(0);
-    store.updateVersionStatus(version.getNumber(), VersionStatus.ONLINE);
-    store.increaseVersion(pushId);
-    Version startedVersion = store.getVersions().get(1);
-    Optional<Version> returnedVersion = VeniceHelixAdmin.getStartedVersion(store);
-    Assert.assertEquals(returnedVersion.get(), startedVersion);
-  }
-
   @Test
   public void canMergeNewHybridConfigValuesToOldStore() {
     String storeName = Utils.getUniqueString("storeName");

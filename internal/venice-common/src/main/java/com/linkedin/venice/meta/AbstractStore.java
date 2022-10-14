@@ -230,20 +230,6 @@ public abstract class AbstractStore implements Store {
     throw new VeniceException("Version:" + versionNumber + " does not exist");
   }
 
-  /**
-   * Use the form of this method that accepts a pushJobId
-   */
-  @Deprecated
-  @Override
-  public Version increaseVersion() {
-    return increaseVersion(Version.guidBasedDummyPushId(), true);
-  }
-
-  @Override
-  public Version increaseVersion(String pushJobId) {
-    return increaseVersion(pushJobId, true);
-  }
-
   @Override
   public Version peekNextVersion() {
     return increaseVersion(Version.guidBasedDummyPushId(), false);
@@ -265,7 +251,7 @@ public abstract class AbstractStore implements Store {
   public VersionStatus getVersionStatus(int versionNumber) {
     Optional<Version> version = getVersion(versionNumber);
     if (!version.isPresent()) {
-      return VersionStatus.ERROR.NOT_CREATED;
+      return VersionStatus.NOT_CREATED;
     }
 
     return version.get().getStatus();
