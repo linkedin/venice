@@ -101,20 +101,4 @@ public class MapKeyStringAnnotatedReadOnlySchemaRepository {
       return getAnnotatedStringMapDerivedSchemaEntry(derivedSchemaEntry);
     });
   }
-
-  /**
-   * Retrieve the latest partial update schema of a store and annotate its map fields.
-   * The annotation will only be done once in the repository's lifetime as the result is cached.
-   */
-  public DerivedSchemaEntry getLatestDerivedSchema(String storeName, int valueSchemaId) {
-    DerivedSchemaEntry derivedSchemaEntry = internalSchemaRepo.getLatestDerivedSchema(storeName, valueSchemaId);
-    if (derivedSchemaEntry == null) {
-      return null;
-    }
-    String partialUpdateSchemaId = valueSchemaId + "-" + derivedSchemaEntry.getId();
-    Map<String, DerivedSchemaEntry> schemaMap =
-        partialUpdateSchemaEntryMapCache.computeIfAbsent(storeName, k -> new VeniceConcurrentHashMap<>());
-    return schemaMap
-        .computeIfAbsent(partialUpdateSchemaId, k -> getAnnotatedStringMapDerivedSchemaEntry(derivedSchemaEntry));
-  }
 }
