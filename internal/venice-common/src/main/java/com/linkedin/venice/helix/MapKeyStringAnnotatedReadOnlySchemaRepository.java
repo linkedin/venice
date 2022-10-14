@@ -44,7 +44,7 @@ public class MapKeyStringAnnotatedReadOnlySchemaRepository implements ReadOnlySc
 
   @Override
   public SchemaEntry getKeySchema(String storeName) {
-    return internalSchemaRepo.getKeySchema(storeName);
+    throw new UnsupportedOperationException("This method is not supported");
   }
 
   @Override
@@ -66,17 +66,17 @@ public class MapKeyStringAnnotatedReadOnlySchemaRepository implements ReadOnlySc
 
   @Override
   public boolean hasValueSchema(String storeName, int id) {
-    return internalSchemaRepo.hasValueSchema(storeName, id);
+    throw new UnsupportedOperationException("This method is not supported");
   }
 
   @Override
   public int getValueSchemaId(String storeName, String valueSchemaStr) {
-    return internalSchemaRepo.getValueSchemaId(storeName, valueSchemaStr);
+    throw new UnsupportedOperationException("This method is not supported");
   }
 
   @Override
   public Collection<SchemaEntry> getValueSchemas(String storeName) {
-    return internalSchemaRepo.getValueSchemas(storeName);
+    throw new UnsupportedOperationException("This method is not supported");
   }
 
   @Override
@@ -115,7 +115,7 @@ public class MapKeyStringAnnotatedReadOnlySchemaRepository implements ReadOnlySc
 
   @Override
   public Pair<Integer, Integer> getDerivedSchemaId(String storeName, String derivedSchemaStr) {
-    return internalSchemaRepo.getDerivedSchemaId(storeName, derivedSchemaStr);
+    throw new UnsupportedOperationException("This method is not supported");
   }
 
   @Override
@@ -139,7 +139,7 @@ public class MapKeyStringAnnotatedReadOnlySchemaRepository implements ReadOnlySc
 
   @Override
   public Collection<DerivedSchemaEntry> getDerivedSchemas(String storeName) {
-    return internalSchemaRepo.getDerivedSchemas(storeName);
+    throw new UnsupportedOperationException("This method is not supported");
   }
 
   @Override
@@ -164,11 +164,11 @@ public class MapKeyStringAnnotatedReadOnlySchemaRepository implements ReadOnlySc
       String storeName,
       int valueSchemaId,
       int replicationMetadataVersionId) {
-    return internalSchemaRepo.getReplicationMetadataSchema(storeName, valueSchemaId, replicationMetadataVersionId);
+    throw new UnsupportedOperationException("This method is not supported");
   }
 
   @Override
   public Collection<RmdSchemaEntry> getReplicationMetadataSchemas(String storeName) {
-    return internalSchemaRepo.getReplicationMetadataSchemas(storeName);
+    throw new UnsupportedOperationException("This method is not supported");
   }
 }
