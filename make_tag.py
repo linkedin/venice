@@ -120,7 +120,7 @@ def make_tag(remote, bump_major, bump_minor, need_verification, github_token):
     if pull_success != 0:
         sys.exit()
     version = get_next_version(bump_major, bump_minor)
-    tag_name = version;
+    tag_name = version
     tag_message = 'tag for release ' + version
 
     if need_verification:
