@@ -1003,7 +1003,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void testDeleteAllVersionsInStoreWithoutJobAndResource() {
     String storeName = "testDeleteVersionInWithoutJobAndResource";
     Store store = TestUtils.createTestStore(storeName, storeOwner, System.currentTimeMillis());
-    Version version = store.increaseVersion();
+    Version version = new VersionImpl(store.getName(), store.getLargestUsedVersionNumber() + 1, "pushJobId");
+    store.addVersion(version);
     store.updateVersionStatus(version.getNumber(), VersionStatus.ONLINE);
     store.setCurrentVersion(version.getNumber());
     veniceAdmin.getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository().addStore(store);
