@@ -10,7 +10,7 @@ import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
-import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.helix.MapKeyStringAnnotatedReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaUtils;
 import com.linkedin.venice.schema.merge.ValueAndRmd;
@@ -43,7 +43,7 @@ import org.apache.commons.lang3.Validate;
 @Threadsafe
 public class MergeConflictResolver {
   private final String storeName;
-  private final ReadOnlySchemaRepository schemaRepository;
+  private final MapKeyStringAnnotatedReadOnlySchemaRepository schemaRepository;
   private final Function<Integer, GenericRecord> newRmdCreator;
   private final MergeGenericRecord mergeGenericRecord;
   private final MergeByteBuffer mergeByteBuffer;
@@ -52,7 +52,7 @@ public class MergeConflictResolver {
   private final boolean enableHandlingUpdate;
 
   MergeConflictResolver(
-      ReadOnlySchemaRepository schemaRepository,
+      MapKeyStringAnnotatedReadOnlySchemaRepository schemaRepository,
       String storeName,
       Function<Integer, GenericRecord> newRmdCreator,
       MergeGenericRecord mergeGenericRecord,

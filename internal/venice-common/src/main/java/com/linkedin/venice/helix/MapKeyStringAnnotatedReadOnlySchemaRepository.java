@@ -5,11 +5,8 @@ import static com.linkedin.venice.schema.SchemaUtils.getAnnotatedStringMapValueS
 
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.util.Collection;
 import java.util.Map;
 import java.util.Optional;
 
@@ -23,7 +20,7 @@ import java.util.Optional;
  * and partial update schema as they are the only usage in merge conflict resolver. Other operations are not supported
  * intentionally to avoid unexpected behavior.
  */
-public class MapKeyStringAnnotatedReadOnlySchemaRepository implements ReadOnlySchemaRepository {
+public class MapKeyStringAnnotatedReadOnlySchemaRepository {
   private final ReadOnlySchemaRepository internalSchemaRepo;
   private final Map<String, Map<Integer, SchemaEntry>> valueSchemaEntryMapCache = new VeniceConcurrentHashMap<>();
   private final Map<String, Map<String, DerivedSchemaEntry>> partialUpdateSchemaEntryMapCache =
@@ -33,23 +30,12 @@ public class MapKeyStringAnnotatedReadOnlySchemaRepository implements ReadOnlySc
     this.internalSchemaRepo = internalSchemaRepo;
   }
 
-  @Override
-  public void refresh() {
-  }
-
-  @Override
   public void clear() {
     valueSchemaEntryMapCache.clear();
     partialUpdateSchemaEntryMapCache.clear();
     internalSchemaRepo.clear();
   }
 
-  @Override
-  public SchemaEntry getKeySchema(String storeName) {
-    throw new UnsupportedOperationException("This method is not supported");
-  }
-
-  @Override
   /**
    * Retrieve value schema of a store and annotate its map fields. The annotation will only be done once in the repository's
    * lifetime as the result is cached.
@@ -66,22 +52,6 @@ public class MapKeyStringAnnotatedReadOnlySchemaRepository implements ReadOnlySc
     });
   }
 
-  @Override
-  public boolean hasValueSchema(String storeName, int id) {
-    throw new UnsupportedOperationException("This method is not supported");
-  }
-
-  @Override
-  public int getValueSchemaId(String storeName, String valueSchemaStr) {
-    throw new UnsupportedOperationException("This method is not supported");
-  }
-
-  @Override
-  public Collection<SchemaEntry> getValueSchemas(String storeName) {
-    throw new UnsupportedOperationException("This method is not supported");
-  }
-
-  @Override
   /**
    * Retrieve the superset schema (if exists) or the latest value schema of a store and annotate its map fields.
    * The annotation will be done once for each superset or latest value schema as it will be cached for future usage.
@@ -96,7 +66,6 @@ public class MapKeyStringAnnotatedReadOnlySchemaRepository implements ReadOnlySc
     return schemaMap.computeIfAbsent(schemaEntry.getId(), k -> getAnnotatedStringMapValueSchemaEntry(schemaEntry));
   }
 
-  @Override
   /**
    * Retrieve the superset schema (if exists) and annotate its map fields.
    * The annotation will be done once for each superset schema as it will be cached for future usage.
@@ -115,12 +84,6 @@ public class MapKeyStringAnnotatedReadOnlySchemaRepository implements ReadOnlySc
     }
   }
 
-  @Override
-  public Pair<Integer, Integer> getDerivedSchemaId(String storeName, String derivedSchemaStr) {
-    throw new UnsupportedOperationException("This method is not supported");
-  }
-
-  @Override
   /**
    * Retrieve partial update schema of a store and annotate its map fields.
    * The annotation will only be done once in the repository's lifetime as the result is cached.
@@ -139,12 +102,6 @@ public class MapKeyStringAnnotatedReadOnlySchemaRepository implements ReadOnlySc
     });
   }
 
-  @Override
-  public Collection<DerivedSchemaEntry> getDerivedSchemas(String storeName) {
-    throw new UnsupportedOperationException("This method is not supported");
-  }
-
-  @Override
   /**
    * Retrieve the latest partial update schema of a store and annotate its map fields.
    * The annotation will only be done once in the repository's lifetime as the result is cached.
@@ -159,18 +116,5 @@ public class MapKeyStringAnnotatedReadOnlySchemaRepository implements ReadOnlySc
         partialUpdateSchemaEntryMapCache.computeIfAbsent(storeName, k -> new VeniceConcurrentHashMap<>());
     return schemaMap
         .computeIfAbsent(partialUpdateSchemaId, k -> getAnnotatedStringMapDerivedSchemaEntry(derivedSchemaEntry));
-  }
-
-  @Override
-  public RmdSchemaEntry getReplicationMetadataSchema(
-      String storeName,
-      int valueSchemaId,
-      int replicationMetadataVersionId) {
-    throw new UnsupportedOperationException("This method is not supported");
-  }
-
-  @Override
-  public Collection<RmdSchemaEntry> getReplicationMetadataSchemas(String storeName) {
-    throw new UnsupportedOperationException("This method is not supported");
   }
 }

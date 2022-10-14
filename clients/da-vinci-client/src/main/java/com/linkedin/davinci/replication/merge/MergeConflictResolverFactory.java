@@ -1,5 +1,6 @@
 package com.linkedin.davinci.replication.merge;
 
+import com.linkedin.venice.helix.MapKeyStringAnnotatedReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.venice.schema.merge.MergeRecordHelper;
@@ -31,13 +32,15 @@ public class MergeConflictResolverFactory {
       String storeName,
       boolean enableHandlingUpdate) {
     MergeRecordHelper mergeRecordHelper = new CollectionTimestampMergeRecordHelper();
+    MapKeyStringAnnotatedReadOnlySchemaRepository annotatedReadOnlySchemaRepository =
+        new MapKeyStringAnnotatedReadOnlySchemaRepository(schemaRepository);
     return new MergeConflictResolver(
-        schemaRepository,
+        annotatedReadOnlySchemaRepository,
         storeName,
         valueSchemaID -> new GenericData.Record(rmdSerDe.getRmdSchema(valueSchemaID)),
         new MergeGenericRecord(new WriteComputeProcessor(mergeRecordHelper), mergeRecordHelper),
         new MergeByteBuffer(),
-        new MergeResultValueSchemaResolverImpl(schemaRepository, storeName),
+        new MergeResultValueSchemaResolverImpl(annotatedReadOnlySchemaRepository, storeName),
         rmdSerDe,
         enableHandlingUpdate);
   }

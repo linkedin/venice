@@ -19,7 +19,6 @@ import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
-import com.linkedin.venice.helix.MapKeyStringAnnotatedReadOnlySchemaRepository;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
@@ -108,10 +107,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         Lazy.of(() -> new KeyLevelLocksManager(getVersionTopic(), initialPoolSize, maxKeyLevelLocksPoolSize));
     this.rmdSerDe = new RmdSerDe(builder.getSchemaRepo(), storeName, rmdProtocolVersionID);
     this.mergeConflictResolver = MergeConflictResolverFactory.getInstance()
-        .createMergeConflictResolver(
-            new MapKeyStringAnnotatedReadOnlySchemaRepository(builder.getSchemaRepo()),
-            rmdSerDe,
-            getStoreName());
+        .createMergeConflictResolver(builder.getSchemaRepo(), rmdSerDe, getStoreName());
     this.remoteIngestionRepairService = builder.getRemoteIngestionRepairService();
   }
 

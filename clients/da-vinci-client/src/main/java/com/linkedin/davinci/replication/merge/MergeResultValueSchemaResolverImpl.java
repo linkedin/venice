@@ -2,7 +2,7 @@ package com.linkedin.davinci.replication.merge;
 
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.helix.MapKeyStringAnnotatedReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import java.util.Map;
@@ -13,11 +13,13 @@ import org.apache.commons.lang3.Validate;
 
 @Threadsafe
 public class MergeResultValueSchemaResolverImpl implements MergeResultValueSchemaResolver {
-  private final ReadOnlySchemaRepository schemaRepository;
+  private final MapKeyStringAnnotatedReadOnlySchemaRepository schemaRepository;
   private final String storeName;
   private final Map<String, SchemaEntry> resolvedSchemaCache;
 
-  public MergeResultValueSchemaResolverImpl(ReadOnlySchemaRepository schemaRepository, String storeName) {
+  public MergeResultValueSchemaResolverImpl(
+      MapKeyStringAnnotatedReadOnlySchemaRepository schemaRepository,
+      String storeName) {
     this.schemaRepository = Validate.notNull(schemaRepository);
     Validate.notNull(storeName);
     if (storeName.isEmpty()) {

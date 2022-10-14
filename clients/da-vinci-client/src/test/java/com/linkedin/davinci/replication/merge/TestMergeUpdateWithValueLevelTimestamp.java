@@ -1,8 +1,6 @@
 package com.linkedin.davinci.replication.merge;
 
 import static com.linkedin.venice.schema.SchemaUtils.annotateStringMapInValueSchema;
-import static com.linkedin.venice.schema.SchemaUtils.getAnnotatedStringMapDerivedSchemaEntry;
-import static com.linkedin.venice.schema.SchemaUtils.getAnnotatedStringMapValueSchemaEntry;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.ACTIVE_ELEM_TS_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.DELETED_ELEM_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.DELETED_ELEM_TS_FIELD_NAME;
@@ -288,13 +286,11 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     RmdWithValueSchemaId rmdWithValueSchemaId = new RmdWithValueSchemaId(oldValueSchemaId, RMD_VERSION_ID, rmdRecord);
     ReadOnlySchemaRepository readOnlySchemaRepository = mock(ReadOnlySchemaRepository.class);
     DerivedSchemaEntry derivedSchemaEntry = new DerivedSchemaEntry(incomingValueSchemaId, 1, partialUpdateSchema);
-    doReturn(getAnnotatedStringMapDerivedSchemaEntry(derivedSchemaEntry)).when(readOnlySchemaRepository)
+    doReturn(derivedSchemaEntry).when(readOnlySchemaRepository)
         .getDerivedSchema(storeName, incomingValueSchemaId, incomingWriteComputeSchemaId);
     SchemaEntry schemaEntry = new SchemaEntry(oldValueSchemaId, personSchemaV1);
-    doReturn(getAnnotatedStringMapValueSchemaEntry(schemaEntry)).when(readOnlySchemaRepository)
-        .getValueSchema(storeName, oldValueSchemaId);
-    doReturn(Optional.of(getAnnotatedStringMapValueSchemaEntry(schemaEntry))).when(readOnlySchemaRepository)
-        .getSupersetSchema(storeName);
+    doReturn(schemaEntry).when(readOnlySchemaRepository).getValueSchema(storeName, oldValueSchemaId);
+    doReturn(Optional.of(schemaEntry)).when(readOnlySchemaRepository).getSupersetSchema(storeName);
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
