@@ -2054,6 +2054,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           }
 
           topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
+          // TODO: Once concurrent batch pushes handling no longer relies on topics on parent Kafka cluster, stop
+          // creating empty version topic on parent Kafka to indicate ongoing push.
           createBatchTopics(
               version,
               pushType,

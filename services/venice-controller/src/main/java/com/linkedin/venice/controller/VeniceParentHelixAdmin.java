@@ -1472,6 +1472,8 @@ public class VeniceParentHelixAdmin implements Admin {
       long rewindTimeInSecondsOverride,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred) {
+    // TODO: Once version status on parent is updated properly, leverage the version status on parent to handle
+    // concurrent batch pushes
     Optional<String> currentPushTopic =
         getTopicForCurrentPushJob(clusterName, storeName, pushType.isIncremental(), Version.isPushIdRePush(pushJobId));
     if (currentPushTopic.isPresent()) {
@@ -3303,9 +3305,6 @@ public class VeniceParentHelixAdmin implements Admin {
         currentReturnStatusDetails = Optional.of(failCount + "/" + childClusters.size() + " DCs unreachable. ");
       }
 
-      // TODO: Set parent controller's version status based on currentReturnStatus
-      // COMPLETED -> ONLINE
-      // ERROR -> ERROR
       // TODO: remove this if statement since it was only for debugging purpose
       if (maxErroredTopicNumToKeep > 0 && currentReturnStatus.equals(ExecutionStatus.ERROR)) {
         currentReturnStatusDetails =
@@ -3337,6 +3336,30 @@ public class VeniceParentHelixAdmin implements Admin {
           }
           currentReturnStatusDetails =
               Optional.of(currentReturnStatusDetails.orElse("") + "Parent Kafka topic truncated");
+        }
+      }
+
+      // Update version status on parent
+      // COMPLETED -> ONLINE
+      // ERROR -> ERROR
+      // ERROR in some region but COMPLETED in others -> PARTIALLY_ONLINE
+      if (!incrementalPushVersion.isPresent()) {
+        final VersionStatus finalVersionStatusOnParent;
+        if (currentReturnStatus.equals(ExecutionStatus.COMPLETED)) {
+          finalVersionStatusOnParent = VersionStatus.ONLINE;
+        } else if (currentReturnStatus.equals(ExecutionStatus.ERROR) && successCount > 0) {
+          finalVersionStatusOnParent = VersionStatus.PARTIALLY_ONLINE;
+        } else {
+          finalVersionStatusOnParent = VersionStatus.ERROR;
+        }
+        final String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+        final int versionNumber = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+        HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+          ReadWriteStoreRepository storeRepo = resources.getStoreMetadataRepository();
+          Store store = storeRepo.getStore(storeName);
+          store.updateVersionStatus(versionNumber, finalVersionStatusOnParent);
+          storeRepo.updateStore(store);
         }
       }
     }
