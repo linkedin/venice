@@ -600,7 +600,6 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     doReturn(new RmdSchemaEntry(supersetValueSchemaId, RMD_VERSION_ID, personRmdSchemaV3))
         .when(readOnlySchemaRepository)
         .getReplicationMetadataSchema(storeName, supersetValueSchemaId, RMD_VERSION_ID);
-
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
@@ -682,7 +681,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
 
     Assert.assertEquals(
         (List<?>) collectionFieldTimestampRecord.get(DELETED_ELEM_FIELD_NAME),
-        Arrays.asList(toUtf8("five"), toUtf8("four"), toUtf8("six")) // Sorted lexicographically
+        Arrays.asList("five", "four", "six") // Sorted lexicographically
     );
 
     // Validate updated value.

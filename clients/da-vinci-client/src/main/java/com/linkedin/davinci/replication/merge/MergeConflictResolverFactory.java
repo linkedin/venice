@@ -31,8 +31,8 @@ public class MergeConflictResolverFactory {
       String storeName,
       boolean enableHandlingUpdate) {
     MergeRecordHelper mergeRecordHelper = new CollectionTimestampMergeRecordHelper();
-    MapKeyStringAnnotatedReadOnlySchemaRepository annotatedReadOnlySchemaRepository =
-        new MapKeyStringAnnotatedReadOnlySchemaRepository(schemaRepository);
+    MapKeyStringAnnotatedStoreSchemaCache annotatedReadOnlySchemaRepository =
+        new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
     return new MergeConflictResolver(
         annotatedReadOnlySchemaRepository,
         storeName,

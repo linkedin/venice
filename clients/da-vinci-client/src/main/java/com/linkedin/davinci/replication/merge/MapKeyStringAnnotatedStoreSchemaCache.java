@@ -20,13 +20,14 @@ import java.util.Optional;
  * and partial update schema as they are the only usage in merge conflict resolver. Other operations are not supported
  * intentionally to avoid unexpected behavior.
  */
-public class MapKeyStringAnnotatedReadOnlySchemaRepository {
+public class MapKeyStringAnnotatedStoreSchemaCache {
   private final ReadOnlySchemaRepository internalSchemaRepo;
-  private final Map<String, Map<Integer, SchemaEntry>> valueSchemaEntryMapCache = new VeniceConcurrentHashMap<>();
-  private final Map<String, Map<String, DerivedSchemaEntry>> partialUpdateSchemaEntryMapCache =
-      new VeniceConcurrentHashMap<>();
+  private final String storeName;
+  private final Map<Integer, SchemaEntry> valueSchemaEntryMapCache = new VeniceConcurrentHashMap<>();
+  private final Map<String, DerivedSchemaEntry> partialUpdateSchemaEntryMapCache = new VeniceConcurrentHashMap<>();
 
-  public MapKeyStringAnnotatedReadOnlySchemaRepository(ReadOnlySchemaRepository internalSchemaRepo) {
+  public MapKeyStringAnnotatedStoreSchemaCache(String storeName, ReadOnlySchemaRepository internalSchemaRepo) {
+    this.storeName = storeName;
     this.internalSchemaRepo = internalSchemaRepo;
   }
 
@@ -40,10 +41,8 @@ public class MapKeyStringAnnotatedReadOnlySchemaRepository {
    * Retrieve value schema of a store and annotate its map fields. The annotation will only be done once in the repository's
    * lifetime as the result is cached.
    */
-  public SchemaEntry getValueSchema(String storeName, int id) {
-    Map<Integer, SchemaEntry> schemaMap =
-        valueSchemaEntryMapCache.computeIfAbsent(storeName, x -> new VeniceConcurrentHashMap<>());
-    return schemaMap.computeIfAbsent(id, k -> {
+  public SchemaEntry getValueSchema(int id) {
+    return valueSchemaEntryMapCache.computeIfAbsent(id, k -> {
       SchemaEntry schemaEntry = internalSchemaRepo.getValueSchema(storeName, id);
       if (schemaEntry == null) {
         return null;
@@ -56,28 +55,25 @@ public class MapKeyStringAnnotatedReadOnlySchemaRepository {
    * Retrieve the superset schema (if exists) or the latest value schema of a store and annotate its map fields.
    * The annotation will be done once for each superset or latest value schema as it will be cached for future usage.
    */
-  public SchemaEntry getSupersetOrLatestValueSchema(String storeName) {
+  public SchemaEntry getSupersetOrLatestValueSchema() {
     SchemaEntry schemaEntry = internalSchemaRepo.getSupersetOrLatestValueSchema(storeName);
     if (schemaEntry == null) {
       return null;
     }
-    Map<Integer, SchemaEntry> schemaMap =
-        valueSchemaEntryMapCache.computeIfAbsent(storeName, x -> new VeniceConcurrentHashMap<>());
-    return schemaMap.computeIfAbsent(schemaEntry.getId(), k -> getAnnotatedStringMapValueSchemaEntry(schemaEntry));
+    return valueSchemaEntryMapCache
+        .computeIfAbsent(schemaEntry.getId(), k -> getAnnotatedStringMapValueSchemaEntry(schemaEntry));
   }
 
   /**
    * Retrieve the superset schema (if exists) and annotate its map fields.
    * The annotation will be done once for each superset schema as it will be cached for future usage.
    */
-  public Optional<SchemaEntry> getSupersetSchema(String storeName) {
+  public Optional<SchemaEntry> getSupersetSchema() {
     Optional<SchemaEntry> schemaEntryOptional = internalSchemaRepo.getSupersetSchema(storeName);
     if (schemaEntryOptional.isPresent()) {
       SchemaEntry schemaEntry = schemaEntryOptional.get();
-      Map<Integer, SchemaEntry> schemaMap =
-          valueSchemaEntryMapCache.computeIfAbsent(storeName, x -> new VeniceConcurrentHashMap<>());
-      SchemaEntry annotatedSchemaEntry =
-          schemaMap.computeIfAbsent(schemaEntry.getId(), k -> getAnnotatedStringMapValueSchemaEntry(schemaEntry));
+      SchemaEntry annotatedSchemaEntry = valueSchemaEntryMapCache
+          .computeIfAbsent(schemaEntry.getId(), k -> getAnnotatedStringMapValueSchemaEntry(schemaEntry));
       return Optional.of(annotatedSchemaEntry);
     } else {
       return schemaEntryOptional;
@@ -88,11 +84,9 @@ public class MapKeyStringAnnotatedReadOnlySchemaRepository {
    * Retrieve partial update schema of a store and annotate its map fields.
    * The annotation will only be done once in the repository's lifetime as the result is cached.
    */
-  public DerivedSchemaEntry getDerivedSchema(String storeName, int valueSchemaId, int partialUpdateProtocolId) {
+  public DerivedSchemaEntry getDerivedSchema(int valueSchemaId, int partialUpdateProtocolId) {
     String partialUpdateSchemaId = valueSchemaId + "-" + partialUpdateProtocolId;
-    Map<String, DerivedSchemaEntry> schemaMap =
-        partialUpdateSchemaEntryMapCache.computeIfAbsent(storeName, k -> new VeniceConcurrentHashMap<>());
-    return schemaMap.computeIfAbsent(partialUpdateSchemaId, k -> {
+    return partialUpdateSchemaEntryMapCache.computeIfAbsent(partialUpdateSchemaId, k -> {
       DerivedSchemaEntry derivedSchemaEntry =
           internalSchemaRepo.getDerivedSchema(storeName, valueSchemaId, partialUpdateProtocolId);
       if (derivedSchemaEntry == null) {
