@@ -45,7 +45,7 @@ import javax.annotation.Nonnull;
  * IMPORTANT!!!
  * In {@link #scatter} function, only {@link RouterException} is expected, otherwise, the netty buffer leaking issue
  * will happen.
- * This vulnerability is related to DDS lib since {@link ScatterGatherMode#scatter} only catches {@link RouterException} to
+ * This vulnerability is related to Alpini since {@link ScatterGatherMode#scatter} only catches {@link RouterException} to
  * return the exceptional future, otherwise, that function will throw exception to miss the release operation in {@text com.linkedin.alpini.router.ScatterGatherRequestHandlerImpl#prepareRetry}.
  * Here are the details:
  * 1. If the current implementation of {@link #scatter} throws other exceptions than {@link RouterException}, {@link ScatterGatherMode#scatter}

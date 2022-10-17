@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -41,8 +42,8 @@ public class TestVenicePartitionFinder {
         ReadStrategy.ANY_OF_ONLINE,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
         1);
-    for (int i = 0; i < NUM_VERSIONS; i++) {
-      store.increaseVersion(String.valueOf(i));
+    for (int i = 1; i <= NUM_VERSIONS; i++) {
+      store.addVersion(new VersionImpl(storeName, i, String.valueOf(i), NUM_PARTITIONS));
     }
     VenicePartitioner partitioner = new DefaultVenicePartitioner();
     doReturn(store).when(mockMetadataRepo).getStore(storeName);

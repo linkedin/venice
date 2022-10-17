@@ -7,6 +7,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
@@ -70,7 +71,7 @@ public class TestHelixReadOnlyStorageEngineRepository {
   public void testGetStore() throws InterruptedException {
     // Add and get notificaiton
     Store s1 = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());
-    s1.increaseVersion();
+    s1.addVersion(new VersionImpl("s1", 1, "pushJobId"));
     s1.setReadQuotaInCU(100);
     writeRepo.addStore(s1);
     Thread.sleep(1000L);
@@ -86,7 +87,7 @@ public class TestHelixReadOnlyStorageEngineRepository {
 
     // Update and get notification
     Store s2 = writeRepo.getStore(s1.getName());
-    s2.increaseVersion();
+    s2.addVersion(new VersionImpl(s2.getName(), s2.getLargestUsedVersionNumber() + 1, "pushJobId2"));
     writeRepo.updateStore(s2);
     Thread.sleep(1000L);
     Assert.assertEquals(
@@ -106,7 +107,7 @@ public class TestHelixReadOnlyStorageEngineRepository {
     Store[] stores = new Store[count];
     for (int i = 0; i < count; i++) {
       Store s = TestUtils.createTestStore("s" + i, "owner", System.currentTimeMillis());
-      s.increaseVersion();
+      s.addVersion(new VersionImpl(s.getName(), s.getLargestUsedVersionNumber() + 1, "pushJobId"));
       s.setReadQuotaInCU(i + 1);
       writeRepo.addStore(s);
       stores[i] = s;

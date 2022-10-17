@@ -10,7 +10,6 @@ import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
-import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaUtils;
 import com.linkedin.venice.schema.merge.ValueAndRmd;
@@ -45,7 +44,7 @@ import org.apache.commons.lang3.Validate;
 @Threadsafe
 public class MergeConflictResolver {
   private final String storeName;
-  private final ReadOnlySchemaRepository schemaRepository;
+  private final MapKeyStringAnnotatedStoreSchemaCache storeSchemaCache;
   private final Function<Integer, GenericRecord> newRmdCreator;
   private final MergeGenericRecord mergeGenericRecord;
   private final MergeByteBuffer mergeByteBuffer;
@@ -54,7 +53,7 @@ public class MergeConflictResolver {
   private final boolean enableHandlingUpdate;
 
   MergeConflictResolver(
-      ReadOnlySchemaRepository schemaRepository,
+      MapKeyStringAnnotatedStoreSchemaCache storeSchemaCache,
       String storeName,
       Function<Integer, GenericRecord> newRmdCreator,
       MergeGenericRecord mergeGenericRecord,
@@ -62,7 +61,7 @@ public class MergeConflictResolver {
       MergeResultValueSchemaResolver mergeResultValueSchemaResolver,
       RmdSerDe rmdSerde,
       boolean enableHandlingUpdate) {
-    this.schemaRepository = Validate.notNull(schemaRepository);
+    this.storeSchemaCache = Validate.notNull(storeSchemaCache);
     this.storeName = Validate.notNull(storeName);
     this.newRmdCreator = Validate.notNull(newRmdCreator);
     this.mergeGenericRecord = Validate.notNull(mergeGenericRecord);
@@ -331,11 +330,11 @@ public class MergeConflictResolver {
   }
 
   private Schema getValueSchema(final int valueSchemaID) {
-    return schemaRepository.getValueSchema(storeName, valueSchemaID).getSchema();
+    return storeSchemaCache.getValueSchema(valueSchemaID).getSchema();
   }
 
   private Schema getWriteComputeSchema(final int valueSchemaID, final int writeComputeSchemaID) {
-    return schemaRepository.getDerivedSchema(storeName, valueSchemaID, writeComputeSchemaID).getSchema();
+    return storeSchemaCache.getDerivedSchema(valueSchemaID, writeComputeSchemaID).getSchema();
   }
 
   private boolean isRmdFieldTimestampSmaller(
@@ -452,7 +451,7 @@ public class MergeConflictResolver {
      *
      * In such cases, the incoming Delete operation will be applied directly and we should store a tombstone for it.
      */
-    final int valueSchemaID = schemaRepository.getSupersetOrLatestValueSchema(storeName).getId();
+    final int valueSchemaID = storeSchemaCache.getSupersetOrLatestValueSchema().getId();
     GenericRecord newRmd = newRmdCreator.apply(valueSchemaID);
     newRmd.put(TIMESTAMP_FIELD_NAME, deleteOperationTimestamp);
     newRmd.put(
@@ -532,7 +531,7 @@ public class MergeConflictResolver {
       throw new VeniceUnsupportedOperationException(
           "TODO: add more unit and integration tests first and then remove this exception.");
     }
-    final SchemaEntry supersetValueSchemaEntry = schemaRepository.getSupersetSchema(storeName).orElse(null);
+    final SchemaEntry supersetValueSchemaEntry = storeSchemaCache.getSupersetSchema().orElse(null);
     if (supersetValueSchemaEntry == null) {
       throw new IllegalStateException("Expect to get superset value schema for store: " + storeName);
     }

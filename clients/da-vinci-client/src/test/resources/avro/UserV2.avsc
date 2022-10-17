@@ -1,0 +1,27 @@
+{
+  "type": "record",
+  "name": "User",
+  "namespace": "example.avro",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string",
+      "default": "id"
+    },
+    {
+      "name": "name",
+      "type": "string",
+      "default": "name"
+    },
+    {
+      "name": "age",
+      "type": "int",
+      "default": -1
+    },
+    {
+      "name": "age_2",
+      "type": "int",
+      "default": -1
+    }
+  ]
+}

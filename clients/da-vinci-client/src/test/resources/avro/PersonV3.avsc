@@ -1,0 +1,45 @@
+{
+  "name": "Person",
+  "type": "record",
+  "fields": [
+    {
+      "name": "age",
+      "type": "int",
+      "default": -1
+    },
+    {
+      "name": "favoritePet",
+      "type": "string",
+      "default": "Pancake!"
+    },
+    {
+      "name": "name",
+      "type": "string",
+      "default": "default_name"
+    },
+    {
+      "name": "intArray",
+      "type": {
+        "type": "array",
+        "items": "int"
+      },
+      "default": []
+    },
+    {
+      "name": "stringArray",
+      "type": {
+        "type": "array",
+        "items": "string"
+      },
+      "default": []
+    },
+    {
+      "name": "stringMap",
+      "type": {
+        "type": "map",
+        "values": "string"
+      },
+      "default": {}
+    }
+  ]
+}

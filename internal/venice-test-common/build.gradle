@@ -95,6 +95,6 @@ idea {
   module {
     testSourceDirs += project.sourceSets.integrationTest.java.srcDirs
     testResourceDirs += project.sourceSets.integrationTest.resources.srcDirs
-    testSourceDirs += project.sourceSets.jmh.java.srcDirs
+    // testSourceDirs += project.sourceSets.jmh.java.srcDirs // broken, somehow, gotta debug...
   }
 }
