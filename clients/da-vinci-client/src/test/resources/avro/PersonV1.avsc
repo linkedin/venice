@@ -1,0 +1,32 @@
+{
+  "name": "Person",
+  "type": "record",
+  "fields": [
+    {
+      "name": "age",
+      "type": "int",
+      "default": -1
+    },
+    {
+      "name": "name",
+      "type": "string",
+      "default": "default_name"
+    },
+    {
+      "name": "intArray",
+      "type": {
+        "type": "array",
+        "items": "int"
+      },
+      "default": []
+    },
+    {
+      "name": "stringMap",
+      "type": {
+        "type": "map",
+        "values": "string"
+      },
+      "default": {}
+    }
+  ]
+}

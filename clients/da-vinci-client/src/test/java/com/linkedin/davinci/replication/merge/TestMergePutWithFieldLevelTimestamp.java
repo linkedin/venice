@@ -1,18 +1,14 @@
 package com.linkedin.davinci.replication.merge;
 
-import static com.linkedin.davinci.replication.merge.TestMergeConflictSchemaConstants.USER_SCHEMA_STR_V3;
-import static com.linkedin.davinci.replication.merge.TestMergeConflictSchemaConstants.USER_SCHEMA_STR_V4;
-import static com.linkedin.davinci.replication.merge.TestMergeConflictSchemaConstants.USER_SCHEMA_STR_V5;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
+import com.linkedin.davinci.replication.merge.helper.utils.ValueAndRmdSchema;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
-import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
@@ -30,8 +26,8 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
   @Test
   public void testNewPutIgnored() {
     ReadOnlySchemaRepository schemaRepository = mock(ReadOnlySchemaRepository.class);
-    doReturn(new SchemaEntry(1, valueRecordSchemaV1)).when(schemaRepository).getValueSchema(storeName, 1);
-    doReturn(new SchemaEntry(2, valueRecordSchemaV2)).when(schemaRepository).getValueSchema(storeName, 2);
+    doReturn(new SchemaEntry(1, userSchemaV1)).when(schemaRepository).getValueSchema(storeName, 1);
+    doReturn(new SchemaEntry(2, userSchemaV2)).when(schemaRepository).getValueSchema(storeName, 2);
 
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
@@ -43,7 +39,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     fieldNameToTimestampMap.put("id", 10L);
     fieldNameToTimestampMap.put("name", 20L);
     fieldNameToTimestampMap.put("age", 30L);
-    GenericRecord rmdRecord = createRmdWithFieldLevelTimestamp(rmdSchemaV1, fieldNameToTimestampMap);
+    GenericRecord rmdRecord = createRmdWithFieldLevelTimestamp(userRmdSchemaV1, fieldNameToTimestampMap);
     final int oldValueSchemaID = 1;
 
     MergeConflictResult mergeResult = mergeConflictResolver.put(
@@ -60,15 +56,20 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
 
   @Test
   public void testPutWithFieldLevelTimestamp() {
-    final Schema userSchemaV3 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(USER_SCHEMA_STR_V3);
-    final Schema userSchemaV4 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(USER_SCHEMA_STR_V4);
-    final Schema userSchemaV5 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(USER_SCHEMA_STR_V5);
+
+    ValueAndRmdSchema userV3Schema = new ValueAndRmdSchema("avro/UserV3.avsc");
+    ValueAndRmdSchema userV4Schema = new ValueAndRmdSchema("avro/UserV4.avsc");
+    ValueAndRmdSchema userV5Schema = new ValueAndRmdSchema("avro/UserV5.avsc");
+
+    final Schema userSchemaV3 = userV3Schema.getValueSchema();
+    final Schema userSchemaV4 = userV4Schema.getValueSchema();
+    final Schema userSchemaV5 = userV5Schema.getValueSchema();
     // Make sure that schemas used for testing meet the expectation.
     Assert.assertTrue(AvroSupersetSchemaUtils.isSupersetSchema(userSchemaV5, userSchemaV4));
     Assert.assertTrue(AvroSupersetSchemaUtils.isSupersetSchema(userSchemaV5, userSchemaV3));
-    final Schema rmdSchemaV3 = RmdSchemaGenerator.generateMetadataSchema(userSchemaV3);
-    final Schema rmdSchemaV4 = RmdSchemaGenerator.generateMetadataSchema(userSchemaV4);
-    final Schema rmdSchemaV5 = RmdSchemaGenerator.generateMetadataSchema(userSchemaV5);
+    final Schema rmdSchemaV3 = userV3Schema.getRmdSchema();
+    final Schema rmdSchemaV4 = userV4Schema.getRmdSchema();
+    final Schema rmdSchemaV5 = userV5Schema.getRmdSchema();
     final ReadOnlySchemaRepository schemaRepository =
         mockSchemaRepository(userSchemaV3, userSchemaV4, userSchemaV5, rmdSchemaV3, rmdSchemaV4, rmdSchemaV5);
 

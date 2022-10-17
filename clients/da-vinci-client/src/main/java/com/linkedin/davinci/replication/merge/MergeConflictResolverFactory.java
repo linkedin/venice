@@ -31,13 +31,15 @@ public class MergeConflictResolverFactory {
       String storeName,
       boolean enableHandlingUpdate) {
     MergeRecordHelper mergeRecordHelper = new CollectionTimestampMergeRecordHelper();
+    MapKeyStringAnnotatedStoreSchemaCache annotatedReadOnlySchemaRepository =
+        new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
     return new MergeConflictResolver(
-        schemaRepository,
+        annotatedReadOnlySchemaRepository,
         storeName,
         valueSchemaID -> new GenericData.Record(rmdSerDe.getRmdSchema(valueSchemaID)),
         new MergeGenericRecord(new WriteComputeProcessor(mergeRecordHelper), mergeRecordHelper),
         new MergeByteBuffer(),
-        new MergeResultValueSchemaResolverImpl(schemaRepository, storeName),
+        new MergeResultValueSchemaResolverImpl(annotatedReadOnlySchemaRepository, storeName),
         rmdSerDe,
         enableHandlingUpdate);
   }
