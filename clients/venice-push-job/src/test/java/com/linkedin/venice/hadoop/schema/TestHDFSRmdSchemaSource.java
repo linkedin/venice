@@ -1,6 +1,5 @@
 package com.linkedin.venice.hadoop.schema;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -8,11 +7,9 @@ import static org.mockito.Mockito.mock;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.schema.rmd.RmdVersionId;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
-import java.util.Properties;
 import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
@@ -30,8 +27,6 @@ public class TestHDFSRmdSchemaSource {
 
   @BeforeClass
   public void setUp() throws IOException {
-    Properties props = new Properties();
-    props.setProperty(VENICE_STORE_NAME_PROP, TEST_STORE);
     File inputDir = getTempDataDirectory();
 
     ControllerClient client = mock(ControllerClient.class);
@@ -40,7 +35,7 @@ public class TestHDFSRmdSchemaSource {
     response.setSchemas(schemas);
     doReturn(response).when(client).getAllReplicationMetadataSchemas(TEST_STORE);
 
-    source = new HDFSRmdSchemaSource(inputDir.getAbsolutePath(), new VeniceProperties(props), client);
+    source = new HDFSRmdSchemaSource(inputDir.getAbsolutePath(), TEST_STORE, client);
   }
 
   @Test

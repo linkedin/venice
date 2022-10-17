@@ -989,8 +989,10 @@ public class VenicePushJob implements AutoCloseable {
           }
           if (pushJobSetting.repushTtlInHours != NOT_SET) {
             // the schema path will be suffixed by the store name, e.g. /tmp/veniceRmdSchemas/<store_name>
-            try (HDFSRmdSchemaSource rmdSchemaSource =
-                new HDFSRmdSchemaSource(TEMP_DIR_PREFIX + pushJobSetting.storeName, props, controllerClient)) {
+            try (HDFSRmdSchemaSource rmdSchemaSource = new HDFSRmdSchemaSource(
+                TEMP_DIR_PREFIX + pushJobSetting.storeName,
+                pushJobSetting.storeName,
+                controllerClient)) {
               rmdSchemaSource.loadRmdSchemasOnDisk();
               pushJobSetting.rmdSchemaDir = rmdSchemaSource.getPath();
             }

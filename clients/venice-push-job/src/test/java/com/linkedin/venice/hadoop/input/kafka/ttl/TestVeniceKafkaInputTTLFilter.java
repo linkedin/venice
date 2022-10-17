@@ -82,7 +82,7 @@ public class TestVeniceKafkaInputTTLFilter {
     response.setSchemas(schemas);
     doReturn(response).when(client).getAllReplicationMetadataSchemas(TEST_STORE);
 
-    source = new HDFSRmdSchemaSource(props.getString(VenicePushJob.RMD_SCHEMA_DIR), props, client);
+    source = new HDFSRmdSchemaSource(props.getString(VenicePushJob.RMD_SCHEMA_DIR), TEST_STORE, client);
     source.loadRmdSchemasOnDisk();
   }
 
