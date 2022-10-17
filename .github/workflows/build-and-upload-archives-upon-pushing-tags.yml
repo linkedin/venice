@@ -1,9 +1,10 @@
 name: Build and Upload Archives upon Creating Tags
 
-# Run this workflow every time a tag is created
+# Run this workflow every time a tag is created/pushed
 on:
-  create:
+  push:
     tags:
+      - '*'
 
 jobs:
   build:
@@ -11,8 +12,7 @@ jobs:
     name: Build tagged commit and upload an archive
     # Set the type of machine to run on
     runs-on: ubuntu-latest
-    # Only run for tag creation
-    if: github.event.ref_type == 'tag'
+    # timeout-minutes: 120
     steps:
       # Checks out a copy of your repository on the ubuntu-latest machine
       - name: Checkout code
