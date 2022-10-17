@@ -134,7 +134,6 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
         throw new IllegalStateException(
             "Expect value of field " + fieldName + " to be an IndexedHashMap. Got: " + fieldValue.getClass());
       }
-
       collectionFieldOperationHandler.handleModifyMap(
           modifyTimestamp,
           new CollectionRmdTimestamp(fieldTimestampRecord),

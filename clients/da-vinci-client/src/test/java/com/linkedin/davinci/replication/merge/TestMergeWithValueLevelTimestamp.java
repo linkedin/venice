@@ -24,16 +24,16 @@ import org.testng.annotations.Test;
 public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver {
   @Test
   public void testPut() {
-    GenericRecord oldValueRecord = new GenericData.Record(valueRecordSchemaV1);
+    GenericRecord oldValueRecord = new GenericData.Record(userSchemaV1);
     oldValueRecord.put("id", "id1");
     oldValueRecord.put("name", "name1");
     oldValueRecord.put("age", 10);
 
-    GenericRecord rmdRecord = new GenericData.Record(rmdSchemaV1);
+    GenericRecord rmdRecord = new GenericData.Record(userRmdSchemaV1);
     rmdRecord.put(TIMESTAMP_FIELD_NAME, 20L);
     rmdRecord.put(REPLICATION_CHECKPOINT_VECTOR_FIELD, Collections.emptyList());
 
-    GenericRecord newValueRecord = new GenericData.Record(valueRecordSchemaV1);
+    GenericRecord newValueRecord = new GenericData.Record(userSchemaV1);
     newValueRecord.put("id", "id10");
     newValueRecord.put("name", "name10");
     newValueRecord.put("age", 20);
@@ -47,7 +47,8 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
     ByteBuffer newBB = serialize(newValueRecord);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.put(
         Lazy.of(() -> oldBB),
-        Optional.of(new RmdWithValueSchemaId(1, RMD_VERSION_ID, GenericData.get().deepCopy(rmdSchemaV1, rmdRecord))),
+        Optional
+            .of(new RmdWithValueSchemaId(1, RMD_VERSION_ID, GenericData.get().deepCopy(userRmdSchemaV1, rmdRecord))),
         newBB,
         30L,
         1,
@@ -57,12 +58,13 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
 
     // verify id and name fields are from new record
     GenericRecord result = deserializer.deserialize(mergeConflictResult.getNewValue().orElse(null));
-    Assert.assertEquals(GenericData.get().compare(result, newValueRecord, valueRecordSchemaV1), 0);
+    Assert.assertEquals(GenericData.get().compare(result, newValueRecord, userSchemaV1), 0);
 
     // verify update ignored.
     mergeConflictResult = mergeConflictResolver.put(
         Lazy.of(() -> oldBB),
-        Optional.of(new RmdWithValueSchemaId(1, RMD_VERSION_ID, GenericData.get().deepCopy(rmdSchemaV1, rmdRecord))),
+        Optional
+            .of(new RmdWithValueSchemaId(1, RMD_VERSION_ID, GenericData.get().deepCopy(userRmdSchemaV1, rmdRecord))),
         newBB,
         10L,
         1,
@@ -74,7 +76,8 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
     // verify same timestamp case
     mergeConflictResult = mergeConflictResolver.put(
         Lazy.of(() -> oldBB),
-        Optional.of(new RmdWithValueSchemaId(1, RMD_VERSION_ID, GenericData.get().deepCopy(rmdSchemaV1, rmdRecord))),
+        Optional
+            .of(new RmdWithValueSchemaId(1, RMD_VERSION_ID, GenericData.get().deepCopy(userRmdSchemaV1, rmdRecord))),
         newBB,
         20L,
         1,
@@ -91,7 +94,8 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
     // verify overwrite with new value case
     mergeConflictResult = mergeConflictResolver.put(
         Lazy.of(() -> oldBB),
-        Optional.of(new RmdWithValueSchemaId(1, RMD_VERSION_ID, GenericData.get().deepCopy(rmdSchemaV1, rmdRecord))),
+        Optional
+            .of(new RmdWithValueSchemaId(1, RMD_VERSION_ID, GenericData.get().deepCopy(userRmdSchemaV1, rmdRecord))),
         newBB,
         30L,
         1,
@@ -116,7 +120,8 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
     // validate null old value
     mergeConflictResult = mergeConflictResolver.put(
         Lazy.of(() -> null),
-        Optional.of(new RmdWithValueSchemaId(1, RMD_VERSION_ID, GenericData.get().deepCopy(rmdSchemaV1, rmdRecord))),
+        Optional
+            .of(new RmdWithValueSchemaId(1, RMD_VERSION_ID, GenericData.get().deepCopy(userRmdSchemaV1, rmdRecord))),
         newBB,
         30L,
         1,
@@ -124,7 +129,7 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
         0,
         0);
     result = deserializer.deserialize(mergeConflictResult.getNewValue().orElse(null));
-    Assert.assertEquals(GenericData.get().compare(result, newValueRecord, valueRecordSchemaV1), 0);
+    Assert.assertEquals(GenericData.get().compare(result, newValueRecord, userSchemaV1), 0);
 
     // validate null old value BUT with an existing timestamp telling us that this was a deleted record, deletes should
     // win on a tie, meaning
@@ -147,12 +152,12 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
 
   @Test
   public void testDelete() {
-    GenericRecord valueRecord = new GenericData.Record(valueRecordSchemaV1);
+    GenericRecord valueRecord = new GenericData.Record(userSchemaV1);
     valueRecord.put("id", "id1");
     valueRecord.put("name", "name1");
     valueRecord.put("age", 10);
-    GenericRecord timestampRecord = new GenericData.Record(rmdSchemaV1);
-    GenericRecord ts = new GenericData.Record(rmdSchemaV1.getFields().get(0).schema().getTypes().get(1));
+    GenericRecord timestampRecord = new GenericData.Record(userRmdSchemaV1);
+    GenericRecord ts = new GenericData.Record(userRmdSchemaV1.getFields().get(0).schema().getTypes().get(1));
     ts.put("id", 10L);
     ts.put("name", 10L);
     ts.put("age", 20L);
@@ -237,18 +242,18 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
     List<GenericRecord> payload = new ArrayList<>();
     List<GenericRecord> tsRecord = new ArrayList<>();
 
-    GenericRecord origRecord = new GenericData.Record(valueRecordSchemaV1);
+    GenericRecord origRecord = new GenericData.Record(userSchemaV1);
     origRecord.put("id", "id0");
     origRecord.put("name", "name0");
     origRecord.put("age", 10);
 
     for (int i = 1; i <= 100; i++) {
-      GenericRecord record = new GenericData.Record(valueRecordSchemaV1);
+      GenericRecord record = new GenericData.Record(userSchemaV1);
       record.put("id", "id" + i);
       record.put("name", "name" + i);
       record.put("age", 10 + i);
       payload.add(record);
-      GenericRecord timeStampRecord = new GenericData.Record(rmdSchemaV1);
+      GenericRecord timeStampRecord = new GenericData.Record(userRmdSchemaV1);
       timeStampRecord.put(0, (long) (i + 10));
       timeStampRecord.put(1, new ArrayList<Long>());
       tsRecord.add(timeStampRecord);
@@ -267,7 +272,7 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
     for (int i = 0; i < 100; i++) {
       ByteBuffer newBB = serialize(payload.get(i));
       for (int j = 0; j < 100; j++) {
-        GenericRecord rmd = GenericData.get().deepCopy(rmdSchemaV1, tsRecord.get(j));
+        GenericRecord rmd = GenericData.get().deepCopy(userRmdSchemaV1, tsRecord.get(j));
         mergeConflictResult = mergeConflictResolver.put(
             Lazy.of(() -> oldBB),
             Optional.of(new RmdWithValueSchemaId(1, RMD_VERSION_ID, rmd)),
@@ -287,7 +292,7 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
     for (int i = 0; i < 100; i++) {
       for (int j = 0; j < 100; j++) {
         ByteBuffer newBB = serialize(payload.get(j));
-        GenericRecord rmd = GenericData.get().deepCopy(rmdSchemaV1, tsRecord.get(j));
+        GenericRecord rmd = GenericData.get().deepCopy(userRmdSchemaV1, tsRecord.get(j));
         mergeConflictResult = mergeConflictResolver.put(
             Lazy.of(() -> oldBB),
             Optional.of(new RmdWithValueSchemaId(1, RMD_VERSION_ID, rmd)),
@@ -303,7 +308,7 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
 
     // validate order of operation change results in a same object
     Assert.assertEquals((long) (mergeConflictResult.getRmdRecord()).get(0), 115L);
-    Assert.assertEquals(GenericData.get().compare(result1, result2, valueRecordSchemaV1), 0);
+    Assert.assertEquals(GenericData.get().compare(result1, result2, userSchemaV1), 0);
   }
 
   /**
