@@ -392,6 +392,9 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
 
   public void notifyFlushToDisk(PartitionConsumptionState pcs) {
     int partition = pcs.getPartition();
-    partitionConsumptionSizeMap.get(partition).syncWithDB();
+    StoragePartitionDiskUsage partitionConsumptionState = partitionConsumptionSizeMap.get(partition);
+    if (partitionConsumptionState != null) {
+      partitionConsumptionState.syncWithDB();
+    }
   }
 }

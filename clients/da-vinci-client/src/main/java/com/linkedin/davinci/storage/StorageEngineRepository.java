@@ -12,8 +12,6 @@ import org.apache.logging.log4j.Logger;
 
 /**
  *  A wrapper class that holds all the server's storage engines.
- *
- *  TODO 1. Later need to add stats and monitoring
  */
 public class StorageEngineRepository {
   private static final Logger LOGGER = LogManager.getLogger(StorageEngineRepository.class);
@@ -22,13 +20,6 @@ public class StorageEngineRepository {
    *   Local storage engine for this node. This is lowest level persistence abstraction, these StorageEngines provide an iterator over their values.
    */
   private final ConcurrentMap<String, AbstractStorageEngine> localStorageEngines = new ConcurrentHashMap<>();
-
-  /*
-  Usual CRUD operations on map of Local Storage Engines
-   */
-  public boolean hasLocalStorageEngine(String name) {
-    return localStorageEngines.containsKey(name);
-  }
 
   public AbstractStorageEngine getLocalStorageEngine(String storeName) {
     return localStorageEngines.get(storeName);

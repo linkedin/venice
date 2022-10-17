@@ -197,7 +197,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           // Open metadata partition of the store engine.
           storeConfig.setRestoreDataPartitions(false);
           storeConfig.setRestoreMetadataPartition(true);
-          isolatedIngestionServer.getStorageService().openStore(storeConfig);
+          isolatedIngestionServer.getStorageService().openStore(storeConfig, () -> null);
           LOGGER.info("Metadata partition of topic: {} restored.", ingestionTaskCommand.topicName);
           break;
         case PROMOTE_TO_LEADER:
@@ -305,9 +305,9 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           break;
         case PUT_STORE_VERSION_STATE:
           isolatedIngestionServer.getStorageMetadataService()
-              .put(
+              .computeStoreVersionState(
                   topicName,
-                  IsolatedIngestionUtils
+                  ignored -> IsolatedIngestionUtils
                       .deserializeStoreVersionState(topicName, ingestionStorageMetadata.payload.array()));
           break;
         case CLEAR_STORE_VERSION_STATE:

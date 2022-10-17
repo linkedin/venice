@@ -68,7 +68,10 @@ public class VeniceServerTest {
       String storeName = Utils.getUniqueString("testCheckBeforeJoinCluster");
       server.getVeniceServer()
           .getStorageService()
-          .openStoreForNewPartition(server.getVeniceServer().getConfigLoader().getStoreConfig(storeName), 1);
+          .openStoreForNewPartition(
+              server.getVeniceServer().getConfigLoader().getStoreConfig(storeName),
+              1,
+              () -> null);
       Assert.assertEquals(
           repository.getAllLocalStorageEngines().size(),
           1,

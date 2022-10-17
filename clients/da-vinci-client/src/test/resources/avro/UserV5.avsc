@@ -1,0 +1,22 @@
+{
+  "namespace": "example.avro",
+  "type": "record",
+  "name": "User",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string",
+      "default": "id"
+    },
+    {
+      "name": "name",
+      "type": "string",
+      "default": "venice"
+    },
+    {
+      "name": "weight",
+      "type": "float",
+      "default": 0.0
+    }
+  ]
+}

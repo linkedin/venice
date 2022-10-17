@@ -2,7 +2,6 @@ package com.linkedin.davinci.replication.merge;
 
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import java.util.Map;
@@ -13,12 +12,12 @@ import org.apache.commons.lang3.Validate;
 
 @Threadsafe
 public class MergeResultValueSchemaResolverImpl implements MergeResultValueSchemaResolver {
-  private final ReadOnlySchemaRepository schemaRepository;
+  private final MapKeyStringAnnotatedStoreSchemaCache storeSchemaCache;
   private final String storeName;
   private final Map<String, SchemaEntry> resolvedSchemaCache;
 
-  public MergeResultValueSchemaResolverImpl(ReadOnlySchemaRepository schemaRepository, String storeName) {
-    this.schemaRepository = Validate.notNull(schemaRepository);
+  public MergeResultValueSchemaResolverImpl(MapKeyStringAnnotatedStoreSchemaCache storeSchemaCache, String storeName) {
+    this.storeSchemaCache = Validate.notNull(storeSchemaCache);
     Validate.notNull(storeName);
     if (storeName.isEmpty()) {
       throw new IllegalArgumentException("Store name should not be an empty String.");
@@ -44,13 +43,13 @@ public class MergeResultValueSchemaResolverImpl implements MergeResultValueSchem
   @Override
   public SchemaEntry getMergeResultValueSchema(final int firstValueSchemaID, final int secondValueSchemaID) {
     if (firstValueSchemaID == secondValueSchemaID) {
-      return schemaRepository.getValueSchema(storeName, secondValueSchemaID);
+      return storeSchemaCache.getValueSchema(secondValueSchemaID);
     }
     final String schemaPairString = createSchemaPairString(firstValueSchemaID, secondValueSchemaID);
 
     return resolvedSchemaCache.computeIfAbsent(schemaPairString, s -> {
-      final SchemaEntry firstValueSchemaEntry = schemaRepository.getValueSchema(storeName, firstValueSchemaID);
-      final SchemaEntry secondValueSchemaEntry = schemaRepository.getValueSchema(storeName, secondValueSchemaID);
+      final SchemaEntry firstValueSchemaEntry = storeSchemaCache.getValueSchema(firstValueSchemaID);
+      final SchemaEntry secondValueSchemaEntry = storeSchemaCache.getValueSchema(secondValueSchemaID);
       final Schema firstValueSchema = firstValueSchemaEntry.getSchema();
       final Schema secondValueSchema = secondValueSchemaEntry.getSchema();
 
@@ -62,7 +61,7 @@ public class MergeResultValueSchemaResolverImpl implements MergeResultValueSchem
       }
       // Neither old value schema nor new value schema is the superset schema. So there must be superset schema
       // registered.
-      final SchemaEntry registeredSupersetSchema = schemaRepository.getSupersetSchema(storeName).orElse(null);
+      final SchemaEntry registeredSupersetSchema = storeSchemaCache.getSupersetSchema().orElse(null);
       if (registeredSupersetSchema == null) {
         throw new VeniceException("Got null superset schema for store " + storeName);
       }

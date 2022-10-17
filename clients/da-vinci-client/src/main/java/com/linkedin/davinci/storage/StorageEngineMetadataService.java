@@ -9,6 +9,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import java.util.Optional;
+import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -61,8 +62,14 @@ public class StorageEngineMetadataService extends AbstractVeniceService implemen
   }
 
   @Override
-  public void put(String topicName, StoreVersionState record) throws VeniceException {
-    getStorageEngineOrThrow(topicName).putStoreVersionState(record);
+  public void computeStoreVersionState(String topicName, Function<StoreVersionState, StoreVersionState> mapFunction)
+      throws VeniceException {
+    AbstractStorageEngine engine = getStorageEngineOrThrow(topicName);
+    synchronized (engine) {
+      StoreVersionState previousSVS = engine.getStoreVersionState();
+      StoreVersionState newSVS = mapFunction.apply(previousSVS);
+      engine.putStoreVersionState(newSVS);
+    }
   }
 
   @Override
@@ -71,11 +78,11 @@ public class StorageEngineMetadataService extends AbstractVeniceService implemen
   }
 
   @Override
-  public Optional<StoreVersionState> getStoreVersionState(String topicName) throws VeniceException {
+  public StoreVersionState getStoreVersionState(String topicName) throws VeniceException {
     try {
       return getStorageEngineOrThrow(topicName).getStoreVersionState();
     } catch (VeniceException e) {
-      return Optional.empty();
+      return null;
     }
   }
 

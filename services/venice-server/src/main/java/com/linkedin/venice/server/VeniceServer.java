@@ -277,7 +277,8 @@ public class VeniceServer {
           veniceConfigLoader.getVeniceServerConfig().getIngestionServicePort(),
           partitionStateSerializer,
           new MetadataUpdateStats(metricsRepository),
-          veniceConfigLoader);
+          veniceConfigLoader,
+          storageService.getStoreVersionStateSyncer());
       services.add(ingestionStorageMetadataService);
       storageMetadataService = ingestionStorageMetadataService;
     } else {
@@ -335,7 +336,6 @@ public class VeniceServer {
         schemaRepo,
         liveClusterConfigRepo,
         metricsRepository,
-        rocksDBMemoryStats,
         kafkaMessageEnvelopeSchemaReader,
         clientConfigForConsumer,
         partitionStateSerializer,

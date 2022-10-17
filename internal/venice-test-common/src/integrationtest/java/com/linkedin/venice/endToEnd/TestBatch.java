@@ -246,7 +246,7 @@ public abstract class TestBatch {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testCompressingRecord(boolean compressionMetricCollectionEnabled, boolean useMapperToBuildDict)
       throws Exception {
     VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {

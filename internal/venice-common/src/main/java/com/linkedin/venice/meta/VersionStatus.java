@@ -15,7 +15,12 @@ public enum VersionStatus {
   // serve read request because the writes to this store is disabled.
   PUSHED(2),
   // Version has been pushed to venice and is ready to serve read request.
-  ONLINE(3), ERROR(4);
+  ONLINE(3), ERROR(4),
+  // Version is created and persisted inside ZK, but controller hasn't finished preparation works yet.
+  CREATED(5),
+  // Version has been pushed to Venice and is ready to serve in some regions, but failed in other regions.
+  // This version status only exists in parent.
+  PARTIALLY_ONLINE(6);
 
   private final int value;
 

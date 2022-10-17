@@ -71,7 +71,7 @@ public class TestZKStore {
     Assert.assertEquals(s.peekNextVersion().getNumber(), 1, "clone should peek at biggest used version plus 1");
 
     Store s2 = TestUtils.createTestStore("s2", "owner", System.currentTimeMillis());
-    s2.increaseVersion();
+    s2.addVersion(new VersionImpl(s2.getName(), s2.getLargestUsedVersionNumber() + 1, "pushJobId"));
     Store s2clone = s2.cloneStore();
     Assert.assertEquals(s2, s2clone);
     s2clone.setEnableWrites(false);
@@ -193,7 +193,7 @@ public class TestZKStore {
     }
     // increase version number for disabled store.
     try {
-      store.increaseVersion();
+      store.addVersion(new VersionImpl(store.getName(), store.getLargestUsedVersionNumber() + 1, "pushJobId"));
       Assert.fail("Store is disabled to write, can not add new store to it.");
     } catch (StoreDisabledException e) {
     }
@@ -214,7 +214,7 @@ public class TestZKStore {
     // After store is enabled to write, add/increase/reserve version for this store as normal
     store.addVersion(new VersionImpl(storeName, 1));
     Assert.assertEquals(store.getVersions().get(0).getNumber(), 1);
-    store.increaseVersion();
+    store.addVersion(new VersionImpl(store.getName(), store.getLargestUsedVersionNumber() + 1, "pushJobId"));
     Assert.assertEquals(store.getVersions().get(1).getNumber(), 2);
     Assert.assertEquals(store.peekNextVersion().getNumber(), 3);
     store.setCurrentVersion(1);
@@ -262,7 +262,8 @@ public class TestZKStore {
   public void testDisableAndEnableStoreRead() {
     String storeName = "testDisableStoreRead";
     Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
-    Version version = store.increaseVersion();
+    Version version = new VersionImpl(store.getName(), store.getLargestUsedVersionNumber() + 1, "pushJobId");
+    store.addVersion(version);
     store.updateVersionStatus(version.getNumber(), VersionStatus.ONLINE);
     store.setCurrentVersion(version.getNumber());
     Assert.assertEquals(
@@ -273,7 +274,8 @@ public class TestZKStore {
     store.setEnableReads(false);
     Assert.assertFalse(store.isEnableReads(), "Store has been disabled to read");
     // Only disable read, store could continue to increase version and update version status.
-    version = store.increaseVersion();
+    version = new VersionImpl(store.getName(), store.getLargestUsedVersionNumber() + 1, "pushJobId2");
+    store.addVersion(version);
     store.updateVersionStatus(version.getNumber(), VersionStatus.ONLINE);
     store.setCurrentVersion(version.getNumber());
     store.setEnableReads(true);
@@ -287,11 +289,12 @@ public class TestZKStore {
   public void testUseTheDeletedVersionNumber() {
     String storeName = Utils.getUniqueString("store");
     Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
-    store.increaseVersion();
-    store.increaseVersion();
+    store.addVersion(new VersionImpl(store.getName(), store.getLargestUsedVersionNumber() + 1, "pushJobId"));
+    store.addVersion(new VersionImpl(store.getName(), store.getLargestUsedVersionNumber() + 1, "pushJobId2"));
     // largest version number is 2
     store.deleteVersion(2);
-    Version version = store.increaseVersion();
+    Version version = new VersionImpl(store.getName(), store.getLargestUsedVersionNumber() + 1, "pushJobId3");
+    store.addVersion(version);
     Assert.assertEquals(version.getNumber(), 3);
     Assert.assertEquals(store.peekNextVersion().getNumber(), 4);
   }
@@ -308,7 +311,8 @@ public class TestZKStore {
     Assert.assertEquals(store.getVersions().size(), 2);
     // largest used version is still 5
     Assert.assertEquals(store.peekNextVersion().getNumber(), 6);
-    Version version = store.increaseVersion();
+    Version version = new VersionImpl(store.getName(), store.getLargestUsedVersionNumber() + 1, "pushJobId");
+    store.addVersion(version);
     Assert.assertEquals(version.getNumber(), 6);
   }
 

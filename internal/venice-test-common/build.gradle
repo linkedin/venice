@@ -90,3 +90,11 @@ flakyTest {
   classpath += sourceSets.integrationTest.runtimeClasspath
   testClassesDirs += sourceSets.integrationTest.output.classesDirs
 }
+
+idea {
+  module {
+    testSourceDirs += project.sourceSets.integrationTest.java.srcDirs
+    testResourceDirs += project.sourceSets.integrationTest.resources.srcDirs
+    // testSourceDirs += project.sourceSets.jmh.java.srcDirs // broken, somehow, gotta debug...
+  }
+}

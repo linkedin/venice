@@ -5,11 +5,8 @@ import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
-import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -221,20 +218,4 @@ public class InstanceStatusDecider {
     return getPartitionAssignmentAfterRemoving(instanceId, partitionAssignment, resourceName, isInstanceView);
   }
 
-  private static VersionStatus getVersionStatus(ReadWriteStoreRepository storeRepository, String resourceName) {
-    Store store = storeRepository.getStore(Version.parseStoreFromKafkaTopicName(resourceName));
-    if (store == null) {
-      LOGGER.info("Can not find store for the resource: {}", resourceName);
-      return VersionStatus.NOT_CREATED;
-    }
-    if (!store.isEnableReads()) {
-      // Ignore store replicas that have read disabled.
-      LOGGER.info(
-          "Ignoring node removal checks for resource: {} because the store: {} has reads disabled",
-          resourceName,
-          store.getName());
-      return VersionStatus.NOT_CREATED;
-    }
-    return store.getVersionStatus(Version.parseVersionFromKafkaTopicName(resourceName));
-  }
 }

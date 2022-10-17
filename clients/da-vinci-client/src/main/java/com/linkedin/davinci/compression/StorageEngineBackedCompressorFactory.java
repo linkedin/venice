@@ -19,11 +19,15 @@ public class StorageEngineBackedCompressorFactory extends CompressorFactory {
 
   public VeniceCompressor getCompressor(CompressionStrategy compressionStrategy, String kafkaTopic) {
     if (ZSTD_WITH_DICT.equals(compressionStrategy)) {
-      if (versionSpecificCompressorExists(kafkaTopic)) {
-        return getVersionSpecificCompressor(kafkaTopic);
+      VeniceCompressor compressor = getVersionSpecificCompressor(kafkaTopic);
+      if (compressor != null) {
+        return compressor;
       }
 
       ByteBuffer dictionary = metadataService.getStoreVersionCompressionDictionary(kafkaTopic);
+      if (dictionary == null) {
+        throw new IllegalStateException("Got a null dictionary for: " + kafkaTopic);
+      }
       return super.createVersionSpecificCompressorIfNotExist(
           compressionStrategy,
           kafkaTopic,

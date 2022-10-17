@@ -195,7 +195,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
                 ByteBuffer data = decompressRecord(
                     compressionStrategy,
                     ByteBuffer.wrap(response.getBody()),
-                    requestContext.currentVersion);
+                    requestContext.currentVersion,
+                    metadata.getCompressor(compressionStrategy, requestContext.currentVersion));
                 requestContext.decompressionTime = LatencyUtils.getLatencyInMS(timestampBeforeDecompression);
                 long timestampBeforeDeserialization = System.nanoTime();
                 RecordDeserializer<V> deserializer = getDataRecordDeserializer(response.getSchemaId());
@@ -451,10 +452,15 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
     LOGGER.debug("Response received for route {} -> {} ", transportClientResponse.getRouteId(), records);
     long totalDecompressionTimeForResponse = 0;
+    VeniceCompressor compressor =
+        metadata.getCompressor(transportClientResponse.getCompressionStrategy(), requestContext.currentVersion);
     for (MultiGetResponseRecordV1 r: records) {
       long timeStampBeforeDecompression = System.nanoTime();
-      ByteBuffer decompressRecord =
-          decompressRecord(transportClientResponse.getCompressionStrategy(), r.value, requestContext.currentVersion);
+      ByteBuffer decompressRecord = decompressRecord(
+          transportClientResponse.getCompressionStrategy(),
+          r.value,
+          requestContext.currentVersion,
+          compressor);
       totalDecompressionTimeForResponse += System.nanoTime() - timeStampBeforeDecompression;
 
       long timeStampBeforeDeserialization = System.nanoTime();
@@ -507,9 +513,12 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         LOGGER);
   }
 
-  private ByteBuffer decompressRecord(CompressionStrategy compressionStrategy, ByteBuffer data, int version) {
+  private ByteBuffer decompressRecord(
+      CompressionStrategy compressionStrategy,
+      ByteBuffer data,
+      int version,
+      VeniceCompressor compressor) {
     try {
-      VeniceCompressor compressor = metadata.getCompressor(compressionStrategy, version);
       if (compressor == null) {
         throw new VeniceClientException(
             String.format(

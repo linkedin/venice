@@ -10,10 +10,10 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
@@ -209,10 +209,10 @@ public class ChunkingTest {
     doReturn(chunk1Bytes).when(storageEngine).get(eq(partition), eq(firstKey), anyBoolean());
     doReturn(chunk2Bytes).when(storageEngine).get(eq(partition), eq(secondKey), anyBoolean());
 
-    RecordDeserializer deserializer = chunkingAdapter.getDeserializer(storeName, 1, schemaRepository, true);
-
     try (StorageEngineBackedCompressorFactory compressorFactory =
         new StorageEngineBackedCompressorFactory(mock(StorageMetadataService.class))) {
+      VeniceCompressor compressor =
+          compressorFactory.getCompressor(CompressionStrategy.NO_OP, storageEngine.getStoreName());
       assertions.apply(
           chunkingAdapter.get(
               storageEngine,
@@ -226,7 +226,7 @@ public class ChunkingTest {
               true,
               schemaRepository,
               storeName,
-              compressorFactory,
+              compressor,
               false));
     }
   }

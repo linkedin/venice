@@ -74,7 +74,7 @@ public class TestHelixReadWriteStoreRepositoryAdapter {
     // Create one regular store
     regularStoreName = Utils.getUniqueString("test_store");
     Store s1 = TestUtils.createTestStore(regularStoreName, "owner", System.currentTimeMillis());
-    s1.increaseVersion();
+    s1.addVersion(new VersionImpl(s1.getName(), s1.getLargestUsedVersionNumber() + 1, "pushJobId"));
     s1.setReadQuotaInCU(100);
     s1.setBatchGetLimit(100);
     s1.setReadComputationEnabled(true);
