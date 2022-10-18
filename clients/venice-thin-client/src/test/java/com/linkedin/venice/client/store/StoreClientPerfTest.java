@@ -282,7 +282,7 @@ public class StoreClientPerfTest {
 
       // Serialize MultiGetResponse
       RecordSerializer<MultiGetResponseRecordV1> responseSerializer =
-          SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
+          SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.getClassSchema());
       byte[] responseBytes = responseSerializer.serializeObjects(records);
       int responseSchemaId = 1;
       FullHttpResponse httpResponse = StoreClientTestUtils.constructStoreResponse(responseSchemaId, responseBytes);
@@ -290,7 +290,7 @@ public class StoreClientPerfTest {
 
       // Serialize ComputeResponse
       RecordSerializer<ComputeResponseRecordV1> computeSerializer =
-          SerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.SCHEMA$);
+          SerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.getClassSchema());
       byte[] computeResponseBytes = computeSerializer.serializeObjects(computeRecords);
       FullHttpResponse computeHttpResponse =
           StoreClientTestUtils.constructStoreResponse(responseSchemaId, computeResponseBytes);

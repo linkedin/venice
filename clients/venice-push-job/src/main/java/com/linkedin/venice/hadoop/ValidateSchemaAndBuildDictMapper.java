@@ -20,10 +20,10 @@ import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.mapred.AvroWrapper;
+import org.apache.avro.specific.SpecificRecord;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -47,7 +47,7 @@ import org.apache.logging.log4j.Logger;
  * this needs to be revisited to be done via a thread pool.
  */
 public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
-    implements Mapper<IntWritable, NullWritable, AvroWrapper<GenericRecord>, NullWritable> {
+    implements Mapper<IntWritable, NullWritable, AvroWrapper<SpecificRecord>, NullWritable> {
   private static final Logger LOGGER = LogManager.getLogger(ValidateSchemaAndBuildDictMapper.class);
   protected DefaultInputDataInfoProvider inputDataInfoProvider = null;
   protected InputDataInfoProvider.InputDataInfo inputDataInfo;
@@ -59,27 +59,14 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
   private FileSystem fileSystem = null;
   private long inputModificationTime;
   protected String inputDirectory;
-  private Schema outputSchema;
   protected Long inputFileDataSize = 0L;
-  GenericRecord genericRecord;
-
-  private void initRecord(Schema recordSchema) {
-    genericRecord = new GenericData.Record(recordSchema);
-  }
-
-  private void appendRecord(String key, byte[] value) {
-    genericRecord.put(key, value);
-  }
-
-  private void appendRecord(String key, long value) {
-    genericRecord.put(key, value);
-  }
+  private ValidateSchemaAndBuildDictMapperOutput mapperOutputRecord;
 
   @Override
   public void map(
       IntWritable inputKey,
       NullWritable inputValue,
-      OutputCollector<AvroWrapper<GenericRecord>, NullWritable> output,
+      OutputCollector<AvroWrapper<SpecificRecord>, NullWritable> output,
       Reporter reporter) throws IOException {
     if (!hasReportedFailure) {
       if (process(inputKey, output, reporter)) {
@@ -108,7 +95,7 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
    */
   private boolean process(
       IntWritable inputIdx,
-      OutputCollector<AvroWrapper<GenericRecord>, NullWritable> output,
+      OutputCollector<AvroWrapper<SpecificRecord>, NullWritable> output,
       Reporter reporter) throws IOException {
     int fileIdx = inputIdx.get();
     if (fileIdx != VeniceFileInputSplit.MAPPER_SENTINEL_KEY_TO_BUILD_DICTIONARY_AND_PERSIST_OUTPUT) {
@@ -184,14 +171,14 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
    * 2. Builds and persists compression dictionary from the collected samples if enabled.
    */
   private boolean buildDictionaryAndPersistOutput(
-      OutputCollector<AvroWrapper<GenericRecord>, NullWritable> output,
+      OutputCollector<AvroWrapper<SpecificRecord>, NullWritable> output,
       Reporter reporter) throws IOException {
     // Post the processing of input files: Persist some data to HDFS to be used by the VPJ driver code
     // 1. Init the record
-    initRecord(outputSchema);
+    mapperOutputRecord = new ValidateSchemaAndBuildDictMapperOutput();
 
     // 2. append inputFileDataSize (Mandatory entry)
-    appendRecord(KEY_INPUT_FILE_DATA_SIZE, inputFileDataSize);
+    mapperOutputRecord.put(KEY_INPUT_FILE_DATA_SIZE, inputFileDataSize);
 
     try {
       // 3. append zstd compression dictionary (optional entry): If dictionary building is enabled and
@@ -201,11 +188,11 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
           LOGGER.info(
               "Creating ZSTD compression dictionary using {}  bytes of samples",
               inputDataInfoProvider.pushJobZstdConfig.getFilledSize());
-          byte[] dict;
+          ByteBuffer compressionDictionary;
           try {
-            dict = inputDataInfoProvider.getZstdDictTrainSamples();
+            compressionDictionary = ByteBuffer.wrap(inputDataInfoProvider.getZstdDictTrainSamples());
+            mapperOutputRecord.put(KEY_ZSTD_COMPRESSION_DICTIONARY, compressionDictionary);
             MRJobCounterHelper.incrMapperZstdDictTrainSuccessCount(reporter, 1);
-            appendRecord(KEY_ZSTD_COMPRESSION_DICTIONARY, dict);
           } catch (Exception e) {
             MRJobCounterHelper.incrMapperZstdDictTrainFailureCount(reporter, 1);
             LOGGER.error(
@@ -214,7 +201,7 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
                 e);
             return false;
           }
-          LOGGER.info("Zstd compression dictionary size = {} bytes", dict.length);
+          LOGGER.info("Zstd compression dictionary size = {} bytes", compressionDictionary.limit());
         } else {
           LOGGER.info("No compression dictionary is generated as the input data doesn't contain any records");
         }
@@ -226,7 +213,7 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
       }
     } finally {
       // 4. collect(persist) the appended output so far
-      output.collect(new AvroWrapper<>(genericRecord), NullWritable.get());
+      output.collect(new AvroWrapper<>(mapperOutputRecord), NullWritable.get());
     }
     return true;
   }
@@ -309,8 +296,6 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
       // Errors are printed and counters are incremented already
       hasReportedFailure = true;
     }
-
-    outputSchema = ValidateSchemaAndBuildDictMapperOutput.getClassSchema();
   }
 
   @Override

@@ -71,7 +71,7 @@ public class FastSerializerDeserializerFactory extends SerializerDeserializerFac
         return false;
       }
       // Leverage the following schema as the input for testing
-      Schema schema = MultiGetResponseRecordV1.SCHEMA$;
+      Schema schema = MultiGetResponseRecordV1.getClassSchema();
       try {
         cache.buildFastGenericDeserializer(schema, schema);
       } catch (Exception e) {

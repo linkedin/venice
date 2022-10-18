@@ -496,8 +496,8 @@ public class VeniceParentHelixAdmin implements Admin {
           getMultiClusterConfigs().getPushJobStatusStoreClusterName(),
           VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
           PUSH_JOB_DETAILS_STORE_DESCRIPTOR + VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
-          PushJobStatusRecordKey.SCHEMA$.toString(),
-          PushJobDetails.SCHEMA$.toString(),
+          PushJobStatusRecordKey.getClassSchema().toString(),
+          PushJobDetails.getClassSchema().toString(),
           getMultiClusterConfigs().getControllerConfig(clusterName).getNumberOfPartition());
     }
 
@@ -513,8 +513,8 @@ public class VeniceParentHelixAdmin implements Admin {
           currClusterName,
           batchJobHeartbeatStoreName,
           BATCH_JOB_HEARTBEAT_STORE_DESCRIPTOR + batchJobHeartbeatStoreName,
-          BatchJobHeartbeatKey.SCHEMA$.toString(),
-          BatchJobHeartbeatValue.SCHEMA$.toString(),
+          BatchJobHeartbeatKey.getClassSchema().toString(),
+          BatchJobHeartbeatValue.getClassSchema().toString(),
           getMultiClusterConfigs().getControllerConfig(currClusterName).getNumberOfPartition());
     } else {
       LOGGER.info(

@@ -25,12 +25,15 @@ import org.apache.logging.log4j.Logger;
 public class ValidateSchemaAndBuildDictOutputFormat extends AvroOutputFormat {
   private static final Logger LOGGER = LogManager.getLogger(ValidateSchemaAndBuildDictOutputFormat.class);
 
-  private static void createAndSetFilePermission(FileSystem fs, Path path, String permission) throws IOException {
-    createAndSetFilePermission(fs, path, permission, false);
+  private static void createAndSetDirectoryPermission(FileSystem fs, Path path, String permission) throws IOException {
+    createAndSetDirectoryPermission(fs, path, permission, false);
   }
 
-  private static void createAndSetFilePermission(FileSystem fs, Path path, String permission, boolean deleteIfExists)
-      throws IOException {
+  private static void createAndSetDirectoryPermission(
+      FileSystem fs,
+      Path path,
+      String permission,
+      boolean deleteIfExists) throws IOException {
     LOGGER.info("Trying to create path {} with permission {}", path.getName(), permission);
     boolean createPath = false;
     // check if the path needs to be created
@@ -71,13 +74,13 @@ public class ValidateSchemaAndBuildDictOutputFormat extends AvroOutputFormat {
     Path outputPath = new Path(VenicePushJob.VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PATH);
     FileSystem fs = outputPath.getFileSystem(conf);
 
-    createAndSetFilePermission(fs, outputPath, "777");
+    createAndSetDirectoryPermission(fs, outputPath, "777");
 
     outputPath = new Path(
         VenicePushJob.VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PATH + "/"
             + VenicePushJob.VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PER_STORE_PATH_PREFIX + storeName);
 
-    createAndSetFilePermission(fs, outputPath, "700");
+    createAndSetDirectoryPermission(fs, outputPath, "700");
 
     setOutputPath(conf, outputPath);
   }

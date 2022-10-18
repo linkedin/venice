@@ -41,10 +41,10 @@ import org.apache.avro.io.OptimizedBinaryDecoderFactory;
  */
 public class VeniceResponseDecompressor {
   private static final RecordSerializer<MultiGetResponseRecordV1> recordSerializer =
-      FastSerializerDeserializerFactory.getFastAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
+      FastSerializerDeserializerFactory.getFastAvroGenericSerializer(MultiGetResponseRecordV1.getClassSchema());
   private static final RecordDeserializer<MultiGetResponseRecordV1> recordDeserializer =
       FastSerializerDeserializerFactory
-          .getFastAvroSpecificDeserializer(MultiGetResponseRecordV1.SCHEMA$, MultiGetResponseRecordV1.class);
+          .getFastAvroSpecificDeserializer(MultiGetResponseRecordV1.getClassSchema(), MultiGetResponseRecordV1.class);
 
   private final CompressionStrategy clientCompression;
   private final RouterStats<AggRouterHttpRequestStats> routerStats;

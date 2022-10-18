@@ -37,13 +37,15 @@ public enum ReadAvroProtocolDefinition {
    * Router request key for multi-get v1.
    */
   MULTI_GET_ROUTER_REQUEST_V1(
-      1, Optional.of(MultiGetRouterRequestKeyV1.class), Optional.of(MultiGetRouterRequestKeyV1.SCHEMA$)
+      1, Optional.of(MultiGetRouterRequestKeyV1.class), Optional.of(MultiGetRouterRequestKeyV1.getClassSchema())
   ),
 
   /**
    * Response record for multi-get v1.
    */
-  MULTI_GET_RESPONSE_V1(1, Optional.of(MultiGetResponseRecordV1.class), Optional.of(MultiGetResponseRecordV1.SCHEMA$)),
+  MULTI_GET_RESPONSE_V1(
+      1, Optional.of(MultiGetResponseRecordV1.class), Optional.of(MultiGetResponseRecordV1.getClassSchema())
+  ),
 
   /**
    * Compute request client key v1.
@@ -57,35 +59,37 @@ public enum ReadAvroProtocolDefinition {
    * operations and the result schema, represented by the following schema; the second part contains raw bytes of all
    * the keys that will be computed on, represented by COMPUTE_REQUEST_CLIENT_KEY_V1.
    */
-  COMPUTE_REQUEST_V1(1, Optional.of(ComputeRequestV1.class), Optional.of(ComputeRequestV1.SCHEMA$)),
+  COMPUTE_REQUEST_V1(1, Optional.of(ComputeRequestV1.class), Optional.of(ComputeRequestV1.getClassSchema())),
 
   /**
    * Compute request v2.
    *
    * Version 2 includes support for Hadamard Product.
    */
-  COMPUTE_REQUEST_V2(2, Optional.of(ComputeRequestV2.class), Optional.of(ComputeRequestV2.SCHEMA$)),
+  COMPUTE_REQUEST_V2(2, Optional.of(ComputeRequestV2.class), Optional.of(ComputeRequestV2.getClassSchema())),
 
   /**
    * Compute request v3. Its includes support for count operator.
    */
-  COMPUTE_REQUEST_V3(3, Optional.of(ComputeRequestV3.class), Optional.of(ComputeRequestV3.SCHEMA$)),
+  COMPUTE_REQUEST_V3(3, Optional.of(ComputeRequestV3.class), Optional.of(ComputeRequestV3.getClassSchema())),
 
   /**
    * Compute request v4. It includes support for Execute with Filter
    */
-  COMPUTE_REQUEST_V4(4, Optional.of(ComputeRequestV4.class), Optional.of(ComputeRequestV4.SCHEMA$)),
+  COMPUTE_REQUEST_V4(4, Optional.of(ComputeRequestV4.class), Optional.of(ComputeRequestV4.getClassSchema())),
 
   /**
    * Response record for compute v1
    */
-  COMPUTE_RESPONSE_V1(1, Optional.of(ComputeResponseRecordV1.class), Optional.of(ComputeResponseRecordV1.SCHEMA$)),
+  COMPUTE_RESPONSE_V1(
+      1, Optional.of(ComputeResponseRecordV1.class), Optional.of(ComputeResponseRecordV1.getClassSchema())
+  ),
 
   /**
    * Router request key for read compute v1.
    */
   COMPUTE_ROUTER_REQUEST_V1(
-      1, Optional.of(ComputeRouterRequestKeyV1.class), Optional.of(ComputeRouterRequestKeyV1.SCHEMA$)
+      1, Optional.of(ComputeRouterRequestKeyV1.class), Optional.of(ComputeRouterRequestKeyV1.getClassSchema())
   );
 
   /**

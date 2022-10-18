@@ -35,7 +35,7 @@ public class KafkaInputFormatCombiner extends AbstractMapReduceTask
     implements Reducer<BytesWritable, BytesWritable, BytesWritable, BytesWritable> {
   private static final RecordDeserializer<KafkaInputMapperValue> KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_DESERIALIZER =
       FastSerializerDeserializerFactory
-          .getFastAvroSpecificDeserializer(KafkaInputMapperValue.SCHEMA$, KafkaInputMapperValue.class);
+          .getFastAvroSpecificDeserializer(KafkaInputMapperValue.getClassSchema(), KafkaInputMapperValue.class);
 
   @Override
   public void reduce(

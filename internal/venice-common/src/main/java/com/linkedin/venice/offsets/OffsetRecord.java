@@ -306,8 +306,8 @@ public class OffsetRecord {
    */
   public String toJsonString() {
     try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-      GenericDatumWriter<Object> avroDatumWriter = new GenericDatumWriter<>(PartitionState.SCHEMA$);
-      Encoder byteToHexJsonEncoder = new ByteBufferToHexFormatJsonEncoder(PartitionState.SCHEMA$, output);
+      GenericDatumWriter<Object> avroDatumWriter = new GenericDatumWriter<>(PartitionState.getClassSchema());
+      Encoder byteToHexJsonEncoder = new ByteBufferToHexFormatJsonEncoder(PartitionState.getClassSchema(), output);
       avroDatumWriter.write(partitionState, byteToHexJsonEncoder);
       byteToHexJsonEncoder.flush();
       output.flush();

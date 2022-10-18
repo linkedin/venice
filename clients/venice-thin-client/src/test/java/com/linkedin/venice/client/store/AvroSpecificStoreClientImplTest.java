@@ -34,7 +34,7 @@ public class AvroSpecificStoreClientImplTest {
   private int port;
 
   private String storeName = "test_store";
-  private String defaultKeySchemaStr = TestKeyRecord.SCHEMA$.toString();
+  private String defaultKeySchemaStr = TestKeyRecord.getClassSchema().toString();
   private D2Client d2Client;
 
   private Map<String, AvroSpecificStoreClient<TestKeyRecord, TestValueRecord>> storeClients = new HashMap<>();
@@ -108,7 +108,7 @@ public class AvroSpecificStoreClientImplTest {
   @Test
   public void getByStoreKeyTest() throws IOException, VeniceClientException, ExecutionException, InterruptedException {
     int valueSchemaId = 1;
-    String valueSchemaStr = TestValueRecord.SCHEMA$.toString();
+    String valueSchemaStr = TestValueRecord.getClassSchema().toString();
     Map<Integer, String> valueSchemaEntries = new HashMap<>();
     valueSchemaEntries.put(valueSchemaId, valueSchemaStr);
 
@@ -148,9 +148,9 @@ public class AvroSpecificStoreClientImplTest {
   public void getByStoreKeyTestWithDifferentSchema()
       throws IOException, VeniceClientException, ExecutionException, InterruptedException {
     int valueSchemaId1 = 1;
-    String valueSchemaStr1 = TestValueRecord.SCHEMA$.toString();
+    String valueSchemaStr1 = TestValueRecord.getClassSchema().toString();
     int valueSchemaId2 = 2;
-    String valueSchemaStr2 = TestValueRecordWithMoreFields.SCHEMA$.toString();
+    String valueSchemaStr2 = TestValueRecordWithMoreFields.getClassSchema().toString();
     Map<Integer, String> valueSchemaEntries = new HashMap<>();
     valueSchemaEntries.put(valueSchemaId1, valueSchemaStr1);
     valueSchemaEntries.put(valueSchemaId2, valueSchemaStr2);

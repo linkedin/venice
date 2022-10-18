@@ -22,7 +22,8 @@ public class TestChunkKeyValueTransformerImpl {
     byte[] firstPartBytes = createChunkBytes(5, 1213);
     byte[] secondPartBytes = serialize(KeyWithChunkingSuffixSerializer.NON_CHUNK_KEY_SUFFIX);
     byte[] compositeKey = combineParts(firstPartBytes, secondPartBytes);
-    ChunkKeyValueTransformer chunkKeyValueTransformer = new ChunkKeyValueTransformerImpl(ChunkedKeySuffix.SCHEMA$);
+    ChunkKeyValueTransformer chunkKeyValueTransformer =
+        new ChunkKeyValueTransformerImpl(ChunkedKeySuffix.getClassSchema());
 
     for (ChunkKeyValueTransformer.KeyType keyType: Arrays.asList(
         ChunkKeyValueTransformer.KeyType.WITH_FULL_VALUE,
@@ -41,7 +42,8 @@ public class TestChunkKeyValueTransformerImpl {
     // Each composite key has 2 chunked key suffix serialized bytes concatenated back to back. We should be able to
     // split the composite key and when we concatenate the divided 2 parts together, we should get the original
     // composite key bytes.
-    ChunkKeyValueTransformer chunkKeyValueTransformer = new ChunkKeyValueTransformerImpl(ChunkedKeySuffix.SCHEMA$);
+    ChunkKeyValueTransformer chunkKeyValueTransformer =
+        new ChunkKeyValueTransformerImpl(ChunkedKeySuffix.getClassSchema());
     List<ChunkedKeySuffix> firstParts = new ArrayList<>();
     firstParts.add(KeyWithChunkingSuffixSerializer.NON_CHUNK_KEY_SUFFIX);
     firstParts.add(createChunkedKeySuffix(12, 123, 12));

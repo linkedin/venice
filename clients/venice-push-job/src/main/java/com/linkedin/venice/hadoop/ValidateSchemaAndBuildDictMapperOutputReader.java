@@ -1,14 +1,16 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.KEY_INPUT_FILE_DATA_SIZE;
-import static com.linkedin.venice.hadoop.VenicePushJob.KEY_ZSTD_COMPRESSION_DICTIONARY;
-
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.input.avro.GenericAvroRecordReader;
 import com.linkedin.venice.hadoop.output.avro.ValidateSchemaAndBuildDictMapperOutput;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.util.NoSuchElementException;
+import org.apache.avro.file.DataFileStream;
+import org.apache.avro.specific.SpecificDatumReader;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -19,33 +21,50 @@ import org.apache.logging.log4j.Logger;
  */
 public class ValidateSchemaAndBuildDictMapperOutputReader {
   private static final Logger LOGGER = LogManager.getLogger(ValidateSchemaAndBuildDictMapperOutputReader.class);
-  private GenericAvroRecordReader genericAvroRecordReader;
-  private final ValidateSchemaAndBuildDictMapperOutput output = new ValidateSchemaAndBuildDictMapperOutput();
+  private ValidateSchemaAndBuildDictMapperOutput output;
 
   public ValidateSchemaAndBuildDictMapperOutputReader(String file) throws Exception {
     Configuration conf = new Configuration();
     FileSystem fs = FileSystem.get(conf);
 
-    this.genericAvroRecordReader = new GenericAvroRecordReader(fs, file);
+    if (file != null) {
+      try {
+        InputStream inputStream = fs.open(new Path(file));
+        DataFileStream avroDataFileStream =
+            new DataFileStream(inputStream, new SpecificDatumReader(ValidateSchemaAndBuildDictMapperOutput.class));
+        try {
+          output = (ValidateSchemaAndBuildDictMapperOutput) avroDataFileStream.next();
+        } catch (NoSuchElementException e) {
+          throw new VeniceException("File " + file + " contains no records", e);
+        }
+      } catch (IOException e) {
+        throw new VeniceException(
+            "Encountered exception reading Avro data from " + file
+                + ". Check if the file exists and the data is in Avro format.",
+            e);
+      }
+      validateOutput();
+    } else {
+      throw new VeniceException("File should not be null");
+    }
   }
 
-  public void getData() throws Exception {
-    getInputFileDataSizeFromResponse();
-    getCompressionDictionaryFromResponse();
+  private void validateOutput() throws VeniceException {
+    validateInputFileDataSizeFromOutput();
+    validateCompressionDictionaryFromOutput();
   }
 
   /**
    * inputFileDataSize includes the file schema as well, so even for empty pushes it should not be 0
    * @throws Exception
    */
-  private void getInputFileDataSizeFromResponse() throws VeniceException {
-    Long inputFileDataSize = (Long) getDataFromResponse(KEY_INPUT_FILE_DATA_SIZE);
+  private void validateInputFileDataSizeFromOutput() throws VeniceException {
+    Long inputFileDataSize = output.getInputFileDataSize();
     if (inputFileDataSize <= 0) {
       LOGGER.error("Retrieved inputFileDataSize ({}) is not valid", inputFileDataSize);
       throw new VeniceException("Retrieved inputFileDataSize (" + inputFileDataSize + ") is not valid");
     }
     LOGGER.info("Retrieved inputFileDataSize is {}", inputFileDataSize);
-    output.setInputFileDataSize(inputFileDataSize);
   }
 
   /**
@@ -55,14 +74,9 @@ public class ValidateSchemaAndBuildDictMapperOutputReader {
    * 2. When one or the both of above are enabled, but zstd trainer failed: Will be handled based on
    *    map reduce counters
    */
-  private void getCompressionDictionaryFromResponse() {
-    ByteBuffer zstdDictionary = (ByteBuffer) getDataFromResponse(KEY_ZSTD_COMPRESSION_DICTIONARY);
+  private void validateCompressionDictionaryFromOutput() {
+    ByteBuffer zstdDictionary = output.getZstdDictionary();
     LOGGER.info("Retrieved compressionDictionary is {} bytes", zstdDictionary == null ? 0 : zstdDictionary.limit());
-    output.setZstdDictionary(zstdDictionary);
-  }
-
-  private Object getDataFromResponse(String keyToRetrieve) {
-    return genericAvroRecordReader.getField(keyToRetrieve);
   }
 
   public ByteBuffer getCompressionDictionary() {

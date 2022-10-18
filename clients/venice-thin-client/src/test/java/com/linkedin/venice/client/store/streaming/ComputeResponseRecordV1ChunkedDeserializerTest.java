@@ -19,7 +19,7 @@ public class ComputeResponseRecordV1ChunkedDeserializerTest {
     record2.keyIndex = -100000;
     record2.value = ByteBuffer.wrap("abcdefghijklmn0123456789".getBytes());
 
-    AvroSerializer<ComputeResponseRecordV1> serializer = new AvroSerializer<>(ComputeResponseRecordV1.SCHEMA$);
+    AvroSerializer<ComputeResponseRecordV1> serializer = new AvroSerializer<>(ComputeResponseRecordV1.getClassSchema());
     List<ComputeResponseRecordV1> records = new ArrayList<>();
     records.add(record1);
     records.add(record2);

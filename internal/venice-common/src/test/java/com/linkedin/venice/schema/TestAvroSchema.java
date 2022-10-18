@@ -131,7 +131,7 @@ public class TestAvroSchema {
 
   @Test
   public void testReaderWriterSchemaMissingNamespace() throws Exception {
-    Schema schemaWithNamespace = NamespaceTest.SCHEMA$;
+    Schema schemaWithNamespace = NamespaceTest.getClassSchema();
     Schema schemaWithoutNamespace = Utils.getSchemaFromResource("testSchemaWithoutNamespace.avsc");
     RecordSerializer<SpecificData.Record> serializer =
         SerializerDeserializerFactory.getAvroGenericSerializer(schemaWithoutNamespace);

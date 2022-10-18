@@ -18,7 +18,7 @@ import org.testng.annotations.Test;
 
 public class TestVeniceKafkaInputReducer {
   private static final RecordSerializer KAFKA_INPUT_MAPPER_VALUE_SERIALIZER =
-      FastSerializerDeserializerFactory.getFastAvroGenericSerializer(KafkaInputMapperValue.SCHEMA$);
+      FastSerializerDeserializerFactory.getFastAvroGenericSerializer(KafkaInputMapperValue.getClassSchema());
   private static final String VALUE_PREFIX = "value_";
   private static final String RMD_VALUE_PREFIX = "rmd_value_";
 

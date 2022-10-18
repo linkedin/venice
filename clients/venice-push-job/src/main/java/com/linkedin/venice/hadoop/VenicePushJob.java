@@ -1310,7 +1310,6 @@ public class VenicePushJob implements AutoCloseable {
   private void getValidateSchemaAndBuildDictMapperOutput() throws Exception {
     String outputAvroFile = getValidateSchemaAndBuildDictionaryOutputFile(pushJobSetting.storeName);
     validateSchemaAndBuildDictMapperOutputReader = new ValidateSchemaAndBuildDictMapperOutputReader(outputAvroFile);
-    validateSchemaAndBuildDictMapperOutputReader.getData();
     inputFileDataSize = validateSchemaAndBuildDictMapperOutputReader.getInputFileDataSize() * INPUT_DATA_SIZE_FACTOR;
   }
 

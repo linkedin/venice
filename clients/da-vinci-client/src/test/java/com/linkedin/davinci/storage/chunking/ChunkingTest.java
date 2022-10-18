@@ -195,7 +195,7 @@ public class ChunkingTest {
     chunkedValueManifest.schemaId = 1;
     chunkedValueManifest.size = chunk1Bytes.length + chunk2Bytes.length
         - chunkedValueManifest.keysWithChunkIdSuffix.size() * ValueRecord.SCHEMA_HEADER_LENGTH;
-    byte[] serializedCVM = SerializerDeserializerFactory.getAvroGenericSerializer(ChunkedValueManifest.SCHEMA$)
+    byte[] serializedCVM = SerializerDeserializerFactory.getAvroGenericSerializer(ChunkedValueManifest.getClassSchema())
         .serialize(chunkedValueManifest);
     byte[] serializedCVMwithHeader = new byte[serializedCVM.length + ValueRecord.SCHEMA_HEADER_LENGTH];
     ByteUtils.writeInt(

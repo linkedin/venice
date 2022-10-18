@@ -347,10 +347,11 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
             : SerializerDeserializerFactory
                 .getAvroGenericSerializer(ReadAvroProtocolDefinition.COMPUTE_REQUEST_CLIENT_KEY_V1.getSchema());
         this.streamingFooterRecordDeserializer = useFastAvro
-            ? FastSerializerDeserializerFactory
-                .getFastAvroSpecificDeserializer(StreamingFooterRecordV1.SCHEMA$, StreamingFooterRecordV1.class)
+            ? FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(
+                StreamingFooterRecordV1.getClassSchema(),
+                StreamingFooterRecordV1.class)
             : SerializerDeserializerFactory
-                .getAvroSpecificDeserializer(StreamingFooterRecordV1.SCHEMA$, StreamingFooterRecordV1.class);
+                .getAvroSpecificDeserializer(StreamingFooterRecordV1.getClassSchema(), StreamingFooterRecordV1.class);
       } else {
         throw new VeniceClientException("SchemaReader is null while initializing serializer");
       }
@@ -709,7 +710,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     validateMultiGetResponseSchemaId(schemaId);
     if (useFastAvro) {
       return FastSerializerDeserializerFactory
-          .getFastAvroSpecificDeserializer(MultiGetResponseRecordV1.SCHEMA$, MultiGetResponseRecordV1.class);
+          .getFastAvroSpecificDeserializer(MultiGetResponseRecordV1.getClassSchema(), MultiGetResponseRecordV1.class);
     } else {
       return SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class);
     }
@@ -726,7 +727,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     validateComputeResponseSchemaId(schemaId);
     if (useFastAvro) {
       return FastSerializerDeserializerFactory
-          .getFastAvroSpecificDeserializer(ComputeResponseRecordV1.SCHEMA$, ComputeResponseRecordV1.class);
+          .getFastAvroSpecificDeserializer(ComputeResponseRecordV1.getClassSchema(), ComputeResponseRecordV1.class);
     } else {
       return SerializerDeserializerFactory.getAvroSpecificDeserializer(ComputeResponseRecordV1.class);
     }

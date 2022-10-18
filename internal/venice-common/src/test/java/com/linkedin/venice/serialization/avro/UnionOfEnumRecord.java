@@ -101,7 +101,7 @@ public class UnionOfEnumRecord extends org.apache.avro.specific.SpecificRecordBa
 
     /** Creates a new Builder */
     private Builder() {
-      super(com.linkedin.venice.serialization.avro.UnionOfEnumRecord.SCHEMA$);
+      super(com.linkedin.venice.serialization.avro.UnionOfEnumRecord.getClassSchema());
     }
 
     /** Creates a Builder by copying an existing Builder */
@@ -115,7 +115,7 @@ public class UnionOfEnumRecord extends org.apache.avro.specific.SpecificRecordBa
 
     /** Creates a Builder by copying an existing UnionOfEnumRecord instance */
     private Builder(com.linkedin.venice.serialization.avro.UnionOfEnumRecord other) {
-      super(com.linkedin.venice.serialization.avro.UnionOfEnumRecord.SCHEMA$);
+      super(com.linkedin.venice.serialization.avro.UnionOfEnumRecord.getClassSchema());
       if (isValidValue(fields()[0], other.union)) {
         this.union = data().deepCopy(fields()[0].schema(), other.union);
         fieldSetFlags()[0] = true;

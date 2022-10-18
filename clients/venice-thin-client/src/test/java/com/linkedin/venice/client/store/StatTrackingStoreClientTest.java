@@ -394,7 +394,7 @@ public class StatTrackingStoreClientTest {
     responseRecordV1List.add(record2);
 
     RecordSerializer<ComputeResponseRecordV1> computeResponseSerializer =
-        SerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.SCHEMA$);
+        SerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.getClassSchema());
 
     byte[] serializedResponse = computeResponseSerializer.serializeObjects(responseRecordV1List);
 

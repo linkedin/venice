@@ -170,10 +170,10 @@ public class JobRoutes extends AbstractRoute {
         if (request.queryParams().contains(PUSH_JOB_DETAILS)) {
           String pushJobDetailsString = request.queryParams(PUSH_JOB_DETAILS);
           DatumReader<PushJobDetails> reader =
-              new SpecificDatumReader<>(PushJobDetails.SCHEMA$, PushJobDetails.SCHEMA$);
+              new SpecificDatumReader<>(PushJobDetails.getClassSchema(), PushJobDetails.getClassSchema());
           pushJobDetails = reader.read(
               null,
-              AvroCompatibilityHelper.newCompatibleJsonDecoder(PushJobDetails.SCHEMA$, pushJobDetailsString));
+              AvroCompatibilityHelper.newCompatibleJsonDecoder(PushJobDetails.getClassSchema(), pushJobDetailsString));
         } else {
           pushJobDetails = pushJobDetailsSerializer.deserialize(null, request.bodyAsBytes());
         }

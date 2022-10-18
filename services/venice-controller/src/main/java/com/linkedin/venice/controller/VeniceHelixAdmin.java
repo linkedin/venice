@@ -553,8 +553,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               storeNameSupplier,
               multiClusterConfigs,
               this,
-              ParticipantMessageKey.SCHEMA$.toString(),
-              ParticipantMessageValue.SCHEMA$.toString()));
+              ParticipantMessageKey.getClassSchema().toString(),
+              ParticipantMessageValue.getClassSchema().toString()));
     }
     ClusterLeaderInitializationRoutine controllerInitialization =
         new ClusterLeaderInitializationManager(initRoutines, commonConfig.isConcurrentInitRoutinesEnabled());
@@ -5796,8 +5796,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       return getVeniceWriterFactory().createVeniceWriter(
           topic,
-          new VeniceAvroKafkaSerializer(ParticipantMessageKey.SCHEMA$.toString()),
-          new VeniceAvroKafkaSerializer(ParticipantMessageValue.SCHEMA$.toString()));
+          new VeniceAvroKafkaSerializer(ParticipantMessageKey.getClassSchema().toString()),
+          new VeniceAvroKafkaSerializer(ParticipantMessageValue.getClassSchema().toString()));
     });
   }
 

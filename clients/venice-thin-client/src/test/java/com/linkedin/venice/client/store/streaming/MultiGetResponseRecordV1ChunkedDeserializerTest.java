@@ -21,7 +21,8 @@ public class MultiGetResponseRecordV1ChunkedDeserializerTest {
     record2.value = ByteBuffer.wrap("abcdefghijklmn0123456789".getBytes());
     record2.schemaId = -900232210;
 
-    AvroSerializer<MultiGetResponseRecordV1> serializer = new AvroSerializer<>(MultiGetResponseRecordV1.SCHEMA$);
+    AvroSerializer<MultiGetResponseRecordV1> serializer =
+        new AvroSerializer<>(MultiGetResponseRecordV1.getClassSchema());
     List<MultiGetResponseRecordV1> records = new ArrayList<>();
     records.add(record1);
     records.add(record2);

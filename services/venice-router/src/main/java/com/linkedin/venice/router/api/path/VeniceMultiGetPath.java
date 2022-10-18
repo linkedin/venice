@@ -193,7 +193,7 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
   @Override
   protected byte[] serializeRouterRequest() {
     RecordSerializer<MultiGetRouterRequestKeyV1> serializer =
-        SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.SCHEMA$);
+        SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.getClassSchema());
 
     return serializer.serializeObjects(routerKeyMap.values(), AvroSerializer.REUSE.get());
   }

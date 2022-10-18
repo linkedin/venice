@@ -142,11 +142,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * when reading records that don't have those fields, typically when we deserialize a record from older version to
    * newer version.
    */
-  public static final long DEFAULT_UPSTREAM_OFFSET =
-      (long) AvroCompatibilityHelper.getSpecificDefaultValue(LeaderMetadata.SCHEMA$.getField("upstreamOffset"));
+  public static final long DEFAULT_UPSTREAM_OFFSET = (long) AvroCompatibilityHelper
+      .getSpecificDefaultValue(LeaderMetadata.getClassSchema().getField("upstreamOffset"));
 
-  public static final int DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID =
-      (int) AvroCompatibilityHelper.getSpecificDefaultValue(LeaderMetadata.SCHEMA$.getField("upstreamKafkaClusterId"));
+  public static final int DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID = (int) AvroCompatibilityHelper
+      .getSpecificDefaultValue(LeaderMetadata.getClassSchema().getField("upstreamKafkaClusterId"));
 
   /**
    * A static counter shared by all VeniceWriter instances to track the number of active VeniceWriter

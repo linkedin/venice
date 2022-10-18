@@ -508,7 +508,7 @@ public class AvroGenericStoreClientImplTest {
     records.add(dataRecord3);
     // Serialize MultiGetResponse
     RecordSerializer<Object> responseSerializer =
-        SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
+        SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.getClassSchema());
     byte[] responseBytes = responseSerializer.serializeObjects(records);
     int responseSchemaId = 1;
 
@@ -590,7 +590,7 @@ public class AvroGenericStoreClientImplTest {
 
     // Serialize MultiGetResponse
     RecordSerializer<Object> responseSerializer =
-        SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
+        SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.getClassSchema());
     byte[] responseBytes = responseSerializer.serializeObjects(records);
     int responseSchemaId = 1;
 
@@ -627,7 +627,7 @@ public class AvroGenericStoreClientImplTest {
 
     // Serialize MultiGetResponse
     RecordSerializer<Object> responseSerializer =
-        SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
+        SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.getClassSchema());
     byte[] responseBytes = responseSerializer.serializeObjects(records);
     int responseSchemaId = 1;
 
