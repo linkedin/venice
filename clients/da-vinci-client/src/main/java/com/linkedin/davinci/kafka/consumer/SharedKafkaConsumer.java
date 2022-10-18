@@ -250,19 +250,6 @@ class SharedKafkaConsumer implements KafkaConsumerWrapper {
     return !this.currentAssignment.isEmpty();
   }
 
-  /**
-   * This function will return true as long as any topic in the passed {@param topics} has been subscribed.
-   */
-  @Override
-  public boolean hasSubscribedAnyTopic(Set<String> topics) {
-    for (TopicPartition subscribedTopicPartition: currentAssignment) {
-      if (topics.contains(subscribedTopicPartition.topic())) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   @Override
   public boolean hasSubscription(String topic, int partition) {
     return currentAssignment.contains(new TopicPartition(topic, partition));

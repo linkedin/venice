@@ -27,11 +27,6 @@ public interface KafkaConsumerWrapper extends AutoCloseable, Closeable {
    */
   boolean hasAnySubscription();
 
-  /**
-   * @return True if this consumer has subscribed any topic in the given topic set {@param topics} and false otherwise.
-   */
-  boolean hasSubscribedAnyTopic(Set<String> topics);
-
   boolean hasSubscription(String topic, int partition);
 
   void pause(String topic, int partition);
