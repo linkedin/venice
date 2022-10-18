@@ -24,6 +24,19 @@ LEADER == "LEADER"
 FOLLOWER == "FOLLOWER"
 
 (***************************************************************************)
+(* PROPERTY:                                                               *)
+(*                                                                         *)
+(* It's alright when we have all writes. The only property of this spec is *)
+(* that all replicas will eventually become consistent with each other.    *)
+(***************************************************************************)
+
+ReplicasConsistent ==
+    \A n1, n2 \in nodeIds:
+    nodes[n1].persistedRecords = nodes[n2].persistedRecords
+
+EventuallyConsistent == <>[]ReplicasConsistent
+
+(***************************************************************************)
 (* All writes to Venice are asynchronous. A client writes to a queue that  *)
 (* we call a 'realTimeTopic' which is then consumed by Venice and applied  *)
 (***************************************************************************)
@@ -55,7 +68,7 @@ RealTimeConsume(nodeId) ==
         THEN
             nodes' = [nodes EXCEPT
             ![nodeId].rtOffset = nodes[nodeId].rtOffset+1,
-                ![nodeId].persistedRecords = SetValueOnReplica(n,
+                ![nodeId].persistedRecords = SetValueOnReplica(nodeId,
                                             realTimeTopic[nodes[nodeId].rtOffset][1],
                                             realTimeTopic[nodes[nodeId].rtOffset][2])
                 ]
@@ -123,10 +136,6 @@ DemoteLeader ==
     /\ \E followerNodeId \in {x \in DOMAIN nodes: nodes[x].state = LEADER}:
         ChangeReplicaState(followerNodeId, FOLLOWER)
 
-(***************************************************************************)
-(* It's alright when we have all writes. The main property of this spec is *)
-(* that all replicas will eventually become consistent with each other.    *)
-(***************************************************************************)
 AllWritesTransmitted ==
     Len(realTimeTopic) >= MAX_WRITES
 
@@ -152,11 +161,5 @@ Next ==
     \/ Terminating
 
 Spec == Init /\ [][Next]_vars /\ SF_vars(FollowerConsume) /\ WF_vars(LeaderConsume)
-
-ReplicasConsistent ==
-    \A n1, n2 \in nodeIds:
-    nodes[n1].persistedRecords = nodes[n2].persistedRecords
-
-EventuallyConsistent == <>[]ReplicasConsistent
 
 ====
