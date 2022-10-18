@@ -113,7 +113,7 @@ import org.testng.annotations.Test;
 
 public class TestPushJobWithNativeReplication {
   private static final Logger LOGGER = LogManager.getLogger(TestPushJobWithNativeReplication.class);
-  private static final int TEST_TIMEOUT = 120_000; // ms
+  private static final int TEST_TIMEOUT = 2 * Time.MS_PER_MINUTE;
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
@@ -865,7 +865,7 @@ public class TestPushJobWithNativeReplication {
     }
   }
 
-  private interface NativeReplTest {
+  private interface NativeReplicationTest {
     void run(
         ControllerClient parentControllerClient,
         String clusterName,
@@ -877,7 +877,7 @@ public class TestPushJobWithNativeReplication {
   private void motherOfAllTests(
       Function<UpdateStoreQueryParams, UpdateStoreQueryParams> updateStoreParamsTransformer,
       int recordCount,
-      NativeReplTest test) throws Exception {
+      NativeReplicationTest test) throws Exception {
     String clusterName = CLUSTER_NAMES[0];
     File inputDir = getTempDataDirectory();
     String parentControllerUrls =
