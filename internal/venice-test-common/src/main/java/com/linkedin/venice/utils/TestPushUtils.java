@@ -3,16 +3,14 @@ package com.linkedin.venice.utils;
 import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
 import static com.linkedin.venice.hadoop.VenicePushJob.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
+import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.INPUT_PATH_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.KEY_INPUT_FILE_DATA_SIZE;
 import static com.linkedin.venice.hadoop.VenicePushJob.KEY_ZSTD_COMPRESSION_DICTIONARY;
 import static com.linkedin.venice.hadoop.VenicePushJob.POLL_JOB_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.hadoop.VenicePushJob.PUSH_JOB_STATUS_UPLOAD_ENABLE;
-import static com.linkedin.venice.hadoop.VenicePushJob.SSL_KEY_PASSWORD_PROPERTY_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJob.SSL_KEY_STORE_PROPERTY_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
@@ -33,7 +31,6 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
-import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.etl.ETLUtils;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -45,7 +42,6 @@ import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;
 import com.linkedin.venice.schema.vson.VsonSchema;
-import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
 import java.io.IOException;
@@ -73,7 +69,6 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.io.Text;
-import org.apache.kafka.common.config.SslConfigs;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
@@ -82,19 +77,21 @@ import org.testng.Assert;
 
 
 public class TestPushUtils {
-  public static final String USER_SCHEMA_STRING = "{" + "  \"namespace\" : \"example.avro\",  "
-      + "  \"type\": \"record\",   " + "  \"name\": \"User\",     " + "  \"fields\": [           "
-      + "       { \"name\": \"id\", \"type\": \"string\"},  " + "       { \"name\": \"name\", \"type\": \"string\"},  "
-      + "       { \"name\": \"age\", \"type\": \"int\" }" + "  ] " + " } ";
+  public static final String USER_SCHEMA_STRING =
+      "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   " + "  \"name\": \"User\",     "
+          + "  \"fields\": [           " + "       { \"name\": \"" + DEFAULT_KEY_FIELD_PROP
+          + "\", \"type\": \"string\"},  " + "       { \"name\": \"" + DEFAULT_VALUE_FIELD_PROP
+          + "\", \"type\": \"string\"},  " + "       { \"name\": \"age\", \"type\": \"int\" }" + "  ] " + " } ";
 
   public static final String ETL_KEY_SCHEMA_STRING = "{\n" + "    \"type\":\"record\",\n" + "    \"name\":\"key\",\n"
       + "    \"namespace\":\"com.linkedin.vencie.testkey\",\n" + "    \"fields\":[\n" + "        {\n"
-      + "            \"name\":\"id\",\n" + "            \"type\":\"string\"\n" + "        }\n" + "    ]\n" + "}";
+      + "            \"name\":\"" + DEFAULT_KEY_FIELD_PROP + "\",\n" + "            \"type\":\"string\"\n"
+      + "        }\n" + "    ]\n" + "}";
 
   public static final String ETL_VALUE_SCHEMA_STRING = "{\n" + "    \"type\":\"record\",\n"
       + "    \"name\":\"value\",\n" + "    \"namespace\":\"com.linkedin.vencie.testvalue\",\n" + "    \"fields\":[\n"
-      + "        {\n" + "            \"name\":\"name\",\n" + "            \"type\":\"string\"\n" + "        }\n"
-      + "    ],\n" + "    \"version\":10\n" + "}";
+      + "        {\n" + "            \"name\":\"" + DEFAULT_VALUE_FIELD_PROP + "\",\n"
+      + "            \"type\":\"string\"\n" + "        }\n" + "    ],\n" + "    \"version\":10\n" + "}";
 
   public static final String ETL_UNION_VALUE_SCHEMA_STRING_WITHOUT_NULL = "[\"int\", \"string\"]";
 
@@ -102,30 +99,31 @@ public class TestPushUtils {
 
   public static final String USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT =
       "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   " + "  \"name\": \"User\",     "
-          + "  \"fields\": [           " + "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"\"},  "
-          + "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"\"}" + "  ] " + " } ";
+          + "  \"fields\": [           " + "       { \"name\": \"" + DEFAULT_KEY_FIELD_PROP
+          + "\", \"type\": \"string\", \"default\": \"\"},  " + "       { \"name\": \"" + DEFAULT_VALUE_FIELD_PROP
+          + "\", \"type\": \"string\", \"default\": \"\"}" + "  ] " + " } ";
 
-  public static final String USER_SCHEMA_STRING_WITH_DEFAULT =
-      "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   " + "  \"name\": \"User\",     "
-          + "  \"fields\": [           " + "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"\"},  "
-          + "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"\"},  "
-          + "       { \"name\": \"age\", \"type\": \"int\", \"default\": 1 }" + "  ] " + " } ";
+  public static final String USER_SCHEMA_STRING_WITH_DEFAULT = "{" + "  \"namespace\" : \"example.avro\",  "
+      + "  \"type\": \"record\",   " + "  \"name\": \"User\",     " + "  \"fields\": [           "
+      + "       { \"name\": \"" + DEFAULT_KEY_FIELD_PROP + "\", \"type\": \"string\", \"default\": \"\"},  "
+      + "       { \"name\": \"" + DEFAULT_VALUE_FIELD_PROP + "\", \"type\": \"string\", \"default\": \"\"},  "
+      + "       { \"name\": \"age\", \"type\": \"int\", \"default\": 1 }" + "  ] " + " } ";
 
-  public static final String USER_SCHEMA_WITH_A_FLOAT_ARRAY_STRING =
-      "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   " + "  \"name\": \"ManyFloats\",     "
-          + "  \"fields\": [           " + "       { \"name\": \"id\", \"type\": \"string\" },  "
-          + "       { \"name\": \"name\", \"type\": {\"type\": \"array\", \"items\": \"float\"} },  "
-          + "       { \"name\": \"age\", \"type\": \"int\" }" + "  ] " + " } ";
+  public static final String USER_SCHEMA_WITH_A_FLOAT_ARRAY_STRING = "{" + "  \"namespace\" : \"example.avro\",  "
+      + "  \"type\": \"record\",   " + "  \"name\": \"ManyFloats\",     " + "  \"fields\": [           "
+      + "       { \"name\": \"" + DEFAULT_KEY_FIELD_PROP + "\", \"type\": \"string\" },  " + "       { \"name\": \""
+      + DEFAULT_VALUE_FIELD_PROP + "\", \"type\": {\"type\": \"array\", \"items\": \"float\"} },  "
+      + "       { \"name\": \"age\", \"type\": \"int\" }" + "  ] " + " } ";
 
-  public static final String INT_STRING_SCHEMA_STRING =
-      "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   " + "  \"name\": \"IntToString\",     "
-          + "  \"fields\": [           " + "       { \"name\": \"id\", \"type\": \"int\"},  "
-          + "       { \"name\": \"name\", \"type\": \"string\"}  " + "  ] " + " } ";
+  public static final String INT_STRING_SCHEMA_STRING = "{" + "  \"namespace\" : \"example.avro\",  "
+      + "  \"type\": \"record\",   " + "  \"name\": \"IntToString\",     " + "  \"fields\": [           "
+      + "       { \"name\": \"" + DEFAULT_KEY_FIELD_PROP + "\", \"type\": \"int\"},  " + "       { \"name\": \""
+      + DEFAULT_VALUE_FIELD_PROP + "\", \"type\": \"string\"}  " + "  ] " + " } ";
 
   public static final String STRING_STRING_SCHEMA_STRING = "{" + "  \"namespace\" : \"example.avro\",  "
       + "  \"type\": \"record\",   " + "  \"name\": \"StringToString\",     " + "  \"fields\": [           "
-      + "       { \"name\": \"id\", \"type\": \"string\"},  " + "       { \"name\": \"name\", \"type\": \"string\"}  "
-      + "  ] " + " } ";
+      + "       { \"name\": \"" + DEFAULT_KEY_FIELD_PROP + "\", \"type\": \"string\"},  " + "       { \"name\": \""
+      + DEFAULT_VALUE_FIELD_PROP + "\", \"type\": \"string\"}  " + "  ] " + " } ";
 
   public static final String NESTED_SCHEMA_STRING = "{" + "  \"namespace\" : \"example.avro\",  "
       + "  \"type\": \"record\",   " + "  \"name\": \"nameRecord\",     " + "  \"fields\": [           "
@@ -137,10 +135,11 @@ public class TestPushUtils {
       + "       { \"name\": \"lastName\", \"type\": \"string\", \"default\": \"\" },  "
       + "       { \"name\": \"age\", \"type\": \"int\", \"default\": -1 }  " + "  ]" + " } ";
 
-  public static final String STRING_RECORD_SCHEMA_STRING = "{" + "  \"namespace\" : \"example.avro\",  "
-      + "  \"type\": \"record\",   " + "  \"name\": \"StringToRecord\",     " + "  \"fields\": [           "
-      + "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"\"}, "
-      + "       { \"name\": \"name\", \"type\": " + NESTED_SCHEMA_STRING + " }  " + "  ] " + " } ";
+  public static final String STRING_RECORD_SCHEMA_STRING =
+      "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   "
+          + "  \"name\": \"StringToRecord\",     " + "  \"fields\": [           " + "       { \"name\": \""
+          + DEFAULT_KEY_FIELD_PROP + "\", \"type\": \"string\", \"default\": \"\"}, " + "       { \"name\": \""
+          + DEFAULT_VALUE_FIELD_PROP + "\", \"type\": " + NESTED_SCHEMA_STRING + " }  " + "  ] " + " } ";
 
   public static final String STRING_SCHEMA = "\"string\"";
 
@@ -183,8 +182,8 @@ public class TestPushUtils {
     return writeAvroFile(parentDir, fileName, USER_SCHEMA_STRING, (recordSchema, writer) -> {
       for (int i = 1; i <= recordCount; ++i) {
         GenericRecord user = new GenericData.Record(recordSchema);
-        user.put("id", Integer.toString(i));
-        user.put("name", DEFAULT_USER_DATA_VALUE_PREFIX + i);
+        user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+        user.put(DEFAULT_VALUE_FIELD_PROP, DEFAULT_USER_DATA_VALUE_PREFIX + i);
         user.put("age", i);
         writer.append(user);
       }
@@ -226,8 +225,8 @@ public class TestPushUtils {
             GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
             GenericRecord value = new GenericData.Record(Schema.parse(ETL_VALUE_SCHEMA_STRING));
 
-            key.put("id", Integer.toString(i));
-            value.put("name", DEFAULT_USER_DATA_VALUE_PREFIX + i);
+            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+            value.put(DEFAULT_VALUE_FIELD_PROP, DEFAULT_USER_DATA_VALUE_PREFIX + i);
 
             user.put("opalSegmentIdPart", 0);
             user.put("opalSegmentIdSeq", 0);
@@ -247,7 +246,7 @@ public class TestPushUtils {
 
             GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
 
-            key.put("id", Integer.toString(i));
+            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
 
             user.put("opalSegmentIdPart", 0);
             user.put("opalSegmentIdSeq", 0);
@@ -283,7 +282,7 @@ public class TestPushUtils {
 
             GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
 
-            key.put("id", Integer.toString(i));
+            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
 
             user.put("opalSegmentIdPart", 0);
             user.put("opalSegmentIdSeq", 0);
@@ -303,7 +302,7 @@ public class TestPushUtils {
 
             GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
 
-            key.put("id", Integer.toString(i));
+            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
 
             user.put("opalSegmentIdPart", 0);
             user.put("opalSegmentIdSeq", 0);
@@ -323,7 +322,7 @@ public class TestPushUtils {
 
             GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
 
-            key.put("id", Integer.toString(i));
+            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
 
             user.put("opalSegmentIdPart", 0);
             user.put("opalSegmentIdSeq", 0);
@@ -359,7 +358,7 @@ public class TestPushUtils {
 
             GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
 
-            key.put("id", Integer.toString(i));
+            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
 
             user.put("opalSegmentIdPart", 0);
             user.put("opalSegmentIdSeq", 0);
@@ -379,7 +378,7 @@ public class TestPushUtils {
 
             GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
 
-            key.put("id", Integer.toString(i));
+            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
 
             user.put("opalSegmentIdPart", 0);
             user.put("opalSegmentIdSeq", 0);
@@ -399,7 +398,7 @@ public class TestPushUtils {
 
             GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
 
-            key.put("id", Integer.toString(i));
+            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
 
             user.put("opalSegmentIdPart", 0);
             user.put("opalSegmentIdSeq", 0);
@@ -428,8 +427,8 @@ public class TestPushUtils {
       String name = "alternate_test_name_";
       for (int i = 1; i <= 100; ++i) {
         GenericRecord user = new GenericData.Record(recordSchema);
-        user.put("id", Integer.toString(i));
-        user.put("name", name + i);
+        user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+        user.put(DEFAULT_VALUE_FIELD_PROP, name + i);
         user.put("age", i);
         writer.append(user);
       }
@@ -454,8 +453,8 @@ public class TestPushUtils {
     return writeAvroFile(parentDir, fileName, INT_STRING_SCHEMA_STRING, (recordSchema, writer) -> {
       for (int i = 1; i <= recordCount; ++i) {
         GenericRecord i2i = new GenericData.Record(recordSchema);
-        i2i.put("id", i);
-        i2i.put("name", "name " + Integer.toString(i));
+        i2i.put(DEFAULT_KEY_FIELD_PROP, i);
+        i2i.put(DEFAULT_VALUE_FIELD_PROP, "name " + Integer.toString(i));
         writer.append(i2i);
       }
     });
@@ -472,8 +471,8 @@ public class TestPushUtils {
     return writeAvroFile(parentDir, fileName, STRING_STRING_SCHEMA_STRING, (recordSchema, writer) -> {
       for (int i = 1; i <= 100; ++i) {
         GenericRecord s2s = new GenericData.Record(recordSchema);
-        s2s.put("id", "jobPosting:" + i);
-        s2s.put("name", String.valueOf(i));
+        s2s.put(DEFAULT_KEY_FIELD_PROP, "jobPosting:" + i);
+        s2s.put(DEFAULT_VALUE_FIELD_PROP, String.valueOf(i));
         writer.append(s2s);
       }
     });
@@ -493,11 +492,11 @@ public class TestPushUtils {
       String lastName = "last_name_";
       for (int i = 1; i <= 100; ++i) {
         GenericRecord keyValueRecord = new GenericData.Record(recordSchema);
-        keyValueRecord.put("id", String.valueOf(i)); // Key
+        keyValueRecord.put(DEFAULT_KEY_FIELD_PROP, String.valueOf(i)); // Key
         GenericRecord valueRecord = new GenericData.Record(valueSchema);
         valueRecord.put("firstName", firstName + i);
         valueRecord.put("lastName", lastName + i);
-        keyValueRecord.put("name", valueRecord); // Value
+        keyValueRecord.put(DEFAULT_VALUE_FIELD_PROP, valueRecord); // Value
         writer.append(keyValueRecord);
       }
     });
@@ -512,8 +511,8 @@ public class TestPushUtils {
     return writeAvroFile(parentDir, "simple_user.avro", USER_SCHEMA_STRING, (recordSchema, writer) -> {
       for (int i = 51; i <= 150; ++i) {
         GenericRecord user = new GenericData.Record(recordSchema);
-        user.put("id", Integer.toString(i));
-        user.put("name", DEFAULT_USER_DATA_VALUE_PREFIX + (i * 2));
+        user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+        user.put(DEFAULT_VALUE_FIELD_PROP, DEFAULT_USER_DATA_VALUE_PREFIX + (i * 2));
         user.put("age", i * 2);
         writer.append(user);
       }
@@ -528,8 +527,8 @@ public class TestPushUtils {
     return writeAvroFile(parentDir, "simple_user.avro", USER_SCHEMA_STRING, (recordSchema, writer) -> {
       for (int i = 51; i <= 200; ++i) {
         GenericRecord user = new GenericData.Record(recordSchema);
-        user.put("id", Integer.toString(i));
-        user.put("name", DEFAULT_USER_DATA_VALUE_PREFIX + (i * 3));
+        user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+        user.put(DEFAULT_VALUE_FIELD_PROP, DEFAULT_USER_DATA_VALUE_PREFIX + (i * 3));
         user.put("age", i * 3);
         writer.append(user);
       }
@@ -540,8 +539,8 @@ public class TestPushUtils {
     return writeAvroFile(parentDir, "duplicate_key_user.avro", USER_SCHEMA_STRING, (recordSchema, avroFileWriter) -> {
       for (int i = 0; i < 100; i++) {
         GenericRecord user = new GenericData.Record(recordSchema);
-        user.put("id", i % 10 == 0 ? "0" : Integer.toString(i)); // "id" is the key
-        user.put("name", "test_name" + i);
+        user.put(DEFAULT_KEY_FIELD_PROP, i % 10 == 0 ? "0" : Integer.toString(i)); // DEFAULT_KEY_FIELD_PROP is the key
+        user.put(DEFAULT_VALUE_FIELD_PROP, "test_name" + i);
         user.put("age", i);
         avroFileWriter.append(user);
       }
@@ -575,11 +574,11 @@ public class TestPushUtils {
       for (int i = 0; i < numberOfRecords; i++) {
         int sizeForThisRecord = minValueSize + sizeRange / numberOfRecords * (i + 1);
         GenericRecord user = new GenericData.Record(recordSchema);
-        user.put("id", Integer.toString(i)); // "id" is the key
+        user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i)); // DEFAULT_KEY_FIELD_PROP is the key
         char[] chars = new char[sizeForThisRecord];
         Arrays.fill(chars, Integer.toString(i).charAt(0));
         Utf8 utf8Value = new Utf8(new String(chars));
-        user.put("name", utf8Value);
+        user.put(DEFAULT_VALUE_FIELD_PROP, utf8Value);
         user.put("age", i);
         avroFileWriter.append(user);
       }
@@ -592,7 +591,7 @@ public class TestPushUtils {
         + "  \"type\": \"record\",\n" + "  \"name\": \"SimpleRecord\",\n" + "  \"fields\": [\n"
         + "     {\"name\": \"key\", \"type\": \"string\"},\n" + "     {\"name\": \"value\", \"type\": {\n"
         + "        \"name\": \"RecordWithWrongDefault\",\n" + "        \"type\": \"record\",\n"
-        + "        \"fields\": [\n" + "         {\"name\": \"id\", \"type\": \"string\"},\n"
+        + "        \"fields\": [\n" + "         {\"name\": \"" + DEFAULT_KEY_FIELD_PROP + "\", \"type\": \"string\"},\n"
         + "         {\"name\": \"score\", \"type\": \"float\", \"default\": 0}\n" + "       ]}\n" + "     }\n"
         + "   ]\n" + "}";
     return writeAvroFile(
@@ -604,7 +603,7 @@ public class TestPushUtils {
             GenericRecord simpleRecord = new GenericData.Record(recordSchema);
             simpleRecord.put("key", Integer.toString(i));
             GenericRecord value = new GenericData.Record(recordSchema.getField("value").schema());
-            value.put("id", Integer.toString(i));
+            value.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
             value.put("score", 100.0f);
             simpleRecord.put("value", value);
             avroFileWriter.append(simpleRecord);
@@ -632,13 +631,13 @@ public class TestPushUtils {
 
   public static GenericRecord getRecordWithFloatArray(Schema recordSchema, int index, int size) {
     GenericRecord user = new GenericData.Record(recordSchema);
-    user.put("id", Integer.toString(index)); // "id" is the key
+    user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(index)); // DEFAULT_KEY_FIELD_PROP is the key
     int numberOfFloats = size / 4;
     List<Float> floatsArray = new ArrayList<>();
     for (int j = 0; j < numberOfFloats; j++) {
       floatsArray.add(RandomGenUtils.getRandomFloat());
     }
-    user.put("name", floatsArray);
+    user.put(DEFAULT_VALUE_FIELD_PROP, floatsArray);
     user.put("age", index);
     return user;
   }
@@ -660,7 +659,7 @@ public class TestPushUtils {
     return recordSchema;
   }
 
-  public static Pair<Schema, Schema> writeSimpleVsonFile(File parentDir) throws IOException {
+  public static KeyAndValueSchemas writeSimpleVsonFile(File parentDir) throws IOException {
     String vsonInteger = "\"int32\"";
     String vsonString = "\"string\"";
 
@@ -671,15 +670,15 @@ public class TestPushUtils {
             new BytesWritable(valueSerializer.toBytes(String.valueOf(i + 100))));
       }
     });
-    return new Pair<>(VsonAvroSchemaAdapter.parse(vsonInteger), VsonAvroSchemaAdapter.parse(vsonString));
+    return new KeyAndValueSchemas(VsonAvroSchemaAdapter.parse(vsonInteger), VsonAvroSchemaAdapter.parse(vsonString));
   }
 
   public enum testRecordType {
-    NEARLINE, OFFLINE;
+    NEARLINE, OFFLINE
   }
 
   public enum testTargetedField {
-    WEBSITE_URL, LOGO, INDUSTRY;
+    WEBSITE_URL, LOGO, INDUSTRY
   }
 
   public static Schema writeSchemaWithUnknownFieldIntoAvroFile(File parentDir) throws IOException {
@@ -735,7 +734,7 @@ public class TestPushUtils {
   }
 
   // write vson byte (int 8) and short (int16) to a file
-  public static Pair<Schema, Schema> writeVsonByteAndShort(File parentDir) throws IOException {
+  public static KeyAndValueSchemas writeVsonByteAndShort(File parentDir) throws IOException {
     String vsonByte = "\"int8\"";
     String vsonShort = "\"int16\"";
 
@@ -751,13 +750,12 @@ public class TestPushUtils {
                 new BytesWritable(valueSerializer.toBytes((short) (i - 50))));
           }
         });
-    return new Pair<>(VsonAvroSchemaAdapter.parse(vsonByte), VsonAvroSchemaAdapter.parse(vsonShort));
+    return new KeyAndValueSchemas(VsonAvroSchemaAdapter.parse(vsonByte), VsonAvroSchemaAdapter.parse(vsonShort));
   }
 
-  public static Pair<Schema, Schema> writeComplexVsonFile(File parentDir) throws IOException {
+  public static KeyAndValueSchemas writeComplexVsonFile(File parentDir) throws IOException {
     String vsonInteger = "\"int32\"";
     String vsonString = "{\"member_id\":\"int32\", \"score\":\"float32\"}";
-    ;
 
     Map<String, Object> record = new HashMap<>();
     writeVsonFile(vsonInteger, vsonString, parentDir, "complex_vson-file", (keySerializer, valueSerializer, writer) -> {
@@ -767,7 +765,7 @@ public class TestPushUtils {
         writer.append(new BytesWritable(keySerializer.toBytes(i)), new BytesWritable(valueSerializer.toBytes(record)));
       }
     });
-    return new Pair<>(VsonAvroSchemaAdapter.parse(vsonInteger), VsonAvroSchemaAdapter.parse(vsonString));
+    return new KeyAndValueSchemas(VsonAvroSchemaAdapter.parse(vsonInteger), VsonAvroSchemaAdapter.parse(vsonString));
   }
 
   public static Pair<Schema, Schema> writeSimpleVsonFileWithUserSchema(File parentDir) throws IOException {
@@ -787,7 +785,7 @@ public class TestPushUtils {
     return new Pair<>(VsonAvroSchemaAdapter.parse(vsonKey), VsonAvroSchemaAdapter.parse(vsonValue));
   }
 
-  public static Pair<Schema, Schema> writeMultiLevelVsonFile(File parentDir) throws IOException {
+  public static KeyAndValueSchemas writeMultiLevelVsonFile(File parentDir) throws IOException {
     String vsonKeyStr = "\"int32\"";
     String vsonValueStr = "{\"level1\":{\"level21\":{\"field1\":\"int32\"}, \"level22\":{\"field2\":\"int32\"}}}";
     Map<String, Object> record = new HashMap<>();
@@ -812,7 +810,7 @@ public class TestPushUtils {
                 new BytesWritable(valueSerializer.toBytes(record)));
           }
         });
-    return new Pair<>(VsonAvroSchemaAdapter.parse(vsonKeyStr), VsonAvroSchemaAdapter.parse(vsonValueStr));
+    return new KeyAndValueSchemas(VsonAvroSchemaAdapter.parse(vsonKeyStr), VsonAvroSchemaAdapter.parse(vsonValueStr));
   }
 
   public static Pair<VsonSchema, VsonSchema> writeMultiLevelVsonFile2(File parentDir) throws IOException {
@@ -850,7 +848,7 @@ public class TestPushUtils {
     return new Pair<>(VsonSchema.parse(vsonKeyStr), VsonSchema.parse(vsonValueStr));
   }
 
-  private static Pair<Schema, Schema> writeVsonFile(
+  private static void writeVsonFile(
       String keySchemaStr,
       String valueSchemStr,
       File parentDir,
@@ -871,7 +869,6 @@ public class TestPushUtils {
         SequenceFile.Writer.metadata(metadata))) {
       fileWriter.write(keySerializer, valueSerializer, writer);
     }
-    return new Pair<>(VsonAvroSchemaAdapter.parse(keySchemaStr), VsonAvroSchemaAdapter.parse(valueSchemStr));
   }
 
   private interface VsonFileWriter {
@@ -892,15 +889,9 @@ public class TestPushUtils {
     props.put(VENICE_URL_PROP, veniceUrl);
     props.put(VENICE_STORE_NAME_PROP, storeName);
     props.put(INPUT_PATH_PROP, inputDirPath);
-    props.put(KEY_FIELD_PROP, "id");
-    props.put(VALUE_FIELD_PROP, "name");
     // No need for a big close timeout in tests. This is just to speed up discovery of certain regressions.
     props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 500);
     props.put(POLL_JOB_STATUS_INTERVAL_MS, 1000);
-    props.setProperty(SSL_KEY_STORE_PROPERTY_NAME, "test");
-    props.setProperty(SSL_TRUST_STORE_PROPERTY_NAME, "test");
-    props.setProperty(SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, "test");
-    props.setProperty(SSL_KEY_PASSWORD_PROPERTY_NAME, "test");
     props.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, "false");
     props.setProperty(CONTROLLER_REQUEST_RETRY_ATTEMPTS, "5");
     return props;
@@ -909,22 +900,14 @@ public class TestPushUtils {
   public static Properties sslVPJProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     props.putAll(KafkaSSLUtils.getLocalKafkaClientSSLConfig());
-    // remove the path for certs and pwd, because we will get them from hadoop user credentials.
-    props.remove(SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG);
-    props.remove(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG);
-    props.remove(SslConfigs.SSL_KEY_PASSWORD_CONFIG);
-    props.remove(SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG);
     return props;
   }
 
   public static ControllerClient createStoreForJob(String veniceClusterName, Schema recordSchema, Properties props) {
-    String keySchemaStr = recordSchema.getField(props.getProperty(KEY_FIELD_PROP)).schema().toString();
-    String valueSchemaStr = recordSchema.getField(props.getProperty(VALUE_FIELD_PROP)).schema().toString();
-
     return createStoreForJob(
         veniceClusterName,
-        keySchemaStr,
-        valueSchemaStr,
+        recordSchema.getField(props.getProperty(KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP)).schema().toString(),
+        recordSchema.getField(props.getProperty(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP)).schema().toString(),
         props,
         CompressionStrategy.NO_OP,
         false,
@@ -936,23 +919,13 @@ public class TestPushUtils {
       String keySchemaStr,
       String valueSchema,
       Properties props) {
-    return createStoreForJob(veniceClusterWrapper, keySchemaStr, valueSchema, props, CompressionStrategy.NO_OP, false);
-  }
-
-  public static ControllerClient createStoreForJob(
-      VeniceClusterWrapper veniceCluster,
-      String keySchemaStr,
-      String valueSchemaStr,
-      Properties props,
-      CompressionStrategy compressionStrategy,
-      boolean chunkingEnabled) {
     return createStoreForJob(
-        veniceCluster.getClusterName(),
+        veniceClusterWrapper.getClusterName(),
         keySchemaStr,
-        valueSchemaStr,
+        valueSchema,
         props,
-        compressionStrategy,
-        chunkingEnabled,
+        CompressionStrategy.NO_OP,
+        false,
         false);
   }
 
@@ -973,7 +946,7 @@ public class TestPushUtils {
             .setChunkingEnabled(chunkingEnabled)
             .setIncrementalPushEnabled(incrementalPushEnabled);
 
-    return createStoreForJob(veniceClusterName, keySchemaStr, valueSchemaStr, props, storeParams, false);
+    return createStoreForJob(veniceClusterName, keySchemaStr, valueSchemaStr, props, storeParams);
   }
 
   public static ControllerClient createStoreForJob(
@@ -982,42 +955,14 @@ public class TestPushUtils {
       String valueSchemaStr,
       Properties props,
       UpdateStoreQueryParams storeParams) {
-    return createStoreForJob(veniceClusterName, keySchemaStr, valueSchemaStr, props, storeParams, false);
-  }
-
-  public static ControllerClient createStoreForJob(
-      String veniceClusterName,
-      String keySchemaStr,
-      String valueSchemaStr,
-      Properties props,
-      UpdateStoreQueryParams storeParams,
-      boolean addDerivedSchemaToStore) {
 
     ControllerClient controllerClient = getControllerClient(veniceClusterName, props);
-    NewStoreResponse newStoreResponse = controllerClient.retryableRequest(
-        5,
-        c -> c.createNewStore(
-            props.getProperty(VENICE_STORE_NAME_PROP),
-            "test@linkedin.com",
-            keySchemaStr,
-            valueSchemaStr));
+    NewStoreResponse newStoreResponse = controllerClient
+        .createNewStore(props.getProperty(VENICE_STORE_NAME_PROP), "test@linkedin.com", keySchemaStr, valueSchemaStr);
 
     Assert.assertFalse(
         newStoreResponse.isError(),
         "The NewStoreResponse returned an error: " + newStoreResponse.getError());
-
-    if (addDerivedSchemaToStore) {
-      // Generate write compute schema
-      Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance()
-          .convertFromValueRecordSchema(AvroCompatibilityHelper.parse(valueSchemaStr));
-      SchemaResponse derivedValueSchemaResponse = controllerClient.retryableRequest(
-          5,
-          c -> c.addDerivedSchema(props.getProperty(VENICE_STORE_NAME_PROP), +1, writeComputeSchema.toString()));
-
-      Assert.assertFalse(
-          derivedValueSchemaResponse.isError(),
-          "The DerivedValueSchemaResponse returned an error: " + derivedValueSchemaResponse.getError());
-    }
 
     updateStore(veniceClusterName, props, storeParams.setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
     return controllerClient;
@@ -1028,15 +973,6 @@ public class TestPushUtils {
       TestUtils.assertCommand(
           controllerClient.retryableRequest(5, c -> c.deleteStore(props.getProperty(VENICE_STORE_NAME_PROP))),
           "The delete store request returned an error");
-    }
-  }
-
-  public static void disableStore(String veniceClusterName, Properties props) {
-    try (ControllerClient controllerClient = getControllerClient(veniceClusterName, props)) {
-      TestUtils.assertCommand(
-          controllerClient
-              .retryableRequest(5, c -> c.enableStoreReadWrites(props.getProperty(VENICE_STORE_NAME_PROP), false)),
-          "The disable store request returned an error");
     }
   }
 
@@ -1167,11 +1103,7 @@ public class TestPushUtils {
         StandardCharsets.UTF_8);
   }
 
-  public static void updateStore(
-      String clusterName,
-      String storeName,
-      ControllerClient controllerClient,
-      UpdateStoreQueryParams params) {
+  public static void updateStore(String storeName, ControllerClient controllerClient, UpdateStoreQueryParams params) {
     ControllerResponse controllerResponse = controllerClient.retryableRequest(5, c -> c.updateStore(storeName, params));
     Assert.assertFalse(
         controllerResponse.isError(),

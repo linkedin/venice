@@ -1,6 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 
@@ -44,8 +45,8 @@ public class TestSuperSetSchemaRegistration {
       boolean addFieldWithDefaultValue1,
       boolean addFieldWithDefaultValue2) throws IOException {
     String schemaStr = "{\"namespace\": \"example.avro\",\n" + " \"type\": \"record\",\n" + " \"name\": \"User\",\n"
-        + " \"fields\": [\n" + "      { \"name\": \"id\", \"type\": \"string\"},\n" + "      {\n"
-        + "       \"name\": \"value\",\n" + "       \"type\": {\n" + "           \"type\": \"record\",\n"
+        + " \"fields\": [\n" + "      { \"name\": \"" + DEFAULT_KEY_FIELD_PROP + "\", \"type\": \"string\"},\n"
+        + "      {\n" + "       \"name\": \"value\",\n" + "       \"type\": {\n" + "           \"type\": \"record\",\n"
         + "           \"name\": \"ValueRecord\",\n" + "           \"fields\" : [\n"
         + "              {\"name\": \"favorite_number\", \"type\": \"int\", \"default\" : 0}\n";
     if (addFieldWithDefaultValue1) {
@@ -63,7 +64,7 @@ public class TestSuperSetSchemaRegistration {
 
       for (int i = 1; i <= 100; ++i) {
         GenericRecord user = new GenericData.Record(schema);
-        user.put("id", Integer.toString(i));
+        user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
         GenericRecord oldValue = new GenericData.Record(schema.getField("value").schema());
         oldValue.put("favorite_number", i);
         if (addFieldWithDefaultValue1) {
@@ -72,7 +73,7 @@ public class TestSuperSetSchemaRegistration {
         if (addFieldWithDefaultValue2) {
           oldValue.put("favorite_food", "italian");
         }
-        user.put("value", oldValue);
+        user.put(DEFAULT_VALUE_FIELD_PROP, oldValue);
         dataFileWriter.append(user);
       }
 
@@ -97,12 +98,11 @@ public class TestSuperSetSchemaRegistration {
     String storeName = Utils.getUniqueString("store");
 
     Schema recordSchema = writeComplicatedAvroFileWithUserSchema(inputDir, false, true);
-    Schema keySchema = recordSchema.getField("id").schema();
-    Schema valueSchema = recordSchema.getField("value").schema();
+    Schema keySchema = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema();
+    Schema valueSchema = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema();
 
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
-    props.setProperty(VALUE_FIELD_PROP, "value");
 
     try (ControllerClient controllerClient =
         createStoreForJob(veniceCluster, keySchema.toString(), valueSchema.toString(), props)) {
@@ -116,15 +116,12 @@ public class TestSuperSetSchemaRegistration {
     writeComplicatedAvroFileWithUserSchema(inputDir, true, true);
     props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
 
-    props.setProperty(VALUE_FIELD_PROP, "value");
-
     try (VenicePushJob job = new VenicePushJob("Test Batch push job # 1", props)) {
       job.run();
     }
 
     writeComplicatedAvroFileWithUserSchema(inputDir, false, false);
     props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
-    props.setProperty(VALUE_FIELD_PROP, "value");
 
     try (VenicePushJob job = new VenicePushJob("Test Batch push job # 2", props)) {
       job.run();

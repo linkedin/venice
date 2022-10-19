@@ -125,10 +125,13 @@ public class VenicePushJob implements AutoCloseable {
 
   public static final String KEY_FIELD_PROP = "key.field";
   public static final String VALUE_FIELD_PROP = "value.field";
+  public static final String DEFAULT_KEY_FIELD_PROP = "key";
+  public static final String DEFAULT_VALUE_FIELD_PROP = "value";
+  public static final boolean DEFAULT_SSL_ENABLED = false;
   public static final String SCHEMA_STRING_PROP = "schema";
   public static final String KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP = "kafka.source.key.schema";
   public static final String EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED = "extended.schema.validity.check.enabled";
-  public static final Boolean DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED = true;
+  public static final boolean DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED = true;
 
   // Vson input configs
   // Vson files store key/value schema on file header. key / value fields are optional
@@ -266,7 +269,6 @@ public class VenicePushJob implements AutoCloseable {
   public static final String ENABLE_WRITE_COMPUTE = "venice.write.compute.enable";
   public static final String ENABLE_PUSH = "venice.push.enable";
   public static final String ENABLE_SSL = "venice.ssl.enable";
-  public static final String VENICE_CLUSTER_NAME_PROP = "cluster.name";
   public static final String VENICE_STORE_NAME_PROP = "venice.store.name";
   public static final String INPUT_PATH_PROP = "input.path";
   public static final String INPUT_PATH_LAST_MODIFIED_TIME = "input.path.last.modified.time";
@@ -508,11 +510,6 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   // Visible for testing
-  public VenicePushJob(String jobId, Properties vanillaProps, ControllerClient controllerClient) {
-    this(jobId, vanillaProps, controllerClient, null);
-  }
-
-  // Visible for testing
   public VenicePushJob(
       String jobId,
       Properties vanillaProps,
@@ -522,6 +519,15 @@ public class VenicePushJob implements AutoCloseable {
     this.clusterDiscoveryControllerClient = clusterDiscoveryControllerClient;
     this.jobId = jobId;
     this.props = getVenicePropsFromVanillaProps(vanillaProps);
+    if (isSslEnabled()) {
+      String[] requiredSSLPropertiesNames = new String[] { SSL_KEY_PASSWORD_PROPERTY_NAME,
+          SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, SSL_KEY_STORE_PROPERTY_NAME, SSL_TRUST_STORE_PROPERTY_NAME };
+      for (String sslPropertyName: requiredSSLPropertiesNames) {
+        if (!vanillaProps.containsKey(sslPropertyName)) {
+          throw new VeniceException("Miss the require ssl property name: " + sslPropertyName);
+        }
+      }
+    }
     this.sslProperties = Lazy.of(() -> {
       try {
         return getSslProperties(this.props);
@@ -534,9 +540,7 @@ public class VenicePushJob implements AutoCloseable {
     initControllerClient(
         props.getString(VENICE_STORE_NAME_PROP),
         getVeniceControllerUrl(props),
-        createSSlFactory(
-            props.getBoolean(ENABLE_SSL, false),
-            props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME)),
+        createSSlFactory(isSslEnabled(), props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME)),
         props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1));
     this.pushJobSetting = getPushJobSetting(veniceControllerUrl, props);
     LOGGER.info("Going to use controller URL: {}  to discover cluster.", veniceControllerUrl);
@@ -574,9 +578,8 @@ public class VenicePushJob implements AutoCloseable {
   private ControllerClient createLivenessHeartbeatControllerClient(VeniceProperties properties) {
     String heartbeatStoreName = properties.getString(HEARTBEAT_STORE_NAME_CONFIG.getConfigName()); // Required config
                                                                                                    // value
-    Optional<SSLFactory> sslFactory = createSSlFactory(
-        properties.getBoolean(ENABLE_SSL, false),
-        properties.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME));
+    Optional<SSLFactory> sslFactory =
+        createSSlFactory(isSslEnabled(), properties.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME));
     String veniceControllerUrl = getVeniceControllerUrl(properties);
     String heartbeatStoreClusterName = discoverCluster(heartbeatStoreName);
     ControllerClient heartbeatStoreControllerClient =
@@ -593,7 +596,7 @@ public class VenicePushJob implements AutoCloseable {
    * @param vanillaProps  Property bag for the job
    */
   public VenicePushJob(String jobId, Properties vanillaProps) {
-    this(jobId, vanillaProps, null);
+    this(jobId, vanillaProps, null, null);
   }
 
   // Visible for testing
@@ -602,29 +605,31 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   private VeniceProperties getVenicePropsFromVanillaProps(Properties vanillaProps) {
-    if (vanillaProps.containsKey(LEGACY_AVRO_KEY_FIELD_PROP)) {
-      if (vanillaProps.containsKey(KEY_FIELD_PROP)
-          && !vanillaProps.getProperty(KEY_FIELD_PROP).equals(vanillaProps.getProperty(LEGACY_AVRO_KEY_FIELD_PROP))) {
-        throw new VeniceException("Duplicate key filed found in config. Both avro.key.field and key.field are set up.");
-      }
-      vanillaProps.setProperty(KEY_FIELD_PROP, vanillaProps.getProperty(LEGACY_AVRO_KEY_FIELD_PROP));
-    }
-    if (vanillaProps.containsKey(LEGACY_AVRO_VALUE_FIELD_PROP)) {
-      if (vanillaProps.containsKey(VALUE_FIELD_PROP) && !vanillaProps.getProperty(VALUE_FIELD_PROP)
-          .equals(vanillaProps.getProperty(LEGACY_AVRO_VALUE_FIELD_PROP))) {
-        throw new VeniceException(
-            "Duplicate value filed found in config. Both avro.value.field and value.field are set up.");
-      }
-      vanillaProps.setProperty(VALUE_FIELD_PROP, vanillaProps.getProperty(LEGACY_AVRO_VALUE_FIELD_PROP));
-    }
-    String[] requiredSSLPropertiesNames = new String[] { SSL_KEY_PASSWORD_PROPERTY_NAME,
-        SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, SSL_KEY_STORE_PROPERTY_NAME, SSL_TRUST_STORE_PROPERTY_NAME };
-    for (String sslPropertyName: requiredSSLPropertiesNames) {
-      if (!vanillaProps.containsKey(sslPropertyName)) {
-        throw new VeniceException("Miss the require ssl property name: " + sslPropertyName);
-      }
-    }
+    handleLegacyConfig(vanillaProps, LEGACY_AVRO_KEY_FIELD_PROP, KEY_FIELD_PROP, "key field");
+    handleLegacyConfig(vanillaProps, LEGACY_AVRO_VALUE_FIELD_PROP, VALUE_FIELD_PROP, "value field");
     return new VeniceProperties(vanillaProps);
+  }
+
+  private void handleLegacyConfig(
+      Properties vanillaProps,
+      String legacyConfigProp,
+      String newConfigProp,
+      String configDescription) {
+    String legacyConfig = vanillaProps.getProperty(legacyConfigProp);
+    if (legacyConfig != null) {
+      String newConfig = vanillaProps.getProperty(newConfigProp);
+      if (newConfig == null) {
+        vanillaProps.setProperty(newConfigProp, legacyConfig);
+      } else if (!newConfig.equals(legacyConfig)) {
+        throw new VeniceException(
+            "Duplicate " + configDescription + " config found! Both " + legacyConfigProp + " and " + newConfigProp
+                + " are set, but with different values! Use only: " + newConfigProp);
+      }
+    }
+  }
+
+  private boolean isSslEnabled() {
+    return props.getBoolean(ENABLE_SSL, DEFAULT_SSL_ENABLED);
   }
 
   private PushJobSetting getPushJobSetting(String veniceControllerUrl, VeniceProperties props) {
@@ -635,7 +640,7 @@ public class VenicePushJob implements AutoCloseable {
      * TODO: after controller SSL support is rolled out everywhere, change the default behavior for ssl enabled to true;
      * Besides, change the venice controller urls list for all push job to use the new port
      */
-    pushJobSettingToReturn.enableSsl = props.getBoolean(ENABLE_SSL, false);
+    pushJobSettingToReturn.enableSsl = isSslEnabled();
     pushJobSettingToReturn.sslFactoryClassName =
         props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
     if (props.containsKey(SOURCE_GRID_FABRIC)) {
@@ -791,7 +796,7 @@ public class VenicePushJob implements AutoCloseable {
           pushJobSettingUnderConstruction.storeName,
           getVeniceControllerUrl(properties),
           createSSlFactory(
-              properties.getBoolean(ENABLE_SSL, false),
+              isSslEnabled(),
               properties.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME)),
           pushJobSettingUnderConstruction.controllerRetries);
     }
@@ -915,7 +920,7 @@ public class VenicePushJob implements AutoCloseable {
       initPushJobDetails();
       jobStartTimeMs = System.currentTimeMillis();
       logGreeting();
-      final boolean sslEnabled = props.getBoolean(ENABLE_SSL, false);
+      final boolean sslEnabled = isSslEnabled();
       Optional<SSLFactory> sslFactory =
           createSSlFactory(sslEnabled, props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME));
       initControllerClient(
@@ -1961,6 +1966,11 @@ public class VenicePushJob implements AutoCloseable {
           c -> c.getValueSchemaID(setting.storeName, pushJobSchemaInfo.getValueSchemaString()));
     }
     if (getValueSchemaIdResponse.isError() && !schemaAutoRegisterFromPushJobEnabled) {
+      MultiSchemaResponse response = controllerClient.getAllValueSchema(setting.storeName);
+      LOGGER.info("All currently registered value schemas:");
+      for (MultiSchemaResponse.Schema schema: response.getSchemas()) {
+        LOGGER.info("Schema " + schema.getId() + ": " + schema.getSchemaStr());
+      }
       throw new VeniceException(
           "Failed to validate value schema for store: " + setting.storeName + "\nError from the server: "
               + getValueSchemaIdResponse.getError() + "\nSchema for the data file: "
@@ -2499,22 +2509,24 @@ public class VenicePushJob implements AutoCloseable {
 
   /**
    * Common configuration for all the Mapreduce Jobs run as part of VPJ
+   *
    * @param conf
    * @param jobName
    */
-  private void setupCommonJobConf(JobConf conf, PushJobSchemaInfo pushJobSchemaInfo, String jobName) {
+  private void setupCommonJobConf(JobConf conf, String jobName) {
     if (System.getenv(HADOOP_TOKEN_FILE_LOCATION) != null) {
       conf.set(MAPREDUCE_JOB_CREDENTIALS_BINARY, System.getenv(HADOOP_TOKEN_FILE_LOCATION));
     }
     conf.setJobName(jobName);
     conf.setJarByClass(this.getClass());
-
-    conf.set(
-        SSL_CONFIGURATOR_CLASS_CONFIG,
-        props.getString(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName()));
-    conf.set(SSL_KEY_STORE_PROPERTY_NAME, props.getString(SSL_KEY_STORE_PROPERTY_NAME));
-    conf.set(SSL_TRUST_STORE_PROPERTY_NAME, props.getString(SSL_TRUST_STORE_PROPERTY_NAME));
-    conf.set(SSL_KEY_PASSWORD_PROPERTY_NAME, props.getString(SSL_KEY_PASSWORD_PROPERTY_NAME));
+    if (isSslEnabled()) {
+      conf.set(
+          SSL_CONFIGURATOR_CLASS_CONFIG,
+          props.getString(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName()));
+      conf.set(SSL_KEY_STORE_PROPERTY_NAME, props.getString(SSL_KEY_STORE_PROPERTY_NAME));
+      conf.set(SSL_TRUST_STORE_PROPERTY_NAME, props.getString(SSL_TRUST_STORE_PROPERTY_NAME));
+      conf.set(SSL_KEY_PASSWORD_PROPERTY_NAME, props.getString(SSL_KEY_PASSWORD_PROPERTY_NAME));
+    }
 
     // Hadoop2 dev cluster provides a newer version of an avro dependency.
     // Set mapreduce.job.classloader to true to force the use of the older avro dependency.
@@ -2536,7 +2548,7 @@ public class VenicePushJob implements AutoCloseable {
       StoreSetting storeSetting,
       VeniceProperties props,
       String id) {
-    setupCommonJobConf(conf, pushJobSchemaInfo, id + ":venice_push_job-" + versionTopicInfo.topic);
+    setupCommonJobConf(conf, id + ":venice_push_job-" + versionTopicInfo.topic);
     conf.set(BATCH_NUM_BYTES_PROP, Integer.toString(pushJobSetting.batchNumBytes));
     conf.set(TOPIC_PROP, versionTopicInfo.topic);
     // We need the two configs with bootstrap servers since VeniceWriterFactory requires kafka.bootstrap.servers while
@@ -2735,26 +2747,23 @@ public class VenicePushJob implements AutoCloseable {
       VeniceProperties props,
       String id,
       String inputDirectory) {
-    setupDefaultJobConfToValidateSchemaAndBuildDict(conf, pushJobSetting, pushJobSchemaInfo, storeSetting, props, id);
+    setupDefaultJobConfToValidateSchemaAndBuildDict(conf, pushJobSetting, storeSetting, props, id);
     setupInputFormatConfToValidateSchemaAndBuildDict(conf, pushJobSchemaInfo, inputDirectory);
   }
 
   /**
    * Default config includes the details related to jobids, output formats, compression configs, ssl configs, etc.
+   *
    * @param conf
    * @param id
    */
   private void setupDefaultJobConfToValidateSchemaAndBuildDict(
       JobConf conf,
       PushJobSetting pushJobSetting,
-      PushJobSchemaInfo pushJobSchemaInfo,
       StoreSetting storeSetting,
       VeniceProperties props,
       String id) {
-    setupCommonJobConf(
-        conf,
-        pushJobSchemaInfo,
-        id + ":venice_push_job_validate_schema_and_build_dict-" + pushJobSetting.storeName);
+    setupCommonJobConf(conf, id + ":venice_push_job_validate_schema_and_build_dict-" + pushJobSetting.storeName);
     conf.set(VENICE_STORE_NAME_PROP, pushJobSetting.storeName);
     conf.set(ETL_VALUE_SCHEMA_TRANSFORMATION, pushJobSetting.etlValueSchemaTransformation.name());
     conf.setBoolean(INCREMENTAL_PUSH, pushJobSetting.isIncrementalPush);
@@ -2978,10 +2987,6 @@ public class VenicePushJob implements AutoCloseable {
 
   public String getInputDirectory() {
     return inputDirectory;
-  }
-
-  public long getInputFileDataSize() {
-    return inputFileDataSize;
   }
 
   public Optional<String> getIncrementalPushVersion() {

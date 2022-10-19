@@ -139,10 +139,8 @@ public class TestPushJobWithNativeReplicationSharedProducer {
         props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
         Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
-        String keySchemaStr =
-            recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
-        String valueSchemaStr =
-            recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
+        String keySchemaStr = recordSchema.getField(VenicePushJob.DEFAULT_KEY_FIELD_PROP).schema().toString();
+        String valueSchemaStr = recordSchema.getField(VenicePushJob.DEFAULT_VALUE_FIELD_PROP).schema().toString();
 
         UpdateStoreQueryParams updateStoreParams =
             new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)

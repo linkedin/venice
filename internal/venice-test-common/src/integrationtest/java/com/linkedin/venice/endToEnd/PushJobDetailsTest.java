@@ -8,6 +8,8 @@ import static com.linkedin.venice.ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
+import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static com.linkedin.venice.hadoop.VenicePushJob.PushJobCheckpoints;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
@@ -133,8 +135,8 @@ public class PushJobDetailsTest {
     parentControllerClient.createNewStore(
         testStoreName,
         "test-user",
-        recordSchema.getField("id").schema().toString(),
-        recordSchema.getField("name").schema().toString());
+        recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString(),
+        recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString());
     // Set store quota to unlimited else local VPJ jobs will fail due to quota enforcement NullPointerException because
     // hadoop job client cannot fetch counters properly.
     parentControllerClient
@@ -226,8 +228,8 @@ public class PushJobDetailsTest {
     parentControllerClient.createNewStore(
         testStoreName,
         "test-user",
-        recordSchema.getField("id").schema().toString(),
-        recordSchema.getField("name").schema().toString());
+        recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString(),
+        recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString());
     // hadoop job client cannot fetch counters properly and should fail the job
     parentControllerClient.updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(0));
     Properties pushJobProps = defaultVPJProps(venice, inputDirPath, testStoreName);

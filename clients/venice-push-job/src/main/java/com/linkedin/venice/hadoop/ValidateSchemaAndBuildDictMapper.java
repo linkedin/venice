@@ -267,7 +267,6 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
        */
       hasReportedFailure = true;
       checkLastModificationTimeAndLogError(e, "listing input files");
-      return;
     }
   }
 

@@ -149,8 +149,8 @@ public class TestMetadataOperationInMultiCluster {
         Properties vpjProperties =
             defaultVPJProps(multiClusterWrapper.getRandomController().getControllerUrl(), inputDirPath, storeName);
         propertiesMap.put(clusterName, vpjProperties);
-        Schema keySchema = recordSchema.getField(vpjProperties.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema();
-        Schema valueSchema = recordSchema.getField(vpjProperties.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema();
+        Schema keySchema = recordSchema.getField(VenicePushJob.DEFAULT_KEY_FIELD_PROP).schema();
+        Schema valueSchema = recordSchema.getField(VenicePushJob.DEFAULT_VALUE_FIELD_PROP).schema();
 
         try (ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(
             clusterName,
