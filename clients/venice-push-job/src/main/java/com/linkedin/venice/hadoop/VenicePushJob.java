@@ -169,11 +169,8 @@ public class VenicePushJob implements AutoCloseable {
   /**
    * Location and key to store the output of {@link ValidateSchemaAndBuildDictMapper} and retrieve it back
    */
-  public static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PATH = "/tmp/mapred/venice";
-  public static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PER_STORE_PATH_PREFIX = "mapper-data-";
-  // TODO: What happens to the dir/file names when there are multiple map attempts
-  public static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE = "part-00000.avro";
-
+  private static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_PREFIX = "mapper-output-";
+  private static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_EXTENSION = ".avro";
   public static final String KEY_ZSTD_COMPRESSION_DICTIONARY = "zstdDictionary";
   public static final String KEY_INPUT_FILE_DATA_SIZE = "inputFileDataSize";
 
@@ -391,7 +388,7 @@ public class VenicePushJob implements AutoCloseable {
   private SentPushJobDetailsTracker sentPushJobDetailsTracker;
   private Class<? extends Partitioner> mapRedPartitionerClass = VeniceMRPartitioner.class;
   private PushJobSchemaInfo pushJobSchemaInfo;
-  private ValidateSchemaAndBuildDictMapperOutputReader validateSchemaAndBuildDictMapperOutputReader;
+  private ValidateSchemaAndBuildDictMapperOutputReader validateSchemaAndBuildDictMapperOutputReader = null;
 
   protected static class PushJobSetting {
     boolean enablePush;
@@ -901,12 +898,6 @@ public class VenicePushJob implements AutoCloseable {
     this.mapRedPartitionerClass = mapRedPartitionerClass;
   }
 
-  private static String getValidateSchemaAndBuildDictionaryOutputFile(String storeName) {
-    return VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PATH + "/"
-        + VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PER_STORE_PATH_PREFIX + storeName + "/"
-        + VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE;
-  }
-
   /**
    * @throws VeniceException
    */
@@ -1173,6 +1164,9 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobHeartbeatSender != null) {
         pushJobHeartbeatSender.stop();
       }
+      if (validateSchemaAndBuildDictMapperOutputReader != null) {
+        validateSchemaAndBuildDictMapperOutputReader.close();
+      }
       inputDataInfoProvider = null;
     }
   }
@@ -1299,17 +1293,48 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private void runValidateSchemaAndBuildDictJobAndUpdateStatus(JobConf jobConf) throws Exception {
+  private void runValidateSchemaAndBuildDictJobAndUpdateStatus(JobConf conf) throws Exception {
     updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB);
-    runningJob = runJobWithConfig(jobConf);
+    runningJob = runJobWithConfig(conf);
     validateCountersAfterValidateSchemaAndBuildDict();
+    getValidateSchemaAndBuildDictMapperOutput(conf, runningJob.getID().toString());
     updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED);
-    getValidateSchemaAndBuildDictMapperOutput();
   }
 
-  private void getValidateSchemaAndBuildDictMapperOutput() throws Exception {
-    String outputAvroFile = getValidateSchemaAndBuildDictionaryOutputFile(pushJobSetting.storeName);
-    validateSchemaAndBuildDictMapperOutputReader = new ValidateSchemaAndBuildDictMapperOutputReader(outputAvroFile);
+  /**
+   * Creating the output file for {@link ValidateSchemaAndBuildDictMapper} to persist data
+   * to be read from VPJ driver.
+   *
+   * Format of the file path: {$hadoopTmpDir}/venice/{$storeName}/mapper-output-{$MRJobID}.avro
+   *
+   * Why using MRJobID? Multiple push jobs can be started in parallel, but only 1 will continue beyond
+   * {@link ControllerClient#requestTopicForWrites} as this method will throw CONCURRENT_BATCH_PUSH error
+   * if there is another push job in progress. As dictionary creation happens before this method,
+   * it is prone to race conditions, so having per job file will prevent it getting corrupted due
+   * to parallel writes or overwrites.
+   */
+  protected static String getValidateSchemaAndBuildDictionaryOutputParentDir(JobConf conf) {
+    return conf.get("hadoop.tmp.dir") + "/" + "venice";
+  }
+
+  protected static String getValidateSchemaAndBuildDictionaryOutputDir(JobConf conf, String storeName) {
+    return getValidateSchemaAndBuildDictionaryOutputParentDir(conf) + "/" + storeName;
+  }
+
+  protected static String getValidateSchemaAndBuildDictionaryOutputFileNameNoExtension(String jobId) {
+    return VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_PREFIX + jobId;
+  }
+
+  protected static String getValidateSchemaAndBuildDictionaryOutputFileName(String jobId) {
+    return getValidateSchemaAndBuildDictionaryOutputFileNameNoExtension(jobId)
+        + VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_EXTENSION;
+  }
+
+  private void getValidateSchemaAndBuildDictMapperOutput(JobConf conf, String jobId) throws Exception {
+    String outputDir = getValidateSchemaAndBuildDictionaryOutputDir(conf, pushJobSetting.storeName);
+    String outputAvroFile = getValidateSchemaAndBuildDictionaryOutputFileName(jobId);
+    validateSchemaAndBuildDictMapperOutputReader =
+        new ValidateSchemaAndBuildDictMapperOutputReader(outputDir, outputAvroFile);
     inputFileDataSize = validateSchemaAndBuildDictMapperOutputReader.getInputFileDataSize() * INPUT_DATA_SIZE_FACTOR;
   }
 
@@ -2711,7 +2736,6 @@ public class VenicePushJob implements AutoCloseable {
         conf,
         pushJobSchemaInfo,
         id + ":venice_push_job_validate_schema_and_build_dict-" + pushJobSetting.storeName);
-
     conf.set(VENICE_STORE_NAME_PROP, pushJobSetting.storeName);
     conf.set(ETL_VALUE_SCHEMA_TRANSFORMATION, pushJobSetting.etlValueSchemaTransformation.name());
     conf.setBoolean(INCREMENTAL_PUSH, pushJobSetting.isIncrementalPush);

@@ -17,15 +17,38 @@ public class TestValidateSchemaAndBuildDictMapperOutputReader {
   private static final Schema fileSchema = ValidateSchemaAndBuildDictMapperOutput.getClassSchema();
   private final File inputDir = getTempDataDirectory();
 
-  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "File should not be null")
-  public void testGetWithNullAsFile() throws Exception {
-    new ValidateSchemaAndBuildDictMapperOutputReader(null);
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = NullPointerException.class, expectedExceptionsMessageRegExp = ".* output directory should not be empty")
+  public void testGetWithDirAsNull() throws Exception {
+    ValidateSchemaAndBuildDictMapperOutputReader reader = new ValidateSchemaAndBuildDictMapperOutputReader(null, null);
+    reader.close();
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".* output directory should not be empty")
+  public void testGetWithDirAsEmpty() throws Exception {
+    ValidateSchemaAndBuildDictMapperOutputReader reader = new ValidateSchemaAndBuildDictMapperOutputReader("", null);
+    reader.close();
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = NullPointerException.class, expectedExceptionsMessageRegExp = ".* output fileName should not be empty")
+  public void testGetWithFileAsNull() throws Exception {
+    ValidateSchemaAndBuildDictMapperOutputReader reader =
+        new ValidateSchemaAndBuildDictMapperOutputReader(inputDir.getAbsolutePath(), null);
+    reader.close();
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".* output fileName should not be empty")
+  public void testGetWithFileAsEmpty() throws Exception {
+    ValidateSchemaAndBuildDictMapperOutputReader reader =
+        new ValidateSchemaAndBuildDictMapperOutputReader(inputDir.getAbsolutePath(), "");
+    reader.close();
   }
 
   @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Encountered exception reading Avro data from.*")
   public void testGetWithNoFile() throws Exception {
     String avroOutputFile = "nofile.avro"; // This file is not present
-    new ValidateSchemaAndBuildDictMapperOutputReader(inputDir.getAbsolutePath() + '/' + avroOutputFile);
+    ValidateSchemaAndBuildDictMapperOutputReader reader =
+        new ValidateSchemaAndBuildDictMapperOutputReader(inputDir.getAbsolutePath(), avroOutputFile);
+    reader.close();
   }
 
   /**
@@ -36,7 +59,9 @@ public class TestValidateSchemaAndBuildDictMapperOutputReader {
   public void testGetWithEmptyFile() throws Exception {
     String avroOutputFile = "empty_file.avro";
     TestPushUtils.writeEmptyAvroFileWithUserSchema(inputDir, avroOutputFile, fileSchema.toString());
-    new ValidateSchemaAndBuildDictMapperOutputReader(inputDir.getAbsolutePath() + '/' + avroOutputFile);
+    ValidateSchemaAndBuildDictMapperOutputReader reader =
+        new ValidateSchemaAndBuildDictMapperOutputReader(inputDir.getAbsolutePath(), avroOutputFile);
+    reader.close();
   }
 
   /**
@@ -47,7 +72,9 @@ public class TestValidateSchemaAndBuildDictMapperOutputReader {
   public void testGetWithInvalidAvroFile() throws Exception {
     String avroOutputFile = "invalid_file.avro";
     TestPushUtils.writeInvalidAvroFile(inputDir, avroOutputFile);
-    new ValidateSchemaAndBuildDictMapperOutputReader(inputDir.getAbsolutePath() + '/' + avroOutputFile);
+    ValidateSchemaAndBuildDictMapperOutputReader reader =
+        new ValidateSchemaAndBuildDictMapperOutputReader(inputDir.getAbsolutePath(), avroOutputFile);
+    reader.close();
   }
 
   /**
@@ -63,7 +90,9 @@ public class TestValidateSchemaAndBuildDictMapperOutputReader {
         0,
         ByteBuffer.wrap("TestDictionary".getBytes()),
         fileSchema.toString());
-    new ValidateSchemaAndBuildDictMapperOutputReader(inputDir.getAbsolutePath() + '/' + avroOutputFile);
+    ValidateSchemaAndBuildDictMapperOutputReader reader =
+        new ValidateSchemaAndBuildDictMapperOutputReader(inputDir.getAbsolutePath(), avroOutputFile);
+    reader.close();
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -75,7 +104,9 @@ public class TestValidateSchemaAndBuildDictMapperOutputReader {
         1,
         ByteBuffer.wrap("TestDictionary".getBytes()),
         fileSchema.toString());
-    new ValidateSchemaAndBuildDictMapperOutputReader(inputDir.getAbsolutePath() + '/' + avroOutputFile);
+    ValidateSchemaAndBuildDictMapperOutputReader reader =
+        new ValidateSchemaAndBuildDictMapperOutputReader(inputDir.getAbsolutePath(), avroOutputFile);
+    reader.close();
   }
 
   /**
@@ -91,6 +122,8 @@ public class TestValidateSchemaAndBuildDictMapperOutputReader {
         1,
         null,
         fileSchema.toString());
-    new ValidateSchemaAndBuildDictMapperOutputReader(inputDir.getAbsolutePath() + '/' + avroOutputFile);
+    ValidateSchemaAndBuildDictMapperOutputReader reader =
+        new ValidateSchemaAndBuildDictMapperOutputReader(inputDir.getAbsolutePath(), avroOutputFile);
+    reader.close();
   }
 }

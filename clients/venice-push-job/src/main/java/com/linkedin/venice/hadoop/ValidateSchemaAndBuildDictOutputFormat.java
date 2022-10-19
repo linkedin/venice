@@ -1,6 +1,10 @@
 package com.linkedin.venice.hadoop;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.getValidateSchemaAndBuildDictionaryOutputDir;
+import static com.linkedin.venice.hadoop.VenicePushJob.getValidateSchemaAndBuildDictionaryOutputFileNameNoExtension;
+import static com.linkedin.venice.hadoop.VenicePushJob.getValidateSchemaAndBuildDictionaryOutputParentDir;
+import static org.apache.hadoop.mapreduce.MRJobConfig.ID;
 
 import java.io.IOException;
 import org.apache.avro.mapred.AvroOutputFormat;
@@ -10,6 +14,8 @@ import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.mapred.FileAlreadyExistsException;
 import org.apache.hadoop.mapred.FileOutputFormat;
 import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.mapred.RecordWriter;
+import org.apache.hadoop.util.Progressable;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -65,24 +71,26 @@ public class ValidateSchemaAndBuildDictOutputFormat extends AvroOutputFormat {
    * 1. The parent directory should be accessible by every user/group (777)
    * 2. specific output directory for this store should be accessible only by
    *    the user who triggers VPJ (700) to protect unauthorized access to pii
-   * @param conf mapred config
+   * @param job mapred config
    * @param storeName used for the specific output directory name
    * @throws IOException
    */
-  protected static void setValidateSchemaAndBuildDictionaryOutputDirPath(JobConf conf, String storeName)
+  protected static void setValidateSchemaAndBuildDictionaryOutputDirPath(JobConf job, String storeName)
       throws IOException {
-    Path outputPath = new Path(VenicePushJob.VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PATH);
-    FileSystem fs = outputPath.getFileSystem(conf);
-
+    // parent directory
+    Path outputPath = new Path(getValidateSchemaAndBuildDictionaryOutputParentDir(job));
+    FileSystem fs = outputPath.getFileSystem(job);
     createAndSetDirectoryPermission(fs, outputPath, "777");
 
-    outputPath = new Path(
-        VenicePushJob.VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PATH + "/"
-            + VenicePushJob.VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PER_STORE_PATH_PREFIX + storeName);
-
+    // store specific directory under parent directory
+    outputPath = new Path(getValidateSchemaAndBuildDictionaryOutputDir(job, storeName));
     createAndSetDirectoryPermission(fs, outputPath, "700");
 
-    setOutputPath(conf, outputPath);
+    LOGGER.info(
+        "{} Output will be stored in path: {}",
+        ValidateSchemaAndBuildDictMapper.class.getSimpleName(),
+        outputPath.toString());
+    setOutputPath(job, outputPath);
   }
 
   @Override
@@ -94,5 +102,21 @@ public class ValidateSchemaAndBuildDictOutputFormat extends AvroOutputFormat {
     } catch (FileAlreadyExistsException e) {
       // Ignore the exception
     }
+  }
+
+  /**
+   * Modify the output file name to be the MR job id to keep it unique.
+   * No need to explicitly control the permissions for the output file
+   * as its parent folder is restricted anyway.
+   */
+  @Override
+  public RecordWriter getRecordWriter(FileSystem ignore, JobConf job, String name, Progressable prog)
+      throws IOException {
+    String newFileName = getValidateSchemaAndBuildDictionaryOutputFileNameNoExtension(job.get(ID));
+    LOGGER.info(
+        "{} Output will be stored in file: {}",
+        ValidateSchemaAndBuildDictMapper.class.getSimpleName(),
+        newFileName);
+    return super.getRecordWriter(ignore, job, newFileName, prog);
   }
 }
