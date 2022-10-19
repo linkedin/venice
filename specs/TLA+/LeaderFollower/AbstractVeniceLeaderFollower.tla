@@ -34,7 +34,7 @@ ReplicasConsistent ==
     \A n1, n2 \in nodeIds:
     nodes[n1].persistedRecords = nodes[n2].persistedRecords
 
-EventuallyConsistent == <>[]ReplicasConsistent
+EventuallyConsistent == []<>ReplicasConsistent
 
 (***************************************************************************)
 (* All writes to Venice are asynchronous. A client writes to a queue that  *)
@@ -118,6 +118,28 @@ FollowerConsume ==
         VersionTopicConsume(followerNodeId)
 
 (***************************************************************************)
+(* Venice version push triggers a behavior where we reset the state in the *)
+(* version topic to some new dataset and apply all or part of the messages *)
+(* in the realtime topic to the new dataset.  We model this by clearing    *)
+(* the commited state from the participating nodes, selecting a random     *)
+(* checkpoint on the current realTimeTopic (where in production this would *)
+(* be selected based on some rewind strategy based on message times), and  *)
+(* clearing the version topic.  A refinment should consider tweaking this  *)
+(* to either generate data for the versionTopic, or, setting the rewind    *)
+(* based on some added metadata to values in the realTimetopic.            *)
+(***************************************************************************)
+
+VersionPush ==
+    /\ versionTopic' = <<>>
+    /\ \E rewindCheckpoint \in DOMAIN realTimeTopic:
+        nodes' = [i \in nodeIds |->
+        [ state |-> FOLLOWER,
+        rtOffset |-> rewindCheckpoint,
+        vtOffset |-> 1,
+        persistedRecords |-> {}]]
+    /\ UNCHANGED <<realTimeTopic>>
+
+(***************************************************************************)
 (* Leader promotion/demotion are not discrete in reality. A refinement can *)
 (* override these methods and put in some extra states to simulate cases   *)
 (* of catchup or multiple leaders.                                         *)
@@ -158,6 +180,7 @@ Next ==
     \/ FollowerConsume
     \/ DemoteLeader
     \/ PromoteLeader
+    \/ VersionPush
     \/ Terminating
 
 Spec == Init /\ [][Next]_vars /\ SF_vars(FollowerConsume) /\ WF_vars(LeaderConsume)
