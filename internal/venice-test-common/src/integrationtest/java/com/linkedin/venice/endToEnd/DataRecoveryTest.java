@@ -250,7 +250,7 @@ public class DataRecoveryTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT * 2)
   public void testHybridAADataRecovery() throws Exception {
     String storeName = Utils.getUniqueString("dataRecovery-store-hybrid-AA");
     String parentControllerURLs =
