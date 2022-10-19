@@ -15,3 +15,5 @@ jobs:
       - name: Cut release tag to build and upload Venice Release archive
         run: |
           ./make_tag.py --no-verify --github-actor '${GITHUB_ACTOR}'
+       - name: Build And Publish the artifactory
+          uses: ./.github/workflows/build-and-upload-archives.yml
