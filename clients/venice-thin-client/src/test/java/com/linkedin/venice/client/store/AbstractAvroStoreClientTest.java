@@ -189,7 +189,7 @@ public class AbstractAvroStoreClientTest {
     responseRecordV1List.add(record2);
 
     RecordSerializer<ComputeResponseRecordV1> computeResponseSerializer =
-        SerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.getClassSchema());
+        SerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.SCHEMA$);
     byte[] serializedResponse = computeResponseSerializer.serializeObjects(responseRecordV1List);
 
     TransportClient mockTransportClient =
@@ -257,7 +257,7 @@ public class AbstractAvroStoreClientTest {
     responseRecordV1List.add(record1);
 
     RecordSerializer<ComputeResponseRecordV1> computeResponseSerializer =
-        SerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.getClassSchema());
+        SerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.SCHEMA$);
 
     byte[] serializedResponse = computeResponseSerializer.serializeObjects(responseRecordV1List);
     TransportClient mockTransportClient =

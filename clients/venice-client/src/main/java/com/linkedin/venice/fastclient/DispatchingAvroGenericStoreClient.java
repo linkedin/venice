@@ -486,7 +486,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     // TODO: get multi-get response write schema from Router
 
     return FastSerializerDeserializerFactory
-        .getFastAvroSpecificDeserializer(MultiGetResponseRecordV1.getClassSchema(), MultiGetResponseRecordV1.class);
+        .getFastAvroSpecificDeserializer(MultiGetResponseRecordV1.SCHEMA$, MultiGetResponseRecordV1.class);
   }
 
   protected RecordDeserializer<V> getDataRecordDeserializer(int schemaId) throws VeniceClientException {
@@ -569,7 +569,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     // Initialize key serializer after metadata.start().
     this.keySerializer = FastSerializerDeserializerFactory.getAvroGenericSerializer(getKeySchema());
     this.multiGetSerializer =
-        FastSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.getClassSchema());
+        FastSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.SCHEMA$);
   }
 
   @Override

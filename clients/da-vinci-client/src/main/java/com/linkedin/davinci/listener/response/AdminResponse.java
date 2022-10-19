@@ -64,8 +64,8 @@ public class AdminResponse {
    */
   public void addStoreVersionState(StoreVersionState storeVersionState) {
     try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-      GenericDatumWriter<Object> avroDatumWriter = new GenericDatumWriter<>(StoreVersionState.getClassSchema());
-      Encoder byteToHexJsonEncoder = new ByteBufferToHexFormatJsonEncoder(StoreVersionState.getClassSchema(), output);
+      GenericDatumWriter<Object> avroDatumWriter = new GenericDatumWriter<>(StoreVersionState.SCHEMA$);
+      Encoder byteToHexJsonEncoder = new ByteBufferToHexFormatJsonEncoder(StoreVersionState.SCHEMA$, output);
       avroDatumWriter.write(storeVersionState, byteToHexJsonEncoder);
       byteToHexJsonEncoder.flush();
       output.flush();
@@ -95,7 +95,7 @@ public class AdminResponse {
 
   public byte[] serializedResponse() {
     RecordSerializer<AdminResponseRecord> serializer =
-        SerializerDeserializerFactory.getAvroGenericSerializer(AdminResponseRecord.getClassSchema());
+        SerializerDeserializerFactory.getAvroGenericSerializer(AdminResponseRecord.SCHEMA$);
 
     return serializer.serialize(this.responseRecord, AvroSerializer.REUSE.get());
   }

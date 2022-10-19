@@ -33,10 +33,10 @@ public class ComputeRequestWrapper {
 
   private static final Map<Integer, Schema> SCHEMA_MAP = new HashMap<Integer, Schema>() {
     {
-      put(1, ComputeRequestV1.getClassSchema());
-      put(2, ComputeRequestV2.getClassSchema());
-      put(3, ComputeRequestV3.getClassSchema());
-      put(4, ComputeRequestV4.getClassSchema());
+      put(1, ComputeRequestV1.SCHEMA$);
+      put(2, ComputeRequestV2.SCHEMA$);
+      put(3, ComputeRequestV3.SCHEMA$);
+      put(4, ComputeRequestV4.SCHEMA$);
     }
   };
   private static final Map<Integer, Class<? extends SpecificRecord>> CLASS_MAP =
@@ -50,10 +50,10 @@ public class ComputeRequestWrapper {
       };
   private static final Map<Integer, RecordSerializer> SERIALIZER_MAP = new HashMap<Integer, RecordSerializer>() {
     {
-      put(1, SerializerDeserializerFactory.getAvroGenericSerializer(ComputeRequestV1.getClassSchema()));
-      put(2, SerializerDeserializerFactory.getAvroGenericSerializer(ComputeRequestV2.getClassSchema()));
-      put(3, SerializerDeserializerFactory.getAvroGenericSerializer(ComputeRequestV3.getClassSchema()));
-      put(4, SerializerDeserializerFactory.getAvroGenericSerializer(ComputeRequestV4.getClassSchema()));
+      put(1, SerializerDeserializerFactory.getAvroGenericSerializer(ComputeRequestV1.SCHEMA$));
+      put(2, SerializerDeserializerFactory.getAvroGenericSerializer(ComputeRequestV2.SCHEMA$));
+      put(3, SerializerDeserializerFactory.getAvroGenericSerializer(ComputeRequestV3.SCHEMA$));
+      put(4, SerializerDeserializerFactory.getAvroGenericSerializer(ComputeRequestV4.SCHEMA$));
     }
   };
 

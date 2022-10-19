@@ -96,9 +96,9 @@ public class TestClientSimulator implements Client {
     this.keyDeserializer =
         FastSerializerDeserializerFactory.getAvroGenericDeserializer(KEY_VALUE_SCHEMA, KEY_VALUE_SCHEMA);
     this.multiGetRequestDeserializer = FastSerializerDeserializerFactory
-        .getFastAvroSpecificDeserializer(MultiGetRouterRequestKeyV1.getClassSchema(), MultiGetRouterRequestKeyV1.class);
+        .getFastAvroSpecificDeserializer(MultiGetRouterRequestKeyV1.SCHEMA$, MultiGetRouterRequestKeyV1.class);
     this.multiGetResponseSerializer =
-        FastSerializerDeserializerFactory.getFastAvroGenericSerializer(MultiGetResponseRecordV1.getClassSchema());
+        FastSerializerDeserializerFactory.getFastAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
   }
 
   /**

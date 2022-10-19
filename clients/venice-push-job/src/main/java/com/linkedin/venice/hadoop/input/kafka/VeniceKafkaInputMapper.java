@@ -21,7 +21,7 @@ import org.apache.hadoop.mapred.Reporter;
  */
 public class VeniceKafkaInputMapper extends AbstractVeniceMapper<BytesWritable, KafkaInputMapperValue> {
   private static final RecordSerializer KAFKA_INPUT_MAPPER_VALUE_SERIALIZER =
-      FastSerializerDeserializerFactory.getFastAvroGenericSerializer(KafkaInputMapperValue.getClassSchema());
+      FastSerializerDeserializerFactory.getFastAvroGenericSerializer(KafkaInputMapperValue.SCHEMA$);
 
   @Override
   protected AbstractVeniceRecordReader<BytesWritable, KafkaInputMapperValue> getRecordReader(VeniceProperties props) {

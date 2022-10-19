@@ -22,7 +22,7 @@ import org.apache.hadoop.mapred.Reporter;
 public class VeniceKafkaInputReducer extends VeniceReducer {
   private static final RecordDeserializer<KafkaInputMapperValue> KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_DESERIALIZER =
       FastSerializerDeserializerFactory
-          .getFastAvroSpecificDeserializer(KafkaInputMapperValue.getClassSchema(), KafkaInputMapperValue.class);
+          .getFastAvroSpecificDeserializer(KafkaInputMapperValue.SCHEMA$, KafkaInputMapperValue.class);
   private ChunkAssembler chunkAssembler = null;
   private MessageExtractor extractor = this::extractNonChunkedMessage;
 

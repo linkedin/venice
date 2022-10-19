@@ -25,8 +25,8 @@ public class SerializerDeserializerFactoryTest {
 
   @Test
   public void getAvroGenericDeserializerTest() throws VeniceClientException {
-    Schema actualSchema = TestValueRecord.getClassSchema();
-    Schema expectedSchema = TestValueRecordWithMoreFields.getClassSchema();
+    Schema actualSchema = TestValueRecord.SCHEMA$;
+    Schema expectedSchema = TestValueRecordWithMoreFields.SCHEMA$;
 
     GenericData.Record actualObject = new GenericData.Record(actualSchema);
     actualObject.put("long_field", 1000l);
@@ -50,7 +50,7 @@ public class SerializerDeserializerFactoryTest {
 
   @Test
   public void getAvroSpecificDeserializerTest() throws IOException, VeniceClientException {
-    Schema actualSchema = TestValueRecord.getClassSchema();
+    Schema actualSchema = TestValueRecord.SCHEMA$;
 
     GenericData.Record actualObject = new GenericData.Record(actualSchema);
     actualObject.put("long_field", 1000l);

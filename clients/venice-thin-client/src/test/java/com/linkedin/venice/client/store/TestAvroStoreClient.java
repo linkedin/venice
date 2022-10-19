@@ -37,7 +37,7 @@ import org.testng.annotations.Test;
 @Test
 public class TestAvroStoreClient {
   private static final String STORE_NAME = "test-store";
-  private static final String KEY_SCHEMA_STR = TestKeyRecord.getClassSchema().toString();
+  private static final String KEY_SCHEMA_STR = TestKeyRecord.SCHEMA$.toString();
 
   private TransportClient mockTransportClient;
 
@@ -78,8 +78,8 @@ public class TestAvroStoreClient {
     testKey.long_field = 0l;
     testKey.string_field = "";
 
-    String b64key = Base64.getUrlEncoder()
-        .encodeToString(StoreClientTestUtils.serializeRecord(testKey, TestKeyRecord.getClassSchema()));
+    String b64key =
+        Base64.getUrlEncoder().encodeToString(StoreClientTestUtils.serializeRecord(testKey, TestKeyRecord.SCHEMA$));
     CompletableFuture<TransportClientResponse> transportFuture = new CompletableFuture();
     transportFuture.complete(new TransportClientResponse(-1, CompressionStrategy.NO_OP, null));
     doReturn(transportFuture).when(mockTransportClient)
@@ -98,14 +98,14 @@ public class TestAvroStoreClient {
   public void testFetchRecordDeserializer() throws IOException {
     // Setup multi-schema response
     Map schemas = new HashMap<>();
-    schemas.put(1, TestValueRecord.getClassSchema().toString());
-    schemas.put(2, TestValueRecordWithMoreFields.getClassSchema().toString());
+    schemas.put(1, TestValueRecord.SCHEMA$.toString());
+    schemas.put(2, TestValueRecordWithMoreFields.SCHEMA$.toString());
     byte[] multiSchemasInBytes = StoreClientTestUtils.constructMultiSchemaResponseInBytes(STORE_NAME, schemas);
     setupSchemaResponse(multiSchemasInBytes, RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME);
 
     // Setup individual schema responses
-    setupSchemaResponse(1, TestValueRecord.getClassSchema());
-    setupSchemaResponse(2, TestValueRecordWithMoreFields.getClassSchema());
+    setupSchemaResponse(1, TestValueRecord.SCHEMA$);
+    setupSchemaResponse(2, TestValueRecordWithMoreFields.SCHEMA$);
 
     genericStoreClient.start();
 
@@ -121,7 +121,7 @@ public class TestAvroStoreClient {
     testValue.long_field = 0l;
     testValue.string_field = "";
 
-    byte[] testValueInBytes = StoreClientTestUtils.serializeRecord(testValue, TestValueRecord.getClassSchema());
+    byte[] testValueInBytes = StoreClientTestUtils.serializeRecord(testValue, TestValueRecord.SCHEMA$);
 
     // Test deserialization
     genericStoreClient.getDataRecordDeserializer(1); // This will pull in all the value schemas

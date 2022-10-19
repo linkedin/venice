@@ -62,12 +62,12 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
     this.initialDelay = initialDelay;
     this.interval = interval;
     this.veniceWriter = veniceWriter;
-    validateSchemasMatch(BatchJobHeartbeatKey.getClassSchema(), heartbeatKeySchema);
+    validateSchemasMatch(BatchJobHeartbeatKey.SCHEMA$, heartbeatKeySchema);
     // Expect one of the given value schemas to match with the current value schema
-    this.valueSchemaId = getSchemaIdForSchemaOrFail(BatchJobHeartbeatValue.getClassSchema(), valueSchemasById);
+    this.valueSchemaId = getSchemaIdForSchemaOrFail(BatchJobHeartbeatValue.SCHEMA$, valueSchemasById);
     this.heartbeatKafkaTopicName = heartbeatKafkaTopicName;
     this.keySerializer = new VeniceAvroKafkaSerializer(heartbeatKeySchema);
-    this.valueSerializer = new VeniceAvroKafkaSerializer(BatchJobHeartbeatValue.getClassSchema());
+    this.valueSerializer = new VeniceAvroKafkaSerializer(BatchJobHeartbeatValue.SCHEMA$);
     this.running = false;
     this.executorService =
         Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("push-job-heartbeat-thread"));

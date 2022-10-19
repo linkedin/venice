@@ -26,7 +26,7 @@ import org.apache.hadoop.io.BytesWritable;
 public class ChunkAssembler {
   private static final RecordDeserializer<KafkaInputMapperValue> KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_DESERIALIZER =
       FastSerializerDeserializerFactory
-          .getFastAvroSpecificDeserializer(KafkaInputMapperValue.getClassSchema(), KafkaInputMapperValue.class);
+          .getFastAvroSpecificDeserializer(KafkaInputMapperValue.SCHEMA$, KafkaInputMapperValue.class);
   private final AvroSpecificDeserializer<ChunkedKeySuffix> chunkedKeySuffixDeserializer;
   private final ChunkedValueManifestSerializer manifestSerializer;
 

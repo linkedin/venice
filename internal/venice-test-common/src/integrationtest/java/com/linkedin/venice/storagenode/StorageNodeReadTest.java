@@ -179,7 +179,7 @@ public class StorageNodeReadTest {
         keys.add(requestKey);
       }
       RecordSerializer<MultiGetRouterRequestKeyV1> serializer =
-          SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.getClassSchema());
+          SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.SCHEMA$);
       byte[] postBody = serializer.serializeObjects(keys);
       StringBuilder multiGetUri = new StringBuilder().append("http://")
           .append(serverAddr)
@@ -244,12 +244,11 @@ public class StorageNodeReadTest {
             HttpStatus.SC_OK,
             "Response did not return 200: " + new String(body));
         RecordDeserializer<AdminResponseRecord> adminResponseDeserializer =
-            SerializerDeserializerFactory.getAvroGenericDeserializer(AdminResponseRecord.getClassSchema());
+            SerializerDeserializerFactory.getAvroGenericDeserializer(AdminResponseRecord.SCHEMA$);
         Object value = adminResponseDeserializer.deserialize(null, body);
         try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-          GenericDatumWriter<Object> avroDatumWriter = new GenericDatumWriter<>(AdminResponseRecord.getClassSchema());
-          Encoder jsonEncoder =
-              AvroCompatibilityHelper.newJsonEncoder(AdminResponseRecord.getClassSchema(), output, true);
+          GenericDatumWriter<Object> avroDatumWriter = new GenericDatumWriter<>(AdminResponseRecord.SCHEMA$);
+          Encoder jsonEncoder = AvroCompatibilityHelper.newJsonEncoder(AdminResponseRecord.SCHEMA$, output, true);
           avroDatumWriter.write(value, jsonEncoder);
           jsonEncoder.flush();
           output.flush();

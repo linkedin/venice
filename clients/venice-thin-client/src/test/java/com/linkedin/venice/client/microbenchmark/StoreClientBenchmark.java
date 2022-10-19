@@ -92,7 +92,7 @@ public class StoreClientBenchmark {
       records.add(recordV1);
     }
     RecordSerializer<MultiGetResponseRecordV1> serializer =
-        SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.getClassSchema());
+        SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
     return serializer.serializeObjects(records);
   }
 

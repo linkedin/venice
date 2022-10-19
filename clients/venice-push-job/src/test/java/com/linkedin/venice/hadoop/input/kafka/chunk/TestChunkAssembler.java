@@ -41,9 +41,9 @@ public class TestChunkAssembler {
   private static final ChunkedKeySuffixSerializer CHUNKED_KEY_SUFFIX_SERIALIZER = new ChunkedKeySuffixSerializer();
   private static final RecordDeserializer<KafkaInputMapperValue> KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_DESERIALIZER =
       FastSerializerDeserializerFactory
-          .getFastAvroSpecificDeserializer(KafkaInputMapperValue.getClassSchema(), KafkaInputMapperValue.class);
+          .getFastAvroSpecificDeserializer(KafkaInputMapperValue.SCHEMA$, KafkaInputMapperValue.class);
   private static final RecordSerializer<KafkaInputMapperValue> KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_SERIALIZER =
-      FastSerializerDeserializerFactory.getFastAvroGenericSerializer(KafkaInputMapperValue.getClassSchema());
+      FastSerializerDeserializerFactory.getFastAvroGenericSerializer(KafkaInputMapperValue.SCHEMA$);
 
   // E.g. chunk_0, chunk_1, … chunk_N, chunk_manifest
   @Test

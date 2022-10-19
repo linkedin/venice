@@ -39,6 +39,11 @@ public class ValidateSchemaAndBuildDictMapperOutputReader implements Closeable {
         ValidateSchemaAndBuildDictMapper.class.getSimpleName() + " output fileName should not be empty");
 
     filePath = outputDir + "/" + fileName;
+
+    LOGGER.info(
+        "Reading file {} to retrieve info persisted by {}",
+        filePath,
+        ValidateSchemaAndBuildDictMapper.class.getSimpleName());
     Configuration conf = new Configuration();
     fs = FileSystem.get(conf);
 

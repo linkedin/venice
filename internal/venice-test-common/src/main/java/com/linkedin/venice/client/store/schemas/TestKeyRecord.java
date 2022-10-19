@@ -10,11 +10,6 @@ public class TestKeyRecord extends org.apache.avro.specific.SpecificRecordBase
     implements org.apache.avro.specific.SpecificRecord {
   public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse(
       "{\"type\":\"record\",\"name\":\"TestKeyRecord\",\"namespace\":\"com.linkedin.venice.client.store.schemas\",\"fields\":[{\"name\":\"long_field\",\"type\":\"long\"},{\"name\":\"string_field\",\"type\":\"string\"}]}");
-
-  public static org.apache.avro.Schema getClassSchema() {
-    return SCHEMA$;
-  }
-
   public long long_field;
   public java.lang.CharSequence string_field;
 

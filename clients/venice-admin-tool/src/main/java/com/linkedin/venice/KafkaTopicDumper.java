@@ -171,7 +171,7 @@ public class KafkaTopicDumper implements AutoCloseable {
     // build file
     File dataFile = new File(this.parentDirectory + this.topicName + "_" + this.partition + ".avro");
     List<Schema.Field> outputSchemaFields = new ArrayList<>();
-    for (Schema.Field field: VeniceKafkaDecodedRecord.getClassSchema().getFields()) {
+    for (Schema.Field field: VeniceKafkaDecodedRecord.SCHEMA$.getFields()) {
       if (field.name().equals(VENICE_ETL_KEY_FIELD)) {
         outputSchemaFields
             .add(AvroCompatibilityHelper.newField(field).setSchema(Schema.parse(this.keySchemaStr)).build());
