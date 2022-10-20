@@ -24,6 +24,8 @@ jobs:
         with:
           distribution: 'microsoft'
           java-version: '11'
-
+      - name: Set output
+        id: version
+        run: echo ::set-output name=tag::${GITHUB_REF#refs/*/}
       - name: Upload archive
-        run: echo "Latest tag ${{  github.ref_name }}"
+        run: echo "Latest tag ${{ steps.version.outputs.tag }}"
