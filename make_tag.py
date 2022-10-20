@@ -116,12 +116,14 @@ def get_remote():
 
 
 def make_tag(remote, bump_major, bump_minor, need_verification, github_actor):
-    set_user=call(['git', 'config', 'user.name', github_actor])
-    if set_user != 0:
-        sys.exit()
-    set_email=call(['git', 'config', 'user.email', f'{github_actor}@users.noreply.github.com'])
-    if set_email != 0:
-        sys.exit()
+    if github_actor:
+        set_user=call(['git', 'config', 'user.name', github_actor])
+        if set_user != 0:
+            sys.exit()
+        set_email=call(['git', 'config', 'user.email', f'{github_actor}@users.noreply.github.com'])
+        if set_email != 0:
+            sys.exit()
+
     pull_success = call(['git', 'pull', '--rebase', remote, 'main'])
     if pull_success != 0:
         sys.exit()
