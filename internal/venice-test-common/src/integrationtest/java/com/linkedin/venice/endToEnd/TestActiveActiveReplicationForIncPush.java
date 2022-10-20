@@ -116,7 +116,7 @@ public class TestActiveActiveReplicationForIncPush {
    * The purpose of this test is to verify that incremental push with RT policy succeeds when A/A is enabled in all colos.
    * And also incremental push can push to the closes kafka cluster from the grid using the SOURCE_GRID_CONFIG.
    */
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT * 2)
   public void testAAReplicationForIncrementalPushToRT() throws Exception {
     String clusterName = CLUSTER_NAMES[0];
     File inputDirBatch = getTempDataDirectory();

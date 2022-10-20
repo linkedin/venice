@@ -20,13 +20,13 @@ if cur_version.major < 3 or (cur_version.major == 3 and cur_version.minor < 6):
 @click.option('--bump-major', is_flag=True)
 @click.option('--bump-minor', is_flag=True)
 @click.option('--no-verify', is_flag=True)
-@click.option('--github-token', help='The github token used for API call')
-def read_config(bump_major, bump_minor, no_verify, github_token):
+@click.option('--github-actor', help='The github actor used for push')
+def read_config(bump_major, bump_minor, no_verify, github_actor):
     if bump_major and bump_minor:
         print('Cannot bump major and minor versions. Only bumping major version')
         bump_minor = False
 
-    run(bump_major, bump_minor, not no_verify, github_token)
+    run(bump_major, bump_minor, not no_verify, github_actor)
 
 
 def format_version(major, minor, build):
@@ -115,7 +115,15 @@ def get_remote():
     raise Exception('Failed to parse remotes for this git repository')
 
 
-def make_tag(remote, bump_major, bump_minor, need_verification, github_token):
+def make_tag(remote, bump_major, bump_minor, need_verification, github_actor):
+    if github_actor:
+        set_user=call(['git', 'config', 'user.name', github_actor])
+        if set_user != 0:
+            sys.exit()
+        set_email=call(['git', 'config', 'user.email', f'{github_actor}@users.noreply.github.com'])
+        if set_email != 0:
+            sys.exit()
+
     pull_success = call(['git', 'pull', '--rebase', remote, 'main'])
     if pull_success != 0:
         sys.exit()
@@ -129,31 +137,20 @@ def make_tag(remote, bump_major, bump_minor, need_verification, github_token):
             print('Skipped creating the tag')
             return
 
-    if github_token:
-        headers = {
-            'Authorization': f'token {github_token}'
-        }
-        commit = check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
-        url = 'https://api.github.com/repos/linkedin/venice/git/refs'
-        response = requests.post(url, headers=headers, json={'ref': f'refs/tags/{tag_name}', 'sha' : commit})
-        if (response.status_code != 201):
-            print('Could not create the tag ' + tag_name)
-            sys.exit()
-    else:
-        tag_success = call(['git', 'tag', '-a', '-m', tag_message, tag_name])
-        if tag_success != 0:
-            sys.exit()
-        call(['git', 'push', remote, tag_name])
+    tag_success = call(['git', 'tag', '-a', '-m', tag_message, tag_name])
+    if tag_success != 0:
+        sys.exit()
+    call(['git', 'push', remote, tag_name])
 
 
 def get_tags(remote):
     call(['git', 'fetch', remote, 'main', '--tags'])
 
 
-def run(bump_major, bump_minor, need_verification, github_token):
+def run(bump_major, bump_minor, need_verification, github_actor):
     remote = get_remote()
     get_tags(remote)
-    make_tag(remote, bump_major, bump_minor, need_verification, github_token)
+    make_tag(remote, bump_major, bump_minor, need_verification, github_actor)
 
 
 def get_confirmation(prompt=None):

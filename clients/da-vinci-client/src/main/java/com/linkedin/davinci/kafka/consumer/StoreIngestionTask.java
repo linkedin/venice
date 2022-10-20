@@ -1318,7 +1318,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  protected void processMessages(Store store) throws InterruptedException {
+  protected void checkIngestionProgress(Store store) throws InterruptedException {
     Exception ingestionTaskException = lastStoreIngestionException.get();
     if (ingestionTaskException != null) {
       throw new VeniceException(
@@ -1436,7 +1436,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         processConsumerActions(store);
         checkLongRunningTaskState();
         checkLongRunningDBCompaction();
-        processMessages(store);
+        checkIngestionProgress(store);
       }
 
       // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk

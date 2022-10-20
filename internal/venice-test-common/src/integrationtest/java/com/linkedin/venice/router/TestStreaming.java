@@ -384,7 +384,7 @@ public class TestStreaming {
     }
   }
 
-  @Test(timeOut = 5000)
+  @Test(timeOut = 30000)
   public void testWithNonExistingStore() throws ExecutionException, InterruptedException {
     String nonExistingStoreName = Utils.getUniqueString("non_existing_store");
     D2Client d2Client = null;

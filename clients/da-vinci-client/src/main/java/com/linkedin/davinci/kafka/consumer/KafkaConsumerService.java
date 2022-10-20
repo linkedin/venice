@@ -18,6 +18,8 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -229,22 +231,34 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   }
 
   void batchUnsubscribe(String versionTopic, Set<TopicPartition> topicPartitionsToUnSub) {
+    Map<KafkaConsumerWrapper, Set<TopicPartition>> consumerUnSubTopicPartitionSet = new HashMap<>();
     KafkaConsumerWrapper consumer;
     for (TopicPartition topicPartition: topicPartitionsToUnSub) {
       consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, topicPartition);
       if (consumer != null) {
-        consumer.unSubscribe(topicPartition.topic(), topicPartition.partition());
-        consumerToConsumptionTask.get(consumer).removeDataReceiver(topicPartition);
+        Set<TopicPartition> topicPartitionSet =
+            consumerUnSubTopicPartitionSet.computeIfAbsent(consumer, k -> new HashSet<>());
+        topicPartitionSet.add(topicPartition);
+      }
+    }
+    /**
+     * Leverage {@link KafkaConsumerWrapper#batchUnsubscribe(Set)}.
+     */
+    consumerUnSubTopicPartitionSet.forEach((c, tpSet) -> {
+      c.batchUnsubscribe(tpSet);
+      ConsumptionTask task = consumerToConsumptionTask.get(c);
+      tpSet.forEach(tp -> {
+        task.removeDataReceiver(tp);
         versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
           if (topicPartitionToConsumerMap != null) {
-            topicPartitionToConsumerMap.remove(topicPartition);
+            topicPartitionToConsumerMap.remove(tp);
             return topicPartitionToConsumerMap.isEmpty() ? null : topicPartitionToConsumerMap;
           } else {
             return null;
           }
         });
-      }
-    }
+      });
+    });
   }
 
   @Override
