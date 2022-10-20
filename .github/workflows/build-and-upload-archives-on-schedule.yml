@@ -6,14 +6,16 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy:
+  make-tag:
     if: github.repository == 'linkedin/venice'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-
       - name: Cut release tag to build and upload Venice Release archive
         run: |
           ./make_tag.py --no-verify --github-actor '${GITHUB_ACTOR}'
-       - name: Build And Publish the artifactory
-          uses: ./.github/workflows/build-and-upload-archives.yml
+
+  build-and-publish:
+    - needs: make-tag
+    - name: Build And Publish the artifactory
+      uses: ./.github/workflows/build-and-upload-archives.yml
