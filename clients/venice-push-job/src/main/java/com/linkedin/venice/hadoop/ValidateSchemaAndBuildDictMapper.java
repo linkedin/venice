@@ -10,7 +10,6 @@ import static com.linkedin.venice.hadoop.VenicePushJob.KEY_ZSTD_COMPRESSION_DICT
 import static com.linkedin.venice.hadoop.VenicePushJob.PATH_FILTER;
 import static com.linkedin.venice.hadoop.VenicePushJob.PushJobSetting;
 import static com.linkedin.venice.hadoop.VenicePushJob.StoreSetting;
-import static com.linkedin.venice.hadoop.VenicePushJob.USE_MAPPER_TO_BUILD_DICTIONARY;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
 
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -24,7 +23,6 @@ import java.nio.ByteBuffer;
 import org.apache.avro.Schema;
 import org.apache.avro.mapred.AvroWrapper;
 import org.apache.avro.specific.SpecificRecord;
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -60,7 +58,6 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
   private long inputModificationTime;
   protected String inputDirectory;
   protected Long inputFileDataSize = 0L;
-  private ValidateSchemaAndBuildDictMapperOutput mapperOutputRecord;
 
   @Override
   public void map(
@@ -175,7 +172,7 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
       Reporter reporter) throws IOException {
     // Post the processing of input files: Persist some data to HDFS to be used by the VPJ driver code
     // 1. Init the record
-    mapperOutputRecord = new ValidateSchemaAndBuildDictMapperOutput();
+    ValidateSchemaAndBuildDictMapperOutput mapperOutputRecord = new ValidateSchemaAndBuildDictMapperOutput();
 
     // 2. append inputFileDataSize (Mandatory entry)
     mapperOutputRecord.put(KEY_INPUT_FILE_DATA_SIZE, inputFileDataSize);
@@ -260,8 +257,7 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
     }
 
     try {
-      Configuration conf = new Configuration();
-      fileSystem = FileSystem.get(conf);
+      fileSystem = FileSystem.get(job);
       Path srcPath = new Path(inputDirectory);
       fileStatuses = fileSystem.listStatus(srcPath, PATH_FILTER);
     } catch (IOException e) {
@@ -281,7 +277,6 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
     pushJobSetting.storeName = props.getString(VENICE_STORE_NAME_PROP);
     pushJobSetting.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH);
     pushJobSetting.compressionMetricCollectionEnabled = props.getBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED);
-    pushJobSetting.useMapperToBuildDict = props.getBoolean(USE_MAPPER_TO_BUILD_DICTIONARY);
     pushJobSetting.etlValueSchemaTransformation = ETLValueSchemaTransformation
         .valueOf(props.getString(ETL_VALUE_SCHEMA_TRANSFORMATION, ETLValueSchemaTransformation.NONE.name()));
     storeSetting.compressionStrategy = CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY));

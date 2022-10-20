@@ -9,6 +9,7 @@ import com.linkedin.venice.utils.Time;
 import java.io.File;
 import java.nio.ByteBuffer;
 import org.apache.avro.Schema;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -106,7 +107,12 @@ public class TestValidateSchemaAndBuildDictMapperOutputReader {
         fileSchema.toString());
     ValidateSchemaAndBuildDictMapperOutputReader reader =
         new ValidateSchemaAndBuildDictMapperOutputReader(inputDir.getAbsolutePath(), avroOutputFile);
+    ValidateSchemaAndBuildDictMapperOutput output = reader.getOutput();
     reader.close();
+
+    // validate the data
+    Assert.assertEquals(output.getInputFileDataSize(), 1);
+    Assert.assertEquals(output.getZstdDictionary(), ByteBuffer.wrap("TestDictionary".getBytes()));
   }
 
   /**
@@ -124,6 +130,11 @@ public class TestValidateSchemaAndBuildDictMapperOutputReader {
         fileSchema.toString());
     ValidateSchemaAndBuildDictMapperOutputReader reader =
         new ValidateSchemaAndBuildDictMapperOutputReader(inputDir.getAbsolutePath(), avroOutputFile);
+    ValidateSchemaAndBuildDictMapperOutput output = reader.getOutput();
     reader.close();
+
+    // validate the data
+    Assert.assertEquals(output.getInputFileDataSize(), 1);
+    Assert.assertNull(output.getZstdDictionary());
   }
 }

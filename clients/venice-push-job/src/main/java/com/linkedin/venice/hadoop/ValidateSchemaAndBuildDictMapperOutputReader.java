@@ -24,11 +24,11 @@ import org.apache.logging.log4j.Logger;
  */
 public class ValidateSchemaAndBuildDictMapperOutputReader implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(ValidateSchemaAndBuildDictMapperOutputReader.class);
-  private ValidateSchemaAndBuildDictMapperOutput output;
-  private InputStream inputStream;
-  private DataFileStream avroDataFileStream;
-  FileSystem fs;
-  String filePath;
+  private final ValidateSchemaAndBuildDictMapperOutput output;
+  private final InputStream inputStream;
+  private final DataFileStream avroDataFileStream;
+  private final FileSystem fs;
+  private final String filePath;
 
   public ValidateSchemaAndBuildDictMapperOutputReader(String outputDir, String fileName) throws Exception {
     Validate.notEmpty(
@@ -95,12 +95,8 @@ public class ValidateSchemaAndBuildDictMapperOutputReader implements Closeable {
     LOGGER.info("Retrieved compressionDictionary is {} bytes", zstdDictionary == null ? 0 : zstdDictionary.limit());
   }
 
-  public ByteBuffer getCompressionDictionary() {
-    return output.getZstdDictionary();
-  }
-
-  public long getInputFileDataSize() {
-    return output.getInputFileDataSize();
+  public ValidateSchemaAndBuildDictMapperOutput getOutput() {
+    return output;
   }
 
   @Override

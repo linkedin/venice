@@ -314,7 +314,7 @@ public abstract class TestBatch {
   }
 
   /**
-   * This validator adds Non deterministic wait and retry for the first get to succeed. Idea behind this is that when there are no
+   * This validator adds non-deterministic wait and retry for the first get to succeed. Idea behind this is that when there are no
    * store previous versions to fall back on (this is the first version), routers might take sometime to retrieve the dictionary.
    */
   static VPJValidator getSimpleFileWithUserSchemaValidatorForZstd() {
