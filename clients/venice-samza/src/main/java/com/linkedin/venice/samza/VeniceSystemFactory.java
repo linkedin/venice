@@ -42,6 +42,8 @@ import org.apache.samza.util.SinglePartitionWithoutOffsetsSystemAdmin;
 public class VeniceSystemFactory implements SystemFactory, Serializable {
   private static final Logger LOGGER = LogManager.getLogger(VeniceSystemFactory.class);
 
+  public static final String LEGACY_CHILD_D2_ZK_HOSTS_PROPERTY = "__r2d2DefaultClient__.r2d2Client.zkHosts";
+
   public static final String SYSTEMS_PREFIX = "systems.";
   public static final String DOT = ".";
   public static final String DEPLOYMENT_ID = "deployment.id";
@@ -77,6 +79,11 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   public static final String VENICE_CHILD_CONTROLLER_D2_SERVICE = "venice.child.controller.d2.service";
   // D2 service name for parent cluster
   public static final String VENICE_PARENT_CONTROLLER_D2_SERVICE = "venice.parent.controller.d2.service";
+
+  // Legacy D2 service name for local cluster
+  public static final String LEGACY_VENICE_CHILD_CONTROLLER_D2_SERVICE = "VeniceController";
+  // Legacy D2 service name for parent cluster
+  public static final String LEGACY_VENICE_PARENT_CONTROLLER_D2_SERVICE = "VeniceParentController";
 
   /**
    * A Samza job config to check whether the protocol versions used at runtime are valid in
@@ -213,19 +220,29 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
       throw new SamzaException(
           VENICE_PARENT_D2_ZK_HOSTS + " should not be null, please put this property in your app-def.xml");
     }
+
     String localVeniceZKHosts = config.get(VENICE_CHILD_D2_ZK_HOSTS);
+    String legacyLocalVeniceZKHosts = config.get(LEGACY_CHILD_D2_ZK_HOSTS_PROPERTY);
     if (isEmpty(localVeniceZKHosts)) {
-      throw new SamzaException(VENICE_CHILD_D2_ZK_HOSTS + " should not be null");
+      if (isEmpty(legacyLocalVeniceZKHosts)) {
+        throw new SamzaException(
+            "Either " + VENICE_CHILD_D2_ZK_HOSTS + " or " + LEGACY_CHILD_D2_ZK_HOSTS_PROPERTY + " should be defined");
+      }
+      localVeniceZKHosts = legacyLocalVeniceZKHosts;
     }
 
-    final String localControllerD2Service = config.get(VENICE_CHILD_CONTROLLER_D2_SERVICE);
+    String localControllerD2Service = config.get(VENICE_CHILD_CONTROLLER_D2_SERVICE);
     if (isEmpty(localControllerD2Service)) {
-      throw new SamzaException(VENICE_CHILD_CONTROLLER_D2_SERVICE + " should not be null");
+      LOGGER.info(
+          VENICE_CHILD_CONTROLLER_D2_SERVICE + " is not defined. Using " + LEGACY_VENICE_CHILD_CONTROLLER_D2_SERVICE);
+      localControllerD2Service = LEGACY_VENICE_CHILD_CONTROLLER_D2_SERVICE;
     }
 
-    final String parentControllerD2Service = config.get(VENICE_PARENT_CONTROLLER_D2_SERVICE);
+    String parentControllerD2Service = config.get(VENICE_PARENT_CONTROLLER_D2_SERVICE);
     if (isEmpty(parentControllerD2Service)) {
-      throw new SamzaException(VENICE_PARENT_CONTROLLER_D2_SERVICE + " should not be null");
+      LOGGER.info(
+          VENICE_PARENT_CONTROLLER_D2_SERVICE + " is not defined. Using " + LEGACY_VENICE_PARENT_CONTROLLER_D2_SERVICE);
+      parentControllerD2Service = LEGACY_VENICE_PARENT_CONTROLLER_D2_SERVICE;
     }
 
     // Build Ssl Factory if Controller SSL is enabled
