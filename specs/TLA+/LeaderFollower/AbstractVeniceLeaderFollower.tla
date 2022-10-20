@@ -11,9 +11,30 @@
 
 EXTENDS Integers, Sequences
 CONSTANTS KEYS, VALUES, N_NODES, MAX_WRITES, MAX_VERSION_PUSHES
-VARIABLE realTimeTopic, versionTopic, nodes, versionPushCount
 
-vars == <<realTimeTopic, versionTopic, nodes, versionPushCount>>
+(***************************************************************************)
+(* Variables which define the spec and parts of the architecture:          *)
+(*                                                                         *)
+(* realTimeTopic: A queue of writes transmitted to Venice directly from    *)
+(*                clients as key value pairs                               *)
+(*                                                                         *)
+(* versionTopic: A queue of committed writes which is a tuple of key,      *)
+(*               value, and metadata for the system.  In this basic spec,  *)
+(*               it's the offset of the write in the realTimetopic which   *)
+(*               corresponds to this write in the version topic. We also   *)
+(*               use this variable to signify the 'current' version in     *)
+(*               Venice, which is to say, it's the version currently       *)
+(*               serving client reads and having client writes added to    *)
+(*               it.                                                       *)
+(*                                                                         *)
+(* nodes: A set of replica serving nodes in Venice.                        *)
+(*                                                                         *)
+(* versions: A set of venice store versions. Each version push generates.  *)
+(***************************************************************************)
+
+VARIABLE realTimeTopic, versionTopic, nodes, versions
+
+vars == <<realTimeTopic, versionTopic, nodes, versions>>
 
 (***************************************************************************)
 (* Each replica serving node in Venice has a unique identifier, and for a  *)
@@ -44,7 +65,7 @@ EventuallyConsistent == <>[]ReplicasConsistent
 ClientProducesToVenice ==
     /\ \E <<k, v>> \in KEYS \X VALUES :
             realTimeTopic' = Append(realTimeTopic, <<k, v>>)
-    /\ UNCHANGED <<nodes, versionTopic, versionPushCount>>
+    /\ UNCHANGED <<nodes, versionTopic, versions>>
 
 (***************************************************************************)
 (* For each write, we only retain the last value for a given key when      *)
@@ -77,7 +98,7 @@ RealTimeConsume(nodeId) ==
                 realTimeTopic[nodes[nodeId].rtOffset][2],
                 nodes[nodeId].rtOffset>>)
         ELSE UNCHANGED vars
-    /\ UNCHANGED <<realTimeTopic,versionPushCount>>
+    /\ UNCHANGED <<realTimeTopic, versions>>
 
 
 VersionTopicConsume(nodeId) ==
@@ -90,7 +111,7 @@ VersionTopicConsume(nodeId) ==
                                             versionTopic[nodes[nodeId].vtOffset][2])
                 ]
         ELSE UNCHANGED vars
-    /\ UNCHANGED <<realTimeTopic, versionTopic,versionPushCount>>
+    /\ UNCHANGED <<realTimeTopic, versionTopic, versions>>
 
 (***************************************************************************)
 (* Leaders have two potential internal states.  They are either 'catching  *)
@@ -131,13 +152,13 @@ FollowerConsume ==
 
 VersionPush ==
     /\ versionTopic' = <<>>
+    /\ versions' = Append(versions, versionTopic)
     /\ \E rewindCheckpoint \in DOMAIN realTimeTopic:
         nodes' = [i \in nodeIds |->
         [ state |-> FOLLOWER,
         rtOffset |-> rewindCheckpoint,
         vtOffset |-> 1,
         persistedRecords |-> {}]]
-    /\ versionPushCount' = versionPushCount + 1
     /\ UNCHANGED <<realTimeTopic>>
 
 (***************************************************************************)
@@ -147,7 +168,7 @@ VersionPush ==
 (***************************************************************************)
 ChangeReplicaState(node, newState) ==
     /\ nodes' = [nodes EXCEPT ![node].state = newState]
-    /\ UNCHANGED <<realTimeTopic, versionTopic,versionPushCount>>
+    /\ UNCHANGED <<realTimeTopic, versionTopic, versions>>
 
 PromoteLeader ==
     IF {x \in DOMAIN nodes: nodes[x].state = LEADER} = {}
@@ -159,21 +180,10 @@ DemoteLeader ==
     /\ \E followerNodeId \in {x \in DOMAIN nodes: nodes[x].state = LEADER}:
         ChangeReplicaState(followerNodeId, FOLLOWER)
 
-AllWritesTransmitted ==
-    Len(realTimeTopic) >= MAX_WRITES
-
-AllVersionPushesTried ==
-    versionPushCount >= MAX_VERSION_PUSHES
-
-Terminating ==
-  /\ AllWritesTransmitted
-  /\ AllVersionPushesTried
-  /\ UNCHANGED vars
-
 Init ==
   /\ realTimeTopic = <<>>
   /\ versionTopic = <<>>
-  /\ versionPushCount = 0
+  /\ versions = <<>>
   /\ nodes = [i \in nodeIds |->
     [ state |-> FOLLOWER,
     rtOffset |-> 1,
@@ -187,7 +197,6 @@ Next ==
     \/ DemoteLeader
     \/ PromoteLeader
     \/ VersionPush
-    \/ Terminating
 
 Spec == Init /\ [][Next]_vars /\ SF_vars(FollowerConsume) /\ WF_vars(LeaderConsume)
 
