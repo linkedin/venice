@@ -135,21 +135,10 @@ def make_tag(remote, bump_major, bump_minor, need_verification, github_actor):
             print('Skipped creating the tag')
             return
 
-    if github_actor:
-        headers = {
-            'Authorization': f'token {github_actor}'
-        }
-        commit = check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
-        url = 'https://api.github.com/repos/linkedin/venice/git/refs'
-        response = requests.post(url, headers=headers, json={'ref': f'refs/tags/{tag_name}', 'sha' : commit})
-        if (response.status_code != 201):
-            print('Could not create the tag ' + tag_name)
-            sys.exit()
-    else:
-        tag_success = call(['git', 'tag', '-a', '-m', tag_message, tag_name])
-        if tag_success != 0:
-            sys.exit()
-        call(['git', 'push', remote, tag_name])
+    tag_success = call(['git', 'tag', '-a', '-m', tag_message, tag_name])
+    if tag_success != 0:
+        sys.exit()
+    call(['git', 'push', remote, tag_name])
 
 
 def get_tags(remote):
