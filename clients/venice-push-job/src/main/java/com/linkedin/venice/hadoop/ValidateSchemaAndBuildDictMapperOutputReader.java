@@ -62,37 +62,24 @@ public class ValidateSchemaAndBuildDictMapperOutputReader implements Closeable {
               + ". Check if the fileName exists and the data is in Avro format.",
           e);
     }
-    validateOutput();
-  }
 
-  private void validateOutput() throws VeniceException {
-    validateInputFileDataSizeFromOutput();
-    validateCompressionDictionaryFromOutput();
-  }
-
-  /**
-   * inputFileDataSize includes the file schema as well, so even for empty pushes it should not be 0
-   * @throws Exception
-   */
-  private void validateInputFileDataSizeFromOutput() throws VeniceException {
     Long inputFileDataSize = output.getInputFileDataSize();
     if (inputFileDataSize <= 0) {
+      // this includes the file schema as well, so even for empty pushes it should not be 0
       LOGGER.error("Retrieved inputFileDataSize ({}) is not valid", inputFileDataSize);
       throw new VeniceException("Retrieved inputFileDataSize (" + inputFileDataSize + ") is not valid");
     }
     LOGGER.info("Retrieved inputFileDataSize is {}", inputFileDataSize);
-  }
 
-  /**
-   * zstdDictionary can be null when
-   * 1. both zstd compression and {@link VenicePushJob.PushJobSetting#compressionMetricCollectionEnabled}
-   *    is not enabled
-   * 2. When one or the both of above are enabled, but zstd trainer failed: Will be handled based on
-   *    map reduce counters
-   */
-  private void validateCompressionDictionaryFromOutput() {
+    /**
+     * zstdDictionary can be null when
+     * 1. both zstd compression and {@link VenicePushJob.PushJobSetting#compressionMetricCollectionEnabled}
+     *    is not enabled
+     * 2. When one or the both of above are enabled, but zstd trainer failed: but this would have been be
+     *    already handled based on map reduce counters
+     */
     ByteBuffer zstdDictionary = output.getZstdDictionary();
-    LOGGER.info("Retrieved compressionDictionary is {} bytes", zstdDictionary == null ? 0 : zstdDictionary.limit());
+    LOGGER.info("Retrieved compressionDictionary is {} bytes", zstdDictionary == null ? 0 : zstdDictionary.remaining());
   }
 
   public ValidateSchemaAndBuildDictMapperOutput getOutput() {

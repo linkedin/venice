@@ -157,14 +157,14 @@ public class VenicePushJob implements AutoCloseable {
    *  follow the new code of using a mapper to validate schema, etc.
    */
   public static final String COMPRESSION_METRIC_COLLECTION_ENABLED = "compression.metric.collection.enabled";
-  public static final boolean DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED = true;
+  public static final boolean DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED = false;
 
   /**
    * Temporary flag to enable/disable the code changes until the flow of using mapper
    * to validate schema and build dictionary is stable.
    */
   public static final String USE_MAPPER_TO_BUILD_DICTIONARY = "use.mapper.to.build.dictionary";
-  public static final boolean DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY = true;
+  public static final boolean DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY = false;
 
   /**
    * Location and key to store the output of {@link ValidateSchemaAndBuildDictMapper} and retrieve it back
@@ -1611,7 +1611,7 @@ public class VenicePushJob implements AutoCloseable {
           compressionDictionary = validateSchemaAndBuildDictMapperOutput.getZstdDictionary();
         }
       }
-      LOGGER.info("Zstd dictionary size = {} bytes", compressionDictionary.limit());
+      LOGGER.info("Zstd dictionary size = {} bytes", compressionDictionary.remaining());
     } else {
       LOGGER.info("No compression dictionary is generated with the strategy {}", storeSetting.compressionStrategy);
     }
@@ -2779,6 +2779,7 @@ public class VenicePushJob implements AutoCloseable {
             DefaultInputDataInfoProvider.DEFAULT_COMPRESSION_DICTIONARY_SAMPLE_SIZE));
     conf.set(COMPRESSION_STRATEGY, storeSetting.compressionStrategy.toString());
     conf.setBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED, pushJobSetting.compressionMetricCollectionEnabled);
+    conf.setBoolean(USE_MAPPER_TO_BUILD_DICTIONARY, pushJobSetting.useMapperToBuildDict);
     conf.set(OUTPUT_DIRECTORY_TO_STORE_RESULTS_FROM_MAPPER, pushJobSetting.useMapperToBuildDictOutputPath);
 
     /** adding below for AbstractMapReduceTask.configure() to not crash: Doesn't affect this flow */

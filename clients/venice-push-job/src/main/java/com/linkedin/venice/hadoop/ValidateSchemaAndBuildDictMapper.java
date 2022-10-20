@@ -10,6 +10,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.KEY_ZSTD_COMPRESSION_DICT
 import static com.linkedin.venice.hadoop.VenicePushJob.PATH_FILTER;
 import static com.linkedin.venice.hadoop.VenicePushJob.PushJobSetting;
 import static com.linkedin.venice.hadoop.VenicePushJob.StoreSetting;
+import static com.linkedin.venice.hadoop.VenicePushJob.USE_MAPPER_TO_BUILD_DICTIONARY;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
 
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -198,7 +199,7 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
                 e);
             return false;
           }
-          LOGGER.info("Zstd compression dictionary size = {} bytes", compressionDictionary.limit());
+          LOGGER.info("Zstd compression dictionary size = {} bytes", compressionDictionary.remaining());
         } else {
           LOGGER.info("No compression dictionary is generated as the input data doesn't contain any records");
         }
@@ -277,6 +278,7 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
     pushJobSetting.storeName = props.getString(VENICE_STORE_NAME_PROP);
     pushJobSetting.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH);
     pushJobSetting.compressionMetricCollectionEnabled = props.getBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED);
+    pushJobSetting.useMapperToBuildDict = props.getBoolean(USE_MAPPER_TO_BUILD_DICTIONARY);
     pushJobSetting.etlValueSchemaTransformation = ETLValueSchemaTransformation
         .valueOf(props.getString(ETL_VALUE_SCHEMA_TRANSFORMATION, ETLValueSchemaTransformation.NONE.name()));
     storeSetting.compressionStrategy = CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY));
