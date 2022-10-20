@@ -10,10 +10,10 @@
 (***************************************************************************)
 
 EXTENDS Integers, Sequences
-CONSTANTS KEYS, VALUES, N_NODES, MAX_WRITES
-VARIABLE realTimeTopic, versionTopic, nodes
+CONSTANTS KEYS, VALUES, N_NODES, MAX_WRITES, MAX_VERSION_PUSHES
+VARIABLE realTimeTopic, versionTopic, nodes, versionPushCount
 
-vars == <<realTimeTopic, versionTopic, nodes>>
+vars == <<realTimeTopic, versionTopic, nodes, versionPushCount>>
 
 (***************************************************************************)
 (* Each replica serving node in Venice has a unique identifier, and for a  *)
@@ -34,7 +34,7 @@ ReplicasConsistent ==
     \A n1, n2 \in nodeIds:
     nodes[n1].persistedRecords = nodes[n2].persistedRecords
 
-EventuallyConsistent == []<>ReplicasConsistent
+EventuallyConsistent == <>[]ReplicasConsistent
 
 (***************************************************************************)
 (* All writes to Venice are asynchronous. A client writes to a queue that  *)
@@ -44,7 +44,7 @@ EventuallyConsistent == []<>ReplicasConsistent
 ClientProducesToVenice ==
     /\ \E <<k, v>> \in KEYS \X VALUES :
             realTimeTopic' = Append(realTimeTopic, <<k, v>>)
-    /\ UNCHANGED <<nodes, versionTopic>>
+    /\ UNCHANGED <<nodes, versionTopic, versionPushCount>>
 
 (***************************************************************************)
 (* For each write, we only retain the last value for a given key when      *)
@@ -77,7 +77,7 @@ RealTimeConsume(nodeId) ==
                 realTimeTopic[nodes[nodeId].rtOffset][2],
                 nodes[nodeId].rtOffset>>)
         ELSE UNCHANGED vars
-    /\ UNCHANGED <<realTimeTopic>>
+    /\ UNCHANGED <<realTimeTopic,versionPushCount>>
 
 
 VersionTopicConsume(nodeId) ==
@@ -90,7 +90,7 @@ VersionTopicConsume(nodeId) ==
                                             versionTopic[nodes[nodeId].vtOffset][2])
                 ]
         ELSE UNCHANGED vars
-    /\ UNCHANGED <<realTimeTopic, versionTopic>>
+    /\ UNCHANGED <<realTimeTopic, versionTopic,versionPushCount>>
 
 (***************************************************************************)
 (* Leaders have two potential internal states.  They are either 'catching  *)
@@ -137,6 +137,7 @@ VersionPush ==
         rtOffset |-> rewindCheckpoint,
         vtOffset |-> 1,
         persistedRecords |-> {}]]
+    /\ versionPushCount' = versionPushCount + 1
     /\ UNCHANGED <<realTimeTopic>>
 
 (***************************************************************************)
@@ -146,7 +147,7 @@ VersionPush ==
 (***************************************************************************)
 ChangeReplicaState(node, newState) ==
     /\ nodes' = [nodes EXCEPT ![node].state = newState]
-    /\ UNCHANGED <<realTimeTopic, versionTopic>>
+    /\ UNCHANGED <<realTimeTopic, versionTopic,versionPushCount>>
 
 PromoteLeader ==
     IF {x \in DOMAIN nodes: nodes[x].state = LEADER} = {}
@@ -161,13 +162,18 @@ DemoteLeader ==
 AllWritesTransmitted ==
     Len(realTimeTopic) >= MAX_WRITES
 
+AllVersionPushesTried ==
+    versionPushCount >= MAX_VERSION_PUSHES
+
 Terminating ==
   /\ AllWritesTransmitted
+  /\ AllVersionPushesTried
   /\ UNCHANGED vars
 
 Init ==
   /\ realTimeTopic = <<>>
   /\ versionTopic = <<>>
+  /\ versionPushCount = 0
   /\ nodes = [i \in nodeIds |->
     [ state |-> FOLLOWER,
     rtOffset |-> 1,
