@@ -20,13 +20,13 @@ if cur_version.major < 3 or (cur_version.major == 3 and cur_version.minor < 6):
 @click.option('--bump-major', is_flag=True)
 @click.option('--bump-minor', is_flag=True)
 @click.option('--no-verify', is_flag=True)
-@click.option('--github-token', help='The github token used for API call')
-def read_config(bump_major, bump_minor, no_verify, github_token):
+@click.option('--github-actor', help='The github actor used for push')
+def read_config(bump_major, bump_minor, no_verify, github_actor):
     if bump_major and bump_minor:
         print('Cannot bump major and minor versions. Only bumping major version')
         bump_minor = False
 
-    run(bump_major, bump_minor, not no_verify, github_token)
+    run(bump_major, bump_minor, not no_verify, github_actor)
 
 
 def format_version(major, minor, build):
@@ -135,9 +135,9 @@ def make_tag(remote, bump_major, bump_minor, need_verification, github_actor):
             print('Skipped creating the tag')
             return
 
-    if github_token:
+    if github_actor:
         headers = {
-            'Authorization': f'token {github_token}'
+            'Authorization': f'token {github_actor}'
         }
         commit = check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
         url = 'https://api.github.com/repos/linkedin/venice/git/refs'
@@ -156,10 +156,10 @@ def get_tags(remote):
     call(['git', 'fetch', remote, 'main', '--tags'])
 
 
-def run(bump_major, bump_minor, need_verification, github_token):
+def run(bump_major, bump_minor, need_verification, github_actor):
     remote = get_remote()
     get_tags(remote)
-    make_tag(remote, bump_major, bump_minor, need_verification, github_token)
+    make_tag(remote, bump_major, bump_minor, need_verification, github_actor)
 
 
 def get_confirmation(prompt=None):
