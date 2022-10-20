@@ -25,9 +25,9 @@ jobs:
           distribution: 'microsoft'
           java-version: '11'
       - name: Set upstream
-      run: |
-        git remote add upstream https://github.com/linkedin/venice.git
-        git fetch upstream
+        run: |
+          git remote add upstream https://github.com/linkedin/venice.git
+          git fetch upstream
       - name: Get Latest Tag
         run: echo "GIT_TAG=`echo $(git describe --tags --abbrev=0 upstream/main)`" >> $GITHUB_ENV
       - name: Upload archive
