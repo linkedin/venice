@@ -14,4 +14,4 @@ jobs:
 
       - name: Cut release tag to build and upload Venice Release archive
         run: |
-          ./make_tag.py --no-verify --github-token '${GITHUB_ACTOR}'
+          ./make_tag.py --no-verify --github-actor '${GITHUB_ACTOR}'
