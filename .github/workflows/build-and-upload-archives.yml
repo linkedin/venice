@@ -29,6 +29,6 @@ jobs:
         git remote add upstream https://github.com/linkedin/venice.git
         git fetch upstream
       - name: Get Latest Tag
-        run: echo "GIT_TAG=`echo $(git describe --tags --abbrev=0)`" >> $GITHUB_ENV
+        run: echo "GIT_TAG=`echo $(git describe --tags --abbrev=0 upstream/main)`" >> $GITHUB_ENV
       - name: Upload archive
         run: echo "Latest tag ${{  env.GIT_TAG }}"
