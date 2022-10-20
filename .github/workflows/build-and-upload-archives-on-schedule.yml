@@ -17,5 +17,4 @@ jobs:
 
   build-and-publish:
     needs: make-tag
-    - name: Build And Publish the artifactory
-      uses: ./.github/workflows/build-and-upload-archives.yml
+    uses: ./.github/workflows/build-and-upload-archives.yml
