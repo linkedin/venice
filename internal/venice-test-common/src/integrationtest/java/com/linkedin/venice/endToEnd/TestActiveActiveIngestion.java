@@ -6,6 +6,8 @@ import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
 import static com.linkedin.venice.ConfigKeys.LF_MODEL_DEPENDENCY_CHECK_DISABLED;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_IN_HOURS;
+import static com.linkedin.venice.hadoop.VenicePushJob.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.samza.VeniceSystemFactory.D2_ZK_HOSTS_PROPERTY;
@@ -45,6 +47,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.utils.MockCircularTime;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -54,9 +57,12 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -184,6 +190,62 @@ public class TestActiveActiveIngestion {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
       }
     }
+
+    /**
+     * Test Repush with TTL
+     */
+    // run empty push to clean up batch data
+    parentControllerClient.sendEmptyPushAndWait(storeName, "Run push job", 1000, 30 * Time.MS_PER_SECOND);
+
+    // run repush ttl with new parameters
+    props.put(REPUSH_TTL_IN_HOURS, 1);
+    // do not rewind, so we don't reconsume stale records
+    props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0L);
+
+    // set up mocked time for Samza records so some records can be stale intentionally.
+    List<Long> mockTimestampInMs = new LinkedList<>();
+    Instant now = Instant.now();
+    // always-valid record
+    mockTimestampInMs.add(now.toEpochMilli());
+    // always-stale records since ttl time is 1 hr
+    Instant past = now.minus(2, ChronoUnit.HOURS);
+    mockTimestampInMs.add(past.toEpochMilli());
+    Time mockTime = new MockCircularTime(mockTimestampInMs);
+
+    // run samza to stream put and delete
+    runSamzaStreamJob(storeName, mockTime);
+
+    TestPushUtils.runPushJob("Run repush job with TTL", props);
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 4));
+
+    // Validate repush from version 4
+    clusterWrapper.refreshAllRouterMetaData();
+    try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(clusterWrapper.getRandomRouterURL())
+            .setMetricsRepository(metricsRepository))) {
+      // test single get
+      int validGet = 0, filteredGet = 0;
+      for (int i = 0; i < 10; i++) {
+        Object result = avroClient.get(Integer.toString(i)).get();
+        if (result == null) {
+          filteredGet++;
+        } else {
+          validGet++;
+        }
+      }
+      // Half records are valid, another half is not
+      Assert.assertEquals(validGet, 5);
+      Assert.assertEquals(filteredGet, 5);
+      // test deletes
+      for (int i = 10; i < 20; i++) {
+        // not matter the DELETE is TTLed or not, the value should always be null
+        Assert.assertNull(avroClient.get(Integer.toString(i)).get());
+      }
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -268,6 +330,10 @@ public class TestActiveActiveIngestion {
   }
 
   private void runSamzaStreamJob(String storeName) {
+    runSamzaStreamJob(storeName, null);
+  }
+
+  private void runSamzaStreamJob(String storeName, Time mockedTime) {
     Map<String, String> samzaConfig = new HashMap<>();
     String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
     samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
@@ -284,11 +350,20 @@ public class TestActiveActiveIngestion {
       veniceProducer.start();
       // send puts
       for (int i = 0; i < 10; i++) {
-        sendStreamingRecord(veniceProducer, storeName, i);
+        sendStreamingRecord(
+            veniceProducer,
+            storeName,
+            Integer.toString(i),
+            "stream_" + i,
+            mockedTime == null ? null : mockedTime.getMilliseconds());
       }
       // send deletes
       for (int i = 10; i < 20; i++) {
-        sendStreamingDeleteRecord(veniceProducer, storeName, Integer.toString(i));
+        sendStreamingDeleteRecord(
+            veniceProducer,
+            storeName,
+            Integer.toString(i),
+            mockedTime == null ? null : mockedTime.getMilliseconds());
       }
     }
   }

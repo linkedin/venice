@@ -62,7 +62,7 @@ public class HDFSRmdSchemaSource implements RmdSchemaSource, AutoCloseable {
   }
 
   public String getPath() {
-    return schemaDir.getName();
+    return schemaDir.toString();
   }
 
   /**
