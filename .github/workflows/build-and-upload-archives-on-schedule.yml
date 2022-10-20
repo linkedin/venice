@@ -16,6 +16,6 @@ jobs:
           ./make_tag.py --no-verify --github-actor '${GITHUB_ACTOR}'
 
   build-and-publish:
-    - needs: make-tag
+    needs: make-tag
     - name: Build And Publish the artifactory
       uses: ./.github/workflows/build-and-upload-archives.yml
