@@ -116,12 +116,14 @@ def get_remote():
 
 
 def make_tag(remote, bump_major, bump_minor, need_verification, github_actor):
-    set_user=call(['git', 'config', 'user.name', github_actor])
-    if set_user != 0:
-        sys.exit()
-    set_email=call(['git', 'config', 'user.email', f'{github_actor}@users.noreply.github.com'])
-    if set_email != 0:
-        sys.exit()
+    if github_actor:
+        set_user=call(['git', 'config', 'user.name', github_actor])
+        if set_user != 0:
+            sys.exit()
+        set_email=call(['git', 'config', 'user.email', f'{github_actor}@users.noreply.github.com'])
+        if set_email != 0:
+            sys.exit()
+
     pull_success = call(['git', 'pull', '--rebase', remote, 'main'])
     if pull_success != 0:
         sys.exit()
@@ -135,21 +137,10 @@ def make_tag(remote, bump_major, bump_minor, need_verification, github_actor):
             print('Skipped creating the tag')
             return
 
-    if github_actor:
-        headers = {
-            'Authorization': f'token {github_actor}'
-        }
-        commit = check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
-        url = 'https://api.github.com/repos/linkedin/venice/git/refs'
-        response = requests.post(url, headers=headers, json={'ref': f'refs/tags/{tag_name}', 'sha' : commit})
-        if (response.status_code != 201):
-            print('Could not create the tag ' + tag_name)
-            sys.exit()
-    else:
-        tag_success = call(['git', 'tag', '-a', '-m', tag_message, tag_name])
-        if tag_success != 0:
-            sys.exit()
-        call(['git', 'push', remote, tag_name])
+    tag_success = call(['git', 'tag', '-a', '-m', tag_message, tag_name])
+    if tag_success != 0:
+        sys.exit()
+    call(['git', 'push', remote, tag_name])
 
 
 def get_tags(remote):
