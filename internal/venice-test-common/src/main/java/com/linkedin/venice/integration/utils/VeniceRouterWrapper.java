@@ -186,18 +186,13 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
 
   @Override
   protected void newProcess() {
-    List<ServiceDiscoveryAnnouncer> d2Servers = D2TestUtils.getD2ServersForRouter(
-        zkAddress,
-        d2ClusterName,
-        "http://localhost:" + getPort(),
-        "https://localhost:" + getSslPort());
+    String httpURI = "http://" + getHost() + ":" + getPort();
+    String httpsURI = "https://" + getHost() + ":" + getSslPort();
 
-    d2Servers.addAll(
-        D2TestUtils.getD2ServersForRouter(
-            zkAddress,
-            clusterDiscoveryD2ClusterName,
-            "http://localhost:" + getPort(),
-            "https://localhost:" + getSslPort()));
+    List<ServiceDiscoveryAnnouncer> d2Servers =
+        D2TestUtils.getD2ServersForRouter(zkAddress, d2ClusterName, httpURI, httpsURI);
+
+    d2Servers.addAll(D2TestUtils.getD2ServersForRouter(zkAddress, clusterDiscoveryD2ClusterName, httpURI, httpsURI));
 
     service =
         new RouterServer(properties, d2Servers, Optional.empty(), Optional.of(SslUtils.getVeniceLocalSslFactory()));
