@@ -323,6 +323,30 @@ public class AutoClosingKafkaConsumer<K, V> implements Consumer<K, V> {
   }
 
   @Override
+  public Map<TopicPartition, OffsetAndMetadata> committed(Set<TopicPartition> partitions) {
+    if (partitions == null || partitions.isEmpty()) {
+      Collections.emptyMap();
+    }
+    try {
+      return kafkaConsumer.get().committed(partitions);
+    } finally {
+      closeIfIdle();
+    }
+  }
+
+  @Override
+  public Map<TopicPartition, OffsetAndMetadata> committed(Set<TopicPartition> partitions, final Duration timeout) {
+    if (partitions == null || partitions.isEmpty()) {
+      Collections.emptyMap();
+    }
+    try {
+      return kafkaConsumer.get().committed(partitions, timeout);
+    } finally {
+      closeIfIdle();
+    }
+  }
+
+  @Override
   public Map<MetricName, ? extends Metric> metrics() {
     if (kafkaConsumer.isPresent()) {
       return kafkaConsumer.get().metrics();
