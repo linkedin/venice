@@ -10,6 +10,7 @@ import com.linkedin.venice.exceptions.RecordTooLargeException;
 import com.linkedin.venice.exceptions.TopicAuthorizationVeniceException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
+import com.linkedin.venice.kafka.protocol.ChangeCaptureTopicSwitch;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
@@ -896,6 +897,30 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     topicSwitch.sourceTopicName = sourceTopicName;
     topicSwitch.rewindStartTimestamp = rewindStartTimestamp;
     controlMessage.controlMessageUnion = topicSwitch;
+    broadcastControlMessage(controlMessage, debugInfo);
+    producer.flush();
+  }
+
+  /**
+   * Broadcast control message to real-time topic partition, to be consumed by venice leader. Partition high watermarks
+   * are left to local venice leader to prepare and then been produced to version topic partition.
+   *
+   * @param oldServingVersionTopic the version topic change capture consumer should switch from.
+   * @param newServingVersionTopic the version topic change capture consumer should switch to.
+   * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
+   */
+  public void broadcastChangeCaptureTopicSwitch(
+      @Nonnull String oldServingVersionTopic,
+      @Nonnull String newServingVersionTopic,
+      Map<String, String> debugInfo) {
+    Validate.notNull(oldServingVersionTopic);
+    Validate.notEmpty(newServingVersionTopic);
+    ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.CHANGE_CAPTURE_TOPIC_SWITCH);
+    ChangeCaptureTopicSwitch changeCaptureTopicSwitch = new ChangeCaptureTopicSwitch();
+    changeCaptureTopicSwitch.oldServingVersionTopic = oldServingVersionTopic;
+    changeCaptureTopicSwitch.newServingVersionTopic = newServingVersionTopic;
+
+    controlMessage.controlMessageUnion = changeCaptureTopicSwitch;
     broadcastControlMessage(controlMessage, debugInfo);
     producer.flush();
   }

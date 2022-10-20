@@ -3,6 +3,7 @@ package com.linkedin.venice.kafka.protocol.enums;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
+import com.linkedin.venice.kafka.protocol.ChangeCaptureTopicSwitch;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.EndOfPush;
@@ -25,7 +26,8 @@ import com.linkedin.venice.utils.VeniceEnumValue;
  */
 public enum ControlMessageType implements VeniceEnumValue {
   START_OF_PUSH(0), END_OF_PUSH(1), START_OF_SEGMENT(2), END_OF_SEGMENT(3), @Deprecated
-  START_OF_BUFFER_REPLAY(4), START_OF_INCREMENTAL_PUSH(5), END_OF_INCREMENTAL_PUSH(6), TOPIC_SWITCH(7);
+  START_OF_BUFFER_REPLAY(4), START_OF_INCREMENTAL_PUSH(5), END_OF_INCREMENTAL_PUSH(6), TOPIC_SWITCH(7),
+  CHANGE_CAPTURE_TOPIC_SWITCH(8);
 
   /** The value is the byte used on the wire format */
   private final int value;
@@ -51,6 +53,7 @@ public enum ControlMessageType implements VeniceEnumValue {
    *         - {@link StartOfIncrementalPush}
    *         - {@link EndOfIncrementalPush}
    *         - {@link TopicSwitch}
+   *         - {@link ChangeCaptureTopicSwitch}
    */
   public Object getNewInstance() {
     switch (valueOf(value)) {
@@ -70,6 +73,8 @@ public enum ControlMessageType implements VeniceEnumValue {
         return new EndOfIncrementalPush();
       case TOPIC_SWITCH:
         return new TopicSwitch();
+      case CHANGE_CAPTURE_TOPIC_SWITCH:
+        return new ChangeCaptureTopicSwitch();
 
       default:
         throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
