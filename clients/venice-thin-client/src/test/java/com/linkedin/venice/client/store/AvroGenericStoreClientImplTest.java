@@ -306,13 +306,6 @@ public class AvroGenericStoreClientImplTest {
 
   @Test
   public void getByStoreKeyTestWithNoSchemaAvailable() throws Throwable {
-    /**
-     * Bump up to 20K iterations to reliably trigger a {@link com.linkedin.r2.RemoteInvocationException}
-     *
-     * This only seems to happen with the D2 client. The HTTP client is stable.
-     *
-     * TODO: Fix flaky D2 client.
-     */
     final int TEST_ITERATIONS = 100;
 
     String keyStr = "test_key";
