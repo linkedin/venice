@@ -1,6 +1,6 @@
 name: Build and Upload Archives On Workflow Call
 
-# Run this workflow on workflow_call
+# Run this workflow on workflow_call after pushing a tag
 on:
   workflow_call:
 
@@ -11,7 +11,7 @@ jobs:
     # Set the type of machine to run on
     runs-on: ubuntu-latest
     # Only run for tag creation
-    if: github.event.ref_type == 'tag' && github.repository == 'linkedin/venice'
+    #if: github.repository == 'linkedin/venice'
     steps:
       # Checks out a copy of your repository on the ubuntu-latest machine
       - name: Checkout code
@@ -26,10 +26,4 @@ jobs:
           java-version: '11'
 
       - name: Upload archive
-        env:
-          JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
-          JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
-        with:
-          arguments: |
-            "-Pversion=${{  github.ref_name }}" publishAllPublicationsToLinkedInJFrogRepository
+        run: echo "Latest tag ${{  github.ref_name }}"
