@@ -150,10 +150,6 @@ public enum Arg {
       "Backup version retention time in day after a new version is promoted to the current version, if not specified, Venice will use the configured retention as the default policy"
   ), REPLICATION_FACTOR("replication-factor", "rf", true, "the number of replica each store version will have"),
 
-  FILTER_JSON(
-      "filter-json", "ftj", true,
-      "Comma-delimited list of fields to display from the json output.  Omit to display all fields"
-  ),
   FLAT_JSON("flat-json", "flj", false, "Display output as flat json, without pretty-print indentation and line breaks"),
   HELP("help", "h", false, "Show usage"), FORCE("force", "f", false, "Force execute this operation"),
   INCLUDE_SYSTEM_STORES("include-system-stores", "iss", true, "Include internal stores maintained by the system."),
