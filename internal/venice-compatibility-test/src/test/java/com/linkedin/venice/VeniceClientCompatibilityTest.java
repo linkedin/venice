@@ -77,8 +77,10 @@ public class VeniceClientCompatibilityTest {
         true,
         Optional.empty());
 
-    veniceClient = ClientFactory
-        .getGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddress));
+    veniceClient = ClientFactory.getGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(routerAddress)
+            .setForceClusterDiscoveryAtStartTime(true));
 
     // Block until the store is ready.
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
