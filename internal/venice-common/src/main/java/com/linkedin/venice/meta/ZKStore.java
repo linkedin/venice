@@ -221,6 +221,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setStoreMetaSystemStoreEnabled(store.isStoreMetaSystemStoreEnabled());
     setActiveActiveReplicationEnabled(store.isActiveActiveReplicationEnabled());
     setRmdVersionID(store.getRmdVersionID());
+    setViewConfig(store.getViewConfigs());
 
     for (Version storeVersion: store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);

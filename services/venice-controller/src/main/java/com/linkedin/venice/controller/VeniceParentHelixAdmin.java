@@ -98,6 +98,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfig;
 import com.linkedin.venice.controller.kafka.protocol.admin.SupersetSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
@@ -160,6 +161,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
@@ -2148,6 +2150,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> activeActiveReplicationEnabled = params.getActiveActiveReplicationEnabled();
       Optional<String> regionsFilter = params.getRegionsFilter();
       Optional<String> personaName = params.getStoragePersona();
+      Optional<Set<String>> storeViewConfig = params.getStoreViews();
 
       /**
        * Check whether parent controllers will only propagate the update configs to child controller, or all unchanged
@@ -2230,6 +2233,19 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.activeActiveReplicationEnabled = activeActiveReplicationEnabled
           .map(addToUpdatedConfigList(updatedConfigsList, ACTIVE_ACTIVE_REPLICATION_ENABLED))
           .orElseGet(currStore::isActiveActiveReplicationEnabled);
+
+      if (storeViewConfig.isPresent()) {
+        StoreViewConfig config = new StoreViewConfig();
+        config.setViewType("CHANGE_CAPTURE");
+        setStore.views = Arrays.asList(config);
+      } else {
+        Set<ViewConfig> viewConfigs = currStore.getViewConfigs();
+        if (!viewConfigs.isEmpty()) {
+          StoreViewConfig config = new StoreViewConfig();
+          config.setViewType("CHANGE_CAPTURE");
+          setStore.views = Arrays.asList(config);
+        }
+      }
 
       if (partitionerClass.isPresent() || partitionerParams.isPresent() || amplificationFactor.isPresent()) {
         // Only update fields that are set, other fields will be read from the original store's partitioner config.

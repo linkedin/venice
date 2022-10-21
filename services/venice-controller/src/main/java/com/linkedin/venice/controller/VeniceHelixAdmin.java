@@ -2173,6 +2173,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
           version.setVersionSwapDeferred(versionSwapDeferred);
 
+          version.setViewConfig(store.getViewConfigs());
+
           repository.updateStore(store);
           LOGGER.info("Add version: {} for store: {}", version.getNumber(), storeName);
 
