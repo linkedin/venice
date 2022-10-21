@@ -43,6 +43,7 @@ import com.linkedin.venice.hadoop.pbnj.PostBulkLoadAnalysisMapper;
 import com.linkedin.venice.hadoop.schema.HDFSRmdSchemaSource;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.utils.ControllerUtils;
+import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -896,8 +897,13 @@ public class VenicePushJob implements AutoCloseable {
       storeSetting = getSettingsFromController(controllerClient, pushJobSetting);
       inputStorageQuotaTracker = new InputStorageQuotaTracker(storeSetting.storeStorageQuota);
 
-      if (pushJobSetting.repushTtlInHours != NOT_SET && storeSetting.isChunkingEnabled) {
-        throw new VeniceException("Repush TTL is not supported when the store has chunking enabled.");
+      if (repushWithTTLEnabled(pushJobSetting)) {
+        if (storeSetting.isChunkingEnabled) {
+          throw new VeniceException("Repush TTL is not supported when the store has chunking enabled.");
+        }
+        if (storeSetting.isWriteComputeEnabled) {
+          throw new VeniceException("Repush TTL is not supported when the store has write compute enabled.");
+        }
       }
 
       if (pushJobSetting.isSourceETL) {
@@ -980,16 +986,22 @@ public class VenicePushJob implements AutoCloseable {
           pushId = Version.generateRePushId(pushId);
           if (storeSetting.sourceKafkaInputVersionInfo.getHybridStoreConfig() != null
               && pushJobSetting.rewindTimeInSecondsOverride == NOT_SET) {
-            pushJobSetting.rewindTimeInSecondsOverride = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
-            LOGGER.info("Overriding re-push rewind time in seconds to: {}", DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE);
+            // for repush with ttl, default rewind time should be 0 otherwise stale records may be re-consumed.
+            pushJobSetting.rewindTimeInSecondsOverride =
+                repushWithTTLEnabled(pushJobSetting) ? 0L : DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
+            LOGGER.info("Overriding re-push rewind time in seconds to: {}", pushJobSetting.rewindTimeInSecondsOverride);
           }
-          if (pushJobSetting.repushTtlInHours != NOT_SET) {
-            // the schema path will be suffixed by the store name, e.g. /tmp/veniceRmdSchemas/<store_name>
-            try (HDFSRmdSchemaSource rmdSchemaSource = new HDFSRmdSchemaSource(
-                TEMP_DIR_PREFIX + pushJobSetting.storeName,
-                pushJobSetting.storeName,
-                controllerClient)) {
-              rmdSchemaSource.loadRmdSchemasOnDisk();
+          if (repushWithTTLEnabled(pushJobSetting)) {
+            // the schema path will be suffixed by the store name and time, e.g.
+            // /tmp/veniceRmdSchemas/<store_name>/<timestamp>
+            StringBuilder schemaDirBuilder = new StringBuilder();
+            schemaDirBuilder.append(TEMP_DIR_PREFIX)
+                .append(pushJobSetting.storeName)
+                .append("/")
+                .append(System.currentTimeMillis());
+            try (HDFSRmdSchemaSource rmdSchemaSource =
+                new HDFSRmdSchemaSource(schemaDirBuilder.toString(), pushJobSetting.storeName)) {
+              rmdSchemaSource.loadRmdSchemasOnDisk(controllerClient);
               pushJobSetting.rmdSchemaDir = rmdSchemaSource.getPath();
             }
           }
@@ -1147,6 +1159,9 @@ public class VenicePushJob implements AutoCloseable {
         pushJobHeartbeatSender.stop();
       }
       inputDataInfoProvider = null;
+      if (pushJobSetting.rmdSchemaDir != null) {
+        HadoopUtils.cleanUpHDFSPath(pushJobSetting.rmdSchemaDir, true);
+      }
     }
   }
 
@@ -2494,7 +2509,7 @@ public class VenicePushJob implements AutoCloseable {
       conf.set(KAFKA_INPUT_TOPIC, pushJobSetting.kafkaInputTopic);
       conf.set(KAFKA_INPUT_BROKER_URL, pushJobSetting.kafkaInputBrokerUrl);
       conf.setLong(REPUSH_TTL_IN_HOURS, pushJobSetting.repushTtlInHours);
-      if (pushJobSetting.repushTtlInHours != NOT_SET) {
+      if (repushWithTTLEnabled(pushJobSetting)) {
         conf.setInt(REPUSH_TTL_POLICY, TTLResolutionPolicy.RT_WRITE_ONLY.getValue()); // only support one policy
                                                                                       // thus not allow any value passed
                                                                                       // in.
@@ -2847,6 +2862,10 @@ public class VenicePushJob implements AutoCloseable {
     } else {
       return clusterDiscoveryResponse.getCluster();
     }
+  }
+
+  private boolean repushWithTTLEnabled(PushJobSetting setting) {
+    return setting.repushTtlInHours != NOT_SET;
   }
 
   public String getKafkaTopic() {

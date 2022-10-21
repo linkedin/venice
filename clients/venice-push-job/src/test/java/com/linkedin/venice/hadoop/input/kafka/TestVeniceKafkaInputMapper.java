@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.hadoop.AbstractTestVeniceMapper;
 import com.linkedin.venice.hadoop.AbstractVeniceFilter;
+import com.linkedin.venice.hadoop.FilterChain;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
 import com.linkedin.venice.utils.Pair;
@@ -57,7 +58,7 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
   @Test
   public void testEmptyFilterWhenTTLNotSpecified() {
     try (VeniceKafkaInputMapper mapper = new VeniceKafkaInputMapper()) {
-      Assert.assertNull(mapper.getFilter(new VeniceProperties()));
+      Assert.assertTrue(mapper.getFilterChain(new VeniceProperties()).isEmpty());
     }
   }
 
@@ -67,7 +68,7 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
     props.put(REPUSH_TTL_IN_HOURS, 10L);
     props.put(REPUSH_TTL_POLICY, 0);
     props.put(RMD_SCHEMA_DIR, "tmp");
-    Assert.assertNotNull(newMapper().getFilter(new VeniceProperties(props)));
+    Assert.assertNotNull(newMapper().getFilterChain(new VeniceProperties(props)));
   }
 
   @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
@@ -89,10 +90,11 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
   @Test
   public void testProcessWithFilterFilteringPartialRecords() {
     AbstractVeniceFilter<KafkaInputMapperValue> filter = mock(AbstractVeniceFilter.class);
-    doReturn(true, false, true, false, false).when(filter).applyRecursively(any()); // filter out partial records
+    doReturn(true, false, true, false, false).when(filter).apply(any()); // filter out partial records
 
     VeniceKafkaInputMapper mapper = spy(newMapper());
-    doReturn(filter).when(mapper).getFilter(any());
+    FilterChain<KafkaInputMapperValue> filterChain = new FilterChain<>(filter);
+    doReturn(filterChain).when(mapper).getFilterChain(any());
     mapper.configureTask(any(), any());
     int validCount = 0, filteredCount = 0;
     Pair<BytesWritable, KafkaInputMapperValue> record = generateRecord();
@@ -110,10 +112,11 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
   @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
   public void testProcessWithFilterFilteringAllRecords(int numReducers, int taskId) throws IOException {
     AbstractVeniceFilter<KafkaInputMapperValue> filter = mock(AbstractVeniceFilter.class);
-    doReturn(true).when(filter).applyRecursively(any()); // filter out all records
+    doReturn(true).when(filter).apply(any()); // filter out all records
 
+    FilterChain<KafkaInputMapperValue> filterChain = new FilterChain<>(filter);
     VeniceKafkaInputMapper mapper = spy(getMapper(numReducers, taskId));
-    doReturn(filter).when(mapper).getFilter(any());
+    doReturn(filterChain).when(mapper).getFilterChain(any());
     mapper.configureTask(any(), any());
 
     Assert.assertFalse(mapper.process(any(), any(), any(), any(), any()));

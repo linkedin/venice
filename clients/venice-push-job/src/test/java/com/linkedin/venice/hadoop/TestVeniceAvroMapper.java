@@ -189,7 +189,7 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
   @Test(expectedExceptions = UnsupportedOperationException.class)
   public void testEmptyFilter() {
     try (VeniceAvroMapper mapper = new VeniceAvroMapper()) {
-      mapper.getFilter(new VeniceProperties());
+      mapper.getFilterChain(new VeniceProperties());
     }
   }
 

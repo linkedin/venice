@@ -38,10 +38,8 @@ public class HDFSRmdSchemaSource implements RmdSchemaSource, AutoCloseable {
   private final String storeName;
   private final FileSystem fs;
   private final Path schemaDir;
-  private final ControllerClient controllerClient;
 
-  public HDFSRmdSchemaSource(final String schemaDir, final String storeName, final ControllerClient controllerClient)
-      throws IOException {
+  public HDFSRmdSchemaSource(final String schemaDir, final String storeName) throws IOException {
     Configuration conf = new Configuration();
     this.fs = FileSystem.get(conf);
     this.schemaDir = new Path(schemaDir);
@@ -49,7 +47,6 @@ public class HDFSRmdSchemaSource implements RmdSchemaSource, AutoCloseable {
       fs.mkdirs(this.schemaDir);
     }
     this.storeName = storeName;
-    this.controllerClient = controllerClient;
   }
 
   /**
@@ -58,7 +55,7 @@ public class HDFSRmdSchemaSource implements RmdSchemaSource, AutoCloseable {
    * @throws IOException
    */
   public HDFSRmdSchemaSource(final String schemaDirSuffix) throws IOException {
-    this(schemaDirSuffix, null, null);
+    this(schemaDirSuffix, null);
   }
 
   public String getPath() {
@@ -70,10 +67,7 @@ public class HDFSRmdSchemaSource implements RmdSchemaSource, AutoCloseable {
    * @throws IOException
    * @throws IllegalStateException
    */
-  public void loadRmdSchemasOnDisk() throws IOException, IllegalStateException {
-    if (this.controllerClient == null) {
-      throw new IllegalStateException("The controller is not provided during initialization.");
-    }
+  public void loadRmdSchemasOnDisk(ControllerClient controllerClient) throws IOException, IllegalStateException {
     LOGGER.info("Starting caching RMD schemas for {} at {}", storeName, schemaDir.toString());
     MultiSchemaResponse.Schema[] schemas = controllerClient.getAllReplicationMetadataSchemas(storeName).getSchemas();
     for (MultiSchemaResponse.Schema schema: schemas) {

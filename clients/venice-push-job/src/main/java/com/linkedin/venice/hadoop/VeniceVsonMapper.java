@@ -14,7 +14,7 @@ public class VeniceVsonMapper extends AbstractVeniceMapper<BytesWritable, BytesW
   }
 
   @Override
-  protected AbstractVeniceFilter<BytesWritable> getFilter(final VeniceProperties props) {
+  protected FilterChain<BytesWritable> getFilterChain(final VeniceProperties props) {
     throw new UnsupportedOperationException("VeniceVsonMapper hasn't implemented the filter yet");
   }
 }

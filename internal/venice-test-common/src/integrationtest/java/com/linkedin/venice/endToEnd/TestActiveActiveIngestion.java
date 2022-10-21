@@ -7,7 +7,6 @@ import static com.linkedin.venice.ConfigKeys.LF_MODEL_DEPENDENCY_CHECK_DISABLED;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_IN_HOURS;
-import static com.linkedin.venice.hadoop.VenicePushJob.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
@@ -199,12 +198,10 @@ public class TestActiveActiveIngestion {
      * Test Repush with TTL
      */
     // run empty push to clean up batch data
-    parentControllerClient.sendEmptyPushAndWait(storeName, "Run push job", 1000, 30 * Time.MS_PER_SECOND);
+    parentControllerClient.sendEmptyPushAndWait(storeName, "Run empty push job", 1000, 30 * Time.MS_PER_SECOND);
 
     // run repush ttl with new parameters
     props.put(REPUSH_TTL_IN_HOURS, 1);
-    // do not rewind, so we don't reconsume stale records
-    props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0L);
 
     // set up mocked time for Samza records so some records can be stale intentionally.
     List<Long> mockTimestampInMs = new LinkedList<>();

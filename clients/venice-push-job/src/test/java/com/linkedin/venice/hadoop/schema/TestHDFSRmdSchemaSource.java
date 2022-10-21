@@ -24,23 +24,23 @@ public class TestHDFSRmdSchemaSource {
       "{\"type\":\"record\"," + "\"name\":\"User\"," + "\"namespace\":\"example.avro\"," + "\"fields\":["
           + "{\"name\":\"name\",\"type\":\"string\",\"default\":\"venice\"}]}";
   private HDFSRmdSchemaSource source;
+  private ControllerClient client;
 
   @BeforeClass
   public void setUp() throws IOException {
     File inputDir = getTempDataDirectory();
-
-    ControllerClient client = mock(ControllerClient.class);
+    client = mock(ControllerClient.class);
     MultiSchemaResponse.Schema[] schemas = generateMultiSchema(numOfSchemas);
     MultiSchemaResponse response = new MultiSchemaResponse();
     response.setSchemas(schemas);
     doReturn(response).when(client).getAllReplicationMetadataSchemas(TEST_STORE);
 
-    source = new HDFSRmdSchemaSource(inputDir.getAbsolutePath(), TEST_STORE, client);
+    source = new HDFSRmdSchemaSource(inputDir.getAbsolutePath(), TEST_STORE);
   }
 
   @Test
   public void testLoadRmdSchemaThenFetch() throws IOException {
-    source.loadRmdSchemasOnDisk();
+    source.loadRmdSchemasOnDisk(client);
     Map<RmdVersionId, Schema> schemaMap = source.fetchSchemas();
     Assert.assertEquals(numOfSchemas, schemaMap.size());
     for (int i = 1; i <= numOfSchemas; i++) {

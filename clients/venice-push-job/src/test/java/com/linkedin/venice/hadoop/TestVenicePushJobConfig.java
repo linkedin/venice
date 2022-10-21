@@ -62,6 +62,24 @@ public class TestVenicePushJobConfig {
     pushJob.run();
   }
 
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Repush TTL is not supported when the store has write compute enabled.*")
+  public void testRepushTTLJobWithWC() {
+    Properties repushProps = new Properties();
+    repushProps.put(VenicePushJob.REPUSH_TTL_IN_HOURS, 10L);
+    repushProps.setProperty(VenicePushJob.SOURCE_KAFKA, "true");
+    repushProps.setProperty(VenicePushJob.KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(TEST_STORE, 0));
+    repushProps.setProperty(VenicePushJob.KAFKA_INPUT_BROKER_URL, "localhost");
+    repushProps.setProperty(VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+
+    ControllerClient client = getClient(storeInfo -> {
+      Version version = new VersionImpl(TEST_STORE, 0, TEST_PUSH);
+      storeInfo.setWriteComputationEnabled(true);
+      storeInfo.setVersions(Collections.singletonList(version));
+    });
+    VenicePushJob pushJob = getSpyVenicePushJob(Optional.of(repushProps), Optional.of(client));
+    pushJob.run();
+  }
+
   private VenicePushJob getSpyVenicePushJob() {
     return getSpyVenicePushJob(Optional.empty(), Optional.empty());
   }

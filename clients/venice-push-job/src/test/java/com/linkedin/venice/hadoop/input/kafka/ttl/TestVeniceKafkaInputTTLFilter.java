@@ -10,6 +10,7 @@ import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
+import com.linkedin.venice.hadoop.FilterChain;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.schema.HDFSRmdSchemaSource;
@@ -45,6 +46,8 @@ public class TestVeniceKafkaInputTTLFilter {
   private VeniceKafkaInputTTLFilter filterWithSupportedPolicy;
   private VeniceKafkaInputTTLFilter filterWithUnsupportedPolicy;
 
+  private FilterChain<KafkaInputMapperValue> filterChain;
+
   @BeforeClass
   public void setUp() throws IOException {
     valueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(VALUE_RECORD_SCHEMA_STR);
@@ -70,7 +73,7 @@ public class TestVeniceKafkaInputTTLFilter {
 
     this.filterWithSupportedPolicy = new VeniceKafkaInputTTLFilter(valid);
     this.filterWithUnsupportedPolicy = new VeniceKafkaInputTTLFilter(invalid);
-
+    this.filterChain = new FilterChain<>(filterWithSupportedPolicy, filterWithUnsupportedPolicy);
   }
 
   private void setupHDFS(VeniceProperties props) throws IOException {
@@ -82,8 +85,8 @@ public class TestVeniceKafkaInputTTLFilter {
     response.setSchemas(schemas);
     doReturn(response).when(client).getAllReplicationMetadataSchemas(TEST_STORE);
 
-    source = new HDFSRmdSchemaSource(props.getString(VenicePushJob.RMD_SCHEMA_DIR), TEST_STORE, client);
-    source.loadRmdSchemasOnDisk();
+    source = new HDFSRmdSchemaSource(props.getString(VenicePushJob.RMD_SCHEMA_DIR), TEST_STORE);
+    source.loadRmdSchemasOnDisk(client);
   }
 
   private MultiSchemaResponse.Schema[] generateMultiSchema(int n) {
@@ -101,17 +104,13 @@ public class TestVeniceKafkaInputTTLFilter {
 
   @Test
   public void testFilterChain() {
-    filterWithSupportedPolicy.setNext(filterWithUnsupportedPolicy);
-    Assert.assertTrue(filterWithSupportedPolicy.hasNext());
-    Assert.assertEquals(filterWithSupportedPolicy.next(), filterWithUnsupportedPolicy);
-    Assert.assertFalse(filterWithUnsupportedPolicy.hasNext());
-    filterWithSupportedPolicy.setNext(null);
+    Assert.assertFalse(filterChain.isEmpty());
   }
 
   @Test(expectedExceptions = UnsupportedOperationException.class, expectedExceptionsMessageRegExp = ".*policy is not supported.*")
   public void testFilterWithUnsupportedPolicy() {
     KafkaInputMapperValue value = new KafkaInputMapperValue();
-    filterWithUnsupportedPolicy.applyRecursively(value);
+    filterWithUnsupportedPolicy.apply(value);
   }
 
   @Test
@@ -119,7 +118,7 @@ public class TestVeniceKafkaInputTTLFilter {
     List<KafkaInputMapperValue> records = generateRecord(4, 6, Instant.now(), TTL_IN_HOURS_DEFAULT);
     int validCount = 0, expiredCount = 0;
     for (KafkaInputMapperValue value: records) {
-      if (filterWithSupportedPolicy.applyRecursively(value)) {
+      if (filterWithSupportedPolicy.apply(value)) {
         expiredCount++;
       } else {
         validCount++;
@@ -132,7 +131,7 @@ public class TestVeniceKafkaInputTTLFilter {
   @Test(expectedExceptions = IllegalStateException.class)
   public void testFilterWithRejectBatchWritePolicyWithInValidValues() {
     KafkaInputMapperValue value = new KafkaInputMapperValue();
-    Assert.assertFalse(filterWithSupportedPolicy.applyRecursively(value));
+    Assert.assertFalse(filterWithSupportedPolicy.apply(value));
   }
 
   /**

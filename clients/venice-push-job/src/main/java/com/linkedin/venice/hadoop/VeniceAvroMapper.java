@@ -13,7 +13,7 @@ public class VeniceAvroMapper extends AbstractVeniceMapper<AvroWrapper<IndexedRe
   }
 
   @Override
-  protected AbstractVeniceFilter<NullWritable> getFilter(final VeniceProperties props) {
+  protected FilterChain<NullWritable> getFilterChain(final VeniceProperties props) {
     throw new UnsupportedOperationException("VeniceAvroMapper hasn't implemented the filter yet");
   }
 }

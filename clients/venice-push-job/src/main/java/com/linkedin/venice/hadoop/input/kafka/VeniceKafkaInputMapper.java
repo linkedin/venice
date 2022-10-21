@@ -1,9 +1,9 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.AbstractVeniceFilter;
 import com.linkedin.venice.hadoop.AbstractVeniceMapper;
 import com.linkedin.venice.hadoop.AbstractVeniceRecordReader;
+import com.linkedin.venice.hadoop.FilterChain;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.ttl.VeniceKafkaInputTTLFilter;
@@ -30,17 +30,17 @@ public class VeniceKafkaInputMapper extends AbstractVeniceMapper<BytesWritable, 
   }
 
   @Override
-  protected AbstractVeniceFilter<KafkaInputMapperValue> getFilter(final VeniceProperties props) {
-    AbstractVeniceFilter<KafkaInputMapperValue> filter = null;
+  protected FilterChain<KafkaInputMapperValue> getFilterChain(final VeniceProperties props) {
+    FilterChain<KafkaInputMapperValue> filterChain = new FilterChain<>();
     long ttlInHours = props.getLong(VenicePushJob.REPUSH_TTL_IN_HOURS, VenicePushJob.NOT_SET);
     if (ttlInHours != VenicePushJob.NOT_SET) {
       try {
-        filter = new VeniceKafkaInputTTLFilter(props);
+        filterChain.add(new VeniceKafkaInputTTLFilter(props));
       } catch (IOException e) {
         throw new VeniceException("Could not instantiate the filter", e);
       }
     }
-    return filter;
+    return filterChain;
   }
 
   @Override
@@ -49,7 +49,7 @@ public class VeniceKafkaInputMapper extends AbstractVeniceMapper<BytesWritable, 
      * Do nothing but create the filter for {@link KafkaInputFormat} for now, and if we need to support compression rebuild during re-push,
      * this function needs to be changed.
      */
-    this.veniceFilter = getFilter(props);
+    this.veniceFilterChain = getFilterChain(props);
   }
 
   @Override
@@ -59,7 +59,7 @@ public class VeniceKafkaInputMapper extends AbstractVeniceMapper<BytesWritable, 
       BytesWritable keyBW,
       BytesWritable valueBW,
       Reporter reporter) {
-    if (veniceFilter != null && veniceFilter.applyRecursively(inputValue)) {
+    if (veniceFilterChain != null && !veniceFilterChain.isEmpty() && veniceFilterChain.apply(inputValue)) {
       return false;
     }
     keyBW.set(inputKey);

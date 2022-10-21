@@ -35,7 +35,7 @@ public class VeniceKafkaInputTTLFilter extends AbstractVeniceFilter<KafkaInputMa
   }
 
   @Override
-  protected boolean apply(final KafkaInputMapperValue kafkaInputMapperValue) {
+  public boolean apply(final KafkaInputMapperValue kafkaInputMapperValue) {
     Instant curTime = Instant.now();
     switch (ttlPolicy) {
       case RT_WRITE_ONLY:
@@ -49,7 +49,7 @@ public class VeniceKafkaInputTTLFilter extends AbstractVeniceFilter<KafkaInputMa
   }
 
   @Override
-  public void closeResources() {
+  public void close() {
     schemaSource.close();
   }
 
