@@ -9,6 +9,7 @@ import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_STORE_NAME_CONFIG;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
+import static com.linkedin.venice.utils.Utils.getUniqueString;
 import static org.apache.hadoop.mapreduce.MRJobConfig.MAPREDUCE_JOB_CLASSLOADER;
 import static org.apache.hadoop.mapreduce.MRJobConfig.MAPREDUCE_JOB_CREDENTIALS_BINARY;
 import static org.apache.hadoop.security.UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION;
@@ -164,14 +165,14 @@ public class VenicePushJob implements AutoCloseable {
    * to validate schema and build dictionary is stable.
    */
   public static final String USE_MAPPER_TO_BUILD_DICTIONARY = "use.mapper.to.build.dictionary";
-  public static final boolean DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY = false;
+  public static final boolean DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY = true;
 
   /**
    * Location and key to store the output of {@link ValidateSchemaAndBuildDictMapper} and retrieve it back
    * when USE_MAPPER_TO_BUILD_DICTIONARY is enabled
    */
-  public static final String OUTPUT_DIRECTORY_TO_STORE_RESULTS_FROM_MAPPER =
-      "output.directory.to.store.results.from.mapper";
+  public static final String MAPPER_OUTPUT_DIRECTORY = "mapper.output.directory";
+  public static final String UNIQUE_STRING_FOR_MAPPER_OUTPUT_DIRECTORY = "unique.string.for.mapper.output.directory";
   protected static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PARENT_DIR_DEFAULT = "/tmp/venice";
   private static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_PREFIX = "mapper-output-";
   private static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_EXTENSION = ".avro";
@@ -393,6 +394,7 @@ public class VenicePushJob implements AutoCloseable {
   private Class<? extends Partitioner> mapRedPartitionerClass = VeniceMRPartitioner.class;
   private PushJobSchemaInfo pushJobSchemaInfo;
   private ValidateSchemaAndBuildDictMapperOutput validateSchemaAndBuildDictMapperOutput;
+  private String uniqueStringForMapperOutputDirectory;
 
   protected static class PushJobSetting {
     boolean enablePush;
@@ -741,9 +743,8 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.useMapperToBuildDict =
         props.getBoolean(USE_MAPPER_TO_BUILD_DICTIONARY, DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY);
     if (pushJobSettingToReturn.useMapperToBuildDict) {
-      pushJobSettingToReturn.useMapperToBuildDictOutputPath = props.getString(
-          OUTPUT_DIRECTORY_TO_STORE_RESULTS_FROM_MAPPER,
-          VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PARENT_DIR_DEFAULT);
+      pushJobSettingToReturn.useMapperToBuildDictOutputPath = props
+          .getString(MAPPER_OUTPUT_DIRECTORY, VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PARENT_DIR_DEFAULT);
     }
     return pushJobSettingToReturn;
   }
@@ -1312,53 +1313,51 @@ public class VenicePushJob implements AutoCloseable {
    * Creating the output file for {@link ValidateSchemaAndBuildDictMapper} to persist data
    * to be read from VPJ driver.
    *
-   * Output Directory: {$hadoopTmpDir}/venice/{$storeName}
+   * Output Directory: {$hadoopTmpDir}/{$storeName}-{$JOB_EXEC_ID}-{$randomUniqueString}
    * File name: mapper-output-{$MRJobID}.avro
    *
-   * Why using MRJobID? Multiple push jobs can be started in parallel, but only 1 will continue beyond
-   * {@link ControllerClient#requestTopicForWrites} as this method will throw CONCURRENT_BATCH_PUSH error
-   * if there is another push job in progress. As dictionary creation happens before this method,
-   * it is prone to race conditions, so having per job file will prevent it getting corrupted due
-   * to parallel writes or overwrites.
+   * Why JOB_EXEC_ID and randomUniqueString? This gives uniqueness to the name of the directory whose
+   * permission will be restricted to the current user who started the VPJ only. This helps with 2 issues.
+   * 1. That there could be instances where multiple headless accounts are writing to a single Venice store.
+   *    It shouldn't happen in regular cases - but is very likely in case of migrations (technical or organizational)
+   *    => unless we have unique directory for each job, the multiple accounts will have access issues of the directory.
    *
-   * TODO:
-   *  1. Note that there could be multiple headless accounts writing to a Venice store.
-   *     It shouldn't happen in regular cases - but is very likely in case of
-   *     migrations (technical or organizational) => So to protect pii from multiple
-   *     such accounts, the output directory should be unique for a store and the specific job,
-   *     not just to the store as shown above. But the job id is not populated yet when
-   *     {@link ValidateSchemaAndBuildDictOutputFormat#setValidateSchemaAndBuildDictionaryOutputDirPath}
-   *     is called and need to explore further on how to add some uniqueness to the directory here.
-   *  2. should try exploring using conf.get("hadoop.tmp.dir") or similar configs to get default
+   * 2. Multiple push jobs can be started in parallel, but only 1 will continue beyond
+   *    {@link ControllerClient#requestTopicForWrites} as this method will throw CONCURRENT_BATCH_PUSH error
+   *    if there is another push job in progress. As {@link ValidateSchemaAndBuildDictMapper} runs before this method,
+   *    it is prone to concurrent push jobs and thus race conditions. Having unique directories per execution will help here.
+   *
+   * TODO: should try exploring using conf.get("hadoop.tmp.dir") or similar configs to get default
    *     tmp directory in different HDFS environments rather than hardcoding it to
    *     VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PARENT_DIR_DEFAULT.
    */
-  protected static String getValidateSchemaAndBuildDictionaryOutputDir(String parentOutputDir, String storeName) {
-    return parentOutputDir + "/" + storeName;
+  protected static String getValidateSchemaAndBuildDictionaryOutputDir(
+      String parentOutputDir,
+      String storeName,
+      String jobExecId,
+      String uniqueString) {
+    return parentOutputDir + "/" + storeName + "-" + jobExecId + "-" + uniqueString;
   }
 
-  protected static String getValidateSchemaAndBuildDictionaryOutputFileNameNoExtension(String jobId) {
-    return VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_PREFIX + jobId;
+  protected static String getValidateSchemaAndBuildDictionaryOutputFileNameNoExtension(String mrJobId) {
+    return VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_PREFIX + mrJobId;
   }
 
-  protected static String getValidateSchemaAndBuildDictionaryOutputFileName(String jobId) {
-    return getValidateSchemaAndBuildDictionaryOutputFileNameNoExtension(jobId)
+  protected static String getValidateSchemaAndBuildDictionaryOutputFileName(String mrJobId) {
+    return getValidateSchemaAndBuildDictionaryOutputFileNameNoExtension(mrJobId)
         + VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_EXTENSION;
   }
 
-  private void getValidateSchemaAndBuildDictMapperOutput(String jobId) throws Exception {
+  private void getValidateSchemaAndBuildDictMapperOutput(String mrJobId) throws Exception {
     String outputDir = getValidateSchemaAndBuildDictionaryOutputDir(
         pushJobSetting.useMapperToBuildDictOutputPath,
-        pushJobSetting.storeName);
-    String outputAvroFile = getValidateSchemaAndBuildDictionaryOutputFileName(jobId);
-    ValidateSchemaAndBuildDictMapperOutputReader outputReader = null;
-    try {
-      outputReader = new ValidateSchemaAndBuildDictMapperOutputReader(outputDir, outputAvroFile);
+        pushJobSetting.storeName,
+        props.getString(JOB_EXEC_ID, ""),
+        uniqueStringForMapperOutputDirectory);
+    String outputAvroFile = getValidateSchemaAndBuildDictionaryOutputFileName(mrJobId);
+    try (ValidateSchemaAndBuildDictMapperOutputReader outputReader =
+        new ValidateSchemaAndBuildDictMapperOutputReader(outputDir, outputAvroFile)) {
       validateSchemaAndBuildDictMapperOutput = outputReader.getOutput();
-    } finally {
-      if (outputReader != null) {
-        outputReader.close();
-      }
     }
     inputFileDataSize = validateSchemaAndBuildDictMapperOutput.getInputFileDataSize() * INPUT_DATA_SIZE_FACTOR;
   }
@@ -2780,7 +2779,11 @@ public class VenicePushJob implements AutoCloseable {
     conf.set(COMPRESSION_STRATEGY, storeSetting.compressionStrategy.toString());
     conf.setBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED, pushJobSetting.compressionMetricCollectionEnabled);
     conf.setBoolean(USE_MAPPER_TO_BUILD_DICTIONARY, pushJobSetting.useMapperToBuildDict);
-    conf.set(OUTPUT_DIRECTORY_TO_STORE_RESULTS_FROM_MAPPER, pushJobSetting.useMapperToBuildDictOutputPath);
+    conf.set(MAPPER_OUTPUT_DIRECTORY, pushJobSetting.useMapperToBuildDictOutputPath);
+    uniqueStringForMapperOutputDirectory = getUniqueString();
+    conf.set(UNIQUE_STRING_FOR_MAPPER_OUTPUT_DIRECTORY, uniqueStringForMapperOutputDirectory);
+
+    conf.set(JOB_EXEC_ID, props.getString(JOB_EXEC_ID, ""));
 
     /** adding below for AbstractMapReduceTask.configure() to not crash: Doesn't affect this flow */
     conf.setBoolean(VeniceWriter.ENABLE_CHUNKING, false);

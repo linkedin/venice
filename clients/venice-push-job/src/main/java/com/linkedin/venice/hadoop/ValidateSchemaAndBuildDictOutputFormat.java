@@ -1,6 +1,8 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.OUTPUT_DIRECTORY_TO_STORE_RESULTS_FROM_MAPPER;
+import static com.linkedin.venice.hadoop.VenicePushJob.JOB_EXEC_ID;
+import static com.linkedin.venice.hadoop.VenicePushJob.MAPPER_OUTPUT_DIRECTORY;
+import static com.linkedin.venice.hadoop.VenicePushJob.UNIQUE_STRING_FOR_MAPPER_OUTPUT_DIRECTORY;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.getValidateSchemaAndBuildDictionaryOutputDir;
 import static com.linkedin.venice.hadoop.VenicePushJob.getValidateSchemaAndBuildDictionaryOutputFileNameNoExtension;
@@ -69,31 +71,26 @@ public class ValidateSchemaAndBuildDictOutputFormat extends AvroOutputFormat {
 
   /**
    * 1. The parent directory should be accessible by every user/group (777)
-   * 2. specific output directory for this store should be accessible only by
-   *    the user who triggers VPJ (700) to protect unauthorized access to pii
-   *
-   * TODO: Note that there could be multiple headless accounts writing to a Venice store.
-   *  It shouldn't happen in regular cases - but is very likely in case of
-   *  migrations (technical or organizational) => So to protect pii from multiple
-   *  such accounts, the specific output directory mentioned above should be unique
-   *  for a store and the specific job. But the job id is not populated yet when
-   *  {@link FileOutputFormat#checkOutputSpecs} is called and need to explore further
-   *  on how to add some uniqueness to the directory here.
+   * 2. unique sub-directory for this VPJ should be accessible only by
+   *    the user who triggers it (700) to protect unauthorized access to pii
+   *    (eg: Zstd compression dictionary)
    *
    * @param job mapred config
    * @throws IOException
    */
   protected static void setValidateSchemaAndBuildDictionaryOutputDirPath(JobConf job) throws IOException {
-    String storeName = job.get(VENICE_STORE_NAME_PROP);
-    String parentOutputDir = job.get(OUTPUT_DIRECTORY_TO_STORE_RESULTS_FROM_MAPPER);
-
     // parent directory
+    String parentOutputDir = job.get(MAPPER_OUTPUT_DIRECTORY);
     Path outputPath = new Path(parentOutputDir);
     FileSystem fs = outputPath.getFileSystem(job);
     createAndSetDirectoryPermission(fs, outputPath, "777");
 
     // store specific directory under parent directory
-    outputPath = new Path(getValidateSchemaAndBuildDictionaryOutputDir(parentOutputDir, storeName));
+    String storeName = job.get(VENICE_STORE_NAME_PROP);
+    String jobExecId = job.get(JOB_EXEC_ID);
+    String uniqueString = job.get(UNIQUE_STRING_FOR_MAPPER_OUTPUT_DIRECTORY);
+    outputPath =
+        new Path(getValidateSchemaAndBuildDictionaryOutputDir(parentOutputDir, storeName, jobExecId, uniqueString));
     createAndSetDirectoryPermission(fs, outputPath, "700");
 
     LOGGER.info(

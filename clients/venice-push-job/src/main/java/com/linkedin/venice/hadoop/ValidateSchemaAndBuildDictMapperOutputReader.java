@@ -28,7 +28,7 @@ public class ValidateSchemaAndBuildDictMapperOutputReader implements Closeable {
   private final InputStream inputStream;
   private final DataFileStream avroDataFileStream;
   private final FileSystem fs;
-  private final String filePath;
+  private final String outputDir;
 
   public ValidateSchemaAndBuildDictMapperOutputReader(String outputDir, String fileName) throws Exception {
     Validate.notEmpty(
@@ -38,7 +38,8 @@ public class ValidateSchemaAndBuildDictMapperOutputReader implements Closeable {
         fileName,
         ValidateSchemaAndBuildDictMapper.class.getSimpleName() + " output fileName should not be empty");
 
-    filePath = outputDir + "/" + fileName;
+    this.outputDir = outputDir;
+    String filePath = outputDir + "/" + fileName;
 
     LOGGER.info(
         "Reading file {} to retrieve info persisted by {}",
@@ -91,12 +92,11 @@ public class ValidateSchemaAndBuildDictMapperOutputReader implements Closeable {
     Utils.closeQuietlyWithErrorLogged(avroDataFileStream);
     Utils.closeQuietlyWithErrorLogged(inputStream);
 
-    // delete the output file: Don't delete the directory as it might affect the
-    // concurrently running push jobs
+    // delete the output directory: It should not affect other VPJs as this is unique
     try {
-      fs.delete(new Path(filePath), false);
+      fs.delete(new Path(outputDir), true);
     } catch (IOException e) {
-      LOGGER.error("Failed to delete file: {}", filePath, e);
+      LOGGER.error("Failed to delete directory: {}", outputDir, e);
     }
   }
 }
