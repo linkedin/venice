@@ -24,7 +24,7 @@ public abstract class AbstractVeniceFilter<INPUT_VALUE> implements Closeable {
   public abstract boolean apply(final INPUT_VALUE value);
 
   /**
-   * Recursively close resources of all filters on the chain. It will start from tail first.
+   * Close any resources that this filter holds.
    * @throws IOException
    */
   public abstract void close();

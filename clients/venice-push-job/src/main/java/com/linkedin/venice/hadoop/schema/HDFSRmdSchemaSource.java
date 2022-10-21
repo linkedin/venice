@@ -49,11 +49,6 @@ public class HDFSRmdSchemaSource implements RmdSchemaSource, AutoCloseable {
     this.storeName = storeName;
   }
 
-  /**
-   * hen no {@link ControllerClient} is provided, the schema source is intended for read-only.
-   * @param schemaDirSuffix
-   * @throws IOException
-   */
   public HDFSRmdSchemaSource(final String schemaDirSuffix) throws IOException {
     this(schemaDirSuffix, null);
   }
