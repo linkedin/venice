@@ -997,10 +997,13 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     String storeName = Utils.getUniqueString("cleanupInstanceCustomizedStatesTest");
     VeniceHelixAdmin childControllerAdmin = cluster.getRandmonVeniceController().getVeniceHelixAdmin();
     childControllerAdmin.createStore(clusterName, storeName, "test", "\"string\"", "\"string\"");
-    childControllerAdmin.incrementVersionIdempotent(clusterName, storeName, "test", 1, 1);
+    Version version = childControllerAdmin.incrementVersionIdempotent(clusterName, storeName, "test", 1, 1);
     MultiStoreTopicsResponse response = controllerClient.cleanupInstanceCustomizedStates();
     Assert.assertFalse(response.isError());
-    Assert.assertTrue(response.getTopics().isEmpty());
+    Assert.assertNotNull(response.getTopics());
+    for (String topic: response.getTopics()) {
+      Assert.assertFalse(topic.endsWith("/" + version.kafkaTopicName()));
+    }
   }
 
   private void deleteStore(String storeName) {
