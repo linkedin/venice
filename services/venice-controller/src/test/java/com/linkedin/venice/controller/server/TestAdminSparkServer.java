@@ -1002,7 +1002,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     Assert.assertFalse(response.isError());
     Assert.assertNotNull(response.getTopics());
     for (String topic: response.getTopics()) {
-      Assert.assertFalse(topic.contains(version.kafkaTopicName()));
+      Assert.assertFalse(topic.endsWith("/" + version.kafkaTopicName()));
     }
   }
 
