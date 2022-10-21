@@ -3,10 +3,7 @@ EXTENDS AbstractVeniceLeaderFollower
 
 CONSTANT MAX_WRITES
 
-AllWritesTransmitted ==
+NotAllWritesTransmitted ==
     Len(realTimeTopic) <= MAX_WRITES
-
-Terminating ==
-  /\ AllWritesTransmitted
 
   ====

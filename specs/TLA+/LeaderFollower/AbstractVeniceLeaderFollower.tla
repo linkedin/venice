@@ -1,12 +1,13 @@
 ----------------------- MODULE AbstractVeniceLeaderFollower -----------------
 (***************************************************************************)
 (* This module describes the behavior of the Venice Leader follower model  *)
-(* in abstract terms.  Given at least one client writer, a venice leader   *)
-(* should be at some future state process all writes and persist them to a *)
-(* queue to be consumed by a set of follower nodes in such a way that all  *)
-(* all replicas become consistent at some state. The only concrete detail  *)
-(* we model here is that the transmission channel between a client  and    *)
-(* venice is that the channel is asynchronous and non destructive.         *)
+(* in abstract terms for a single partition.  Given at least one client    *)
+(* writer, a venice leader should be at some future state process all      *)
+(* writes to a given partition and persist them to a queue to be consumed  *)
+(* by a set of follower nodes in such a way that all replicas become       *)
+(* consistent at some state. The only concrete detail we model here is     *)
+(* that the transmission channel between a client and venice is that the   *)
+(* channel is asynchronous and non destructive.                            *)
 (***************************************************************************)
 
 EXTENDS Integers, Sequences
@@ -16,7 +17,8 @@ CONSTANTS KEYS, VALUES, N_NODES
 (* Variables which define the spec and parts of the architecture:          *)
 (*                                                                         *)
 (* realTimeTopic: A queue of writes transmitted to Venice directly from    *)
-(*                clients as key value pairs                               *)
+(*                clients as key value pairs.  This queue is partitioned   *)
+(*                in production, and this spec models a single partition.  *)
 (*                                                                         *)
 (* versionTopic: A queue of committed writes which is a tuple of key,      *)
 (*               value, and metadata for the system.  In this basic spec,  *)
@@ -25,7 +27,8 @@ CONSTANTS KEYS, VALUES, N_NODES
 (*               use this variable to signify the 'current' version in     *)
 (*               Venice, which is to say, it's the version currently       *)
 (*               serving client reads and having client writes added to    *)
-(*               it.                                                       *)
+(*               it. Similar to the realTimeTopic, this versionTopic is    *)
+(*               also partitioned.                                         *)
 (*                                                                         *)
 (* nodes: A set of replica serving nodes in Venice.                        *)
 (*                                                                         *)
@@ -77,11 +80,17 @@ SetValueOnReplica(nodeId, k, v) ==
 (***************************************************************************)
 (* This abstract implementation assumes that the a replica is able to      *)
 (* consume a record from a topic, apply it to it's local state, and        *)
-(* optionally produce in a single discrete step. This may not be he case   *)
+(* optionally produce in a single discrete step. This may not be the case  *)
 (* in reality as a node state might change before it can accomplish all    *)
 (* these steps.  A refinement of this spec should look to override these   *)
 (* methods in order to simulate situations where interleaving events in    *)
 (* between those steps simulates edge cases we're worried about.           *)
+(*                                                                         *)
+(* When a leader consumes from the realTimeTopic, it applies the event to  *)
+(* it's local state, produces the event to the versionTopic with the       *)
+(* offset of the event in the realTimeTopic which triggered this event,    *)
+(* and then updates it's highwatermark states with how far along it is in  *)
+(* consuming this realTimeTopic partition.                                 *)
 (***************************************************************************)
 RealTimeConsume(nodeId) ==
     /\ IF nodes[nodeId].rtOffset <= Len(realTimeTopic)
@@ -99,7 +108,14 @@ RealTimeConsume(nodeId) ==
         ELSE UNCHANGED vars
     /\ UNCHANGED <<realTimeTopic>>
 
-
+(***************************************************************************)
+(* Both a leader or a follower may consume from a versionTopic.  When      *)
+(* consuming from the version topic, a participating node applies the      *)
+(* incoming write locally, and persists the offset of the lase message it  *)
+(* consumed.  It also uses the realTimeTopic offset in the versionTopic    *)
+(* message to update it's realTimeTopic offset checkpoint so as to avoid   *)
+(* doing duplicate work should the node become leader at a later state.    *)
+(***************************************************************************)
 VersionTopicConsume(nodeId) ==
     /\ IF nodes[nodeId].vtOffset <= Len(versionTopic)
         THEN
@@ -131,7 +147,7 @@ LeaderConsume ==
 
 (***************************************************************************)
 (* Followers are relatively simple.  They consume data out of the          *)
-(* verstionTopic and apply it to their local state.                        *)
+(* versionTopic and apply it to their local state.                        *)
 (***************************************************************************)
 FollowerConsume ==
     /\ \E followerNodeId \in {x \in DOMAIN nodes: nodes[x].state = FOLLOWER}:
@@ -156,6 +172,14 @@ DemoteLeader ==
     /\ \E followerNodeId \in {x \in DOMAIN nodes: nodes[x].state = LEADER}:
         ChangeReplicaState(followerNodeId, FOLLOWER)
 
+
+Next ==
+    \/ ClientProducesToVenice
+    \/ LeaderConsume
+    \/ FollowerConsume
+    \/ DemoteLeader
+    \/ PromoteLeader
+
 Init ==
   /\ realTimeTopic = <<>>
   /\ versionTopic = <<>>
@@ -164,13 +188,6 @@ Init ==
     rtOffset |-> 1,
     vtOffset |-> 1,
     persistedRecords |-> {}]]
-
-Next ==
-    \/ ClientProducesToVenice
-    \/ LeaderConsume
-    \/ FollowerConsume
-    \/ DemoteLeader
-    \/ PromoteLeader
 
 Spec == Init /\ [][Next]_vars /\ SF_vars(FollowerConsume) /\ WF_vars(LeaderConsume)
 
