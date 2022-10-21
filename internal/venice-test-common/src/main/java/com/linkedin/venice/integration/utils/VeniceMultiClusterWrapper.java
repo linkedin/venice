@@ -9,7 +9,6 @@ import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.KafkaSSLUtils;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
@@ -27,7 +26,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
   private final Map<Integer, VeniceControllerWrapper> controllers;
   private final ZkServerWrapper zkServerWrapper;
   private final KafkaBrokerWrapper kafkaBrokerWrapper;
-  private final String clusterToD2;
+  private final Map<String, String> clusterToD2;
   private final D2Client clientConfigD2Client;
 
   VeniceMultiClusterWrapper(
@@ -36,7 +35,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       KafkaBrokerWrapper kafkaBrokerWrapper,
       Map<String, VeniceClusterWrapper> clusters,
       Map<Integer, VeniceControllerWrapper> controllers,
-      String clusterToD2,
+      Map<String, String> clusterToD2,
       D2Client clientConfigD2Client) {
     super(SERVICE_NAME, dataDirectory);
     this.zkServerWrapper = zkServerWrapper;
@@ -60,19 +59,15 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       if (kafkaBrokerWrapper == null) {
         kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
       }
-      String clusterToD2 = "";
       String[] clusterNames = new String[options.getNumberOfClusters()];
+      Map<String, String> clusterToD2 = new HashMap<>();
       for (int i = 0; i < options.getNumberOfClusters(); i++) {
         String clusterName =
             options.isRandomizeClusterName() ? Utils.getUniqueString("venice-cluster" + i) : "venice-cluster" + i;
         clusterNames[i] = clusterName;
-        if (options.isMultiD2()) {
-          clusterToD2 += clusterName + ":venice-" + i + ",";
-        } else {
-          clusterToD2 += TestUtils.getClusterToDefaultD2String(clusterName) + ",";
-        }
+        String d2ServiceName = "venice-" + i;
+        clusterToD2.put(clusterName, d2ServiceName);
       }
-      clusterToD2 = clusterToD2.substring(0, clusterToD2.length() - 1);
 
       // Create controllers for multi-cluster
       Properties controllerProperties = options.getChildControllerProperties();
@@ -90,14 +85,14 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       D2TestUtils.setupD2Config(
           zkAddress,
           false,
-          D2TestUtils.CONTROLLER_CLUSTER_NAME,
-          D2TestUtils.CONTROLLER_SERVICE_NAME,
+          VeniceControllerWrapper.D2_CLUSTER_NAME,
+          VeniceControllerWrapper.D2_SERVICE_NAME,
           false);
       D2Client clientConfigD2Client = D2TestUtils.getAndStartD2Client(zkAddress);
       controllerProperties.put(
           VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER,
           ClientConfig.defaultGenericClientConfig("")
-              .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+              .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
               .setD2Client(clientConfigD2Client));
       VeniceControllerCreateOptions controllerCreateOptions =
           new VeniceControllerCreateOptions.Builder(clusterNames, kafkaBrokerWrapper)
@@ -152,14 +147,13 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       }
       final ZkServerWrapper finalZkServerWrapper = zkServerWrapper;
       final KafkaBrokerWrapper finalKafkaBrokerWrapper = kafkaBrokerWrapper;
-      final String finalClusterToD2 = clusterToD2;
       return (serviceName) -> new VeniceMultiClusterWrapper(
           null,
           finalZkServerWrapper,
           finalKafkaBrokerWrapper,
           clusterWrapperMap,
           controllerMap,
-          finalClusterToD2,
+          clusterToD2,
           clientConfigD2Client);
     } catch (Exception e) {
       controllerMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
@@ -254,7 +248,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
     return clusters.keySet().toArray(new String[clusters.keySet().size()]);
   }
 
-  public String getClusterToD2() {
+  public Map<String, String> getClusterToD2() {
     return clusterToD2;
   }
 

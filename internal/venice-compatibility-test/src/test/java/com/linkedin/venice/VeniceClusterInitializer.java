@@ -23,6 +23,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.io.Closeable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -43,7 +44,7 @@ import org.testng.Assert;
 /**
  * This class initializes a cluster and pushes some synthetic data into a store.
  */
-public class VeniceClusterInitializer implements AutoCloseable {
+public class VeniceClusterInitializer implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(VeniceClusterInitializer.class);
 
   public static final String VALUE_SCHEMA_STR = "{" + "  \"namespace\": \"example.compute\",    "

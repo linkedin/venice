@@ -167,7 +167,7 @@ public class ReadComputeValidationTest {
           .get();
       ControllerClient controllerClient = new ControllerClient(
           veniceCluster.getClusterName(),
-          veniceCluster.getRandmonVeniceController().getControllerUrl());
+          veniceCluster.getRandomVeniceController().getControllerUrl());
       SchemaResponse schemaResponse = controllerClient.addValueSchema(storeName, VALUE_SCHEMA_FOR_COMPUTE_2);
       // Restart the server to get new schemas
       veniceCluster.stopAndRestartVeniceServer(veniceCluster.getVeniceServers().get(0).getPort());
@@ -245,7 +245,7 @@ public class ReadComputeValidationTest {
           .get();
       ControllerClient controllerClient = new ControllerClient(
           veniceCluster.getClusterName(),
-          veniceCluster.getRandmonVeniceController().getControllerUrl());
+          veniceCluster.getRandomVeniceController().getControllerUrl());
       SchemaResponse schemaResponse = controllerClient.addValueSchema(storeName, VALUE_SCHEMA_FOR_COMPUTE_2);
       // Restart the server to get new schemas
       veniceCluster.stopAndRestartVeniceServer(veniceCluster.getVeniceServers().get(0).getPort());

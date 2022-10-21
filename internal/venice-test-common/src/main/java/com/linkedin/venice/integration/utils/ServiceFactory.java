@@ -1,7 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
-import static com.linkedin.venice.ConfigKeys.D2_CLIENT_ZK_HOSTS_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_MAX_ATTEMPT;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_REPLICATION_FACTOR;
@@ -127,9 +127,13 @@ public class ServiceFactory {
 
   // to get parent controller, add child controllers to controllerCreateOptions
   public static VeniceControllerWrapper getVeniceController(VeniceControllerCreateOptions controllerCreateOptions) {
-    return getStatefulService(
-        VeniceControllerWrapper.SERVICE_NAME,
-        VeniceControllerWrapper.generateService(controllerCreateOptions));
+    final String serviceName;
+    if (controllerCreateOptions.isParent()) {
+      serviceName = VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
+    } else {
+      serviceName = VeniceControllerWrapper.D2_SERVICE_NAME;
+    }
+    return getStatefulService(serviceName, VeniceControllerWrapper.generateService(controllerCreateOptions));
   }
 
   public static AdminSparkServer getMockAdminSparkServer(
@@ -183,7 +187,7 @@ public class ServiceFactory {
       String serverName,
       Map<String, Map<String, String>> kafkaClusterMap) {
     // Set ZK host needed for D2 client creation ingestion isolation ingestion.
-    configProperties.setProperty(D2_CLIENT_ZK_HOSTS_ADDRESS, zkAddress);
+    configProperties.setProperty(D2_ZK_HOSTS_ADDRESS, zkAddress);
     return getStatefulService(
         VeniceServerWrapper.SERVICE_NAME,
         VeniceServerWrapper.generateService(
@@ -198,24 +202,20 @@ public class ServiceFactory {
 
   static VeniceRouterWrapper getVeniceRouter(
       String clusterName,
+      ZkServerWrapper zkServerWrapper,
       KafkaBrokerWrapper kafkaBrokerWrapper,
       boolean sslToStorageNodes,
-      Properties properties) {
-    return getService(
-        VeniceRouterWrapper.SERVICE_NAME,
-        VeniceRouterWrapper.generateService(clusterName, kafkaBrokerWrapper, sslToStorageNodes, null, properties));
-  }
-
-  static VeniceRouterWrapper getVeniceRouter(
-      String clusterName,
-      KafkaBrokerWrapper kafkaBrokerWrapper,
-      boolean sslToStorageNodes,
-      String clusterToD2,
+      Map<String, String> clusterToD2,
       Properties extraProperties) {
     return getService(
         VeniceRouterWrapper.SERVICE_NAME,
-        VeniceRouterWrapper
-            .generateService(clusterName, kafkaBrokerWrapper, sslToStorageNodes, clusterToD2, extraProperties));
+        VeniceRouterWrapper.generateService(
+            clusterName,
+            zkServerWrapper,
+            kafkaBrokerWrapper,
+            sslToStorageNodes,
+            clusterToD2,
+            extraProperties));
   }
 
   public static MockVeniceRouterWrapper getMockVeniceRouter(
@@ -227,12 +227,8 @@ public class ServiceFactory {
         MockVeniceRouterWrapper.generateService(zkAddress, sslToStorageNodes, extraConfigs));
   }
 
-  public static MockD2ServerWrapper getMockD2Server(String serviceName) {
-    return getMockD2Server(serviceName, D2TestUtils.DEFAULT_TEST_CLUSTER_NAME, D2TestUtils.DEFAULT_TEST_SERVICE_NAME);
-  }
-
-  public static MockD2ServerWrapper getMockD2Server(String serviceName, String d2ClusterName, String d2ServiceName) {
-    return getService(serviceName, MockD2ServerWrapper.generateService(d2ClusterName, d2ServiceName));
+  public static MockD2ServerWrapper getMockD2Server(String serviceName, String d2ServiceName) {
+    return getService(serviceName, MockD2ServerWrapper.generateService(d2ServiceName));
   }
 
   /**
@@ -404,8 +400,7 @@ public class ServiceFactory {
       int replicationFactor,
       Optional<VeniceProperties> parentControllerProps,
       Optional<Properties> childControllerProperties,
-      Optional<VeniceProperties> serverProps,
-      boolean multiD2) {
+      Optional<VeniceProperties> serverProps) {
     return getService(
         VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
         VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(
@@ -419,7 +414,6 @@ public class ServiceFactory {
             parentControllerProps,
             childControllerProperties,
             serverProps,
-            multiD2,
             false));
   }
 
@@ -434,7 +428,6 @@ public class ServiceFactory {
       Optional<VeniceProperties> parentControllerProps,
       Optional<Properties> childControllerProperties,
       Optional<VeniceProperties> serverProps,
-      boolean multiD2,
       boolean forkServer) {
     return getService(
         VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
@@ -449,7 +442,6 @@ public class ServiceFactory {
             parentControllerProps,
             childControllerProperties,
             serverProps,
-            multiD2,
             forkServer));
   }
 
@@ -564,7 +556,7 @@ public class ServiceFactory {
       DaVinciConfig daVinciConfig,
       VeniceProperties backendConfig) {
     ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName)
-        .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
+        .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .setVeniceURL(zkAddress);
     PropertyBuilder daVinciPropertyBuilder = DaVinciTestContext.getDaVinciPropertyBuilder(zkAddress);
     backendConfig.getPropertiesCopy().forEach((key, value) -> {

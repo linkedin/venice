@@ -20,6 +20,7 @@ import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_ZK_PREFIX;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
 import static com.linkedin.venice.ConfigKeys.CONCURRENT_INIT_ROUTINES_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
@@ -77,10 +78,11 @@ import static com.linkedin.venice.ConfigKeys.VENICE_STORAGE_CLUSTER_LEADER_HAAS;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
-import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
+import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
@@ -119,6 +121,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean parent;
   private final Map<String, String> childDataCenterControllerUrlMap;
   private final String d2ServiceName;
+  private final String clusterDiscoveryD2ServiceName;
   private final Map<String, String> childDataCenterControllerD2Map;
   private final int parentControllerWaitingTimeForConsumptionMs;
   private final String batchJobHeartbeatStoreCluster;// Name of cluster where the batch job liveness heartbeat store
@@ -382,7 +385,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         props.getBoolean(TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS, false);
     this.enableBatchPushFromAdminInChildController =
         props.getBoolean(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, true);
-    this.kafkaAdminClass = props.getString(KAFKA_ADMIN_CLASS, ScalaAdminUtils.class.getName());
+    this.kafkaAdminClass = props.getString(KAFKA_ADMIN_CLASS, KafkaAdminClient.class.getName());
     this.kafkaWriteOnlyClass = props.getString(KAFKA_WRITE_ONLY_ADMIN_CLASS, kafkaAdminClass);
     this.kafkaReadOnlyClass = props.getString(KAFKA_READ_ONLY_ADMIN_CLASS, kafkaAdminClass);
     this.errorPartitionAutoResetLimit = props.getInt(ERROR_PARTITION_AUTO_RESET_LIMIT, 0);
@@ -438,6 +441,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.storeGraveyardCleanupDelayMinutes = props.getInt(CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES, 0);
     this.storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes =
         props.getInt(CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES, 15);
+    this.clusterDiscoveryD2ServiceName =
+        props.getString(CLUSTER_DISCOVERY_D2_SERVICE, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
   }
 
   private void validateActiveActiveConfigs() {
@@ -525,6 +530,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public String getD2ServiceName() {
     return d2ServiceName;
+  }
+
+  public String getClusterDiscoveryD2ServiceName() {
+    return clusterDiscoveryD2ServiceName;
   }
 
   public Map<String, String> getChildDataCenterControllerD2Map() {
@@ -759,11 +768,11 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   }
 
   public String getChildControllerUrl(String fabric) {
-    return getProps().getString(CHILD_CLUSTER_URL_PREFIX + "." + fabric, "");
+    return getProps().getString(CHILD_CLUSTER_URL_PREFIX + fabric, "");
   }
 
   public String getChildControllerD2ZkHost(String fabric) {
-    return getProps().getString(CHILD_CLUSTER_D2_PREFIX + "." + fabric, "");
+    return getProps().getString(CHILD_CLUSTER_D2_PREFIX + fabric, "");
   }
 
   public boolean isClusterWipeAllowed() {

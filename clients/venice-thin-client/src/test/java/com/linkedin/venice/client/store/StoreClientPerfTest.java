@@ -54,10 +54,12 @@ public class StoreClientPerfTest {
   private String defaultKeySchemaStr = "\"string\"";
 
   private D2Client d2Client;
+  private String d2ServiceName;
 
   @BeforeTest
   public void setUp() throws Exception {
-    routerServer = ServiceFactory.getMockD2Server("Mock-router-server");
+    d2ServiceName = Utils.getUniqueString("VeniceRouter");
+    routerServer = ServiceFactory.getMockD2Server("Mock-router-server", d2ServiceName);
     // d2 based client
     d2Client = D2TestUtils.getAndStartD2Client(routerServer.getZkAddress());
   }
@@ -78,8 +80,7 @@ public class StoreClientPerfTest {
 
     routerServer.addResponseForUri(
         clusterDiscoveryPath,
-        StoreClientTestUtils
-            .constructHttpClusterDiscoveryResponse(storeName, "test_cluster", D2TestUtils.DEFAULT_TEST_SERVICE_NAME));
+        StoreClientTestUtils.constructHttpClusterDiscoveryResponse(storeName, "test_cluster", d2ServiceName));
 
     Map<Integer, String> valueSchemaEntries = new HashMap<>();
     valueSchemaEntries.put(valueSchemaId, valueSchemaStr);
@@ -100,9 +101,8 @@ public class StoreClientPerfTest {
    */
   @Test(enabled = false)
   public void clientStressTest() throws InterruptedException, ExecutionException, IOException {
-    ClientConfig baseClientConfig = ClientConfig.defaultGenericClientConfig(storeName)
-        .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
-        .setD2Client(d2Client);
+    ClientConfig baseClientConfig =
+        ClientConfig.defaultGenericClientConfig(storeName).setD2ServiceName(d2ServiceName).setD2Client(d2Client);
 
     // Test variables
     int[] concurrentCallsPerBatchArray = new int[] { 1, 2, 10 };

@@ -39,13 +39,18 @@ public class PushStatusStoreReader implements Closeable {
   private final Map<String, AvroSpecificStoreClient<PushStatusKey, PushStatusValue>> veniceClients =
       new VeniceConcurrentHashMap<>();
   private final D2Client d2Client;
+  private final String clusterDiscoveryD2ServiceName;
   private final long heartbeatExpirationTimeInSeconds;
 
   // if store limit is less than this then batchGet will fail
   private static final int PUSH_STATUS_READER_BATCH_GET_LIMIT = 100;
 
-  public PushStatusStoreReader(D2Client d2Client, long heartbeatExpirationTimeInSeconds) {
+  public PushStatusStoreReader(
+      D2Client d2Client,
+      String clusterDiscoveryD2ServiceName,
+      long heartbeatExpirationTimeInSeconds) {
     this.d2Client = d2Client;
+    this.clusterDiscoveryD2ServiceName = clusterDiscoveryD2ServiceName;
     this.heartbeatExpirationTimeInSeconds = heartbeatExpirationTimeInSeconds;
   }
 
@@ -230,7 +235,7 @@ public class PushStatusStoreReader implements Closeable {
       ClientConfig clientConfig =
           ClientConfig.defaultGenericClientConfig(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName))
               .setD2Client(d2Client)
-              .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
+              .setD2ServiceName(clusterDiscoveryD2ServiceName)
               .setSpecificValueClass(PushStatusValue.class);
       return ClientFactory.getAndStartSpecificAvroClient(clientConfig);
     });

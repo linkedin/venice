@@ -64,7 +64,7 @@ public class TestRestartController {
     veniceWriter.put("1", "1", 1);
 
     // Stop the original leader
-    int port = cluster.stopLeaderVeniceControler();
+    int port = cluster.stopLeaderVeniceController();
 
     // Push rest of data.
     veniceWriter.put("2", "2", 1);
@@ -174,7 +174,7 @@ public class TestRestartController {
         break;
       }
     }
-    cluster.stopLeaderVeniceControler();
+    cluster.stopLeaderVeniceController();
     controllerWrapper = cluster.getLeaderVeniceController();
     Assert.assertEquals(controllerWrapper.getPort(), newLeaderPort);
     double duration1 = controllerWrapper.getMetricRepository()

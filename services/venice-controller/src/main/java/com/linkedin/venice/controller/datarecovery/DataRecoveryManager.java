@@ -36,13 +36,19 @@ import java.util.Optional;
 public class DataRecoveryManager implements Closeable {
   private final VeniceHelixAdmin veniceAdmin;
   private final D2Client d2Client;
+  private final String clusterDiscoveryD2ServiceName;
   private final Optional<ICProvider> icProvider;
   private final Map<String, AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue>> clientMap =
       new VeniceConcurrentHashMap<>();
 
-  public DataRecoveryManager(VeniceHelixAdmin veniceAdmin, D2Client d2Client, Optional<ICProvider> icProvider) {
+  public DataRecoveryManager(
+      VeniceHelixAdmin veniceAdmin,
+      D2Client d2Client,
+      String clusterDiscoveryD2ServiceName,
+      Optional<ICProvider> icProvider) {
     this.veniceAdmin = veniceAdmin;
     this.d2Client = d2Client;
+    this.clusterDiscoveryD2ServiceName = clusterDiscoveryD2ServiceName;
     this.icProvider = icProvider;
   }
 
@@ -201,12 +207,13 @@ public class DataRecoveryManager implements Closeable {
   private AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue> getParticipantStoreClient(
       String clusterName) {
     return clientMap.computeIfAbsent(clusterName, k -> {
-      ClientConfig<ParticipantMessageValue> newClientConfig = ClientConfig
-          .defaultSpecificClientConfig(
-              VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName),
-              ParticipantMessageValue.class)
-          .setD2Client(d2Client)
-          .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME);
+      ClientConfig<ParticipantMessageValue> newClientConfig =
+          ClientConfig
+              .defaultSpecificClientConfig(
+                  VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName),
+                  ParticipantMessageValue.class)
+              .setD2Client(d2Client)
+              .setD2ServiceName(clusterDiscoveryD2ServiceName);
       return ClientFactory.getAndStartSpecificAvroClient(newClientConfig);
     });
   }

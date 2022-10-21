@@ -26,8 +26,6 @@ import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.samza.VeniceSystemFactory;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -90,7 +88,6 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
         parentControllerProperties,
         Optional.empty(),
         serverProperties,
-        false,
         false);
   }
 
@@ -105,7 +102,6 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       Optional<VeniceProperties> parentControllerPropertiesOverride,
       Optional<Properties> childControllerPropertiesOverride,
       Optional<VeniceProperties> serverProperties,
-      boolean multiD2,
       boolean forkServer) {
     String parentColoName = VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
     final List<VeniceControllerWrapper> parentControllers = new ArrayList<>(numberOfParentControllers);
@@ -134,18 +130,14 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       parentControllerProps.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
       parentControllerPropertiesOverride = Optional.of(new VeniceProperties(parentControllerProps));
 
-      String clusterToD2 = "";
+      Map<String, String> clusterToD2 = new HashMap<>();
       String[] clusterNames = new String[numberOfClustersInEachColo];
       for (int i = 0; i < numberOfClustersInEachColo; i++) {
         String clusterName = "venice-cluster" + i;
         clusterNames[i] = clusterName;
-        if (multiD2) {
-          clusterToD2 += clusterName + ":venice-" + i + ",";
-        } else {
-          clusterToD2 += TestUtils.getClusterToDefaultD2String(clusterName) + ",";
-        }
+        String d2ServiceName = "venice-" + i;
+        clusterToD2.put(clusterName, d2ServiceName);
       }
-      clusterToD2 = clusterToD2.substring(0, clusterToD2.length() - 1);
       List<String> childColoNames = new ArrayList<>(numberOfColos);
 
       for (int i = 0; i < numberOfColos; i++) {
@@ -225,7 +217,6 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
               .replicationFactor(replicationFactor)
               .randomizeClusterName(false)
               .multiColoSetup(true)
-              .multiD2(multiD2)
               .childControllerProperties(finalChildControllerProperties)
               .veniceProperties(serverProperties.orElse(null))
               .forkServer(forkServer)
@@ -246,10 +237,10 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
 
       // Setup D2 for parent controller
       D2TestUtils.setupD2Config(
-          parentKafka.getZkAddress(),
+          zkServer.getAddress(),
           false,
-          D2TestUtils.CONTROLLER_CLUSTER_NAME,
-          VeniceSystemFactory.VENICE_PARENT_D2_SERVICE,
+          VeniceControllerWrapper.PARENT_D2_CLUSTER_NAME,
+          VeniceControllerWrapper.PARENT_D2_SERVICE_NAME,
           false);
       VeniceControllerCreateOptions options =
           new VeniceControllerCreateOptions.Builder(clusterNames, parentKafka).zkAddress(parentKafka.getZkAddress())

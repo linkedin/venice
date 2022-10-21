@@ -4,6 +4,7 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.AMPLIFICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
+import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_STORE_NAME_CONFIG;
@@ -253,11 +254,6 @@ public class VenicePushJob implements AutoCloseable {
   public static final String INPUT_PATH_PROP = "input.path";
   public static final String INPUT_PATH_LAST_MODIFIED_TIME = "input.path.last.modified.time";
   public static final String BATCH_NUM_BYTES_PROP = "batch.num.bytes";
-  /**
-   * Specifies a list of partitioners venice supported.
-   * It contains a string of concatenated partitioner class names separated by comma.
-   */
-  public static final String VENICE_PARTITIONERS_PROP = "venice.partitioners";
 
   public static final String VALUE_SCHEMA_ID_PROP = "value.schema.id";
   public static final String DERIVED_SCHEMA_ID_PROP = "derived.schema.id";
@@ -2016,12 +2012,7 @@ public class VenicePushJob implements AutoCloseable {
       Optional<ByteBuffer> optionalCompressionDictionary) {
     Version.PushType pushType = getPushType(setting);
     boolean askControllerToSendControlMessage = !pushJobSetting.sendControlMessagesDirectly;
-    Optional<String> partitioners;
-    if (props.containsKey(VENICE_PARTITIONERS_PROP)) {
-      partitioners = Optional.of(props.getString(VENICE_PARTITIONERS_PROP));
-    } else {
-      partitioners = Optional.of(DefaultVenicePartitioner.class.getName());
-    }
+    final String partitioners = props.getString(VENICE_PARTITIONERS, DefaultVenicePartitioner.class.getName());
 
     Optional<String> dictionary;
     if (askControllerToSendControlMessage) {
@@ -2050,7 +2041,7 @@ public class VenicePushJob implements AutoCloseable {
             askControllerToSendControlMessage,
             SORTED,
             finalWriteComputeEnabled,
-            partitioners,
+            Optional.of(partitioners),
             dictionary,
             Optional.ofNullable(setting.sourceGridFabric),
             jobLivenessHeartbeatEnabled,

@@ -1,6 +1,7 @@
 package com.linkedin.davinci.ingestion.isolated;
 
-import static com.linkedin.venice.ConfigKeys.D2_CLIENT_ZK_HOSTS_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
+import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_STATS_CLASS_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS;
@@ -525,7 +526,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     // Initialize D2Client.
     SSLFactory sslFactory = null;
     D2Client d2Client;
-    String d2ZkHosts = configLoader.getCombinedProperties().getString(D2_CLIENT_ZK_HOSTS_ADDRESS);
+    String d2ZkHosts = configLoader.getCombinedProperties().getString(D2_ZK_HOSTS_ADDRESS);
     sslFactory = IsolatedIngestionUtils.getSSLFactoryForIngestion(configLoader).orElse(null);
     if (sslFactory != null) {
       d2Client = new D2ClientBuilder().setZkHosts(d2ZkHosts)
@@ -538,9 +539,12 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     }
     IsolatedIngestionUtils.startD2Client(d2Client);
 
+    final String clusterDiscoveryD2ServiceName = configLoader.getCombinedProperties()
+        .getString(CLUSTER_DISCOVERY_D2_SERVICE, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
+
     // Create the client config.
     ClientConfig clientConfig =
-        new ClientConfig().setD2Client(d2Client).setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME);
+        new ClientConfig().setD2Client(d2Client).setD2ServiceName(clusterDiscoveryD2ServiceName);
 
     // Create MetricsRepository
     metricsRepository = new MetricsRepository();

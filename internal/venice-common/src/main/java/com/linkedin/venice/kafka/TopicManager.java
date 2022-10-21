@@ -583,6 +583,8 @@ public class TopicManager implements Closeable {
           consumerRecreationInterval = MAX_CONSUMER_RECREATION_INTERVAL;
         }
       }
+      // TODO: consider removing this check since in Java admin client, if deleteTopic() returns, it means the topic is
+      // really gone.
       if (isTopicFullyDeleted(topicName, closeAndRecreateConsumer)) {
         logger.info("Topic: {} has been deleted after polling {} times", topicName, current);
         return;
@@ -781,9 +783,10 @@ public class TopicManager implements Closeable {
 
   /**
    * @deprecated this is only used by {@link #isTopicFullyDeleted(String, boolean)} in cases where the
-   *             {@link com.linkedin.venice.kafka.admin.ScalaAdminUtils} is used. We should deprecate
+   *             ScalaAdminUtils is used. We should deprecate
    *             both the Scala admin as well as this function, so please do not proliferate its usage
    *             in new code paths.
+   * TODO: remove the usage of this raw consumer.
    */
   @Deprecated
   private synchronized Consumer<byte[], byte[]> getRawBytesConsumer(boolean closeAndRecreate) {

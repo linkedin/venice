@@ -104,7 +104,6 @@ public class TestPushJobWithEmergencySourceRegionSelection {
         Optional.of(new VeniceProperties(controllerProps)),
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
-        false,
         false);
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();

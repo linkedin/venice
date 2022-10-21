@@ -91,7 +91,6 @@ public class PartialUpdateTest {
         Optional.of(new VeniceProperties(controllerProps)),
         Optional.of(new Properties(controllerProps)),
         Optional.of(new VeniceProperties(serverProperties)),
-        false,
         false);
     this.childDatacenters = multiColoMultiClusterWrapper.getClusters();
     List<VeniceControllerWrapper> parentControllers = multiColoMultiClusterWrapper.getParentControllers();

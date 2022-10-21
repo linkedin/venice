@@ -664,9 +664,7 @@ public class VeniceParentHelixAdmin implements Admin {
         StoreInfo storeInfo = storeResponse.getStore();
 
         if (storeInfo.getHybridStoreConfig() != null && !storeInfo.getVersions().isEmpty()
-            && storeInfo.getVersions()
-                .get(storeInfo.getLargestUsedVersionNumber())
-                .getPartitionCount() == partitionCount
+            && storeInfo.getVersion(storeInfo.getLargestUsedVersionNumber()).get().getPartitionCount() == partitionCount
             && getTopicManager().containsTopicAndAllPartitionsAreOnline(Version.composeRealTimeTopic(storeName))) {
           storeReady = true;
         }

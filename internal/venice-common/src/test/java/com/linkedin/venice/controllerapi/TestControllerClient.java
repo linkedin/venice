@@ -88,13 +88,11 @@ public class TestControllerClient {
 
   @Test
   public void testD2ControllerClient() throws Exception {
-    String d2ClusterName = "VeniceRouter";
-    String d2ServiceName = "VeniceRouter";
+    String d2ServiceName = Utils.getUniqueString("VeniceController");
     String veniceClusterName = Utils.getUniqueString("test-cluster");
     String fakeLeaderControllerUri = Utils.getUniqueString("http://fake_uri");
 
-    try (MockD2ServerWrapper mockController =
-        ServiceFactory.getMockD2Server("test-controller", d2ClusterName, d2ServiceName)) {
+    try (MockD2ServerWrapper mockController = ServiceFactory.getMockD2Server("test-controller", d2ServiceName)) {
       String uriPattern = ControllerRoute.LEADER_CONTROLLER.getPath() + ".*cluster_name=" + veniceClusterName + ".*";
       mockController.addResponseForUriPattern(
           uriPattern,
@@ -109,13 +107,11 @@ public class TestControllerClient {
 
   @Test
   public void testD2ControllerClientWithExternalD2Client() throws Exception {
-    String d2ClusterName = "VeniceRouter";
-    String d2ServiceName = "VeniceRouter";
+    String d2ServiceName = Utils.getUniqueString("VeniceController");
     String veniceClusterName = Utils.getUniqueString("test-cluster");
     String fakeLeaderControllerUri = Utils.getUniqueString("http://fake_uri");
 
-    try (MockD2ServerWrapper mockController =
-        ServiceFactory.getMockD2Server("test-controller", d2ClusterName, d2ServiceName)) {
+    try (MockD2ServerWrapper mockController = ServiceFactory.getMockD2Server("test-controller", d2ServiceName)) {
       String uriPattern = ControllerRoute.LEADER_CONTROLLER.getPath() + ".*cluster_name=" + veniceClusterName + ".*";
       mockController.addResponseForUriPattern(
           uriPattern,

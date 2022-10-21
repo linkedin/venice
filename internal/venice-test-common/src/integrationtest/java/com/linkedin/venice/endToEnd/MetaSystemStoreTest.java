@@ -43,6 +43,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStore;
@@ -416,8 +417,11 @@ public class MetaSystemStoreTest {
         .build();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     D2Client d2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
-    try (CachingDaVinciClientFactory factory =
-        new CachingDaVinciClientFactory(d2Client, new MetricsRepository(), backendConfig)) {
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        new MetricsRepository(),
+        backendConfig)) {
       DaVinciClient<Integer, Object> daVinciClient =
           factory.getAndStartGenericAvroClient(regularVeniceStoreName, daVinciConfig);
       daVinciClient.subscribeAll().get();
@@ -559,7 +563,7 @@ public class MetaSystemStoreTest {
 
   private ClientConfig<StoreMetaValue> getClientConfig(String storeName, D2Client d2Client) {
     return ClientConfig.defaultSpecificClientConfig(storeName, StoreMetaValue.class)
-        .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
+        .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .setD2Client(d2Client)
         .setVeniceURL(venice.getZk().getAddress());
   }

@@ -21,6 +21,7 @@ import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
 
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -36,11 +37,13 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import org.apache.commons.lang.StringUtils;
 
 
 /**
@@ -48,30 +51,48 @@ import org.apache.commons.lang.StringUtils;
  */
 public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware {
   public static final String SERVICE_NAME = "VeniceRouter";
+  public static final String CLUSTER_DISCOVERY_D2_SERVICE_NAME =
+      ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME + "_test";
   private final VeniceProperties properties;
   private final String zkAddress;
   private RouterServer service;
+  private final String d2ClusterName;
+  private final String clusterDiscoveryD2ClusterName;
 
   VeniceRouterWrapper(
       String serviceName,
       File dataDirectory,
       RouterServer service,
       VeniceProperties properties,
-      String zkAddress) {
+      String zkAddress,
+      String d2ClusterName,
+      String clusterDiscoveryD2ClusterName) {
     super(serviceName, dataDirectory);
     this.service = service;
     this.properties = properties;
     this.zkAddress = zkAddress;
+    this.d2ClusterName = d2ClusterName;
+    this.clusterDiscoveryD2ClusterName = clusterDiscoveryD2ClusterName;
   }
 
   static StatefulServiceProvider<VeniceRouterWrapper> generateService(
       String clusterName,
+      ZkServerWrapper zkServerWrapper,
       KafkaBrokerWrapper kafkaBrokerWrapper,
       boolean sslToStorageNodes,
-      String clusterToD2,
+      Map<String, String> clusterToD2,
       Properties properties) {
-    // TODO: Once the ZK address used by Controller and Kafka are decoupled, change this
-    String zkAddress = kafkaBrokerWrapper.getZkAddress();
+    String zkAddress = zkServerWrapper.getAddress();
+
+    Map<String, String> finalClusterToD2;
+    if (clusterToD2 == null || clusterToD2.isEmpty()) {
+      finalClusterToD2 = Collections.singletonMap(clusterName, Utils.getUniqueString("router_d2_service"));
+    } else if (clusterToD2.containsKey(clusterName)) {
+      finalClusterToD2 = clusterToD2;
+    } else {
+      throw new IllegalArgumentException(
+          String.format("clusterToD2 [%s] doesn't contain clusterName [%s]", clusterToD2, clusterName));
+    }
 
     return (serviceName, dataDirectory) -> {
       int port = Utils.getFreePort();
@@ -83,9 +104,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(KAFKA_ZK_ADDRESS, kafkaBrokerWrapper.getZkAddress())
           .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress())
           .put(SSL_TO_STORAGE_NODES, sslToStorageNodes)
-          .put(
-              CLUSTER_TO_D2,
-              StringUtils.isEmpty(clusterToD2) ? TestUtils.getClusterToDefaultD2String(clusterName) : clusterToD2)
+          .put(CLUSTER_TO_D2, TestUtils.getClusterToD2String(finalClusterToD2))
           .put(ROUTER_THROTTLE_CLIENT_SSL_HANDSHAKES, true)
           // Below configs are to attempt to minimize resource utilization in tests
           .put(ROUTER_CONNECTION_LIMIT, 20)
@@ -101,31 +120,34 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(properties);
 
       // setup d2 config first
-      String d2 = D2TestUtils.getD2ServiceName(clusterToD2, clusterName);
+      String d2ServiceName = D2TestUtils.getRouterD2ServiceName(finalClusterToD2, clusterName);
 
       VeniceProperties routerProperties = builder.build();
       boolean https = routerProperties.getBoolean(ROUTER_HTTP2_INBOUND_ENABLED, false);
-      List<ServiceDiscoveryAnnouncer> d2Servers;
-      if (!D2TestUtils.DEFAULT_TEST_SERVICE_NAME.equals(d2)) {
-        D2TestUtils.setupD2Config(zkAddress, https, d2, d2, false);
-        d2Servers = D2TestUtils
-            .getD2Servers(zkAddress, new String[] { "http://localhost:" + port, "https://localhost:" + sslPort }, d2);
-        // Also announce to the default service name (venice-discovery)
-        D2TestUtils.setupD2Config(zkAddress, https);
-        d2Servers
-            .addAll(D2TestUtils.getD2Servers(zkAddress, "http://localhost:" + port, "https://localhost:" + sslPort));
-      } else {
-        D2TestUtils.setupD2Config(zkAddress, https);
-        // Announce to d2 by default
-        d2Servers = D2TestUtils.getD2Servers(zkAddress, "http://localhost:" + port, "https://localhost:" + sslPort);
-      }
+      String httpURI = "http://localhost:" + port;
+      String httpsURI = "https://localhost:" + sslPort;
+      List<ServiceDiscoveryAnnouncer> d2Servers = new ArrayList<>();
+      String d2ClusterName = D2TestUtils.setupD2Config(zkAddress, https, d2ServiceName, false);
+      d2Servers.addAll(D2TestUtils.getD2ServersForRouter(zkAddress, d2ClusterName, httpURI, httpsURI));
+
+      // Also announce to the default service name
+      String clusterDiscoveryD2ClusterName =
+          D2TestUtils.setupD2Config(zkAddress, https, CLUSTER_DISCOVERY_D2_SERVICE_NAME, false);
+      d2Servers.addAll(D2TestUtils.getD2ServersForRouter(zkAddress, clusterDiscoveryD2ClusterName, httpURI, httpsURI));
 
       RouterServer router = new RouterServer(
           routerProperties,
           d2Servers,
           Optional.empty(),
           Optional.of(H2SSLUtils.getLocalHttp2SslFactory()));
-      return new VeniceRouterWrapper(serviceName, dataDirectory, router, routerProperties, zkAddress);
+      return new VeniceRouterWrapper(
+          serviceName,
+          dataDirectory,
+          router,
+          routerProperties,
+          zkAddress,
+          d2ClusterName,
+          clusterDiscoveryD2ClusterName);
     };
   }
 
@@ -143,8 +165,8 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
     return properties.getInt(LISTENER_SSL_PORT);
   }
 
-  public String getD2Service() {
-    return D2TestUtils.DEFAULT_TEST_SERVICE_NAME;
+  public String getD2ServiceNameForCluster(String clusterName) {
+    return service.getConfig().getClusterToD2Map().get(clusterName);
   }
 
   @Override
@@ -164,8 +186,14 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
 
   @Override
   protected void newProcess() {
+    String httpURI = "http://" + getHost() + ":" + getPort();
+    String httpsURI = "https://" + getHost() + ":" + getSslPort();
+
     List<ServiceDiscoveryAnnouncer> d2Servers =
-        D2TestUtils.getD2Servers(zkAddress, "http://localhost:" + getPort(), "https://localhost:" + getSslPort());
+        D2TestUtils.getD2ServersForRouter(zkAddress, d2ClusterName, httpURI, httpsURI);
+
+    d2Servers.addAll(D2TestUtils.getD2ServersForRouter(zkAddress, clusterDiscoveryD2ClusterName, httpURI, httpsURI));
+
     service =
         new RouterServer(properties, d2Servers, Optional.empty(), Optional.of(SslUtils.getVeniceLocalSslFactory()));
   }
