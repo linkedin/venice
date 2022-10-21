@@ -1,7 +1,5 @@
 package com.linkedin.venice;
 
-import static com.linkedin.venice.kafka.protocol.enums.MessageType.CONTROL_MESSAGE;
-
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
@@ -74,35 +72,21 @@ public class DumpAdminMessages {
           KafkaMessageEnvelope messageEnvelope = record.value();
           // check message type
           MessageType messageType = MessageType.valueOf(messageEnvelope);
-          switch (messageType) {
-            case PUT:
-              if (++curMsgCnt > messageCnt) {
-                break;
-              }
-              Put put = (Put) messageEnvelope.payloadUnion;
-              AdminOperation adminMessage = deserializer.deserialize(put.putValue.array(), put.schemaId);
-              AdminOperationInfo adminOperationInfo = new AdminOperationInfo();
-              adminOperationInfo.offset = record.offset();
-              adminOperationInfo.schemaId = put.schemaId;
-              adminOperationInfo.adminOperation = adminMessage.toString();
-              adminOperationInfo.operationType = AdminMessageType.valueOf(adminMessage).name();
-              adminOperationInfo.publishTimeStamp =
-                  dateFormat.format(new Date(messageEnvelope.producerMetadata.messageTimestamp));
-              adminOperationInfo.producerMetadata = messageEnvelope.producerMetadata.toString();
-              adminOperations.add(adminOperationInfo);
+          if (messageType.equals(MessageType.PUT)) {
+            if (++curMsgCnt > messageCnt) {
               break;
-            case CONTROL_MESSAGE:
-              AdminOperationInfo adminControlMessageInfo = new AdminOperationInfo();
-              adminControlMessageInfo.offset = record.offset();
-              adminControlMessageInfo.schemaId = -1;
-              adminControlMessageInfo.operationType = CONTROL_MESSAGE.toString();
-              adminControlMessageInfo.publishTimeStamp =
-                  dateFormat.format(new Date(messageEnvelope.producerMetadata.messageTimestamp));
-              adminControlMessageInfo.producerMetadata = messageEnvelope.producerMetadata.toString();
-              adminOperations.add(adminControlMessageInfo);
-              break;
-            default:
-              continue;
+            }
+            Put put = (Put) messageEnvelope.payloadUnion;
+            AdminOperation adminMessage = deserializer.deserialize(put.putValue.array(), put.schemaId);
+            AdminOperationInfo adminOperationInfo = new AdminOperationInfo();
+            adminOperationInfo.offset = record.offset();
+            adminOperationInfo.schemaId = put.schemaId;
+            adminOperationInfo.adminOperation = adminMessage.toString();
+            adminOperationInfo.operationType = AdminMessageType.valueOf(adminMessage).name();
+            adminOperationInfo.publishTimeStamp =
+                dateFormat.format(new Date(messageEnvelope.producerMetadata.messageTimestamp));
+            adminOperationInfo.producerMetadata = messageEnvelope.producerMetadata.toString();
+            adminOperations.add(adminOperationInfo);
           }
         }
         if (curMsgCnt > messageCnt) {
