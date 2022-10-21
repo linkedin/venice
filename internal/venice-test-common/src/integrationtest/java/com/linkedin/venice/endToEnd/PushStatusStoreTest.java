@@ -41,6 +41,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -96,7 +97,10 @@ public class PushStatusStoreTest {
         .getVeniceCluster(1, NUMBER_OF_SERVERS, 1, REPLICATION_FACTOR, 10000, false, false, extraProperties);
     controllerClient = cluster.getControllerClient();
     d2Client = D2TestUtils.getAndStartD2Client(cluster.getZk().getAddress());
-    reader = new PushStatusStoreReader(d2Client, TimeUnit.MINUTES.toSeconds(10));
+    reader = new PushStatusStoreReader(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        TimeUnit.MINUTES.toSeconds(10));
     extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(true));
     parentZkServer = ServiceFactory.getZkServer();
     parentController = ServiceFactory.getVeniceController(
@@ -206,7 +210,7 @@ public class PushStatusStoreTest {
     try (AvroGenericStoreClient storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setD2Client(d2Client)
-            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME))) {
+            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME))) {
       vpjProperties = getVPJProperties();
       vpjProperties.setProperty(INCREMENTAL_PUSH, "true");
       int expectedVersionNumber = 1;
@@ -243,7 +247,7 @@ public class PushStatusStoreTest {
     try (AvroGenericStoreClient storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setD2Client(d2Client)
-            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME))) {
+            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME))) {
       vpjProperties.setProperty(INCREMENTAL_PUSH, "true");
       int expectedVersionNumber = 1;
       long vpjStart = System.currentTimeMillis();

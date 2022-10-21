@@ -81,7 +81,7 @@ public class ParticipantStoreTest {
     serverFeatureProperties.put(
         VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER,
         ClientConfig.defaultGenericClientConfig("")
-            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .setD2Client(d2Client));
     serverProperties.setProperty(PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS, Long.toString(100));
     veniceServerWrapper = venice.addVeniceServer(serverFeatureProperties, serverProperties);

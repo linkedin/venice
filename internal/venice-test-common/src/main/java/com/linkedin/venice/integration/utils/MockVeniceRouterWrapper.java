@@ -38,6 +38,7 @@ import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
@@ -114,12 +115,18 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
 
     return (serviceName, dataDirectory) -> {
       int port = Utils.getFreePort();
-      List<ServiceDiscoveryAnnouncer> d2ServerList;
-      if (StringUtils.isEmpty(zkAddress)) {
-        d2ServerList = new ArrayList<>();
-      } else {
-        d2ServerList = D2TestUtils
-            .getD2Servers(zkAddress, "http://localhost:" + port, "https://localhost:" + sslPortFromPort(port));
+      String httpURI = "http://localhost:" + port;
+      String httpsURI = "https://localhost:" + sslPortFromPort(port);
+      List<ServiceDiscoveryAnnouncer> d2ServerList = new ArrayList<>();
+      String d2ServiceName = Utils.getUniqueString("D2_SERVICE_NAME");
+      if (!StringUtils.isEmpty(zkAddress)) {
+        // Set up d2 config before announcing
+        String d2ClusterName = D2TestUtils.setupD2Config(zkAddress, false, d2ServiceName, false);
+        d2ServerList.addAll(D2TestUtils.getD2ServersForRouter(zkAddress, d2ClusterName, httpURI, httpsURI));
+        String clusterDiscoveryD2ClusterName =
+            D2TestUtils.setupD2Config(zkAddress, false, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME, false);
+        d2ServerList
+            .addAll(D2TestUtils.getD2ServersForRouter(zkAddress, clusterDiscoveryD2ClusterName, httpURI, httpsURI));
       }
       String clusterName = Utils.getUniqueString("mock-venice-router-cluster");
       PropertyBuilder builder = new PropertyBuilder().put(CLUSTER_NAME, clusterName)
@@ -129,7 +136,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
           .put(KAFKA_ZK_ADDRESS, kafkaZkAddress)
           .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers)
           .put(SSL_TO_STORAGE_NODES, sslToStorageNodes)
-          .put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(clusterName))
+          .put(CLUSTER_TO_D2, TestUtils.getClusterToD2String(Collections.singletonMap(clusterName, d2ServiceName)))
           .put(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)
           .put(ROUTER_THROTTLE_CLIENT_SSL_HANDSHAKES, true)
           .put(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT.name())
@@ -191,7 +198,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
   }
 
   public String getRouterD2Service() {
-    return D2TestUtils.DEFAULT_TEST_SERVICE_NAME;
+    return VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME;
   }
 
   public String getD2ServiceNameForCluster(String clusterName) {

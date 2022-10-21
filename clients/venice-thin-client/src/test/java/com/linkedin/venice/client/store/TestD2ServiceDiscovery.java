@@ -10,7 +10,6 @@ import static org.mockito.Mockito.mock;
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
-import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.MockVeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -30,8 +29,6 @@ public class TestD2ServiceDiscovery {
     String storeName = "test";
     ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName);
     try (ZkServerWrapper zk = ServiceFactory.getZkServer()) {
-      // Set up d2 config before announcing
-      D2TestUtils.setupD2Config(zk.getAddress(), false);
       // Start a mock server which will serve for the d2 service.
       try (MockVeniceRouterWrapper router =
           ServiceFactory.getMockVeniceRouter(zk.getAddress(), false, new Properties())) {

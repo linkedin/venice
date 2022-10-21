@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop;
 
+import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.hadoop.VenicePushJob.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFER_VERSION_SWAP;
 import static com.linkedin.venice.hadoop.VenicePushJob.ENABLE_WRITE_COMPUTE;
@@ -13,7 +14,6 @@ import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIR
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
 import static com.linkedin.venice.hadoop.VenicePushJob.SUPPRESS_END_OF_PUSH_MESSAGE;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_PARTITIONERS_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.getLatestPathOfInputDirectory;
 import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
@@ -544,7 +544,7 @@ public class TestVenicePushJob {
                 .setPartitionCount(3)
                 .setPartitionerClass(nonDeterministicPartitionerClassName)));
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
-    props.setProperty(VENICE_PARTITIONERS_PROP, nonDeterministicPartitionerClassName);
+    props.setProperty(VENICE_PARTITIONERS, nonDeterministicPartitionerClassName);
 
     TestPushUtils.runPushJob("Test push job", props);
     // No need for asserts, because we are expecting an exception to be thrown!

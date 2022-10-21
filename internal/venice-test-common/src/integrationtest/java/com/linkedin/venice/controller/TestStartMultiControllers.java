@@ -69,7 +69,7 @@ public class TestStartMultiControllers {
       Assert.assertEquals(leaderControllerCount, 1, "There should be only one leader controller in the cluster");
     });
 
-    int oldLeaderControllerPort = cluster.stopLeaderVeniceControler();
+    int oldLeaderControllerPort = cluster.stopLeaderVeniceController();
 
     TestUtils.waitForNonDeterministicAssertion(
         60,

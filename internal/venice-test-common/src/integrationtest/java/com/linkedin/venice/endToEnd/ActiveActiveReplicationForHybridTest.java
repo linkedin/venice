@@ -13,14 +13,17 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_KAFKA_PRODUCER_ENABLED;
+import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
-import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.SERVICE_NAME;
+import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
-import static com.linkedin.venice.samza.VeniceSystemFactory.D2_ZK_HOSTS_PROPERTY;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
 import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
@@ -57,6 +60,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.DataReplicationPolicy;
@@ -159,7 +163,6 @@ public class ActiveActiveReplicationForHybridTest {
         Optional.of(new VeniceProperties(controllerProps)),
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
-        false,
         false);
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
@@ -403,8 +406,10 @@ public class ActiveActiveReplicationForHybridTest {
           samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
           samzaConfig.put(configPrefix + VENICE_STORE, storeName);
           samzaConfig.put(configPrefix + VENICE_AGGREGATE, "false");
-          samzaConfig.put(D2_ZK_HOSTS_PROPERTY, childDataCenter.getZkServerWrapper().getAddress());
+          samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDataCenter.getZkServerWrapper().getAddress());
+          samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
           samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, multiColoMultiClusterWrapper.getZkServerWrapper().getAddress());
+          samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
           samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
           samzaConfig.put(SSL_ENABLED, "false");
           VeniceSystemFactory factory = new VeniceSystemFactory();
@@ -513,8 +518,11 @@ public class ActiveActiveReplicationForHybridTest {
 
       MetricsRepository metricsRepository = new MetricsRepository();
       try (
-          CachingDaVinciClientFactory factory =
-              new CachingDaVinciClientFactory(d2ClientForDC0Region, metricsRepository, backendConfig);
+          CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+              d2ClientForDC0Region,
+              VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+              metricsRepository,
+              backendConfig);
           DaVinciClient<String, Object> daVinciClient =
               factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig())) {
         daVinciClient.subscribeAll().get();
@@ -613,7 +621,7 @@ public class ActiveActiveReplicationForHybridTest {
       VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(0);
       try (VeniceSystemProducer producerInDC0 = new VeniceSystemProducer(
           childDataCenter.getZkServerWrapper().getAddress(),
-          SERVICE_NAME,
+          D2_SERVICE_NAME,
           storeName,
           Version.PushType.STREAM,
           Utils.getUniqueString("venice-push-id"),
@@ -696,7 +704,7 @@ public class ActiveActiveReplicationForHybridTest {
       VeniceMultiClusterWrapper childDataCenter1 = childDatacenters.get(1);
       try (VeniceSystemProducer producerInDC1 = new VeniceSystemProducer(
           childDataCenter1.getZkServerWrapper().getAddress(),
-          SERVICE_NAME,
+          D2_SERVICE_NAME,
           storeName,
           Version.PushType.STREAM,
           Utils.getUniqueString("venice-push-id"),

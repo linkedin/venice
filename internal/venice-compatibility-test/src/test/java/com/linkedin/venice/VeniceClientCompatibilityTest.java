@@ -40,7 +40,7 @@ import org.testng.annotations.Test;
 /**
  * This test class is used to validate whether thin client could work with different Avro versions.
  * The high-level idea is as follows:
- * 1. Spin up a separate process, which will always use avro-1.7 to spin up a Venice Cluster and materialize
+ * 1. Spin up a separate process, which will always use avro-1.9 to spin up a Venice Cluster and materialize
  *    a store and push some synthetic data into it.
  * 2. The test cases will use Venice-thin-client to hit the Router endpoint with different Avro Versions by
  *    exercising all different APIs.
@@ -81,7 +81,7 @@ public class VeniceClientCompatibilityTest {
         .getGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddress));
 
     // Block until the store is ready.
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
       if (!clusterProcess.isAlive()) {
         throw new VeniceException("Cluster process exited unexpectedly.");
       }
@@ -94,7 +94,7 @@ public class VeniceClientCompatibilityTest {
     });
 
     String[] zkAddress = new String[1];
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
       if (!clusterProcess.isAlive()) {
         throw new VeniceException("Cluster process exited unexpectedly.");
       }
@@ -115,7 +115,7 @@ public class VeniceClientCompatibilityTest {
         storeName,
         zkAddress[0],
         Utils.getTempDataDirectory().getAbsolutePath());
-    daVinciClient.subscribeAll().get(30, TimeUnit.SECONDS);
+    daVinciClient.subscribeAll().get(60, TimeUnit.SECONDS);
   }
 
   @AfterClass

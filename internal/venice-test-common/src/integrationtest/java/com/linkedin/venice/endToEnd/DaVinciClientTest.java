@@ -2,13 +2,14 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
-import static com.linkedin.venice.ConfigKeys.D2_CLIENT_ZK_HOSTS_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
+import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
@@ -52,11 +53,11 @@ import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
-import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
@@ -147,8 +148,11 @@ public class DaVinciClientTest {
 
     for (int i = 0; i < 10; ++i) {
       MetricsRepository metricsRepository = new MetricsRepository();
-      try (CachingDaVinciClientFactory factory =
-          new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+      try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+          d2Client,
+          VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+          metricsRepository,
+          backendConfig)) {
         CompletableFuture
             .allOf(
                 CompletableFuture.runAsync(() -> factory.getGenericAvroClient(storeName1, new DaVinciConfig()).start()),
@@ -167,8 +171,11 @@ public class DaVinciClientTest {
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     daVinciConfig.setNonLocalAccessPolicy(NonLocalAccessPolicy.QUERY_VENICE).setIsolated(true);
     MetricsRepository metricsRepository = new MetricsRepository();
-    try (CachingDaVinciClientFactory factory =
-        new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        metricsRepository,
+        backendConfig)) {
       factory.getAndStartGenericAvroClient(storeName1, daVinciConfig);
       factory.getAndStartGenericAvroClient(storeName1, daVinciConfig);
     }
@@ -189,8 +196,11 @@ public class DaVinciClientTest {
     MetricsRepository metricsRepository = new MetricsRepository();
 
     // Test multiple clients sharing the same ClientConfig/MetricsRepository & base data path
-    try (CachingDaVinciClientFactory factory =
-        new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        metricsRepository,
+        backendConfig)) {
       DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, clientConfig);
 
       // Test non-existent key access
@@ -260,6 +270,7 @@ public class DaVinciClientTest {
     // Test managed clients & data cleanup
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
         d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         new MetricsRepository(),
         backendConfig,
         Optional.of(Collections.singleton(storeName1)))) {
@@ -294,8 +305,11 @@ public class DaVinciClientTest {
 
     MetricsRepository metricsRepository = new MetricsRepository();
 
-    try (CachingDaVinciClientFactory factory =
-        new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        metricsRepository,
+        backendConfig)) {
       DaVinciClient<Integer, Object> client = factory.getAndStartGenericAvroClient(storeName, clientConfig);
 
       GenericRecord reusableObject = new GenericData.Record(client.getLatestValueSchema());
@@ -542,8 +556,11 @@ public class DaVinciClientTest {
 
     MetricsRepository metricsRepository = new MetricsRepository();
 
-    try (CachingDaVinciClientFactory factory =
-        new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        metricsRepository,
+        backendConfig)) {
       DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, daVinciConfig);
       // subscribe to a partition without data
       client.subscribe(Collections.singleton(emptyPartition)).get();
@@ -606,8 +623,11 @@ public class DaVinciClientTest {
 
     MetricsRepository metricsRepository = new MetricsRepository();
 
-    try (CachingDaVinciClientFactory factory =
-        new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        metricsRepository,
+        backendConfig)) {
       DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
       // subscribe to a partition without data
       int emptyPartition = (partition + 1) % partitionCount;
@@ -875,12 +895,15 @@ public class DaVinciClientTest {
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(D2_CLIENT_ZK_HOSTS_ADDRESS, zkHosts)
+        .put(D2_ZK_HOSTS_ADDRESS, zkHosts)
         .build();
 
     // Re-open the same store's database to verify RocksDB metadata partition's lock has been released.
-    try (CachingDaVinciClientFactory factory =
-        new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        metricsRepository,
+        backendConfig)) {
       DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
       client.subscribeAll().get();
     }
@@ -919,7 +942,7 @@ public class DaVinciClientTest {
           cluster,
           storeName,
           Version.PushType.STREAM,
-          Pair.create(VeniceSystemFactory.VENICE_PARTITIONERS, ConstantVenicePartitioner.class.getName()));
+          Pair.create(VENICE_PARTITIONERS, ConstantVenicePartitioner.class.getName()));
       try {
         for (int i = 0; i < keyCount; i++) {
           TestPushUtils.sendStreamingRecord(producer, storeName, i, i);
@@ -935,7 +958,7 @@ public class DaVinciClientTest {
         cluster,
         storeName,
         Version.PushType.STREAM,
-        Pair.create(VeniceSystemFactory.VENICE_PARTITIONERS, ConstantVenicePartitioner.class.getName()));
+        Pair.create(VENICE_PARTITIONERS, ConstantVenicePartitioner.class.getName()));
     try {
       for (Pair<Object, Object> record: dataToWrite) {
         TestPushUtils.sendStreamingRecord(producer, storeName, record.getFirst(), record.getSecond());
