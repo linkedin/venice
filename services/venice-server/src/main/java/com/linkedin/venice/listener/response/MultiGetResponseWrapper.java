@@ -15,7 +15,7 @@ public class MultiGetResponseWrapper extends MultiKeyResponseWrapper<MultiGetRes
   @Override
   protected byte[] serializedResponse() {
     RecordSerializer<MultiGetResponseRecordV1> serializer =
-        SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
+        SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.getClassSchema());
 
     return serializer.serializeObjects(records, AvroSerializer.REUSE.get());
   }

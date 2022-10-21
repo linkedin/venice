@@ -62,8 +62,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
    * Since the job is calculating the raw data file size, which is not accurate because of compression,
    * key/value schema and backend storage overhead, we are applying this factor to provide a more
    * reasonable estimation.
-   */
-  /**
+   *
    * TODO: for map-reduce job, we could come up with more accurate estimation.
    */
   public static final long INPUT_DATA_SIZE_FACTOR = 2;
@@ -141,9 +140,6 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
         pushJobSchemaInfo.setAvroSchema(checkAvroSchemaConsistency(fs, fileStatuses, inputFileDataSize));
       } else {
         pushJobSchemaInfo.setAvroSchema(getAvroFileHeader(fs, fileStatuses[0].getPath(), false));
-        for (int i = 0; i < fileStatuses.length; i++) {
-          inputFileDataSize.addAndGet(fileStatuses[0].getLen());
-        }
       }
 
       Schema fileSchema = pushJobSchemaInfo.getAvroSchema().getFirst();
@@ -164,9 +160,6 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
         pushJobSchemaInfo.setVsonSchema(checkVsonSchemaConsistency(fs, fileStatuses, inputFileDataSize));
       } else {
         pushJobSchemaInfo.setVsonSchema(getVsonFileHeader(fs, fileStatuses[0].getPath(), false));
-        for (int i = 0; i < fileStatuses.length; i++) {
-          inputFileDataSize.addAndGet(fileStatuses[0].getLen());
-        }
       }
 
       VsonSchema vsonKeySchema = StringUtils.isEmpty(pushJobSchemaInfo.getKeyField())
@@ -180,15 +173,13 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       pushJobSchemaInfo.setValueSchemaString(VsonAvroSchemaAdapter.parse(vsonValueSchema.toString()).toString());
     }
 
-    // Since the job is calculating the raw data file size, which is not accurate because of compression, key/value
-    // schema and backend storage overhead,
-    // we are applying this factor to provide a more reasonable estimation.
     return new InputDataInfo(
         pushJobSchemaInfo,
         inputFileDataSize.get() * INPUT_DATA_SIZE_FACTOR,
         fileStatuses.length,
         hasRecords(pushJobSchemaInfo.isAvro(), fs, fileStatuses),
-        inputModificationTime);
+        inputModificationTime,
+        !pushJobSetting.useMapperToBuildDict);
   }
 
   private boolean hasRecords(boolean isAvroFile, FileSystem fs, FileStatus[] fileStatusList) {

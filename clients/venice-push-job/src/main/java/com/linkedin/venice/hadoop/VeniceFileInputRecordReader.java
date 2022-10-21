@@ -47,7 +47,8 @@ class VeniceFileInputRecordReader implements RecordReader<IntWritable, NullWrita
 
   /**
    * Checks whether there is a next file to process and pass the fileIdx via key if found
-   * It also adds a special case to add a new sentinel record in the end to build dictionary if needed
+   * It also adds a new sentinel record in the end to build dictionary if needed and
+   * persist data to HDFS to be used by VPJ Driver
    * @param key fileIdx is passed to map()
    * @param value Null
    * @return true or false based on whether a next file exists or not
@@ -60,8 +61,8 @@ class VeniceFileInputRecordReader implements RecordReader<IntWritable, NullWrita
       finishedNumberOfFiles += 1;
       return true;
     } else if (finishedNumberOfFiles == totalNumberOfFiles) {
-      // one extra record to build the dictionary
-      key.set(VeniceFileInputSplit.MAPPER_BUILD_DICTIONARY_KEY);
+      // sentinel record to build the dictionary and persist the data to be read by VPJ Driver
+      key.set(VeniceFileInputSplit.MAPPER_SENTINEL_KEY_TO_BUILD_DICTIONARY_AND_PERSIST_OUTPUT);
       finishedNumberOfFiles += 1;
       return true;
     } else {

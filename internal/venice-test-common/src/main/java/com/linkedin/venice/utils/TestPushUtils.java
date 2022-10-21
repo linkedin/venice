@@ -5,6 +5,8 @@ import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
 import static com.linkedin.venice.hadoop.VenicePushJob.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
 import static com.linkedin.venice.hadoop.VenicePushJob.INPUT_PATH_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.KEY_INPUT_FILE_DATA_SIZE;
+import static com.linkedin.venice.hadoop.VenicePushJob.KEY_ZSTD_COMPRESSION_DICTIONARY;
 import static com.linkedin.venice.hadoop.VenicePushJob.POLL_JOB_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.hadoop.VenicePushJob.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static com.linkedin.venice.hadoop.VenicePushJob.SSL_KEY_PASSWORD_PROPERTY_NAME;
@@ -47,6 +49,8 @@ import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -184,6 +188,22 @@ public class TestPushUtils {
         user.put("age", i);
         writer.append(user);
       }
+    });
+  }
+
+  public static Schema writeSimpleAvroFileForValidateSchemaAndBuildDictMapperOutput(
+      File parentDir,
+      String file,
+      long inputFileDataSize,
+      ByteBuffer zstdDictionary,
+      String avroSchema) throws IOException {
+    return writeAvroFile(parentDir, file, avroSchema, (recordSchema, writer) -> {
+      GenericRecord user = new GenericData.Record(recordSchema);
+      user.put(KEY_INPUT_FILE_DATA_SIZE, inputFileDataSize);
+      if (zstdDictionary != null) {
+        user.put(KEY_ZSTD_COMPRESSION_DICTIONARY, zstdDictionary);
+      }
+      writer.append(user);
     });
   }
 
@@ -528,10 +548,21 @@ public class TestPushUtils {
     });
   }
 
-  public static Schema writeEmptyAvroFileWithUserSchema(File parentDir) throws IOException {
-    return writeAvroFile(parentDir, "empty_file.avro", USER_SCHEMA_STRING, (recordSchema, avroFileWriter) -> {
+  public static void writeInvalidAvroFile(File parentDir, String fileName) throws IOException {
+    PrintWriter writer = new PrintWriter(parentDir.getAbsolutePath() + "/" + fileName, "UTF-8");
+    writer.println("Invalid file");
+    writer.close();
+  }
+
+  public static Schema writeEmptyAvroFileWithUserSchema(File parentDir, String fileName, String schema)
+      throws IOException {
+    return writeAvroFile(parentDir, fileName, schema, (recordSchema, avroFileWriter) -> {
       // No-op so that the file is empty
     });
+  }
+
+  public static Schema writeEmptyAvroFileWithUserSchema(File parentDir) throws IOException {
+    return writeEmptyAvroFileWithUserSchema(parentDir, "empty_file.avro", USER_SCHEMA_STRING);
   }
 
   public static Schema writeSimpleAvroFileWithCustomSize(
